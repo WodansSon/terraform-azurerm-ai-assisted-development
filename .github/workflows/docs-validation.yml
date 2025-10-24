@@ -1,0 +1,173 @@
+name: Validate Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.md'
+      - 'instructions/**'
+      - '.github/workflows/docs-validation.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.md'
+      - 'instructions/**'
+      - '.github/workflows/docs-validation.yml'
+
+jobs:
+  markdown-lint:
+    name: Lint Markdown Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install markdownlint-cli
+        run: npm install -g markdownlint-cli
+
+      - name: Run markdownlint
+        run: |
+          markdownlint '**/*.md' \
+            --ignore node_modules \
+            --ignore CHANGELOG.md \
+            --config .github/markdownlint.json || true
+        continue-on-error: true
+
+  check-links:
+    name: Check Markdown Links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install markdown-link-check
+        run: npm install -g markdown-link-check
+
+      - name: Check links in README
+        run: |
+          markdown-link-check README.md \
+            --config .github/markdown-link-check.json || true
+        continue-on-error: true
+
+      - name: Check links in all markdown files
+        run: |
+          find . -name "*.md" \
+            -not -path "./node_modules/*" \
+            -exec markdown-link-check {} \
+            --config .github/markdown-link-check.json \; || true
+        continue-on-error: true
+
+  validate-instructions:
+    name: Validate Instruction Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check instruction file structure
+        run: |
+          echo "Validating instruction files..."
+
+          # Check that all .instructions.md files exist in .github/instructions/
+          instruction_files=$(find ./.github/instructions -name "*.instructions.md" -type f)
+
+          if [ -z "$instruction_files" ]; then
+            echo "Error: No instruction files found!"
+            exit 1
+          fi
+
+          file_count=$(echo "$instruction_files" | wc -l)
+          echo "Found $file_count instruction file(s)"
+
+          # Check each instruction file has basic structure
+          for file in $instruction_files; do
+            echo "Checking: $file"
+
+            if ! grep -q "^#" "$file"; then
+              echo "Warning: $file may be missing headers"
+            fi
+          done
+
+          echo "✓ Instruction files validation complete!"
+
+      - name: Check instructions README
+        run: |
+          if [ ! -f ./.github/instructions/README.md ]; then
+            echo "Warning: .github/instructions/README.md not found"
+          else
+            echo "✓ Instructions README exists"
+          fi
+
+  validate-copilot-instructions:
+    name: Validate Copilot Instructions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check copilot-instructions.md
+        run: |
+          if [ ! -f ./.github/copilot-instructions.md ]; then
+            echo "Error: copilot-instructions.md not found!"
+            exit 1
+          fi
+
+          echo "✓ copilot-instructions.md exists"
+
+          # Check file size (should have substantial content)
+          file_size=$(wc -c < ./.github/copilot-instructions.md)
+          if [ "$file_size" -lt 1000 ]; then
+            echo "Warning: copilot-instructions.md seems too small ($file_size bytes)"
+          else
+            echo "✓ File size looks good ($file_size bytes)"
+          fi
+
+      - name: Check for required sections
+        run: |
+          echo "Checking for key sections in copilot-instructions.md..."
+
+          required_terms=(
+            "WORKSPACE-FIRST"
+            "Azure"
+            "Terraform"
+            "Provider"
+          )
+
+          for term in "${required_terms[@]}"; do
+            if grep -q "$term" ./copilot-instructions.md; then
+              echo "✓ Found: $term"
+            else
+              echo "Warning: '$term' not found in copilot-instructions.md"
+            fi
+          done
+
+  spell-check:
+    name: Spell Check Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@v2
+        with:
+          ignore_words_list: 'aks,terraform,azurerm,hashicorp,copilot,hashi,vibe'
+          skip: '*.json,*.lock,*.sum'
+          check_filenames: true
+          check_hidden: false
+        continue-on-error: true

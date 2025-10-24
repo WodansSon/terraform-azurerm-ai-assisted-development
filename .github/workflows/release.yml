@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          CHANGELOG=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | sed '1d;$d')
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create installer bundle directory
+        run: |
+          mkdir -p release/.terraform-azurerm-ai-installer/modules/powershell
+          mkdir -p release/.terraform-azurerm-ai-installer/modules/bash
+
+      - name: Copy installer files to bundle
+        run: |
+          # Copy main scripts
+          cp installer/install-copilot-setup.ps1 release/.terraform-azurerm-ai-installer/
+          cp installer/install-copilot-setup.sh release/.terraform-azurerm-ai-installer/
+          cp installer/file-manifest.config release/.terraform-azurerm-ai-installer/
+
+          # Copy PowerShell modules
+          cp installer/modules/powershell/*.psm1 release/.terraform-azurerm-ai-installer/modules/powershell/
+
+          # Copy Bash modules
+          cp installer/modules/bash/*.sh release/.terraform-azurerm-ai-installer/modules/bash/
+
+      - name: Create ZIP archive for Windows
+        run: |
+          cd release
+          zip -r terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip .terraform-azurerm-ai-installer/
+
+      - name: Create TAR.GZ archive for Linux/macOS
+        run: |
+          cd release
+          tar -czf terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz .terraform-azurerm-ai-installer/
+
+      - name: Create full source archive
+        run: |
+          # Create full release package (for advanced users)
+          tar -czf release/terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz \
+            --exclude='.git' \
+            --exclude='release' \
+            .
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum *.tar.gz *.zip > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Terraform AzureRM AI-Assisted Development v${{ steps.get_version.outputs.VERSION }}
+
+            ### 🚀 Quick Installation
+
+            **Windows (PowerShell):**
+            ```powershell
+            # Download and extract installer to your user profile
+            Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
+            Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE" -Force
+
+            # Run installer pointing to your terraform-provider-azurerm repository
+            & "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+            ```
+
+            **macOS/Linux (Bash):**
+            ```bash
+            # Download and extract installer to your user profile
+            curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz"
+            tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/
+
+            # Run installer pointing to your terraform-provider-azurerm repository
+            ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+            ```
+
+            The installer will download the AI instruction files from this repository and install them into your terraform-provider-azurerm repository's `.github` directory.
+
+            **Note:** The `-Bootstrap` flag is only needed for contributors working on this project itself, not for end users.
+
+            ### 📦 Release Assets
+
+            - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip`** - Windows installer bundle (recommended)
+            - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Linux/macOS installer bundle (recommended)
+            - **`terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Full source archive
+            - **`checksums.txt`** - SHA256 checksums for all artifacts
+
+            ### 📋 Changes
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### ✅ What's Included
+
+            - AI instruction files for HashiCorp Terraform AzureRM Provider development
+            - Installation scripts for Windows (PowerShell) and Linux/macOS (Bash)
+            - All required modules bundled together
+            - Configuration templates for VS Code and GitHub Copilot
+
+            ### 📖 Documentation
+
+            - [Installation Guide](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/installer/README.md)
+            - [Full Changelog](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CHANGELOG.md)
+            - [Main README](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/README.md)
+          files: |
+            release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip
+            release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz
+            release/terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz
+            release/checksums.txt
+          draft: false
+          prerelease: false

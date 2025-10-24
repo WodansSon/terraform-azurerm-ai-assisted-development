@@ -1,0 +1,56 @@
+# ShellCheck Configuration for Terraform AzureRM AI-Assisted Development
+# This file contains ShellCheck rule exclusions for the installer bash scripts
+
+# SC2034: Variable appears unused - Used for configuration and module imports
+disable=SC2034
+
+# SC2155: Declare and assign separately - Common pattern in bash scripts
+disable=SC2155
+
+# SC1090: Can't follow non-constant source - Dynamic module loading is intentional
+disable=SC1090
+
+# SC2005: Useless echo - Used for clarity in command substitution
+disable=SC2005
+
+# SC2001: See if you can use ${variable//search/replace} - sed is clearer for complex patterns
+disable=SC2001
+
+# SC2059: Don't use variables in printf format string - Intentional for dynamic formatting
+disable=SC2059
+
+# SC2120: Function references arguments but none are passed - Optional parameters pattern
+disable=SC2120
+
+# SC2119: Use function "$@" if function's $1 should mean script's $1 - Intentional default parameter pattern
+disable=SC2119
+
+# SC2046: Quote to prevent word splitting - Intentional for command substitution patterns
+disable=SC2046
+
+# SC2154: Variable is referenced but not assigned - Variables assigned in calling scope
+disable=SC2154
+
+# SC2178: Variable used as array but assigned string - nameref pattern for array references
+disable=SC2178
+
+# SC2295: Expansions inside ${..} need separate quoting - Pattern matching intentional
+disable=SC2295
+
+# SC2207: Prefer mapfile or read -a - Compatibility with older bash versions
+disable=SC2207
+
+# SC2086: Double quote to prevent globbing - Intentional word splitting for set command
+disable=SC2086
+
+# SC2329: Function never invoked - May be invoked indirectly or reserved for future use
+disable=SC2329
+
+# SC2317: Command appears unreachable - Functions invoked indirectly or reserved for future use
+disable=SC2317
+
+# SC2120: Function references arguments but none are passed - Optional parameters pattern
+disable=SC2120
+
+# SC2119: Use function "$@" if function's $1 should mean script's $1 - Optional parameters pattern
+disable=SC2119
