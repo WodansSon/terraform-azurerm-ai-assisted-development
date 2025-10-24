@@ -5,15 +5,15 @@ on:
     branches: [ main ]
     paths:
       - 'installer/**'
-      - 'PSAnalyzer/**'
-      - 'BashAnalyzer/**'
+      - 'tools/PSAnalyzer/**'
+      - 'tools/BashAnalyzer/**'
       - '.github/workflows/installer-validation.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'installer/**'
-      - 'PSAnalyzer/**'
-      - 'BashAnalyzer/**'
+      - 'tools/PSAnalyzer/**'
+      - 'tools/BashAnalyzer/**'
       - '.github/workflows/installer-validation.yml'
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
       - name: PSScriptAnalyzer - Run
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path ./installer -Recurse -Settings ./PSAnalyzer/PSScriptAnalyzerSettings.psd1
+          $results = Invoke-ScriptAnalyzer -Path ./installer -Recurse -Settings ./tools/PSAnalyzer/PSScriptAnalyzerSettings.psd1
           $results | Format-Table -AutoSize
           if ($results) {
             Write-Error "PSScriptAnalyzer found $($results.Count) issue(s)"

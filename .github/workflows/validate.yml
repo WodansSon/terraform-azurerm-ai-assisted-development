@@ -37,7 +37,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
-          $results = Invoke-ScriptAnalyzer -Path ./installer/install-copilot-setup.ps1 -Settings ./PSAnalyzer/PSScriptAnalyzerSettings.psd1 -Recurse
+          $results = Invoke-ScriptAnalyzer -Path ./installer/install-copilot-setup.ps1 -Settings ./tools/PSAnalyzer/PSScriptAnalyzerSettings.psd1 -Recurse
           if ($results) {
             $results | Format-Table
             exit 1
