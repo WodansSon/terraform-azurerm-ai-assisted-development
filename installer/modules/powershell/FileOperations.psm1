@@ -306,13 +306,18 @@ function Install-AllAIFile {
     .PARAMETER RequireProviderRepo
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Used when installing via -RepoDirectory to a target repository.
+
+    .PARAMETER LocalSourcePath
+    Local directory to copy AI files from instead of downloading from GitHub.
+    Contributor feature for testing uncommitted changes.
     #>
     param(
         [bool]$DryRun = $false,
         [string]$Branch = "main",
         [string]$WorkspaceRoot = $null,
         [hashtable]$ManifestConfig = $null,
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+        [string]$LocalSourcePath = ""
     )
 
     # CRITICAL: Use centralized pre-installation validation (replaces scattered safety checks)
@@ -499,26 +504,51 @@ function Install-AllAIFile {
             StartTime = Get-Date
             Branch = $Branch
             BaseUrl = $manifestConfig.BaseUrl
+            LocalSourcePath = $LocalSourcePath
         }
     }
 
-    # Detect if we're running from the toolkit source directory
-    $toolkitSourceRoot = if ($Global:ScriptRoot) {
+    # Determine source for AI files
+    # Priority: LocalSourcePath (contributor) > toolkit source directory (auto-detect) > GitHub (default)
+    $toolkitSourceRoot = $null
+
+    if ($LocalSourcePath) {
+        # Contributor feature: Use explicitly specified local path
+        if (-not (Test-Path $LocalSourcePath)) {
+            Write-Host ""
+            Write-Host "ERROR: Local source path does not exist: $LocalSourcePath" -ForegroundColor Red
+            Write-Host ""
+            $results.OverallSuccess = $false
+            return $results
+        }
+
+        # Validate it's actually the AI installer repo (has installer directory)
+        $installerDir = Join-Path $LocalSourcePath "installer"
+        if (-not (Test-Path $installerDir)) {
+            Write-Host ""
+            Write-Host "ERROR: Local source path does not appear to be the AI installer repository" -ForegroundColor Red
+            Write-Host "Expected to find 'installer' directory at: $installerDir" -ForegroundColor Yellow
+            Write-Host ""
+            $results.OverallSuccess = $false
+            return $results
+        }
+
+        $toolkitSourceRoot = $LocalSourcePath
+        Write-Host "Using local files from: " -ForegroundColor Cyan -NoNewline
+        Write-Host $LocalSourcePath -ForegroundColor White
+    }
+    elseif ($Global:ScriptRoot) {
+        # Auto-detect if we're running from the toolkit source directory
         # Check if instructions directory exists relative to script location
         $potentialSource = Split-Path $Global:ScriptRoot -Parent
         if (Test-Path (Join-Path $potentialSource "instructions")) {
-            $potentialSource
-        } else {
-            $null
+            $toolkitSourceRoot = $potentialSource
+            Write-Host "Using local files from toolkit repository..." -ForegroundColor Cyan
         }
-    } else {
-        $null
     }
 
     $useLocalCopy = $null -ne $toolkitSourceRoot
-    if ($useLocalCopy) {
-        Write-Host "Using local files from toolkit repository..." -ForegroundColor Cyan
-    } else {
+    if (-not $useLocalCopy) {
         Write-Host "Downloading files from GitHub..." -ForegroundColor Cyan
     }
 
@@ -1129,7 +1159,7 @@ function Test-BootstrapPrerequisite {
     )
 
     # Rule 1: Must NOT be running from user profile directory
-    $userProfileInstallerPath = Join-Path (Get-UserHomeDirectory) ".terraform-ai-installer"
+    $userProfileInstallerPath = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
     if ($ScriptDirectory -like "*$userProfileInstallerPath*") {
         Show-BootstrapViolation -ScriptDirectory $ScriptDirectory
         return $false
@@ -1167,7 +1197,7 @@ function Invoke-Bootstrap {
         Write-Separator
 
         # Create target directory
-        $targetDirectory = Join-Path (Get-UserHomeDirectory) ".terraform-ai-installer"
+        $targetDirectory = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
         if (-not (Test-Path $targetDirectory)) {
             New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
         }
@@ -1460,13 +1490,21 @@ function Invoke-InstallInfrastructure {
     .PARAMETER RequireProviderRepo
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Set to true when installing via -RepoDirectory to a target repository.
+
+    .PARAMETER SourceBranch
+    GitHub branch to pull AI files from (default: main). Contributor feature.
+
+    .PARAMETER LocalSourcePath
+    Local directory to copy AI files from instead of GitHub. Contributor feature.
     #>
     param(
         [bool]$DryRun,
         [string]$WorkspaceRoot,
         [hashtable]$ManifestConfig,
         [string]$TargetBranch = "Unknown",
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+        [string]$SourceBranch = "",
+        [string]$LocalSourcePath = ""
     )
 
     Write-Host " Installing AI Infrastructure" -ForegroundColor Cyan
@@ -1494,7 +1532,10 @@ function Invoke-InstallInfrastructure {
 
     # Use the FileOperations module to actually install files
     try {
-        $result = Install-AllAIFile -DryRun:$DryRun -WorkspaceRoot $WorkspaceRoot -ManifestConfig $ManifestConfig -RequireProviderRepo:$RequireProviderRepo
+        # Determine which branch to use
+        $branchToUse = if ($SourceBranch) { $SourceBranch } else { "main" }
+
+        $result = Install-AllAIFile -DryRun:$DryRun -WorkspaceRoot $WorkspaceRoot -ManifestConfig $ManifestConfig -RequireProviderRepo:$RequireProviderRepo -Branch $branchToUse -LocalSourcePath $LocalSourcePath
 
         if ($result.OverallSuccess) {
             # Use the superior completion summary function

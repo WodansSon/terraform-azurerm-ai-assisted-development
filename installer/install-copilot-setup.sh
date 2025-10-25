@@ -21,6 +21,8 @@ SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm
 # Command line parameters with help text
 BOOTSTRAP=false           # Copy installer to user profile for feature branch use
 REPO_DIRECTORY=""         # Path to the repository directory for git operations (when running from user profile)
+SOURCE_BRANCH=""          # GitHub branch to pull AI files from (contributor feature)
+LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from (contributor feature)
 DRY_RUN=false             # Show what would be done without making changes
 VERIFY=false              # Check the current state of the workspace
 CLEAN=false               # Remove AI infrastructure from the workspace
@@ -178,6 +180,34 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
+    # STEP 1.5: Validate mutually exclusive parameters
+    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        write_error_header
+        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot specify both -branch and -local-path${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} Use -branch to pull AI files from a published GitHub branch${COLOR_RESET}"
+        echo -e "${COLOR_CYAN} Use -local-path to copy AI files from a local unpublished directory${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
+        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
+        echo ""
+        exit 1
+    fi
+
+    # STEP 1.6: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
+        write_error_header
+        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot use -branch or -local-path with -bootstrap${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} -bootstrap always uses the current local branch${COLOR_RESET}"
+        echo -e "${COLOR_CYAN} -branch and -local-path are for updating from user profile${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
+        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
+        echo ""
+        exit 1
+    fi
+
     # STEP 2: Show header immediately for consistent user experience
     write_header "Terraform AzureRM Provider - AI Infrastructure Installer" "${VERSION}"
 
@@ -292,6 +322,10 @@ main() {
         attempted_command="-help"
     elif [[ "${DRY_RUN}" == "true" ]]; then
         attempted_command="-dry-run"
+    elif [[ -n "${LOCAL_PATH}" ]]; then
+        attempted_command="-local-path \"${LOCAL_PATH}\""
+    elif [[ -n "${BRANCH}" ]]; then
+        attempted_command="-branch \"${BRANCH}\""
     elif [[ -n "${REPO_DIRECTORY}" && "${HELP}" != "true" && "${VERIFY}" != "true" && "${BOOTSTRAP}" != "true" && "${CLEAN}" != "true" ]]; then
         attempted_command="-repo-directory \"${REPO_DIRECTORY}\""
     fi
@@ -355,7 +389,7 @@ main() {
     # STEP 11: Installation path (when -repo-directory is provided and not other specific operations)
     if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
         # Proceed with installation
-        install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}"
+        install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}" "${SOURCE_BRANCH}" "${LOCAL_SOURCE_PATH}"
         exit 0
     fi
 
@@ -402,6 +436,12 @@ check_typos() {
         suggestion="dry-run"
     elif echo "${lower_param}" | grep -q '^re'; then
         suggestion="repo-directory"
+    elif echo "${lower_param}" | grep -q '^co'; then
+        suggestion="contributor"
+    elif echo "${lower_param}" | grep -q '^lo'; then
+        suggestion="local-source-path"
+    elif echo "${lower_param}" | grep -q '^br'; then
+        suggestion="branch"
     # Fuzzy matching (lower priority)
     elif [[ "${lower_param}" == *cle* ]]; then
         suggestion="clean"
@@ -415,6 +455,14 @@ check_typos() {
         suggestion="dry-run"
     elif [[ "${lower_param}" == *repo* ]]; then
         suggestion="repo-directory"
+    elif [[ "${lower_param}" == *cont* ]]; then
+        suggestion="contributor"
+    elif [[ "${lower_param}" == *local* ]]; then
+        suggestion="local-source-path"
+    elif [[ "${lower_param}" == *source* ]]; then
+        suggestion="local-source-path"
+    elif [[ "${lower_param}" == *bra* ]]; then
+        suggestion="branch"
     fi
 
     if [[ -n "${suggestion}" ]]; then
@@ -442,6 +490,22 @@ parse_arguments() {
                     exit 1
                 fi
                 REPO_DIRECTORY="$2"
+                shift 2
+                ;;
+            -branch)
+                if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
+                    write_error_message " Option -branch requires a branch name"
+                    exit 1
+                fi
+                SOURCE_BRANCH="$2"
+                shift 2
+                ;;
+            -local-path)
+                if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
+                    write_error_message " Option -local-path requires a directory path"
+                    exit 1
+                fi
+                LOCAL_SOURCE_PATH="$2"
                 shift 2
                 ;;
             -dry-run)

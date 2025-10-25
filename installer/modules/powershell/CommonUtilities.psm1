@@ -20,7 +20,7 @@ function Get-UserHomeDirectory {
 
     .EXAMPLE
     $homeDir = Get-UserHomeDirectory
-    $installerPath = Join-Path $homeDir ".terraform-ai-installer"
+    $installerPath = Join-Path $homeDir ".terraform-azurerm-ai-installer"
     #>
     if ($IsWindows -or $env:OS -eq "Windows_NT" -or (-not $PSVersionTable.Platform)) {
         # Windows (including PowerShell 5.1 which doesn't have $IsWindows)
@@ -49,10 +49,10 @@ function Get-CrossPlatformInstallerPath {
     $homeDir = Get-UserHomeDirectory
     if ($IsWindows -or $env:OS -eq "Windows_NT" -or (-not $PSVersionTable.Platform)) {
         # Windows style path
-        return "`"$homeDir\.terraform-ai-installer`""
+        return "`"$homeDir\.terraform-azurerm-ai-installer`""
     } else {
         # Unix style path
-        return "`"$homeDir/.terraform-ai-installer`""
+        return "`"$homeDir/.terraform-azurerm-ai-installer`""
     }
 }
 

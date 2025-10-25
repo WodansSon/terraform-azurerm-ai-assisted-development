@@ -52,8 +52,8 @@ pwsh ./install-copilot-setup.ps1 -RepoDirectory "/path/to/repo"
 ```
 
 ### 🔧 Installation Paths
-- **Windows**: `%USERPROFILE%\.terraform-ai-installer`
-- **macOS/Linux**: `~/.terraform-ai-installer`
+- **Windows**: `%USERPROFILE%\.terraform-azurerm-ai-installer`
+- **macOS/Linux**: `~/.terraform-azurerm-ai-installer`
 
 ### 🚀 Quick Start for macOS
 
@@ -115,7 +115,7 @@ Copying installer files from current repository...
 DETAILS:
   Items Successful: 11
   Total Size      : 181.5 KB
-  Location        : C:\Users\<username>\.terraform-ai-installer
+  Location        : C:\Users\<username>\.terraform-azurerm-ai-installer
   Files Copied    : 11
 
 NEXT STEPS:
@@ -124,7 +124,7 @@ NEXT STEPS:
      git checkout feature/your-branch-name
 
   2. Run the installer from your user profile:
-     cd "$env:USERPROFILE\.terraform-ai-installer"
+     cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
      .\install-copilot-setup.ps1 -RepoDirectory "<path-to-your-terraform-provider-azurerm>"
 ```
 
@@ -161,28 +161,28 @@ Choose your platform and follow the two-step process:
 ```powershell
 # Step 1: Download and extract to user profile (one-time setup)
 Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
-Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-ai-installer" -Force
+Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
 
 # Step 2: Install AI infrastructure (from user profile)
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **macOS/Linux (Bash):**
 ```bash
 # Step 1: Download and extract to user profile (one-time setup)
 curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
-mkdir -p ~/.terraform-ai-installer
-tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-ai-installer --strip-components=1
+mkdir -p ~/.terraform-azurerm-ai-installer
+tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
 # Step 2: Install AI infrastructure (from user profile)
-~/.terraform-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 ### 📁 Installation Location
 
 The installer extracts to your user profile:
-- **Windows**: `%USERPROFILE%\.terraform-ai-installer`
-- **macOS/Linux**: `~/.terraform-ai-installer`
+- **Windows**: `%USERPROFILE%\.terraform-azurerm-ai-installer`
+- **macOS/Linux**: `~/.terraform-azurerm-ai-installer`
 
 Once installed, you can run the installer from any directory on any branch by specifying the `-RepoDirectory` parameter.
 
@@ -241,10 +241,10 @@ Download and extract the latest installer bundle directly to your user profile:
 Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
 
 # Extract directly to user profile (equivalent to -Bootstrap)
-Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-ai-installer" -Force
+Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
 
 # Verify installation
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Help
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
 ```
 
 **macOS/Linux (Bash):**
@@ -253,11 +253,11 @@ Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -Destination
 curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
 
 # Extract directly to user profile (equivalent to -bootstrap)
-mkdir -p ~/.terraform-ai-installer
-tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-ai-installer --strip-components=1
+mkdir -p ~/.terraform-azurerm-ai-installer
+tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
 # Verify installation
-~/.terraform-ai-installer/install-copilot-setup.sh -help
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
 ```
 
 > [!TIP]
@@ -280,7 +280,7 @@ If you encounter execution policy errors on Windows, you have several options:
 powershell -ExecutionPolicy Bypass -File .\installer\install-copilot-setup.ps1 -Bootstrap
 
 # Or for the user profile installer
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1"
 ```
 
 ##### Option 2: Unblock the downloaded files
@@ -321,27 +321,27 @@ Download the installer bundle and extract directly to your user profile:
 ```powershell
 # Download and extract to user profile
 Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
-Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-ai-installer" -Force
+Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
 
 # Verify installation
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Help
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
 ```
 
 > [!WARNING]
 > **PowerShell Execution Policy**: If you get execution policy errors when running the installer, use:
 > ```powershell
-> powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Help
+> powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
 > ```
 
 **macOS/Linux:**
 ```bash
 # Download and extract to user profile
 curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
-mkdir -p ~/.terraform-ai-installer
-tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-ai-installer --strip-components=1
+mkdir -p ~/.terraform-azurerm-ai-installer
+tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
 # Verify installation
-~/.terraform-ai-installer/install-copilot-setup.sh -help
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
 ```
 
 **Step 2: Install AI Infrastructure (Whenever you work on a feature branch)**
@@ -357,7 +357,7 @@ cd C:\path\to\terraform-provider-azurerm
 git checkout feature/your-branch-name
 
 # Install AI infrastructure from user profile
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **macOS/Linux:**
@@ -369,7 +369,7 @@ cd /path/to/terraform-provider-azurerm
 git checkout feature/your-branch-name
 
 # Install AI infrastructure from user profile
-~/.terraform-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 > [!NOTE]
@@ -440,20 +440,20 @@ Simply use slash commands to invoke the prompts directly:
 | Command | Description | Available On |
 |---------|-------------|--------------|
 | `.\install-copilot-setup.ps1 -Bootstrap` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
-| `& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\repo"` | **Install AI infrastructure** (run from anywhere after setup) | Feature branches |
-| `& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\repo"` | **Check installation status** (run from anywhere after setup) | Any branch |
-| `& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\repo"` | **Remove AI infrastructure** (run from anywhere after setup) | Feature branches |
-| `& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Help` | **Show detailed help** (run from anywhere after setup) | Any branch |
+| `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\repo"` | **Install AI infrastructure** (run from anywhere after setup) | Feature branches |
+| `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\repo"` | **Check installation status** (run from anywhere after setup) | Any branch |
+| `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\repo"` | **Remove AI infrastructure** (run from anywhere after setup) | Feature branches |
+| `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help` | **Show detailed help** (run from anywhere after setup) | Any branch |
 
 **macOS/Linux (Bash):**
 
 | Command | Description | Available On |
 |---------|-------------|--------------|
 | `./install-copilot-setup.sh -bootstrap` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
-| `~/.terraform-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/repo"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
-| `~/.terraform-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
-| `~/.terraform-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
-| `~/.terraform-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |
+| `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/repo"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
+| `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
+| `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
+| `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |
 
 ### Parameters
 
@@ -462,6 +462,9 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-RepoDirectory` | **Specify repository path** | Running from user profile | `-RepoDirectory "C:\path\to\terraform-provider-azurerm"` |
+| `-Branch` | **Install from specific branch** | Testing unreleased features | `-Branch "feature/new-feature"` |
+| `-Contributor` | **Use local AI dev repo instead of downloading** - Enables features for contributors working on this AI infrastructure project itself. Skips download and uses local files. Combine with `-LocalSourcePath` to specify repo location. | Contributing to terraform-azurerm-ai-assisted-development | `-Contributor -LocalSourcePath "C:\dev\terraform-azurerm-ai-assisted-development"` |
+| `-LocalSourcePath` | **Copy from local AI dev repo** | Testing uncommitted changes | `-LocalSourcePath "C:\path\to\ai-dev-repo"` |
 | `-Dry-Run` | Preview changes without applying | Optional | `-Dry-Run` |
 
 **macOS/Linux (Bash):**
@@ -469,34 +472,98 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-repo-directory` | **Specify repository path** | Running from user profile | `-repo-directory "/path/to/terraform-provider-azurerm"` |
+| `-branch` | **Install from specific branch** | Testing unreleased features | `-branch "feature/new-feature"` |
+| `-contributor` | **Use local AI dev repo instead of downloading** - Enables features for contributors working on this AI infrastructure project itself. Skips download and uses local files. Combine with `-local-source-path` to specify repo location. | Contributing to terraform-azurerm-ai-assisted-development | `-contributor -local-source-path "/path/to/terraform-azurerm-ai-assisted-development"` |
+| `-local-source-path` | **Copy from local AI dev repo** | Testing uncommitted changes | `-local-source-path "/path/to/ai-dev-repo"` |
 | `-dry-run` | Preview changes without applying | Optional | `-dry-run` |
 
 ### 🚨 Important: Repository Directory Parameter
 
-When running the installer **from your user profile** (after bootstrap), you **MUST** specify the repository directory parameter:
+When running the installer **from your user profile** (after initial setup), you **MUST** specify the repository directory parameter:
 
 *Windows:*
 ```powershell
 # ✅ CORRECT: Running from user profile with RepoDirectory
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
 # ❌ INCORRECT: Running from user profile without RepoDirectory
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1"
 ```
 
 *macOS/Linux:*
 ```bash
 # ✅ CORRECT: Running from user profile with -repo-directory
-~/.terraform-ai-installer/install-copilot-setup.sh -repo-directory "/Users/<username>/terraform-provider-azurerm"
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/Users/<username>/terraform-provider-azurerm"
 
 # ❌ INCORRECT: Running from user profile without -repo-directory
-~/.terraform-ai-installer/install-copilot-setup.sh
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh
 ```
 
 **Why is this required?**
 - The installer needs to know where your git repository is located
 - Enables proper branch detection and workspace validation
 - Ensures files are installed in the correct repository directory
+
+**How did the installer get to your user profile?**
+
+There are two ways to set up the installer in your user profile:
+
+#### 🌐 **Option 1: Download Release Package (Recommended for Most Users)**
+Download the pre-packaged installer bundle and extract it directly to your user profile. This is the **standard workflow** for most users:
+
+**Windows:**
+```powershell
+# Download and extract the latest release to user profile
+Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
+Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
+
+# Verify installation
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
+```
+
+**macOS/Linux:**
+```bash
+# Download and extract the latest release to user profile
+curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
+mkdir -p ~/.terraform-azurerm-ai-installer
+tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
+
+# Verify installation
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
+```
+
+#### 🔧 **Option 2: Bootstrap from Local Clone (For Contributors)**
+If you're **contributing to this AI infrastructure project** and have it cloned locally, you can use `-Bootstrap` to copy the installer to your user profile from your local repository:
+
+**Windows:**
+```powershell
+# Clone the AI infrastructure repository (one-time)
+git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development.git
+cd terraform-azurerm-ai-assisted-development/installer
+
+# Bootstrap from your local clone
+.\install-copilot-setup.ps1 -Bootstrap
+
+# Now you can run from user profile
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
+```
+
+**macOS/Linux:**
+```bash
+# Clone the AI infrastructure repository (one-time)
+git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development.git
+cd terraform-azurerm-ai-assisted-development/installer
+
+# Bootstrap from your local clone
+./install-copilot-setup.sh -bootstrap
+
+# Now you can run from user profile
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
+```
+
+**When to use each option:**
+- **Option 1 (Download Release)**: 99% of users - You just want to use the AI infrastructure for Terraform development
+- **Option 2 (Bootstrap)**: You're contributing to the AI infrastructure project itself and need to test local changes to the installer or instruction files
 
 ## 🌊 Workflow Overview
 
@@ -689,16 +756,37 @@ Combine multiple commands for complex tasks:
 ### Check Current Status
 ```powershell
 # After bootstrap - run from anywhere using user profile installer
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 ### Clean Installation
 ```powershell
 # After bootstrap - run from anywhere using user profile installer
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
 # Preview what would be removed
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Clean -Dry-Run -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -Dry-Run -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+### Install from Specific Branch
+```powershell
+# Test unreleased features from a specific branch
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Branch "feature/new-feature" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+### Contributor Mode (AI Dev Repo Contributors)
+```powershell
+# Enable contributor features when working on the AI dev repo itself
+# This skips downloading and uses your local cloned AI development repository
+# Useful for testing changes before committing to the AI infrastructure project
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Contributor -LocalSourcePath "C:\dev\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+### Test Uncommitted Local Changes
+```powershell
+# Copy AI files from your local AI dev repo (including uncommitted changes)
+# Use this to test modifications to instruction files before pushing them
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -LocalSourcePath "C:\dev\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 ### Bootstrap for Multiple Feature Branches
@@ -707,10 +795,10 @@ Combine multiple commands for complex tasks:
 .\.github\AIinstaller\install-copilot-setup.ps1 -Bootstrap
 
 # Then use from any feature branch (MUST specify RepoDirectory)
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
 # For different repository locations
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\your-projects\another-azurerm-fork"
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\your-projects\another-azurerm-fork"
 ```
 
 ## 🛠️ Troubleshooting
@@ -754,7 +842,7 @@ cd ~/terraform-azurerm-ai-assisted-development
 ./installer/install-copilot-setup.sh -bootstrap
 ```
 
-This will refresh the installer copy in your user profile (`~/.terraform-ai-installer`).
+This will refresh the installer copy in your user profile (`~/.terraform-azurerm-ai-installer`).
 
 ## 📄 License
 

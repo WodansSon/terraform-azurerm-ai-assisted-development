@@ -27,7 +27,7 @@ function Get-ManifestConfig {
         # Try to find manifest file in multiple locations
         $possiblePaths = @(
             # User profile installer directory (when running from bootstrapped copy)
-            (Join-Path (Get-UserHomeDirectory) ".terraform-ai-installer" | Join-Path -ChildPath "file-manifest.config"),
+            (Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer" | Join-Path -ChildPath "file-manifest.config"),
             # Current script directory (when running from user profile)
             (Join-Path (Split-Path $PSScriptRoot -Parent) "file-manifest.config"),
             # Original repository structure (when running from source)

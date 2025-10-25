@@ -124,6 +124,30 @@ download_file() {
     local target_path="$2"
     local description="$3"
 
+    # Check if using local source (file:// protocol)
+    if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
+        local local_source="${SOURCE_REPOSITORY#file://}"
+        local local_file="${local_source}/${source_path}"
+
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            echo "  [DRY-RUN] Would copy from local: ${description}"
+            return 0
+        fi
+
+        # Copy from local source
+        if [[ -f "${local_file}" ]]; then
+            mkdir -p "$(dirname "${target_path}")"
+            if cp "${local_file}" "${target_path}"; then
+                return 0
+            else
+                return 1
+            fi
+        else
+            return 1
+        fi
+    fi
+
+    # Otherwise, download from GitHub
     local url="${SOURCE_REPOSITORY:-https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development}/${BRANCH:-main}/${source_path}"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
@@ -571,6 +595,8 @@ install_infrastructure() {
     local workspace_root="$1"
     local current_branch="$2"
     local branch_type="$3"
+    local source_branch="${4:-}"
+    local local_source_path="${5:-}"
 
     write_section "Installing AI Infrastructure"
 
@@ -630,6 +656,29 @@ install_infrastructure() {
 
     write_green "All prerequisites validated successfully!"
     echo ""
+
+    # Step 4.5: Configure source repository and branch based on parameters
+    if [[ -n "${local_source_path}" ]]; then
+        # Use local source path (file:// protocol)
+        # Expand to absolute path if needed
+        if [[ "${local_source_path}" != /* ]]; then
+            local_source_path="$(cd "${local_source_path}" 2>/dev/null && pwd)"
+        fi
+        export SOURCE_REPOSITORY="file://${local_source_path}"
+        export BRANCH=""  # Not used for local files
+        write_cyan "Using local source: ${local_source_path}"
+        echo ""
+    elif [[ -n "${source_branch}" ]]; then
+        # Use GitHub with specified branch
+        export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
+        export BRANCH="${source_branch}"
+        write_cyan "Using GitHub branch: ${source_branch}"
+        echo ""
+    else
+        # Use default GitHub main branch
+        export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
+        export BRANCH="main"
+    fi
 
     # Step 5: Build complete file list (like PowerShell does)
     local all_files=()

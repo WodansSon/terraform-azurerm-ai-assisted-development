@@ -37,7 +37,7 @@ This is a **community-maintained AI enhancement** for developers working on the 
 
 ### 📖 Origin Story
 
-This project originated from [PR #29907](https://github.com/hashicorp/terraform-provider-azurerm/pull/29907) submitted to the HashiCorp Terraform AzureRM Provider repository. To make these AI-powered development tools more accessible and maintain them as a community resource, this standalone repository was created. The tools and patterns here are designed to work seamlessly with the official provider repository while being maintained independently.
+This project originated from [PR #29907](https://github.com/hashicorp/terraform-provider-azurerm/pull/29907) submitted to the HashiCorp Terraform AzureRM Provider repository on `June 19, 2025`. To help move the merge forward and make these AI-powered development tools more accessible to the community, the installation infrastructure was moved to this standalone repository on `October 19, 2025`. The tools and patterns here are designed to work seamlessly with the official provider repository while being maintained independently.
 
 ##
 
@@ -54,7 +54,7 @@ This project originated from [PR #29907](https://github.com/hashicorp/terraform-
 ### Installation
 
 > [!IMPORTANT]
-> **The installer MUST be extracted to your user profile directory** (`$env:USERPROFILE\.terraform-azurerm-ai-installer\` on Windows or `~/.terraform-azurerm-ai-installer/` on macOS/Linux). Running from other locations (like Downloads or Desktop) will cause directory traversal errors. See [Troubleshooting](docs/TROUBLESHOOTING.md#positional-parameter-error-windows) for details.
+> **The installer MUST be extracted to your user profile directory** (`$env:USERPROFILE\.terraform-azurerm-ai-installer\` on `Windows` or `~/.terraform-azurerm-ai-installer/` on `macOS`/`Linux`). Running from other locations (like Downloads or Desktop) will cause directory traversal errors. See [Troubleshooting](docs/TROUBLESHOOTING.md#positional-parameter-error-windows) for details.
 
 **Choose your platform:**
 
@@ -62,29 +62,37 @@ This project originated from [PR #29907](https://github.com/hashicorp/terraform-
 ```powershell
 # Download and extract installer directly to user profile
 Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
-Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-ai-installer" -Force
+Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
 
 # Verify installation
-& "$env:USERPROFILE\.terraform-ai-installer\install-copilot-setup.ps1" -Help
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
 ```
 
 #### macOS/Linux (Bash)
 ```bash
 # Download and extract installer directly to user profile
 curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
-mkdir -p ~/.terraform-ai-installer
-tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-ai-installer --strip-components=1
+mkdir -p ~/.terraform-azurerm-ai-installer
+tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
 # Verify installation
-~/.terraform-ai-installer/install-copilot-setup.sh -help
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
 ```
 
 > [!TIP]
-> **For Contributors**: If you're contributing to this project and have the repository cloned locally, you can use the `-Bootstrap` command instead:
+> **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, use the `-Bootstrap` command to work with your local changes:
 > ```bash
 > cd terraform-azurerm-ai-assisted-development/installer
 > ./install-copilot-setup.sh -bootstrap  # or .\install-copilot-setup.ps1 -Bootstrap on Windows
 > ```
+>
+> **Why use Bootstrap instead of the release package?**
+> - Tests your uncommitted changes to instruction files, installer scripts, and prompts
+> - Copies your local working copy to the user profile installer location
+> - Enables the `-Contributor` workflow for iterative development
+> - Perfect for testing improvements before submitting a PR
+>
+> Normal users should use the release package download (above) - Bootstrap is only for contributors working on the AI infrastructure itself.
 
 ### What the Installer Does
 
@@ -105,7 +113,7 @@ For detailed installation options, see **[installer/README.md](installer/README.
 
 ```powershell
 # 1. Install AI infrastructure on your feature branch
-cd ~/.terraform-ai-installer
+cd ~/.terraform-azurerm-ai-installer
 .\install-copilot-setup.ps1 -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
 # 2. Develop with AI assistance
@@ -315,6 +323,7 @@ This is a community project! Contributions are welcome:
 2. **Improve instructions** - Know a better pattern?
 3. **Add examples** - Share your experience
 4. **Test and provide feedback** - Help make it better
+5. **Contributor mode available** - Use `-Contributor` flag to work with local changes before pushing ([see installer docs](installer/README.md#parameters))
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 

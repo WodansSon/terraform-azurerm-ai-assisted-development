@@ -9,6 +9,8 @@
 # Initialize variables
 $Bootstrap = $false
 $RepoDirectory = ""
+$Branch = ""
+$LocalPath = ""
 $DryRun = $false
 $Verify = $false
 $Clean = $false
@@ -34,6 +36,7 @@ function Get-ParameterSuggestion {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
+        Write-Host "   -Branch <name>, -Contributor, -LocalSourcePath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
@@ -55,6 +58,9 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -match '^he') { $suggestion = 'Help' }
     elseif ($cleanParam -match '^dr') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
+    elseif ($cleanParam -match '^co') { $suggestion = 'Contributor' }
+    elseif ($cleanParam -match '^lo') { $suggestion = 'LocalSourcePath' }
+    elseif ($cleanParam -match '^br') { $suggestion = 'Branch' }
     # Fuzzy matching (lower priority)
     elseif ($cleanParam -like '*cle*') { $suggestion = 'Clean' }
     elseif ($cleanParam -like '*boo*') { $suggestion = 'Bootstrap' }
@@ -62,6 +68,10 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -like '*hel*') { $suggestion = 'Help' }
     elseif ($cleanParam -like '*dry*') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
+    elseif ($cleanParam -like '*cont*') { $suggestion = 'Contributor' }
+    elseif ($cleanParam -like '*local*') { $suggestion = 'LocalSourcePath' }
+    elseif ($cleanParam -like '*source*') { $suggestion = 'LocalSourcePath' }
+    elseif ($cleanParam -like '*bra*') { $suggestion = 'Branch' }
 
     return $suggestion
 }
@@ -76,6 +86,7 @@ function Test-ParameterTypo {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
+        Write-Host "   -Branch <name>, -Contributor, -LocalSourcePath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
@@ -119,6 +130,26 @@ while ($i -lt $args.Count) {
                 exit 1
             }
             $RepoDirectory = $args[$i + 1]
+            $i += 2
+        }
+        '-branch' {
+            if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
+                Write-Host ""
+                Write-Host " ERROR: Option -Branch requires a branch name" -ForegroundColor Red
+                Write-Host ""
+                exit 1
+            }
+            $Branch = $args[$i + 1]
+            $i += 2
+        }
+        '-localpath' {
+            if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
+                Write-Host ""
+                Write-Host " ERROR: Option -LocalPath requires a directory path" -ForegroundColor Red
+                Write-Host ""
+                exit 1
+            }
+            $LocalPath = $args[$i + 1]
             $i += 2
         }
         '-dry-run' {
@@ -171,6 +202,36 @@ while ($i -lt $args.Count) {
             exit 1
         }
     }
+}
+
+# Validate mutually exclusive parameters
+if ($Branch -and $LocalPath) {
+    Show-ErrorHeader
+    Write-Host " Error:" -ForegroundColor Red -NoNewline
+    Write-Host " Cannot specify both -Branch and -LocalPath" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
+    Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " For more help, run:" -ForegroundColor Cyan
+    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
+
+# Validate -Branch and -LocalPath can only be used from user profile (not with -Bootstrap)
+if ($Bootstrap -and ($Branch -or $LocalPath)) {
+    Show-ErrorHeader
+    Write-Host " Error:" -ForegroundColor Red -NoNewline
+    Write-Host " Cannot use -Branch or -LocalPath with -Bootstrap" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " -Bootstrap always uses the current local branch" -ForegroundColor Cyan
+    Write-Host " -Branch and -LocalPath are for updating from user profile" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " For more help, run:" -ForegroundColor Cyan
+    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
+    Write-Host ""
+    exit 1
 }
 
 # ============================================================================
@@ -332,7 +393,7 @@ function Main {
         if ($workspaceValidation.Valid) {
             # Manifest is always in the same directory as the script
             # - When running from source repo: repo/installer/file-manifest.config
-            # - When running after bootstrap: ~/.terraform-ai-installer/file-manifest.config
+            # - When running after bootstrap: ~/.terraform-azurerm-ai-installer/file-manifest.config
             $manifestPath = Join-Path $ScriptDirectory "file-manifest.config"
 
             $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath
@@ -422,7 +483,7 @@ function Main {
                 Write-Host "    cd `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
                 Write-Host ""
                 Write-Host "  Then run the installer from your user profile:" -ForegroundColor White
-                Write-Host "    cd `"$(Join-Path (Get-UserHomeDirectory) '.terraform-ai-installer')`"" -ForegroundColor Cyan
+                Write-Host "    cd `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer')`"" -ForegroundColor Cyan
                 Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
                 Write-Host ""
                 exit 1
@@ -439,7 +500,7 @@ function Main {
 
         # Detect if we're running from user profile directory (needed for all help contexts)
         $currentDir = Get-Location
-        $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-ai-installer"
+        $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
         $isFromUserProfile = $currentDir.Path -eq $userProfileInstallerDir -or [bool]$RepoDirectory
 
         # Detect what command was attempted (for better error messages)
@@ -449,6 +510,8 @@ function Main {
         elseif ($Clean) { $attemptedCommand = "-Clean" }
         elseif ($Help) { $attemptedCommand = "-Help" }
         elseif ($DryRun) { $attemptedCommand = "-Dry-Run" }
+        elseif ($LocalPath) { $attemptedCommand = "-LocalSourcePath `"$LocalPath`"" }
+        elseif ($Branch) { $attemptedCommand = "-Branch `"$Branch`"" }
         elseif ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             $attemptedCommand = "-RepoDirectory `"$RepoDirectory`""
         }
@@ -497,7 +560,7 @@ function Main {
         # Installation path (when -RepoDirectory is provided and not other specific operations)
         if ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             # Proceed with installation - require that target is a Terraform provider repo
-            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true | Out-Null
+            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -SourceBranch $Branch -LocalSourcePath $LocalPath | Out-Null
             return
         }
 

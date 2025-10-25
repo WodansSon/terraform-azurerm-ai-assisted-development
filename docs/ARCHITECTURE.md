@@ -250,37 +250,7 @@ Write docs        ->  Loads               ->  Generates docs with
 terraform-azurerm-ai-assisted-development/
 │
 ├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md
-│   │   ├── feature_request.md
-│   │   └── instruction_improvement.md
-│   │
-│   └── workflows/
-│       ├── validate.yml    # CI for installers & instructions
-│       └── release.yml     # Automated releases
-│
-├── installer/
-│   ├── install-copilot-setup.ps1    # Cross-platform PowerShell
-│   ├── install-copilot-setup.sh     # Traditional Bash
-│   ├── file-manifest.config         # Files to copy
-│   │
-│   ├── modules/
-│   │   ├── powershell/
-│   │   │   ├── ConfigParser.psm1
-│   │   │   ├── FileOperations.psm1
-│   │   │   ├── UI.psm1
-│   │   │   ├── ValidationEngine.psm1
-│   │   │   └── CommonUtilities.psm1
-│   │   │
-│   │   └── bash/
-│   │       ├── configparser.sh
-│   │       ├── fileoperations.sh
-│   │       ├── ui.sh
-│   │       └── validationengine.sh
-│   │
-│   └── README.md
-│
-├── instructions/
+│   ├── instructions/
 │   ├── README.md
 │   ├── api-evolution-patterns.instructions.md
 │   ├── azure-patterns.instructions.md
@@ -294,11 +264,46 @@ terraform-azurerm-ai-assisted-development/
 │   ├── schema-patterns.instructions.md
 │   ├── security-compliance.instructions.md
 │   ├── testing-guidelines.instructions.md
-│   └── troubleshooting-decision-trees.instructions.md
-│
-├── prompts/
+│   ├── troubleshooting-decision-trees.instructions.md
+│   │
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md
+│   │   ├── feature_request.md
+│   │   └── instruction_improvement.md
+│   │
+│   ├── prompts/
 │   ├── code-review-local-changes.prompt.md
-│   └── code-review-committed-changes.prompt.md
+│   ├── code-review-committed-changes.prompt.md
+│   │
+│   ├── workflows/
+│   │   ├── validate.yml    # CI for installers & instructions
+│   │   └── release.yml     # Automated releases
+│   │
+│   └── copilot-instructions.md
+│
+├── installer/
+│   ├── install-copilot-setup.ps1    # Cross-platform PowerShell
+│   ├── install-copilot-setup.sh     # Traditional Bash
+│   ├── file-manifest.config         # Files to copy
+│   │
+│   ├── modules/
+│   │   ├── powershell/
+│   │   │   ├── CommonUtilities.psm1
+│   │   │   ├── ConfigParser.psm1
+│   │   │   ├── FileOperations.psm1
+│   │   │   ├── UI.psm1
+│   │   │   └── ValidationEngine.psm1
+│   │   │
+│   │   └── bash/
+│   │       ├── configparser.sh
+│   │       ├── fileoperations.sh
+│   │       ├── ui.sh
+│   │       └── validationengine.sh
+│   │
+│   └── README.md
+│
+├── .vscode
+│   └── settings.json
 │
 ├── docs/
 │   ├── EXAMPLES.md

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bootstrap mode for automatic detection of terraform-provider-azurerm repository
 - Release process automation with GitHub Actions workflow
 - Release documentation and procedures (RELEASING.md)
+- **Contributor mode** (`-Contributor`/`-contributor`) for working with local AI dev repo changes before pushing
+- **Local source path** (`-LocalSourcePath`/`-local-source-path`) parameter for testing uncommitted changes from local AI dev repository
+- **Repository directory** (`-RepoDirectory`/`-repo-directory`) parameter requirement when running from user profile for proper git repository detection
 
 ### Changed
 - Improved installer validation messages for better clarity and user feedback
@@ -27,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated README structure with improved section breaks and readability
 - Reorganized instruction files to .github/instructions directory
 - Enhanced markdownlint configuration for better documentation quality
+- **Installation workflow**: Clarified two-step process (download/extract → install) for normal users vs bootstrap workflow for contributors
+- **Parameter documentation**: Significantly improved descriptions for `-Contributor`/`-contributor` and `-LocalSourcePath`/`-local-source-path` parameters
+- **User experience**: Updated all documentation to clearly distinguish between normal user workflow (download release package) and contributor workflow (bootstrap from local clone)
 
 ### Fixed
 - ShellCheck exclusions for bash scripts to prevent false positives
@@ -41,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PowerShell 5.1 compatibility: Fixed "positional parameter" error by using nested `Join-Path` calls instead of three-argument syntax
 - Removed confusing automatic verification after `-Clean` operation that reported cleaned files as "MISSING"
 - **CRITICAL**: Updated bash installer to use correct directory name `.terraform-azurerm-ai-installer` instead of old `.terraform-ai-installer` (bash installer was completely broken)
+- **Error messaging improvements**: Added `-Branch` and `-LocalSourcePath` / `-local-path` detection to `attempted_command` variable in both PowerShell and Bash installers for better contextual error messages
+- **PowerShell help system bug**: Fixed `Show-UnknownBranchHelp` function missing `$AttemptedCommand` parameter, which prevented proper command-specific error guidance
+- **Documentation consistency**: Updated all references to user profile installer directory to use correct path `~/.terraform-azurerm-ai-installer` (with leading dot for hidden directory)
 
 ### Documentation
 - Complete README with installation instructions and feature overview
@@ -52,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Critical installation requirement**: Added prominent warnings that installer must be extracted to user profile directory
 - **Troubleshooting guide**: Added "Positional Parameter Error" section explaining directory traversal issues
 - **Installation examples**: Updated all installation examples to show correct extraction to user profile directory
+- **Contributor mode documentation**: Added comprehensive explanation of contributor mode workflow with clear examples
+- **Parameter reference tables**: Enhanced with detailed descriptions, use cases, and examples for all installer parameters
+- **Installation workflow clarity**: Documented the distinction between "Option 1: Download Release Package" (99% of users) vs "Option 2: Bootstrap from Local Clone" (contributors only)
+- **Repository directory requirement**: Added detailed section explaining when and why `-RepoDirectory`/`-repo-directory` parameter is required
+- **Contributing section**: Added bullet point about contributor mode availability with link to installer documentation
+- **Architecture documentation**: Fixed PowerShell module ordering to match actual alphabetical directory structure
 
 ### Infrastructure
 - Set up GitHub repository with proper description and topics
@@ -63,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Version History Notes
 
 ### Origin
-This project was originally submitted as [PR #29907](https://github.com/hashicorp/terraform-provider-azurerm/pull/29907) to the HashiCorp Terraform AzureRM Provider repository on `June 19, 2025`. After `122+` days without a clear path to acceptance, the PR was moved to this standalone repository on `October 19, 2025` to make these AI-powered development tools more accessible and maintainable by the community.
+This project was originally submitted as [PR #29907](https://github.com/hashicorp/terraform-provider-azurerm/pull/29907) to the HashiCorp Terraform AzureRM Provider repository on `June 19, 2025`. To help move the merge forward and make these AI-powered development tools more accessible to the community, the installation infrastructure was moved to this standalone repository on `October 19, 2025`.
 
 ### Versioning Strategy
 - **Major version (X.0.0)**: Breaking changes to installer or instruction structure

@@ -147,7 +147,7 @@ function Show-Help {
             Show-FeatureBranchHelp
         }
         default {
-            Show-UnknownBranchHelp -WorkspaceValid $WorkspaceValid -WorkspaceIssue $WorkspaceIssue -FromUserProfile $FromUserProfile
+            Show-UnknownBranchHelp -WorkspaceValid $WorkspaceValid -WorkspaceIssue $WorkspaceIssue -FromUserProfile $FromUserProfile -AttemptedCommand $AttemptedCommand
         }
     }
 
@@ -166,7 +166,7 @@ function Show-SourceBranchHelp {
     Write-Host "  .\install-copilot-setup.ps1 [OPTIONS]"
     Write-Host ""
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
-    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-ai-installer\)"
+    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
     Write-Host "                    Run this from the source branch to set up for feature branch use"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Help             Show this help information"
@@ -197,6 +197,10 @@ function Show-FeatureBranchHelp {
 
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -RepoDirectory    Repository path (path to your feature branch directory)"
+    Write-Host "  -Branch           GitHub branch to pull AI files from (default: main)"
+    Write-Host "                    Contributor feature for testing published branch changes"
+    Write-Host "  -LocalPath        Local directory to copy AI files from instead of GitHub"
+    Write-Host "                    Contributor feature for testing uncommitted changes"
     Write-Host "  -Dry-Run          Show what would be done without making changes"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
@@ -204,9 +208,15 @@ function Show-FeatureBranchHelp {
     Write-Host ""
 
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
-    Write-Host "  Install AI infrastructure:"
+    Write-Host "  Install AI infrastructure (default - from main branch):"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
+    Write-Host ""
+    Write-Host "  Install from specific GitHub branch (contributor):"
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Branch feature/new-ai-files"
+    Write-Host ""
+    Write-Host "  Install from local uncommitted changes (contributor):"
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -LocalPath `"/path/to/ai-installer-repo`""
     Write-Host ""
     Write-Host "  Dry-Run (preview changes):"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
@@ -223,6 +233,11 @@ function Show-FeatureBranchHelp {
     Write-Host "  3. Start developing with enhanced GitHub Copilot AI features"
     Write-Host "  4. Use -Clean to remove AI infrastructure when done"
     Write-Host ""
+    Write-Host "CONTRIBUTOR WORKFLOW (Testing AI File Changes):" -ForegroundColor Cyan
+    Write-Host "  Test uncommitted changes: Use -LocalPath to copy from your local AI repo"
+    Write-Host "  Test published branch:    Use -Branch to pull from GitHub branch"
+    Write-Host "  Test main branch:         Omit both flags to use default (main)"
+    Write-Host ""
 }
 
 function Show-UnknownBranchHelp {
@@ -233,7 +248,8 @@ function Show-UnknownBranchHelp {
     param(
         [bool]$WorkspaceValid = $true,
         [string]$WorkspaceIssue = "",
-        [bool]$FromUserProfile = $false
+        [bool]$FromUserProfile = $false,
+        [string]$AttemptedCommand = ""
     )
 
     # Show workspace issue if detected
@@ -244,7 +260,7 @@ function Show-UnknownBranchHelp {
         Write-Host "SOLUTION:" -ForegroundColor Cyan
 
         if ($FromUserProfile) {
-            # User is running from ~/.terraform-ai-installer, they need -RepoDirectory
+            # User is running from ~/.terraform-azurerm-ai-installer, they need -RepoDirectory
             Write-Host "  Use the -RepoDirectory parameter to specify your repository path:"
             $commandExample = if ($AttemptedCommand) { $AttemptedCommand } else { "-Help" }
             Write-Host "  .\install-copilot-setup.ps1 -RepoDirectory `"C:\path\to\terraform-provider-azurerm`" $commandExample"
@@ -265,7 +281,7 @@ function Show-UnknownBranchHelp {
     Write-Host ""
 
     Write-Host "ALL OPTIONS:" -ForegroundColor Cyan
-    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-ai-installer\)"
+    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
     Write-Host "  -RepoDirectory    Repository path for git operations (when running from user profile)"
     Write-Host "  -Dry-Run          Show what would be done without making changes"
     Write-Host "  -Verify           Check current workspace status and validate setup"
@@ -361,7 +377,7 @@ function Show-BootstrapNextStep {
     successfully copied to their user profile.
     #>
     param(
-        [string]$TargetDirectory = (Join-Path (Get-UserHomeDirectory) ".terraform-ai-installer")
+        [string]$TargetDirectory = (Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer")
     )
 
     Write-Host "NEXT STEPS:" -ForegroundColor "Cyan"
