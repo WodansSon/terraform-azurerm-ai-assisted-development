@@ -323,7 +323,7 @@ This is a community project! Contributions are welcome:
 2. **Improve instructions** - Know a better pattern?
 3. **Add examples** - Share your experience
 4. **Test and provide feedback** - Help make it better
-5. **Contributor mode available** - Use `-Contributor` flag to work with local changes before pushing ([see installer docs](installer/README.md#parameters))
+5. **Contributor testing mode** - Test your AI instruction changes before pushing to GitHub using `-Contributor -Branch <name>` or `-Contributor -LocalPath <path>` ([see contributor mode docs](installer/README.md#contributor-mode-ai-dev-repo-contributors))
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 

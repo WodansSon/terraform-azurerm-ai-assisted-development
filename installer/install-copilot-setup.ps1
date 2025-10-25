@@ -9,6 +9,7 @@
 # Initialize variables
 $Bootstrap = $false
 $RepoDirectory = ""
+$Contributor = $false
 $Branch = ""
 $LocalPath = ""
 $DryRun = $false
@@ -36,7 +37,7 @@ function Get-ParameterSuggestion {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalSourcePath <path>"
+        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
@@ -59,7 +60,7 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -match '^dr') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
     elseif ($cleanParam -match '^co') { $suggestion = 'Contributor' }
-    elseif ($cleanParam -match '^lo') { $suggestion = 'LocalSourcePath' }
+    elseif ($cleanParam -match '^lo') { $suggestion = 'LocalPath' }
     elseif ($cleanParam -match '^br') { $suggestion = 'Branch' }
     # Fuzzy matching (lower priority)
     elseif ($cleanParam -like '*cle*') { $suggestion = 'Clean' }
@@ -69,8 +70,8 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -like '*dry*') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
     elseif ($cleanParam -like '*cont*') { $suggestion = 'Contributor' }
-    elseif ($cleanParam -like '*local*') { $suggestion = 'LocalSourcePath' }
-    elseif ($cleanParam -like '*source*') { $suggestion = 'LocalSourcePath' }
+    elseif ($cleanParam -like '*local*') { $suggestion = 'LocalPath' }
+    elseif ($cleanParam -like '*source*') { $suggestion = 'LocalPath' }
     elseif ($cleanParam -like '*bra*') { $suggestion = 'Branch' }
 
     return $suggestion
@@ -86,7 +87,7 @@ function Test-ParameterTypo {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalSourcePath <path>"
+        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
@@ -152,6 +153,10 @@ while ($i -lt $args.Count) {
             $LocalPath = $args[$i + 1]
             $i += 2
         }
+        '-contributor' {
+            $Contributor = $true
+            $i++
+        }
         '-dry-run' {
             $DryRun = $true
             $i++
@@ -212,6 +217,22 @@ if ($Branch -and $LocalPath) {
     Write-Host ""
     Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
     Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " For more help, run:" -ForegroundColor Cyan
+    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
+
+# Validate -Branch and -LocalPath require -Contributor flag
+if (($Branch -or $LocalPath) -and -not $Contributor) {
+    Show-ErrorHeader
+    Write-Host " Error:" -ForegroundColor Red -NoNewline
+    Write-Host " -Branch and -LocalPath require -Contributor flag" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " These are contributor features for testing AI file changes:" -ForegroundColor Cyan
+    Write-Host "   -Contributor -Branch <name>     Test published branch changes" -ForegroundColor White
+    Write-Host "   -Contributor -LocalPath <path>  Test uncommitted local changes" -ForegroundColor White
     Write-Host ""
     Write-Host " For more help, run:" -ForegroundColor Cyan
     Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
@@ -510,7 +531,7 @@ function Main {
         elseif ($Clean) { $attemptedCommand = "-Clean" }
         elseif ($Help) { $attemptedCommand = "-Help" }
         elseif ($DryRun) { $attemptedCommand = "-Dry-Run" }
-        elseif ($LocalPath) { $attemptedCommand = "-LocalSourcePath `"$LocalPath`"" }
+        elseif ($LocalPath) { $attemptedCommand = "-LocalPath `"$LocalPath`"" }
         elseif ($Branch) { $attemptedCommand = "-Branch `"$Branch`"" }
         elseif ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             $attemptedCommand = "-RepoDirectory `"$RepoDirectory`""

@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release process automation with GitHub Actions workflow
 - Release documentation and procedures (RELEASING.md)
 - **Contributor mode** (`-Contributor`/`-contributor`) for working with local AI dev repo changes before pushing
-- **Local source path** (`-LocalSourcePath`/`-local-source-path`) parameter for testing uncommitted changes from local AI dev repository
+- **Local source path** (`-LocalPath`/`-local-path`) parameter for testing uncommitted changes from local AI dev repository
 - **Repository directory** (`-RepoDirectory`/`-repo-directory`) parameter requirement when running from user profile for proper git repository detection
 
 ### Changed
@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reorganized instruction files to .github/instructions directory
 - Enhanced markdownlint configuration for better documentation quality
 - **Installation workflow**: Clarified two-step process (download/extract → install) for normal users vs bootstrap workflow for contributors
-- **Parameter documentation**: Significantly improved descriptions for `-Contributor`/`-contributor` and `-LocalSourcePath`/`-local-source-path` parameters
+- **Parameter documentation**: Significantly improved descriptions for `-Contributor`/`-contributor` and `-LocalPath`/`-local-path` parameters
 - **User experience**: Updated all documentation to clearly distinguish between normal user workflow (download release package) and contributor workflow (bootstrap from local clone)
 
 ### Fixed
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PowerShell 5.1 compatibility: Fixed "positional parameter" error by using nested `Join-Path` calls instead of three-argument syntax
 - Removed confusing automatic verification after `-Clean` operation that reported cleaned files as "MISSING"
 - **CRITICAL**: Updated bash installer to use correct directory name `.terraform-azurerm-ai-installer` instead of old `.terraform-ai-installer` (bash installer was completely broken)
-- **Error messaging improvements**: Added `-Branch` and `-LocalSourcePath` / `-local-path` detection to `attempted_command` variable in both PowerShell and Bash installers for better contextual error messages
+- **Error messaging improvements**: Added `-Branch` and `-LocalPath` / `-local-path` detection to `attempted_command` variable in both PowerShell and Bash installers for better contextual error messages
 - **PowerShell help system bug**: Fixed `Show-UnknownBranchHelp` function missing `$AttemptedCommand` parameter, which prevented proper command-specific error guidance
 - **Documentation consistency**: Updated all references to user profile installer directory to use correct path `~/.terraform-azurerm-ai-installer` (with leading dot for hidden directory)
 

@@ -516,7 +516,7 @@ function Install-AllAIFile {
         # Contributor feature: Use explicitly specified local path
         if (-not (Test-Path $LocalSourcePath)) {
             Write-Host ""
-            Write-Host "ERROR: Local source path does not exist: $LocalSourcePath" -ForegroundColor Red
+            Write-Host "ERROR: Local path does not exist: $LocalSourcePath" -ForegroundColor Red
             Write-Host ""
             $results.OverallSuccess = $false
             return $results
@@ -526,7 +526,7 @@ function Install-AllAIFile {
         $installerDir = Join-Path $LocalSourcePath "installer"
         if (-not (Test-Path $installerDir)) {
             Write-Host ""
-            Write-Host "ERROR: Local source path does not appear to be the AI installer repository" -ForegroundColor Red
+            Write-Host "ERROR: Local path does not appear to be the AI installer repository" -ForegroundColor Red
             Write-Host "Expected to find 'installer' directory at: $installerDir" -ForegroundColor Yellow
             Write-Host ""
             $results.OverallSuccess = $false
@@ -578,12 +578,12 @@ function Install-AllAIFile {
         # Validate source (either local file exists or download URL is valid)
         if ($useLocalCopy) {
             if (-not (Test-Path $sourceFile)) {
-                Write-Warning "Local source file not found: $sourceFile"
+                Write-Warning "Local file not found: $sourceFile"
                 $results.Files[$filePath] = @{
                     FilePath = $filePath
                     Success = $false
                     Action = "Skipped"
-                    Message = "Local source file not found"
+                    Message = "Local file not found"
                     Size = 0
                     DebugInfo = @{
                         SourceFile = $sourceFile

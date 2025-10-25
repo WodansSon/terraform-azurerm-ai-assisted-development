@@ -21,6 +21,7 @@ SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm
 # Command line parameters with help text
 BOOTSTRAP=false           # Copy installer to user profile for feature branch use
 REPO_DIRECTORY=""         # Path to the repository directory for git operations (when running from user profile)
+CONTRIBUTOR=false         # Enable contributor features for testing AI file changes
 SOURCE_BRANCH=""          # GitHub branch to pull AI files from (contributor feature)
 LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from (contributor feature)
 DRY_RUN=false             # Show what would be done without making changes
@@ -194,7 +195,22 @@ main() {
         exit 1
     fi
 
-    # STEP 1.6: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    # STEP 1.6: Validate -branch and -local-path require -contributor flag
+    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
+        write_error_header
+        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} -branch and -local-path require -contributor flag${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} These are contributor features for testing AI file changes:${COLOR_RESET}"
+        echo -e "   ${COLOR_WHITE}-contributor -branch <name>      Test published branch changes${COLOR_RESET}"
+        echo -e "   ${COLOR_WHITE}-contributor -local-path <path>  Test uncommitted local changes${COLOR_RESET}"
+        echo ""
+        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
+        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
+        echo ""
+        exit 1
+    fi
+
+    # STEP 1.7: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
     if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
         write_error_header
         echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot use -branch or -local-path with -bootstrap${COLOR_RESET}"
@@ -491,6 +507,10 @@ parse_arguments() {
                 fi
                 REPO_DIRECTORY="$2"
                 shift 2
+                ;;
+            -contributor)
+                CONTRIBUTOR=true
+                shift
                 ;;
             -branch)
                 if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
