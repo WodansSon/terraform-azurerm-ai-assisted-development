@@ -36,5 +36,5 @@
     "github.copilot.enable": {
         "*": true,
         "terminal": true
-    },
+    }
 }
