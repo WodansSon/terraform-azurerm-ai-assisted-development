@@ -231,7 +231,6 @@ function Show-Help {
         }
     }
 
-    Write-Host ""
     Write-Host "For more information, visit: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -263,6 +262,7 @@ function Show-SourceBranchHelp {
     Write-Host "  2. Switch to your feature branch: git checkout feature/your-branch-name"
     Write-Host "  3. Navigate to user profile: cd $(Get-CrossPlatformInstallerPath)"
     Write-Host "  4. Run installer: .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
+    Write-Host ""
 }
 
 function Show-FeatureBranchHelp {
@@ -277,10 +277,9 @@ function Show-FeatureBranchHelp {
 
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -RepoDirectory    Repository path (path to your feature branch directory)"
-    Write-Host "  -Branch           GitHub branch to pull AI files from (default: main)"
-    Write-Host "                    Contributor feature for testing published branch changes"
-    Write-Host "  -LocalPath        Local directory to copy AI files from instead of GitHub"
-    Write-Host "                    Contributor feature for testing uncommitted changes"
+    Write-Host "  -Branch           GitHub branch to pull AI files from (requires -Contributor, default: main)"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (requires -Contributor)"
+    Write-Host "  -Contributor      Enable contributor mode for testing AI file changes"
     Write-Host "  -Dry-Run          Show what would be done without making changes"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
@@ -292,11 +291,11 @@ function Show-FeatureBranchHelp {
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
     Write-Host ""
-    Write-Host "  Install from specific GitHub branch (contributor):"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Branch feature/new-ai-files"
+    Write-Host "  Install from specific GitHub branch (contributor testing):"
+    Write-Host "    .\install-copilot-setup.ps1 -Contributor -Branch feature/new-ai-files -RepoDirectory `"/path/to/repo`""
     Write-Host ""
-    Write-Host "  Install from local uncommitted changes (contributor):"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -LocalPath `"/path/to/ai-installer-repo`""
+    Write-Host "  Install from local uncommitted changes (contributor testing):"
+    Write-Host "    .\install-copilot-setup.ps1 -Contributor -LocalPath `"/path/to/ai-installer-repo`" -RepoDirectory `"/path/to/repo`""
     Write-Host ""
     Write-Host "  Dry-Run (preview changes):"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
@@ -363,6 +362,9 @@ function Show-UnknownBranchHelp {
     Write-Host "ALL OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
     Write-Host "  -RepoDirectory    Repository path for git operations (when running from user profile)"
+    Write-Host "  -Branch           GitHub branch to pull AI files from (requires -Contributor, default: main)"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (requires -Contributor)"
+    Write-Host "  -Contributor      Enable contributor mode for testing AI file changes"
     Write-Host "  -Dry-Run          Show what would be done without making changes"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
@@ -379,9 +381,14 @@ function Show-UnknownBranchHelp {
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`" -Clean"
     Write-Host ""
+    Write-Host "  Contributor Operations (Testing AI Changes):" -ForegroundColor DarkCyan
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Contributor -Branch feature/ai-updates"
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Contributor -LocalPath `"/path/to/ai-repo`""
+    Write-Host ""
 
     Write-Host "BRANCH DETECTION:" -ForegroundColor Cyan
     Write-Host "  The installer automatically detects your branch type and shows appropriate options."
+    Write-Host ""
 }
 
 function Show-InstallationResult {
@@ -849,6 +856,7 @@ Export-ModuleMember -Function @(
     'Show-AIInstallerNotFoundError',
     'Show-ValidationError',
     'Show-BootstrapViolation',
+    'Show-BootstrapGitError',
     'Show-OperationSummary',
     'Show-InstallationResult',
     'Show-CleanupReminder'

@@ -192,6 +192,74 @@
 
 ---
 
+### 10. PowerShell Edge Case Handling - Dash Parameter Detection
+**Files Modified**:
+- `install-copilot-setup.ps1`
+- `modules/powershell/UI.psm1`
+
+**Problem**: PowerShell runtime consumes special parameter markers before our script can process them
+- Users passing `-` or `--` would see help (workspace validation error path) instead of proper error
+- `$args` array is empty when PowerShell consumes these special characters
+- No way to detect these invalid parameters from within the script
+
+**Solution**:
+- ✅ Added detection logic after argument parsing to check if `$args.Count = 0` and no parameters were set
+- ✅ When edge case detected, defaults to `$Help = $true` (user-friendly behavior)
+- ✅ Gracefully handles three scenarios:
+  - No parameters provided (shows help - user-friendly default)
+  - Single dash `-` (PowerShell consumes it → shows help)
+  - Double dash `--` (PowerShell consumes it → shows help)
+- ✅ Added comprehensive comment explaining PowerShell limitation
+- ✅ Exported `Show-BootstrapGitError` function from UI.psm1 (was missing from export list)
+
+**Why**: PowerShell limitation cannot be worked around - both `-` and `--` are consumed by the runtime before our script sees them. The elegant solution is to detect when `$args` is empty and no flags were set, then default to showing help. This provides consistent, user-friendly behavior for all edge cases.
+
+---
+
+### 11. Help Display - Missing Contributor Options
+**Files Modified**: `modules/powershell/UI.psm1`
+
+**Problem**: Unknown branch help (user profile directory) was missing contributor-related options
+- Help displayed `-Bootstrap`, `-RepoDirectory`, `-Dry-Run`, `-Verify`, `-Clean`, `-Help`
+- Missing: `-Branch`, `-Contributor`, `-LocalPath`
+- Users couldn't see all available options
+
+**Solution**:
+- ✅ Added missing options to `Show-UnknownBranchHelp` function:
+  - `-Branch <name>` - Pull AI files from published GitHub branch (requires -Contributor)
+  - `-Contributor` - Enable contributor testing features
+  - `-LocalPath <path>` - Copy AI files from local directory (requires -Contributor)
+- ✅ Added contributor examples section showing:
+  - Testing published branch: `-Contributor -Branch <name> -RepoDirectory <path>`
+  - Testing local changes: `-Contributor -LocalPath <path> -RepoDirectory <path>`
+- ✅ Maintains alphabetical ordering of options for consistency
+
+**Why**: Complete help display ensures users can discover all available features. Contributor options are particularly important for developers testing AI infrastructure changes.
+
+---
+
+### 12. Help Display - Contributor Flag Requirement Clarity
+**Files Modified**: `modules/powershell/UI.psm1`
+
+**Problem**: Feature branch help didn't clearly indicate `-Branch` and `-LocalPath` REQUIRE `-Contributor` flag
+- Options listed `-Branch` and `-LocalPath` with vague "Contributor feature" note
+- Examples showed these flags without `-Contributor` in the command
+- Users would try commands that fail validation, then see error
+
+**Solution**:
+- ✅ Updated option descriptions to explicitly state "(requires -Contributor)":
+  - `-Branch` - GitHub branch to pull AI files from **(requires -Contributor, default: main)**
+  - `-LocalPath` - Local directory to copy AI files from **(requires -Contributor)**
+  - `-Contributor` - Enable contributor mode for testing AI file changes
+- ✅ Updated examples to show correct usage with `-Contributor` flag first:
+  - `.\install-copilot-setup.ps1 -Contributor -Branch feature/new-ai-files -RepoDirectory "/path/to/repo"`
+  - `.\install-copilot-setup.ps1 -Contributor -LocalPath "/path/to/ai-installer-repo" -RepoDirectory "/path/to/repo"`
+- ✅ Now matches `Show-UnknownBranchHelp` which already had this clarity
+
+**Why**: Help should guide users toward correct usage patterns. By explicitly stating the `-Contributor` requirement in the option descriptions and showing it in examples, users understand the correct syntax before attempting commands that would fail validation.
+
+---
+
 ## Bash Script Updates (Pending)
 
 ### Already Implemented in Bash

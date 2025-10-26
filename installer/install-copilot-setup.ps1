@@ -104,8 +104,8 @@ function Show-EarlyValidationError {
 function Get-ParameterSuggestion {
     param([string]$param)
 
-    # Handle bare dash edge case
-    if ($param -eq '-' -or $param -eq '--') {
+    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
+    if ($param -eq '--') {
         Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
@@ -154,8 +154,8 @@ function Get-ParameterSuggestion {
 function Test-ParameterTypo {
     param([string]$param)
 
-    # Handle bare dash edge case
-    if ($param -eq '-' -or $param -eq '--') {
+    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
+    if ($param -eq '--') {
         Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
@@ -195,8 +195,8 @@ function Test-ParameterTypo {
 # Manual argument parsing (like bash version)
 $i = 0
 while ($i -lt $args.Count) {
-    # Early detection of incomplete/bare dash parameters
-    if ($args[$i] -eq '-' -or $args[$i] -eq '--') {
+    # Early detection of incomplete/bare dash parameters (only -- can be detected, - is caught by PowerShell)
+    if ($args[$i] -eq '--') {
         Show-EarlyErrorHeader
         Write-Host " Error:" -ForegroundColor Red -NoNewline
         Write-Host " Invalid parameter '$($args[$i])' (incomplete parameter)" -ForegroundColor Cyan
@@ -301,6 +301,17 @@ while ($i -lt $args.Count) {
             exit 1
         }
     }
+}
+
+# POWERSHELL LIMITATION: Handle edge case where PowerShell consumes arguments before our script sees them
+# PowerShell treats both '-' and '--' as special parameter markers and removes them from $args
+# If $args is empty but no parameters were set, user likely passed:
+#   - Nothing (show help - user-friendly default behavior)
+#   - A single dash '-' (PowerShell consumed it)
+#   - A double dash '--' (PowerShell consumed it)
+# In all cases, showing help is the appropriate response
+if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor -or $Branch -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+    $Help = $true
 }
 
 #endregion Argument Parsing
@@ -700,9 +711,8 @@ function Main {
             return
         }
 
-        # Default: show source branch help and welcome
+        # Default: show source branch help only (no welcome message for help display)
         Show-SourceBranchHelp
-        Show-SourceBranchWelcome -BranchName $currentBranch
         return
     }
     catch {
