@@ -311,6 +311,48 @@
 
 ---
 
+### 4. Color Code Display Fix
+**Files Modified**:
+- `install-copilot-setup.sh`
+- `modules/bash/ui.sh`
+
+**Problem**: Early validation errors showed literal color code text instead of colored output
+- `show_early_validation_error()` was called BEFORE modules were loaded
+- Color variables (`RED`, `CYAN`, etc.) were defined in `ui.sh` module
+- Result: Error messages showed text like "Error: Cannot specify..." with literal escape sequences
+
+**Solution**:
+- ✅ Moved color definitions to main script before module loading
+- ✅ Moved `show_early_validation_error()` function to main script
+- ✅ Error messages now display with correct colors:
+  - Error header: Cyan
+  - "Error:" prefix: Red
+  - Error message: Cyan
+  - Examples and help: White/Cyan
+- ✅ Matches PowerShell color formatting exactly
+
+**Why**: Early validation errors occur before module loading completes, so color support must be available in the main script. Moving these definitions ensures consistent colored output for all error scenarios.
+
+---
+
+### 5. Empty LocalPath Validation Fix
+**Files Modified**: `install-copilot-setup.sh`
+
+**Problem**: Empty `-local-path ""` parameter was not detected in bash
+- Validation checked `[[ -n "${LOCAL_SOURCE_PATH}" ]]` (not empty)
+- Empty string `""` made this check false, skipping validation
+- Result: Empty path showed help instead of specific error message
+
+**Solution**:
+- ✅ Changed validation to detect when `-local-path` flag was provided but value is empty
+- ✅ Uses argument list inspection: `[[ "$*" == *"-local-path"* ]]`
+- ✅ Combined with empty value check: `[[ -z "${LOCAL_SOURCE_PATH}" ]]`
+- ✅ Now correctly shows "Error: -local-path parameter cannot be empty"
+
+**Why**: Proper parameter validation should catch empty values and provide helpful error messages. The fix ensures bash behaves identically to PowerShell for this validation scenario.
+
+---
+
 ### Previously Implemented in Bash
 - ✅ `-contributor` flag
 - ✅ Validation: `-branch` and `-local-path` require `-contributor`
