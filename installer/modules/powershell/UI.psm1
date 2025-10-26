@@ -382,8 +382,8 @@ function Show-UnknownBranchHelp {
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`" -Clean"
     Write-Host ""
     Write-Host "  Contributor Operations (Testing AI Changes):" -ForegroundColor DarkCyan
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Contributor -Branch feature/ai-updates"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/repo`" -Contributor -LocalPath `"/path/to/ai-repo`""
+    Write-Host "    .\install-copilot-setup.ps1 -Contributor -Branch feature/ai-updates -RepoDirectory `"/path/to/repo`""
+    Write-Host "    .\install-copilot-setup.ps1 -Contributor -LocalPath `"/path/to/ai-repo`" -RepoDirectory `"/path/to/repo`""
     Write-Host ""
 
     Write-Host "BRANCH DETECTION:" -ForegroundColor Cyan

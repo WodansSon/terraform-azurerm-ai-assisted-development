@@ -915,8 +915,8 @@ show_unknown_branch_help() {
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -clean"
     echo ""
     write_dark_cyan "  Contributor Operations (Testing AI Changes):"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -branch feature/ai-updates"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -local-path \"/path/to/ai-repo\""
+    write_plain "    ./install-copilot-setup.sh -contributor -branch feature/ai-updates -repo-directory \"/path/to/repo\""
+    write_plain "    ./install-copilot-setup.sh -contributor -local-path \"/path/to/ai-repo\" -repo-directory \"/path/to/repo\""
     echo ""
 
     write_cyan "BRANCH DETECTION:"
