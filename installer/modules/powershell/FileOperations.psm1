@@ -1549,7 +1549,21 @@ function Invoke-InstallInfrastructure {
         # Determine which branch to use
         $branchToUse = if ($SourceBranch) { $SourceBranch } else { "main" }
 
-        $result = Install-AllAIFile -DryRun:$DryRun -WorkspaceRoot $WorkspaceRoot -ManifestConfig $ManifestConfig -RequireProviderRepo:$RequireProviderRepo -Branch $branchToUse -LocalSourcePath $LocalSourcePath
+        # Build Install-AllAIFile parameters - only include LocalSourcePath if it's not empty
+        $installParams = @{
+            DryRun = $DryRun
+            WorkspaceRoot = $WorkspaceRoot
+            ManifestConfig = $ManifestConfig
+            RequireProviderRepo = $RequireProviderRepo
+            Branch = $branchToUse
+        }
+
+        # Only add LocalSourcePath if it was explicitly provided and is not empty
+        if ($LocalSourcePath) {
+            $installParams['LocalSourcePath'] = $LocalSourcePath
+        }
+
+        $result = Install-AllAIFile @installParams
 
         if ($result.OverallSuccess) {
             # Use the superior completion summary function
