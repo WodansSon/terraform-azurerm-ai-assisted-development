@@ -1,3 +1,4 @@
+<!-- TEST BRANCH MARKER: test/contributor_mode -->
 ---
 applyTo: "internal/**/*.go"
 description: "This is the official Terraform Provider for Azure (Resource Manager), written in Go. It enables Terraform to manage Azure resources through the Azure Resource Manager APIs."
