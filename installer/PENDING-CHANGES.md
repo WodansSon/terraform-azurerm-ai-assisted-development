@@ -260,20 +260,58 @@
 
 ---
 
-## Bash Script Updates (Pending)
+## Bash Script Updates (Completed)
 
-### Already Implemented in Bash
+### 1. Early Validation Error Refactoring
+**Files Modified**: `modules/bash/validationengine.sh`
+
+- ✅ Created `show_early_validation_error()` function matching PowerShell pattern
+- ✅ Consolidated 5 error types into single reusable function using case statement:
+  - `BootstrapConflict` - Cannot use -branch/-local-path with -bootstrap
+  - `MutuallyExclusive` - Cannot use both -branch and -local-path
+  - `ContributorRequired` - -branch/-local-path require -contributor flag
+  - `EmptyLocalPath` - -local-path parameter cannot be empty
+  - `LocalPathNotFound` - -local-path directory does not exist
+- ✅ Reduced parameter validation code duplication
+- ✅ Consistent error formatting matching PowerShell output
+- ✅ Integrated into `modules/bash/ui.sh` for UI display
+
+**Why**: Same DRY benefits as PowerShell - eliminates code duplication, easier to maintain, consistent error messages across platforms.
+
+---
+
+### 2. Help System Context Awareness
+**Files Modified**: `modules/bash/ui.sh`
+
+- ✅ Updated `show_unknown_branch_help()` to detect user profile location
+- ✅ Added `from_user_profile` parameter matching PowerShell
+- ✅ Context-aware SOLUTION messages:
+  - From user profile: Shows `-repo-directory` usage
+  - From elsewhere: Shows navigate-to-repo OR use `-repo-directory`
+- ✅ Proper parameter passing through `show_usage()` → `show_unknown_branch_help()`
+- ✅ Complete help text with all contributor options
+
+**Why**: Matches PowerShell behavior exactly - provides context-sensitive help based on where user is running the script.
+
+---
+
+### Previously Implemented in Bash
 - ✅ `-contributor` flag
 - ✅ Validation: `-branch` and `-local-path` require `-contributor`
 - ✅ Validation: Cannot use `-branch` or `-local-path` with `-bootstrap`
 - ✅ SAFETY CHECK 1: Block AI dev repo targeting
 - ✅ SAFETY CHECK 2: Block source branch operations
+- ✅ SAFETY CHECK 3: Block contributor mode on source branch
+- ✅ Version control via single variable (`INSTALLER_VERSION="1.0.0"`)
+- ✅ Region-style organization with clear comment blocks
+- ✅ Bootstrap branch detection (works correctly)
+- ✅ Installation source clarity messages
+- ✅ LocalPath file resolution
+- ✅ "Copied" action success counting
+- ✅ Output spacing consistency
 
-### Need to Add to Bash
-- ❌ SAFETY CHECK 3: Block contributor mode on source branch
-- ❌ Version control via single variable (currently hardcoded in multiple places)
-- ❌ Better section organization with clear comment blocks
-- ❌ Bootstrap branch detection fix (check if same issue exists)
+### Bash Script Status
+**✅ COMPLETE PARITY WITH POWERSHELL** - All PowerShell improvements have been implemented in bash
 
 ---
 
