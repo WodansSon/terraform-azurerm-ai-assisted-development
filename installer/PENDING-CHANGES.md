@@ -295,6 +295,22 @@
 
 ---
 
+### 3. Help Display - Contributor Flag Requirement Clarity
+**Files Modified**: `modules/bash/ui.sh`
+
+- ✅ Updated option descriptions in `show_feature_branch_help()` to explicitly state "(requires -contributor)":
+  - `-branch` - GitHub branch to pull AI files from **(requires -contributor, default: main)**
+  - `-local-path` - Local directory to copy AI files from **(requires -contributor)**
+  - `-contributor` - Enable contributor mode for testing AI file changes
+- ✅ Updated examples to show correct usage with `-contributor` flag:
+  - `./install-copilot-setup.sh -contributor -branch feature/new-ai-files -repo-directory "/path/to/repo"`
+  - `./install-copilot-setup.sh -contributor -local-path "/path/to/ai-installer-repo" -repo-directory "/path/to/repo"`
+- ✅ Matches PowerShell `Show-FeatureBranchHelp` implementation exactly
+
+**Why**: Help should guide users toward correct usage patterns. By explicitly stating the `-contributor` requirement in the option descriptions and showing it in examples, users understand the correct syntax before attempting commands that would fail validation. Achieves 100% parity with PowerShell help system.
+
+---
+
 ### Previously Implemented in Bash
 - ✅ `-contributor` flag
 - ✅ Validation: `-branch` and `-local-path` require `-contributor`
