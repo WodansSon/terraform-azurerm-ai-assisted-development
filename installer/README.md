@@ -462,9 +462,9 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-RepoDirectory` | **Specify repository path** | Running from user profile | `-RepoDirectory "C:\path\to\terraform-provider-azurerm"` |
-| `-Branch` | **Install from specific branch** | Testing unreleased features | `-Branch "feature/new-feature"` |
-| `-Contributor` | **Use local AI dev repo instead of downloading** - Enables features for contributors working on this AI infrastructure project itself. Skips download and uses local files. Combine with `-LocalPath` to specify repo location. | Contributing to terraform-azurerm-ai-assisted-development | `-Contributor -LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
-| `-LocalPath` | **Copy from local AI dev repo** | Testing uncommitted changes | `-LocalPath "C:\path\to\ai-dev-repo"` |
+| `-Contributor` | **Enable contributor mode for testing AI file changes** | Testing AI infrastructure changes | `-Contributor -Branch "feature/test"` |
+| `-Branch` | **Install from specific GitHub branch** (requires `-Contributor`) | Testing published branch changes | `-Contributor -Branch "feature/new-feature"` |
+| `-LocalPath` | **Copy from local AI dev repo** (requires `-Contributor`) | Testing uncommitted local changes | `-Contributor -LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
 | `-Dry-Run` | Preview changes without applying | Optional | `-Dry-Run` |
 
 **macOS/Linux (Bash):**
@@ -472,9 +472,9 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-repo-directory` | **Specify repository path** | Running from user profile | `-repo-directory "/path/to/terraform-provider-azurerm"` |
-| `-branch` | **Install from specific branch** | Testing unreleased features | `-branch "feature/new-feature"` |
-| `-contributor` | **Use local AI dev repo instead of downloading** - Enables features for contributors working on this AI infrastructure project itself. Skips download and uses local files. Combine with `-local-source-path` to specify repo location. | Contributing to terraform-azurerm-ai-assisted-development | `-contributor -local-source-path "/path/to/terraform-azurerm-ai-assisted-development"` |
-| `-local-source-path` | **Copy from local AI dev repo** | Testing uncommitted changes | `-local-source-path "/path/to/ai-dev-repo"` |
+| `-contributor` | **Enable contributor mode for testing AI file changes** | Testing AI infrastructure changes | `-contributor -branch "feature/test"` |
+| `-branch` | **Install from specific GitHub branch** (requires `-contributor`) | Testing published branch changes | `-contributor -branch "feature/new-feature"` |
+| `-local-path` | **Copy from local AI dev repo** (requires `-contributor`) | Testing uncommitted local changes | `-contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
 | `-dry-run` | Preview changes without applying | Optional | `-dry-run` |
 
 ### 🚨 Important: Repository Directory Parameter
@@ -838,10 +838,16 @@ Test AI instruction changes from your local working directory (including uncommi
 
 #### Safety Constraints
 
-- `-Contributor` flag is required for both `-Branch` and `-LocalPath` (gatekeeper pattern)
-- Cannot use both `-Branch` and `-LocalPath` together (mutually exclusive)
-- Must run from user profile installer (cannot use with `-Bootstrap`)
-- Only for AI infrastructure contributors (end users should download and install the repository's release packages)
+**CRITICAL REQUIREMENTS:**
+- **`-Contributor` flag is REQUIRED** for both `-Branch` and `-LocalPath` (enforced gatekeeper pattern)
+- **`-Branch` and `-LocalPath` are mutually exclusive** (cannot use both together)
+- **Cannot use with `-Bootstrap`** (Bootstrap always uses current local branch)
+- **Only for AI infrastructure contributors** (end users should download release packages)
+
+**Why these constraints exist:**
+- Prevents accidental AI infrastructure modifications on production branches
+- Ensures contributors explicitly acknowledge they're testing infrastructure changes
+- Maintains clear separation between end-user workflows and contributor testing
 
 ### Using Bootstrap for Local Development
 
