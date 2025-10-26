@@ -1,4 +1,5 @@
-﻿---
+<!-- TEST BRANCH MARKER: test/contributor_mode -->
+ ---
 mode: agent
 description: "Code Review Prompt for Terraform AzureRM Provider Committed Changes"
 ---
