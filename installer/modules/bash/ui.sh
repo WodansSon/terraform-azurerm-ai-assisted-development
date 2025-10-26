@@ -97,21 +97,21 @@ show_early_validation_error() {
 
     case "${error_type}" in
         "BootstrapConflict")
-            echo -e "${RED} Error: Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
             echo ""
             echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
             echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
             ;;
 
         "MutuallyExclusive")
-            echo -e "${RED} Error: Cannot specify both -branch and -local-path${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
             echo ""
             echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
             echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
             ;;
 
         "ContributorRequired")
-            echo -e "${RED} Error: -branch and -local-path require -contributor flag${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
             echo ""
             echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
             echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
@@ -119,7 +119,7 @@ show_early_validation_error() {
             ;;
 
         "EmptyLocalPath")
-            echo -e "${RED} Error: -local-path parameter cannot be empty${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
             echo ""
             echo -e "${CYAN} Please provide a valid local directory path:${NC}"
             echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
@@ -127,7 +127,7 @@ show_early_validation_error() {
 
         "LocalPathNotFound")
             local path="$3"
-            echo -e "${RED} Error: -local-path directory does not exist${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
             echo ""
             echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
             echo ""
@@ -136,14 +136,13 @@ show_early_validation_error() {
             ;;
 
         *)
-            echo -e "${RED} Error: Unknown validation error type: ${error_type}${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} Unknown validation error type: ${error_type}${NC}"
             ;;
     esac
 
     echo ""
     echo -e "${CYAN} For more help, run:${NC}"
     echo -e "   ${WHITE}${script_name} -help${NC}"
-    echo ""
     echo ""
 }
 

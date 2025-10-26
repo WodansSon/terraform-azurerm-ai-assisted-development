@@ -36,6 +36,88 @@ HELP=false                # Show detailed help information
 export DRY_RUN
 
 # ============================================================================
+# COLOR DEFINITIONS - Required for early error display
+# ============================================================================
+# These must be defined BEFORE module loading for early validation errors
+
+# ANSI color codes for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
+NC='\033[0m' # No Color
+
+# ============================================================================
+# EARLY VALIDATION ERROR DISPLAY
+# ============================================================================
+# This function must be defined BEFORE module loading
+# Called during parameter validation (before main header)
+
+show_early_validation_error() {
+    local error_type="$1"
+    local script_name="${2:-$0}"
+
+    # Always show error header first in cyan
+    echo ""
+    echo -e "${CYAN}============================================================${NC}"
+    echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
+    echo -e "${CYAN} Version: ${VERSION}${NC}"
+    echo -e "${CYAN}============================================================${NC}"
+    echo ""
+
+    case "${error_type}" in
+        "BootstrapConflict")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo ""
+            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
+            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            ;;
+
+        "MutuallyExclusive")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
+            echo ""
+            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
+            ;;
+
+        "ContributorRequired")
+            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
+            echo ""
+            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
+            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
+            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
+            ;;
+
+        "EmptyLocalPath")
+            echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide a valid local directory path:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "LocalPathNotFound")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please verify the directory path exists:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        *)
+            echo -e "${RED} Error:${NC}${CYAN} Unknown validation error type: ${error_type}${NC}"
+            ;;
+    esac
+
+    echo ""
+    echo -e "${CYAN} For more help, run:${NC}"
+    echo -e "   ${WHITE}${script_name} -help${NC}"
+    echo ""
+}
+
+# ============================================================================
 # MODULE LOADING - This must succeed or the script cannot continue
 # ============================================================================
 
@@ -197,7 +279,8 @@ main() {
     fi
 
     # STEP 1.65: Validate -local-path is not empty (NEW CHECK)
-    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ -z "$(echo "${LOCAL_SOURCE_PATH}" | xargs)" ]]; then
+    # Check if LOCAL_SOURCE_PATH was set (even to empty string) and is empty after trimming
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "$*" == *"-local-path"* ]]; then
         show_early_validation_error "EmptyLocalPath" "$0"
         exit 1
     fi
