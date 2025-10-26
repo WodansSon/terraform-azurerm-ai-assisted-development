@@ -719,6 +719,14 @@ show_usage() {
     local workspace_issue="${3:-}"
     local attempted_command="${4:-}"
 
+    # Detect if running from user profile directory
+    local from_user_profile="false"
+    local user_profile_path
+    user_profile_path="$(get_user_profile)"
+    if [[ "$(pwd)" == "${user_profile_path}" ]] || [[ "$(pwd)" == "${user_profile_path}/"* ]]; then
+        from_user_profile="true"
+    fi
+
     echo ""
     write_cyan "DESCRIPTION:"
     write_plain "  Interactive installer for AI-assisted development infrastructure that enhances"
@@ -734,7 +742,7 @@ show_usage() {
             show_feature_branch_help "${attempted_command}"
             ;;
         *)
-            show_unknown_branch_help "${workspace_valid}" "${workspace_issue}" "${attempted_command}"
+            show_unknown_branch_help "${workspace_valid}" "${workspace_issue}" "${from_user_profile}" "${attempted_command}"
             ;;
     esac
 
@@ -854,7 +862,8 @@ show_feature_branch_help() {
 show_unknown_branch_help() {
     local workspace_valid="${1:-true}"
     local workspace_issue="${2:-}"
-    local attempted_command="${3:-}"
+    local from_user_profile="${3:-false}"
+    local attempted_command="${4:-}"
 
     # Show workspace issue if detected
     if [[ "${workspace_valid}" != "true" && -n "${workspace_issue}" ]]; then
@@ -866,8 +875,16 @@ show_unknown_branch_help() {
         # Use dynamic command or default to -help
         local command_example="${attempted_command:-"-help"}"
 
-        write_plain "  Use the -repo-directory parameter to specify your repository path:"
-        write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        if [[ "${from_user_profile}" == "true" ]]; then
+            # User is running from ~/.terraform-azurerm-ai-installer, they need -repo-directory
+            write_plain "  Use the -repo-directory parameter to specify your repository path:"
+            write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        else
+            # User is running from somewhere else, they need to navigate to a repo or use -repo-directory
+            write_plain "  Navigate to a terraform-provider-azurerm repository, or use the -repo-directory parameter:"
+            write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        fi
+
         echo ""
         print_separator
         echo ""
