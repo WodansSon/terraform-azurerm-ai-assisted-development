@@ -2,6 +2,12 @@
 # UI Module for Terraform AzureRM Provider AI Setup (Bash)
 # STREAMLINED VERSION - Contains only functions actually used by main script and dependencies
 
+# ============================================================================
+# Module Configuration
+# ============================================================================
+INSTALLER_VERSION="1.0.0"
+DEFAULT_VERSION="1.0.0"
+
 # Color definitions with cross-platform compatibility
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
     # Terminal supports colors
@@ -36,6 +42,11 @@ write_cyan() {
     echo -e "${CYAN}${message}${NC}"
 }
 
+write_dark_cyan() {
+    local message="$1"
+    echo -e "\033[36m${message}${NC}"
+}
+
 write_green() {
     local message="$1"
     echo -e "${GREEN}${message}${NC}"
@@ -64,6 +75,75 @@ write_blue() {
 write_gray() {
     local message="$1"
     echo -e "${GRAY}${message}${NC}"
+}
+
+# ============================================================================
+# Early Validation Error Display (Centralized)
+# ============================================================================
+# Matches PowerShell Show-EarlyValidationError function
+# Purpose: Provide clear, actionable error messages for parameter validation failures
+# Called BEFORE showing main header to fail fast on invalid parameters
+show_early_validation_error() {
+    local error_type="$1"
+    local script_name="${2:-$0}"
+
+    # Always show error header first in cyan
+    echo ""
+    echo -e "${CYAN}============================================================${NC}"
+    echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
+    echo -e "${CYAN} Version: ${INSTALLER_VERSION}${NC}"
+    echo -e "${CYAN}============================================================${NC}"
+    echo ""
+
+    case "${error_type}" in
+        "BootstrapConflict")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo ""
+            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
+            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            ;;
+
+        "MutuallyExclusive")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
+            echo ""
+            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
+            ;;
+
+        "ContributorRequired")
+            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
+            echo ""
+            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
+            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
+            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
+            ;;
+
+        "EmptyLocalPath")
+            echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide a valid local directory path:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "LocalPathNotFound")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please verify the directory path exists:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        *)
+            echo -e "${RED} Error:${NC}${CYAN} Unknown validation error type: ${error_type}${NC}"
+            ;;
+    esac
+
+    echo ""
+    echo -e "${CYAN} For more help, run:${NC}"
+    echo -e "   ${WHITE}${script_name} -help${NC}"
+    echo ""
 }
 
 # Helper functions for common label patterns
@@ -638,6 +718,14 @@ show_usage() {
     local workspace_issue="${3:-}"
     local attempted_command="${4:-}"
 
+    # Detect if running from user profile directory
+    local from_user_profile="false"
+    local user_profile_path
+    user_profile_path="$(get_user_profile)"
+    if [[ "$(pwd)" == "${user_profile_path}" ]] || [[ "$(pwd)" == "${user_profile_path}/"* ]]; then
+        from_user_profile="true"
+    fi
+
     echo ""
     write_cyan "DESCRIPTION:"
     write_plain "  Interactive installer for AI-assisted development infrastructure that enhances"
@@ -653,7 +741,7 @@ show_usage() {
             show_feature_branch_help "${attempted_command}"
             ;;
         *)
-            show_unknown_branch_help "${workspace_valid}" "${workspace_issue}" "${attempted_command}"
+            show_unknown_branch_help "${workspace_valid}" "${workspace_issue}" "${from_user_profile}" "${attempted_command}"
             ;;
     esac
 
@@ -708,10 +796,9 @@ show_feature_branch_help() {
 
     write_cyan "AVAILABLE OPTIONS:"
     write_plain "  -repo-directory   Repository path (path to your feature branch directory)"
-    write_plain "  -branch           GitHub branch to pull AI files from (default: main)"
-    write_plain "                    Contributor feature for testing published branch changes"
-    write_plain "  -local-path       Local directory to copy AI files from instead of GitHub"
-    write_plain "                    Contributor feature for testing uncommitted changes"
+    write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
+    write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
+    write_plain "  -contributor      Enable contributor mode for testing AI file changes"
     write_plain "  -dry-run          Show what would be done without making changes"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -clean            Remove AI infrastructure from workspace"
@@ -723,11 +810,11 @@ show_feature_branch_help() {
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
     echo ""
-    write_cyan "  Install from specific GitHub branch (contributor):"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -branch feature/new-ai-files"
+    write_cyan "  Install from specific GitHub branch (contributor testing):"
+    write_plain "    ./install-copilot-setup.sh -contributor -branch feature/new-ai-files -repo-directory \"/path/to/repo\""
     echo ""
-    write_cyan "  Install from local uncommitted changes (contributor):"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -local-path \"/path/to/ai-installer-repo\""
+    write_cyan "  Install from local uncommitted changes (contributor testing):"
+    write_plain "    ./install-copilot-setup.sh -contributor -local-path \"/path/to/ai-installer-repo\" -repo-directory \"/path/to/repo\""
     echo ""
     write_cyan "  Dry-Run (preview changes):"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
@@ -773,7 +860,8 @@ show_feature_branch_help() {
 show_unknown_branch_help() {
     local workspace_valid="${1:-true}"
     local workspace_issue="${2:-}"
-    local attempted_command="${3:-}"
+    local from_user_profile="${3:-false}"
+    local attempted_command="${4:-}"
 
     # Show workspace issue if detected
     if [[ "${workspace_valid}" != "true" && -n "${workspace_issue}" ]]; then
@@ -785,27 +873,54 @@ show_unknown_branch_help() {
         # Use dynamic command or default to -help
         local command_example="${attempted_command:-"-help"}"
 
-        write_plain "  Navigate to a terraform-provider-azurerm repository, or use the -repo-directory parameter:"
-        write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        if [[ "${from_user_profile}" == "true" ]]; then
+            # User is running from ~/.terraform-azurerm-ai-installer, they need -repo-directory
+            write_plain "  Use the -repo-directory parameter to specify your repository path:"
+            write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        else
+            # User is running from somewhere else, they need to navigate to a repo or use -repo-directory
+            write_plain "  Navigate to a terraform-provider-azurerm repository, or use the -repo-directory parameter:"
+            write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
+        fi
+
         echo ""
         print_separator
         echo ""
     fi
 
-    write_cyan "GENERAL USAGE:"
+    write_cyan "USAGE:"
     write_plain "  ./install-copilot-setup.sh [OPTIONS]"
     echo ""
 
-    write_cyan "COMMON OPTIONS:"
-    write_plain "  -bootstrap        Copy installer to user profile (source branch only)"
-    write_plain "  -repo-directory   Repository path (for feature branch operations)"
+    write_cyan "ALL OPTIONS:"
+    write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
+    write_plain "  -repo-directory   Repository path for git operations (when running from user profile)"
+    write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
+    write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
+    write_plain "  -contributor      Enable contributor mode for testing AI file changes"
+    write_plain "  -dry-run          Show what would be done without making changes"
     write_plain "  -verify           Check current workspace status and validate setup"
+    write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
 
-    write_cyan "GETTING STARTED:"
-    write_plain "  1. From source branch: ./install-copilot-setup.sh -bootstrap"
-    write_plain "  2. From feature branch: use installer in ~/.terraform-azurerm-ai-installer/"
+    write_cyan "EXAMPLES:"
+    write_dark_cyan "  Source Branch Operations:"
+    write_plain "    ./install-copilot-setup.sh -bootstrap"
+    write_plain "    ./install-copilot-setup.sh -verify"
+    echo ""
+    write_dark_cyan "  Feature Branch Operations:"
+    write_plain "    cd ~/.terraform-azurerm-ai-installer"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -clean"
+    echo ""
+    write_dark_cyan "  Contributor Operations (Testing AI Changes):"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -branch feature/ai-updates"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -local-path \"/path/to/ai-repo\""
+    echo ""
+
+    write_cyan "BRANCH DETECTION:"
+    write_plain "  The installer automatically detects your branch type and shows appropriate options."
     echo ""
 }
 

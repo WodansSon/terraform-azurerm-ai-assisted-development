@@ -13,8 +13,10 @@ set -euo pipefail
 # PARAMETER DEFINITIONS
 # ============================================================================
 
-# Global variables
+# Version Control (Centralized in ui.sh module: INSTALLER_VERSION="1.0.0")
 VERSION="1.0.0"
+
+# Global variables
 BRANCH="main"
 SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
 
@@ -32,6 +34,88 @@ HELP=false                # Show detailed help information
 # Export variables that need to be accessible to modules as global variables
 # Note: Other variables are passed as function parameters, so they don't need to be exported
 export DRY_RUN
+
+# ============================================================================
+# COLOR DEFINITIONS - Required for early error display
+# ============================================================================
+# These must be defined BEFORE module loading for early validation errors
+
+# ANSI color codes for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
+NC='\033[0m' # No Color
+
+# ============================================================================
+# EARLY VALIDATION ERROR DISPLAY
+# ============================================================================
+# This function must be defined BEFORE module loading
+# Called during parameter validation (before main header)
+
+show_early_validation_error() {
+    local error_type="$1"
+    local script_name="${2:-$0}"
+
+    # Always show error header first in cyan
+    echo ""
+    echo -e "${CYAN}============================================================${NC}"
+    echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
+    echo -e "${CYAN} Version: ${VERSION}${NC}"
+    echo -e "${CYAN}============================================================${NC}"
+    echo ""
+
+    case "${error_type}" in
+        "BootstrapConflict")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo ""
+            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
+            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            ;;
+
+        "MutuallyExclusive")
+            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
+            echo ""
+            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
+            ;;
+
+        "ContributorRequired")
+            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
+            echo ""
+            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
+            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
+            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
+            ;;
+
+        "EmptyLocalPath")
+            echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide a valid local directory path:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "LocalPathNotFound")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please verify the directory path exists:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        *)
+            echo -e "${RED} Error:${NC}${CYAN} Unknown validation error type: ${error_type}${NC}"
+            ;;
+    esac
+
+    echo ""
+    echo -e "${CYAN} For more help, run:${NC}"
+    echo -e "   ${WHITE}${script_name} -help${NC}"
+    echo ""
+}
 
 # ============================================================================
 # MODULE LOADING - This must succeed or the script cannot continue
@@ -181,46 +265,36 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
-    # STEP 1.5: Validate mutually exclusive parameters
-    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot specify both -branch and -local-path${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} Use -branch to pull AI files from a published GitHub branch${COLOR_RESET}"
-        echo -e "${COLOR_CYAN} Use -local-path to copy AI files from a local unpublished directory${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
-        exit 1
-    fi
-
-    # STEP 1.6: Validate -branch and -local-path require -contributor flag
-    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} -branch and -local-path require -contributor flag${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} These are contributor features for testing AI file changes:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}-contributor -branch <name>      Test published branch changes${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}-contributor -local-path <path>  Test uncommitted local changes${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
-        exit 1
-    fi
-
-    # STEP 1.7: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    # STEP 1.5: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    # This check must come FIRST before other contributor checks
     if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot use -branch or -local-path with -bootstrap${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} -bootstrap always uses the current local branch${COLOR_RESET}"
-        echo -e "${COLOR_CYAN} -branch and -local-path are for updating from user profile${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
+        show_early_validation_error "BootstrapConflict" "$0"
+        exit 1
+    fi
+
+    # STEP 1.6: Validate mutually exclusive parameters
+    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        show_early_validation_error "MutuallyExclusive" "$0"
+        exit 1
+    fi
+
+    # STEP 1.65: Validate -local-path is not empty (NEW CHECK)
+    # Check if LOCAL_SOURCE_PATH was set (even to empty string) and is empty after trimming
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "$*" == *"-local-path"* ]]; then
+        show_early_validation_error "EmptyLocalPath" "$0"
+        exit 1
+    fi
+
+    # STEP 1.67: Validate -local-path directory exists (NEW CHECK)
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -d "${LOCAL_SOURCE_PATH}" ]]; then
+        show_early_validation_error "LocalPathNotFound" "$0" "${LOCAL_SOURCE_PATH}"
+        exit 1
+    fi
+
+    # STEP 1.7: Validate -branch and -local-path require -contributor flag
+    # This check comes LAST among contributor validations
+    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
+        show_early_validation_error "ContributorRequired" "$0"
         exit 1
     fi
 
@@ -257,23 +331,23 @@ main() {
 
         if [[ "${repo_valid}" != "true" ]] && [[ "${is_ai_dev_repo}" == "true" ]]; then
             echo ""
-            echo "============================================================"
-            echo -e "${COLOR_RED} SAFETY VIOLATION: Cannot install into AI Development Repository${COLOR_RESET}"
-            echo "============================================================"
+            echo -e "${CYAN}============================================================${NC}"
+            echo -e "${RED} SAFETY VIOLATION: Cannot install into AI Development Repository${NC}"
+            echo -e "${CYAN}============================================================${NC}"
             echo ""
-            echo -e "${COLOR_YELLOW} The -repo-directory points to the AI development repository:${COLOR_RESET}"
-            echo -e "${COLOR_CYAN} ${workspace_root}${COLOR_RESET}"
+            echo -e "${YELLOW} The -repo-directory points to the AI development repository:${NC}"
+            echo -e "${CYAN} ${workspace_root}${NC}"
             echo ""
-            echo -e "${COLOR_YELLOW} This repository contains the source files. Use -repo-directory to point${COLOR_RESET}"
-            echo -e "${COLOR_YELLOW} to your terraform-provider-azurerm working copy instead.${COLOR_RESET}"
+            echo -e "${YELLOW} This repository contains the source files. Use -repo-directory to point${NC}"
+            echo -e "${YELLOW} to your terraform-provider-azurerm working copy instead.${NC}"
             echo ""
-            echo -e "${COLOR_GREEN}SOLUTION:${COLOR_RESET}"
-            echo -e "${COLOR_WHITE}  Clone or navigate to your terraform-provider-azurerm repository:${COLOR_RESET}"
-            echo -e "${COLOR_CYAN}    cd \"<path-to-your-terraform-provider-azurerm>\"${COLOR_RESET}"
+            echo -e "${GREEN}SOLUTION:${NC}"
+            echo -e "${WHITE}  Clone or navigate to your terraform-provider-azurerm repository:${NC}"
+            echo -e "${CYAN}    cd \"<path-to-your-terraform-provider-azurerm>\"${NC}"
             echo ""
-            echo -e "${COLOR_WHITE}  Then run the installer from your user profile:${COLOR_RESET}"
-            echo -e "${COLOR_CYAN}    cd \"${HOME}/.terraform-azurerm-ai-installer\"${COLOR_RESET}"
-            echo -e "${COLOR_CYAN}    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\"${COLOR_RESET}"
+            echo -e "${WHITE}  Then run the installer from your user profile:${NC}"
+            echo -e "${CYAN}    cd \"${HOME}/.terraform-azurerm-ai-installer\"${NC}"
+            echo -e "${CYAN}    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\"${NC}"
             echo ""
             exit 1
         fi
@@ -338,10 +412,10 @@ main() {
         attempted_command="-help"
     elif [[ "${DRY_RUN}" == "true" ]]; then
         attempted_command="-dry-run"
-    elif [[ -n "${LOCAL_PATH}" ]]; then
-        attempted_command="-local-path \"${LOCAL_PATH}\""
-    elif [[ -n "${BRANCH}" ]]; then
-        attempted_command="-branch \"${BRANCH}\""
+    elif [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        attempted_command="-local-path \"${LOCAL_SOURCE_PATH}\""
+    elif [[ -n "${SOURCE_BRANCH}" ]]; then
+        attempted_command="-branch \"${SOURCE_BRANCH}\""
     elif [[ -n "${REPO_DIRECTORY}" && "${HELP}" != "true" && "${VERIFY}" != "true" && "${BOOTSTRAP}" != "true" && "${CLEAN}" != "true" ]]; then
         attempted_command="-repo-directory \"${REPO_DIRECTORY}\""
     fi
@@ -352,8 +426,14 @@ main() {
         exit 0
     fi
 
-    # STEP 10: For all operations except bootstrap, workspace must be valid (bootstrap has its own validation)
-    if [[ "${workspace_valid}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]]; then
+    # STEP 10: Check if any actual operation was requested
+    local operation_requested=false
+    if [[ "${VERIFY}" == "true" ]] || [[ "${BOOTSTRAP}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ -n "${REPO_DIRECTORY}" ]]; then
+        operation_requested=true
+    fi
+
+    # STEP 11: For operations that require workspace, validate it
+    if [[ "${operation_requested}" == "true" ]] && [[ "${workspace_valid}" != "true" ]]; then
         show_workspace_validation_error "${workspace_reason}" "$([[ -n "${REPO_DIRECTORY}" ]] && echo "true" || echo "false")"
 
         # Show help menu for guidance
@@ -361,7 +441,7 @@ main() {
         exit 1
     fi
 
-    # STEP 11: Execute single operation based on parameters (like PowerShell)
+    # STEP 12: Execute single operation based on parameters (like PowerShell)
     if [[ "${VERIFY}" == "true" ]]; then
         verify_installation "${workspace_root}"
         exit 0
@@ -402,16 +482,15 @@ main() {
         exit 0
     fi
 
-    # STEP 11: Installation path (when -repo-directory is provided and not other specific operations)
+    # STEP 13: Installation path (when -repo-directory is provided and not other specific operations)
     if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
         # Proceed with installation
         install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}" "${SOURCE_BRANCH}" "${LOCAL_SOURCE_PATH}"
         exit 0
     fi
 
-    # STEP 12: Default - show source branch help and welcome
-    show_source_branch_help
-    show_source_branch_welcome "${current_branch}"
+    # STEP 14: Default - show help with workspace context (matches PowerShell behavior)
+    show_usage "${branch_type}" "${workspace_valid}" "${workspace_reason}" "${attempted_command}"
     exit 0
 }
 
