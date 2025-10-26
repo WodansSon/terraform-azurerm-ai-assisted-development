@@ -5,8 +5,17 @@
 
 #requires -version 5.1
 
-# Manual parameter parsing to handle edge cases like bare "-"
-# Initialize variables
+#region Script Configuration
+
+# Script version - change once to update everywhere
+$script:InstallerVersion = "1.0.0"
+
+#endregion Script Configuration
+
+#region Parameter Parsing and Validation
+
+#region Variable Initialization
+
 $Bootstrap = $false
 $RepoDirectory = ""
 $Contributor = $false
@@ -17,13 +26,77 @@ $Verify = $false
 $Clean = $false
 $Help = $false
 
-# Function to show error header (used before modules are loaded)
-function Show-ErrorHeader {
+#endregion Variable Initialization
+
+#region Early Helper Functions
+
+# Simple error header for early parameter validation (before modules load)
+function Show-EarlyErrorHeader {
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host " Terraform AzureRM Provider - AI Infrastructure Installer" -ForegroundColor Cyan
-    Write-Host " Version: 1.0.0" -ForegroundColor Cyan
+    Write-Host " Version: $script:InstallerVersion" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+# Early validation error display (before modules are loaded)
+function Show-EarlyValidationError {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('BootstrapConflict', 'MutuallyExclusive', 'ContributorRequired', 'EmptyLocalPath', 'LocalPathNotFound')]
+        [string]$ErrorType,
+
+        [string]$LocalPath
+    )
+
+    Show-EarlyErrorHeader
+
+    switch ($ErrorType) {
+        'BootstrapConflict' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Cannot use -Branch or -LocalPath with -Bootstrap" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " -Bootstrap always uses the current local branch" -ForegroundColor Cyan
+            Write-Host " -Branch and -LocalPath are for updating from user profile" -ForegroundColor Cyan
+        }
+        'MutuallyExclusive' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Cannot specify both -Branch and -LocalPath" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
+            Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
+        }
+        'ContributorRequired' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -Branch and -LocalPath require -Contributor flag" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " These are contributor features for testing AI file changes:" -ForegroundColor Cyan
+            Write-Host "   -Contributor -Branch <name>     Test published branch changes" -ForegroundColor White
+            Write-Host "   -Contributor -LocalPath <path>  Test uncommitted local changes" -ForegroundColor White
+        }
+        'EmptyLocalPath' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -LocalPath parameter cannot be empty" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Please provide a valid local directory path:" -ForegroundColor Cyan
+            Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+        'LocalPathNotFound' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -LocalPath directory does not exist" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
+            Write-Host "$LocalPath" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host " Please verify the directory path exists:" -ForegroundColor Cyan
+            Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+    }
+
+    Write-Host ""
+    Write-Host " For more help, run:" -ForegroundColor Cyan
+    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
     Write-Host ""
 }
 
@@ -115,9 +188,30 @@ function Test-ParameterTypo {
     }
 }
 
+#endregion Early Helper Functions
+
+#region Argument Parsing
+
 # Manual argument parsing (like bash version)
 $i = 0
 while ($i -lt $args.Count) {
+    # Early detection of incomplete/bare dash parameters
+    if ($args[$i] -eq '-' -or $args[$i] -eq '--') {
+        Show-EarlyErrorHeader
+        Write-Host " Error:" -ForegroundColor Red -NoNewline
+        Write-Host " Invalid parameter '$($args[$i])' (incomplete parameter)" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host " Valid parameters:" -ForegroundColor Cyan
+        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>" -ForegroundColor White
+        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>" -ForegroundColor White
+        Write-Host ""
+        Write-Host " Examples:" -ForegroundColor Green
+        Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
+        Write-Host ""
+        exit 1
+    }
+
     switch ($args[$i].ToLower()) {
         '-bootstrap' {
             $Bootstrap = $true
@@ -174,8 +268,8 @@ while ($i -lt $args.Count) {
             $i++
         }
         default {
-            # Show header for error cases (hardcoded since modules aren't loaded yet)
-            Show-ErrorHeader
+            # Show header for error cases (happens before modules are loaded)
+            Show-EarlyErrorHeader
 
             # Check for typos and if found, show suggestion and exit
             if ($args[$i].StartsWith('-')) {
@@ -209,55 +303,57 @@ while ($i -lt $args.Count) {
     }
 }
 
-# Validate mutually exclusive parameters
-if ($Branch -and $LocalPath) {
-    Show-ErrorHeader
-    Write-Host " Error:" -ForegroundColor Red -NoNewline
-    Write-Host " Cannot specify both -Branch and -LocalPath" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
-    Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " For more help, run:" -ForegroundColor Cyan
-    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-    Write-Host ""
-    exit 1
-}
+#endregion Argument Parsing
 
-# Validate -Branch and -LocalPath require -Contributor flag
-if (($Branch -or $LocalPath) -and -not $Contributor) {
-    Show-ErrorHeader
-    Write-Host " Error:" -ForegroundColor Red -NoNewline
-    Write-Host " -Branch and -LocalPath require -Contributor flag" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " These are contributor features for testing AI file changes:" -ForegroundColor Cyan
-    Write-Host "   -Contributor -Branch <name>     Test published branch changes" -ForegroundColor White
-    Write-Host "   -Contributor -LocalPath <path>  Test uncommitted local changes" -ForegroundColor White
-    Write-Host ""
-    Write-Host " For more help, run:" -ForegroundColor Cyan
-    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-    Write-Host ""
-    exit 1
-}
+#region Parameter Validation
 
-# Validate -Branch and -LocalPath can only be used from user profile (not with -Bootstrap)
+# PRIORITY 1: Validate -Bootstrap conflicts first (fail fast on foundational operation)
 if ($Bootstrap -and ($Branch -or $LocalPath)) {
-    Show-ErrorHeader
-    Write-Host " Error:" -ForegroundColor Red -NoNewline
-    Write-Host " Cannot use -Branch or -LocalPath with -Bootstrap" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " -Bootstrap always uses the current local branch" -ForegroundColor Cyan
-    Write-Host " -Branch and -LocalPath are for updating from user profile" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host " For more help, run:" -ForegroundColor Cyan
-    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-    Write-Host ""
+    Show-EarlyValidationError -ErrorType 'BootstrapConflict'
     exit 1
 }
 
-# ============================================================================
-# CROSS-PLATFORM UTILITIES
-# ============================================================================
+# PRIORITY 2: Validate mutually exclusive parameters
+if ($Branch -and $LocalPath) {
+    Show-EarlyValidationError -ErrorType 'MutuallyExclusive'
+    exit 1
+}
+
+# PRIORITY 3: Validate -Branch and -LocalPath require -Contributor flag
+if (($Branch -or $LocalPath) -and -not $Contributor) {
+    Show-EarlyValidationError -ErrorType 'ContributorRequired'
+    exit 1
+}
+
+# PRIORITY 4: Validate -LocalPath is not empty and exists when provided
+# Check if parameter was actually passed by looking at the argument list
+$localPathArgIndex = -1
+for ($idx = 0; $idx -lt $args.Count; $idx++) {
+    if ($args[$idx] -eq '-localpath') {
+        $localPathArgIndex = $idx
+        break
+    }
+}
+
+if ($localPathArgIndex -ge 0) {
+    # -LocalPath was explicitly provided, validate it's not empty
+    if ([string]::IsNullOrWhiteSpace($LocalPath)) {
+        Show-EarlyValidationError -ErrorType 'EmptyLocalPath'
+        exit 1
+    }
+
+    # Validate path exists
+    if (-not (Test-Path $LocalPath)) {
+        Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -LocalPath $LocalPath
+        exit 1
+    }
+}
+
+#endregion Parameter Validation
+
+#endregion Parameter Parsing and Validation
+
+#region Cross-Platform Utilities
 
 function Get-UserHomeDirectory {
     # Cross-platform home directory detection
@@ -270,9 +366,9 @@ function Get-UserHomeDirectory {
     }
 }
 
-# ============================================================================
-# MODULE LOADING - This must succeed or the script cannot continue
-# ============================================================================
+#endregion Cross-Platform Utilities
+
+#region Module Loading
 
 function Get-ModulesPath {
     param([string]$ScriptDirectory)
@@ -364,9 +460,9 @@ $Global:ScriptRoot = $null
 $Global:ManifestConfig = $null
 $Global:InstallerConfig = $null
 
-# ============================================================================
-# WORKSPACE DETECTION - Simple and reliable
-# ============================================================================
+#endregion Module Loading
+
+#region Workspace Detection
 
 function Get-WorkspaceRoot {
     param([string]$RepoDirectory, [string]$ScriptDirectory)
@@ -392,9 +488,9 @@ function Get-WorkspaceRoot {
     return Get-Location
 }
 
-# ============================================================================
-# MAIN EXECUTION - Clean and simple
-# ============================================================================
+#endregion Workspace Detection
+
+#region Main Execution
 
 function Main {
     <#
@@ -410,22 +506,53 @@ function Main {
         # Step 2: Early workspace validation before doing anything else
         $workspaceValidation = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
 
-        # Step 3: Initialize global configuration
+        # Step 3: Determine effective branch for manifest config
+        # -Bootstrap always uses current branch, otherwise use -Branch parameter or default to "main"
+        $effectiveBranch = "main"  # Default fallback
+
+        if ($Bootstrap) {
+            # Bootstrap mode: Always use current git branch (required)
+            try {
+                $detectedBranch = git branch --show-current 2>$null
+                if ($detectedBranch -and $detectedBranch.Trim() -ne "") {
+                    $effectiveBranch = $detectedBranch.Trim()
+                }
+                else {
+                    throw "Could not detect current git branch"
+                }
+            }
+            catch {
+                Show-BootstrapGitError -WorkspaceRoot $Global:WorkspaceRoot
+                exit 1
+            }
+        }
+        elseif ($Branch) {
+            # User provided -Branch parameter (contributor mode)
+            $effectiveBranch = $Branch
+        }
+        # else: use default "main"        # Step 4: Initialize global configuration
         if ($workspaceValidation.Valid) {
             # Manifest is always in the same directory as the script
             # - When running from source repo: repo/installer/file-manifest.config
             # - When running after bootstrap: ~/.terraform-azurerm-ai-installer/file-manifest.config
             $manifestPath = Join-Path $ScriptDirectory "file-manifest.config"
 
-            $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath
-            $Global:InstallerConfig = Get-InstallerConfig -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig
+            try {
+                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch
+            }
+            catch {
+                Show-ValidationError -ErrorType 'BranchValidation' -Branch $effectiveBranch
+                exit 1
+            }
+
+            $Global:InstallerConfig = Get-InstallerConfig -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -Branch $Global:ManifestConfig.Branch
         } else {
             # Invalid workspace - provide minimal configuration for UI display
-            $Global:InstallerConfig = @{ Version = "1.0.0" }
+            $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
             $Global:ManifestConfig = @{}
         }
 
-        # Step 4: Get branch information - simple and direct
+        # Step 5: Get branch information for UI display and safety checks
         try {
             $currentBranch = git branch --show-current 2>$null
             if (-not $currentBranch -or $currentBranch.Trim() -eq "") {
@@ -488,25 +615,7 @@ function Main {
             # Quick check: Is target directory the AI dev repo?
             $repoCheck = Test-IsAzureRMProviderRepo -Path $Global:WorkspaceRoot -RequireProviderRepo
             if (-not $repoCheck.Valid -and $repoCheck.IsAIDevRepo) {
-                Write-Host ""
-                Write-Host "============================================================" -ForegroundColor Red
-                Write-Host " SAFETY VIOLATION: Cannot install into AI Development Repository" -ForegroundColor Red
-                Write-Host "============================================================" -ForegroundColor Red
-                Write-Host ""
-                Write-Host " The -RepoDirectory points to the AI development repository:" -ForegroundColor Yellow
-                Write-Host " $Global:WorkspaceRoot" -ForegroundColor Cyan
-                Write-Host ""
-                Write-Host " This repository contains the source files. Use -RepoDirectory to point" -ForegroundColor Yellow
-                Write-Host " to your terraform-provider-azurerm working copy instead." -ForegroundColor Yellow
-                Write-Host ""
-                Write-Host "SOLUTION:" -ForegroundColor Green
-                Write-Host "  Clone or navigate to your terraform-provider-azurerm repository:" -ForegroundColor White
-                Write-Host "    cd `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
-                Write-Host ""
-                Write-Host "  Then run the installer from your user profile:" -ForegroundColor White
-                Write-Host "    cd `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer')`"" -ForegroundColor Cyan
-                Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
-                Write-Host ""
+                Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot
                 exit 1
             }
         }
@@ -517,6 +626,12 @@ function Main {
                 Show-SafetyViolation -BranchName $currentBranch -Operation "Install" -FromUserProfile
                 exit 1
             }
+        }
+
+        # SAFETY CHECK 3 - Block -Contributor mode when running from source repo on main branch
+        if ($Contributor -and $isSourceRepo -and -not $RepoDirectory) {
+            Show-ContributorModeViolation -BranchName $currentBranch
+            exit 1
         }
 
         # Detect if we're running from user profile directory (needed for all help contexts)
@@ -597,6 +712,8 @@ function Main {
         exit 1
     }
 }
+
+#endregion Main Execution
 
 # Execute main function
 Main

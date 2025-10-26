@@ -54,8 +54,18 @@ function Get-ManifestConfig {
     }
 
     $manifest = @{
-        BaseUrl = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/main"
+        Branch = $Branch
+        BaseUrl = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
         Sections = @{}
+    }
+
+    # Validate branch exists by checking if file-manifest.config is accessible
+    try {
+        $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
+        $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
+    }
+    catch {
+        throw "Branch '$Branch' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
     }
 
     $currentSection = $null
@@ -95,22 +105,27 @@ function Get-InstallerConfig {
 
     .PARAMETER ManifestConfig
     The manifest configuration from Get-ManifestConfig
+
+    .PARAMETER Branch
+    Git branch to use for source repository (defaults to main)
     #>
     param(
         [Parameter(Mandatory)]
         [string]$WorkspaceRoot,
 
         [Parameter(Mandatory)]
-        [hashtable]$ManifestConfig
+        [hashtable]$ManifestConfig,
+
+        [string]$Branch = "main"
     )
 
-    # DOWNLOAD SOURCE: Always use main branch because that's where the AI files exist
+    # DOWNLOAD SOURCE: Use specified branch for downloading AI files
     # DOWNLOAD TARGET: Copy files to the local workspace directory (regardless of local branch)
 
     return @{
         Version = "1.0.0"
-        Branch = "main"
-        SourceRepository = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/main"
+        Branch = $Branch
+        SourceRepository = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
         Files = @{
             Instructions = @{
                 Source = ".github/copilot-instructions.md"

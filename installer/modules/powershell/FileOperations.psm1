@@ -512,15 +512,12 @@ function Install-AllAIFile {
     # Priority: LocalSourcePath (contributor) > toolkit source directory (auto-detect) > GitHub (default)
     $toolkitSourceRoot = $null
 
-    if ($LocalSourcePath) {
+    # Check if LocalSourcePath parameter was explicitly provided
+    $localPathWasProvided = $PSBoundParameters.ContainsKey('LocalSourcePath')
+
+    if ($localPathWasProvided) {
         # Contributor feature: Use explicitly specified local path
-        if (-not (Test-Path $LocalSourcePath)) {
-            Write-Host ""
-            Write-Host "ERROR: Local path does not exist: $LocalSourcePath" -ForegroundColor Red
-            Write-Host ""
-            $results.OverallSuccess = $false
-            return $results
-        }
+        # Note: Path existence validation happens in main script PRIORITY 4 check
 
         # Validate it's actually the AI installer repo (has installer directory)
         $installerDir = Join-Path $LocalSourcePath "installer"
@@ -534,7 +531,7 @@ function Install-AllAIFile {
         }
 
         $toolkitSourceRoot = $LocalSourcePath
-        Write-Host "Using local files from: " -ForegroundColor Cyan -NoNewline
+        Write-Host "Installing from local path: " -ForegroundColor Cyan -NoNewline
         Write-Host $LocalSourcePath -ForegroundColor White
     }
     elseif ($Global:ScriptRoot) {
@@ -543,13 +540,31 @@ function Install-AllAIFile {
         $potentialSource = Split-Path $Global:ScriptRoot -Parent
         if (Test-Path (Join-Path $potentialSource "instructions")) {
             $toolkitSourceRoot = $potentialSource
-            Write-Host "Using local files from toolkit repository..." -ForegroundColor Cyan
+            # Show which branch we're installing from
+            # In contributor mode (SourceBranch or LocalSourcePath specified), always show branch
+            # In normal mode, only show if not "main" to reduce noise
+            $isContributorMode = $SourceBranch -or $LocalSourcePath
+            $branchInfo = if ($Branch -and ($isContributorMode -or $Branch -ne "main")) {
+                " (branch: $Branch)"
+            } else {
+                ""
+            }
+            Write-Host "Installing from local toolkit repository$branchInfo..." -ForegroundColor Cyan
         }
     }
 
     $useLocalCopy = $null -ne $toolkitSourceRoot
     if (-not $useLocalCopy) {
-        Write-Host "Downloading files from GitHub..." -ForegroundColor Cyan
+        # Show which branch we're downloading from
+        # In contributor mode (SourceBranch or LocalSourcePath specified), always show branch
+        # In normal mode, only show if not "main" to reduce noise
+        $isContributorMode = $SourceBranch -or $LocalSourcePath
+        $branchInfo = if ($Branch -and ($isContributorMode -or $Branch -ne "main")) {
+            " (branch: $Branch)"
+        } else {
+            ""
+        }
+        Write-Host "Downloading files from GitHub$branchInfo..." -ForegroundColor Cyan
     }
 
     Write-Host "Preparing to install $($allFiles.Count) files..." -ForegroundColor Cyan
@@ -561,9 +576,8 @@ function Install-AllAIFile {
 
         # Determine source - either local file path or download URL
         if ($useLocalCopy) {
-            # Strip .github/ prefix from filepath for local source (files are at toolkit root, not in .github/)
-            $localPath = $filePath -replace '^\.github[/\\]', ''
-            $sourceFile = Join-Path $toolkitSourceRoot $localPath
+            # For local copies, files are at the same paths as in GitHub (including .github/ prefix)
+            $sourceFile = Join-Path $toolkitSourceRoot $filePath
             $downloadUrl = $null
         } else {
             $downloadUrl = "$($manifestConfig.BaseUrl)/$filePath"
@@ -640,7 +654,7 @@ function Install-AllAIFile {
         }
 
         switch ($fileResult.Action) {
-            { $_ -in @("Downloaded", "Overwritten") } { $results.Successful++ }
+            { $_ -in @("Downloaded", "Overwritten", "Copied") } { $results.Successful++ }
             "Skipped" { $results.Skipped++ }
             default {
                 $results.Failed++
