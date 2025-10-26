@@ -25,14 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Improved installer validation messages for better clarity and user feedback
-- Enhanced error handling in validation engine
-- Refactored installer scripts for better maintainability
+- Enhanced error handling in validation engine with consolidated error functions
+- Refactored installer scripts for better maintainability with region-based organization
 - Updated README structure with improved section breaks and readability
 - Reorganized instruction files to .github/instructions directory
 - Enhanced markdownlint configuration for better documentation quality
 - **Installation workflow**: Clarified two-step process (download/extract → install) for normal users vs bootstrap workflow for contributors
 - **Parameter documentation**: Significantly improved descriptions for `-Contributor`/`-contributor` and `-LocalPath`/`-local-path` parameters
 - **User experience**: Updated all documentation to clearly distinguish between normal user workflow (download release package) and contributor workflow (bootstrap from local clone)
+- **Version control**: Centralized version management with single update point (`$script:InstallerVersion` in PowerShell, `INSTALLER_VERSION` in Bash)
+- **Installation source clarity**: Updated messages to clearly show source (GitHub branch, local path) and action (Installing, Downloading)
+- **Help system**: Context-aware help display based on execution location (source branch vs user profile)
+- **Help completeness**: Added all contributor options to help display with explicit requirement indicators
+- **Validation improvements**:
+  - Consolidated 5 error types into reusable `Show-EarlyValidationError` function (PowerShell) and `show_early_validation_error` (Bash)
+  - Early validation for empty and non-existent `-LocalPath`/`-local-path` parameters
+  - Fail-fast architecture with consistent error formatting
+- **Output formatting**: Consistent spacing between output sections across all UI functions
+- **Bootstrap reliability**: Fixed branch detection to use current git branch instead of defaulting to empty string
+- **Bash color support**: Moved color definitions before module loading for proper error message display
 
 ### Fixed
 - ShellCheck exclusions for bash scripts to prevent false positives
@@ -50,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error messaging improvements**: Added `-Branch` and `-LocalPath` / `-local-path` detection to `attempted_command` variable in both PowerShell and Bash installers for better contextual error messages
 - **PowerShell help system bug**: Fixed `Show-UnknownBranchHelp` function missing `$AttemptedCommand` parameter, which prevented proper command-specific error guidance
 - **Documentation consistency**: Updated all references to user profile installer directory to use correct path `~/.terraform-azurerm-ai-installer` (with leading dot for hidden directory)
+- **Bootstrap branch detection**: Fixed `-Bootstrap` failing with "Branch '' does not exist" error by properly detecting current git branch
+- **LocalPath file resolution**: Removed incorrect path stripping logic that caused file lookups to fail
+- **Success counting**: Fixed "Copied" action not being counted as successful in `-LocalPath` installations
+- **PowerShell edge cases**: Graceful handling of `-` and `--` parameters consumed by PowerShell runtime
+- **Bash empty parameter**: Fixed empty `-local-path ""` validation to properly detect and reject empty strings
+- **Bash color codes**: Fixed literal color code text appearing in early validation errors
 
 ### Documentation
 - Complete README with installation instructions and feature overview
