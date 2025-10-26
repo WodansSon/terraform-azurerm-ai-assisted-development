@@ -1,3 +1,4 @@
+// TEST BRANCH MARKER: test/contributor_mode
 {
     // Commit message generation with Azure provider context
     "github.copilot.chat.commitMessageGeneration.instructions": [
