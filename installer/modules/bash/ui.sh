@@ -2,6 +2,12 @@
 # UI Module for Terraform AzureRM Provider AI Setup (Bash)
 # STREAMLINED VERSION - Contains only functions actually used by main script and dependencies
 
+# ============================================================================
+# Module Configuration
+# ============================================================================
+INSTALLER_VERSION="1.0.0"
+DEFAULT_VERSION="1.0.0"
+
 # Color definitions with cross-platform compatibility
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
     # Terminal supports colors
@@ -64,6 +70,76 @@ write_blue() {
 write_gray() {
     local message="$1"
     echo -e "${GRAY}${message}${NC}"
+}
+
+# ============================================================================
+# Early Validation Error Display (Centralized)
+# ============================================================================
+# Matches PowerShell Show-EarlyValidationError function
+# Purpose: Provide clear, actionable error messages for parameter validation failures
+# Called BEFORE showing main header to fail fast on invalid parameters
+show_early_validation_error() {
+    local error_type="$1"
+    local script_name="${2:-$0}"
+
+    # Always show error header first
+    echo ""
+    echo "============================================================"
+    echo " Terraform AzureRM Provider - AI Infrastructure Installer"
+    echo " Version: ${INSTALLER_VERSION}"
+    echo "============================================================"
+    echo ""
+
+    case "${error_type}" in
+        "BootstrapConflict")
+            echo -e "${RED} Error: Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo ""
+            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
+            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            ;;
+
+        "MutuallyExclusive")
+            echo -e "${RED} Error: Cannot specify both -branch and -local-path${NC}"
+            echo ""
+            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
+            ;;
+
+        "ContributorRequired")
+            echo -e "${RED} Error: -branch and -local-path require -contributor flag${NC}"
+            echo ""
+            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
+            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
+            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
+            ;;
+
+        "EmptyLocalPath")
+            echo -e "${RED} Error: -local-path parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide a valid local directory path:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "LocalPathNotFound")
+            local path="$3"
+            echo -e "${RED} Error: -local-path directory does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please verify the directory path exists:${NC}"
+            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        *)
+            echo -e "${RED} Error: Unknown validation error type: ${error_type}${NC}"
+            ;;
+    esac
+
+    echo ""
+    echo -e "${CYAN} For more help, run:${NC}"
+    echo -e "   ${WHITE}${script_name} -help${NC}"
+    echo ""
+    echo ""
 }
 
 # Helper functions for common label patterns

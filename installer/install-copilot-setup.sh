@@ -13,8 +13,10 @@ set -euo pipefail
 # PARAMETER DEFINITIONS
 # ============================================================================
 
-# Global variables
+# Version Control (Centralized in ui.sh module: INSTALLER_VERSION="1.0.0")
 VERSION="1.0.0"
+
+# Global variables
 BRANCH="main"
 SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
 
@@ -181,46 +183,35 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
-    # STEP 1.5: Validate mutually exclusive parameters
-    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot specify both -branch and -local-path${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} Use -branch to pull AI files from a published GitHub branch${COLOR_RESET}"
-        echo -e "${COLOR_CYAN} Use -local-path to copy AI files from a local unpublished directory${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
-        exit 1
-    fi
-
-    # STEP 1.6: Validate -branch and -local-path require -contributor flag
-    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} -branch and -local-path require -contributor flag${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} These are contributor features for testing AI file changes:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}-contributor -branch <name>      Test published branch changes${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}-contributor -local-path <path>  Test uncommitted local changes${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
-        exit 1
-    fi
-
-    # STEP 1.7: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    # STEP 1.5: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
+    # This check must come FIRST before other contributor checks
     if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
-        write_error_header
-        echo -e "${COLOR_RED} Error:${COLOR_RESET}${COLOR_CYAN} Cannot use -branch or -local-path with -bootstrap${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} -bootstrap always uses the current local branch${COLOR_RESET}"
-        echo -e "${COLOR_CYAN} -branch and -local-path are for updating from user profile${COLOR_RESET}"
-        echo ""
-        echo -e "${COLOR_CYAN} For more help, run:${COLOR_RESET}"
-        echo -e "   ${COLOR_WHITE}$0 -help${COLOR_RESET}"
-        echo ""
+        show_early_validation_error "BootstrapConflict" "$0"
+        exit 1
+    fi
+
+    # STEP 1.6: Validate mutually exclusive parameters
+    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        show_early_validation_error "MutuallyExclusive" "$0"
+        exit 1
+    fi
+
+    # STEP 1.65: Validate -local-path is not empty (NEW CHECK)
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ -z "$(echo "${LOCAL_SOURCE_PATH}" | xargs)" ]]; then
+        show_early_validation_error "EmptyLocalPath" "$0"
+        exit 1
+    fi
+
+    # STEP 1.67: Validate -local-path directory exists (NEW CHECK)
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -d "${LOCAL_SOURCE_PATH}" ]]; then
+        show_early_validation_error "LocalPathNotFound" "$0" "${LOCAL_SOURCE_PATH}"
+        exit 1
+    fi
+
+    # STEP 1.7: Validate -branch and -local-path require -contributor flag
+    # This check comes LAST among contributor validations
+    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
+        show_early_validation_error "ContributorRequired" "$0"
         exit 1
     fi
 
