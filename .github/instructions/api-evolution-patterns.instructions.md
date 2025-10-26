@@ -1,3 +1,4 @@
+<!-- TEST BRANCH MARKER: test/contributor_mode -->
 ---
 applyTo: "internal/**/*.go"
 description: API evolution and versioning patterns for the Terraform AzureRM provider including handling Azure API changes, backward compatibility, and migration strategies.
