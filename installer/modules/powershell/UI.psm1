@@ -3,7 +3,17 @@
 
 # Note: CommonUtilities module is imported globally by the main script
 
-#region Public Functions
+# UI Module - User Interface and Display Functions
+# STREAMLINED VERSION - Contains only functions actually used by main script and dependencies
+
+#region Module Configuration
+
+# Default version - should be overridden by caller
+$script:DefaultVersion = "1.0.0"
+
+#endregion Module Configuration
+
+#region Helper Functions
 
 function Write-Separator {
     <#
@@ -39,7 +49,7 @@ function Write-Header {
     #>
     param(
         [string]$Title = "Terraform AzureRM Provider - AI Infrastructure Installer",
-        [string]$Version = "1.0.0"
+        [string]$Version = $script:DefaultVersion
     )
 
     Write-Host ""
@@ -47,6 +57,76 @@ function Write-Header {
     Write-Host " $Title" -ForegroundColor Cyan
     Write-Host " Version: $Version" -ForegroundColor Cyan
     Write-Separator
+    Write-Host ""
+}
+
+function Show-ValidationError {
+    <#
+    .SYNOPSIS
+    Display validation errors with consistent formatting using error type switch
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('BranchValidation', 'EmptyLocalPath', 'LocalPathNotFound', 'WorkspaceValidation')]
+        [string]$ErrorType,
+
+        [string]$Branch,
+        [string]$LocalPath,
+        [string]$Reason
+    )
+
+    Write-Host ""
+    Write-Separator
+    Write-Host " Terraform AzureRM Provider - AI Infrastructure Installer" -ForegroundColor Cyan
+    Write-Host " Version: $script:DefaultVersion" -ForegroundColor Cyan
+    Write-Separator
+    Write-Host ""
+
+    switch ($ErrorType) {
+        'BranchValidation' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Branch validation failed" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Branch: " -ForegroundColor Cyan -NoNewline
+            Write-Host "$Branch" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host " The specified branch does not exist in the AI development repository." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Please verify the branch name and try again:" -ForegroundColor Cyan
+            Write-Host "   -Contributor -Branch `"valid-branch-name`"" -ForegroundColor White
+        }
+        'EmptyLocalPath' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -LocalPath parameter cannot be empty" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Please provide a valid local directory path:" -ForegroundColor Cyan
+            Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+        'LocalPathNotFound' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -LocalPath directory does not exist" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
+            Write-Host "$LocalPath" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host " Please verify the directory path exists:" -ForegroundColor Cyan
+            Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+        'WorkspaceValidation' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Workspace validation failed" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Reason: " -ForegroundColor Cyan -NoNewline
+            Write-Host "$Reason" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host " Please ensure you're running in a valid terraform-provider-azurerm repository:" -ForegroundColor Cyan
+            Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
+        }
+    }
+
+    Write-Host ""
+    Write-Host " For more help, run:" -ForegroundColor Cyan
+    Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
     Write-Host ""
 }
 
@@ -337,7 +417,6 @@ function Show-CleanupReminder {
         [string]$WorkspacePath
     )
 
-    Write-Host ""
     Write-Separator -Length 60
     Write-Host " IMPORTANT: Remember to clean up before committing!" -ForegroundColor Yellow
     Write-Separator -Length 60
@@ -502,6 +581,94 @@ function Show-SafetyViolation {
     }
 }
 
+function Show-AIDevRepoViolation {
+    <#
+    .SYNOPSIS
+    Display safety violation when attempting to install into AI development repository
+
+    .DESCRIPTION
+    Shows error message when -RepoDirectory points to the AI development repository
+    instead of the terraform-provider-azurerm repository.
+    #>
+    param(
+        [string]$WorkspaceRoot
+    )
+
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host " SAFETY VIOLATION: Cannot install into AI Development Repository" -ForegroundColor Red
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host " The -RepoDirectory points to the AI development repository:" -ForegroundColor Yellow
+    Write-Host " $WorkspaceRoot" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host " This repository contains the source files. Use -RepoDirectory to point" -ForegroundColor Yellow
+    Write-Host " to your terraform-provider-azurerm working copy instead." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "SOLUTION:" -ForegroundColor Green
+    Write-Host "  Clone or navigate to your terraform-provider-azurerm repository:" -ForegroundColor White
+    Write-Host "    cd `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Then run the installer from your user profile:" -ForegroundColor White
+    Write-Host "    cd `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer')`"" -ForegroundColor Cyan
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Show-ContributorModeViolation {
+    <#
+    .SYNOPSIS
+    Display safety violation for Contributor mode on source branch
+
+    .DESCRIPTION
+    Shows a standardized error message when -Contributor mode is used
+    on the source branch (main/master) of the AI development repository.
+    #>
+    param(
+        [string]$BranchName = "main"
+    )
+
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host " SAFETY VIOLATION: Cannot use -Contributor mode on source branch" -ForegroundColor Red
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host " You are on the '$BranchName' branch of the AI development repository." -ForegroundColor Yellow
+    Write-Host " -Contributor mode is for testing changes on feature branches only." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "SOLUTION:" -ForegroundColor Green
+    Write-Host "  1. Create a feature branch for your changes:" -ForegroundColor White
+    Write-Host "     git checkout -b feature/your-feature-name" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  2. Make your changes to the AI infrastructure files" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  3. Test with -Contributor -LocalPath:" -ForegroundColor White
+    Write-Host "     .\install-copilot-setup.ps1 -Contributor -LocalPath `".`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Show-BootstrapGitError {
+    <#
+    .SYNOPSIS
+    Display error when Bootstrap cannot detect git branch
+
+    .DESCRIPTION
+    Shows a standardized error message when -Bootstrap fails to detect
+    the current git branch, which is required for copying installer files.
+    #>
+    param(
+        [string]$WorkspaceRoot
+    )
+
+    Write-Host ""
+    Write-Host " ERROR: Bootstrap requires a valid git repository with a current branch" -ForegroundColor Red
+    Write-Host " Could not detect current git branch in: $WorkspaceRoot" -ForegroundColor Red
+    Write-Host ""
+    Write-Host " Bootstrap copies the current branch's installer files to your user profile." -ForegroundColor Cyan
+    Write-Host " Ensure you are in a valid git repository with a checked-out branch." -ForegroundColor Cyan
+    Write-Host ""
+}
+
 function Show-WorkspaceValidationError {
     <#
     .SYNOPSIS
@@ -646,11 +813,11 @@ function Show-OperationSummary {
                 Write-Host $value -ForegroundColor Yellow
             }
         }
-        Write-Host ""
     }
 
     # Display next steps if provided
     if ($NextSteps.Count -gt 0) {
+        Write-Host ""
         Write-Host "NEXT STEPS:" -ForegroundColor Cyan
         Write-Host ""
         foreach ($step in $NextSteps) {
@@ -658,6 +825,9 @@ function Show-OperationSummary {
         }
         Write-Host ""
     }
+
+    # End with blank line (following output paradigm)
+    Write-Host ""
 }
 
 #endregion
@@ -672,9 +842,12 @@ Export-ModuleMember -Function @(
     'Show-SourceBranchHelp',
     'Show-SourceBranchWelcome',
     'Show-SafetyViolation',
+    'Show-AIDevRepoViolation',
+    'Show-ContributorModeViolation',
     'Show-WorkspaceValidationError',
     'Show-BootstrapNextStep',
     'Show-AIInstallerNotFoundError',
+    'Show-ValidationError',
     'Show-BootstrapViolation',
     'Show-OperationSummary',
     'Show-InstallationResult',
