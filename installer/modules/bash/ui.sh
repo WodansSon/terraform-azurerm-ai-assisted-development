@@ -42,6 +42,11 @@ write_cyan() {
     echo -e "${CYAN}${message}${NC}"
 }
 
+write_dark_cyan() {
+    local message="$1"
+    echo -e "\033[36m${message}${NC}"
+}
+
 write_green() {
     local message="$1"
     echo -e "${GREEN}${message}${NC}"
@@ -82,12 +87,12 @@ show_early_validation_error() {
     local error_type="$1"
     local script_name="${2:-$0}"
 
-    # Always show error header first
+    # Always show error header first in cyan
     echo ""
-    echo "============================================================"
-    echo " Terraform AzureRM Provider - AI Infrastructure Installer"
-    echo " Version: ${INSTALLER_VERSION}"
-    echo "============================================================"
+    echo -e "${CYAN}============================================================${NC}"
+    echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
+    echo -e "${CYAN} Version: ${INSTALLER_VERSION}${NC}"
+    echo -e "${CYAN}============================================================${NC}"
     echo ""
 
     case "${error_type}" in
@@ -861,27 +866,46 @@ show_unknown_branch_help() {
         # Use dynamic command or default to -help
         local command_example="${attempted_command:-"-help"}"
 
-        write_plain "  Navigate to a terraform-provider-azurerm repository, or use the -repo-directory parameter:"
+        write_plain "  Use the -repo-directory parameter to specify your repository path:"
         write_plain "  ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" ${command_example}"
         echo ""
         print_separator
         echo ""
     fi
 
-    write_cyan "GENERAL USAGE:"
+    write_cyan "USAGE:"
     write_plain "  ./install-copilot-setup.sh [OPTIONS]"
     echo ""
 
-    write_cyan "COMMON OPTIONS:"
-    write_plain "  -bootstrap        Copy installer to user profile (source branch only)"
-    write_plain "  -repo-directory   Repository path (for feature branch operations)"
+    write_cyan "ALL OPTIONS:"
+    write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
+    write_plain "  -repo-directory   Repository path for git operations (when running from user profile)"
+    write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
+    write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
+    write_plain "  -contributor      Enable contributor mode for testing AI file changes"
+    write_plain "  -dry-run          Show what would be done without making changes"
     write_plain "  -verify           Check current workspace status and validate setup"
+    write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
 
-    write_cyan "GETTING STARTED:"
-    write_plain "  1. From source branch: ./install-copilot-setup.sh -bootstrap"
-    write_plain "  2. From feature branch: use installer in ~/.terraform-azurerm-ai-installer/"
+    write_cyan "EXAMPLES:"
+    write_dark_cyan "  Source Branch Operations:"
+    write_plain "    ./install-copilot-setup.sh -bootstrap"
+    write_plain "    ./install-copilot-setup.sh -verify"
+    echo ""
+    write_dark_cyan "  Feature Branch Operations:"
+    write_plain "    cd ~/.terraform-azurerm-ai-installer"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -clean"
+    echo ""
+    write_dark_cyan "  Contributor Operations (Testing AI Changes):"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -branch feature/ai-updates"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/repo\" -contributor -local-path \"/path/to/ai-repo\""
+    echo ""
+
+    write_cyan "BRANCH DETECTION:"
+    write_plain "  The installer automatically detects your branch type and shows appropriate options."
     echo ""
 }
 

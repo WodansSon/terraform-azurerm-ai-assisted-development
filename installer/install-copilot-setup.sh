@@ -343,8 +343,14 @@ main() {
         exit 0
     fi
 
-    # STEP 10: For all operations except bootstrap, workspace must be valid (bootstrap has its own validation)
-    if [[ "${workspace_valid}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]]; then
+    # STEP 10: Check if any actual operation was requested
+    local operation_requested=false
+    if [[ "${VERIFY}" == "true" ]] || [[ "${BOOTSTRAP}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ -n "${REPO_DIRECTORY}" ]]; then
+        operation_requested=true
+    fi
+
+    # STEP 11: For operations that require workspace, validate it
+    if [[ "${operation_requested}" == "true" ]] && [[ "${workspace_valid}" != "true" ]]; then
         show_workspace_validation_error "${workspace_reason}" "$([[ -n "${REPO_DIRECTORY}" ]] && echo "true" || echo "false")"
 
         # Show help menu for guidance
@@ -352,7 +358,7 @@ main() {
         exit 1
     fi
 
-    # STEP 11: Execute single operation based on parameters (like PowerShell)
+    # STEP 12: Execute single operation based on parameters (like PowerShell)
     if [[ "${VERIFY}" == "true" ]]; then
         verify_installation "${workspace_root}"
         exit 0
@@ -393,16 +399,15 @@ main() {
         exit 0
     fi
 
-    # STEP 11: Installation path (when -repo-directory is provided and not other specific operations)
+    # STEP 13: Installation path (when -repo-directory is provided and not other specific operations)
     if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
         # Proceed with installation
         install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}" "${SOURCE_BRANCH}" "${LOCAL_SOURCE_PATH}"
         exit 0
     fi
 
-    # STEP 12: Default - show source branch help and welcome
-    show_source_branch_help
-    show_source_branch_welcome "${current_branch}"
+    # STEP 14: Default - show help with workspace context (matches PowerShell behavior)
+    show_usage "${branch_type}" "${workspace_valid}" "${workspace_reason}" "${attempted_command}"
     exit 0
 }
 
