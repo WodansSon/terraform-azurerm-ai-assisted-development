@@ -329,10 +329,10 @@ main() {
         attempted_command="-help"
     elif [[ "${DRY_RUN}" == "true" ]]; then
         attempted_command="-dry-run"
-    elif [[ -n "${LOCAL_PATH}" ]]; then
-        attempted_command="-local-path \"${LOCAL_PATH}\""
-    elif [[ -n "${BRANCH}" ]]; then
-        attempted_command="-branch \"${BRANCH}\""
+    elif [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        attempted_command="-local-path \"${LOCAL_SOURCE_PATH}\""
+    elif [[ -n "${SOURCE_BRANCH}" ]]; then
+        attempted_command="-branch \"${SOURCE_BRANCH}\""
     elif [[ -n "${REPO_DIRECTORY}" && "${HELP}" != "true" && "${VERIFY}" != "true" && "${BOOTSTRAP}" != "true" && "${CLEAN}" != "true" ]]; then
         attempted_command="-repo-directory \"${REPO_DIRECTORY}\""
     fi
