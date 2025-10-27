@@ -79,6 +79,13 @@ When you give specific commands, I'll act directly:
 - "Run the command `go mod tidy`"
 - "Add this function to the file..."
 
+## 🖥️ **TERMINAL COMMAND EXECUTION**
+
+**Windows/WSL Environment Considerations:**
+- For Go commands (`go mod tidy`, `go mod vendor`, `go test`, etc.), **always use WSL terminal** in this repository
+- PowerShell is suitable for: git operations, file operations, simple directory navigation
+- When in doubt about environment compatibility, prefer WSL for build/test operations
+
 ## 📝 **COMMIT MESSAGE STANDARDS**
 
 **🚨 MANDATORY ENFORCEMENT - NO EXCEPTIONS 🚨**
@@ -109,7 +116,7 @@ When you give specific commands, I'll act directly:
 
 **For UNIMPLEMENTED Azure Resources:**
 - I default to deep API analysis mode
-- Use `github_repo` tool to search API structure  
+- Use `github_repo` tool to search API structure
 - Verify actual Azure SDK patterns before suggestions
 - Document all model files and field types
 
@@ -221,7 +228,7 @@ Every comment requires explicit justification:
 - Document all model files and field types
 
 **For EXISTING Azure Resources:**
-- **Default to Information Mode**  
+- **Default to Information Mode**
 - Show current implementations and behaviors
 - Reference existing code and documentation
 
@@ -277,7 +284,7 @@ return fmt.Errorf("account_tier can't be %s", tier)
 
 **Enforcement Priority Order:**
 1. **Highest**: Collaborative Approval Policy - Zero tolerance for unapproved implementations
-2. **High**: Comment Policy - Zero tolerance for unnecessary comments  
+2. **High**: Comment Policy - Zero tolerance for unnecessary comments
 3. **High**: API Analysis - Critical for Azure resource implementations
 4. **Medium**: Testing Standards - Quality and reliability requirements
 5. **Medium**: Error Handling - Consistency and debugging support
@@ -383,7 +390,7 @@ When working with related Azure resources (like Linux and Windows variants), ens
 
 **Enforcement Priority Order:**
 1. **Highest**: Collaborative Approval Policy - Zero tolerance for unapproved implementations
-2. **High**: Comment Policy - Zero tolerance for unnecessary comments  
+2. **High**: Comment Policy - Zero tolerance for unnecessary comments
 3. **High**: API Analysis - Critical for Azure resource implementations
 4. **Medium**: Testing Standards - Quality and reliability requirements
 5. **Medium**: Error Handling - Consistency and debugging support
@@ -393,7 +400,7 @@ When working with related Azure resources (like Linux and Windows variants), ens
 For comprehensive implementation details, see specialized instruction files:
 
 - 🏗️ **[Implementation Guide](./instructions/implementation-guide.instructions.md)** - Complete coding standards and patterns
-- 📋 **[Code Clarity](./instructions/code-clarity-enforcement.instructions.md)** - Comment policies and quality standards  
+- 📋 **[Code Clarity](./instructions/code-clarity-enforcement.instructions.md)** - Comment policies and quality standards
 - ☁️ **[Azure Patterns](./instructions/azure-patterns.instructions.md)** - PATCH operations, CustomizeDiff, Azure-specific behaviors
 - 🧪 **[Testing Guidelines](./instructions/testing-guidelines.instructions.md)** - Comprehensive testing patterns
 - 📝 **[Documentation Standards](./instructions/documentation-guidelines.instructions.md)** - Documentation templates and guidelines
