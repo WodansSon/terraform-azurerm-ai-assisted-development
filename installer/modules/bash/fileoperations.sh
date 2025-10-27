@@ -666,18 +666,20 @@ install_infrastructure() {
         fi
         export SOURCE_REPOSITORY="file://${local_source_path}"
         export BRANCH=""  # Not used for local files
-        write_cyan "Using local source: ${local_source_path}"
+        write_cyan "Installing from local path: ${local_source_path}"
         echo ""
     elif [[ -n "${source_branch}" ]]; then
         # Use GitHub with specified branch
         export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
         export BRANCH="${source_branch}"
-        write_cyan "Using GitHub branch: ${source_branch}"
+        write_cyan "Downloading files from GitHub (branch: ${source_branch})..."
         echo ""
     else
         # Use default GitHub main branch
         export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
         export BRANCH="main"
+        write_cyan "Downloading files from GitHub (branch: main)..."
+        echo ""
     fi
 
     # Step 5: Build complete file list (like PowerShell does)

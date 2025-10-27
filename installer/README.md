@@ -587,11 +587,11 @@ The installer adapts its behavior based on your current Git branch:
 
 ```mermaid
 graph LR
-    A[Source Branch<br/>main] --> B[Bootstrap<br/>-Bootstrap]
-    B --> C[Switch Branch<br/>git checkout feature/xyz]
-    C --> D[Install AI<br/>Run from user profile]
-    D --> E[Develop<br/>With AI assistance]
-    E --> F[Clean<br/>-Clean when done]
+    A[Install release Package] --> B[git checkout feature/xyz]
+    B --> C[Run from user profile]
+    C --> D[Develop with AI assistance]
+    D --> E[-Clean]
+    E --> F[Push Changes]
 ```
 
 ## 🏗️ Architecture
