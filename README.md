@@ -71,7 +71,7 @@ Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -Destination
 #### macOS/Linux (Bash)
 ```bash
 # Download and extract installer directly to user profile
-curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
+curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer-v1.0.0.tar.gz"
 mkdir -p ~/.terraform-azurerm-ai-installer
 tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
