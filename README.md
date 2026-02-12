@@ -88,7 +88,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 >   - `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v1.0.1/terraform-azurerm-ai-installer.tar.gz`
 > - Example pinned URL (versioned filename):
 >   - `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v1.0.1/terraform-azurerm-ai-installer-v1.0.1.tar.gz`
-
+<!-- -->
 > [!TIP]
 > **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, use the `-Bootstrap` command to work with your local changes:
 > ```bash
