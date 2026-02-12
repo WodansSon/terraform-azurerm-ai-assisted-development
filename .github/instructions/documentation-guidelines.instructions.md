@@ -28,9 +28,9 @@ This audit is optional and user-invoked (no CI enforcement).
 **BEFORE making ANY documentation changes, you MUST:**
 
 1. **📋 READ NOTE FORMATTING GUIDELINES FIRST**
-  - Scroll to <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
-   - Review the three note types: Informational (`->`), Warning (`~>`), Caution (`!>`)
-   - Understand the categorization criteria for each type
+    - Scroll to <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
+    - Review the three note types: Informational (`->`), Warning (`~>`), Caution (`!>`)
+    - Understand the categorization criteria for each type
 
 2. **🎯 CATEGORIZE YOUR CONTENT**
    - **Informational (`-> **Note:**`)**: Additional useful information, recommendations, tips, external links
