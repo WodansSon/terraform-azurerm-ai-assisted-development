@@ -54,10 +54,20 @@ jobs:
           cd release
           zip -r terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip .terraform-azurerm-ai-installer/
 
+      - name: Create stable ZIP alias for latest
+        run: |
+          cd release
+          cp terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip terraform-azurerm-ai-installer.zip
+
       - name: Create TAR.GZ archive for Linux/macOS
         run: |
           cd release
           tar -czf terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz .terraform-azurerm-ai-installer/
+
+      - name: Create stable TAR.GZ alias for latest
+        run: |
+          cd release
+          cp terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz terraform-azurerm-ai-installer.tar.gz
 
       - name: Create full source archive
         run: |
@@ -81,10 +91,14 @@ jobs:
 
             ### 🚀 Quick Installation
 
+            You can either install the **latest release** (stable URLs) or **pin a specific version** (tagged URLs).
+
+            **Option A (recommended): Install latest**
+
             **Windows (PowerShell):**
             ```powershell
             # Download and extract installer to your user profile
-            Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
+            Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
             Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE" -Force
 
             # Run installer pointing to your terraform-provider-azurerm repository
@@ -94,12 +108,21 @@ jobs:
             **macOS/Linux (Bash):**
             ```bash
             # Download and extract installer to your user profile
-            curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz"
+            curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
             tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/
 
             # Run installer pointing to your terraform-provider-azurerm repository
             ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
             ```
+
+            **Option B: Pin this exact version (v${{ steps.get_version.outputs.VERSION }})**
+
+            - Stable asset name (tagged URL):
+              - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer.zip`
+              - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer.tar.gz`
+            - Versioned asset name (tagged URL):
+              - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip`
+              - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`
 
             The installer will download the AI instruction files from this repository and install them into your terraform-provider-azurerm repository's `.github` directory.
 
@@ -107,6 +130,8 @@ jobs:
 
             ### 📦 Release Assets
 
+            - **`terraform-azurerm-ai-installer.zip`** - Windows installer bundle (stable name for `releases/latest/download/`)
+            - **`terraform-azurerm-ai-installer.tar.gz`** - Linux/macOS installer bundle (stable name for `releases/latest/download/`)
             - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip`** - Windows installer bundle (recommended)
             - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Linux/macOS installer bundle (recommended)
             - **`terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Full source archive
@@ -129,7 +154,9 @@ jobs:
             - [Full Changelog](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CHANGELOG.md)
             - [Main README](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/README.md)
           files: |
+            release/terraform-azurerm-ai-installer.zip
             release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip
+            release/terraform-azurerm-ai-installer.tar.gz
             release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz
             release/terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz
             release/checksums.txt

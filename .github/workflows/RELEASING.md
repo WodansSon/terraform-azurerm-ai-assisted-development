@@ -61,9 +61,11 @@ Visit: `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/r
 
 Check that:
 - [ ] Release was created successfully
-- [ ] All 4 assets are attached:
-  - `terraform-azurerm-ai-installer-v*.*.*.zip` (Windows)
-  - `terraform-azurerm-ai-installer-v*.*.*.tar.gz` (Linux/macOS)
+- [ ] All assets are attached:
+  - `terraform-azurerm-ai-installer.zip` (Windows, stable name for `releases/latest/download/`)
+  - `terraform-azurerm-ai-installer.tar.gz` (Linux/macOS, stable name for `releases/latest/download/`)
+  - `terraform-azurerm-ai-installer-v*.*.*.zip` (Windows, versioned)
+  - `terraform-azurerm-ai-installer-v*.*.*.tar.gz` (Linux/macOS, versioned)
   - `terraform-azurerm-ai-assisted-development-v*.*.*.tar.gz` (Full source)
   - `checksums.txt`
 - [ ] Release notes include installation instructions
@@ -74,6 +76,12 @@ Check that:
 ### Installer Bundles (Recommended)
 
 **For End Users:**
+
+- **`terraform-azurerm-ai-installer.zip`** - Windows bundle (stable name)
+  - Intended for `releases/latest/download/terraform-azurerm-ai-installer.zip`
+
+- **`terraform-azurerm-ai-installer.tar.gz`** - Linux/macOS bundle (stable name)
+  - Intended for `releases/latest/download/terraform-azurerm-ai-installer.tar.gz`
 
 - **`terraform-azurerm-ai-installer-v*.*.*.zip`** - Windows bundle
   - Contains: `install-copilot-setup.ps1`, modules, config
