@@ -255,6 +255,36 @@ The `timeouts` block allows you to specify timeouts...
 
 ---
 
+### Docs + Schema Audit
+
+**Scenario**: You have a provider documentation page and want to confirm it meets AzureRM docs standards and matches the actual Terraform schema.
+
+**Step 1**: Open the documentation file you want to audit in your editor (the prompt only runs against the currently-open file under `website/docs/**`).
+
+Example resource doc:
+- `website/docs/r/cdn_frontdoor_profile.html.markdown`
+
+Example data source doc:
+- `website/docs/d/cdn_frontdoor_profile.html.markdown`
+
+**Step 2**: Run the audit prompt:
+
+```
+You: /docs-schema-audit
+```
+
+If the active editor is not a file under `website/docs/**`, the prompt will tell you to open the target docs page and re-run it.
+
+**What Copilot Does**:
+1. ✅ Determines whether the doc is a resource (`website/docs/r/**`) or data source (`website/docs/d/**`)
+2. ✅ Locates the schema under `internal/**` (when possible) and snapshots required/optional/computed/ForceNew fields
+3. ✅ Checks docs structure rules (required sections differ for resources vs data sources; Import/Timeouts handled correctly)
+4. ✅ Enforces parity: argument/attribute coverage, ordering rules, schema shape (block vs inline), ForceNew wording (resources only)
+5. ✅ Validates examples, note notation, and link locale hygiene
+6. ✅ Produces patch-ready minimal fixes for any issues
+
+---
+
 ## Code Review
 
 ### Reviewing Local Changes

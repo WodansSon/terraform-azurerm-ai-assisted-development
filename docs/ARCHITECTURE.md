@@ -274,6 +274,7 @@ terraform-azurerm-ai-assisted-development/
 │   ├── prompts/
 │   ├── code-review-local-changes.prompt.md
 │   ├── code-review-committed-changes.prompt.md
+│   ├── docs-schema-audit.prompt.md
 │   │
 │   ├── workflows/
 │   │   ├── validate.yml    # CI for installers & instructions
