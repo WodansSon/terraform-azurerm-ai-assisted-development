@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-02-12
+
+### Added
+- Release assets with stable (unversioned) filenames to support `releases/latest/download/*` install URLs:
+  - `terraform-azurerm-ai-installer.zip`
+  - `terraform-azurerm-ai-installer.tar.gz`
+- New optional documentation audit prompt:
+  - `.github/prompts/docs-schema-audit.prompt.md`
+
+### Changed
+- Documentation now clearly distinguishes installing the latest release (`releases/latest/download/...`) from pinning a specific version (`releases/download/vX.Y.Z/...`)
+
 ## [1.0.0] - 2025-10-22
 
 ### Added
