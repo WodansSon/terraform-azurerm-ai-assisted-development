@@ -214,7 +214,8 @@ This applies instructions only to Go files in the `internal/` directory.
 
 3. **Open relevant files**:
    - Open examples of similar resources
-   - Open instruction files from `instructions/` directory
+   - Open instruction files from `.github/instructions/` directory
+   - Open skill files from `.github/skills/` directory
    - Copilot uses open files for context
 
 ---

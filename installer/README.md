@@ -11,7 +11,7 @@
 > **📦 Release-Based Installation**: This installer is now distributed as standalone release bundles.
 > Download the latest version from [GitHub Releases](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest) instead of cloning the repository.
 
-This installer provides GitHub Copilot instructions, VS Code configurations, and AI-powered development workflows for the Terraform AzureRM Provider repository.
+This installer provides GitHub Copilot instructions, VS Code configurations, Agent Skills, and AI-powered development workflows for the Terraform AzureRM Provider repository.
 
 ## 🌍 Cross-Platform Support
 
@@ -409,6 +409,9 @@ The installer sets up a complete AI development environment:
 ### 🎨 Development Templates & AI Prompts
 - `.github/prompts/` - AI prompt templates for common development tasks:
 
+### 🧠 Agent Skills
+- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/hashicorp-docs-writer`)
+
 ### ⚙️ VS Code Configuration
 - `.vscode/settings.json` - Optimized VS Code settings for Terraform development
   - Go formatting and linting configurations
@@ -648,7 +651,7 @@ The installer includes **intelligent deprecation management** that automatically
 
 During each installation, the tool automatically:
 
-- **🔍 Scans** existing instruction and prompt files in your workspace
+- **🔍 Scans** existing instruction, prompt, and skill files in your workspace
 - **📋 Compares** them against the current manifest from the source branch
 - **🗑️ Removes** deprecated files that are no longer part of the AI infrastructure
 - **✅ Preserves** current files that remain active
@@ -664,6 +667,11 @@ During each installation, the tool automatically:
 - `*.prompt.md` files for AI interaction templates
 - Removes obsolete prompt templates
 - Keeps your prompt library current and effective
+
+**Skill Files** (`.github/skills/`)
+- `*/SKILL.md` files defining Agent Skills
+- Removes obsolete skills that are no longer in the manifest
+- Keeps the skill list synchronized with the toolkit
 
 ### 💡 How It Works
 

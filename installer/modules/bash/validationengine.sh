@@ -478,6 +478,41 @@ verify_installation() {
         fi
     fi
 
+    # Check skill files
+    local skill_files
+    skill_files=$(get_manifest_files "SKILL_FILES" "${manifest_file}" 2>/dev/null || true)
+    if [[ -n "${skill_files}" ]]; then
+        # Check if skills directory exists
+        local skills_dir="${workspace_root}/.github/skills"
+        files_checked=$((files_checked + 1))
+        if [[ -d "${skills_dir}" ]]; then
+            write_green "  [FOUND  ] .github/skills/"
+            files_passed=$((files_passed + 1))
+
+            while IFS= read -r file; do
+                [[ -z "${file}" ]] && continue
+                local full_path="${workspace_root}/${file}"
+                local skill_name
+                skill_name=$(basename "$(dirname "${file}")")
+                files_checked=$((files_checked + 1))
+                if [[ -f "${full_path}" ]]; then
+                    write_green "    [FOUND  ] ${skill_name}/SKILL.md"
+                    files_passed=$((files_passed + 1))
+                else
+                    write_red "    [MISSING] ${skill_name}/SKILL.md"
+                    files_failed=$((files_failed + 1))
+                    missing_items+=("${file}")
+                    all_good=false
+                fi
+            done <<< "${skill_files}"
+        else
+            write_red "  [MISSING] .github/skills/"
+            files_failed=$((files_failed + 1))
+            missing_items+=(".github/skills")
+            all_good=false
+        fi
+    fi
+
     # Check universal files
     local universal_files
     universal_files=$(get_manifest_files "UNIVERSAL_FILES" "${manifest_file}")

@@ -25,10 +25,13 @@
 │  │  │   │                                               │  │  │ │
 │  │  │   │  ├──.github/                                  │  │  │ │
 │  │  │   │  │  ├── copilot-instructions.md (Main)        │  │  │ │
-│  │  │   │  │  ├── copilot-prompts/                      │  │  │ │
-│  │  │   │  │  │   ├── code-review-local-changes.md      │  │  │ │
-│  │  │   │  │  │   └── code-review-committed-changes.md  │  │  │ │
-│  │  │   │  │  └── instructions/                         │  │  │ │
+│  │  │   │  │  │  ├── prompts/                              │  │  │ │
+│  │  │   │  │  │  │   ├── code-review-local-changes.prompt.md│  │  │ │
+│  │  │   │  │  │  │   └── code-review-committed-changes.prompt.md│  │  │ │
+│  │  │   │  │  │  ├── skills/                               │  │  │ │
+│  │  │   │  │  │  │   ├── hashicorp-docs-writer/SKILL.md     │  │  │ │
+│  │  │   │  │  │  │   └── [other skill files]               │  │  │ │
+│  │  │   │  │  │  └── instructions/                         │  │  │ │
 │  │  │   │  │      ├── api-evolution-patterns.md         │  │  │ │
 │  │  │   │  │      ├── azure-patterns.md                 │  │  │ │
 │  │  │   │  │      ├── testing-guidelines.md             │  │  │ │
@@ -93,9 +96,11 @@
 │  raw URLs to Target Repo :                                │
 │                                                           │
 │  ├── .github/copilot-instructions.md                      │
-│  ├── .github/copilot-prompts/                             │
-│  │   ├── code-review-local-changes.md                     │
-│  │   └── code-review-committed-changes.md                 │
+│  ├── .github/prompts/                                     │
+│  │   ├── code-review-local-changes.prompt.md              │
+│  │   └── code-review-committed-changes.prompt.md          │
+│  ├── .github/skills/                                      │
+│  │   └── */SKILL.md                                       │
 │  ├── .github/instructions/                                │
 │  │   ├── api-evolution-patterns.md                        │
 │  │   ├── azure-patterns.md                                │
@@ -165,9 +170,9 @@
 │                                                             │
 │     Matches file pattern: internal/**/*.go                  │
 │     Loads: copilot-instructions.md                          │
-│     Loads: instructions/azure-patterns.instructions.md      │
-│     Loads: instructions/implementation-guide.md             │
-│     Loads: instructions/error-patterns.md                   │
+│     Loads: .github/instructions/azure-patterns.instructions.md│
+│     Loads: .github/instructions/implementation-guide.instructions.md│
+│     Loads: .github/instructions/error-patterns.instructions.md│
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -251,20 +256,19 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── .github/
 │   ├── instructions/
-│   ├── README.md
-│   ├── api-evolution-patterns.instructions.md
-│   ├── azure-patterns.instructions.md
-│   ├── code-clarity-enforcement.instructions.md
-│   ├── documentation-guidelines.instructions.md
-│   ├── error-patterns.instructions.md
-│   ├── implementation-guide.instructions.md
-│   ├── migration-guide.instructions.md
-│   ├── performance-optimization.instructions.md
-│   ├── provider-guidelines.instructions.md
-│   ├── schema-patterns.instructions.md
-│   ├── security-compliance.instructions.md
-│   ├── testing-guidelines.instructions.md
-│   ├── troubleshooting-decision-trees.instructions.md
+│   │   ├── api-evolution-patterns.instructions.md
+│   │   ├── azure-patterns.instructions.md
+│   │   ├── code-clarity-enforcement.instructions.md
+│   │   ├── documentation-guidelines.instructions.md
+│   │   ├── error-patterns.instructions.md
+│   │   ├── implementation-guide.instructions.md
+│   │   ├── migration-guide.instructions.md
+│   │   ├── performance-optimization.instructions.md
+│   │   ├── provider-guidelines.instructions.md
+│   │   ├── schema-patterns.instructions.md
+│   │   ├── security-compliance.instructions.md
+│   │   ├── testing-guidelines.instructions.md
+│   │   └── troubleshooting-decision-trees.instructions.md
 │   │
 │   ├── ISSUE_TEMPLATE/
 │   │   ├── bug_report.md
@@ -272,9 +276,14 @@ terraform-azurerm-ai-assisted-development/
 │   │   └── instruction_improvement.md
 │   │
 │   ├── prompts/
-│   ├── code-review-local-changes.prompt.md
-│   ├── code-review-committed-changes.prompt.md
-│   ├── docs-schema-audit.prompt.md
+│   │   ├── code-review-local-changes.prompt.md
+│   │   ├── code-review-committed-changes.prompt.md
+│   │   └── docs-schema-audit.prompt.md
+│   │
+│   ├── skills/
+│   │   ├── azurerm-acceptance-testing/SKILL.md
+│   │   ├── azurerm-resource-implementation/SKILL.md
+│   │   └── hashicorp-docs-writer/SKILL.md
 │   │
 │   ├── workflows/
 │   │   ├── validate.yml    # CI for installers & instructions

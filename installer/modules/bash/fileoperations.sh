@@ -502,9 +502,10 @@ remove_deprecated_files() {
     fi
 
     # Get current manifest files using bash 3.2 compatible method
-    local current_instruction_files current_prompt_files
+    local current_instruction_files current_prompt_files current_skill_files
     read_into_array current_instruction_files "get_manifest_files \"INSTRUCTION_FILES\" \"${manifest_file}\""
     read_into_array current_prompt_files "get_manifest_files \"PROMPT_FILES\" \"${manifest_file}\""
+    read_into_array current_skill_files "get_manifest_files \"SKILL_FILES\" \"${manifest_file}\" 2>/dev/null || true"
 
     # Check existing instruction files in workspace
     local instructions_dir="${workspace_root}/.github/instructions"
@@ -582,6 +583,47 @@ remove_deprecated_files() {
                 fi
             fi
         done < <(find "${prompts_dir}" -name "*.prompt.md" -print0 2>/dev/null)
+    fi
+
+    # Check existing skill files in workspace
+    local skills_dir="${workspace_root}/.github/skills"
+    if [[ -d "${skills_dir}" ]]; then
+        while IFS= read -r -d '' existing_file; do
+            if [[ -f "${existing_file}" && "${existing_file}" == */SKILL.md ]]; then
+                # Compare using repo-relative path since all skill files share the same filename
+                local rel_path="${existing_file#${workspace_root}/}"
+                rel_path="${rel_path#${workspace_root}\\}"  # tolerate backslash-root if any
+
+                local is_current=false
+                local k=0
+                while [[ $k -lt $current_skill_files_size ]]; do
+                    local current_file_var="current_skill_files[$k]"
+                    local current_file="${!current_file_var}"
+                    if [[ "${current_file}" == "${rel_path}" ]]; then
+                        is_current=true
+                        break
+                    fi
+                    k=$((k + 1))
+                done
+
+                if [[ "${is_current}" == "false" ]]; then
+                    local skill_name
+                    skill_name=$(basename "$(dirname "${rel_path}")")
+                    deprecated_files+=("${existing_file}:Skill:${skill_name}/SKILL.md")
+
+                    if [[ "${dry_run}" == "false" ]]; then
+                        if rm -f "${existing_file}" 2>/dev/null; then
+                            [[ "${quiet}" == "false" ]] && echo "  Removed deprecated skill file: ${skill_name}/SKILL.md"
+                        else
+                            [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
+                        fi
+                    else
+                        [[ "${quiet}" == "false" ]] && echo "  [DRY-RUN] Would remove skill file: ${skill_name}/SKILL.md"
+                    fi
+                    ((deprecated_count++))
+                fi
+            fi
+        done < <(find "${skills_dir}" -name "SKILL.md" -print0 2>/dev/null)
     fi
 
     # Return count of deprecated files found/removed
@@ -713,11 +755,12 @@ build_file_list() {
     local -n file_destinations_ref="$4"
 
     # Read all file sections from manifest and build unified list (bash 3.2 compatible)
-    local main_files instruction_files prompt_files universal_files
+    local main_files instruction_files prompt_files skill_files universal_files
 
     read_into_array main_files "get_manifest_files \"MAIN_FILES\" \"${manifest_file}\""
     read_into_array instruction_files "get_manifest_files \"INSTRUCTION_FILES\" \"${manifest_file}\""
     read_into_array prompt_files "get_manifest_files \"PROMPT_FILES\" \"${manifest_file}\""
+    read_into_array skill_files "get_manifest_files \"SKILL_FILES\" \"${manifest_file}\" 2>/dev/null || true"
     read_into_array universal_files "get_manifest_files \"UNIVERSAL_FILES\" \"${manifest_file}\""
 
     # Add main files (root level)
@@ -743,6 +786,15 @@ build_file_list() {
         file_destinations_ref+=("${workspace_root}/.github/prompts/${filename}")
     done
 
+    # Add skill files (.github/skills/)
+    # Skills are stored as full repo-relative paths (e.g. .github/skills/<skill>/SKILL.md)
+    # so we mirror that structure in the target workspace.
+    for file in "${skill_files[@]}"; do
+        [[ -z "${file}" ]] && continue
+        all_files_ref+=("${file}")
+        file_destinations_ref+=("${workspace_root}/${file}")
+    done
+
     # Add universal files (various locations)
     for file in "${universal_files[@]}"; do
         [[ -z "${file}" ]] && continue
@@ -763,6 +815,7 @@ install_all_files() {
     # Create necessary directories upfront
     mkdir -p "${workspace_root}/.github/instructions"
     mkdir -p "${workspace_root}/.github/prompts"
+    mkdir -p "${workspace_root}/.github/skills"
 
     # Temporarily disable exit on error for the download loop
     set +e
@@ -965,10 +1018,11 @@ get_files_for_cleanup() {
     local all_files=()
 
     # Get files from each section (bash 3.2 compatible)
-    local main_files instruction_files prompt_files universal_files
+    local main_files instruction_files prompt_files skill_files universal_files
     read_into_array main_files "get_manifest_files \"MAIN_FILES\" \"${manifest_file}\" 2>/dev/null || true"
     read_into_array instruction_files "get_manifest_files \"INSTRUCTION_FILES\" \"${manifest_file}\" 2>/dev/null || true"
     read_into_array prompt_files "get_manifest_files \"PROMPT_FILES\" \"${manifest_file}\" 2>/dev/null || true"
+    read_into_array skill_files "get_manifest_files \"SKILL_FILES\" \"${manifest_file}\" 2>/dev/null || true"
     read_into_array universal_files "get_manifest_files \"UNIVERSAL_FILES\" \"${manifest_file}\" 2>/dev/null || true"
 
     # Combine all files into one list (bash 3.2 compatible)
@@ -977,6 +1031,7 @@ get_files_for_cleanup() {
         get_manifest_files "MAIN_FILES" "${manifest_file}" 2>/dev/null || true
         get_manifest_files "INSTRUCTION_FILES" "${manifest_file}" 2>/dev/null || true
         get_manifest_files "PROMPT_FILES" "${manifest_file}" 2>/dev/null || true
+        get_manifest_files "SKILL_FILES" "${manifest_file}" 2>/dev/null || true
         get_manifest_files "UNIVERSAL_FILES" "${manifest_file}" 2>/dev/null || true
     } | while IFS= read -r file; do
         # Skip empty entries
@@ -1038,6 +1093,7 @@ clean_infrastructure() {
     local ai_directories=(
         ".github/instructions"
         ".github/prompts"
+        ".github/skills"
     )
 
     # Prepare file and directory lists

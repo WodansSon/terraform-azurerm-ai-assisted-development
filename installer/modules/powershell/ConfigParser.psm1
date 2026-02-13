@@ -142,6 +142,11 @@ function Get-InstallerConfig {
                 Description = "AI prompt templates for development workflows"
                 Files = $ManifestConfig.Sections.PROMPT_FILES
             }
+            SkillFiles = @{
+                Target = (Join-Path $WorkspaceRoot ".github/skills")
+                Description = "Agent Skills for specialized Copilot workflows"
+                Files = $ManifestConfig.Sections.SKILL_FILES
+            }
             UniversalFiles = @{
                 Target = (Join-Path $WorkspaceRoot ".vscode")
                 Description = "Platform-independent configuration files"

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Agent Skill files under `.github/skills/` (for example `/hashicorp-docs-writer`) are now distributed by the installer.
+
+### Changed
+- Installer now installs, verifies, and cleans `.github/skills` alongside instructions and prompts, including automated deprecation removal based on the manifest.
+
 ## [1.0.1] - 2026-02-12
 
 ### Added
