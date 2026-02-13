@@ -1119,7 +1119,7 @@ function Remove-DeprecatedFile {
 
     # Check for deprecated skill files
     $skillsDir = Join-Path $WorkspaceRoot ".github\skills"
-    if (Test-Path $skillsDir -PathType Container -and $skillManifest.Count -gt 0) {
+    if ((Test-Path $skillsDir -PathType Container) -and ($skillManifest.Count -gt 0)) {
         $existingSkills = Get-ChildItem $skillsDir -Recurse -File | Where-Object { $_.Name -eq "SKILL.md" }
 
         foreach ($existingSkill in $existingSkills) {
