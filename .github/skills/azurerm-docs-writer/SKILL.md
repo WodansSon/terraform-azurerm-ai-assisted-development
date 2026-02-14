@@ -16,6 +16,35 @@ Use this skill when working on Terraform AzureRM provider documentation pages un
 
 Your goal is to produce docs that match provider conventions and stay consistent with the actual Terraform schema.
 
+## Verification (assistant response only)
+
+When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
+
+Skill used: azurerm-docs-writer
+
+Rules:
+- Do NOT write this marker into any repository file (docs, code, generated files).
+- If multiple skills are invoked, each skill should append its own `Skill used: ...` line.
+- Do NOT emit the marker in intermediate/progress updates; only in the final response.
+
+## Template tokens (placeholders)
+
+When you need a placeholder in examples or guidance, always use the explicit token format `{{TOKEN_NAME}}`.
+
+Rules:
+- Use ALL-CAPS token names with underscores (for example `{{RESOURCE_NAME}}`, `{{FIELD_NAME}}`).
+- Do not use ambiguous placeholders like `<name>` or `...`.
+- Do not leave tokens in final repository output; tokens are for skill guidance/examples only.
+- If any `{{...}}` token would appear in final output, replace it before responding.
+
+## Validation reporting (no false claims)
+
+Do not include a `Validation:` section in your response unless the user explicitly asked you to run validations.
+
+Never claim a command "passes" (for example `document-lint`, `documentfmt`, `go test`, etc.) unless you actually executed it in the current environment and observed a successful exit.
+
+If the user wants validation, prefer phrasing like "To validate, run: …" rather than asserting results.
+
 ## Decide the approach first
 
 - Creating a brand-new doc page: scaffold first (preferred) using the provider tool, then edit.
@@ -69,6 +98,69 @@ Your goal is to produce docs that match provider conventions and stay consistent
 5. Write clean docs content
    - Keep sentences short, factual, and present tense.
    - Avoid copying vendor documentation verbatim; paraphrase.
+
+## Mandatory HashiCorp docs style enforcement
+
+When you touch or update any existing documentation page, you must proactively enforce HashiCorp contributor doc style rules even if the user did not explicitly request “style fixes”.
+
+This is not optional: if you see a rule violation while editing a page, you must fix it as part of the same change.
+
+At minimum, always enforce:
+
+- **Oxford comma for 3+ values**
+   - If a sentence lists three or more values in prose, it must include the Oxford comma.
+   - This applies to any prose list of 3+ backticked values (enums, modes, SKU names, replication types, etc.), not only “Possible values include …” sentences.
+   - Example:
+      - Incorrect: Possible values include `Default`, `InitiatorOnly` and `ResponderOnly`.
+      - Correct: Possible values include `Default`, `InitiatorOnly`, and `ResponderOnly`.
+   - This applies to phrases like: “Possible values are …”, “Possible values include …”, “Currently supported values are …”, etc.
+
+- **Avoid “and vice versa” in ForceNew conditions**
+   - If you are documenting a ForceNew condition that applies in both directions between two sets of values, do not rely on “and vice versa”.
+   - If the text contains the phrase “and vice versa”, you must rewrite the sentence to remove it.
+   - Prefer an explicit, bidirectional phrasing that preserves meaning, e.g.:
+   - Prefer: “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+      - Avoid: “... when types `A`, `B` and `C` are changed to `D`, `E` or `F` and vice versa.”
+
+- **ForceNew conditions for “subset switching” enums**
+   - When a ForceNew is triggered specifically by switching between two subsets of values within the same enum, document it as a “between subsets” rule.
+   - Preferred pattern:
+      - “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+   - Avoid patterns that read like a one-way transformation or require “vice versa”.
+
+- **Enum wording (provider standard)**
+   - When documenting enumerated values, use provider-standard phrasing:
+      - Prefer: `Possible values include ...`
+         - Avoid: `Valid options are ...` / `Valid values are ...`
+    - Mandatory rewrites when editing docs:
+         - Replace `Valid options are` with `Possible values include`
+         - Replace `Valid values are` with `Possible values include`
+   - Ensure values are wrapped in backticks and use the Oxford comma when listing 3+ values.
+
+- **Apply style rules to the entire bullet**
+   - When you update an Arguments Reference bullet, apply these style rules to every sentence in that bullet (not only the first sentence).
+   - In particular, enforce Oxford commas inside any ForceNew condition sentence (for example lists in “… `A`, `B` and `C` …” and “… `D`, `E` or `F` …”).
+
+- **ForceNew rewrite (subset switching) — canonical form**
+   - If you see the pattern “... when types `A`, `B` and `C` are changed to `D`, `E` or `F` and vice versa”, rewrite it into the canonical “two groups” form:
+      - “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+   - This rewrite is preferred because it is bidirectional, removes “vice versa”, and makes the boundary-switch behavior unambiguous.
+
+- **Consistent value quoting**
+   - Enum/possible values must be wrapped in backticks.
+
+- **Timeout duration readability**
+   - In the `## Timeouts` section, if a default timeout is **60 minutes or greater**, express it in **hours** (use correct singular/plural), rather than minutes.
+   - Example:
+      - Prefer: `(Defaults to 1 hour)` over `(Defaults to 60 minutes)`
+      - Prefer: `(Defaults to 2 hours)` over `(Defaults to 120 minutes)`
+
+- **Attributes Reference ordering**
+   - In `## Attributes Reference`, always list `id` as the first exported attribute.
+   - List remaining exported attributes in alphabetical order.
+   - Do not bury `id` in the middle of the list.
+
+If you are only asked to make a narrow change, still apply these style rules to any lines you touch and to any immediately-adjacent “Possible values …” lines in the same section.
 
 6. Remove scaffold placeholders
    - Search for `TODO` in the generated page and replace with verified, provider-style descriptions.
@@ -217,10 +309,10 @@ When you need to document an argument/attribute and the wording is not already p
 
 When asked to write or update docs, produce:
 
-- The full updated page content (not partial snippets) OR a precise diff.
-- A short checklist of what you verified against the schema.
+- Preferred: apply the change directly to the target file (or produce a precise diff/patch).
+- If the user explicitly requests the full page content, output it only when it is reasonably sized for chat output.
+- For very large pages (for example, long resources like AKS), do not drop content or omit required markers due to output length. Instead:
+   - Update the file via a diff/patch.
+   - Then output a short tail excerpt (e.g. the last ~20 lines) that includes the relevant updated section.
 
-<!-- This footer is a temporary debug/validation marker for the POC and should be removed once the feature is released. -->
-At the end of the document, append this single footer line:
-
-!> **Generated by the AzureRM Vibe Coding Documentatin-Writer Skill.**
+Always include a short checklist of what you verified against the schema.

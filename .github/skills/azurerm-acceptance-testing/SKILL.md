@@ -5,6 +5,27 @@ description: Write and troubleshoot terraform-provider-azurerm acceptance tests 
 
 # AzureRM Acceptance Testing (TestAcc)
 
+## Verification (assistant response only)
+
+When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
+
+Skill used: azurerm-acceptance-testing
+
+Rules:
+- Do NOT write this marker into any repository file (docs, code, generated files).
+- If multiple skills are invoked, each skill should append its own `Skill used: ...` line.
+- Do NOT emit the marker in intermediate/progress updates; only in the final response.
+
+## Template tokens (placeholders)
+
+When you need a placeholder in examples or guidance, always use the explicit token format `{{TOKEN_NAME}}`.
+
+Rules:
+- Use ALL-CAPS token names with underscores (for example `{{RESOURCE_NAME}}`, `{{TEST_NAME}}`).
+- Do not use ambiguous placeholders like `<name>` or `...`.
+- Do not leave tokens in final repository output; tokens are for skill guidance/examples only.
+- If any `{{...}}` token would appear in final output, replace it before responding.
+
 ## Safety first
 
 Intended for use with the HashiCorp `terraform-provider-azurerm` repository (acceptance test framework under `internal/`).
