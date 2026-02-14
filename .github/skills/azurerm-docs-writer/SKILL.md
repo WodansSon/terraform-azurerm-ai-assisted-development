@@ -196,7 +196,8 @@ At minimum, always enforce:
 
 - **Attributes Reference ordering**
    - In `## Attributes Reference`, always list `id` as the first exported attribute.
-   - List remaining exported attributes in alphabetical order.
+   - Repo-specific ordering: when `tags` is present in `## Attributes Reference`, list `tags` last.
+   - List the remaining exported attributes in alphabetical order.
    - Do not bury `id` in the middle of the list.
 
 If you are only asked to make a narrow change, still apply these style rules to any lines you touch and to any immediately-adjacent “Possible values …” lines in the same section.
@@ -211,7 +212,8 @@ If you are only asked to make a narrow change, still apply these style rules to 
    - If available, run a schema parity audit (automated or manual check).
 
 8. Final checklist (before finishing)
-   - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
+   - Verify `## Arguments Reference` lists `tags` last (when present).
+   - Verify `## Attributes Reference` lists `id` first, `tags` last (when present), and the remaining exported attributes are in alphabetical order.
 
 ## Required structure (high level)
 
@@ -284,7 +286,7 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - Arguments ordered per provider reference-doc standards (IDs first, then `location`, then required alpha, then optional alpha, `tags` last)
 
 - **Attributes Reference ordering**
-   - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
+   - `id` is the first exported attribute, `tags` is last (when present), and all remaining exported attributes are in alphabetical order
 
 - **ForceNew wording (resources only)**
    - Every ForceNew arg includes: "Changing this forces a new {{RESOURCE_NAME}} to be created."
