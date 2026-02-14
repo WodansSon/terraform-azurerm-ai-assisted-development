@@ -285,6 +285,30 @@ If the active editor is not a file under `website/docs/**`, the prompt will tell
 
 ---
 
+## Agent Skills
+
+**Scenario**: You want Copilot to follow a specialized workflow (docs writing, acceptance testing, resource implementation) via a skill.
+
+> [!NOTE]
+> Skills are most reliably applied when you invoke them explicitly using the `/...` command. Depending on your Copilot experience and settings, Copilot may also suggest using a skill (or apply skill guidance implicitly) when it determines a skill is relevant.
+
+**Docs writing**:
+```
+You: /azurerm-docs-writer
+```
+
+**Resource implementation**:
+```
+You: /azurerm-resource-implementation
+```
+
+**Acceptance testing**:
+```
+You: /azurerm-acceptance-testing
+```
+
+---
+
 ## Code Review
 
 ### Reviewing Local Changes

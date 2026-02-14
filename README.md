@@ -107,7 +107,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ### What the Installer Does
 
 - 🔧 **Installs AI instruction files** to your target repository's `.github/` directory
-- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invokable via slash commands like `/hashicorp-docs-writer`)
+- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invokable via slash commands like `/azurerm-docs-writer`)
 - 🔧 **Configures workspace settings** in `.vscode/settings.json` for AI assistance
 - 🔧 **Works per-repository** - each repo gets its own AI infrastructure
 - 🔧 **Non-invasive** - doesn't modify your personal VS Code settings
@@ -288,6 +288,13 @@ As you type, Copilot suggests:
 
 - **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/code-review-committed-changes** - Review commits and PRs for standards
+- **/docs-schema-audit** - Audit a `website/docs/**` page for docs standards + schema parity
+
+### 🧠 Agent Skills
+
+- **/azurerm-docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware)
+- **/azurerm-resource-implementation** - Implement/update AzureRM provider resources using provider patterns
+- **/azurerm-acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
 
 ### ⚙️ Configuration Templates
 
