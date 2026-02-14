@@ -51,6 +51,20 @@ Your goal is to produce docs that match provider conventions and stay consistent
      - `ForceNew` behavior ("Changing this forces a new …")
      - computed attributes
      - defaults, allowed values, and constraints
+       - conditional requirements and cross-field constraints (from schema and diff/validation logic)
+
+    When documenting conditional behavior, prefer the provider implementation as the source of truth and keep notes high-signal:
+    - Primary sources for conditional requirements that should be documented as notes:
+       - Schema constraints (for example: conflicts, exactly-one-of, at-least-one-of, required-with)
+       - Diff-time validation (`CustomizeDiff`), including conditions like "required when X is set" or "must be one of these values when Y".
+    - Secondary sources:
+       - Inline checks in Create/Update, and constraints implied by expand/flatten.
+       - Only document these when they are user-facing constraints that affect successful apply and are not already obvious from schema/diff-time validation.
+
+    How to present constraints (avoid note spam):
+    - Prefer embedding simple, field-local constraints in the field description (for example: "Possible values are …").
+    - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
+    - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
 
 5. Write clean docs content
    - Keep sentences short, factual, and present tense.
@@ -58,6 +72,8 @@ Your goal is to produce docs that match provider conventions and stay consistent
 
 6. Remove scaffold placeholders
    - Search for `TODO` in the generated page and replace with verified, provider-style descriptions.
+   - Do not leave `TODO` placeholders in the final doc output.
+   - If you cannot resolve a `TODO` from verifiable sources, replace it with the minimal verified description and explicitly list the remaining uncertainty in your output checklist.
 
 7. Validate
    - Ensure Markdown formatting passes linting.
@@ -83,6 +99,18 @@ A typical data source doc page should include:
 - `## Example Usage`
 - `## Arguments Reference`
 - `## Attributes Reference`
+
+### Frontmatter rule: data source `page_title`
+
+For data source docs under `website/docs/d/**`, the doc type is already implied by the path.
+
+- Do not include `Data Source:` in the YAML `page_title`.
+- Use: `page_title: "Azure Resource Manager: azurerm_<name>"`
+
+Example:
+
+- Incorrect: `page_title: "Azure Resource Manager: Data Source: azurerm_cdn_frontdoor_custom_domain"`
+- Correct: `page_title: "Azure Resource Manager: azurerm_cdn_frontdoor_custom_domain"`
 
 ## Notes and warnings (HashiCorp doc style)
 
@@ -139,7 +167,13 @@ When you need to document an argument/attribute and the wording is not already p
 
 1. Prefer the provider schema
    - Look for `Description:` values in schema definitions.
-   - For typed resources, also check how fields are expanded/flattened.
+   - Also check how fields are expanded/flattened in the implementation (typed or untyped) to document actual behavior.
+
+   When you need to map a Terraform field to the Azure API (property names, enum strings, nested shapes):
+   - Follow the provider implementation first (expand/flatten functions and the request payload construction) and document what the code actually sends.
+   - Then confirm details from the Azure SDK model types/constants used by that code by jumping to the referenced type/constant definition.
+     - If the repo has a `vendor/` directory, SDK models/constants are typically under `vendor/<module path>/...` (exact subfolders vary by SDK).
+     - Otherwise, use the imported package path/type name from the code and jump to definition to locate the model/constant.
 
 2. Use existing provider docs as the source of truth for tone and phrasing
    - Search `website/docs/` for the same field name (for example, `resource_group_name`, `location`, `tags`, `identity`, etc.).
@@ -148,6 +182,12 @@ When you need to document an argument/attribute and the wording is not already p
    - Confirm what the field *means* and any constraints.
    - Write your own short phrasing that matches provider style.
 
+   When validating semantics/constraints, prefer official sources in this order:
+   - Microsoft Learn (concepts, constraints, examples)
+   - Azure REST API reference (property meaning, allowed values, and defaults)
+   - Swagger/OpenAPI specs (when available) for enum values and shapes
+   - Azure SDK models/constants (to confirm actual enum strings and behavior)
+
 4. If still ambiguous, document only what you can verify
    - Avoid listing possible values unless you can confirm them from code/constants.
    - Prefer: “Possible values include …” only when confirmed.
@@ -155,10 +195,22 @@ When you need to document an argument/attribute and the wording is not already p
 ## Common doc rules (quick checklist)
 
 - Use Terraform names exactly (`azurerm_*`).
+- When listing 3+ possible values, use the Oxford comma.
+   - Incorrect: Possible values are `Default`, `InitiatorOnly` and `ResponderOnly`.
+   - Correct: Possible values are `Default`, `InitiatorOnly`, and `ResponderOnly`.
 - Ensure `Arguments Reference` reflects Required/Optional/Computed accurately.
 - Mention `ForceNew` in the argument description.
-- Keep field order sensible (Required first, then Optional; keep `tags` last).
-- Keep examples realistic and minimal.
+- Document conditional requirements and cross-field constraints (especially ones enforced in `CustomizeDiff`/validation) using `->`/`~>`/`!>` notes as appropriate.
+- Keep field order sensible:
+   - List **Required** arguments first, then **Optional** arguments.
+   - Within **each** group (Required, then Optional), order fields as:
+      1) `name` (if present)
+      2) `resource_group_name` (if present)
+      3) `location` (if present)
+      4) all remaining fields in that group in alphabetical order
+      5) `tags` last (if present)
+   - Example (Required): `name`, `resource_group_name`, `location`, `sku_name`
+- Keep examples realistic and minimal; include only required fields unless an optional field is needed to demonstrate a behavior.
 - Include correct import format and a real-looking example ID.
 
 ## Output expectation
