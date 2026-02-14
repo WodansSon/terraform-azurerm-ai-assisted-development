@@ -137,6 +137,23 @@ At minimum, always enforce:
          - Replace `Valid values are` with `Possible values include`
    - Ensure values are wrapped in backticks and use the Oxford comma when listing 3+ values.
 
+- **Boolean `*_enabled` fields (canonical wording)**
+   - For boolean fields ending in `_enabled`, avoid “Boolean, enable …”, “Boolean, enables …”, or “Set to true to …”.
+   - Canonical phrasing depends on section:
+      - **Arguments Reference** (bullets containing `(Required)`/`(Optional)`):
+         - “Should `<thing>` be enabled?”
+      - **Attributes Reference** (exported/computed attributes):
+         - “Is `<thing>` enabled.”
+   - Derive `<thing>` from the field name:
+      - Start with the field name (for example `sftp_enabled`).
+      - Remove the trailing `_enabled`.
+      - Replace remaining underscores with spaces.
+      - Wrap the resulting `<thing>` in backticks.
+   - Example:
+      - Input: `sftp_enabled`
+      - Arguments: “Should `sftp` be enabled? Defaults to `false`.” (if a default is known)
+      - Attributes: “Is `sftp` enabled.”
+
 - **Apply style rules to the entire bullet**
    - When you update an Arguments Reference bullet, apply these style rules to every sentence in that bullet (not only the first sentence).
    - In particular, enforce Oxford commas inside any ForceNew condition sentence (for example lists in “… `A`, `B` and `C` …” and “… `D`, `E` or `F` …”).
