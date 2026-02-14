@@ -154,6 +154,28 @@ At minimum, always enforce:
       - Arguments: “Should `sftp` be enabled? Defaults to `false`.” (if a default is known)
       - Attributes: “Is `sftp` enabled.”
 
+- **Block placement (mandatory)**
+   - Do not place all block subsections in one location.
+   - **Block arguments** must appear under `## Arguments Reference`:
+         - Top-level bullet example (use `A`/`An` as appropriate):
+            - `* `identity` - (Optional) An `identity` block as defined below.`
+         - Subsection heading example (use `A`/`An` as appropriate):
+            - An `identity` block supports the following:
+      - Placement: after the top-level arguments list (typically after a `---`) and before `## Attributes Reference`.
+   - **Block attributes** must appear under `## Attributes Reference`:
+         - Top-level bullet example (use `A`/`An` as appropriate):
+            - `* `identity` - An `identity` block as defined below.`
+         - Subsection heading example (use `A`/`An` as appropriate):
+            - An `identity` block exports the following:
+      - Placement: after the top-level attributes list (typically after a `---`) and before `## Timeouts`.
+   - **Indefinite article rule (A vs An)**
+      - Use `An` when the block name starts with a vowel character (`a`, `e`, `i`, `o`, `u`) after stripping backticks.
+      - Otherwise use `A`.
+         - Example: An `identity` block supports the following:
+   - Use the subsection verb to classify the block:
+      - If it says `supports the following`, it is an argument block.
+      - If it says `exports the following`, it is an attribute block.
+
 - **Apply style rules to the entire bullet**
    - When you update an Arguments Reference bullet, apply these style rules to every sentence in that bullet (not only the first sentence).
    - In particular, enforce Oxford commas inside any ForceNew condition sentence (for example lists in “… `A`, `B` and `C` …” and “… `D`, `E` or `F` …”).
@@ -187,6 +209,9 @@ If you are only asked to make a narrow change, still apply these style rules to 
 7. Validate
    - Ensure Markdown formatting passes linting.
    - If available, run a schema parity audit (automated or manual check).
+
+8. Final checklist (before finishing)
+   - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
 
 ## Required structure (high level)
 
@@ -258,8 +283,17 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 - **Ordering**
    - Arguments ordered per provider reference-doc standards (IDs first, then `location`, then required alpha, then optional alpha, `tags` last)
 
+- **Attributes Reference ordering**
+   - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
+
 - **ForceNew wording (resources only)**
-   - Every ForceNew arg includes: "Changing this forces a new … to be created."
+   - Every ForceNew arg includes: "Changing this forces a new {{RESOURCE_NAME}} to be created."
+   - Do not use the generic noun `resource` (avoid: "Changing this forces a new resource to be created.").
+   - Set `{{RESOURCE_NAME}}` to the specific Azure resource name used by the page (preferred):
+      - Use the noun from the page description/title, e.g. "Storage Account", "Key Vault", "Virtual Network".
+      - Keep it consistent across the page (same capitalization and wording).
+   - If you cannot reliably determine the Azure resource name from the page content, use a deterministic fallback:
+      - "Changing this forces a new `azurerm_<name>` to be created." (Terraform resource name in backticks)
 
 - **Notes**
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
