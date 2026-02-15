@@ -265,7 +265,7 @@ At minimum, always enforce:
 
 If you are only asked to make a narrow change, still apply these style rules to any lines you touch and to any immediately-adjacent “Possible values …” lines in the same section.
 
-6. Remove scaffold placeholders
+1. Remove scaffold placeholders
    - Search for `TODO` in the generated page and replace with verified, provider-style descriptions.
    - Do not leave `TODO` placeholders in the final doc output.
    - Follow the **TODO resolution ladder** below before giving up. If you still cannot resolve a `TODO` from verifiable sources, replace it with the minimal verified description and explicitly list the remaining uncertainty in your output checklist.
@@ -288,11 +288,11 @@ If you are only asked to make a narrow change, still apply these style rules to 
       - Document only what you can verify from code/schema
       - Add a short uncertainty note to your output checklist describing what could not be confirmed
 
-7. Validate
+2. Validate
    - Ensure Markdown formatting passes linting.
    - If available, run a schema parity audit (automated or manual check).
 
-8. Final checklist (before finishing)
+3. Final checklist (before finishing)
    - Verify `## Arguments Reference` lists `tags` last (when present).
    - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
 
