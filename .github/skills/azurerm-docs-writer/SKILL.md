@@ -5,6 +5,20 @@ description: Write or update terraform-provider-azurerm documentation pages (web
 
 # HashiCorp Docs Writer (AzureRM Provider)
 
+## Mandatory: read the entire skill
+
+Before applying this skill, scan this file end-to-end. Do not stop after the first N lines.
+
+If time-constrained, at minimum full-text search within this file for these headings/keywords and apply any relevant rules:
+- `Examples`
+- `ForceNew`
+- `Enum wording`
+- `Boolean *_enabled`
+- `Block placement`
+- `Attributes Reference ordering`
+- `Quick audit checklist`
+- `### Quick audit checklist (high-signal)`
+
 ## Scope
 
 Intended for use with the HashiCorp `terraform-provider-azurerm` repository (`website/docs` and `internal/`). Works best with repo search + access to the schema implementation.
@@ -15,6 +29,43 @@ Use this skill when working on Terraform AzureRM provider documentation pages un
 - `website/docs/d/*.html.markdown` (data sources)
 
 Your goal is to produce docs that match provider conventions and stay consistent with the actual Terraform schema.
+
+## Where to look (glossary)
+
+- Example name/value conventions: `Examples`
+- ForceNew phrasing rules: `ForceNew` sections
+- Enum phrasing + Oxford comma: `Enum wording` + `Oxford comma`
+- Enabled boolean phrasing: `Boolean *_enabled` fields
+- Block placement rules: `Block placement`
+- Attributes ordering: `Attributes Reference ordering`
+- Audit expectations: `Schema + docs audit` + `Quick audit checklist`
+- Timeouts link + duration wording: `Timeouts link hygiene` + `Timeout duration readability`
+- Output marker rules: `Verification (assistant response only)`
+
+## Decision tree (fast path)
+
+- Active file is not under `website/docs/**`: do not run docs work under this skill.
+- `website/docs/r/**` (Resource): must have Example Usage, Arguments Reference, Attributes Reference, Import; include Timeouts only if schema defines timeouts.
+- `website/docs/d/**` (Data Source): must have Example Usage, Arguments Reference, Attributes Reference; do not include Import; include Timeouts only if schema defines timeouts.
+- If the user requests a test/dry run: use **Testing mode** (scaffold with `-website-path website_scaffold_tmp`).
+- Editing Example Usage: apply the full `Examples` rules.
+- Editing enums/"valid values" wording: enforce `Possible values include ...` + Oxford comma.
+- Editing `*_enabled`: enforce canonical `*_enabled` phrasing rules.
+
+## Testing mode (scaffold into scratch)
+
+When the user indicates they are testing / doing a dry run, treat the session as **testing mode**.
+
+Trigger phrases (any of these): `test`, `testing`, `dry run`, `scaffold-only`, `generate into scratch`.
+
+In testing mode:
+- Scaffold docs into a scratch website root using `-website-path website_scaffold_tmp`.
+- Expected output paths:
+   - Resource: `website_scaffold_tmp/docs/r/<name>.html.markdown`
+   - Data source: `website_scaffold_tmp/docs/d/<name>.html.markdown`
+- Do not rename or move existing docs as a test harness; scaffold into scratch then diff.
+   - Diff tip: `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
+   - Diff tip (data source): `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
 
 ## Verification (assistant response only)
 
@@ -65,10 +116,12 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
    - You must still review and improve the generated wording (the scaffold intentionally emits some `TODO` placeholders).
 
    Example (resource):
-   - `go run ./internal/tools/website-scaffold -type resource -name azurerm_service_resource -brand-name "Service Resource" -resource-id "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group1/providers/Microsoft.Service/resources/resource1" -website-path website`
+   - Normal: `go run ./internal/tools/website-scaffold -type resource -name azurerm_service_resource -brand-name "Service Resource" -resource-id "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group1/providers/Microsoft.Service/resources/resource1" -website-path website`
+   - Testing mode: `go run ./internal/tools/website-scaffold -type resource -name azurerm_service_resource -brand-name "Service Resource" -resource-id "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group1/providers/Microsoft.Service/resources/resource1" -website-path website_scaffold_tmp`
 
    Example (data source):
-   - `go run ./internal/tools/website-scaffold -type data -name azurerm_service_resource -brand-name "Service Resource" -website-path website`
+   - Normal: `go run ./internal/tools/website-scaffold -type data -name azurerm_service_resource -brand-name "Service Resource" -website-path website`
+   - Testing mode: `go run ./internal/tools/website-scaffold -type data -name azurerm_service_resource -brand-name "Service Resource" -website-path website_scaffold_tmp`
 
 3. Start from an existing page or template
    - Prefer copying the structure of the closest existing resource/data source doc in `website/docs/`.
@@ -347,9 +400,19 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
 
 - **Examples**
-   - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
-   - Data sources: avoid the bare placeholder value `existing`.
-     - Prefer descriptive placeholders, e.g. `existing-resource-group`, `existing-backup-vault`.
+    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
+    - Resources: for user-supplied name-like arguments (for example `name`, `profile_name`, `vault_name`), use descriptive values prefixed with `example-` where feasible.
+       - Avoid generic placeholders like `"example"`.
+       - This applies to argument values like `name = "..."`, not Terraform block labels like `resource "..." "example"`.
+       - Prefer a deterministic, descriptive suffix derived from the Terraform **resource type of the block you are editing**:
+          - Take the Terraform resource type (for example `azurerm_spring_cloud_service`).
+          - Remove the `azurerm_` prefix.
+          - Replace underscores with hyphens.
+          - Use: `example-<result>`.
+          - Example: `azurerm_spring_cloud_service` -> `example-spring-cloud-service`.
+       - Only shorten this if required by a documented service naming constraint (length/charset), and keep it as descriptive as possible.
+    - Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
+       - Avoid the bare placeholder value `"existing"`.
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
@@ -389,8 +452,8 @@ When you need to document an argument/attribute and the wording is not already p
 
 - Use Terraform names exactly (`azurerm_*`).
 - When listing 3+ possible values, use the Oxford comma.
-   - Incorrect: Possible values are `Default`, `InitiatorOnly` and `ResponderOnly`.
-   - Correct: Possible values are `Default`, `InitiatorOnly`, and `ResponderOnly`.
+   - Incorrect: Possible values include `Default`, `InitiatorOnly` and `ResponderOnly`.
+   - Correct: Possible values include `Default`, `InitiatorOnly`, and `ResponderOnly`.
 - Ensure `Arguments Reference` reflects Required/Optional/Computed accurately.
 - Mention `ForceNew` in the argument description.
 - Document conditional requirements and cross-field constraints (especially ones enforced in `CustomizeDiff`/validation) using `->`/`~>`/`!>` notes as appropriate.

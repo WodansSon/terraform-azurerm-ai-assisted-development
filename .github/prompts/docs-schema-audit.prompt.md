@@ -123,8 +123,12 @@ Validate:
 - Example must not include a `terraform` or `provider` block
 - Example should be functional and self-contained (no undefined references)
 - Resource/data source instance name should generally be `example`
-- Names in the example should generally be prefixed with `example-` (subject to service naming constraints)
-- Data sources: avoid using the bare placeholder value `existing` for required identifiers; prefer descriptive placeholders like `existing-resource-group`, `existing-<thing>`.
+- Resources: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` (subject to service naming constraints).
+  - This does not apply to Terraform block labels like `resource "..." "example"`.
+  - Prefer deriving the suffix from the specific resource type of the block (e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`).
+  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
+- Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
+  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
 - No hard-coded secrets (passwords/tokens/keys). Use `variable` with `sensitive = true` or a generator pattern.
 - Example references must be internally consistent
 
@@ -168,7 +172,7 @@ Output must be **rendered Markdown**.
 - **ForceNew Wording**: pass/fail (resources only, missing “Changing this forces…” sentence)
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets)
+- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
 
 ## 🟢 **STRENGTHS**
 - ...

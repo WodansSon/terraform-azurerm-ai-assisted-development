@@ -297,6 +297,17 @@ If the active editor is not a file under `website/docs/**`, the prompt will tell
 You: /azurerm-docs-writer
 ```
 
+> [!TIP]
+> **Dry run / testing:** tell Copilot you are "testing" or doing a "dry run" and it will scaffold docs into a scratch website root using `-website-path website_scaffold_tmp`.
+>
+> Expected outputs:
+> - Resources: `website_scaffold_tmp/docs/r/<name>.html.markdown`
+> - Data sources: `website_scaffold_tmp/docs/d/<name>.html.markdown`
+>
+> Diff tip:
+> - `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
+> - `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
+
 **Resource implementation**:
 ```
 You: /azurerm-resource-implementation

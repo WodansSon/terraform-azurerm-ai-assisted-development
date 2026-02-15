@@ -292,7 +292,7 @@ As you type, Copilot suggests:
 
 ### 🧠 Agent Skills
 
-- **/azurerm-docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware)
+- **/azurerm-docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware; supports dry-run scaffolding into `website_scaffold_tmp`)
 - **/azurerm-resource-implementation** - Implement/update AzureRM provider resources using provider patterns
 - **/azurerm-acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
 
