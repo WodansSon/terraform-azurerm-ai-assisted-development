@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-02-15
+
 ### Added
 - Agent Skill files under `.github/skills/` (for example `/azurerm-docs-writer`) are now distributed by the installer.
 
@@ -124,5 +126,7 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.2
+[1.0.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.0
