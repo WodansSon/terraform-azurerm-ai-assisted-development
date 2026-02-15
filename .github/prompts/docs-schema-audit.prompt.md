@@ -25,6 +25,7 @@ Audit the **currently-open** documentation page under `website/docs/**` for:
 When reviewing documentation standards, treat these as authoritative:
 - `contributing/topics/reference-documentation-standards.md`
 - `.github/instructions/documentation-guidelines.instructions.md`
+- `.github/skills/azurerm-docs-writer/SKILL.md` (this repo's enforcement rules)
 
 This audit is **optional** and **user-invoked** (no CI enforcement).
 
@@ -58,7 +59,9 @@ From the schema, extract:
 #### A) Formatting and structure
 Validate:
 - Frontmatter includes `subcategory`, `layout`, `page_title`, `description`
-- H1 matches `azurerm_<name>`
+- H1 matches the doc type:
+  - Resources: `# azurerm_<name>`
+  - Data Sources: `# Data Source: azurerm_<name>`
 
 **Resource vs Data Source hard rules (must enforce):**
 
@@ -96,6 +99,7 @@ Validate:
 - **Resources only:** for every ForceNew field in schema, the argument description must end with a sentence of the form: "Changing this forces a new … to be created."
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
+- Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
 - If schema defines a default value, docs must include "Defaults to `...`."
 
 #### C) Attributes Reference parity
@@ -120,6 +124,7 @@ Validate:
 - Example should be functional and self-contained (no undefined references)
 - Resource/data source instance name should generally be `example`
 - Names in the example should generally be prefixed with `example-` (subject to service naming constraints)
+- Data sources: avoid using the bare placeholder value `existing` for required identifiers; prefer descriptive placeholders like `existing-resource-group`, `existing-<thing>`.
 - No hard-coded secrets (passwords/tokens/keys). Use `variable` with `sensitive = true` or a generator pattern.
 - Example references must be internally consistent
 

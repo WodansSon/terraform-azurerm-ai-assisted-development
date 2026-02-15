@@ -135,6 +135,7 @@ At minimum, always enforce:
     - Mandatory rewrites when editing docs:
          - Replace `Valid options are` with `Possible values include`
          - Replace `Valid values are` with `Possible values include`
+         - Replace `Possible values are` with `Possible values include`
    - Ensure values are wrapped in backticks and use the Oxford comma when listing 3+ values.
 
 - **Boolean `*_enabled` fields (canonical wording)**
@@ -194,10 +195,19 @@ At minimum, always enforce:
       - Prefer: `(Defaults to 1 hour)` over `(Defaults to 60 minutes)`
       - Prefer: `(Defaults to 2 hours)` over `(Defaults to 120 minutes)`
 
+- **Timeouts link hygiene**
+   - When adding a new `## Timeouts` section, use: `https://developer.hashicorp.com/terraform/language/resources/configure#define-operation-timeouts`
+   - When editing an existing page that already uses the legacy Terraform.io timeouts link, keep it unchanged unless you are explicitly updating the timeouts content or standardizing links across the provider.
+
+- **Attributes Reference descriptions (no argument-only phrases)**
+   - In `## Attributes Reference`, do not include argument-only phrases such as:
+      - `Defaults to ...`
+      - `Possible values include ...`
+   - Attributes should be concise and describe what is returned.
+
 - **Attributes Reference ordering**
    - In `## Attributes Reference`, always list `id` as the first exported attribute.
-   - Repo-specific ordering: when `tags` is present in `## Attributes Reference`, list `tags` last.
-   - List the remaining exported attributes in alphabetical order.
+   - List remaining exported attributes in alphabetical order.
    - Do not bury `id` in the middle of the list.
 
 If you are only asked to make a narrow change, still apply these style rules to any lines you touch and to any immediately-adjacent “Possible values …” lines in the same section.
@@ -205,7 +215,25 @@ If you are only asked to make a narrow change, still apply these style rules to 
 6. Remove scaffold placeholders
    - Search for `TODO` in the generated page and replace with verified, provider-style descriptions.
    - Do not leave `TODO` placeholders in the final doc output.
-   - If you cannot resolve a `TODO` from verifiable sources, replace it with the minimal verified description and explicitly list the remaining uncertainty in your output checklist.
+   - Follow the **TODO resolution ladder** below before giving up. If you still cannot resolve a `TODO` from verifiable sources, replace it with the minimal verified description and explicitly list the remaining uncertainty in your output checklist.
+
+   **TODO resolution ladder (use before giving up):**
+   1. Provider schema + implementation (preferred)
+      - `Description:` strings in schema
+      - expand/flatten behavior in `internal/**`
+      - validation/CustomizeDiff rules that create user-facing constraints
+   2. Existing provider docs for tone/phrasing
+      - Search `website/docs/**` for the same argument/attribute name
+   3. Official Microsoft / Azure sources for semantics (not wording)
+      - Prefer Microsoft Learn and Azure REST API reference for meaning, constraints, and allowed values
+      - Use Swagger/OpenAPI specs when needed to confirm enum strings/shapes
+      - When available in the environment, use the Microsoft Learn MCP tools to look up details:
+         - `mcp_microsoft_doc_microsoft_docs_search` (find the right page)
+         - `mcp_microsoft_doc_microsoft_docs_fetch` (read the full page)
+      - As a fallback, use `fetch_webpage` for specific URLs when MCP fetch is not applicable
+   4. If still ambiguous
+      - Document only what you can verify from code/schema
+      - Add a short uncertainty note to your output checklist describing what could not be confirmed
 
 7. Validate
    - Ensure Markdown formatting passes linting.
@@ -213,7 +241,7 @@ If you are only asked to make a narrow change, still apply these style rules to 
 
 8. Final checklist (before finishing)
    - Verify `## Arguments Reference` lists `tags` last (when present).
-   - Verify `## Attributes Reference` lists `id` first, `tags` last (when present), and the remaining exported attributes are in alphabetical order.
+   - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
 
 ## Required structure (high level)
 
@@ -235,6 +263,24 @@ A typical data source doc page should include:
 - `## Example Usage`
 - `## Arguments Reference`
 - `## Attributes Reference`
+
+## Canonical section intro lines
+
+When writing or standardizing a page, use these conventional intro lines:
+
+- Under `## Arguments Reference`:
+   - `The following arguments are supported:`
+- Under `## Attributes Reference`:
+   - Resources: `In addition to the Arguments listed above - the following Attributes are exported:`
+   - Data sources: `In addition to the Arguments listed above - the following Attributes are exported:`
+
+Do not invent alternative section intro wording unless the page already uses a provider-standard variant.
+
+## Resource vs data source wording guardrails
+
+- Resource doc lead sentence should start with: `Manages ...`
+- Data source doc lead sentence should start with: `Gets information about ...`
+- Data source docs must not include resource-only wording (for example ForceNew language).
 
 ### Frontmatter rule: data source `page_title`
 
@@ -286,7 +332,7 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - Arguments ordered per provider reference-doc standards (IDs first, then `location`, then required alpha, then optional alpha, `tags` last)
 
 - **Attributes Reference ordering**
-   - `id` is the first exported attribute, `tags` is last (when present), and all remaining exported attributes are in alphabetical order
+   - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
 
 - **ForceNew wording (resources only)**
    - Every ForceNew arg includes: "Changing this forces a new {{RESOURCE_NAME}} to be created."
@@ -302,6 +348,8 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Examples**
    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
+   - Data sources: avoid the bare placeholder value `existing`.
+     - Prefer descriptive placeholders, e.g. `existing-resource-group`, `existing-backup-vault`.
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
