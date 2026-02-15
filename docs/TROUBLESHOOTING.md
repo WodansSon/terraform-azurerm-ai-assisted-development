@@ -214,7 +214,8 @@ This applies instructions only to Go files in the `internal/` directory.
 
 3. **Open relevant files**:
    - Open examples of similar resources
-   - Open instruction files from `instructions/` directory
+   - Open instruction files from `.github/instructions/` directory
+   - Open skill files from `.github/skills/` directory
    - Copilot uses open files for context
 
 ---
@@ -330,6 +331,20 @@ This applies instructions only to Go files in the `internal/` directory.
    ```
    "Refactor this to match the pattern used in azurerm_cdn_profile"
    ```
+
+---
+
+### Docs scaffolding outputs to `website_scaffold_tmp`
+
+**Symptom**: After using `/azurerm-docs-writer` (or the website scaffold tool), the generated docs land under `website_scaffold_tmp/docs/...` instead of `website/docs/...`.
+
+**Cause**: The docs-writer skill has a **testing/dry run mode** to avoid overwriting real docs. It can trigger when your prompt includes phrases like: `test`, `testing`, `dry run`, `scaffold-only`, or `generate into scratch`.
+
+**Fix**:
+- If you want normal behavior, explicitly say you are **not** doing a dry run and ask it to scaffold to the real website root (`-website-path website`).
+- If you intended a dry run, keep using the scratch output and diff it against the real docs:
+   - Resource: `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
+   - Data source: `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
 
 ---
 

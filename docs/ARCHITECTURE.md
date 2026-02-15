@@ -25,9 +25,13 @@
 │  │  │   │                                               │  │  │ │
 │  │  │   │  ├──.github/                                  │  │  │ │
 │  │  │   │  │  ├── copilot-instructions.md (Main)        │  │  │ │
-│  │  │   │  │  ├── copilot-prompts/                      │  │  │ │
-│  │  │   │  │  │   ├── code-review-local-changes.md      │  │  │ │
-│  │  │   │  │  │   └── code-review-committed-changes.md  │  │  │ │
+│  │  │   │  │  ├── prompts/                              │  │  │ │
+│  │  │   │  │  │   ├── code-review-local-changes...      │  │  │ │
+│  │  │   │  │  │   ├── code-review-committed-changes...  │  │  │ │
+│  │  │   │  │  │   └── docs-schema-audit.prompt.md       │  │  │ │
+│  │  │   │  │  ├── skills/                               │  │  │ │
+│  │  │   │  │  │   ├── azurerm-docs-writer/SKILL.md      │  │  │ │
+│  │  │   │  │  │   └── [other skill files]               │  │  │ │
 │  │  │   │  │  └── instructions/                         │  │  │ │
 │  │  │   │  │      ├── api-evolution-patterns.md         │  │  │ │
 │  │  │   │  │      ├── azure-patterns.md                 │  │  │ │
@@ -38,9 +42,10 @@
 │  │  └──────────────────────────────────────────────────────┘  │ │
 │  │                                                            │ │
 │  │  ┌──────────────────────────────────────────────────────┐  │ │
-│  │  │          VS COde GitHub Copilot AI Engine            │  │ │
+│  │  │          VS Code GitHub Copilot AI Engine            │  │ │
 │  │  │                                                      │  │ │
 │  │  │  - Reads instruction files automatically             │  │ │
+│  │  │  - Loads Agent Skills from .github/skills/           │  │ │
 │  │  │  - Applies context-aware patterns                    │  │ │
 │  │  │  - Generates code following HashiCorp standards      │  │ │
 │  │  │  - Provides intelligent code reviews                 │  │ │
@@ -93,9 +98,12 @@
 │  raw URLs to Target Repo :                                │
 │                                                           │
 │  ├── .github/copilot-instructions.md                      │
-│  ├── .github/copilot-prompts/                             │
-│  │   ├── code-review-local-changes.md                     │
-│  │   └── code-review-committed-changes.md                 │
+│  ├── .github/prompts/                                     │
+│  │   ├── code-review-local-changes.prompt.md              │
+│  │   ├── code-review-committed-changes.prompt.md          │
+│  │   └── docs-schema-audit.prompt.md                      │
+│  ├── .github/skills/                                      │
+│  │   └── */SKILL.md                                       │
 │  ├── .github/instructions/                                │
 │  │   ├── api-evolution-patterns.md                        │
 │  │   ├── azure-patterns.md                                │
@@ -154,38 +162,40 @@
 ### How Instructions Are Applied
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. Developer Opens File in VS Code                         │
-│     internal/services/cdn/cdn_frontdoor_profile_resource.go │
-└────────────────────────┬────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  1. Developer Opens File in VS Code                                  │
+│     internal/services/cdn/cdn_frontdoor_profile_resource.go          │
+└────────────────────────┬─────────────────────────────────────────────┘
                          │
                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. Copilot Loads Applicable Instructions                   │
-│                                                             │
-│     Matches file pattern: internal/**/*.go                  │
-│     Loads: copilot-instructions.md                          │
-│     Loads: instructions/azure-patterns.instructions.md      │
-│     Loads: instructions/implementation-guide.md             │
-│     Loads: instructions/error-patterns.md                   │
-└────────────────────────┬────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  2. Copilot Loads Applicable Instructions                            │
+│                                                                      │
+│     Matches file pattern: internal/**/*.go                           │
+│     Loads: copilot-instructions.md                                   │
+│     Loads: .github/instructions/azure-patterns.instructions.md       │
+│     Loads: .github/instructions/implementation-guide.instructions.md │
+│     Loads: .github/instructions/error-patterns.instructions.md       │
+│     Loads: .github/skills/*/SKILL.md (when invoked)                  │
+└────────────────────────┬─────────────────────────────────────────────┘
                          │
                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  3. Developer Types or Prompts Copilot                      │
-│     "Create PATCH update operation for this resource"       │
-└────────────────────────┬────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  3. Developer Types or Prompts Copilot                               │
+│     "Create PATCH update operation for this resource"                │
+└────────────────────────┬─────────────────────────────────────────────┘
                          │
                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  4. Copilot Generates Code Using Instructions               │
-│                                                             │
-│     - Uses fmt.Errorf with %+v (error-patterns)             │
-│     - Implements PATCH pattern (azure-patterns)             │
-│     - Adds proper timeouts (implementation-guide)           │
-│     - Includes metadata tracking (implementation-guide)     │
-│     - Follows HashiCorp code style (copilot-instructions)   │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  4. Copilot Generates Code Using Instructions                        │
+│                                                                      │
+│     - Uses fmt.Errorf with %+v (error-patterns)                      │
+│     - Implements PATCH pattern (azure-patterns)                      │
+│     - Adds proper timeouts (implementation-guide)                    │
+│     - Includes metadata tracking (implementation-guide)              │
+│     - Uses skill rules when invoked (skills)                         │
+│     - Follows HashiCorp code style (copilot-instructions)            │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Instruction File Hierarchy
@@ -214,6 +224,13 @@ instructions/*.instructions.md (Specialized - Applied by file pattern)
 │   └── Acceptance test structure
 │
 └── [11 more specialized files...]
+    │
+    ▼
+skills/*/SKILL.md (On-demand - Applied when invoked via /<skill>)
+│
+├── azurerm-docs-writer
+├── azurerm-resource-implementation
+└── azurerm-acceptance-testing
 ```
 
 ### Context Awareness Flow
@@ -240,6 +257,7 @@ Write docs        ->  Loads               ->  Generates docs with
                      documentation-           - Proper frontmatter
                      guidelines.md            - Example usage
                                               - Argument reference
+                                              - Skill rules when invoked (skills)
 ```
 
 ## File Organization
@@ -251,20 +269,19 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── .github/
 │   ├── instructions/
-│   ├── README.md
-│   ├── api-evolution-patterns.instructions.md
-│   ├── azure-patterns.instructions.md
-│   ├── code-clarity-enforcement.instructions.md
-│   ├── documentation-guidelines.instructions.md
-│   ├── error-patterns.instructions.md
-│   ├── implementation-guide.instructions.md
-│   ├── migration-guide.instructions.md
-│   ├── performance-optimization.instructions.md
-│   ├── provider-guidelines.instructions.md
-│   ├── schema-patterns.instructions.md
-│   ├── security-compliance.instructions.md
-│   ├── testing-guidelines.instructions.md
-│   ├── troubleshooting-decision-trees.instructions.md
+│   │   ├── api-evolution-patterns.instructions.md
+│   │   ├── azure-patterns.instructions.md
+│   │   ├── code-clarity-enforcement.instructions.md
+│   │   ├── documentation-guidelines.instructions.md
+│   │   ├── error-patterns.instructions.md
+│   │   ├── implementation-guide.instructions.md
+│   │   ├── migration-guide.instructions.md
+│   │   ├── performance-optimization.instructions.md
+│   │   ├── provider-guidelines.instructions.md
+│   │   ├── schema-patterns.instructions.md
+│   │   ├── security-compliance.instructions.md
+│   │   ├── testing-guidelines.instructions.md
+│   │   └── troubleshooting-decision-trees.instructions.md
 │   │
 │   ├── ISSUE_TEMPLATE/
 │   │   ├── bug_report.md
@@ -272,9 +289,14 @@ terraform-azurerm-ai-assisted-development/
 │   │   └── instruction_improvement.md
 │   │
 │   ├── prompts/
-│   ├── code-review-local-changes.prompt.md
-│   ├── code-review-committed-changes.prompt.md
-│   ├── docs-schema-audit.prompt.md
+│   │   ├── code-review-local-changes.prompt.md
+│   │   ├── code-review-committed-changes.prompt.md
+│   │   └── docs-schema-audit.prompt.md
+│   │
+│   ├── skills/
+│   │   ├── azurerm-acceptance-testing/SKILL.md
+│   │   ├── azurerm-resource-implementation/SKILL.md
+│   │   └── azurerm-docs-writer/SKILL.md
 │   │
 │   ├── workflows/
 │   │   ├── validate.yml    # CI for installers & instructions

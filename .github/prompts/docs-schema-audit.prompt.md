@@ -25,6 +25,7 @@ Audit the **currently-open** documentation page under `website/docs/**` for:
 When reviewing documentation standards, treat these as authoritative:
 - `contributing/topics/reference-documentation-standards.md`
 - `.github/instructions/documentation-guidelines.instructions.md`
+- `.github/skills/azurerm-docs-writer/SKILL.md` (this repo's enforcement rules)
 
 This audit is **optional** and **user-invoked** (no CI enforcement).
 
@@ -58,7 +59,9 @@ From the schema, extract:
 #### A) Formatting and structure
 Validate:
 - Frontmatter includes `subcategory`, `layout`, `page_title`, `description`
-- H1 matches `azurerm_<name>`
+- H1 matches the doc type:
+  - Resources: `# azurerm_<name>`
+  - Data Sources: `# Data Source: azurerm_<name>`
 
 **Resource vs Data Source hard rules (must enforce):**
 
@@ -96,6 +99,7 @@ Validate:
 - **Resources only:** for every ForceNew field in schema, the argument description must end with a sentence of the form: "Changing this forces a new … to be created."
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
+- Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
 - If schema defines a default value, docs must include "Defaults to `...`."
 
 #### C) Attributes Reference parity
@@ -119,7 +123,12 @@ Validate:
 - Example must not include a `terraform` or `provider` block
 - Example should be functional and self-contained (no undefined references)
 - Resource/data source instance name should generally be `example`
-- Names in the example should generally be prefixed with `example-` (subject to service naming constraints)
+- Resources: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` (subject to service naming constraints).
+  - This does not apply to Terraform block labels like `resource "..." "example"`.
+  - Prefer deriving the suffix from the specific resource type of the block (e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`).
+  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
+- Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
+  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
 - No hard-coded secrets (passwords/tokens/keys). Use `variable` with `sensitive = true` or a generator pattern.
 - Example references must be internally consistent
 
@@ -163,7 +172,7 @@ Output must be **rendered Markdown**.
 - **ForceNew Wording**: pass/fail (resources only, missing “Changing this forces…” sentence)
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets)
+- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
 
 ## 🟢 **STRENGTHS**
 - ...

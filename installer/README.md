@@ -11,7 +11,7 @@
 > **📦 Release-Based Installation**: This installer is now distributed as standalone release bundles.
 > Download the latest version from [GitHub Releases](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest) instead of cloning the repository.
 
-This installer provides GitHub Copilot instructions, VS Code configurations, and AI-powered development workflows for the Terraform AzureRM Provider repository.
+This installer provides GitHub Copilot instructions, VS Code configurations, Agent Skills, and AI-powered development workflows for the Terraform AzureRM Provider repository.
 
 ## 🌍 Cross-Platform Support
 
@@ -409,6 +409,12 @@ The installer sets up a complete AI development environment:
 ### 🎨 Development Templates & AI Prompts
 - `.github/prompts/` - AI prompt templates for common development tasks:
 
+### 🧠 Agent Skills
+- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/azurerm-docs-writer`)
+
+> [!TIP]
+> The `azurerm-docs-writer` skill supports a dry run/testing mode for docs scaffolding: when you ask for a test/dry run, it uses `-website-path website_scaffold_tmp` to avoid overwriting `website/docs/**`.
+
 ### ⚙️ VS Code Configuration
 - `.vscode/settings.json` - Optimized VS Code settings for Terraform development
   - Go formatting and linting configurations
@@ -427,11 +433,13 @@ Simply use slash commands to invoke the prompts directly:
 |---------------|-------------|-------------|
 | `/code-review-local-changes` | `code-review-local-changes.prompt.md` | Review your uncommitted changes |
 | `/code-review-committed-changes` | `code-review-committed-changes.prompt.md` | Review committed changes |
+| `/docs-schema-audit` | `docs-schema-audit.prompt.md` | Audit a `website/docs/**` page for docs standards + schema parity |
 
 **Example Usage:**
 ```
 /code-review-local-changes
 /code-review-committed-changes
+/docs-schema-audit
 ```
 
 #### Available Prompts
@@ -440,6 +448,7 @@ Simply use slash commands to invoke the prompts directly:
 |-------------|---------|-------|
 | `code-review-local-changes.prompt.md` | **Review uncommitted changes** with Terraform provider best practices | Use before committing to get expert feedback on your local changes |
 | `code-review-committed-changes.prompt.md` | **Review committed changes** for pull request feedback | Use to review git commits with detailed technical analysis |
+| `docs-schema-audit.prompt.md` | **Audit a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes |
 
 ## 🎛️ Command Reference
 
@@ -648,7 +657,7 @@ The installer includes **intelligent deprecation management** that automatically
 
 During each installation, the tool automatically:
 
-- **🔍 Scans** existing instruction and prompt files in your workspace
+- **🔍 Scans** existing instruction, prompt, and skill files in your workspace
 - **📋 Compares** them against the current manifest from the source branch
 - **🗑️ Removes** deprecated files that are no longer part of the AI infrastructure
 - **✅ Preserves** current files that remain active
@@ -664,6 +673,11 @@ During each installation, the tool automatically:
 - `*.prompt.md` files for AI interaction templates
 - Removes obsolete prompt templates
 - Keeps your prompt library current and effective
+
+**Skill Files** (`.github/skills/`)
+- `*/SKILL.md` files defining Agent Skills
+- Removes obsolete skills that are no longer in the manifest
+- Keeps the skill list synchronized with the toolkit
 
 ### 💡 How It Works
 

@@ -952,6 +952,49 @@ function Invoke-VerifyWorkspace {
             Write-Host "  [MISSING] $(Get-RelativePath $promptsDir)/" -ForegroundColor Red
         }
 
+        # Check skills directory
+        $skillsDir = $Global:InstallerConfig.Files.SkillFiles.Target
+        if (Test-Path $skillsDir -PathType Container) {
+            $results.Files += @{
+                Path = $skillsDir
+                Status = "Present"
+                Description = "Skills directory"
+            }
+            Write-Host "  [FOUND  ] $(Get-RelativePath $skillsDir)/" -ForegroundColor Green
+
+            # Check specific skill files
+            $requiredSkills = $Global:InstallerConfig.Files.SkillFiles.Files
+
+            foreach ($file in $requiredSkills) {
+                $filePath = Join-Path $Global:WorkspaceRoot $file
+
+                if (Test-Path $filePath) {
+                    $results.Files += @{
+                        Path = $file
+                        Status = "Present"
+                        Description = "Skill file"
+                    }
+                    Write-Host "    [FOUND  ] $file" -ForegroundColor Green
+                } else {
+                    $results.Files += @{
+                        Path = $file
+                        Status = "Missing"
+                        Description = "Skill file"
+                    }
+                    Write-Host "    [MISSING] $file" -ForegroundColor Red
+                    $results.Issues += $file
+                }
+            }
+        } else {
+            $results.Files += @{
+                Path = $skillsDir
+                Status = "Missing"
+                Description = "Skills directory"
+            }
+            $results.Issues += ".github/skills"
+            Write-Host "  [MISSING] $(Get-RelativePath $skillsDir)/" -ForegroundColor Red
+        }
+
         # Check .vscode/settings.json
         $settingsFile = Join-Path (Join-Path $workspaceRoot ".vscode") "settings.json"
         $filesChecked++

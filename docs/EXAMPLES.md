@@ -285,6 +285,41 @@ If the active editor is not a file under `website/docs/**`, the prompt will tell
 
 ---
 
+## Agent Skills
+
+**Scenario**: You want Copilot to follow a specialized workflow (docs writing, acceptance testing, resource implementation) via a skill.
+
+> [!NOTE]
+> Skills are most reliably applied when you invoke them explicitly using the `/...` command. Depending on your Copilot experience and settings, Copilot may also suggest using a skill (or apply skill guidance implicitly) when it determines a skill is relevant.
+
+**Docs writing**:
+```
+You: /azurerm-docs-writer
+```
+
+> [!TIP]
+> **Dry run / testing:** tell Copilot you are "testing" or doing a "dry run" and it will scaffold docs into a scratch website root using `-website-path website_scaffold_tmp`.
+>
+> Expected outputs:
+> - Resources: `website_scaffold_tmp/docs/r/<name>.html.markdown`
+> - Data sources: `website_scaffold_tmp/docs/d/<name>.html.markdown`
+>
+> Diff tip:
+> - `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
+> - `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
+
+**Resource implementation**:
+```
+You: /azurerm-resource-implementation
+```
+
+**Acceptance testing**:
+```
+You: /azurerm-acceptance-testing
+```
+
+---
+
 ## Code Review
 
 ### Reviewing Local Changes

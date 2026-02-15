@@ -489,6 +489,9 @@ function Install-AllAIFile {
     if ($manifestConfig.Sections.PROMPT_FILES) {
         $allFiles += $manifestConfig.Sections.PROMPT_FILES
     }
+    if ($manifestConfig.Sections.SKILL_FILES) {
+        $allFiles += $manifestConfig.Sections.SKILL_FILES
+    }
     if ($manifestConfig.Sections.UNIVERSAL_FILES) {
         $allFiles += $manifestConfig.Sections.UNIVERSAL_FILES
     }
@@ -774,6 +777,9 @@ function Remove-AllAIFile {
     if ($manifestConfig.Sections.PROMPT_FILES) {
         $allFiles += $manifestConfig.Sections.PROMPT_FILES
     }
+    if ($manifestConfig.Sections.SKILL_FILES) {
+        $allFiles += $manifestConfig.Sections.SKILL_FILES
+    }
     if ($manifestConfig.Sections.UNIVERSAL_FILES) {
         $allFiles += $manifestConfig.Sections.UNIVERSAL_FILES
     }
@@ -792,7 +798,8 @@ function Remove-AllAIFile {
             # AI directories that are safe to clean up
             $aiDirectories = @(
                 ".github/instructions",
-                ".github/prompts"
+                ".github/prompts",
+                ".github/skills"
             )
 
             # Normalize path separators for cross-platform compatibility
@@ -1072,14 +1079,17 @@ function Remove-DeprecatedFile {
 
     $deprecatedFiles = @()
 
+    $instructionManifest = @($ManifestConfig.Sections.INSTRUCTION_FILES | ForEach-Object { Split-Path $_ -Leaf })
+    $promptManifest = @($ManifestConfig.Sections.PROMPT_FILES | ForEach-Object { Split-Path $_ -Leaf })
+    $skillManifest = @($ManifestConfig.Sections.SKILL_FILES)
+
     # Check for deprecated instruction files
     $instructionsDir = Join-Path $WorkspaceRoot ".github\instructions"
     if (Test-Path $instructionsDir -PathType Container) {
-        $currentFiles = $ManifestConfig.Sections.INSTRUCTION_FILES
         $existingFiles = Get-ChildItem $instructionsDir -File | Where-Object { $_.Name -like "*.instructions.md" }
 
         foreach ($existingFile in $existingFiles) {
-            if ($existingFile.Name -notin $currentFiles) {
+            if ($existingFile.Name -notin $instructionManifest) {
                 $deprecatedFiles += @{
                     Path = $existingFile.FullName
                     Type = "Instruction"
@@ -1093,16 +1103,33 @@ function Remove-DeprecatedFile {
     # Check for deprecated prompt files
     $promptsDir = Join-Path $WorkspaceRoot ".github\prompts"
     if (Test-Path $promptsDir -PathType Container) {
-        $currentPrompts = $ManifestConfig.Sections.PROMPT_FILES
         $existingPrompts = Get-ChildItem $promptsDir -File | Where-Object { $_.Name -like "*.prompt.md" }
 
         foreach ($existingPrompt in $existingPrompts) {
-            if ($existingPrompt.Name -notin $currentPrompts) {
+            if ($existingPrompt.Name -notin $promptManifest) {
                 $deprecatedFiles += @{
                     Path = $existingPrompt.FullName
                     Type = "Prompt"
                     Name = $existingPrompt.Name
                     RelativePath = $existingPrompt.FullName.Replace($WorkspaceRoot, "").TrimStart('\').TrimStart('/')
+                }
+            }
+        }
+    }
+
+    # Check for deprecated skill files
+    $skillsDir = Join-Path $WorkspaceRoot ".github\skills"
+    if ((Test-Path $skillsDir -PathType Container) -and ($skillManifest.Count -gt 0)) {
+        $existingSkills = Get-ChildItem $skillsDir -Recurse -File | Where-Object { $_.Name -eq "SKILL.md" }
+
+        foreach ($existingSkill in $existingSkills) {
+            $relativePath = $existingSkill.FullName.Replace($WorkspaceRoot, "").TrimStart('\').TrimStart('/') -replace "\\", "/"
+            if ($relativePath -notin $skillManifest) {
+                $deprecatedFiles += @{
+                    Path = $existingSkill.FullName
+                    Type = "Skill"
+                    Name = "SKILL.md"
+                    RelativePath = $relativePath
                 }
             }
         }
