@@ -61,11 +61,11 @@ Trigger phrases (any of these): `test`, `testing`, `dry run`, `scaffold-only`, `
 In testing mode:
 - Scaffold docs into a scratch website root using `-website-path website_scaffold_tmp`.
 - Expected output paths:
-   - Resource: `website_scaffold_tmp/docs/r/<name>.html.markdown`
-   - Data source: `website_scaffold_tmp/docs/d/<name>.html.markdown`
+  - Resource: `website_scaffold_tmp/docs/r/<name>.html.markdown`
+  - Data source: `website_scaffold_tmp/docs/d/<name>.html.markdown`
 - Do not rename or move existing docs as a test harness; scaffold into scratch then diff.
-   - Diff tip: `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
-   - Diff tip (data source): `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
+  - Diff tip: `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
+  - Diff tip (data source): `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
 
 ## Verification (assistant response only)
 
@@ -111,7 +111,7 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
 
 2. Scaffold the initial page when possible
    - If you're working inside the `hashicorp/terraform-provider-azurerm` repo, prefer using the built-in docs scaffold tool to generate the baseline page from the registered schema:
-     - `internal/tools/website-scaffold/main.go`
+      - `internal/tools/website-scaffold/main.go`
    - This gets you the correct file location (`website/docs/r|d/...`) and a schema-aligned Arguments/Attributes structure quickly.
    - You must still review and improve the generated wording (the scaffold intentionally emits some `TODO` placeholders).
 
@@ -129,24 +129,24 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
 4. Ensure schema parity (do not invent fields)
    - Find the corresponding resource/data source implementation under `internal/services/**`.
    - Extract:
-     - required vs optional arguments
-     - `ForceNew` behavior ("Changing this forces a new …")
-     - computed attributes
-     - defaults, allowed values, and constraints
-       - conditional requirements and cross-field constraints (from schema and diff/validation logic)
+      - required vs optional arguments
+      - `ForceNew` behavior ("Changing this forces a new …")
+      - computed attributes
+      - defaults, allowed values, and constraints
+         - conditional requirements and cross-field constraints (from schema and diff/validation logic)
 
     When documenting conditional behavior, prefer the provider implementation as the source of truth and keep notes high-signal:
-    - Primary sources for conditional requirements that should be documented as notes:
-       - Schema constraints (for example: conflicts, exactly-one-of, at-least-one-of, required-with)
-       - Diff-time validation (`CustomizeDiff`), including conditions like "required when X is set" or "must be one of these values when Y".
-    - Secondary sources:
-       - Inline checks in Create/Update, and constraints implied by expand/flatten.
-       - Only document these when they are user-facing constraints that affect successful apply and are not already obvious from schema/diff-time validation.
+   - Primary sources for conditional requirements that should be documented as notes:
+      - Schema constraints (for example: conflicts, exactly-one-of, at-least-one-of, required-with)
+      - Diff-time validation (`CustomizeDiff`), including conditions like "required when X is set" or "must be one of these values when Y".
+   - Secondary sources:
+      - Inline checks in Create/Update, and constraints implied by expand/flatten.
+      - Only document these when they are user-facing constraints that affect successful apply and are not already obvious from schema/diff-time validation.
 
     How to present constraints (avoid note spam):
-    - Prefer embedding simple, field-local constraints in the field description (for example: "Possible values are …").
-    - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
-    - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
+   - Prefer embedding simple, field-local constraints in the field description (for example: "Possible values are …").
+   - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
+   - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
 
 5. Write clean docs content
    - Keep sentences short, factual, and present tense.
@@ -172,7 +172,7 @@ At minimum, always enforce:
    - If you are documenting a ForceNew condition that applies in both directions between two sets of values, do not rely on “and vice versa”.
    - If the text contains the phrase “and vice versa”, you must rewrite the sentence to remove it.
    - Prefer an explicit, bidirectional phrasing that preserves meaning, e.g.:
-   - Prefer: “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+      - Prefer: “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
       - Avoid: “... when types `A`, `B` and `C` are changed to `D`, `E` or `F` and vice versa.”
 
 - **ForceNew conditions for “subset switching” enums**
@@ -185,10 +185,10 @@ At minimum, always enforce:
    - When documenting enumerated values, use provider-standard phrasing:
       - Prefer: `Possible values include ...`
          - Avoid: `Valid options are ...` / `Valid values are ...`
-    - Mandatory rewrites when editing docs:
-         - Replace `Valid options are` with `Possible values include`
-         - Replace `Valid values are` with `Possible values include`
-         - Replace `Possible values are` with `Possible values include`
+   - Mandatory rewrites when editing docs:
+      - Replace `Valid options are` with `Possible values include`
+      - Replace `Valid values are` with `Possible values include`
+      - Replace `Possible values are` with `Possible values include`
    - Ensure values are wrapped in backticks and use the Oxford comma when listing 3+ values.
 
 - **Boolean `*_enabled` fields (canonical wording)**
@@ -211,21 +211,21 @@ At minimum, always enforce:
 - **Block placement (mandatory)**
    - Do not place all block subsections in one location.
    - **Block arguments** must appear under `## Arguments Reference`:
-         - Top-level bullet example (use `A`/`An` as appropriate):
-            - `* `identity` - (Optional) An `identity` block as defined below.`
-         - Subsection heading example (use `A`/`An` as appropriate):
-            - An `identity` block supports the following:
+      - Top-level bullet example (use `A`/`An` as appropriate):
+         - `* `identity` - (Optional) An `identity` block as defined below.`
+      - Subsection heading example (use `A`/`An` as appropriate):
+         - An `identity` block supports the following:
       - Placement: after the top-level arguments list (typically after a `---`) and before `## Attributes Reference`.
    - **Block attributes** must appear under `## Attributes Reference`:
-         - Top-level bullet example (use `A`/`An` as appropriate):
-            - `* `identity` - An `identity` block as defined below.`
-         - Subsection heading example (use `A`/`An` as appropriate):
-            - An `identity` block exports the following:
+      - Top-level bullet example (use `A`/`An` as appropriate):
+         - `* `identity` - An `identity` block as defined below.`
+      - Subsection heading example (use `A`/`An` as appropriate):
+         - An `identity` block exports the following:
       - Placement: after the top-level attributes list (typically after a `---`) and before `## Timeouts`.
    - **Indefinite article rule (A vs An)**
       - Use `An` when the block name starts with a vowel character (`a`, `e`, `i`, `o`, `u`) after stripping backticks.
       - Otherwise use `A`.
-         - Example: An `identity` block supports the following:
+      - Example: An `identity` block supports the following:
    - Use the subsection verb to classify the block:
       - If it says `supports the following`, it is an argument block.
       - If it says `exports the following`, it is an attribute block.
@@ -281,8 +281,8 @@ If you are only asked to make a narrow change, still apply these style rules to 
       - Prefer Microsoft Learn and Azure REST API reference for meaning, constraints, and allowed values
       - Use Swagger/OpenAPI specs when needed to confirm enum strings/shapes
       - When available in the environment, use the Microsoft Learn MCP tools to look up details:
-         - `mcp_microsoft_doc_microsoft_docs_search` (find the right page)
-         - `mcp_microsoft_doc_microsoft_docs_fetch` (read the full page)
+        - `mcp_microsoft_doc_microsoft_docs_search` (find the right page)
+        - `mcp_microsoft_doc_microsoft_docs_fetch` (read the full page)
       - As a fallback, use `fetch_webpage` for specific URLs when MCP fetch is not applicable
    4. If still ambiguous
       - Document only what you can verify from code/schema
@@ -322,10 +322,11 @@ A typical data source doc page should include:
 When writing or standardizing a page, use these conventional intro lines:
 
 - Under `## Arguments Reference`:
-   - `The following arguments are supported:`
+- Under `## Arguments Reference`:
+  - `The following arguments are supported:`
 - Under `## Attributes Reference`:
-   - Resources: `In addition to the Arguments listed above - the following Attributes are exported:`
-   - Data sources: `In addition to the Arguments listed above - the following Attributes are exported:`
+  - Resources: `In addition to the Arguments listed above - the following Attributes are exported:`
+  - Data sources: `In addition to the Arguments listed above - the following Attributes are exported:`
 
 Do not invent alternative section intro wording unless the page already uses a provider-standard variant.
 
@@ -400,19 +401,19 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
 
 - **Examples**
-    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
-    - Resources: for user-supplied name-like arguments (for example `name`, `profile_name`, `vault_name`), use descriptive values prefixed with `example-` where feasible.
-       - Avoid generic placeholders like `"example"`.
-       - This applies to argument values like `name = "..."`, not Terraform block labels like `resource "..." "example"`.
-       - Prefer a deterministic, descriptive suffix derived from the Terraform **resource type of the block you are editing**:
-          - Take the Terraform resource type (for example `azurerm_spring_cloud_service`).
-          - Remove the `azurerm_` prefix.
-          - Replace underscores with hyphens.
-          - Use: `example-<result>`.
-          - Example: `azurerm_spring_cloud_service` -> `example-spring-cloud-service`.
-       - Only shorten this if required by a documented service naming constraint (length/charset), and keep it as descriptive as possible.
-    - Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
-       - Avoid the bare placeholder value `"existing"`.
+   - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
+   - Resources: for user-supplied name-like arguments (for example `name`, `profile_name`, `vault_name`), use descriptive values prefixed with `example-` where feasible.
+      - Avoid generic placeholders like `"example"`.
+      - This applies to argument values like `name = "..."`, not Terraform block labels like `resource "..." "example"`.
+      - Prefer a deterministic, descriptive suffix derived from the Terraform **resource type of the block you are editing**:
+         - Take the Terraform resource type (for example `azurerm_spring_cloud_service`).
+         - Remove the `azurerm_` prefix.
+         - Replace underscores with hyphens.
+         - Use: `example-<result>`.
+         - Example: `azurerm_spring_cloud_service` -> `example-spring-cloud-service`.
+      - Only shorten this if required by a documented service naming constraint (length/charset), and keep it as descriptive as possible.
+   - Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
+      - Avoid the bare placeholder value `"existing"`.
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
@@ -428,8 +429,8 @@ When you need to document an argument/attribute and the wording is not already p
    When you need to map a Terraform field to the Azure API (property names, enum strings, nested shapes):
    - Follow the provider implementation first (expand/flatten functions and the request payload construction) and document what the code actually sends.
    - Then confirm details from the Azure SDK model types/constants used by that code by jumping to the referenced type/constant definition.
-     - If the repo has a `vendor/` directory, SDK models/constants are typically under `vendor/<module path>/...` (exact subfolders vary by SDK).
-     - Otherwise, use the imported package path/type name from the code and jump to definition to locate the model/constant.
+      - If the repo has a `vendor/` directory, SDK models/constants are typically under `vendor/<module path>/...` (exact subfolders vary by SDK).
+      - Otherwise, use the imported package path/type name from the code and jump to definition to locate the model/constant.
 
 2. Use existing provider docs as the source of truth for tone and phrasing
    - Search `website/docs/` for the same field name (for example, `resource_group_name`, `location`, `tags`, `identity`, etc.).
@@ -452,11 +453,13 @@ When you need to document an argument/attribute and the wording is not already p
 
 - Use Terraform names exactly (`azurerm_*`).
 - When listing 3+ possible values, use the Oxford comma.
+- When listing 3+ possible values, use the Oxford comma.
    - Incorrect: Possible values include `Default`, `InitiatorOnly` and `ResponderOnly`.
    - Correct: Possible values include `Default`, `InitiatorOnly`, and `ResponderOnly`.
 - Ensure `Arguments Reference` reflects Required/Optional/Computed accurately.
 - Mention `ForceNew` in the argument description.
 - Document conditional requirements and cross-field constraints (especially ones enforced in `CustomizeDiff`/validation) using `->`/`~>`/`!>` notes as appropriate.
+- Keep field order sensible:
 - Keep field order sensible:
    - List **Required** arguments first, then **Optional** arguments.
    - Within **each** group (Required, then Optional), order fields as:
