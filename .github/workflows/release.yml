@@ -130,7 +130,13 @@ jobs:
               - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip`
               - `.../releases/download/v${{ steps.get_version.outputs.VERSION }}/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`
 
-            The installer will download the AI instruction files from this repository and install them into your terraform-provider-azurerm repository's `.github` directory.
+            Installation is a **two-step** process:
+            1) **Extract** this release bundle into your user profile so the installer lives at `~/.terraform-azurerm-ai-installer/` (macOS/Linux) or `$env:USERPROFILE\.terraform-azurerm-ai-installer\` (Windows).
+            2) **Run the installer** and point it at your local `terraform-provider-azurerm` checkout. It will copy the bundled AI instruction files and Agent Skills into that repo (primarily under `.github/`).
+
+            For the full, canonical instructions and troubleshooting, see:
+            - https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/installer/README.md
+            - https://github.com/WodansSon/terraform-azurerm-ai-assisted-development#installation
 
             **Note:** The `-Bootstrap` flag is only needed for contributors working on this project itself, not for end users.
 
