@@ -3,7 +3,7 @@ name: azurerm-docs-writer
 description: Write or update terraform-provider-azurerm documentation pages (website/docs/**/*.html.markdown) in HashiCorp style. Use when creating/updating resource or data source docs, fixing docs lint issues, or when you need to find correct argument/attribute descriptions.
 ---
 
-# HashiCorp Docs Writer (AzureRM Provider)
+# azurerm-docs-writer (AzureRM Provider)
 
 ## Mandatory: read the entire skill
 
@@ -135,18 +135,18 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
       - defaults, allowed values, and constraints
          - conditional requirements and cross-field constraints (from schema and diff/validation logic)
 
-    When documenting conditional behavior, prefer the provider implementation as the source of truth and keep notes high-signal:
-   - Primary sources for conditional requirements that should be documented as notes:
-      - Schema constraints (for example: conflicts, exactly-one-of, at-least-one-of, required-with)
-      - Diff-time validation (`CustomizeDiff`), including conditions like "required when X is set" or "must be one of these values when Y".
-   - Secondary sources:
-      - Inline checks in Create/Update, and constraints implied by expand/flatten.
-      - Only document these when they are user-facing constraints that affect successful apply and are not already obvious from schema/diff-time validation.
+   - When documenting conditional behavior, prefer the provider implementation as the source of truth and keep notes high-signal:
+      - Primary sources for conditional requirements that should be documented as notes:
+         - Schema constraints (for example: conflicts, exactly-one-of, at-least-one-of, required-with)
+         - Diff-time validation (`CustomizeDiff`), including conditions like "required when X is set" or "must be one of these values when Y".
+      - Secondary sources:
+         - Inline checks in Create/Update, and constraints implied by expand/flatten.
+         - Only document these when they are user-facing constraints that affect successful apply and are not already obvious from schema/diff-time validation.
 
-    How to present constraints (avoid note spam):
-   - Prefer embedding simple, field-local constraints in the field description (for example: "Possible values are …").
-   - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
-   - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
+   - How to present constraints (avoid note spam):
+      - Prefer embedding simple, field-local constraints in the field description (for example: "Possible values include …").
+      - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
+      - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
 
 5. Write clean docs content
    - Keep sentences short, factual, and present tense.
@@ -212,13 +212,17 @@ At minimum, always enforce:
    - Do not place all block subsections in one location.
    - **Block arguments** must appear under `## Arguments Reference`:
       - Top-level bullet example (use `A`/`An` as appropriate):
-         - `* `identity` - (Optional) An `identity` block as defined below.`
+         - ```markdown
+           * `identity` - (Optional) An `identity` block as defined below.
+           ```
       - Subsection heading example (use `A`/`An` as appropriate):
          - An `identity` block supports the following:
       - Placement: after the top-level arguments list (typically after a `---`) and before `## Attributes Reference`.
    - **Block attributes** must appear under `## Attributes Reference`:
       - Top-level bullet example (use `A`/`An` as appropriate):
-         - `* `identity` - An `identity` block as defined below.`
+         - ```markdown
+           * `identity` - An `identity` block as defined below.
+           ```
       - Subsection heading example (use `A`/`An` as appropriate):
          - An `identity` block exports the following:
       - Placement: after the top-level attributes list (typically after a `---`) and before `## Timeouts`.
@@ -293,6 +297,7 @@ If you are only asked to make a narrow change, still apply these style rules to 
    - If available, run a schema parity audit (automated or manual check).
 
 3. Final checklist (before finishing)
+   - Verify `## Arguments Reference` required arguments are ordered with `name`, `resource_group_name`, and `location` first (when present).
    - Verify `## Arguments Reference` lists `tags` last (when present).
    - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
 
@@ -321,7 +326,6 @@ A typical data source doc page should include:
 
 When writing or standardizing a page, use these conventional intro lines:
 
-- Under `## Arguments Reference`:
 - Under `## Arguments Reference`:
   - `The following arguments are supported:`
 - Under `## Attributes Reference`:
@@ -383,7 +387,13 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - Collections of primitives are described as lists/sets, not blocks
 
 - **Ordering**
-   - Arguments ordered per provider reference-doc standards (IDs first, then `location`, then required alpha, then optional alpha, `tags` last)
+   - Under `## Arguments Reference`, list **Required** arguments first, then **Optional** arguments.
+   - Within each group (Required, then Optional), order fields as:
+      1) `name` (if present)
+      2) `resource_group_name` (if present)
+      3) `location` (if present)
+      4) all remaining fields in that group in alphabetical order
+      5) `tags` last (if present)
 
 - **Attributes Reference ordering**
    - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
@@ -453,13 +463,11 @@ When you need to document an argument/attribute and the wording is not already p
 
 - Use Terraform names exactly (`azurerm_*`).
 - When listing 3+ possible values, use the Oxford comma.
-- When listing 3+ possible values, use the Oxford comma.
    - Incorrect: Possible values include `Default`, `InitiatorOnly` and `ResponderOnly`.
    - Correct: Possible values include `Default`, `InitiatorOnly`, and `ResponderOnly`.
 - Ensure `Arguments Reference` reflects Required/Optional/Computed accurately.
-- Mention `ForceNew` in the argument description.
+- For resources, mention `ForceNew` in the argument description.
 - Document conditional requirements and cross-field constraints (especially ones enforced in `CustomizeDiff`/validation) using `->`/`~>`/`!>` notes as appropriate.
-- Keep field order sensible:
 - Keep field order sensible:
    - List **Required** arguments first, then **Optional** arguments.
    - Within **each** group (Required, then Optional), order fields as:

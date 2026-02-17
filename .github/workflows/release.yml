@@ -26,7 +26,11 @@ jobs:
         id: changelog
         run: |
           VERSION=${{ steps.get_version.outputs.VERSION }}
-          CHANGELOG=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | sed '1d;$d')
+          CHANGELOG=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { in_section=1; next }
+            in_section && $0 ~ "^## \\[" { exit }
+            in_section { print }
+          ' CHANGELOG.md)
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -89,7 +93,11 @@ jobs:
           body: |
             ## Terraform AzureRM AI-Assisted Development v${{ steps.get_version.outputs.VERSION }}
 
-            ### 🚀 Quick Installation
+            ### Changes
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### Quick Installation
 
             You can either install the **latest release** (stable URLs) or **pin a specific version** (tagged URLs).
 
@@ -128,7 +136,7 @@ jobs:
 
             **Note:** The `-Bootstrap` flag is only needed for contributors working on this project itself, not for end users.
 
-            ### 📦 Release Assets
+            ### Release Assets
 
             - **`terraform-azurerm-ai-installer.zip`** - Windows installer bundle (stable name for `releases/latest/download/`)
             - **`terraform-azurerm-ai-installer.tar.gz`** - Linux/macOS installer bundle (stable name for `releases/latest/download/`)
@@ -137,18 +145,14 @@ jobs:
             - **`terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Full source archive
             - **`checksums.txt`** - SHA256 checksums for all artifacts
 
-            ### 📋 Changes
-
-            ${{ steps.changelog.outputs.CHANGELOG }}
-
-            ### ✅ What's Included
+            ### What's Included
 
             - AI instruction files for HashiCorp Terraform AzureRM Provider development
             - Installation scripts for Windows (PowerShell) and Linux/macOS (Bash)
             - All required modules bundled together
             - Configuration templates for VS Code and GitHub Copilot
 
-            ### 📖 Documentation
+            ### Documentation
 
             - [Installation Guide](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/installer/README.md)
             - [Full Changelog](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CHANGELOG.md)
