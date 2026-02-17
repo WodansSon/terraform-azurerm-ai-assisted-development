@@ -93,8 +93,6 @@ jobs:
           body: |
             ## Terraform AzureRM AI-Assisted Development v${{ steps.get_version.outputs.VERSION }}
 
-            ### Changes
-
             ${{ steps.changelog.outputs.CHANGELOG }}
 
             ### Quick Installation
