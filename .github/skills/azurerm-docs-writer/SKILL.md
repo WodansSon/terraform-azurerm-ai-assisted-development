@@ -293,6 +293,7 @@ If you are only asked to make a narrow change, still apply these style rules to 
    - If available, run a schema parity audit (automated or manual check).
 
 3. Final checklist (before finishing)
+   - Verify `## Arguments Reference` required arguments are ordered with `name`, `resource_group_name`, and `location` first (when present).
    - Verify `## Arguments Reference` lists `tags` last (when present).
    - Verify `## Attributes Reference` lists `id` first, and the remaining exported attributes are in alphabetical order.
 
