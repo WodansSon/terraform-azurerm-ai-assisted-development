@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Clarified the `/azurerm-docs-writer` skill final checklist to explicitly restate canonical `## Arguments Reference` argument ordering.
+
 ## [1.0.2] - 2026-02-15
 
 ### Added
