@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the `.github/prompts/docs-schema-audit.prompt.md` prompt to reflect proposed upstream contributor documentation standards (based on [hashicorp/terraform-provider-azurerm PR #31772](https://github.com/hashicorp/terraform-provider-azurerm/pull/31772)) for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
 - Updated the `/azurerm-docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
 - Removed empty `##` spacer headings from README files to avoid bogus headings and keep GitHub Markdown rendering consistent.
+- Centralized the installer version into `installer/VERSION` (PowerShell + Bash now read from that file) and updated the release workflow to write the tagged version into the bundled installer.
 
 ## [1.0.3] - 2026-02-17
 
