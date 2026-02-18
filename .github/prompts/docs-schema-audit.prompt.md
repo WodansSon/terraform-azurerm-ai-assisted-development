@@ -99,6 +99,7 @@ Validate:
 - **Resources only:** for every ForceNew field in schema, the argument description must end with a ForceNew sentence.
   - Existing documentation pages may continue to use the legacy sentence: `Changing this forces a new resource to be created.`
   - For new pages (and when touching/updating an argument description), prefer the more descriptive sentence: `Changing this forces a new <Resource Display Name> to be created.`
+  - The `<Resource Display Name>` should match the same noun phrase used by the page description/title (e.g. `Storage Account`, `Bot Web App`, `Virtual Network`) and be used consistently across the page.
   - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**. If the legacy sentence is used, record an **Observation** unless the doc appears to be newly added.
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
