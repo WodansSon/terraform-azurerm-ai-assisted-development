@@ -23,7 +23,7 @@ This is a **community-maintained AI enhancement** for developers working on the 
 - ✅ **AI-Powered Code Generation** - Generate Azure resources following HashiCorp patterns
 - ✅ **Intelligent Code Review** - Automated reviews using provider-specific guidelines
 - ✅ **Test Generation** - Create comprehensive acceptance tests automatically
-- ✅ **Documentation Generation** - Generate docs that match provider standards
+- ✅ **Documentation Generation** - Generate docs that match provider standards (including nested block ordering and ForceNew phrasing)
 - ✅ **Best Practice Enforcement** - Real-time guidance on Azure API integration
 
 ### 🎯 Who Is This For?
