@@ -4,8 +4,7 @@
   <img src="../.github/installerTitle-light.png" alt="AI-Assisted Development Installer" width="900" height="80">
 </picture>
 
-> **Intelligent setup tool for AI-powered Terraform AzureRM Provider development**
-
+**Intelligent setup tool for AI-powered Terraform AzureRM Provider development**
 
 > [!IMPORTANT]
 > **📦 Release-Based Installation**: This installer is now distributed as standalone release bundles.
