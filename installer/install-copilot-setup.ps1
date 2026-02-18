@@ -1,5 +1,5 @@
 ﻿# Main AI Infrastructure Installer for Terraform AzureRM Provider
-# Version: 1.0.0
+# Version: 1.0.4
 # Description: Interactive installer for AI-powered development infrastructure
 # Platform: Cross-platform (Windows, macOS, Linux with PowerShell Core)
 
@@ -8,7 +8,7 @@
 #region Script Configuration
 
 # Script version - change once to update everywhere
-$script:InstallerVersion = "1.0.0"
+$script:InstallerVersion = "1.0.4"
 
 #endregion Script Configuration
 

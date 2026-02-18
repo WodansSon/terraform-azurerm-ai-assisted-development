@@ -9,7 +9,7 @@
 #region Module Configuration
 
 # Default version - should be overridden by caller
-$script:DefaultVersion = "1.0.0"
+$script:DefaultVersion = "1.0.4"
 
 #endregion Module Configuration
 

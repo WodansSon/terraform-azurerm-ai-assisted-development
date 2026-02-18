@@ -123,7 +123,7 @@ function Get-InstallerConfig {
     # DOWNLOAD TARGET: Copy files to the local workspace directory (regardless of local branch)
 
     return @{
-        Version = "1.0.0"
+        Version = "1.0.4"
         Branch = $Branch
         SourceRepository = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
         Files = @{

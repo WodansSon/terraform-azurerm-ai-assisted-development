@@ -5,8 +5,8 @@
 # ============================================================================
 # Module Configuration
 # ============================================================================
-INSTALLER_VERSION="1.0.0"
-DEFAULT_VERSION="1.0.0"
+INSTALLER_VERSION="1.0.4"
+DEFAULT_VERSION="1.0.4"
 
 # Color definitions with cross-platform compatibility
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
@@ -387,7 +387,7 @@ print_separator() {
 # Function to display main application heade
 write_header() {
     local title="${1:-Terraform AzureRM Provider - AI Infrastructure Installer}"
-    local version="${2:-1.0.0}"
+    local version="${2:-1.0.4}"
 
     echo ""
     print_separator
