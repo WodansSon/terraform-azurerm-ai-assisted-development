@@ -2,11 +2,8 @@
 name: azurerm-docs-writer
 description: Write or update terraform-provider-azurerm documentation pages (website/docs/**/*.html.markdown) in HashiCorp style. Use when creating/updating resource or data source docs, fixing docs lint issues, or when you need to find correct argument/attribute descriptions.
 ---
-
 # azurerm-docs-writer (AzureRM Provider)
-
 ## Mandatory: read the entire skill
-
 Before applying this skill, scan this file end-to-end. Do not stop after the first N lines.
 
 If time-constrained, at minimum full-text search within this file for these headings/keywords and apply any relevant rules:
@@ -20,7 +17,6 @@ If time-constrained, at minimum full-text search within this file for these head
 - `### Quick audit checklist (high-signal)`
 
 ## Scope
-
 Intended for use with the HashiCorp `terraform-provider-azurerm` repository (`website/docs` and `internal/`). Works best with repo search + access to the schema implementation.
 
 Use this skill when working on Terraform AzureRM provider documentation pages under:
@@ -31,7 +27,6 @@ Use this skill when working on Terraform AzureRM provider documentation pages un
 Your goal is to produce docs that match provider conventions and stay consistent with the actual Terraform schema.
 
 ## Where to look (glossary)
-
 - Example name/value conventions: `Examples`
 - ForceNew phrasing rules: `ForceNew` sections
 - Enum phrasing + Oxford comma: `Enum wording` + `Oxford comma`
@@ -43,7 +38,6 @@ Your goal is to produce docs that match provider conventions and stay consistent
 - Output marker rules: `Verification (assistant response only)`
 
 ## Decision tree (fast path)
-
 - Active file is not under `website/docs/**`: do not run docs work under this skill.
 - `website/docs/r/**` (Resource): must have Example Usage, Arguments Reference, Attributes Reference, Import; include Timeouts only if schema defines timeouts.
 - `website/docs/d/**` (Data Source): must have Example Usage, Arguments Reference, Attributes Reference; do not include Import; include Timeouts only if schema defines timeouts.
@@ -53,7 +47,6 @@ Your goal is to produce docs that match provider conventions and stay consistent
 - Editing `*_enabled`: enforce canonical `*_enabled` phrasing rules.
 
 ## Testing mode (scaffold into scratch)
-
 When the user indicates they are testing / doing a dry run, treat the session as **testing mode**.
 
 Trigger phrases (any of these): `test`, `testing`, `dry run`, `scaffold-only`, `generate into scratch`.
@@ -68,7 +61,6 @@ In testing mode:
   - Diff tip (data source): `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
 
 ## Verification (assistant response only)
-
 When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
 
 Skill used: azurerm-docs-writer
@@ -79,7 +71,6 @@ Rules:
 - Do NOT emit the marker in intermediate/progress updates; only in the final response.
 
 ## Template tokens (placeholders)
-
 When you need a placeholder in examples or guidance, always use the explicit token format `{{TOKEN_NAME}}`.
 
 Rules:
@@ -89,7 +80,6 @@ Rules:
 - If any `{{...}}` token would appear in final output, replace it before responding.
 
 ## Validation reporting (no false claims)
-
 Do not include a `Validation:` section in your response unless the user explicitly asked you to run validations.
 
 Never claim a command "passes" (for example `document-lint`, `documentfmt`, `go test`, etc.) unless you actually executed it in the current environment and observed a successful exit.
@@ -97,14 +87,12 @@ Never claim a command "passes" (for example `document-lint`, `documentfmt`, `go 
 If the user wants validation, prefer phrasing like "To validate, run: …" rather than asserting results.
 
 ## Decide the approach first
-
 - Creating a brand-new doc page: scaffold first (preferred) using the provider tool, then edit.
 - Updating an existing doc page: do not re-scaffold; edit the existing file and verify schema parity.
 
 ~> **Note:** The scaffold tool writes the target `website/docs/...` file. Only use it to generate a new page, otherwise you may overwrite edits.
 
 ## Workflow (recommended)
-
 1. Identify what you are documenting
    - Resource doc: "Manages a …"
    - Data source doc: "Gets information about …"
@@ -233,6 +221,15 @@ At minimum, always enforce:
    - Use the subsection verb to classify the block:
       - If it says `supports the following`, it is an argument block.
       - If it says `exports the following`, it is an attribute block.
+
+- **Block ordering (nested fields)**
+   - Nested arguments within a block section (under: `A <block> block supports the following:`) should follow the same ordering rules as top-level arguments:
+      1. Required nested arguments first, sorted alphabetically.
+      2. Optional nested arguments next, sorted alphabetically, with `tags` always documented last if present.
+      3. If nested arguments include ID segments such as `name` / `resource_group_name`, or include `location`, those should appear first in the same order used for top-level arguments.
+   - Nested attributes within a block section (under: `A <block> block exports the following:`) should be ordered as follows:
+      1. `id` first (if present)
+      2. remaining nested attributes in alphabetical order
 
 - **Apply style rules to the entire bullet**
    - When you update an Arguments Reference bullet, apply these style rules to every sentence in that bullet (not only the first sentence).
@@ -399,8 +396,9 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
 
 - **ForceNew wording (resources only)**
-   - Every ForceNew arg includes: "Changing this forces a new {{RESOURCE_NAME}} to be created."
-   - Do not use the generic noun `resource` (avoid: "Changing this forces a new resource to be created.").
+   - Every ForceNew argument description ends with a ForceNew sentence.
+   - Existing documentation pages may continue to use the legacy sentence: "Changing this forces a new resource to be created.".
+   - For new documentation pages (and when updating/touching an argument description), use the more descriptive sentence: "Changing this forces a new {{RESOURCE_NAME}} to be created.".
    - Set `{{RESOURCE_NAME}}` to the specific Azure resource name used by the page (preferred):
       - Use the noun from the page description/title, e.g. "Storage Account", "Key Vault", "Virtual Network".
       - Keep it consistent across the page (same capitalization and wording).
@@ -427,7 +425,6 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
-
 ## Where to get field descriptions (when not obvious)
 
 When you need to document an argument/attribute and the wording is not already present:
@@ -458,7 +455,6 @@ When you need to document an argument/attribute and the wording is not already p
 4. If still ambiguous, document only what you can verify
    - Avoid listing possible values unless you can confirm them from code/constants.
    - Prefer: “Possible values include …” only when confirmed.
-
 ## Common doc rules (quick checklist)
 
 - Use Terraform names exactly (`azurerm_*`).
@@ -479,7 +475,6 @@ When you need to document an argument/attribute and the wording is not already p
    - Example (Required): `name`, `resource_group_name`, `location`, `sku_name`
 - Keep examples realistic and minimal; include only required fields unless an optional field is needed to demonstrate a behavior.
 - Include correct import format and a real-looking example ID.
-
 ## Output expectation
 
 When asked to write or update docs, produce:
@@ -491,3 +486,4 @@ When asked to write or update docs, produce:
    - Then output a short tail excerpt (e.g. the last ~20 lines) that includes the relevant updated section.
 
 Always include a short checklist of what you verified against the schema.
+   - Then output a short tail excerpt (e.g. the last ~20 lines) that includes the relevant updated section.

@@ -7,7 +7,7 @@
 <big><strong>AI-Powered Development Tools for the Terraform AzureRM Provider</strong></big>
 
 > **🎯 Mission**: Supercharge your Terraform AzureRM Provider development with AI-powered "Vibe Coding" - Generate Resources, Tests, and Documentation that follow HashiCorp's standards automatically.
-##
+
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Community Maintained](https://img.shields.io/badge/Community-Maintained-blue.svg)](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5391FE.svg?logo=powershell&logoColor=white)](https://docs.microsoft.com/powershell/)
@@ -23,7 +23,7 @@ This is a **community-maintained AI enhancement** for developers working on the 
 - ✅ **AI-Powered Code Generation** - Generate Azure resources following HashiCorp patterns
 - ✅ **Intelligent Code Review** - Automated reviews using provider-specific guidelines
 - ✅ **Test Generation** - Create comprehensive acceptance tests automatically
-- ✅ **Documentation Generation** - Generate docs that match provider standards
+- ✅ **Documentation Generation** - Generate docs that match provider standards (including nested block ordering and ForceNew phrasing)
 - ✅ **Best Practice Enforcement** - Real-time guidance on Azure API integration
 
 ### 🎯 Who Is This For?
@@ -33,13 +33,11 @@ This is a **community-maintained AI enhancement** for developers working on the 
 - **Building custom providers**: Learn proven patterns from the AzureRM provider
 - **Code reviews**: Automated checks against provider standards
 
-##
 
 ### 📖 Origin Story
 
 This project originated from [PR #29907](https://github.com/hashicorp/terraform-provider-azurerm/pull/29907) submitted to the HashiCorp Terraform AzureRM Provider repository on `June 19, 2025`. To help move the merge forward and make these AI-powered development tools more accessible to the community, the installation infrastructure was moved to this standalone repository on `October 19, 2025`. The tools and patterns here are designed to work seamlessly with the official provider repository while being maintained independently.
 
-##
 
 ## 🚀 Quick Start
 
@@ -114,7 +112,6 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 
 For detailed installation options, see **[installer/README.md](installer/README.md)**
 
-##
 
 ## ⚠️ Important: Development Workflow
 
@@ -149,7 +146,6 @@ git push
 
 **📌 Remember**: The AI infrastructure files live in `.github/` directory and other locations. They're meant to enhance your local development experience, not to be pushed to HashiCorp's repository.
 
-##
 
 ## 💡 Usage Examples
 
@@ -173,7 +169,6 @@ AI Chat: "Create comprehensive acceptance tests for azurerm_cdn_frontdoor_profil
 AI Chat: "Create documentation following provider standards for azurerm_cdn_frontdoor_profile"
 ```
 
-##
 
 ## 🎬 See It In Action
 
@@ -262,7 +257,6 @@ As you type, Copilot suggests:
 - Schema design improvements
 - Documentation formatting
 
-##
 
 ## 📚 What's Included?
 
@@ -301,7 +295,6 @@ As you type, Copilot suggests:
 - VS Code settings optimized for AI-assisted development
 - Copilot configuration for context-aware code generation
 
-##
 
 ## 🎯 Key Features
 
@@ -331,7 +324,6 @@ Automated checks for:
 - CustomizeDiff validation
 - Azure API integration
 
-##
 
 ## 🤝 Contributing
 
@@ -345,7 +337,6 @@ This is a community project! Contributions are welcome:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-##
 
 ## 📖 Documentation
 
@@ -353,7 +344,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 - **[Usage Examples](docs/EXAMPLES.md)** - Real-world usage scenarios
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-##
 
 ## ⚖️ License
 
@@ -361,7 +351,6 @@ This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)** - th
 
 See [LICENSE](LICENSE) for details.
 
-##
 
 ## 🙏 Acknowledgments
 
@@ -369,7 +358,6 @@ See [LICENSE](LICENSE) for details.
 - **terraform-provider-azurerm contributors** - For establishing the patterns we codify
 - **GitHub Copilot** - For making AI-assisted development possible
 
-##
 
 ## 📣 Disclaimer
 
@@ -377,7 +365,6 @@ See [LICENSE](LICENSE) for details.
 
 This tool is designed to assist developers working with the [official Terraform AzureRM Provider](https://github.com/hashicorp/terraform-provider-azurerm) by providing AI-powered development assistance based on established provider patterns.
 
-##
 
 ## 🔗 Related Projects
 
@@ -385,13 +372,11 @@ This tool is designed to assist developers working with the [official Terraform 
 - [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) - Plugin development framework
 - [GitHub Copilot](https://github.com/features/copilot) - AI pair programmer
 
-##
 
 ## 📞 Support
 
 - **GitHub Issues**: [Report bugs or request features](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/issues)
 - **Discussions**: [Ask questions and share experiences](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/discussions)
 
-##
 
 **Made with ❤️ by the Terraform community**

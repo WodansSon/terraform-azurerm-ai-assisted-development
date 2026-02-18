@@ -96,16 +96,32 @@ Validate:
   2. `location` (if present)
   3. remaining required arguments (alphabetical)
   4. optional arguments (alphabetical), with `tags` last (if present)
-- **Resources only:** for every ForceNew field in schema, the argument description must end with a sentence of the form: "Changing this forces a new … to be created."
+- **Resources only:** for every ForceNew field in schema, the argument description must end with a ForceNew sentence.
+  - Existing documentation pages may continue to use the legacy sentence: `Changing this forces a new resource to be created.`
+  - For new pages (and when touching/updating an argument description), prefer the more descriptive sentence: `Changing this forces a new <Resource Display Name> to be created.`
+  - The `<Resource Display Name>` should match the same noun phrase used by the page description/title (e.g. `Storage Account`, `Bot Web App`, `Virtual Network`) and be used consistently across the page.
+  - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**. If the legacy sentence is used, record an **Observation** unless the doc appears to be newly added.
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
 - Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
 - If schema defines a default value, docs must include "Defaults to `...`."
 
+**Nested block arguments (ordering rules):**
+- For each block subsection under `## Arguments Reference` (e.g. `A <block> block supports the following:`), verify nested field ordering follows the same contributor rules:
+  1. Required nested arguments first (alphabetical).
+  2. Optional nested arguments next (alphabetical), with `tags` always last if present.
+  3. If nested arguments include ID segments such as `name` / `resource_group_name`, or include `location`, those should appear first in the same order used for top-level arguments.
+  4. Apply the same rules recursively for nested blocks inside blocks.
+
 #### C) Attributes Reference parity
 - All schema computed attributes must be present in Attributes Reference
 - Ordering must follow `contributing/topics/reference-documentation-standards.md`: `id` first, then remaining attributes alphabetical
 - Attribute descriptions must be concise and must not include possible/default values
+
+**Nested block attributes (ordering rules):**
+- For each block subsection under `## Attributes Reference` (e.g. `A <block> block exports the following:`), verify nested attribute ordering is:
+  1. the `id` attribute (if present)
+  2. the remaining nested attributes, sorted alphabetically
 
 #### D) Notes / note notation
 - All note blocks must use the exact standard format: `(->|~>|!>) **Note:** ...`
