@@ -40,6 +40,10 @@ jobs:
           mkdir -p release/.terraform-azurerm-ai-installer/modules/powershell
           mkdir -p release/.terraform-azurerm-ai-installer/modules/bash
 
+      - name: Write installer VERSION file
+        run: |
+          echo "${{ steps.get_version.outputs.VERSION }}" > release/.terraform-azurerm-ai-installer/VERSION
+
       - name: Copy installer files to bundle
         run: |
           # Copy main scripts

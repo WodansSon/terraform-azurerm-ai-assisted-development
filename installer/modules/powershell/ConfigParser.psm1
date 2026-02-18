@@ -122,8 +122,17 @@ function Get-InstallerConfig {
     # DOWNLOAD SOURCE: Use specified branch for downloading AI files
     # DOWNLOAD TARGET: Copy files to the local workspace directory (regardless of local branch)
 
+    $version = "dev"
+    $versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
+    if (Test-Path $versionPath) {
+        $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+        if ($candidate -match '^\d+\.\d+\.\d+$') {
+            $version = $candidate
+        }
+    }
+
     return @{
-        Version = "1.0.4"
+        Version = $version
         Branch = $Branch
         SourceRepository = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
         Files = @{

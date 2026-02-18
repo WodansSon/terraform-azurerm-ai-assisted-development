@@ -5,8 +5,16 @@
 # ============================================================================
 # Module Configuration
 # ============================================================================
-INSTALLER_VERSION="1.0.4"
-DEFAULT_VERSION="1.0.4"
+_ui_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_installer_root="$(cd "${_ui_dir}/../.." && pwd)"
+if [[ -f "${_installer_root}/VERSION" ]]; then
+    INSTALLER_VERSION="$(tr -d '\r\n' < "${_installer_root}/VERSION")"
+else
+    INSTALLER_VERSION="dev"
+fi
+DEFAULT_VERSION="${INSTALLER_VERSION}"
+unset _ui_dir
+unset _installer_root
 
 # Color definitions with cross-platform compatibility
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
@@ -387,7 +395,7 @@ print_separator() {
 # Function to display main application heade
 write_header() {
     local title="${1:-Terraform AzureRM Provider - AI Infrastructure Installer}"
-    local version="${2:-1.0.4}"
+    local version="${2:-$DEFAULT_VERSION}"
 
     echo ""
     print_separator

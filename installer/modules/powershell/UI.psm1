@@ -8,8 +8,16 @@
 
 #region Module Configuration
 
-# Default version - should be overridden by caller
-$script:DefaultVersion = "1.0.4"
+# Default version is centralized in the VERSION file
+$script:DefaultVersion = "dev"
+
+$versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
+if (Test-Path $versionPath) {
+    $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+    if ($candidate -match '^\d+\.\d+\.\d+$') {
+        $script:DefaultVersion = $candidate
+    }
+}
 
 #endregion Module Configuration
 

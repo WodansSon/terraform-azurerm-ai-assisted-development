@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # Main AI Infrastructure Installer for Terraform AzureRM Provider (macOS/Linux)
-# Version: 1.0.4
+# Version: see VERSION file
 # Description: Interactive installer for AI-powered development tools
 # Requires bash 3.2+ (compatible with macOS default bash)
 
@@ -13,8 +13,13 @@ set -euo pipefail
 # PARAMETER DEFINITIONS
 # ============================================================================
 
-# Version Control (Centralized in ui.sh module: INSTALLER_VERSION="1.0.4")
-VERSION="1.0.4"
+# Installer version is centralized in the VERSION file
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/VERSION" ]]; then
+    VERSION="$(tr -d '\r\n' < "${SCRIPT_DIR}/VERSION")"
+else
+    VERSION="dev"
+fi
 
 # Global variables
 BRANCH="main"
