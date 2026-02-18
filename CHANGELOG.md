@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated the `.github/prompts/docs-schema-audit.prompt.md` prompt to reflect contributor documentation standards for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
 - Updated the `/azurerm-docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
+- Removed empty `##` spacer headings from README files to avoid bogus headings and keep GitHub Markdown rendering consistent.
 
 ## [1.0.3] - 2026-02-17
 
