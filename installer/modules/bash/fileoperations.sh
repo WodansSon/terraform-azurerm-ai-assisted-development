@@ -1405,6 +1405,23 @@ bootstrap_files_to_profile() {
         fi
     done
 
+    # Stamp a dev version into the bootstrapped installer directory
+    # so contributors can distinguish bootstrapped builds from releases.
+    local bootstrap_version="dev"
+    if command -v git >/dev/null 2>&1; then
+        local sha
+        sha=$(git -C "${current_dir}" rev-parse --short HEAD 2>/dev/null | tr -d '\r\n')
+        if [[ -n "${sha}" ]]; then
+            bootstrap_version="dev-${sha}"
+        fi
+        if [[ -n "$(git -C "${current_dir}" status --porcelain 2>/dev/null)" ]]; then
+            bootstrap_version="${bootstrap_version}-dirty"
+        fi
+    fi
+    if [[ "${DRY_RUN}" != "true" ]]; then
+        echo "${bootstrap_version}" > "${user_profile}/VERSION"
+    fi
+
     # Make installer script executable
     if [[ "${DRY_RUN}" != "true" ]]; then
         chmod +x "${user_profile}/install-copilot-setup.sh"

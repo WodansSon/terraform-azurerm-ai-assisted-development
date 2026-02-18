@@ -14,7 +14,7 @@ $script:DefaultVersion = "dev"
 $versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
 if (Test-Path $versionPath) {
     $candidate = (Get-Content -Path $versionPath -Raw).Trim()
-    if ($candidate -match '^\d+\.\d+\.\d+$') {
+    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$') {
         $script:DefaultVersion = $candidate
     }
 }

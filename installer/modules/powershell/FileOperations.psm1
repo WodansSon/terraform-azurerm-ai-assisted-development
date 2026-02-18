@@ -1351,6 +1351,27 @@ function Invoke-Bootstrap {
             exit 1
         }
 
+        $bootstrapVersion = "dev"
+        try {
+            $sha = (git -C $Global:WorkspaceRoot rev-parse --short HEAD 2>$null).Trim()
+            if ($sha) {
+                $bootstrapVersion = "dev-$sha"
+            }
+            $dirty = git -C $Global:WorkspaceRoot status --porcelain 2>$null
+            if ($dirty) {
+                $bootstrapVersion = "$bootstrapVersion-dirty"
+            }
+        }
+        catch {
+        }
+
+        try {
+            $versionFilePath = Join-Path $targetDirectory "VERSION"
+            Set-Content -Path $versionFilePath -Value $bootstrapVersion -NoNewline -Force
+        }
+        catch {
+        }
+
         # Prepare details for centralized summary
         $details = @()
         $totalSizeKB = [math]::Round($statistics["Total Size"] / 1KB, 1)
