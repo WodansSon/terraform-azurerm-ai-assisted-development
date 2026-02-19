@@ -57,6 +57,11 @@ jobs:
           # Copy Bash modules
           cp installer/modules/bash/*.sh release/.terraform-azurerm-ai-installer/modules/bash/
 
+      - name: Make bundled bash scripts executable
+        run: |
+          chmod +x release/.terraform-azurerm-ai-installer/install-copilot-setup.sh
+          chmod +x release/.terraform-azurerm-ai-installer/modules/bash/*.sh
+
       - name: Create ZIP archive for Windows
         run: |
           cd release
@@ -123,6 +128,11 @@ jobs:
 
             # Run installer pointing to your terraform-provider-azurerm repository
             ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+            ```
+
+            If you see a permission error, run:
+            ```bash
+            chmod +x ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh
             ```
 
             **Option B: Pin this exact version (v${{ steps.get_version.outputs.VERSION }})**
