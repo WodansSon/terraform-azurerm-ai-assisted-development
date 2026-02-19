@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-02-18
+
 ### Fixed
 - Release bundles now set executable permissions on the bundled Bash installer scripts (with a `chmod +x` fallback note for environments that drop execute bits).
 
@@ -146,7 +148,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.2
