@@ -99,6 +99,37 @@ cd ~/.terraform-azurerm-ai-installer
 
 ---
 
+### Manifest File Mismatch (Verify)
+
+This happens when `-Verify` / `-verify` detects that the **local installer manifest** (`file-manifest.config` next to the installer you are running) does not match the **remote manifest** from GitHub.
+
+**Common causes:**
+- You have an older `~/.terraform-azurerm-ai-installer` / `%USERPROFILE%\.terraform-azurerm-ai-installer` from a previous release.
+- You updated your local clone but did not re-bootstrap the user-profile installer.
+
+**Fix:** refresh your installer, then run verify again.
+
+**Windows (PowerShell):**
+```powershell
+# Re-extract the latest release bundle (recommended), or re-bootstrap from a local clone.
+
+# Then verify against your target repo:
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+**macOS/Linux (Bash):**
+```bash
+# Re-extract the latest release bundle (recommended), or re-bootstrap from a local clone.
+
+# Then verify against your target repo:
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/terraform-provider-azurerm"
+```
+
+> [!NOTE]
+> If you are offline (no internet access), the installer will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
+
+---
+
 ### Permission Denied (macOS/Linux)
 
 **Error**:

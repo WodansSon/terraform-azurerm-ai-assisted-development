@@ -470,6 +470,12 @@ Simply use slash commands to invoke the prompts directly:
 | `./install-copilot-setup.sh -bootstrap` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/repo"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
+
+> [!NOTE]
+> `-Verify` / `-verify` will fail fast with **"Manifest file mismatch"** if your local installer `file-manifest.config` does not match the upstream manifest from GitHub.
+> Refresh your user-profile installer (re-extract the latest release bundle or re-run Bootstrap from a local clone) and try again.
+>
+> If you are offline, the installer will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |
 

@@ -418,13 +418,22 @@ verify_installation() {
 
         local local_manifest_content
         local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
-        local remote_manifest_content
-        remote_manifest_content="$(curl -fsSL "${remote_manifest_url}" 2>/dev/null | tr -d '\r' || true)"
 
-        if [[ -n "${remote_manifest_content}" ]] && [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
+        local remote_manifest_raw
+        remote_manifest_raw="$(curl -fsSL "${remote_manifest_url}" 2>/dev/null)"
+        local curl_exit=$?
+
+        local remote_manifest_content
+        remote_manifest_content="$(printf '%s' "${remote_manifest_raw}" | tr -d '\r')"
+
+        if [[ ${curl_exit} -ne 0 ]] || [[ -z "${remote_manifest_content}" ]]; then
+            write_yellow " NOTE: Could not validate remote manifest; continuing verification"
+        elif [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
             show_manifest_mismatch_error "${manifest_file}" "${remote_manifest_url}" "$0"
             return 1
         fi
+    else
+        write_yellow " NOTE: curl not found; skipping remote manifest validation"
     fi
 
     write_cyan " Using manifest: ${manifest_file}"
