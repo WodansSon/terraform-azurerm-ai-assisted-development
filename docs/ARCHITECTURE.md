@@ -74,87 +74,89 @@
 ### Option 1: Release Bundle (Recommended - No Repo Clone Needed)
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ Download Installer Bundle from GitHub Releases (Latest)   │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Download Installer Bundle from GitHub Releases (Latest)     │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Extract to User Profile (One-Time)                       │
-│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer │
-│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer          │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Extract to User Profile (One-Time)                         │
+│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer   │
+│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer            │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Run Installer with Target Repository                     │
-│  PowerShell: -RepoDirectory "path"                        │
-│  Bash: -repo-directory "path"                             │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Run Installer with Target Repository                       │
+│  PowerShell: -RepoDirectory "path"                          │
+│  Bash: -repo-directory "path"                               │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Installer Downloads AI Files via GitHub                  │
-│  raw URLs to Target Repo :                                │
-│                                                           │
-│  ├── .github/copilot-instructions.md                      │
-│  ├── .github/prompts/                                     │
-│  │   ├── code-review-local-changes.prompt.md              │
-│  │   ├── code-review-committed-changes.prompt.md          │
-│  │   └── docs-review.prompt.md                            │
-│  ├── .github/skills/                                      │
-│  │   └── */SKILL.md                                       │
-│  ├── .github/instructions/                                │
-│  │   ├── api-evolution-patterns.md                        │
-│  │   ├── azure-patterns.md                                │
-│  │   ├── testing-guidelines.md                            │
-│  │   └── [13 instruction files total]                     │
-│  └── .vscode/settings.json                                │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Installer Downloads AI Files via GitHub                    │
+│  raw URLs to Target Repo :                                  │
+│                                                             │
+│  ├── .github/copilot-instructions.md                        │
+│  ├── .github/prompts/                                       │
+│  │   ├── code-review-local-changes.prompt.md                │
+│  │   ├── code-review-committed-changes.prompt.md            │
+│  │   └── docs-review.prompt.md                              │
+│  ├── .github/skills/                                        │
+│  │   └── */SKILL.md                                         │
+│  ├── .github/instructions/                                  │
+│  │   ├── api-evolution-patterns.md                          │
+│  │   ├── azure-patterns.md                                  │
+│  │   ├── testing-guidelines.md                              │
+│  │   └── [13 instruction files total]                       │
+│  └── .vscode/settings.json                                  │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Success: GitHub Copilot Ready!                           │
-│  - Files installed from GitHub                            │
-│  - AI development environment active                      │
-└───────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Success: GitHub Copilot Ready!                             │
+│  - Files installed from GitHub                              │
+│  - AI development environment active                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Option 2: Bootstrap from Cloned Repo (Contributors Only)
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│  Clone Repository (Contributors)                          │
-│  - git checkout branch                                    │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Clone Repository (Contributors)                            │
+│  - git checkout branch                                      │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Run Bootstrap from Cloned Repo Branch                    │
-│  PowerShell: -Bootstrap                                   │
-│  Bash: -bootstrap                                         │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Run Bootstrap from Cloned Repo Branch                      │
+│  PowerShell: -Bootstrap -Contributor -LocalPath "<clone>"   │
+│  Bash: -bootstrap -contributor -local-path "<clone>"        │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Copies Installer from Source Repo to User Profile        │
-│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer │
-│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer          │
-│                                                           │
-│  installer/                                               │
-│  ├── install-copilot-setup.ps1 (Windows)                  │
-│  ├── install-copilot-setup.sh (Cross-platform)            │
-│  ├── file-manifest.config                                 │
-│  └── modules/                                             │
-│      ├── powershell/                                      │
-│      └── bash/                                            │
-└────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Copies Installer from Source Repo to User Profile          │
+│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer   │
+│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer            │
+│                                                             │
+│  installer/                                                 │
+│  ├── install-copilot-setup.ps1 (Windows)                    │
+│  ├── install-copilot-setup.sh (Cross-platform)              │
+│  ├── file-manifest.config                                   │
+│  └── modules/                                               │
+│      ├── powershell/                                        │
+│      └── bash/                                              │
+└────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌───────────────────────────────────────────────────────────┐
-│  Run Installer from User Profile with Target Repository   │
-│  Same flow as Option 1 from here                          │
-└───────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Run Installer from User Profile with Target Repository     │
+│  Same execution location as Option 1, but source AI files   │
+│  from your working tree using -Contributor -LocalPath       │
+│  (PowerShell/Bash also pass -RepoDirectory/-repo-directory) │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## GitHub Copilot Integration

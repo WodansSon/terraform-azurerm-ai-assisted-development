@@ -88,10 +88,24 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 >   - `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v1.0.1/terraform-azurerm-ai-installer-v1.0.1.tar.gz`
 <!-- -->
 > [!TIP]
-> **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, use the `-Bootstrap` command to work with your local changes:
+> **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, the most reliable workflow is:
+> 1) **From your local clone (on your dev branch)**, run Bootstrap to refresh the user-profile installer (include `-Contributor -LocalPath` so it uses your local working tree), then
+> 2) run installs from your user profile using `-Contributor -LocalPath` to source AI files from your working tree.
 > ```bash
+> # Step 1 (Bootstrap) - run from your local clone
 > cd terraform-azurerm-ai-assisted-development/installer
-> ./install-copilot-setup.sh -bootstrap  # or .\install-copilot-setup.ps1 -Bootstrap on Windows
+> ./install-copilot-setup.sh -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
+> # PowerShell:
+> #   cd terraform-azurerm-ai-assisted-development\installer
+> #   .\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
+>
+> # Step 2 (Install) - run from your user profile, sourcing AI files from your working tree
+> # PowerShell:
+> #   cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
+> #   .\install-copilot-setup.ps1 -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+> # Bash:
+> #   cd ~/.terraform-azurerm-ai-installer
+> #   ./install-copilot-setup.sh -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 > ```
 >
 > **Why use Bootstrap instead of the release package?**

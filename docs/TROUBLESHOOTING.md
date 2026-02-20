@@ -56,6 +56,49 @@ Error: Could not locate terraform-provider-azurerm repository
 
 ---
 
+### Branch Validation Failed (Contributors)
+
+This happens when the installer tries to validate or pull files from a **GitHub branch** that does not exist remotely.
+
+In contributor workflows, the most common ways to trigger this are:
+- You used `-Contributor -Branch "feature/my-branch"` but that branch only exists locally (or the name is misspelled) and has not been pushed to GitHub.
+- You are testing local/uncommitted AI file changes but did not use `-Contributor -LocalPath <your clone>`, so the installer falls back to pulling AI files from GitHub (remote) and will fail if the requested branch does not exist.
+
+**Fix options:**
+- **Preferred**: use `-Contributor -LocalPath <your clone>` for bootstrap + install when testing local changes.
+- **Alternative**: push the branch and re-run using `-Contributor -Branch`.
+
+> [!IMPORTANT]
+> The commands below assume the installer in your user profile is up-to-date (v2.0.0+).
+> If you have an older `~/.terraform-azurerm-ai-installer` / `%USERPROFILE%\.terraform-azurerm-ai-installer` from a previous release, step (2) may fail or behave differently.
+> Always run step (1) first (or re-extract the latest release bundle) before running the installer from your user profile.
+
+**Solution (PowerShell):**
+```powershell
+# Keep execution consistent with release installs:
+# 1) Refresh the user-profile installer from your local AI dev repo (your dev branch)
+& "C:\path\to\terraform-azurerm-ai-assisted-development\installer\install-copilot-setup.ps1" -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
+
+# 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
+#    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
+cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
+.\install-copilot-setup.ps1 -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+**Solution (Bash):**
+```bash
+# Keep execution consistent with release installs:
+# 1) Refresh the user-profile installer from your local AI dev repo (your dev branch)
+"/path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh" -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
+
+# 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
+#    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
+cd ~/.terraform-azurerm-ai-installer
+./install-copilot-setup.sh -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
+```
+
+---
+
 ### Permission Denied (macOS/Linux)
 
 **Error**:

@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `-Bootstrap` failing on local-only feature branches by skipping remote branch validation for local-copy workflows.
 - Added support for bootstrapping from a local source path: `-Bootstrap -Contributor -LocalPath <path>` copies installer files from that local AI dev repo into the user profile installer directory.
 - Fixed Bash `get_manifest_config` defaulting to an outdated branch name and added optional remote branch validation (skippable for local-copy workflows).
+- Clarified contributor bootstrap and local-only branch workflows across docs (Troubleshooting, README, installer README, Architecture) and added cross-links to reduce confusion when a stale user-profile installer is present.
+- Bash contributor installs using `-contributor -branch` now validate the remote branch up-front and show a consistent "Branch validation failed" message (matching PowerShell), instead of failing later during per-file downloads.
 
 ## [1.0.5] - 2026-02-18
 

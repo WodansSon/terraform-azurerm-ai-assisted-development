@@ -84,7 +84,7 @@ The installer provides a **clean, professional output** focused on what matters:
  VERSION: 1.0.0
 ============================================================
 
- SOURCE BRANCH DETECTED : main
+ FEATURE BRANCH DETECTED: feature/my-changes
  WORKSPACE              : C:\path\to\terraform-azurerm-ai-assisted-development
 
 ============================================================
@@ -553,6 +553,11 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 #### 🔧 **Option 2: Bootstrap from Local Clone (For Contributors)**
 If you're **contributing to this AI infrastructure project** and have it cloned locally, you can use `-Bootstrap` to copy the installer to your user profile from your local repository:
 
+> [!NOTE]
+> **Recommended contributor workflow**: bootstrap from your local clone to refresh the user-profile installer, then run installs from your user profile. If you are testing local, uncommitted AI file changes (prompts/instructions/skills), use `-Contributor -LocalPath <your-clone>` when installing into `terraform-provider-azurerm`.
+>
+> For the detailed reasoning, common failure modes, and the exact two-step commands, see: [Branch Validation Failed (Contributors)](../docs/TROUBLESHOOTING.md#branch-validation-failed-contributors).
+
 **Windows:**
 ```powershell
 # Clone the AI infrastructure repository (one-time)
@@ -560,10 +565,11 @@ git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development
 cd terraform-azurerm-ai-assisted-development/installer
 
 # Bootstrap from your local clone
-.\install-copilot-setup.ps1 -Bootstrap
+.\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
 
-# Now you can run from user profile
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
+# Now you can run from your user profile
+cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
+.\install-copilot-setup.ps1 -Help
 ```
 
 **macOS/Linux:**
@@ -573,10 +579,11 @@ git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development
 cd terraform-azurerm-ai-assisted-development/installer
 
 # Bootstrap from your local clone
-./install-copilot-setup.sh -bootstrap
+./install-copilot-setup.sh -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
 
-# Now you can run from user profile
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
+# Now you can run from your user profile
+cd ~/.terraform-azurerm-ai-installer
+./install-copilot-setup.sh -help
 ```
 
 **When to use each option:**

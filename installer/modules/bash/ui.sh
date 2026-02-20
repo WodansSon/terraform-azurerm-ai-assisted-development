@@ -1016,6 +1016,33 @@ show_repository_directory_required_error() {
     echo ""
 }
 
+# Function to display branch validation failed message (matches PowerShell UX)
+show_branch_validation_failed() {
+    local branch_name="$1"
+    local script_name="${2:-./install-copilot-setup.sh}"
+
+    echo ""
+    write_red " Error: Branch validation failed"
+    echo ""
+    write_cyan " Branch: ${branch_name}"
+    echo ""
+    write_cyan " The specified branch does not exist on the remote source (GitHub) used for remote branch installs."
+    echo ""
+    write_cyan " Notes:"
+    write_cyan " - This validation applies when pulling files from GitHub (for example, -contributor -branch)."
+    write_cyan " - -bootstrap and -contributor -local-path are local-copy workflows and do not require a GitHub branch."
+    echo ""
+    write_cyan " Please verify the branch name and try again:"
+    write_plain "   -contributor -branch \"valid-branch-name\""
+    echo ""
+    write_cyan " If you are testing local changes without pushing a branch, use local source install:"
+    write_plain "   ./install-copilot-setup.sh -contributor -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/terraform-provider-azurerm\""
+    echo ""
+    write_cyan " For more help, run:"
+    write_plain "   ${script_name} -help"
+    echo ""
+}
+
 # Function to display safety violation message for source branch operations
 show_safety_violation() {
     local branch_name="${1:-exp/terraform_copilot}"
@@ -1077,5 +1104,6 @@ export -f write_header write_operation_status
 export -f write_error_message write_warning_message write_success_message
 export -f write_file_operation_status show_completion_summary show_safety_violation
 export -f show_usage show_source_branch_welcome show_workspace_validation_error
+export -f show_branch_validation_failed
 export -f show_operation_summary
 export -f print_separator get_user_profile format_aligned_label_spacing calculate_max_filename_length

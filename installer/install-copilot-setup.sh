@@ -452,6 +452,21 @@ main() {
         exit 1
     fi
 
+    # STEP 11.5: Validate remote branch exists for GitHub-pulled contributor installs
+    # This provides a single, actionable error message (matching PowerShell UX) instead of failing later during per-file downloads.
+    if [[ -n "${REPO_DIRECTORY}" ]] && [[ -n "${SOURCE_BRANCH}" ]] && [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
+        if ! command -v curl >/dev/null 2>&1; then
+            write_error_message "curl is required to validate remote branches"
+            exit 1
+        fi
+
+        local test_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${SOURCE_BRANCH}/installer/file-manifest.config"
+        if ! curl -fsSI "${test_url}" >/dev/null 2>&1; then
+            show_branch_validation_failed "${SOURCE_BRANCH}" "$0"
+            exit 1
+        fi
+    fi
+
     # STEP 12: Execute single operation based on parameters (like PowerShell)
     if [[ "${VERIFY}" == "true" ]]; then
         verify_installation "${workspace_root}"
