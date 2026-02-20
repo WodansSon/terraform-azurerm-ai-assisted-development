@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified contributor bootstrap and local-only branch workflows across docs (Troubleshooting, README, installer README, Architecture) and added cross-links to reduce confusion when a stale user-profile installer is present.
 - Bash contributor installs using `-contributor -branch` now validate the remote branch up-front and show a consistent "Branch validation failed" message (matching PowerShell), instead of failing later during per-file downloads.
 - `-verify` now fails fast with a clear "manifest file mismatch" error when the local installer `file-manifest.config` differs from the remote manifest, which prevents misleading missing-file results when a stale user-profile installer is present.
-- Bash `-verify` now prints a warning and continues when the remote manifest cannot be validated (for example offline or behind a firewall), instead of failing silently.
+- Bash `-verify` now prints a warning and continues when the remote manifest cannot be validated (for example DNS/firewall/proxy restrictions), instead of failing silently.
 
 ## [1.0.5] - 2026-02-18
 

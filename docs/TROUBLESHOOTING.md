@@ -126,7 +126,7 @@ This happens when `-Verify` / `-verify` detects that the **local installer manif
 ```
 
 > [!NOTE]
-> If you are offline (no internet access), the installer will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
+> If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), it will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
 
 ---
 

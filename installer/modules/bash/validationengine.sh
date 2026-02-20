@@ -420,8 +420,22 @@ verify_installation() {
         local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
 
         local remote_manifest_raw
-        remote_manifest_raw="$(curl -fsSL "${remote_manifest_url}" 2>/dev/null)"
-        local curl_exit=$?
+        local curl_exit
+
+        # Some environments export `SHELLOPTS` with `errexit`, which would cause a failing curl inside
+        # command substitution to terminate the script before we can print a warning.
+        local errexit_was_set=false
+        if [[ "$-" == *e* ]]; then
+            errexit_was_set=true
+            set +e
+        fi
+
+        remote_manifest_raw="$(curl -fsSL --connect-timeout 10 --max-time 20 "${remote_manifest_url}" 2>/dev/null)"
+        curl_exit=$?
+
+        if [[ "${errexit_was_set}" == "true" ]]; then
+            set -e
+        fi
 
         local remote_manifest_content
         remote_manifest_content="$(printf '%s' "${remote_manifest_raw}" | tr -d '\r')"
