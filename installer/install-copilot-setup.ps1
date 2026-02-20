@@ -681,8 +681,11 @@ function Main {
         }
 
         if ($Verify) {
-            Invoke-VerifyWorkspace -BranchType $branchType | Out-Null
-            return
+            $verifyResult = Invoke-VerifyWorkspace -BranchType $branchType
+            if (-not $verifyResult.Success) {
+                exit 1
+            }
+            exit 0
         }
 
         if ($Bootstrap) {

@@ -1043,6 +1043,31 @@ show_branch_validation_failed() {
     echo ""
 }
 
+# Function to display manifest mismatch message
+show_manifest_mismatch_error() {
+    local local_manifest_path="$1"
+    local remote_manifest_url="$2"
+    local script_name="${3:-./install-copilot-setup.sh}"
+
+    echo ""
+    write_red " Error: Manifest file mismatch"
+    echo ""
+    write_cyan " Local manifest: ${local_manifest_path}"
+    write_cyan " Remote manifest: ${remote_manifest_url}"
+    echo ""
+    write_cyan " Your local installer manifest does not match the remote manifest."
+    write_cyan " This usually means the installer in your user profile is out of date."
+    echo ""
+    write_yellow " FIX: Refresh the local installer/manifest, then re-run -verify"
+    write_cyan " - If you installed from a release bundle, re-download and re-extract the latest release bundle into your user profile installer directory."
+    write_cyan " - If you are a contributor with a local clone, run bootstrap from that clone (not from a stale user-profile copy):"
+    write_plain "     /path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh -bootstrap"
+    echo ""
+    write_cyan " For more help, run:"
+    write_plain "   ${script_name} -help"
+    echo ""
+}
+
 # Function to display safety violation message for source branch operations
 show_safety_violation() {
     local branch_name="${1:-exp/terraform_copilot}"
@@ -1105,5 +1130,6 @@ export -f write_error_message write_warning_message write_success_message
 export -f write_file_operation_status show_completion_summary show_safety_violation
 export -f show_usage show_source_branch_welcome show_workspace_validation_error
 export -f show_branch_validation_failed
+export -f show_manifest_mismatch_error
 export -f show_operation_summary
 export -f print_separator get_user_profile format_aligned_label_spacing calculate_max_filename_length

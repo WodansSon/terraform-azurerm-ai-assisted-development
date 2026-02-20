@@ -384,7 +384,51 @@ verify_installation() {
     echo ""
 
     local all_good=true
-    local manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    local manifest_file=""
+    # Prefer the manifest shipped with the running installer to avoid using a stale user-profile manifest.
+    local module_dir
+    module_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local installer_dir
+    installer_dir="$(cd "${module_dir}/../.." && pwd)"
+
+    if [[ -f "${installer_dir}/file-manifest.config" ]]; then
+        manifest_file="${installer_dir}/file-manifest.config"
+    elif [[ -f "${HOME}/.terraform-azurerm-ai-installer/file-manifest.config" ]]; then
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    else
+        write_error_message "Manifest file not found"
+        write_plain "Expected one of:"
+        write_plain "  ${installer_dir}/file-manifest.config"
+        write_plain "  ${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+        echo ""
+        write_plain "TIP: If running from user profile, run bootstrap first:"
+        write_plain "  ./install-copilot-setup.sh -bootstrap"
+        return 1
+    fi
+
+    # Enforce that the local manifest matches the remote manifest.
+    # This prevents misleading verification results when the local installer/manifest is stale.
+    local branch_for_remote="main"
+    if [[ -n "${SOURCE_BRANCH:-}" ]]; then
+        branch_for_remote="${SOURCE_BRANCH}"
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        local remote_manifest_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${branch_for_remote}/installer/file-manifest.config"
+
+        local local_manifest_content
+        local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
+        local remote_manifest_content
+        remote_manifest_content="$(curl -fsSL "${remote_manifest_url}" 2>/dev/null | tr -d '\r' || true)"
+
+        if [[ -n "${remote_manifest_content}" ]] && [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
+            show_manifest_mismatch_error "${manifest_file}" "${remote_manifest_url}" "$0"
+            return 1
+        fi
+    fi
+
+    write_cyan " Using manifest: ${manifest_file}"
+    echo ""
     local files_checked=0
     local files_passed=0
     local files_failed=0

@@ -833,6 +833,40 @@ function Invoke-VerifyWorkspace {
         Write-Separator
         Write-Host ""
 
+        # Fail fast if the local installer manifest does not match the remote manifest.
+        # This prevents misleading verification results when a stale user-profile installer is present.
+        try {
+            $localManifestPath = Join-Path $Global:ScriptRoot "file-manifest.config"
+            $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
+
+            if (Test-Path $localManifestPath -and $remoteManifestUrl) {
+                $localManifest = (Get-Content -Path $localManifestPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
+                $remoteManifest = (Invoke-WebRequest -Uri $remoteManifestUrl -UseBasicParsing -ErrorAction Stop).Content
+                $remoteManifest = $remoteManifest -replace "`r`n", "`n" -replace "`r", "`n"
+
+                if ($localManifest -ne $remoteManifest) {
+                    Write-Host " Manifest file mismatch" -ForegroundColor Red
+                    Write-Host ""
+                    Write-Host " Local manifest: $(Get-RelativePath $localManifestPath)" -ForegroundColor Cyan
+                    Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host " The local installer manifest does not match the remote manifest." -ForegroundColor Cyan
+                    Write-Host " This usually means your installer is out of date." -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host " FIX: Refresh the installer/manifest (re-run Bootstrap or re-extract the latest release bundle), then run -Verify again." -ForegroundColor Yellow
+                    Write-Host ""
+
+                    $results.Success = $false
+                    $results.Issues += "file-manifest.config mismatch"
+                    return $results
+                }
+            }
+        }
+        catch {
+            # If remote manifest cannot be fetched (offline/firewall), do not block verification.
+            Write-Host " NOTE: Could not validate remote manifest; continuing verification" -ForegroundColor Yellow
+        }
+
         # Check main instructions file
         $instructionsFile = $Global:InstallerConfig.Files.Instructions.Target
         if (Test-Path $instructionsFile) {
