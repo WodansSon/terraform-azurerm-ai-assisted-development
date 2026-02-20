@@ -409,10 +409,10 @@ The installer sets up a complete AI development environment:
 - `.github/prompts/` - AI prompt templates for common development tasks:
 
 ### 🧠 Agent Skills
-- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/azurerm-docs-writer`)
+- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/docs-writer`)
 
 > [!TIP]
-> The `azurerm-docs-writer` skill supports a dry run/testing mode for docs scaffolding: when you ask for a test/dry run, it uses `-website-path website_scaffold_tmp` to avoid overwriting `website/docs/**`.
+> The `docs-writer` skill supports a dry run/testing mode for docs scaffolding: when you ask for a test/dry run, it uses `-website-path website_scaffold_tmp` to avoid overwriting `website/docs/**`.
 
 ### ⚙️ VS Code Configuration
 - `.vscode/settings.json` - Optimized VS Code settings for Terraform development
@@ -432,13 +432,13 @@ Simply use slash commands to invoke the prompts directly:
 |---------------|-------------|-------------|
 | `/code-review-local-changes` | `code-review-local-changes.prompt.md` | Review your uncommitted changes |
 | `/code-review-committed-changes` | `code-review-committed-changes.prompt.md` | Review committed changes |
-| `/docs-schema-audit` | `docs-schema-audit.prompt.md` | Audit a `website/docs/**` page for docs standards + schema parity |
+| `/docs-review` | `docs-review.prompt.md` | Review a `website/docs/**` page for docs standards + schema parity |
 
 **Example Usage:**
 ```
 /code-review-local-changes
 /code-review-committed-changes
-/docs-schema-audit
+/docs-review
 ```
 
 #### Available Prompts
@@ -447,7 +447,7 @@ Simply use slash commands to invoke the prompts directly:
 |-------------|---------|-------|
 | `code-review-local-changes.prompt.md` | **Review uncommitted changes** with Terraform provider best practices | Use before committing to get expert feedback on your local changes |
 | `code-review-committed-changes.prompt.md` | **Review committed changes** for pull request feedback | Use to review git commits with detailed technical analysis |
-| `docs-schema-audit.prompt.md` | **Audit a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes |
+| `docs-review.prompt.md` | **Review a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes |
 
 ## 🎛️ Command Reference
 

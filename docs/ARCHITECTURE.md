@@ -28,9 +28,9 @@
 │  │  │   │  │  ├── prompts/                              │  │  │ │
 │  │  │   │  │  │   ├── code-review-local-changes...      │  │  │ │
 │  │  │   │  │  │   ├── code-review-committed-changes...  │  │  │ │
-│  │  │   │  │  │   └── docs-schema-audit.prompt.md       │  │  │ │
+│  │  │   │  │  │   └── docs-review.prompt.md             │  │  │ │
 │  │  │   │  │  ├── skills/                               │  │  │ │
-│  │  │   │  │  │   ├── azurerm-docs-writer/SKILL.md      │  │  │ │
+│  │  │   │  │  │   ├── docs-writer/SKILL.md              │  │  │ │
 │  │  │   │  │  │   └── [other skill files]               │  │  │ │
 │  │  │   │  │  └── instructions/                         │  │  │ │
 │  │  │   │  │      ├── api-evolution-patterns.md         │  │  │ │
@@ -101,7 +101,7 @@
 │  ├── .github/prompts/                                     │
 │  │   ├── code-review-local-changes.prompt.md              │
 │  │   ├── code-review-committed-changes.prompt.md          │
-│  │   └── docs-schema-audit.prompt.md                      │
+│  │   └── docs-review.prompt.md                            │
 │  ├── .github/skills/                                      │
 │  │   └── */SKILL.md                                       │
 │  ├── .github/instructions/                                │
@@ -228,9 +228,9 @@ instructions/*.instructions.md (Specialized - Applied by file pattern)
     ▼
 skills/*/SKILL.md (On-demand - Applied when invoked via /<skill>)
 │
-├── azurerm-docs-writer
-├── azurerm-resource-implementation
-└── azurerm-acceptance-testing
+├── docs-writer
+├── resource-implementation
+└── acceptance-testing
 ```
 
 ### Context Awareness Flow
@@ -291,12 +291,12 @@ terraform-azurerm-ai-assisted-development/
 │   ├── prompts/
 │   │   ├── code-review-local-changes.prompt.md
 │   │   ├── code-review-committed-changes.prompt.md
-│   │   └── docs-schema-audit.prompt.md
+│   │   └── docs-review.prompt.md
 │   │
 │   ├── skills/
-│   │   ├── azurerm-acceptance-testing/SKILL.md
-│   │   ├── azurerm-resource-implementation/SKILL.md
-│   │   └── azurerm-docs-writer/SKILL.md
+│   │   ├── acceptance-testing/SKILL.md
+│   │   ├── resource-implementation/SKILL.md
+│   │   └── docs-writer/SKILL.md
 │   │
 │   ├── workflows/
 │   │   ├── validate.yml    # CI for installers & instructions

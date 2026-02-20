@@ -7,7 +7,7 @@ description: Route documentation work to the docs-writer Agent Skill and require
 
 When editing files under `website/docs/**/*.html.markdown`, you must consult and follow the docs-writer skill definition in:
 
-- `.github/skills/azurerm-docs-writer/SKILL.md`
+- `.github/skills/docs-writer/SKILL.md`
 
 This is required even if the user does not explicitly ask to “use the skill”. Treat the skill as the authoritative checklist for schema parity, mandatory style enforcement, and large-document handling.
 
@@ -15,7 +15,7 @@ This is required even if the user does not explicitly ask to “use the skill”
 
 Because use of this skill is mandatory for `website/docs/**/*.html.markdown`, the assistant's final response must include this line:
 
-Skill used: azurerm-docs-writer
+Skill used: docs-writer
 
 Rules:
 - Do not write this marker into repository files.

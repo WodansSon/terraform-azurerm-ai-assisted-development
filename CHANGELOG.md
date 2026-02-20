@@ -8,7 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **BREAKING (planned release: `2.0.0`)**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
 - Set `installer/VERSION` to `0.0.0` to make it clear that it is a placeholder for source checkouts (release bundles are stamped from the tag).
+- Renamed the Agent Skills slash commands to remove the `azurerm-` prefix: `/azurerm-docs-writer`, `/azurerm-resource-implementation`, and `/azurerm-acceptance-testing` are now `/docs-writer`, `/resource-implementation`, and `/acceptance-testing`.
+- Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/docs-review` (file: `.github/prompts/docs-review.prompt.md`) to better match end-user expectations.
+- Updated `/docs-review` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
+- Updated `/docs-review` to also extract and report implicit behavior constraints from expand/flatten logic (for example feature enablement toggled by block presence, or hardcoded API values not exposed in schema).
+- Updated `/docs-review` output to include a "required notes coverage" checklist and to require explicit reporting of detected notes and conditional constraints (or an explicit "none found").
+- Strengthened `/docs-review` and `/docs-writer` instructions so full parity/ordering/notes checks run even when the user provides minimal prompts.
+- Aligned `## Arguments Reference` ordering rules in `/docs-review` with provider standards (`name`, `resource_group_name`, `location`, then required alphabetical, then optional alphabetical, `tags` last).
+- Clarified `## Attributes Reference` ordering to be strictly `id` first, then remaining attributes alphabetical (no special-casing `tags`, `name`, `resource_group_name`, or `location`).
+- Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
+- Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
+
+### Fixed
+- Fixed a regression where `/docs-review` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
 
 ## [1.0.5] - 2026-02-18
 
@@ -18,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.4] - 2026-02-18
 
 ### Changed
-- Updated the `.github/prompts/docs-schema-audit.prompt.md` prompt to reflect proposed upstream contributor documentation standards (based on [hashicorp/terraform-provider-azurerm PR #31772](https://github.com/hashicorp/terraform-provider-azurerm/pull/31772)) for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
-- Updated the `/azurerm-docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
+- Updated the `.github/prompts/docs-review.prompt.md` prompt to reflect proposed upstream contributor documentation standards (based on [hashicorp/terraform-provider-azurerm PR #31772](https://github.com/hashicorp/terraform-provider-azurerm/pull/31772)) for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
+- Updated the `/docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
 - Removed empty `##` spacer headings from README files to avoid bogus headings and keep GitHub Markdown rendering consistent.
 - Centralized the installer version into `installer/VERSION` (PowerShell + Bash now read from that file) and updated the release workflow to write the tagged version into the bundled installer.
 - Updated `-Bootstrap` to stamp a contributor-friendly version in the user profile installer (`dev-<git sha>` with optional `-dirty`) to clearly indicate a local, bootstrapped build.
@@ -27,22 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.3] - 2026-02-17
 
 ### Changed
-- Clarified the `/azurerm-docs-writer` skill final checklist to explicitly restate canonical `## Arguments Reference` argument ordering.
-- Audited and clarified the `/azurerm-docs-writer` skill instructions to remove duplicated/contradictory rules and improve example clarity.
+- Clarified the `/docs-writer` skill final checklist to explicitly restate canonical `## Arguments Reference` argument ordering.
+- Audited and clarified the `/docs-writer` skill instructions to remove duplicated/contradictory rules and improve example clarity.
 - GitHub Release notes now correctly include the version-specific `CHANGELOG.md` section (previously blank due to extraction logic).
 - Standardized GitHub Release notes headings to plain text (removed emojis).
 
 ## [1.0.2] - 2026-02-15
 
 ### Added
-- Agent Skill files under `.github/skills/` (for example `/azurerm-docs-writer`) are now distributed by the installer.
+- Agent Skill files under `.github/skills/` (for example `/docs-writer`) are now distributed by the installer.
 
 ### Changed
 - Installer now installs, verifies, and cleans `.github/skills` alongside instructions and prompts, including automated deprecation removal based on the manifest.
 - CI markdownlint configuration now disables `MD007` (unordered list indentation) to avoid false positives with HashiCorp-style indentation.
 
 ### Fixed
-- Fixed markdownlint failures in `.github/skills/azurerm-docs-writer/SKILL.md` (for example `MD029` ordered list numbering).
+- Fixed markdownlint failures in `.github/skills/docs-writer/SKILL.md` (for example `MD029` ordered list numbering).
 
 ## [1.0.1] - 2026-02-12
 
@@ -51,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `terraform-azurerm-ai-installer.zip`
   - `terraform-azurerm-ai-installer.tar.gz`
 - New optional documentation audit prompt:
-  - `.github/prompts/docs-schema-audit.prompt.md`
+  - `.github/prompts/docs-review.prompt.md`
 
 ### Changed
 - Documentation now clearly distinguishes installing the latest release (`releases/latest/download/...`) from pinning a specific version (`releases/download/vX.Y.Z/...`)

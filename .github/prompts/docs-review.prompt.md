@@ -1,8 +1,8 @@
 ---
-description: "Docs + Schema Audit Prompt for Terraform AzureRM Provider"
+description: "Docs review + schema parity prompt for Terraform AzureRM Provider"
 ---
 
-# 📋 Docs + Schema Audit (AzureRM)
+# 📋 Docs Review (AzureRM)
 
 # 🚫 EXECUTION GUARDRAILS (READ FIRST)
 
@@ -16,18 +16,23 @@ If the active editor is not a file under `website/docs/**` (for example if the a
 
 Instead, respond with:
 
-"Cannot run docs/schema audit: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt."
+"Cannot run docs review: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt."
 
 Audit the **currently-open** documentation page under `website/docs/**` for:
 - AzureRM documentation standards, and
-- parity with the provider schema under `internal/**`.
+- parity with the Terraform schema under `internal/**`.
 
 When reviewing documentation standards, treat these as authoritative:
 - `contributing/topics/reference-documentation-standards.md`
 - `.github/instructions/documentation-guidelines.instructions.md`
-- `.github/skills/azurerm-docs-writer/SKILL.md` (this repo's enforcement rules)
+- `.github/skills/docs-writer/SKILL.md` (this repo's enforcement rules)
 
 This audit is **optional** and **user-invoked** (no CI enforcement).
+
+## Minimal user input policy
+Assume the user may invoke this prompt with minimal instructions (for example: "make it compliant" / "make it match HashiCorp standards").
+
+When this prompt is invoked, you must run the **entire** mandatory procedure below and you must not skip checks simply because the user did not explicitly mention them.
 
 ## ⚡ Mandatory procedure
 
@@ -41,7 +46,7 @@ Also record the **doc type** from the path:
 
 ### 2) Locate the schema in `internal/**`
 - Search under `internal/**` for the Terraform name (e.g. `azurerm_<name>`).
-- Open the relevant registration/implementation files until you find the schema definition.
+- Open the relevant registration/implementation files until you find the Terraform schema definition.
 - Record the schema file path(s) used.
 
 If you cannot find the schema, say so explicitly and continue with a docs-only standards review.
@@ -53,6 +58,44 @@ From the schema, extract:
 - computed attributes
 - ForceNew fields (`ForceNew: true`)
 - constraints that affect docs (e.g. `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, validations), if clearly visible
+
+**Mandatory: extract cross-field schema constraints**
+- Enumerate any cross-field constraints present in the schema (when visible), including:
+  - `ConflictsWith`
+  - `ExactlyOneOf`
+  - `AtLeastOneOf`
+  - `RequiredWith`
+  - `RequiredWithAll`
+  - `AtLeastOneOf` / `AtMostOneOf`-style sets (when represented via helper wrappers)
+- Record each constraint as a human-readable rule (for example: "exactly one of `a`, `b`", "`x` conflicts with `y`", "at least one of `p`, `q`", "`m` is required with `n`").
+- Treat these schema cross-field constraints as **documentation-required** because they change valid configuration.
+
+**Mandatory reporting requirement (no silent passes):**
+- Explicitly list the cross-field schema constraints you found.
+- If none are present/visible, explicitly state: `No cross-field schema constraints found.`
+- For each constraint, include schema evidence: schema file path + the argument(s) involved.
+
+Then, locate and extract **diff-time validation / conditional requirement** facts from the provider implementation under `internal/**`:
+- Search for `CustomizeDiff` and record any user-facing conditional requirements (for example: "required when X is set", "must be set when Y", "only valid when Z").
+- If the schema uses helper functions (for example `CustomizeDiff:` calling other functions), follow them until you find the actual conditions.
+- Treat these diff-time rules as **documentation-required constraints** when they affect successful `plan/apply`.
+
+**Mandatory reporting requirement (no silent passes):**
+- Explicitly list the diff-time constraints you found.
+- If none are present/visible, explicitly state: `No diff-time constraints found.`
+- For each diff-time constraint, include evidence: file path under `internal/**` + the function name (or closest identifiable snippet reference).
+
+Then, locate and extract **implicit behavior constraints** from expand/flatten logic under `internal/**`:
+- Look for behavior that is not directly represented as an argument constraint, but changes resource behavior based on configuration shape.
+- Common patterns:
+  - Feature enablement/disablement toggled purely by presence/absence of a nested block or list/set length (e.g. 0 blocks => disabled, 1+ blocks => enabled).
+  - Provider hardcodes an Azure API value because only one value is supported and it is not exposed as a schema field.
+- Treat these as **documentation-required notes** when they are user-visible and likely to surprise users.
+
+**Mandatory reporting requirement (no silent passes):**
+- Explicitly list the implicit behavior constraints you found.
+- If none are present/visible, explicitly state: `No implicit behavior constraints found.`
+- For each, include evidence: file path under `internal/**` + function name/snippet reference.
 
 ### 4) Audit the documentation for standards + parity
 
@@ -92,15 +135,15 @@ Validate:
   - If schema defines an argument as a **map** (`TypeMap`), docs must describe it as a map and not as a block.
   - If docs describe `${arg}` as a block but schema indicates `${arg}` is an inline field (common when blocks have been flattened), mark as a parity failure and suggest updating the docs to reflect the flattened field shape.
 - Argument ordering must follow `contributing/topics/reference-documentation-standards.md`:
-  1. ID arguments first, with the last user-specified segment (usually `name`) first
-  2. `location` (if present)
-  3. remaining required arguments (alphabetical)
-  4. optional arguments (alphabetical), with `tags` last (if present)
+  1. `name` (if present)
+  2. `resource_group_name` (if present)
+  3. `location` (if present)
+  4. remaining required arguments (alphabetical)
+  5. optional arguments (alphabetical), with `tags` last (if present)
 - **Resources only:** for every ForceNew field in schema, the argument description must end with a ForceNew sentence.
-  - Existing documentation pages may continue to use the legacy sentence: `Changing this forces a new resource to be created.`
-  - For new pages (and when touching/updating an argument description), prefer the more descriptive sentence: `Changing this forces a new <Resource Display Name> to be created.`
-  - The `<Resource Display Name>` should match the same noun phrase used by the page description/title (e.g. `Storage Account`, `Bot Web App`, `Virtual Network`) and be used consistently across the page.
-  - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**. If the legacy sentence is used, record an **Observation** unless the doc appears to be newly added.
+  - Use the standard generic sentence: `Changing this forces a new resource to be created.`
+  - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**.
+  - If a ForceNew sentence is present but does not match the standard generic sentence, mark as an **Issue** and suggest rewriting it to the standard form.
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
 - Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
@@ -133,6 +176,26 @@ Validate:
   - **ForceNew-related guidance** should generally be `~> **Note:**` (do not use `->` for ForceNew warnings).
   - If a note’s content indicates one marker but another is used, mark **Note Notation** as fail and add an Issue suggesting the correct marker.
 - Breaking changes should not be documented as notes (they belong in the changelog/upgrade guide)
+
+**Conditional requirements (MUST be documented as notes):**
+- If the schema (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`), `CustomizeDiff`/diff-time validation, or implicit behavior constraints (from expand/flatten) enforce cross-field/conditional behavior, the docs must include a `~> **Note:**` that describes the condition in a user-actionable way.
+- If such constraints exist in code but are not documented as notes, mark as an **Issue**.
+
+**Required-notes coverage checklist (MUST produce):**
+- Build a checklist of "required notes" from these sources:
+  1) schema cross-field constraints you extracted (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`)
+  2) diff-time constraints you extracted (from `CustomizeDiff` and helper functions)
+  3) implicit behavior constraints you extracted (from expand/flatten logic)
+- For each item in the checklist, explicitly state whether the docs contain a corresponding note.
+  - If present: record the doc section/argument it appears under and a short summary.
+  - If missing: record what note should be added and mark it as an **Issue**.
+- Put the checklist under `## 🟡 **OBSERVATIONS**` (even when everything passes) so missing notes are easy to spot.
+
+**Mandatory reporting requirement (no silent passes):**
+- Enumerate **all** note blocks found in the doc (including ones that are fully compliant).
+- If there are no notes, explicitly state: `No note blocks found.`
+- Put this enumeration under the `## 🟡 **OBSERVATIONS**` section (even when `Note Notation` is `pass`).
+- For each note, include: marker (`->`/`~>`/`!>`), the heading/section it appears in (or the argument/attribute name), and a short one-line summary of what it says.
 
 #### E) Example Usage correctness
 - Example must include all schema required args
@@ -178,14 +241,18 @@ Output must be **rendered Markdown**.
 - **Optional Args**: ${optional_args}
 - **Computed Attributes**: ${computed_attrs}
 - **ForceNew Fields**: ${force_new_fields}
+- **Cross-field Constraints**: ${cross_field_constraints}
+- **Diff-time Constraints**: ${diff_time_constraints}
+- **Implicit Behavior Constraints**: ${implicit_behavior_constraints}
 
 ## 📊 **DOC STANDARDS CHECK**
 - **Frontmatter**: pass/fail + missing keys (if any)
 - **Section Order**: pass/fail + missing sections (if any)
-- **Argument Ordering**: pass/fail (ID args first, `location` next, then required alpha, then optional alpha, `tags` last)
+- **Argument Ordering**: pass/fail (`name`, `resource_group_name`, `location` first when present, then remaining required alphabetical, then optional alphabetical, `tags` last)
 - **Schema Shape**: pass/fail (docs describe blocks vs inline fields consistently with schema)
-- **Attributes Coverage**: pass/fail (`id` first, computed attrs present, alphabetical)
+- **Attributes Coverage**: pass/fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)
 - **ForceNew Wording**: pass/fail (resources only, missing “Changing this forces…” sentence)
+- **Conditional Notes**: pass/fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
 - **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
@@ -195,6 +262,8 @@ Output must be **rendered Markdown**.
 
 ## 🟡 **OBSERVATIONS**
 - ...
+- Notes: ...
+- Required notes coverage: ...
 
 ## 🔴 **ISSUES** (only actual problems)
 

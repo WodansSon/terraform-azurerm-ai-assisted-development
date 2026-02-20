@@ -336,7 +336,7 @@ This applies instructions only to Go files in the `internal/` directory.
 
 ### Docs scaffolding outputs to `website_scaffold_tmp`
 
-**Symptom**: After using `/azurerm-docs-writer` (or the website scaffold tool), the generated docs land under `website_scaffold_tmp/docs/...` instead of `website/docs/...`.
+**Symptom**: After using `/docs-writer` (or the website scaffold tool), the generated docs land under `website_scaffold_tmp/docs/...` instead of `website/docs/...`.
 
 **Cause**: The docs-writer skill has a **testing/dry run mode** to avoid overwriting real docs. It can trigger when your prompt includes phrases like: `test`, `testing`, `dry run`, `scaffold-only`, or `generate into scratch`.
 
