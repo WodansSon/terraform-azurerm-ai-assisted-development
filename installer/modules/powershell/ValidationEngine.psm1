@@ -835,6 +835,10 @@ function Invoke-VerifyWorkspace {
 
         # Fail fast if the local installer manifest does not match the remote manifest.
         # This prevents misleading verification results when a stale user-profile installer is present.
+        #
+        # Contributor local-path workflows explicitly source files from a local working tree and may
+        # legitimately diverge from the GitHub manifest. In that case, skip remote manifest validation.
+        if (-not $Global:SkipRemoteManifestValidation) {
         try {
             $localManifestPath = Join-Path $Global:ScriptRoot "file-manifest.config"
             $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
@@ -863,8 +867,9 @@ function Invoke-VerifyWorkspace {
             }
         }
         catch {
-            # If remote manifest cannot be fetched (offline/firewall), do not block verification.
+            # If remote manifest cannot be fetched (DNS/firewall/proxy), do not block verification.
             Write-Host " NOTE: Could not validate remote manifest; continuing verification" -ForegroundColor Yellow
+        }
         }
 
         # Check main instructions file

@@ -551,6 +551,7 @@ function Main {
 
             try {
                 $skipRemoteValidation = [bool]($Bootstrap -or (-not [string]::IsNullOrWhiteSpace($LocalPath)))
+                $Global:SkipRemoteManifestValidation = $skipRemoteValidation
                 $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$skipRemoteValidation
             }
             catch {

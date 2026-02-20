@@ -127,6 +127,8 @@ This happens when `-Verify` / `-verify` detects that the **local installer manif
 
 > [!NOTE]
 > If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), it will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
+>
+> If you are intentionally testing uncommitted local AI dev repo changes using `-Contributor -LocalPath` / `-contributor -local-path`, remote manifest validation is skipped by design.
 
 ---
 

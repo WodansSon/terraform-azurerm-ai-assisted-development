@@ -475,6 +475,8 @@ Simply use slash commands to invoke the prompts directly:
 > `-Verify` / `-verify` will fail fast with **"Manifest file mismatch"** if your local installer `file-manifest.config` does not match the upstream manifest from GitHub.
 > Refresh your user-profile installer (re-extract the latest release bundle or re-run Bootstrap from a local clone) and try again.
 >
+> When using contributor local source workflows (`-contributor -local-path`), remote manifest validation is skipped by design.
+>
 > If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), it will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |

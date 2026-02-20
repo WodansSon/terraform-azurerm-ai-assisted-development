@@ -413,7 +413,11 @@ verify_installation() {
         branch_for_remote="${SOURCE_BRANCH}"
     fi
 
-    if command -v curl >/dev/null 2>&1; then
+    # Contributor local-path workflows explicitly source files from a local working tree and may
+    # legitimately diverge from the GitHub manifest. In that case, skip remote manifest validation.
+    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        :
+    elif command -v curl >/dev/null 2>&1; then
         local remote_manifest_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${branch_for_remote}/installer/file-manifest.config"
 
         local local_manifest_content
