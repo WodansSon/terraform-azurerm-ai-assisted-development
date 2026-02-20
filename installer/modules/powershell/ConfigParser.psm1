@@ -19,7 +19,9 @@ function Get-ManifestConfig {
     #>
     param(
         [string]$ManifestPath,
-        [string]$Branch = "main"
+        [string]$Branch = "main",
+
+        [bool]$SkipRemoteValidation = $false
     )
 
     # Find manifest file if not specified
@@ -60,12 +62,15 @@ function Get-ManifestConfig {
     }
 
     # Validate branch exists by checking if file-manifest.config is accessible
-    try {
-        $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
-        $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
-    }
-    catch {
-        throw "Branch '$Branch' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
+    # This is only required for installs that pull files from GitHub.
+    if (-not $SkipRemoteValidation) {
+        try {
+            $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
+            $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
+        }
+        catch {
+            throw "Branch '$Branch' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
+        }
     }
 
     $currentSection = $null

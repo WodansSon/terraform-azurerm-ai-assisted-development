@@ -63,10 +63,11 @@ function Show-EarlyValidationError {
     switch ($ErrorType) {
         'BootstrapConflict' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Cannot use -Branch or -LocalPath with -Bootstrap" -ForegroundColor Cyan
+            Write-Host " Cannot use -Branch with -Bootstrap" -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " -Bootstrap always uses the current local branch" -ForegroundColor Cyan
-            Write-Host " -Branch and -LocalPath are for updating from user profile" -ForegroundColor Cyan
+            Write-Host " -Bootstrap copies installer files into your user profile" -ForegroundColor Cyan
+            Write-Host " -Branch is for pulling AI files from a published GitHub branch" -ForegroundColor Cyan
+            Write-Host " -Use -Contributor -LocalPath with -Bootstrap to copy from a local AI dev repo" -ForegroundColor Cyan
         }
         'MutuallyExclusive' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
@@ -327,7 +328,7 @@ if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor 
 #region Parameter Validation
 
 # PRIORITY 1: Validate -Bootstrap conflicts first (fail fast on foundational operation)
-if ($Bootstrap -and ($Branch -or $LocalPath)) {
+if ($Bootstrap -and $Branch) {
     Show-EarlyValidationError -ErrorType 'BootstrapConflict'
     exit 1
 }
@@ -518,38 +519,30 @@ function Main {
     #>
 
      try {
-        # Step 1: Initialize workspace and validate it's a proper terraform-provider-azurerm repo
-        $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory
+        # Step 1: Initialize workspace
+        # - When bootstrapping with -Contributor -LocalPath, treat LocalPath as the AI dev repo root.
+        # - Otherwise, detect workspace root from -RepoDirectory or current script directory.
+        if ($Bootstrap -and $Contributor -and -not [string]::IsNullOrWhiteSpace($LocalPath)) {
+            $Global:WorkspaceRoot = $LocalPath
+        } else {
+            $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory
+        }
         $Global:ScriptRoot = $ScriptDirectory
 
         # Step 2: Early workspace validation before doing anything else
         $workspaceValidation = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
 
         # Step 3: Determine effective branch for manifest config
-        # -Bootstrap always uses current branch, otherwise use -Branch parameter or default to "main"
+        # -Bootstrap is a local copy operation; do not require the current branch to exist on GitHub.
+        # For remote installs, use -Branch or default to "main".
         $effectiveBranch = "main"  # Default fallback
 
-        if ($Bootstrap) {
-            # Bootstrap mode: Always use current git branch (required)
-            try {
-                $detectedBranch = git branch --show-current 2>$null
-                if ($detectedBranch -and $detectedBranch.Trim() -ne "") {
-                    $effectiveBranch = $detectedBranch.Trim()
-                }
-                else {
-                    throw "Could not detect current git branch"
-                }
-            }
-            catch {
-                Show-BootstrapGitError -WorkspaceRoot $Global:WorkspaceRoot
-                exit 1
-            }
-        }
-        elseif ($Branch) {
+        if ($Branch) {
             # User provided -Branch parameter (contributor mode)
             $effectiveBranch = $Branch
         }
-        # else: use default "main"        # Step 4: Initialize global configuration
+
+        # Step 4: Initialize global configuration
         if ($workspaceValidation.Valid) {
             # Manifest is always in the same directory as the script
             # - When running from source repo: repo/installer/file-manifest.config
@@ -557,7 +550,8 @@ function Main {
             $manifestPath = Join-Path $ScriptDirectory "file-manifest.config"
 
             try {
-                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch
+                $skipRemoteValidation = [bool]($Bootstrap -or (-not [string]::IsNullOrWhiteSpace($LocalPath)))
+                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$skipRemoteValidation
             }
             catch {
                 Show-ValidationError -ErrorType 'BranchValidation' -Branch $effectiveBranch

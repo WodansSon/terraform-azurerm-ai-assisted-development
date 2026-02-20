@@ -98,10 +98,18 @@ function Show-ValidationError {
             Write-Host " Branch: " -ForegroundColor Cyan -NoNewline
             Write-Host "$Branch" -ForegroundColor Yellow
             Write-Host ""
-            Write-Host " The specified branch does not exist in the AI development repository." -ForegroundColor Cyan
+            Write-Host " The specified branch does not exist on the remote source (GitHub) used for remote branch installs." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Notes:" -ForegroundColor Cyan
+            Write-Host " - This validation applies when pulling files from GitHub (for example, -Contributor -Branch)." -ForegroundColor Cyan
+            Write-Host " - -Bootstrap and -Contributor -LocalPath are local-copy workflows and do not require a GitHub branch." -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Please verify the branch name and try again:" -ForegroundColor Cyan
             Write-Host "   -Contributor -Branch `"valid-branch-name`"" -ForegroundColor White
+
+            Write-Host ""
+            Write-Host " If you are testing local changes without pushing a branch, use local source install:" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Contributor -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`" -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
         }
         'EmptyLocalPath' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline

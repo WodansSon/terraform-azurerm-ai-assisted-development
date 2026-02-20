@@ -105,10 +105,11 @@ show_early_validation_error() {
 
     case "${error_type}" in
         "BootstrapConflict")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch with -bootstrap${NC}"
             echo ""
-            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
-            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            echo -e "${CYAN} -bootstrap copies installer files into your user profile${NC}"
+            echo -e "${CYAN} -branch is for pulling AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -contributor -local-path with -bootstrap to copy from a local AI dev repo${NC}"
             ;;
 
         "MutuallyExclusive")

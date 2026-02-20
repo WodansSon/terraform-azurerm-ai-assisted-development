@@ -73,10 +73,11 @@ show_early_validation_error() {
 
     case "${error_type}" in
         "BootstrapConflict")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch with -bootstrap${NC}"
             echo ""
-            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
-            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            echo -e "${CYAN} -bootstrap copies installer files into your user profile${NC}"
+            echo -e "${CYAN} -branch is for pulling AI files from a published GitHub branch${NC}"
+            echo -e "${CYAN} Use -contributor -local-path with -bootstrap to copy from a local AI dev repo${NC}"
             ;;
 
         "MutuallyExclusive")
@@ -270,9 +271,9 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
-    # STEP 1.5: Validate -branch and -local-path can only be used from user profile (not with -bootstrap)
-    # This check must come FIRST before other contributor checks
-    if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
+    # STEP 1.5: Validate -branch cannot be used with -bootstrap
+    # -bootstrap is a local copy workflow. -local-path is allowed for contributor testing.
+    if [[ "${BOOTSTRAP}" == "true" ]] && [[ -n "${SOURCE_BRANCH}" ]]; then
         show_early_validation_error "BootstrapConflict" "$0"
         exit 1
     fi
@@ -310,8 +311,13 @@ main() {
     local workspace_root
     workspace_root="$(get_workspace_root "${REPO_DIRECTORY}" "${SCRIPT_DIR}")"
 
+    # Bootstrap can optionally copy from a local AI dev repo path (contributor mode)
+    if [[ "${BOOTSTRAP}" == "true" ]] && [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+        workspace_root="${LOCAL_SOURCE_PATH}"
+    fi
+
     local current_branch
-    if [[ -n "${REPO_DIRECTORY}" ]]; then
+    if [[ -n "${REPO_DIRECTORY}" ]] || { [[ "${BOOTSTRAP}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
         if [[ -d "${workspace_root}/.git" ]]; then
             current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
         else
@@ -456,8 +462,16 @@ main() {
         # Show operation title (main header already displayed)
         write_section "Bootstrap - Copying Installer to User Profile"
 
+        # When -contributor -local-path is provided, bootstrap from that local AI dev repo.
+        local bootstrap_script_dir="${SCRIPT_DIR}"
+        local bootstrap_manifest_file="${SCRIPT_DIR}/file-manifest.config"
+        if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+            bootstrap_script_dir="${LOCAL_SOURCE_PATH%/}/installer"
+            bootstrap_manifest_file="${bootstrap_script_dir}/file-manifest.config"
+        fi
+
         # Execute the bootstrap operation with built-in validation
-        if bootstrap_files_to_profile "$(pwd)" "$(get_user_profile)" "${SCRIPT_DIR}/file-manifest.config" "${current_branch}" "${branch_type}" "${SCRIPT_DIR}"; then
+        if bootstrap_files_to_profile "$(pwd)" "$(get_user_profile)" "${bootstrap_manifest_file}" "${current_branch}" "${branch_type}" "${bootstrap_script_dir}"; then
             # Show detailed summary with next steps
             local user_profile
             user_profile=$(get_user_profile)

@@ -5,7 +5,8 @@
 # Function to get manifest configuration - equivalent to PowerShell Get-ManifestConfig
 get_manifest_config() {
     local manifest_path="${1:-}"
-    local branch="${2:-exp/terraform_copilot}"
+    local branch="${2:-main}"
+    local skip_remote_validation="${3:-false}"
 
     # Find manifest file if not specified
     if [[ -z "${manifest_path}" ]]; then
@@ -33,6 +34,22 @@ get_manifest_config() {
     if [[ ! -f "${manifest_path}" ]]; then
         write_error_message "Manifest file not found: ${manifest_path}"
         return 1
+    fi
+
+    # Validate branch exists by checking if installer/file-manifest.config is accessible.
+    # This is only required for installs that pull files from GitHub.
+    if [[ "${skip_remote_validation}" != "true" ]]; then
+        local test_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${branch}/installer/file-manifest.config"
+
+        if command -v curl >/dev/null 2>&1; then
+            if ! curl -fsSI "${test_url}" >/dev/null 2>&1; then
+                write_error_message "Branch '${branch}' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
+                return 1
+            fi
+        else
+            write_error_message "curl is required to validate remote branches"
+            return 1
+        fi
     fi
 
     # Parse manifest sections (simplified - just check if file exists and is readable)
