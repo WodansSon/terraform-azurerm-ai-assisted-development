@@ -177,6 +177,16 @@ Validate:
   - If a note’s content indicates one marker but another is used, mark **Note Notation** as fail and add an Issue suggesting the correct marker.
 - Breaking changes should not be documented as notes (they belong in the changelog/upgrade guide)
 
+**Note correctness (content must match code/schema):**
+- When a note claims a conditional requirement, conflict, implicit behavior, or a forced value, validate it against what you extracted from:
+  - schema cross-field constraints
+  - `CustomizeDiff`/diff-time validation
+  - implicit behavior constraints (expand/flatten)
+- If a note is **contradictory** or materially **incomplete** compared to the extracted rule(s), mark this as an **Issue**.
+  - Example: a note says "enabled when zero blocks" but code says "disabled when zero blocks".
+  - Example: a note lists only one of two allowed/required cases.
+- Prefer minimal edits: rewrite the note text to match the extracted rule and keep the marker appropriate (`~>` for reversible but error-prone constraints).
+
 **Conditional requirements (MUST be documented as notes):**
 - If the schema (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`), `CustomizeDiff`/diff-time validation, or implicit behavior constraints (from expand/flatten) enforce cross-field/conditional behavior, the docs must include a `~> **Note:**` that describes the condition in a user-actionable way.
 - If such constraints exist in code but are not documented as notes, mark as an **Issue**.
@@ -188,6 +198,7 @@ Validate:
   3) implicit behavior constraints you extracted (from expand/flatten logic)
 - For each item in the checklist, explicitly state whether the docs contain a corresponding note.
   - If present: record the doc section/argument it appears under and a short summary.
+  - If present but incorrect/incomplete: mark as an **Issue** and suggest corrected wording.
   - If missing: record what note should be added and mark it as an **Issue**.
 - Put the checklist under `## 🟡 **OBSERVATIONS**` (even when everything passes) so missing notes are easy to spot.
 
@@ -254,6 +265,7 @@ Output must be **rendered Markdown**.
 - **ForceNew Wording**: pass/fail (resources only, missing “Changing this forces…” sentence)
 - **Conditional Notes**: pass/fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
+- **Note Accuracy**: pass/fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
 - **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
 

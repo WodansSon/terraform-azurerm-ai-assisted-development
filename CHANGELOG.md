@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `/docs-review` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
 - Updated `/docs-review` to also extract and report implicit behavior constraints from expand/flatten logic (for example feature enablement toggled by block presence, or hardcoded API values not exposed in schema).
 - Updated `/docs-review` output to include a "required notes coverage" checklist and to require explicit reporting of detected notes and conditional constraints (or an explicit "none found").
+- Updated `/docs-review` to validate note content for correctness (notes describing constraints must match the extracted schema/diff-time/implicit behavior rules).
 - Strengthened `/docs-review` and `/docs-writer` instructions so full parity/ordering/notes checks run even when the user provides minimal prompts.
 - Aligned `## Arguments Reference` ordering rules in `/docs-review` with provider standards (`name`, `resource_group_name`, `location`, then required alphabetical, then optional alphabetical, `tags` last).
 - Clarified `## Attributes Reference` ordering to be strictly `id` first, then remaining attributes alphabetical (no special-casing `tags`, `name`, `resource_group_name`, or `location`).
