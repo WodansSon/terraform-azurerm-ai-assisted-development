@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added a GitHub pull request template at `.github/pull_request_template.md` to standardize PR titles, scope, testing, changelog updates, and AI assistance disclosure.
+
 ### Changed
 - **BREAKING (planned release: `2.0.0`)**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
 - **BREAKING (planned release: `2.0.0`)**: simplified installer CLI:
@@ -29,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified `## Attributes Reference` ordering to be strictly `id` first, then remaining attributes alphabetical (no special-casing `tags`, `name`, `resource_group_name`, or `location`).
 - Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
 - Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
+- Expanded `CONTRIBUTING.md` to provide more detailed contribution and validation guidance, including PowerShell/Bash parity expectations to avoid installer drift.
 
 ### Upgrade Notes (from 1.x)
 - `-Contributor` / `-contributor` and `-Branch` / `-branch` were removed.
