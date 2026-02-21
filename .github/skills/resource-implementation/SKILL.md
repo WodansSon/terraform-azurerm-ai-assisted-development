@@ -1,5 +1,5 @@
 ---
-name: azurerm-resource-implementation
+name: resource-implementation
 description: Implement or modify Terraform AzureRM provider resources/data sources following provider patterns (typed SDK, error formats, PATCH behavior). Use when adding support for a new Azure resource or changing schema/CRUD logic.
 ---
 
@@ -20,7 +20,7 @@ Use this skill when implementing or modifying AzureRM provider code under `inter
 
 When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
 
-Skill used: azurerm-resource-implementation
+Skill used: resource-implementation
 
 Rules:
 - Do NOT write this marker into any repository file (docs, code, generated files).

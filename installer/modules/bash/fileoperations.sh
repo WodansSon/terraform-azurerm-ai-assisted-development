@@ -56,10 +56,6 @@ is_source_repository() {
         return 0
     fi
 
-    if [[ -f "${dir}/main.go" ]] && [[ -d "${dir}/internal/services" ]] && [[ -d "${dir}/.github/AIinstaller" ]]; then
-        return 0
-    fi
-
     return 1
 }
 
@@ -71,22 +67,21 @@ validate_bootstrap_prerequisites() {
     local branch_type="$4"
 
     # Rule 1: CRITICAL - Must NOT be running from user profile directory
-    # Bootstrap should ONLY be run from the source repository, never from ~/.terraform-ai-installe
+    # Bootstrap should ONLY be run from a git clone of this repository, never from ~/.terraform-azurerm-ai-installer
     if [[ "${current_dir}" == *".terraform-azurerm-ai-installer"* ]]; then
         write_red " BOOTSTRAP VIOLATION: Cannot run bootstrap from user profile directory"
         echo ""
-        write_yellow " Bootstrap must be run from the source terraform-provider-azurerm repository."
+        write_yellow " Bootstrap must be run from a git clone of this repository."
         write_yellow " You are currently running from: '${current_dir}'"
         echo ""
         print_separator
         echo ""
         write_cyan "SOLUTION:"
-        write_cyan "  1. Navigate to the exp/terraform_copilot branch::"
-        write_plain "    cd \"<path-to-your-terraform-provider-azurerm>\""
-        write_plain "    git checkout exp/terraform_copilot"
+        write_cyan "  1. Navigate to your terraform-azurerm-ai-assisted-development clone:"
+        write_plain "    cd \"<path-to-terraform-azurerm-ai-assisted-development>\""
         echo ""
-        write_cyan "  2. Then run bootstrap from there:"
-        write_plain "    ./.github/AIinstaller/install-copilot-setup.sh -bootstrap"
+        write_cyan "  2. Run bootstrap from the repository:"
+        write_plain "    ./installer/install-copilot-setup.sh -bootstrap"
         echo ""
         return 1
     fi
@@ -123,6 +118,36 @@ download_file() {
     local source_path="$1"
     local target_path="$2"
     local description="$3"
+
+    attempt_http_download() {
+        local url="$1"
+        local out="$2"
+
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL \
+                --connect-timeout 10 \
+                --max-time 60 \
+                --retry 5 \
+                --retry-delay 1 \
+                --retry-max-time 60 \
+                --retry-all-errors \
+                -A "terraform-azurerm-ai-installer" \
+                "${url}" -o "${out}" 2>/dev/null
+            return $?
+        fi
+
+        if command -v wget >/dev/null 2>&1; then
+            wget -q \
+                --timeout=60 \
+                --tries=5 \
+                --user-agent="terraform-azurerm-ai-installer" \
+                "${url}" -O "${out}" 2>/dev/null
+            return $?
+        fi
+
+        write_error_message "Neither curl nor wget is available for downloading files"
+        return 1
+    }
 
     # Check if using local source (file:// protocol)
     if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
@@ -200,39 +225,12 @@ download_file() {
     # Create target directory if it doesn't exist
     mkdir -p "$(dirname "${target_path}")"
 
-    # Try download with proper error handling
-    local download_success=false
-    local error_msg=""
-
-    if command -v curl >/dev/null 2>&1; then
-        # Use curl with proper error handling
-        if curl -fsSL "${url}" -o "${target_path}" 2>/dev/null; then
-            download_success=true
-        else
-            error_msg="curl failed to download from ${url}"
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        # Use wget with proper error handling
-        if wget -q "${url}" -O "${target_path}" 2>/dev/null; then
-            download_success=true
-        else
-            error_msg="wget failed to download from ${url}"
-        fi
-    else
-        write_error_message "Neither curl nor wget is available for downloading files"
-        return 1
+    # Try download (with retries).
+    if attempt_http_download "${url}" "${target_path}"; then
+        return 0
     fi
 
-    if [[ "${download_success}" == "true" ]]; then
-        # Verify file was actually created and has content
-        if [[ -f "${target_path}" && -s "${target_path}" ]]; then
-            return 0
-        else
-            return 1
-        fi
-    else
-        return 1
-    fi
+    return 1
 }
 
 # Function to get file size
@@ -637,8 +635,7 @@ install_infrastructure() {
     local workspace_root="$1"
     local current_branch="$2"
     local branch_type="$3"
-    local source_branch="${4:-}"
-    local local_source_path="${5:-}"
+    local local_source_path="${4:-}"
 
     write_section "Installing AI Infrastructure"
 
@@ -648,12 +645,21 @@ install_infrastructure() {
     fi
 
     # Verify manifest file exists
-    local manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    local manifest_file=""
+    if [[ -n "${INSTALLER_DIR:-}" ]] && [[ -f "${INSTALLER_DIR}/file-manifest.config" ]]; then
+        manifest_file="${INSTALLER_DIR}/file-manifest.config"
+    elif [[ -f "${HOME}/.terraform-azurerm-ai-installer/file-manifest.config" ]]; then
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    else
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    fi
     if [[ ! -f "${manifest_file}" ]]; then
         write_error_message "Manifest file not found: ${manifest_file}"
         echo "Please run with -bootstrap first to set up the installer."
         return 1
     fi
+
+    export INSTALLER_MANIFEST_FILE="${manifest_file}"
 
     # Step 1: Show dry run notice if applicable
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
@@ -699,7 +705,7 @@ install_infrastructure() {
     write_green "All prerequisites validated successfully!"
     echo ""
 
-    # Step 4.5: Configure source repository and branch based on parameters
+    # Step 4.5: Configure source repository (GitHub main by default; file:// when -local-path is used)
     if [[ -n "${local_source_path}" ]]; then
         # Use local source path (file:// protocol)
         # Expand to absolute path if needed
@@ -708,20 +714,60 @@ install_infrastructure() {
         fi
         export SOURCE_REPOSITORY="file://${local_source_path}"
         export BRANCH=""  # Not used for local files
+        export SOURCE_LOCAL_PATH="${local_source_path}"
         write_cyan "Installing from local path: ${local_source_path}"
-        echo ""
-    elif [[ -n "${source_branch}" ]]; then
-        # Use GitHub with specified branch
-        export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
-        export BRANCH="${source_branch}"
-        write_cyan "Downloading files from GitHub (branch: ${source_branch})..."
         echo ""
     else
         # Use default GitHub main branch
         export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
         export BRANCH="main"
+        export SOURCE_LOCAL_PATH=""
         write_cyan "Downloading files from GitHub (branch: main)..."
         echo ""
+
+        # Hard-fail if the local manifest does not match the remote manifest used for downloads.
+        # Without -local-path, downloads are pinned to GitHub `main`.
+        local remote_manifest_url="${SOURCE_REPOSITORY}/main/installer/file-manifest.config"
+        local local_manifest_content
+        local remote_manifest_content
+
+        local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
+
+        if command -v curl >/dev/null 2>&1; then
+            remote_manifest_content="$(curl -fsSL --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${remote_manifest_url}" 2>/dev/null || true)"
+        elif command -v wget >/dev/null 2>&1; then
+            remote_manifest_content="$(wget -q --timeout=20 --tries=2 --user-agent="terraform-azurerm-ai-installer" "${remote_manifest_url}" -O - 2>/dev/null || true)"
+        else
+            write_error_message "cannot validate remote manifest (curl/wget not found)"
+            write_plain ""
+            write_plain " This installer will download files from GitHub 'main'."
+            write_plain " Install curl or wget, or use -local-path to install from a local working tree."
+            return 1
+        fi
+
+        remote_manifest_content="$(printf '%s' "${remote_manifest_content}" | tr -d '\r')"
+
+        if [[ -z "${remote_manifest_content}" ]]; then
+            write_error_message "cannot fetch remote manifest: ${remote_manifest_url}"
+            write_plain ""
+            write_plain " This installer will download files from GitHub 'main'."
+            write_plain " Fix: check network access to GitHub or use -local-path for offline/local installs."
+            return 1
+        fi
+
+        if [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
+            write_error_message "local manifest does not match GitHub manifest"
+            write_plain ""
+            write_plain " Local manifest : ${manifest_file}"
+            write_plain " Remote manifest: ${remote_manifest_url}"
+            write_plain ""
+            write_plain " This installer will download files from GitHub 'main'."
+            write_plain " Your local manifest references a different file set, which will cause 404s."
+            write_plain ""
+            write_plain " Fix: use -local-path to install from your local working tree (dev branch),"
+            write_plain " or re-bootstrap from a clone of GitHub 'main' so the manifest matches."
+            return 1
+        fi
     fi
 
     # Step 5: Build complete file list (like PowerShell does)
@@ -732,6 +778,55 @@ install_infrastructure() {
     build_file_list "${manifest_file}" "${workspace_root}" all_files file_destinations
 
     local total_files=${#all_files[@]}
+
+    # Step 5.5: In GitHub mode, fail fast if the remote source does not contain the files referenced by the manifest.
+    # This applies to -dry-run too, so "Would download" does not mask 404s.
+    if [[ "${SOURCE_REPOSITORY:-}" != file://* ]]; then
+        local remote_base_url="${SOURCE_REPOSITORY}/${BRANCH:-main}"
+
+        if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+            write_error_message "cannot validate remote file existence (curl/wget not found)"
+            write_plain ""
+            write_plain " This installer will download files from GitHub '${BRANCH:-main}'."
+            write_plain " Fix: install curl or wget, or use -local-path."
+            return 1
+        fi
+
+        local missing_remote=()
+        local i=0
+        while [[ $i -lt ${#all_files[@]} ]]; do
+            local rel_path="${all_files[$i]}"
+            local url="${remote_base_url}/${rel_path}"
+
+            if command -v curl >/dev/null 2>&1; then
+                if ! curl -fsSI --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${url}" >/dev/null 2>&1; then
+                    missing_remote+=("${rel_path}")
+                fi
+            else
+                if ! wget -q --spider --timeout=20 --tries=1 --user-agent="terraform-azurerm-ai-installer" "${url}" 2>/dev/null; then
+                    missing_remote+=("${rel_path}")
+                fi
+            fi
+
+            i=$((i + 1))
+        done
+
+        if [[ ${#missing_remote[@]} -gt 0 ]]; then
+            write_error_message "remote source is missing manifest files on GitHub '${BRANCH:-main}'"
+            write_plain ""
+            write_plain " Remote base: ${remote_base_url}"
+            write_plain ""
+            write_plain " Missing (showing up to 10):"
+            local j=0
+            while [[ $j -lt ${#missing_remote[@]} && $j -lt 10 ]]; do
+                write_plain "  - ${missing_remote[$j]}"
+                j=$((j + 1))
+            done
+            write_plain ""
+            write_plain " Fix: use -local-path for dev installs, or update GitHub '${BRANCH:-main}' to include these paths."
+            return 1
+        fi
+    fi
 
     # Step 6: Show preparation message
     write_cyan "Preparing to install ${total_files} files..."
@@ -833,18 +928,18 @@ install_all_files() {
         local percentage=$(( (i + 1) * 100 / total_files ))
 
         # Use right-aligned 3-digit format like show_completion function (automatically handles padding)
-        printf "  ${CYAN}Downloading ${GREEN}[%3d%%]${CYAN}: ${NC}%s\n" "${percentage}" "${relative_path}"
+        local operation_label="Downloading"
+        if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
+            operation_label="Copying"
+        fi
+        printf "  ${CYAN}%s ${GREEN}[%3d%%]${CYAN}: ${NC}%s\n" "${operation_label}" "${percentage}" "${relative_path}"
 
         # Create target directory if needed
         local target_dir=$(dirname "${target_path}")
         mkdir -p "${target_dir}"
 
-        # Determine download category for consistency
-        local download_category
-        download_category=$(get_download_category "${source_file}")
-
         # Download the file - handle errors gracefully to continue with other files
-        if download_file "${source_file}" "${target_path}" "${download_category}/${filename}"; then
+        if download_file "${source_file}" "${target_path}" "${source_file}"; then
             ((successful_ref++))
         else
             ((failed_ref++))
@@ -985,18 +1080,55 @@ show_installation_summary() {
     local current_branch="$5"
     local branch_type="$6"
 
-    # Calculate actual total size of installed files
-    local total_size_kb
-    total_size_kb=$(calculate_installed_files_size "${workspace_root}")
-    local skipped_files=$((total_files - successful_files - failed_files))
+    local total_size_kb=0
+    local skipped_files=0
+
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        # Match PowerShell semantics: dry-run performs no writes.
+        successful_files=0
+        failed_files=0
+        skipped_files=${total_files}
+    else
+        # Calculate actual total size of installed files
+        total_size_kb=$(calculate_installed_files_size "${workspace_root}")
+        skipped_files=$((total_files - successful_files - failed_files))
+    fi
 
     # Show detailed summary using the sophisticated show_operation_summary function
     # Clean branch_type variable to remove any potential line breaks or whitespace
     branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    show_operation_summary "Installation" "true" "false" \
+    local success_status="true"
+    if [[ "${failed_files}" -gt 0 ]]; then
+        success_status="false"
+    fi
+
+    local source_value=""
+    if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
+        source_value="${SOURCE_REPOSITORY#file://}"
+    else
+        source_value="${SOURCE_REPOSITORY:-}""/""${BRANCH:-main}"
+    fi
+
+    local manifest_value="${INSTALLER_MANIFEST_FILE:-}"
+    if [[ -n "${manifest_value}" ]]; then
+        local manifest_hash=""
+        if command -v sha256sum >/dev/null 2>&1; then
+            manifest_hash=$(sha256sum "${manifest_value}" 2>/dev/null | awk '{print $1}')
+        elif command -v shasum >/dev/null 2>&1; then
+            manifest_hash=$(shasum -a 256 "${manifest_value}" 2>/dev/null | awk '{print $1}')
+        fi
+        if [[ -n "${manifest_hash}" ]]; then
+            manifest_value="${manifest_value} (${manifest_hash:0:8})"
+        fi
+    fi
+
+    show_operation_summary "Installation" "${success_status}" "${DRY_RUN:-false}" \
         "Branch Type: ${branch_type}" \
         "Target Branch: ${current_branch}" \
+        "Source: ${source_value}" \
+        "Manifest: ${manifest_value}" \
+        "Command: ${INSTALLER_COMMAND_LINE:-${INSTALLER_ATTEMPTED_COMMAND:-}}" \
         "Files Installed: ${successful_files}" \
         "Total Size: ${total_size_kb} KB" \
         "Files Skipped: ${skipped_files}" \
@@ -1368,8 +1500,7 @@ bootstrap_files_to_profile() {
     for file_path in "${bootstrap_files[@]}"; do
         # Remove installer/ prefix to get relative path within installer directory
         local relative_path="${file_path#installer/}"
-        # For AI dev repo, script_dir is already the installer directory
-        # For provider repo with .github/AIinstaller, this would be handled differently
+        # For this repository, script_dir is already the installer directory
         local source_path="${script_dir}/${relative_path}"
         local filename=$(basename "${relative_path}")
 

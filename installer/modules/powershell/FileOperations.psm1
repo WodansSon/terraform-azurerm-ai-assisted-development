@@ -233,9 +233,11 @@ function Install-AIFile {
         $originalProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
 
-        try {
-            $response = Invoke-WebRequest -Uri $DownloadUrl -UseBasicParsing -ErrorAction Stop
+        $requestHeaders = @{
+            'User-Agent' = 'terraform-azurerm-ai-installer'
         }
+
+        $response = Invoke-WebRequest -Uri $DownloadUrl -UseBasicParsing -Headers $requestHeaders -ErrorAction Stop
         finally {
             $ProgressPreference = $originalProgressPreference
         }
@@ -322,7 +324,8 @@ function Install-AllAIFile {
 
     # CRITICAL: Use centralized pre-installation validation (replaces scattered safety checks)
     Write-Host "Validating installation prerequisites..." -ForegroundColor Cyan
-    $validation = Test-PreInstallation -AllowBootstrapOnSource:$false -RequireProviderRepo:$RequireProviderRepo
+    $requireInternet = [string]::IsNullOrWhiteSpace($LocalSourcePath)
+    $validation = Test-PreInstallation -AllowBootstrapOnSource:$false -RequireProviderRepo:$RequireProviderRepo -RequireInternet:$requireInternet
 
     if (-not $validation.OverallValid) {
         Write-Host ""
@@ -658,7 +661,7 @@ function Install-AllAIFile {
 
         switch ($fileResult.Action) {
             { $_ -in @("Downloaded", "Overwritten", "Copied") } { $results.Successful++ }
-            "Skipped" { $results.Skipped++ }
+            { $_ -in @("Skipped", "DryRun", "Would Download", "Would Overwrite") } { $results.Skipped++ }
             default {
                 $results.Failed++
                 $results.OverallSuccess = $false
@@ -1261,9 +1264,8 @@ function Invoke-Bootstrap {
             "Total Size" = 0
         }
 
-        # CRITICAL: Bootstrap should ONLY be allowed from the source branch (main)
-        # This ensures you're copying the correct, official installer files to your user profile
-        # The validation in Test-PreInstallation should have already verified we're on the source branch
+        # Bootstrap is only supported when running from a git clone of this repository (repo root contains .git).
+        # It copies the installer files from the current working tree into the user profile installer directory.
         $aiInstallerSourcePath = Join-Path $Global:WorkspaceRoot "installer"
 
         if (Test-Path $aiInstallerSourcePath) {
@@ -1346,7 +1348,7 @@ function Invoke-Bootstrap {
                 }
             }
         } else {
-            # AIinstaller directory not found in current repository
+            # installer directory not found in current repository
             Show-AIInstallerNotFoundError
             exit 1
         }
@@ -1553,11 +1555,8 @@ function Invoke-InstallInfrastructure {
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Set to true when installing via -RepoDirectory to a target repository.
 
-    .PARAMETER SourceBranch
-    GitHub branch to pull AI files from (default: main). Contributor feature.
-
     .PARAMETER LocalSourcePath
-    Local directory to copy AI files from instead of GitHub. Contributor feature.
+    Local directory to copy AI files from instead of GitHub.
     #>
     param(
         [bool]$DryRun,
@@ -1565,7 +1564,6 @@ function Invoke-InstallInfrastructure {
         [hashtable]$ManifestConfig,
         [string]$TargetBranch = "Unknown",
         [bool]$RequireProviderRepo = $false,
-        [string]$SourceBranch = "",
         [string]$LocalSourcePath = ""
     )
 
@@ -1594,8 +1592,7 @@ function Invoke-InstallInfrastructure {
 
     # Use the FileOperations module to actually install files
     try {
-        # Determine which branch to use
-        $branchToUse = if ($SourceBranch) { $SourceBranch } else { "main" }
+        $branchToUse = "main"
 
         # Build Install-AllAIFile parameters - only include LocalSourcePath if it's not empty
         $installParams = @{
@@ -1642,6 +1639,24 @@ function Invoke-InstallInfrastructure {
             $details = [ordered]@{}
             $details["Branch Type"] = $branchType
             $details["Target Branch"] = $currentBranch
+
+            # Source/manifest context (important because local working trees may differ from GitHub main)
+            $sourceValue = if ($LocalSourcePath) { $LocalSourcePath } else { $ManifestConfig.BaseUrl }
+            if ($sourceValue) {
+                $details["Source"] = $sourceValue
+            }
+
+            $manifestValue = $Global:InstallerManifestPath
+            if ($manifestValue -and $Global:InstallerManifestHash) {
+                $manifestValue = "$manifestValue ($($Global:InstallerManifestHash.Substring(0,8)))"
+            }
+            if ($manifestValue) {
+                $details["Manifest"] = $manifestValue
+            }
+
+            if ($Global:InstallerCommandLine) {
+                $details["Command"] = $Global:InstallerCommandLine
+            }
             if ($result.Successful -gt 0) {
                 $details["Files Installed"] = $result.Successful
             }

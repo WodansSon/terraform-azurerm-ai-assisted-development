@@ -621,12 +621,16 @@ function Test-SystemRequirement {
     Test all system requirements for the AI installer
     #>
 
+    param(
+        [bool]$RequireInternet = $true
+    )
+
     $results = @{
         OverallValid = $true
         PowerShell = Test-PowerShellVersion
         ExecutionPolicy = Test-ExecutionPolicy
         Commands = Test-RequiredCommand
-        Internet = Test-InternetConnectivity
+        Internet = if ($RequireInternet) { Test-InternetConnectivity } else { @{ Connected = $true; Reason = "Skipped (local source install)" } }
     }
 
     # Check if any requirement failed
@@ -649,10 +653,14 @@ function Test-PreInstallation {
     .PARAMETER RequireProviderRepo
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Used when installing via -RepoDirectory to a target repository.
+
+    .PARAMETER RequireInternet
+    Require internet connectivity (needed for GitHub downloads). Set to false for -LocalPath installs.
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+        [bool]$RequireInternet = $true
     )
 
     $results = @{
@@ -674,7 +682,7 @@ function Test-PreInstallation {
         $results.OverallValid = $false
 
         # Still run system requirements (these are always safe to check)
-        $results.SystemRequirements = Test-SystemRequirement
+        $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
 
         # Skip workspace and detailed checks due to safety violation
         $results.Workspace = @{
@@ -688,7 +696,7 @@ function Test-PreInstallation {
 
     # Continue with full validation if Git is safe
     $results.Workspace = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
-    $results.SystemRequirements = Test-SystemRequirement
+    $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
 
     # CRITICAL SAFETY CHECKS: Verify target repository and uncommitted changes
     # If RequireProviderRepo is true, reject AI dev repo (used when installing via -RepoDirectory)
@@ -832,6 +840,45 @@ function Invoke-VerifyWorkspace {
         Write-Host " Workspace Verification" -ForegroundColor Cyan
         Write-Separator
         Write-Host ""
+
+        # Fail fast if the local installer manifest does not match the remote manifest.
+        # This prevents misleading verification results when a stale user-profile installer is present.
+        #
+        # Contributor local-path workflows explicitly source files from a local working tree and may
+        # legitimately diverge from the GitHub manifest. In that case, skip remote manifest validation.
+        if (-not $Global:SkipRemoteManifestValidation) {
+        try {
+            $localManifestPath = Join-Path $Global:ScriptRoot "file-manifest.config"
+            $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
+
+            if (Test-Path $localManifestPath -and $remoteManifestUrl) {
+                $localManifest = (Get-Content -Path $localManifestPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
+                $remoteManifest = (Invoke-WebRequest -Uri $remoteManifestUrl -UseBasicParsing -ErrorAction Stop).Content
+                $remoteManifest = $remoteManifest -replace "`r`n", "`n" -replace "`r", "`n"
+
+                if ($localManifest -ne $remoteManifest) {
+                    Write-Host " Manifest file mismatch" -ForegroundColor Red
+                    Write-Host ""
+                    Write-Host " Local manifest: $(Get-RelativePath $localManifestPath)" -ForegroundColor Cyan
+                    Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host " The local installer manifest does not match the remote manifest." -ForegroundColor Cyan
+                    Write-Host " This usually means your installer is out of date." -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host " FIX: Refresh the installer/manifest (re-run Bootstrap or re-extract the latest release bundle), then run -Verify again." -ForegroundColor Yellow
+                    Write-Host ""
+
+                    $results.Success = $false
+                    $results.Issues += "file-manifest.config mismatch"
+                    return $results
+                }
+            }
+        }
+        catch {
+            # If remote manifest cannot be fetched (DNS/firewall/proxy), do not block verification.
+            Write-Host " NOTE: Could not validate remote manifest; continuing verification" -ForegroundColor Yellow
+        }
+        }
 
         # Check main instructions file
         $instructionsFile = $Global:InstallerConfig.Files.Instructions.Target

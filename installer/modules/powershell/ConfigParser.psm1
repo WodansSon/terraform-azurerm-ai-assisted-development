@@ -12,14 +12,16 @@ function Get-ManifestConfig {
     Parse the file manifest configuration and return structured data
 
     .PARAMETER ManifestPath
-    Path to the manifest file. Defaults to file-manifest.config in the AIinstaller directory
+    Path to the manifest file. Defaults to file-manifest.config in the installer directory
 
     .PARAMETER Branch
     Git branch for remote URLs
     #>
     param(
         [string]$ManifestPath,
-        [string]$Branch = "main"
+        [string]$Branch = "main",
+
+        [bool]$SkipRemoteValidation = $false
     )
 
     # Find manifest file if not specified
@@ -59,13 +61,16 @@ function Get-ManifestConfig {
         Sections = @{}
     }
 
-    # Validate branch exists by checking if file-manifest.config is accessible
-    try {
-        $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
-        $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
-    }
-    catch {
-        throw "Branch '$Branch' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
+    # Validate remote source is accessible by checking if file-manifest.config is reachable.
+    # This is only required for installs that pull files from GitHub.
+    if (-not $SkipRemoteValidation) {
+        try {
+            $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
+            $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
+        }
+        catch {
+            throw "cannot reach source repository at '$testUrl'. check network access to GitHub or use -LocalPath for local installs"
+        }
     }
 
     $currentSection = $null
@@ -126,8 +131,30 @@ function Get-InstallerConfig {
     $versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
     if (Test-Path $versionPath) {
         $candidate = (Get-Content -Path $versionPath -Raw).Trim()
-        if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$') {
+        if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$' -and $candidate -ne '0.0.0') {
             $version = $candidate
+        }
+    }
+
+    # If VERSION is a placeholder (0.0.0) and we're running from a git clone, show a dev build version.
+    if ($version -eq 'dev' -and (Test-Path $versionPath)) {
+        try {
+            $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+            if ($candidate -eq '0.0.0') {
+                $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+                if (Test-Path (Join-Path $repoRoot '.git')) {
+                    $sha = (git -C $repoRoot rev-parse --short HEAD 2>$null).Trim()
+                    if ($sha) {
+                        $version = "dev-$sha"
+                        $dirty = git -C $repoRoot status --porcelain 2>$null
+                        if ($dirty) {
+                            $version = "$version-dirty"
+                        }
+                    }
+                }
+            }
+        }
+        catch {
         }
     }
 

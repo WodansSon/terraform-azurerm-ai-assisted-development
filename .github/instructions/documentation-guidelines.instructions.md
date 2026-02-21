@@ -9,11 +9,11 @@ description: This document outlines the standards and guidelines for writing doc
 
 This document outlines the standards and guidelines for writing documentation for Terraform resources and data sources in the AzureRM provider.
 
-## Optional AI schema audit (recommended)
+## Optional AI docs review (recommended)
 
-To run a complete standards + schema parity review for the currently-open docs page, run:
+To run a complete standards + schema parity audit for the currently-open docs page, run:
 
-- <a href="../prompts/docs-schema-audit.prompt.md">.github/prompts/docs-schema-audit.prompt.md</a>
+- <a href="../prompts/docs-review.prompt.md">.github/prompts/docs-review.prompt.md</a>
 
 This audit is optional and user-invoked (no CI enforcement).
 
@@ -482,6 +482,11 @@ The `timeouts` block allows you to specify [timeouts](https://www.terraform.io/l
 - Focus on what becomes available after creation
 - Include computed values and system-generated properties
 - Show what can be referenced by other resources
+
+**Ordering:**
+- List `id` first.
+- List all remaining attributes in alphabetical order.
+- Do not special-case `name`, `resource_group_name`, `location`, or `tags` under `## Attributes Reference`.
 
 ```markdown
 ## Attributes Reference
