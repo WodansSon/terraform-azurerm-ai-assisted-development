@@ -120,7 +120,7 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Option 2: Bootstrap from Cloned Repo (Contributors Only)
+### Option 2: Bootstrap from Cloned Repo
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -131,8 +131,8 @@
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Run Bootstrap from Cloned Repo Branch                      │
-│  PowerShell: -Bootstrap -Contributor -LocalPath "<clone>"   │
-│  Bash: -bootstrap -contributor -local-path "<clone>"        │
+│  PowerShell: -Bootstrap                                     │
+│  Bash: -bootstrap                                           │
 └────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
@@ -154,7 +154,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  Run Installer from User Profile with Target Repository     │
 │  Same execution location as Option 1, but source AI files   │
-│  from your working tree using -Contributor -LocalPath       │
+│  from your working tree using -LocalPath / -local-path      │
 │  (PowerShell/Bash also pass -RepoDirectory/-repo-directory) │
 └─────────────────────────────────────────────────────────────┘
 ```

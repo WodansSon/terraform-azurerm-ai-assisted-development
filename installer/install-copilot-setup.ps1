@@ -13,8 +13,30 @@ $script:InstallerVersion = "dev"
 $versionPath = Join-Path $PSScriptRoot "VERSION"
 if (Test-Path $versionPath) {
     $candidate = (Get-Content -Path $versionPath -Raw).Trim()
-    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$') {
+    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$' -and $candidate -ne '0.0.0') {
         $script:InstallerVersion = $candidate
+    }
+}
+
+# If running from a git clone, show a contributor-friendly version even when VERSION is a placeholder.
+if ($script:InstallerVersion -eq 'dev' -and (Test-Path $versionPath)) {
+    try {
+        $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+        if ($candidate -eq '0.0.0') {
+            $repoRoot = Split-Path $PSScriptRoot -Parent
+            if (Test-Path (Join-Path $repoRoot '.git')) {
+                $sha = (git -C $repoRoot rev-parse --short HEAD 2>$null).Trim()
+                if ($sha) {
+                    $script:InstallerVersion = "dev-$sha"
+                    $dirty = git -C $repoRoot status --porcelain 2>$null
+                    if ($dirty) {
+                        $script:InstallerVersion = "$script:InstallerVersion-dirty"
+                    }
+                }
+            }
+        }
+    }
+    catch {
     }
 }
 
@@ -26,8 +48,6 @@ if (Test-Path $versionPath) {
 
 $Bootstrap = $false
 $RepoDirectory = ""
-$Contributor = $false
-$Branch = ""
 $LocalPath = ""
 $DryRun = $false
 $Verify = $false
@@ -52,7 +72,7 @@ function Show-EarlyErrorHeader {
 function Show-EarlyValidationError {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BootstrapConflict', 'BootstrapContributorOnly', 'BootstrapRequiresGitRepo', 'MutuallyExclusive', 'ContributorRequired', 'EmptyLocalPath', 'LocalPathNotFound')]
+        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'EmptyLocalPath', 'LocalPathNotFound')]
         [string]$ErrorType,
 
         [string]$Path
@@ -61,25 +81,6 @@ function Show-EarlyValidationError {
     Show-EarlyErrorHeader
 
     switch ($ErrorType) {
-        'BootstrapConflict' {
-            Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Cannot use -Branch with -Bootstrap" -ForegroundColor Cyan
-            Write-Host ""
-            Write-Host " -Bootstrap copies installer files into your user profile" -ForegroundColor Cyan
-            Write-Host " -Branch is for pulling AI files from a published GitHub branch" -ForegroundColor Cyan
-            Write-Host " -Use -Contributor -LocalPath with -Bootstrap to copy from a local AI dev repo" -ForegroundColor Cyan
-        }
-        'BootstrapContributorOnly' {
-            Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " -Bootstrap is a contributor-only command" -ForegroundColor Cyan
-            Write-Host ""
-            Write-Host " Official installation is via the release bundle (download + extract into your user profile):" -ForegroundColor Cyan
-            Write-Host "   https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases" -ForegroundColor White
-            Write-Host ""
-            Write-Host " Contributors can bootstrap from a local git clone:" -ForegroundColor Cyan
-            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor" -ForegroundColor White
-            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
-        }
         'BootstrapRequiresGitRepo' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -Bootstrap must be run from a git clone (directory containing .git)" -ForegroundColor Cyan
@@ -91,20 +92,14 @@ function Show-EarlyValidationError {
             }
             Write-Host " -Bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy." -ForegroundColor Cyan
         }
-        'MutuallyExclusive' {
+        'BootstrapNoArgs' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Cannot specify both -Branch and -LocalPath" -ForegroundColor Cyan
+            Write-Host " -Bootstrap does not accept any other parameters" -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
-            Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
-        }
-        'ContributorRequired' {
-            Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " -Branch and -LocalPath require -Contributor flag" -ForegroundColor Cyan
+            Write-Host " Run bootstrap from a local git clone (no other flags):" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
             Write-Host ""
-            Write-Host " These are contributor features for testing AI file changes:" -ForegroundColor Cyan
-            Write-Host "   -Contributor -Branch <name>     Test published branch changes" -ForegroundColor White
-            Write-Host "   -Contributor -LocalPath <path>  Test uncommitted local changes" -ForegroundColor White
+            Write-Host " To install AI infrastructure, run from your user profile installer directory with -RepoDirectory." -ForegroundColor Cyan
         }
         'EmptyLocalPath' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
@@ -141,11 +136,11 @@ function Get-ParameterSuggestion {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
+        Write-Host "   -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor"
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
         Write-Host ""
         exit 1
     }
@@ -163,9 +158,7 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -match '^he') { $suggestion = 'Help' }
     elseif ($cleanParam -match '^dr') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
-    elseif ($cleanParam -match '^co') { $suggestion = 'Contributor' }
     elseif ($cleanParam -match '^lo') { $suggestion = 'LocalPath' }
-    elseif ($cleanParam -match '^br') { $suggestion = 'Branch' }
     # Fuzzy matching (lower priority)
     elseif ($cleanParam -like '*cle*') { $suggestion = 'Clean' }
     elseif ($cleanParam -like '*boo*') { $suggestion = 'Bootstrap' }
@@ -173,10 +166,8 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -like '*hel*') { $suggestion = 'Help' }
     elseif ($cleanParam -like '*dry*') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
-    elseif ($cleanParam -like '*cont*') { $suggestion = 'Contributor' }
     elseif ($cleanParam -like '*local*') { $suggestion = 'LocalPath' }
     elseif ($cleanParam -like '*source*') { $suggestion = 'LocalPath' }
-    elseif ($cleanParam -like '*bra*') { $suggestion = 'Branch' }
 
     return $suggestion
 }
@@ -191,11 +182,11 @@ function Test-ParameterTypo {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
+        Write-Host "   -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor"
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
         Write-Host ""
         exit 1
     }
@@ -234,11 +225,11 @@ while ($i -lt $args.Count) {
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
         Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>" -ForegroundColor White
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>" -ForegroundColor White
+        Write-Host "   -LocalPath <path>" -ForegroundColor White
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor" -ForegroundColor White
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
         Write-Host ""
         exit 1
     }
@@ -258,16 +249,6 @@ while ($i -lt $args.Count) {
             $RepoDirectory = $args[$i + 1]
             $i += 2
         }
-        '-branch' {
-            if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -Branch requires a branch name" -ForegroundColor Red
-                Write-Host ""
-                exit 1
-            }
-            $Branch = $args[$i + 1]
-            $i += 2
-        }
         '-localpath' {
             if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
                 Write-Host ""
@@ -277,10 +258,6 @@ while ($i -lt $args.Count) {
             }
             $LocalPath = $args[$i + 1]
             $i += 2
-        }
-        '-contributor' {
-            $Contributor = $true
-            $i++
         }
         '-dry-run' {
             $DryRun = $true
@@ -341,7 +318,7 @@ while ($i -lt $args.Count) {
 #   - A single dash '-' (PowerShell consumed it)
 #   - A double dash '--' (PowerShell consumed it)
 # In all cases, showing help is the appropriate response
-if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor -or $Branch -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
     $Help = $true
 }
 
@@ -349,15 +326,9 @@ if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor 
 
 #region Parameter Validation
 
-# PRIORITY 1: Validate -Bootstrap conflicts first (fail fast on foundational operation)
-if ($Bootstrap -and $Branch) {
-    Show-EarlyValidationError -ErrorType 'BootstrapConflict'
-    exit 1
-}
-
-# PRIORITY 1.1: Hard gate -Bootstrap behind -Contributor
-if ($Bootstrap -and -not $Contributor) {
-    Show-EarlyValidationError -ErrorType 'BootstrapContributorOnly'
+# PRIORITY 1: -Bootstrap must be a standalone operation (no additional flags)
+if ($Bootstrap -and ($RepoDirectory -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+    Show-EarlyValidationError -ErrorType 'BootstrapNoArgs'
     exit 1
 }
 
@@ -368,24 +339,6 @@ if ($Bootstrap) {
         Show-EarlyValidationError -ErrorType 'BootstrapRequiresGitRepo' -Path $repoRoot
         exit 1
     }
-
-    # When bootstrapping from a local source path, the local source must also be a git clone root.
-    if ($LocalPath -and -not (Test-Path (Join-Path $LocalPath '.git'))) {
-        Show-EarlyValidationError -ErrorType 'BootstrapRequiresGitRepo' -Path $LocalPath
-        exit 1
-    }
-}
-
-# PRIORITY 2: Validate mutually exclusive parameters
-if ($Branch -and $LocalPath) {
-    Show-EarlyValidationError -ErrorType 'MutuallyExclusive'
-    exit 1
-}
-
-# PRIORITY 3: Validate -Branch and -LocalPath require -Contributor flag
-if (($Branch -or $LocalPath) -and -not $Contributor) {
-    Show-EarlyValidationError -ErrorType 'ContributorRequired'
-    exit 1
 }
 
 # PRIORITY 4: Validate -LocalPath is not empty and exists when provided
@@ -499,7 +452,7 @@ $ScriptDirectory = if ($PSScriptRoot) {
 } elseif ($MyInvocation.MyCommand.Path) {
     Split-Path $MyInvocation.MyCommand.Path -Parent
 } else {
-    # Fallback: assume we're in the AIinstaller directory
+    # Fallback: assume we're in the installer directory
     Get-Location | ForEach-Object { $_.Path }
 }
 
@@ -522,6 +475,9 @@ $Global:ScriptRoot = $null
 # Configuration will be loaded on-demand in functions that need it
 $Global:ManifestConfig = $null
 $Global:InstallerConfig = $null
+$Global:InstallerCommandLine = $MyInvocation.Line
+$Global:InstallerManifestPath = $null
+$Global:InstallerManifestHash = $null
 
 #endregion Module Loading
 
@@ -563,39 +519,101 @@ function Main {
 
      try {
         # Step 1: Initialize workspace
-        # - When bootstrapping with -Contributor -LocalPath, treat LocalPath as the AI dev repo root.
-        # - Otherwise, detect workspace root from -RepoDirectory or current script directory.
-        if ($Bootstrap -and $Contributor -and -not [string]::IsNullOrWhiteSpace($LocalPath)) {
-            $Global:WorkspaceRoot = $LocalPath
-        } else {
-            $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory
-        }
+        # Detect workspace root from -RepoDirectory or current script directory.
+        $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory
         $Global:ScriptRoot = $ScriptDirectory
 
         # Step 2: Early workspace validation before doing anything else
         $workspaceValidation = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
 
-        # Step 3: Determine effective branch for manifest config
-        # -Bootstrap is a local copy operation; do not require the current branch to exist on GitHub.
-        # For remote installs, use -Branch or default to "main".
-        $effectiveBranch = "main"  # Default fallback
-
-        if ($Branch) {
-            # User provided -Branch parameter (contributor mode)
-            $effectiveBranch = $Branch
-        }
+        # Step 3: Manifest is always sourced from GitHub main unless -LocalPath is used for local installs.
+        $effectiveBranch = "main"
 
         # Step 4: Initialize global configuration
+        # IMPORTANT: -Help should never require network access or remote manifest validation.
         if ($workspaceValidation.Valid) {
+            if ($Help) {
+                $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
+                $Global:ManifestConfig = @{}
+            }
+            else {
             # Manifest is always in the same directory as the script
             # - When running from source repo: repo/installer/file-manifest.config
             # - When running after bootstrap: ~/.terraform-azurerm-ai-installer/file-manifest.config
             $manifestPath = Join-Path $ScriptDirectory "file-manifest.config"
+            $Global:InstallerManifestPath = $manifestPath
+            if (Test-Path $manifestPath) {
+                try {
+                    $Global:InstallerManifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash
+                }
+                catch {
+                    $Global:InstallerManifestHash = $null
+                }
+            }
 
             try {
                 $skipRemoteValidation = [bool]($Bootstrap -or (-not [string]::IsNullOrWhiteSpace($LocalPath)))
                 $Global:SkipRemoteManifestValidation = $skipRemoteValidation
                 $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$skipRemoteValidation
+
+                # If downloading from GitHub (no -LocalPath), hard-fail when the local manifest does not match the remote manifest.
+                # This commonly happens when a bootstrapped installer was created from a dev branch, but the default download source is GitHub `main`.
+                if (-not $skipRemoteValidation) {
+                    $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
+                    if ($remoteManifestUrl -and (Test-Path $manifestPath)) {
+                        $localManifest = (Get-Content -Path $manifestPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
+
+                        $remoteManifestResponse = $null
+                        try {
+                            $remoteManifestResponse = Invoke-WebRequest -Uri $remoteManifestUrl -UseBasicParsing -ErrorAction Stop
+                        }
+                        catch {
+                            Write-Host " Error: cannot fetch remote manifest from GitHub" -ForegroundColor Red
+                            Write-Host ""
+                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
+                            Write-Host ""
+                            Write-Host " This installer will download files from GitHub '$effectiveBranch'." -ForegroundColor Yellow
+                            Write-Host " Without the remote manifest, the installer cannot prove it is using the correct file list." -ForegroundColor Yellow
+                            Write-Host ""
+                            Write-Host " Fix:" -ForegroundColor Yellow
+                            Write-Host "  - Check network/proxy access to raw.githubusercontent.com, OR" -ForegroundColor Yellow
+                            Write-Host "  - Use -LocalPath to install from your local working tree (offline/dev), OR" -ForegroundColor Yellow
+                            Write-Host "  - Install from the official release bundle." -ForegroundColor Yellow
+                            Write-Host ""
+                            exit 1
+                        }
+
+                        $remoteManifest = $remoteManifestResponse.Content
+                        $remoteManifest = $remoteManifest -replace "`r`n", "`n" -replace "`r", "`n"
+
+                        if ([string]::IsNullOrWhiteSpace($remoteManifest)) {
+                            Write-Host " Error: remote manifest response was empty" -ForegroundColor Red
+                            Write-Host ""
+                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
+                            Write-Host ""
+                            Write-Host " Fix: check network/proxy access to GitHub raw content, or use -LocalPath." -ForegroundColor Yellow
+                            Write-Host ""
+                            exit 1
+                        }
+
+                        if ($localManifest -ne $remoteManifest) {
+                            Write-Host ""
+                            Write-Host " Error: local manifest does not match GitHub manifest" -ForegroundColor Red
+                            Write-Host " Local manifest : $(Get-RelativePath $manifestPath)" -ForegroundColor Cyan
+                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
+                            Write-Host ""
+                            Write-Host " This installer will download files from GitHub '$effectiveBranch'." -ForegroundColor Yellow
+                            Write-Host " Your local manifest references a different file set, which will cause hard-to-debug 404s." -ForegroundColor Yellow
+                            Write-Host ""
+                            Write-Host " Fix:" -ForegroundColor Yellow
+                            Write-Host "  - Use -LocalPath to install from your local working tree (dev branch), OR" -ForegroundColor Yellow
+                            Write-Host "  - Re-bootstrap from a clone of GitHub '$effectiveBranch' so the manifest matches." -ForegroundColor Yellow
+                            Write-Host ""
+
+                            exit 1
+                        }
+                    }
+                }
             }
             catch {
                 Show-ValidationError -ErrorType 'BranchValidation' -Branch $effectiveBranch
@@ -603,6 +621,7 @@ function Main {
             }
 
             $Global:InstallerConfig = Get-InstallerConfig -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -Branch $Global:ManifestConfig.Branch
+            }
         } else {
             # Invalid workspace - provide minimal configuration for UI display
             $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
@@ -664,7 +683,7 @@ function Main {
         }
 
         # CONSISTENT PATTERN: Every operation gets the same header and branch detection
-        Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer" -Version $Global:InstallerConfig.Version
+        Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer"
         Show-BranchDetection -BranchName $currentBranch -BranchType $branchType
 
         # SAFETY CHECK 1 - Block operations targeting AI dev repo when using -RepoDirectory (except Verify, Help, Bootstrap)
@@ -685,12 +704,6 @@ function Main {
             }
         }
 
-        # SAFETY CHECK 3 - Block -Contributor mode when running from source repo on main branch
-        if ($Contributor -and $isSourceRepo -and -not $RepoDirectory) {
-            Show-ContributorModeViolation -BranchName $currentBranch
-            exit 1
-        }
-
         # Detect if we're running from user profile directory (needed for all help contexts)
         $currentDir = Get-Location
         $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
@@ -704,7 +717,6 @@ function Main {
         elseif ($Help) { $attemptedCommand = "-Help" }
         elseif ($DryRun) { $attemptedCommand = "-Dry-Run" }
         elseif ($LocalPath) { $attemptedCommand = "-LocalPath `"$LocalPath`"" }
-        elseif ($Branch) { $attemptedCommand = "-Branch `"$Branch`"" }
         elseif ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             $attemptedCommand = "-RepoDirectory `"$RepoDirectory`""
         }
@@ -756,7 +768,7 @@ function Main {
         # Installation path (when -RepoDirectory is provided and not other specific operations)
         if ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             # Proceed with installation - require that target is a Terraform provider repo
-            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -SourceBranch $Branch -LocalSourcePath $LocalPath | Out-Null
+            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -LocalSourcePath $LocalPath | Out-Null
             return
         }
 

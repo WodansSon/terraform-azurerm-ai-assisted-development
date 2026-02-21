@@ -56,17 +56,17 @@ Error: Could not locate terraform-provider-azurerm repository
 
 ---
 
-### Branch Validation Failed (Contributors)
+### Remote Source Validation Failed
 
-This happens when the installer tries to validate or pull files from a **GitHub branch** that does not exist remotely.
+This happens when the installer cannot access the **default remote source** (GitHub `main`) used to download AI files.
 
-In contributor workflows, the most common ways to trigger this are:
-- You used `-Contributor -Branch "feature/my-branch"` but that branch only exists locally (or the name is misspelled) and has not been pushed to GitHub.
-- You are testing local/uncommitted AI file changes but did not use `-Contributor -LocalPath <your clone>`, so the installer falls back to pulling AI files from GitHub (remote) and will fail if the requested branch does not exist.
+Common causes:
+- Network restrictions (DNS/firewall/proxy) preventing access to `raw.githubusercontent.com`
+- Temporary GitHub outage
 
 **Fix options:**
-- **Preferred**: use `-Contributor -LocalPath <your clone>` for bootstrap + install when testing local changes.
-- **Alternative**: push the branch and re-run using `-Contributor -Branch`.
+- **Preferred (offline/local)**: use `-LocalPath` / `-local-path` to copy AI files from a local directory.
+- **Alternative (remote)**: fix network access to GitHub and retry.
 
 > [!IMPORTANT]
 > The commands below assume the installer in your user profile is up-to-date (v2.0.0+).
@@ -76,25 +76,25 @@ In contributor workflows, the most common ways to trigger this are:
 **Solution (PowerShell):**
 ```powershell
 # Keep execution consistent with release installs:
-# 1) Refresh the user-profile installer from your local AI dev repo (your dev branch)
-& "C:\path\to\terraform-azurerm-ai-assisted-development\installer\install-copilot-setup.ps1" -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
+# 1) Refresh the user-profile installer from your local clone (or re-extract the latest release bundle)
+& "C:\path\to\terraform-azurerm-ai-assisted-development\installer\install-copilot-setup.ps1" -Bootstrap
 
 # 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
 #    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
 cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
-.\install-copilot-setup.ps1 -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+.\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **Solution (Bash):**
 ```bash
 # Keep execution consistent with release installs:
-# 1) Refresh the user-profile installer from your local AI dev repo (your dev branch)
-"/path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh" -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
+# 1) Refresh the user-profile installer from your local clone (or re-extract the latest release bundle)
+"/path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh" -bootstrap
 
 # 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
 #    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
 cd ~/.terraform-azurerm-ai-installer
-./install-copilot-setup.sh -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
+./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 ---
@@ -105,7 +105,7 @@ This happens when `-Verify` / `-verify` detects that the **local installer manif
 
 **Common causes:**
 - You have an older `~/.terraform-azurerm-ai-installer` / `%USERPROFILE%\.terraform-azurerm-ai-installer` from a previous release.
-- You updated your local clone but did not re-bootstrap the user-profile installer (contributors only).
+- You updated your local clone but did not re-bootstrap the user-profile installer (if you are developing the installer itself).
 
 **Fix:** refresh your installer, then run verify again.
 
@@ -126,9 +126,9 @@ This happens when `-Verify` / `-verify` detects that the **local installer manif
 ```
 
 > [!NOTE]
-> If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), it will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
+> If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), `-Verify` / `-verify` fails fast in GitHub-source mode. Use `-LocalPath` / `-local-path` for offline/local workflows (remote manifest validation is skipped by design).
 >
-> If you are intentionally testing uncommitted local AI dev repo changes using `-Contributor -LocalPath` / `-contributor -local-path`, remote manifest validation is skipped by design.
+> If you are intentionally installing from a local AI dev repo using `-LocalPath` / `-local-path`, remote manifest validation is skipped by design.
 
 ---
 
@@ -457,7 +457,7 @@ The specified path is too long
 xattr -d com.apple.quarantine install-copilot-setup.sh
 
 # Or run with explicit bypass
-bash install-copilot-setup.sh -bootstrap
+bash ./install-copilot-setup.sh -bootstrap
 ```
 
 ---
@@ -493,11 +493,19 @@ sudo pacman -S curl jq
 
 **Installer**:
 ```powershell
-# PowerShell
-.\install-copilot-setup.ps1 -Verbose
+# PowerShell: preview without making changes
+.\install-copilot-setup.ps1 -Dry-Run -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
-# Bash
-./install-copilot-setup.sh -verbose
+# Optional: PowerShell script-level tracing (very verbose)
+# Set-PSDebug -Trace 1; .\install-copilot-setup.ps1 -Help; Set-PSDebug -Off
+```
+
+```bash
+# Bash: preview without making changes
+./install-copilot-setup.sh -dry-run -repo-directory "/path/to/terraform-provider-azurerm"
+
+# Optional: Bash script-level tracing (very verbose)
+# bash -x ./install-copilot-setup.sh -help
 ```
 
 ---
@@ -541,11 +549,19 @@ If none of these solutions work:
 
 ### Reinstall Everything
 ```powershell
-# Windows
-.\install-copilot-setup.ps1 -Bootstrap -Contributor -Force
+# Windows (recommended): clean then install
+cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
+.\install-copilot-setup.ps1 -Clean -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+.\install-copilot-setup.ps1 -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
-# macOS/Linux
-./install-copilot-setup.sh -bootstrap -contributor -force
+# macOS/Linux (recommended): clean then install
+cd ~/.terraform-azurerm-ai-installer
+./install-copilot-setup.sh -clean -repo-directory "/path/to/terraform-provider-azurerm"
+./install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+
+# If you are developing the installer itself, refresh the user-profile installer first:
+#   PowerShell: & "C:\path\to\terraform-azurerm-ai-assisted-development\installer\install-copilot-setup.ps1" -Bootstrap
+#   Bash: /path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh -bootstrap
 ```
 
 ### Uninstall

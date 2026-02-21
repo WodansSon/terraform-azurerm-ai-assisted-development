@@ -81,7 +81,8 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 > **About `-Verify` / `-verify`:** verification checks whether your target repository has all required AI files.
 > - If it reports **"Manifest file mismatch"**, your local installer is out of date compared to the upstream manifest.
 >   Re-extract the latest release bundle (recommended) or (contributors only) re-run Bootstrap from a local git clone, then run verify again.
-> - If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), verify still runs using your local manifest, but it cannot confirm whether your installer is up to date.
+> - In GitHub-source mode (the default when `-LocalPath` / `-local-path` is not provided), verify fails fast if it cannot reach GitHub (for example DNS/firewall/proxy restrictions).
+>   For offline/local workflows, use `-LocalPath` / `-local-path` to source AI files from a local working tree (remote manifest validation is skipped by design).
 
 > [!NOTE]
 > **Install a specific version (pinning)**: replace `latest/download` with a tagged release URL (`download/vX.Y.Z`).
@@ -95,29 +96,28 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 <!-- -->
 > [!TIP]
 > **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, the most reliable workflow is:
-> 1) **From your local clone (on your dev branch)**, run Bootstrap to refresh the user-profile installer (include `-Contributor -LocalPath` so it uses your local working tree), then
-> 2) run installs from your user profile using `-Contributor -LocalPath` to source AI files from your working tree.
+> 1) **From your local clone**, run Bootstrap to refresh the user-profile installer, then
+> 2) run installs from your user profile using `-LocalPath` / `-local-path` to source AI files from your working tree.
 > ```bash
 > # Step 1 (Bootstrap) - run from your local clone
 > cd terraform-azurerm-ai-assisted-development/installer
-> ./install-copilot-setup.sh -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
+> ./install-copilot-setup.sh -bootstrap
 > # PowerShell:
 > #   cd terraform-azurerm-ai-assisted-development\installer
-> #   .\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
+> #   .\install-copilot-setup.ps1 -Bootstrap
 >
 > # Step 2 (Install) - run from your user profile, sourcing AI files from your working tree
 > # PowerShell:
 > #   cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
-> #   .\install-copilot-setup.ps1 -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+> #   .\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 > # Bash:
 > #   cd ~/.terraform-azurerm-ai-installer
-> #   ./install-copilot-setup.sh -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
+> #   ./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 > ```
 >
 > **Why use Bootstrap instead of the release package?**
 > - Tests your uncommitted changes to instruction files, installer scripts, and prompts
 > - Copies your local working copy to the user profile installer location
-> - Enables the `-Contributor` workflow for iterative development
 > - Perfect for testing improvements before submitting a PR
 >
 > Normal users should use the release package download (above) - Bootstrap is only for contributors working on the AI infrastructure itself.
@@ -353,7 +353,7 @@ This is a community project! Contributions are welcome:
 2. **Improve instructions** - Know a better pattern?
 3. **Add examples** - Share your experience
 4. **Test and provide feedback** - Help make it better
-5. **Contributor testing mode** - Test your AI instruction changes before pushing to GitHub using `-Contributor -Branch <name>` or `-Contributor -LocalPath <path>` ([see contributor mode docs](installer/README.md#contributor-mode-ai-dev-repo-contributors))
+5. **Local source testing** - Test your AI instruction changes before publishing by installing from your working tree using `-LocalPath` / `-local-path` ([see installer docs](installer/README.md))
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 

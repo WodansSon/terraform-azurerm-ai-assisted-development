@@ -621,12 +621,16 @@ function Test-SystemRequirement {
     Test all system requirements for the AI installer
     #>
 
+    param(
+        [bool]$RequireInternet = $true
+    )
+
     $results = @{
         OverallValid = $true
         PowerShell = Test-PowerShellVersion
         ExecutionPolicy = Test-ExecutionPolicy
         Commands = Test-RequiredCommand
-        Internet = Test-InternetConnectivity
+        Internet = if ($RequireInternet) { Test-InternetConnectivity } else { @{ Connected = $true; Reason = "Skipped (local source install)" } }
     }
 
     # Check if any requirement failed
@@ -649,10 +653,14 @@ function Test-PreInstallation {
     .PARAMETER RequireProviderRepo
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Used when installing via -RepoDirectory to a target repository.
+
+    .PARAMETER RequireInternet
+    Require internet connectivity (needed for GitHub downloads). Set to false for -LocalPath installs.
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+        [bool]$RequireInternet = $true
     )
 
     $results = @{
@@ -674,7 +682,7 @@ function Test-PreInstallation {
         $results.OverallValid = $false
 
         # Still run system requirements (these are always safe to check)
-        $results.SystemRequirements = Test-SystemRequirement
+        $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
 
         # Skip workspace and detailed checks due to safety violation
         $results.Workspace = @{
@@ -688,7 +696,7 @@ function Test-PreInstallation {
 
     # Continue with full validation if Git is safe
     $results.Workspace = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
-    $results.SystemRequirements = Test-SystemRequirement
+    $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
 
     # CRITICAL SAFETY CHECKS: Verify target repository and uncommitted changes
     # If RequireProviderRepo is true, reject AI dev repo (used when installing via -RepoDirectory)

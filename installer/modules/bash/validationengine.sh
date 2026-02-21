@@ -97,7 +97,7 @@ validate_repository() {
     # Check for go.mod and its content
     if [[ -f "${repo_dir}/go.mod" ]]; then
         has_go_mod=true
-        if grep -q "terraform-provider-azurerm" "${repo_dir}/go.mod" 2>/dev/null; then
+        if grep -q "module github.com/hashicorp/terraform-provider-azurerm" "${repo_dir}/go.mod" 2>/dev/null; then
             has_azurerm_content=true
         fi
     fi
@@ -207,9 +207,9 @@ test_git_repository() {
                 has_remote=true
             fi
 
-            # Check if on source branch (main, master, or exp/terraform_copilot)
+            # Check if on source branch (main, master)
             case "${current_branch}" in
-                "main"|"master"|"exp/terraform_copilot")
+                "main"|"master")
                     is_source_branch=true
                     ;;
             esac
@@ -404,57 +404,126 @@ verify_installation() {
         write_plain "TIP: If running from user profile, ensure the release bundle is extracted into:"
         write_plain "  ${HOME}/.terraform-azurerm-ai-installer"
         echo ""
-        write_plain "Contributors: run bootstrap from a local git clone:"
-        write_plain "  ./install-copilot-setup.sh -bootstrap -contributor"
+        write_plain "Run bootstrap from a local git clone:"
+        write_plain "  ./install-copilot-setup.sh -bootstrap"
         return 1
     fi
 
-    # Enforce that the local manifest matches the remote manifest.
-    # This prevents misleading verification results when the local installer/manifest is stale.
-    local branch_for_remote="main"
-    if [[ -n "${SOURCE_BRANCH:-}" ]]; then
-        branch_for_remote="${SOURCE_BRANCH}"
-    fi
-
-    # Contributor local-path workflows explicitly source files from a local working tree and may
-    # legitimately diverge from the GitHub manifest. In that case, skip remote manifest validation.
-    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
+    # GitHub mode verification is pinned to GitHub `main`. In that mode we must be able to:
+    # 1) fetch the remote manifest, and
+    # 2) prove the local manifest matches it.
+    #
+    # For local source installs (-local-path), skip remote manifest validation by design.
+    if [[ -n "${LOCAL_SOURCE_PATH:-}" ]]; then
         :
-    elif command -v curl >/dev/null 2>&1; then
-        local remote_manifest_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${branch_for_remote}/installer/file-manifest.config"
+    else
+        local remote_base_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/main"
+        local remote_manifest_url="${remote_base_url}/installer/file-manifest.config"
 
         local local_manifest_content
         local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
 
-        local remote_manifest_raw
-        local curl_exit
+        local remote_manifest_content=""
 
-        # Some environments export `SHELLOPTS` with `errexit`, which would cause a failing curl inside
-        # command substitution to terminate the script before we can print a warning.
-        local errexit_was_set=false
-        if [[ "$-" == *e* ]]; then
-            errexit_was_set=true
-            set +e
+        if command -v curl >/dev/null 2>&1; then
+            local remote_manifest_raw
+            local curl_exit
+
+            local errexit_was_set=false
+            if [[ "$-" == *e* ]]; then
+                errexit_was_set=true
+                set +e
+            fi
+
+            remote_manifest_raw="$(curl -fsSL --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${remote_manifest_url}" 2>/dev/null)"
+            curl_exit=$?
+
+            if [[ "${errexit_was_set}" == "true" ]]; then
+                set -e
+            fi
+
+            if [[ ${curl_exit} -ne 0 ]] || [[ -z "${remote_manifest_raw}" ]]; then
+                write_error_message "cannot fetch remote manifest from GitHub"
+                write_plain ""
+                write_plain " Remote manifest: ${remote_manifest_url}"
+                write_plain ""
+                write_plain " This installer will verify against files from GitHub 'main'."
+                write_plain " Fix: check network/proxy access to raw.githubusercontent.com, or use -local-path."
+                return 1
+            fi
+
+            remote_manifest_content="$(printf '%s' "${remote_manifest_raw}" | tr -d '\r')"
+        elif command -v wget >/dev/null 2>&1; then
+            remote_manifest_content="$(wget -q --timeout=20 --tries=2 --user-agent="terraform-azurerm-ai-installer" "${remote_manifest_url}" -O - 2>/dev/null | tr -d '\r')"
+            if [[ -z "${remote_manifest_content}" ]]; then
+                write_error_message "cannot fetch remote manifest from GitHub"
+                write_plain ""
+                write_plain " Remote manifest: ${remote_manifest_url}"
+                write_plain ""
+                write_plain " Fix: check network/proxy access to raw.githubusercontent.com, or use -local-path."
+                return 1
+            fi
+        else
+            write_error_message "cannot validate remote manifest (curl/wget not found)"
+            write_plain ""
+            write_plain " This installer will verify against files from GitHub 'main'."
+            write_plain " Fix: install curl or wget, or use -local-path."
+            return 1
         fi
 
-        remote_manifest_raw="$(curl -fsSL --connect-timeout 10 --max-time 20 "${remote_manifest_url}" 2>/dev/null)"
-        curl_exit=$?
-
-        if [[ "${errexit_was_set}" == "true" ]]; then
-            set -e
+        if [[ -z "${remote_manifest_content}" ]]; then
+            write_error_message "remote manifest response was empty"
+            write_plain " Remote manifest: ${remote_manifest_url}"
+            return 1
         fi
 
-        local remote_manifest_content
-        remote_manifest_content="$(printf '%s' "${remote_manifest_raw}" | tr -d '\r')"
-
-        if [[ ${curl_exit} -ne 0 ]] || [[ -z "${remote_manifest_content}" ]]; then
-            write_yellow " NOTE: Could not validate remote manifest; continuing verification"
-        elif [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
+        if [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
             show_manifest_mismatch_error "${manifest_file}" "${remote_manifest_url}" "$0"
             return 1
         fi
-    else
-        write_yellow " NOTE: curl not found; skipping remote manifest validation"
+
+        # Fail fast if the remote source does not actually contain the files referenced by the manifest.
+        # This prevents confusing "manifest matches" situations where individual files 404 due to renames.
+        local missing_remote=()
+        local sections=("MAIN_FILES" "INSTRUCTION_FILES" "PROMPT_FILES" "SKILL_FILES" "UNIVERSAL_FILES")
+        local section
+
+        for section in "${sections[@]}"; do
+            local entries
+            entries=$(get_manifest_files "${section}" "${manifest_file}" 2>/dev/null || true)
+            [[ -z "${entries}" ]] && continue
+
+            while IFS= read -r entry; do
+                [[ -z "${entry}" ]] && continue
+                local url="${remote_base_url}/${entry}"
+
+                if command -v curl >/dev/null 2>&1; then
+                    if ! curl -fsSI --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${url}" >/dev/null 2>&1; then
+                        missing_remote+=("${entry}")
+                    fi
+                else
+                    if ! wget -q --spider --timeout=20 --tries=1 --user-agent="terraform-azurerm-ai-installer" "${url}" 2>/dev/null; then
+                        missing_remote+=("${entry}")
+                    fi
+                fi
+            done <<< "${entries}"
+        done
+
+        if [[ ${#missing_remote[@]} -gt 0 ]]; then
+            write_error_message "remote source is missing manifest files on GitHub 'main'"
+            write_plain ""
+            write_plain " Remote base: ${remote_base_url}"
+            write_plain ""
+            write_plain " Missing (showing up to 10):"
+            local i=0
+            while [[ $i -lt ${#missing_remote[@]} && $i -lt 10 ]]; do
+                write_plain "  - ${missing_remote[$i]}"
+                i=$((i + 1))
+            done
+            write_plain ""
+            write_plain " Fix: use -local-path for dev installs, or update GitHub 'main' to include these paths."
+            return 1
+        fi
     fi
 
     write_cyan " Using manifest: ${manifest_file}"
@@ -647,7 +716,7 @@ verify_installation() {
             if command -v git >/dev/null 2>&1 && [[ -d "${workspace_root}/.git" ]]; then
                 current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
                 # Determine branch type
-                local source_branches=("main" "master" "exp/terraform_copilot")
+                local source_branches=("main" "master")
                 for branch in "${source_branches[@]}"; do
                     if [[ "$current_branch" == "$branch" ]]; then
                         branch_type="source"
@@ -690,7 +759,7 @@ verify_installation() {
             if command -v git >/dev/null 2>&1 && [[ -d "${workspace_root}/.git" ]]; then
                 current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
                 # Determine branch type
-                local source_branches=("main" "master" "exp/terraform_copilot")
+                local source_branches=("main" "master")
                 for branch in "${source_branches[@]}"; do
                     if [[ "$current_branch" == "$branch" ]]; then
                         branch_type="source"

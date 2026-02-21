@@ -9,8 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING (planned release: `2.0.0`)**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
+- **BREAKING (planned release: `2.0.0`)**: simplified installer CLI:
+  - Removed `-Contributor` / `-contributor`
+  - Removed `-Branch` / `-branch`
+  - `-LocalPath` / `-local-path` is now the only source override (default source is GitHub `main`)
 - Set `installer/VERSION` to `0.0.0` to make it clear that it is a placeholder for source checkouts (release bundles are stamped from the tag).
-- `-Bootstrap` / `-bootstrap` is now a hard-gated contributor-only command (requires `-Contributor` / `-contributor`) and must be run from a git clone (repo root contains `.git`). Official installation is via the release bundle.
+- `-Bootstrap` / `-bootstrap` is now a standalone command (no other parameters accepted) and must be run from a git clone (repo root contains `.git`). Official installation is via the release bundle.
+- Bash installer no longer references legacy AzureRM-provider repo layouts/branches (removed `exp/terraform_copilot` and `.github/AIinstaller` fallbacks); bootstrap guidance now consistently points to `./installer/install-copilot-setup.sh`.
+- Standardized installer help/examples to refer to the terraform-provider-azurerm working copy directory (rather than legacy "feature branch directory" phrasing) and removed incorrect guidance that bootstrap must run from `main`.
+- Installer help output (`-Help` / `-help`) now consistently describes `-RepoDirectory` / `-repo-directory` as pointing to a terraform-provider-azurerm working copy, and avoids showing "attempted command" notes when the user explicitly requests help.
 - Renamed the Agent Skills slash commands to remove the `azurerm-` prefix: `/azurerm-docs-writer`, `/azurerm-resource-implementation`, and `/azurerm-acceptance-testing` are now `/docs-writer`, `/resource-implementation`, and `/acceptance-testing`.
 - Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/docs-review` (file: `.github/prompts/docs-review.prompt.md`) to better match end-user expectations.
 - Updated `/docs-review` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
@@ -23,17 +30,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
 - Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
 
+### Upgrade Notes (from 1.x)
+- `-Contributor` / `-contributor` and `-Branch` / `-branch` were removed.
+  - To test local/uncommitted AI changes or install offline, use `-LocalPath` / `-local-path`.
+  - Default source remains this repository's GitHub `main` (WodansSon/terraform-azurerm-ai-assisted-development) when `-LocalPath` / `-local-path` is not provided.
+- `-Bootstrap` / `-bootstrap` is now standalone (no extra flags). Previous usage like `-Bootstrap -Contributor` becomes just `-Bootstrap`.
+- Installs still target a terraform-provider-azurerm working copy via `-RepoDirectory` / `-repo-directory` (validated via `go.mod` module identity and repo structure).
+
 ### Fixed
 - Fixed a regression where `/docs-review` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
-- Improved installer branch validation error output to clarify that `-Bootstrap` requires a branch that exists on GitHub and to suggest `-Contributor -LocalPath` for local-only branch testing.
-- Fixed `-Bootstrap` failing on local-only feature branches by skipping remote branch validation for local-copy workflows.
-- Added support for bootstrapping from a local source path: `-Bootstrap -Contributor -LocalPath <path>` copies installer files from that local AI dev repo into the user profile installer directory.
-- Fixed Bash `get_manifest_config` defaulting to an outdated branch name and added optional remote branch validation (skippable for local-copy workflows).
-- Clarified contributor bootstrap and local-only branch workflows across docs (Troubleshooting, README, installer README, Architecture) and added cross-links to reduce confusion when a stale user-profile installer is present.
-- Bash contributor installs using `-contributor -branch` now validate the remote branch up-front and show a consistent "Branch validation failed" message (matching PowerShell), instead of failing later during per-file downloads.
+- When running the installer directly from a git clone with placeholder `installer/VERSION` (`0.0.0`), the displayed version now matches bootstrap-stamped versions (`dev-<git sha>` with optional `-dirty`).
+- `-LocalPath` / `-local-path` installs can run without internet connectivity (internet validation is required only for GitHub downloads).
+- PowerShell `-Dry-Run` now reports `-LocalPath` install actions as simulated/skipped instead of failures, preventing misleading "0 successful / N failed" summaries.
+- Bash `-dry-run` now matches PowerShell semantics: `Files Installed: 0` / `Files Skipped: N`, and it prints the correct manifest-relative paths while showing `Copying` vs `Downloading`.
+- Installer summaries now include `Source`, `Manifest`, and `Command` details to make it explicit which files were attempted from which location/ref.
+- GitHub-source installs (default mode when `-LocalPath` / `-local-path` is not provided) now hard-fail when the remote manifest cannot be fetched or the local manifest does not match the GitHub `main` manifest, with a clear fix message (re-extract the latest release bundle, or re-bootstrap from a local clone, or use `-LocalPath` / `-local-path`).
+- Bash GitHub-mode `-dry-run` now validates the remote source contains all manifest files (fails fast instead of printing misleading "would download" lines for files that would 404).
+- Bash repository validation for `-repo-directory` now requires the terraform-provider-azurerm `go.mod` module declaration (reduces false positives from substring matches).
 - `-verify` now fails fast with a clear "manifest file mismatch" error when the local installer `file-manifest.config` differs from the remote manifest, which prevents misleading missing-file results when a stale user-profile installer is present.
-- Bash `-verify` now prints a warning and continues when the remote manifest cannot be validated (for example DNS/firewall/proxy restrictions), instead of failing silently.
-- `-verify` no longer fails with "manifest file mismatch" when using contributor local source workflows (`-contributor -local-path` / `-Contributor -LocalPath`), since local working trees may intentionally diverge from GitHub.
+- Bash `-verify` now fails fast (in GitHub mode) when the remote manifest cannot be fetched/validated (for example DNS/firewall/proxy restrictions), with guidance to use `-local-path` for offline/local workflows.
+- `-verify` no longer fails with "manifest file mismatch" when using local source workflows (`-LocalPath` / `-local-path`), since local working trees may intentionally diverge from GitHub.
 
 ## [1.0.5] - 2026-02-18
 

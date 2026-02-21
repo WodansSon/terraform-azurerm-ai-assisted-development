@@ -23,7 +23,7 @@ The installer supports **Windows**, **macOS**, and **Linux** with flexible platf
 **Recommended for Windows environments:**
 ```powershell
 .\install-copilot-setup.ps1 -Help
-.\install-copilot-setup.ps1 -Bootstrap -Contributor
+.\install-copilot-setup.ps1 -Bootstrap
 .\install-copilot-setup.ps1 -RepoDirectory "C:\path\to\repo"
 ```
 
@@ -39,14 +39,14 @@ brew install powershell
 
 # Run the installer
 pwsh ./install-copilot-setup.ps1 -Help
-pwsh ./install-copilot-setup.ps1 -Bootstrap -Contributor
+pwsh ./install-copilot-setup.ps1 -Bootstrap
 pwsh ./install-copilot-setup.ps1 -RepoDirectory "/path/to/repo"
 ```
 
 **Option 2: Bash (Traditional)**
 ```bash
 ./install-copilot-setup.sh -help
-./install-copilot-setup.sh -bootstrap -contributor
+./install-copilot-setup.sh -bootstrap
 ./install-copilot-setup.sh -repo-directory "/path/to/repo"
 ```
 
@@ -64,7 +64,7 @@ brew install powershell
 
 # 2. Run the installer
 pwsh ./install-copilot-setup.ps1 -Help
-pwsh ./install-copilot-setup.ps1 -Bootstrap -Contributor
+pwsh ./install-copilot-setup.ps1 -Bootstrap
 ```
 
 ## ✨ User Experience
@@ -119,8 +119,8 @@ DETAILS:
 
 NEXT STEPS:
 
-  1. Switch to your feature branch:
-     git checkout feature/your-branch-name
+  1. In your terraform-provider-azurerm working copy, switch to a feature branch:
+     git checkout -b feature/your-branch-name
 
   2. Run the installer from your user profile:
      cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
@@ -274,7 +274,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 > ```bash
 > # From the cloned repository
 > cd terraform-azurerm-ai-assisted-development/installer
-> ./install-copilot-setup.sh -bootstrap -contributor  # or .\install-copilot-setup.ps1 -Bootstrap -Contributor on Windows
+> ./install-copilot-setup.sh -bootstrap  # or .\install-copilot-setup.ps1 -Bootstrap on Windows
 > ```
 
 ### ⚠️ Platform-Specific Considerations
@@ -363,7 +363,7 @@ Navigate to your Terraform AzureRM Provider repository and run the installer:
 cd C:\path\to\terraform-provider-azurerm
 
 # Switch to your feature branch
-git checkout feature/your-branch-name
+git checkout -b feature/your-branch-name
 
 # Install AI infrastructure from user profile
 & "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
@@ -375,7 +375,7 @@ git checkout feature/your-branch-name
 cd /path/to/terraform-provider-azurerm
 
 # Switch to your feature branch
-git checkout feature/your-branch-name
+git checkout -b feature/your-branch-name
 
 # Install AI infrastructure from user profile
 ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
@@ -457,7 +457,7 @@ Simply use slash commands to invoke the prompts directly:
 
 | Command | Description | Available On |
 |---------|-------------|--------------|
-| `\.\install-copilot-setup.ps1 -Bootstrap -Contributor` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
+| `\.\install-copilot-setup.ps1 -Bootstrap` | **Copy installer to user profile from cloned repo** | When cloned locally |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\repo"` | **Install AI infrastructure** (run from anywhere after setup) | Feature branches |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\repo"` | **Check installation status** (run from anywhere after setup) | Any branch |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\repo"` | **Remove AI infrastructure** (run from anywhere after setup) | Feature branches |
@@ -467,7 +467,7 @@ Simply use slash commands to invoke the prompts directly:
 
 | Command | Description | Available On |
 |---------|-------------|--------------|
-| `./install-copilot-setup.sh -bootstrap -contributor` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
+| `./install-copilot-setup.sh -bootstrap` | **Copy installer to user profile from cloned repo** | When cloned locally |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/repo"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
 
@@ -475,9 +475,10 @@ Simply use slash commands to invoke the prompts directly:
 > `-Verify` / `-verify` will fail fast with **"Manifest file mismatch"** if your local installer `file-manifest.config` does not match the upstream manifest from GitHub.
 > Refresh your user-profile installer (re-extract the latest release bundle or re-run Bootstrap from a local clone) and try again.
 >
-> When using contributor local source workflows (`-contributor -local-path`), remote manifest validation is skipped by design.
+> When using local source workflows (`-LocalPath` / `-local-path`), remote manifest validation is skipped by design.
 >
-> If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), it will warn that it cannot validate the remote manifest and will continue verification using the local manifest.
+> In GitHub-source mode (the default when `-LocalPath` / `-local-path` is not provided), `-Verify` / `-verify` fails fast if it cannot reach GitHub (for example DNS/firewall/proxy restrictions).
+> Use `-LocalPath` / `-local-path` for offline/local workflows.
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |
 
@@ -488,9 +489,7 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-RepoDirectory` | **Specify repository path** | Running from user profile | `-RepoDirectory "C:\path\to\terraform-provider-azurerm"` |
-| `-Contributor` | **Enable contributor mode for testing AI file changes** | Testing AI infrastructure changes | `-Contributor -Branch "feature/test"` |
-| `-Branch` | **Install from specific GitHub branch** (requires `-Contributor`) | Testing published branch changes | `-Contributor -Branch "feature/new-feature"` |
-| `-LocalPath` | **Copy from local AI dev repo** (requires `-Contributor`) | Testing uncommitted local changes | `-Contributor -LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
+| `-LocalPath` | **Copy AI files from a local directory** (instead of GitHub `main`) | Offline installs / local testing | `-LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
 | `-Dry-Run` | Preview changes without applying | Optional | `-Dry-Run` |
 
 **macOS/Linux (Bash):**
@@ -498,9 +497,7 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-repo-directory` | **Specify repository path** | Running from user profile | `-repo-directory "/path/to/terraform-provider-azurerm"` |
-| `-contributor` | **Enable contributor mode for testing AI file changes** | Testing AI infrastructure changes | `-contributor -branch "feature/test"` |
-| `-branch` | **Install from specific GitHub branch** (requires `-contributor`) | Testing published branch changes | `-contributor -branch "feature/new-feature"` |
-| `-local-path` | **Copy from local AI dev repo** (requires `-contributor`) | Testing uncommitted local changes | `-contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
+| `-local-path` | **Copy AI files from a local directory** (instead of GitHub `main`) | Offline installs / local testing | `-local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
 | `-dry-run` | Preview changes without applying | Optional | `-dry-run` |
 
 ### 🚨 Important: Repository Directory Parameter
@@ -562,9 +559,9 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 If you're **contributing to this AI infrastructure project** and have it cloned locally, you can use `-Bootstrap` to copy the installer to your user profile from your local repository:
 
 > [!NOTE]
-> **Recommended contributor workflow**: bootstrap from your local clone to refresh the user-profile installer, then run installs from your user profile. If you are testing local, uncommitted AI file changes (prompts/instructions/skills), use `-Contributor -LocalPath <your-clone>` when installing into `terraform-provider-azurerm`.
+> **Recommended contributor workflow**: bootstrap from your local clone to refresh the user-profile installer, then run installs from your user profile. If you are testing local, uncommitted AI file changes (prompts/instructions/skills) or need an offline install, use `-LocalPath <your-clone>` / `-local-path <your-clone>` when installing into `terraform-provider-azurerm`.
 >
-> For the detailed reasoning, common failure modes, and the exact two-step commands, see: [Branch Validation Failed (Contributors)](../docs/TROUBLESHOOTING.md#branch-validation-failed-contributors).
+> For troubleshooting, see: [Remote Source Validation Failed](../docs/TROUBLESHOOTING.md#remote-source-validation-failed).
 
 **Windows:**
 ```powershell
@@ -573,11 +570,14 @@ git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development
 cd terraform-azurerm-ai-assisted-development/installer
 
 # Bootstrap from your local clone
-.\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development"
+.\install-copilot-setup.ps1 -Bootstrap
 
 # Now you can run from your user profile
 cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
 .\install-copilot-setup.ps1 -Help
+
+# Install using files from your local clone (optional: offline/local testing)
+.\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **macOS/Linux:**
@@ -587,11 +587,14 @@ git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development
 cd terraform-azurerm-ai-assisted-development/installer
 
 # Bootstrap from your local clone
-./install-copilot-setup.sh -bootstrap -contributor -local-path "/path/to/terraform-azurerm-ai-assisted-development"
+./install-copilot-setup.sh -bootstrap
 
 # Now you can run from your user profile
 cd ~/.terraform-azurerm-ai-installer
 ./install-copilot-setup.sh -help
+
+# Install using files from your local clone (optional: offline/local testing)
+./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 **When to use each option:**
@@ -620,7 +623,7 @@ The installer adapts its behavior based on your current Git branch:
 
 ```mermaid
 graph LR
-    A[Install release Package] --> B[git checkout feature/xyz]
+  A[Install release Package] --> B[git checkout -b feature/xyz]
     B --> C[Run from user profile]
     C --> D[Develop with AI assistance]
     D --> E[-Clean]
@@ -632,7 +635,7 @@ graph LR
 ### Two-Silo Architecture
 
 ```
-AIinstaller/
+.terraform-azurerm-ai-installer/
 ├── install-copilot-setup.ps1      # Windows PowerShell installer
 ├── install-copilot-setup.sh       # macOS/Linux Bash installer
 ├── README.md                      # This file
@@ -839,53 +842,22 @@ Combine multiple commands for complex tasks:
 ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -dry-run -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
-### Contributor Mode - Testing AI Instruction Changes
+### Local Source Install (Offline / Local Testing)
+
+By default, the installer downloads AI files from GitHub `main`. If you need to install **offline** or test AI instruction changes from a local working tree, use `-LocalPath` / `-local-path` to copy files from a local directory instead.
+
+**Windows:**
+```powershell
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -LocalPath "C:\dev\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+**macOS/Linux:**
+```bash
+~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -local-path ~/dev/terraform-azurerm-ai-assisted-development -repo-directory ~/terraform-provider-azurerm
+```
 
 > [!NOTE]
-> **This feature is ONLY for contributors working on this AI infrastructure project.** End users never need `Contributor Mode` - simply download the release package to your user profile and run the installer normally to set up AI assistance in your Terraform provider feature branch.
-
-Contributors working on AI instruction files in this repository (terraform-azurerm-ai-assisted-development) can test their changes before merging them into their feature branch using the two scenarios below. These scenarios allow you to test how your AI instruction changes will work when copied to the HashiCorp terraform-provider-azurerm repository:
-
-#### Scenario 1: Test Published Branch Changes
-
-Test AI instruction changes from a GitHub branch (already pushed, not yet merged to main):
-
-**Windows:**
-```powershell
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Contributor -Branch feature/new-instructions -RepoDirectory "C:\path\to\terraform-provider-azurerm"
-```
-
-**macOS/Linux:**
-```bash
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -contributor -branch feature/new-instructions -repo-directory ~/terraform-provider-azurerm
-```
-
-#### Scenario 2: Test Uncommitted Local Changes
-
-Test AI instruction changes from your local working directory (including uncommitted changes):
-
-**Windows:**
-```powershell
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Contributor -LocalPath "C:\dev\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
-```
-
-**macOS/Linux:**
-```bash
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -contributor -local-path ~/dev/terraform-azurerm-ai-assisted-development -repo-directory ~/terraform-provider-azurerm
-```
-
-#### Safety Constraints
-
-**CRITICAL REQUIREMENTS:**
-- **`-Contributor` flag is REQUIRED** for both `-Branch` and `-LocalPath` (enforced gatekeeper pattern)
-- **`-Branch` and `-LocalPath` are mutually exclusive** (cannot use both together)
-- **Cannot use with `-Bootstrap`** (Bootstrap always uses current local branch)
-- **Only for AI infrastructure contributors** (end users should download release packages)
-
-**Why these constraints exist:**
-- Prevents accidental AI infrastructure modifications on production branches
-- Ensures contributors explicitly acknowledge they're testing infrastructure changes
-- Maintains clear separation between end-user workflows and contributor testing
+> `-Bootstrap` / `-bootstrap` is a standalone command and does not accept `-LocalPath` / `-local-path`. Run bootstrap from your clone first, then run installs from your user profile using `-LocalPath` / `-local-path`.
 
 ### Using Bootstrap for Local Development
 
@@ -893,13 +865,13 @@ Bootstrap is a **one-time convenience setup** that copies the installer to your 
 
 **Windows:**
 ```powershell
-# One-time setup: Bootstrap from THIS repo's main branch
+# One-time setup: Bootstrap from a git clone of this repository (recommended: run from `main`)
 cd C:\path\to\terraform-azurerm-ai-assisted-development
 .\installer\install-copilot-setup.ps1 -Bootstrap
 
 # Then whenever you're working on a feature branch in your HashiCorp repo:
 cd C:\path\to\terraform-provider-azurerm
-git checkout feature/your-feature-branch
+git checkout -b feature/your-feature-branch
 
 # Install AI infrastructure to your current branch
 & "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
@@ -907,13 +879,13 @@ git checkout feature/your-feature-branch
 
 **macOS/Linux:**
 ```bash
-# One-time setup: Bootstrap from THIS repo's main branch
+# One-time setup: Bootstrap from a git clone of this repository (recommended: run from `main`)
 cd ~/terraform-azurerm-ai-assisted-development
 ./installer/install-copilot-setup.sh -bootstrap
 
 # Then whenever you're working on a feature branch in your HashiCorp repo:
 cd ~/terraform-provider-azurerm
-git checkout feature/your-feature-branch
+git checkout -b feature/your-feature-branch
 
 # Install AI infrastructure to your current branch
 ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory ~/terraform-provider-azurerm
@@ -927,32 +899,10 @@ git checkout feature/your-feature-branch
 ### Common Issues
 
 #### ❌ "Bootstrap can only be run from source branch"
-**Solution**: Switch to `main` branch before running bootstrap.
+**Solution**: Run bootstrap from a local git clone of this repository (repo root contains `.git`).
 
 #### ❌ "Clean operation not available on source branch"
-**Solution**: Switch to a feature branch before running clean operations.
-
-#### ❌ "Contributor mode requires either -Branch or -LocalPath parameter"
-**Solution**: When using `-Contributor` flag, you must specify either:
-- `-Branch feature/branch-name` to test published branch changes, OR
-- `-LocalPath "C:\path\to\local\repo"` (Windows) or `-local-path ~/path/to/local/repo` (macOS/Linux) to test uncommitted local changes
-
-#### ❌ "Cannot use both -Branch and -LocalPath together"
-**Solution**: Choose one testing mode:
-- Use `-Branch` to test changes from a GitHub branch (already pushed)
-- Use `-LocalPath` / `-local-path` to test local uncommitted changes
-- These are mutually exclusive - you cannot use both at the same time
-
-#### ❌ "Contributor mode cannot be used with Bootstrap"
-**Solution**: Contributor mode is only available when running from your user profile installer:
-```powershell
-# Windows - Run from user profile, not from cloned repo
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Contributor -Branch feature/test -RepoDirectory "C:\path\to\terraform-provider-azurerm"
-```
-```bash
-# macOS/Linux - Run from user profile, not from cloned repo
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -contributor -branch feature/test -repo-directory ~/terraform-provider-azurerm
-```
+**Solution**: In your terraform-provider-azurerm working copy, switch to a feature branch before running clean/install operations.
 
 #### ❌ "DIRECTORY NOT FOUND: The specified RepoDirectory does not exist"
 **Solution**:

@@ -21,6 +21,20 @@ else
     VERSION="dev"
 fi
 
+# If VERSION is a placeholder (0.0.0) and we're running from a git clone, show a dev build version.
+if [[ "${VERSION}" == "0.0.0" ]] && command -v git >/dev/null 2>&1; then
+    repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    if [[ -e "${repo_root}/.git" ]]; then
+        sha="$(git -C "${repo_root}" rev-parse --short HEAD 2>/dev/null | tr -d '\r\n')"
+        if [[ -n "${sha}" ]]; then
+            VERSION="dev-${sha}"
+            if [[ -n "$(git -C "${repo_root}" status --porcelain 2>/dev/null)" ]]; then
+                VERSION="${VERSION}-dirty"
+            fi
+        fi
+    fi
+fi
+
 # Global variables
 BRANCH="main"
 SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
@@ -28,9 +42,7 @@ SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm
 # Command line parameters with help text
 BOOTSTRAP=false           # Copy installer to user profile for feature branch use
 REPO_DIRECTORY=""         # Path to the repository directory for git operations (when running from user profile)
-CONTRIBUTOR=false         # Enable contributor features for testing AI file changes
-SOURCE_BRANCH=""          # GitHub branch to pull AI files from (contributor feature)
-LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from (contributor feature)
+LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from instead of GitHub
 DRY_RUN=false             # Show what would be done without making changes
 VERIFY=false              # Check the current state of the workspace
 CLEAN=false               # Remove AI infrastructure from the workspace
@@ -72,15 +84,11 @@ show_early_validation_error() {
     echo ""
 
     case "${error_type}" in
-        "BootstrapContributorOnly")
-            echo -e "${RED} Error:${NC}${CYAN} -bootstrap is a contributor-only command${NC}"
+        "BootstrapNoArgs")
+            echo -e "${RED} Error:${NC}${CYAN} -bootstrap does not accept any other parameters${NC}"
             echo ""
-            echo -e "${CYAN} Official installation is via the release bundle (download + extract into your user profile):${NC}"
-            echo -e "   ${WHITE}https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases${NC}"
-            echo ""
-            echo -e "${CYAN} Contributors can bootstrap from a local git clone:${NC}"
-            echo -e "   ${WHITE}${script_name} -bootstrap -contributor${NC}"
-            echo -e "   ${WHITE}${script_name} -bootstrap -contributor -local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            echo -e "${CYAN} Run bootstrap from a local git clone (no other flags):${NC}"
+            echo -e "   ${WHITE}${script_name} -bootstrap${NC}"
             ;;
 
         "BootstrapRequiresGitRepo")
@@ -92,29 +100,6 @@ show_early_validation_error() {
                 echo ""
             fi
             echo -e "${CYAN} -bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy.${NC}"
-            ;;
-
-        "BootstrapConflict")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch with -bootstrap${NC}"
-            echo ""
-            echo -e "${CYAN} -bootstrap copies installer files into your user profile${NC}"
-            echo -e "${CYAN} -branch is for pulling AI files from a published GitHub branch${NC}"
-            echo -e "${CYAN} Use -contributor -local-path with -bootstrap to copy from a local AI dev repo${NC}"
-            ;;
-
-        "MutuallyExclusive")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
-            echo ""
-            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
-            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
-            ;;
-
-        "ContributorRequired")
-            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
-            echo ""
-            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
-            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
-            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
             ;;
 
         "EmptyLocalPath")
@@ -166,18 +151,6 @@ get_modules_path() {
     # Simple logic: modules are always in the same relative location
     local modules_path="${script_directory}/modules/bash"
 
-    # If not found, try from workspace root (for direct repo execution)
-    if [[ ! -d "${modules_path}" ]]; then
-        local current_path="${script_directory}"
-        while [[ -n "${current_path}" && "${current_path}" != "$(dirname "${current_path}")" ]]; do
-            if [[ -f "${current_path}/go.mod" ]]; then
-                modules_path="${current_path}/.github/AIinstaller/modules/bash"
-                break
-            fi
-            current_path="$(dirname "${current_path}")"
-        done
-    fi
-
     echo "${modules_path}"
 }
 
@@ -204,8 +177,8 @@ import_required_modules() {
             echo "If running from user profile, ensure the release bundle is extracted into your installer directory:"
             echo "  ${HOME}/.terraform-azurerm-ai-installer"
             echo ""
-            echo "Contributors: run bootstrap from a local git clone:"
-            echo "  $0 -bootstrap -contributor"
+            echo "Run bootstrap from a local git clone:"
+            echo "  $0 -bootstrap"
             echo ""
             return 1
         fi
@@ -296,22 +269,9 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
-    # STEP 1.5: Validate -branch cannot be used with -bootstrap
-    # -bootstrap is a local copy workflow. -local-path is allowed for contributor testing.
-    if [[ "${BOOTSTRAP}" == "true" ]] && [[ -n "${SOURCE_BRANCH}" ]]; then
-        show_early_validation_error "BootstrapConflict" "$0"
-        exit 1
-    fi
-
-    # STEP 1.6: Validate mutually exclusive parameters
-    if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
-        show_early_validation_error "MutuallyExclusive" "$0"
-        exit 1
-    fi
-
-    # STEP 1.61: Hard gate -bootstrap behind -contributor
-    if [[ "${BOOTSTRAP}" == "true" ]] && [[ "${CONTRIBUTOR}" != "true" ]]; then
-        show_early_validation_error "BootstrapContributorOnly" "$0"
+    # STEP 1.1: -bootstrap must be a standalone operation (no additional flags)
+    if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${REPO_DIRECTORY}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]] || [[ "${DRY_RUN}" == "true" ]] || [[ "${VERIFY}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ "${HELP}" == "true" ]]; }; then
+        show_early_validation_error "BootstrapNoArgs" "$0"
         exit 1
     fi
 
@@ -323,31 +283,18 @@ main() {
             show_early_validation_error "BootstrapRequiresGitRepo" "$0" "${bootstrap_repo_root}"
             exit 1
         fi
-
-        # If a local source path is provided, it must also be a git clone root
-        if [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -e "${LOCAL_SOURCE_PATH%/}/.git" ]]; then
-            show_early_validation_error "BootstrapRequiresGitRepo" "$0" "${LOCAL_SOURCE_PATH%/}"
-            exit 1
-        fi
     fi
 
     # STEP 1.65: Validate -local-path is not empty (NEW CHECK)
     # Check if LOCAL_SOURCE_PATH was set (even to empty string) and is empty after trimming
-    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "$*" == *"-local-path"* ]]; then
+    if [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "$*" == *"-local-path"* ]]; then
         show_early_validation_error "EmptyLocalPath" "$0"
         exit 1
     fi
 
     # STEP 1.67: Validate -local-path directory exists (NEW CHECK)
-    if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -d "${LOCAL_SOURCE_PATH}" ]]; then
+    if [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -d "${LOCAL_SOURCE_PATH}" ]]; then
         show_early_validation_error "LocalPathNotFound" "$0" "${LOCAL_SOURCE_PATH}"
-        exit 1
-    fi
-
-    # STEP 1.7: Validate -branch and -local-path require -contributor flag
-    # This check comes LAST among contributor validations
-    if { [[ -n "${SOURCE_BRANCH}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]]; } && [[ "${CONTRIBUTOR}" != "true" ]]; then
-        show_early_validation_error "ContributorRequired" "$0"
         exit 1
     fi
 
@@ -358,13 +305,8 @@ main() {
     local workspace_root
     workspace_root="$(get_workspace_root "${REPO_DIRECTORY}" "${SCRIPT_DIR}")"
 
-    # Bootstrap can optionally copy from a local AI dev repo path (contributor mode)
-    if [[ "${BOOTSTRAP}" == "true" ]] && [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
-        workspace_root="${LOCAL_SOURCE_PATH}"
-    fi
-
     local current_branch
-    if [[ -n "${REPO_DIRECTORY}" ]] || { [[ "${BOOTSTRAP}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; }; then
+    if [[ -n "${REPO_DIRECTORY}" ]]; then
         if [[ -d "${workspace_root}/.git" ]]; then
             current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
         else
@@ -472,11 +414,14 @@ main() {
         attempted_command="-dry-run"
     elif [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
         attempted_command="-local-path \"${LOCAL_SOURCE_PATH}\""
-    elif [[ -n "${SOURCE_BRANCH}" ]]; then
-        attempted_command="-branch \"${SOURCE_BRANCH}\""
     elif [[ -n "${REPO_DIRECTORY}" && "${HELP}" != "true" && "${VERIFY}" != "true" && "${BOOTSTRAP}" != "true" && "${CLEAN}" != "true" ]]; then
         attempted_command="-repo-directory \"${REPO_DIRECTORY}\""
     fi
+
+    # Export context for downstream modules and summaries
+    export INSTALLER_DIR="${SCRIPT_DIR}"
+    export INSTALLER_ATTEMPTED_COMMAND="${attempted_command}"
+    export INSTALLER_COMMAND_LINE="$0 $*"
 
     # STEP 9: Simple parameter handling (like PowerShell)
     if [[ "${HELP}" == "true" ]]; then
@@ -499,21 +444,6 @@ main() {
         exit 1
     fi
 
-    # STEP 11.5: Validate remote branch exists for GitHub-pulled contributor installs
-    # This provides a single, actionable error message (matching PowerShell UX) instead of failing later during per-file downloads.
-    if [[ -n "${REPO_DIRECTORY}" ]] && [[ -n "${SOURCE_BRANCH}" ]] && [[ -z "${LOCAL_SOURCE_PATH}" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
-        if ! command -v curl >/dev/null 2>&1; then
-            write_error_message "curl is required to validate remote branches"
-            exit 1
-        fi
-
-        local test_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${SOURCE_BRANCH}/installer/file-manifest.config"
-        if ! curl -fsSI "${test_url}" >/dev/null 2>&1; then
-            show_branch_validation_failed "${SOURCE_BRANCH}" "$0"
-            exit 1
-        fi
-    fi
-
     # STEP 12: Execute single operation based on parameters (like PowerShell)
     if [[ "${VERIFY}" == "true" ]]; then
         verify_installation "${workspace_root}"
@@ -524,13 +454,8 @@ main() {
         # Show operation title (main header already displayed)
         write_section "Bootstrap - Copying Installer to User Profile"
 
-        # When -contributor -local-path is provided, bootstrap from that local AI dev repo.
         local bootstrap_script_dir="${SCRIPT_DIR}"
         local bootstrap_manifest_file="${SCRIPT_DIR}/file-manifest.config"
-        if [[ "${CONTRIBUTOR}" == "true" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
-            bootstrap_script_dir="${LOCAL_SOURCE_PATH%/}/installer"
-            bootstrap_manifest_file="${bootstrap_script_dir}/file-manifest.config"
-        fi
 
         # Execute the bootstrap operation with built-in validation
         if bootstrap_files_to_profile "$(pwd)" "$(get_user_profile)" "${bootstrap_manifest_file}" "${current_branch}" "${branch_type}" "${bootstrap_script_dir}"; then
@@ -543,8 +468,8 @@ main() {
                 "Total Size:${size_kb} KB" \
                 "Location:${user_profile}" \
                 --next-steps \
-                " 1. Switch to your feature branch:" \
-                "    git checkout feature/your-branch-name" \
+                " 1. In your terraform-provider-azurerm working copy, switch to a feature branch:" \
+                "    git checkout -b feature/your-branch-name" \
                 "" \
                 " 2. Run the installer from your user profile:" \
                 "    cd ~/.terraform-azurerm-ai-installer" \
@@ -566,7 +491,7 @@ main() {
     # STEP 13: Installation path (when -repo-directory is provided and not other specific operations)
     if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; then
         # Proceed with installation
-        install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}" "${SOURCE_BRANCH}" "${LOCAL_SOURCE_PATH}"
+        install_infrastructure "${workspace_root}" "${current_branch}" "${branch_type}" "${LOCAL_SOURCE_PATH}"
         exit 0
     fi
 
@@ -612,12 +537,8 @@ check_typos() {
         suggestion="dry-run"
     elif echo "${lower_param}" | grep -q '^re'; then
         suggestion="repo-directory"
-    elif echo "${lower_param}" | grep -q '^co'; then
-        suggestion="contributor"
     elif echo "${lower_param}" | grep -q '^lo'; then
-        suggestion="local-source-path"
-    elif echo "${lower_param}" | grep -q '^br'; then
-        suggestion="branch"
+        suggestion="local-path"
     # Fuzzy matching (lower priority)
     elif [[ "${lower_param}" == *cle* ]]; then
         suggestion="clean"
@@ -631,14 +552,10 @@ check_typos() {
         suggestion="dry-run"
     elif [[ "${lower_param}" == *repo* ]]; then
         suggestion="repo-directory"
-    elif [[ "${lower_param}" == *cont* ]]; then
-        suggestion="contributor"
     elif [[ "${lower_param}" == *local* ]]; then
-        suggestion="local-source-path"
+        suggestion="local-path"
     elif [[ "${lower_param}" == *source* ]]; then
-        suggestion="local-source-path"
-    elif [[ "${lower_param}" == *bra* ]]; then
-        suggestion="branch"
+        suggestion="local-path"
     fi
 
     if [[ -n "${suggestion}" ]]; then
@@ -666,18 +583,6 @@ parse_arguments() {
                     exit 1
                 fi
                 REPO_DIRECTORY="$2"
-                shift 2
-                ;;
-            -contributor)
-                CONTRIBUTOR=true
-                shift
-                ;;
-            -branch)
-                if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
-                    write_error_message " Option -branch requires a branch name"
-                    exit 1
-                fi
-                SOURCE_BRANCH="$2"
                 shift 2
                 ;;
             -local-path)
