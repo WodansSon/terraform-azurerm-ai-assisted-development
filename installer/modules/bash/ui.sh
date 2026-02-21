@@ -767,13 +767,13 @@ show_source_branch_help() {
     echo ""
     write_cyan "AVAILABLE OPTIONS:"
     write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
-    write_plain "                    Run this from the source branch to set up for feature branch use"
+    write_plain "                    Contributors only (requires -contributor); must be run from a git clone (.git present)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -help             Show this help information"
     echo ""
     write_cyan "EXAMPLES:"
-    write_plain "  Bootstrap installer (run from source branch):"
-    write_plain "    ./install-copilot-setup.sh -bootstrap"
+    write_plain "  Bootstrap installer (contributors only; run from a git clone):"
+    write_plain "    ./install-copilot-setup.sh -bootstrap -contributor"
     echo ""
     write_plain "  Verify setup:"
     write_plain "    ./install-copilot-setup.sh -verify"
@@ -783,12 +783,12 @@ show_source_branch_help() {
     if [[ -n "${attempted_command}" ]]; then
         echo ""
         write_yellow "NOTE: You tried to run '${attempted_command}' but this is a source branch."
-        write_plain "      Use -bootstrap first to copy the installer to your user profile,"
+        write_plain "      Use -bootstrap -contributor first to copy the installer to your user profile,"
         write_plain "      then switch to a feature branch for installation operations."
     fi
 
     write_cyan "BOOTSTRAP WORKFLOW:"
-    write_plain "  1. Run -bootstrap from source branch (exp/terraform_copilot) to copy installer to user profile"
+    write_plain "  1. Run -bootstrap -contributor from a git clone to copy installer to user profile"
     write_plain "  2. Switch to your feature branch: git checkout feature/your-branch-name"
     write_plain "  3. Navigate to user profile: cd ~/.terraform-azurerm-ai-installer/"
     write_plain "  4. Run installer: ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
@@ -902,7 +902,7 @@ show_unknown_branch_help() {
     echo ""
 
     write_cyan "ALL OPTIONS:"
-    write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
+    write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/) (contributors only; requires -contributor)"
     write_plain "  -repo-directory   Repository path for git operations (when running from user profile)"
     write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
     write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
@@ -915,7 +915,7 @@ show_unknown_branch_help() {
 
     write_cyan "EXAMPLES:"
     write_dark_cyan "  Source Branch Operations:"
-    write_plain "    ./install-copilot-setup.sh -bootstrap"
+    write_plain "    ./install-copilot-setup.sh -bootstrap -contributor"
     write_plain "    ./install-copilot-setup.sh -verify"
     echo ""
     write_dark_cyan "  Feature Branch Operations:"
@@ -935,7 +935,7 @@ show_unknown_branch_help() {
 
 # Function to display source branch welcome and guidance
 show_source_branch_welcome() {
-    local branch_name="${1:-exp/terraform_copilot}"
+    local branch_name="${1:-main}"
 
     write_green " WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
     echo ""
@@ -979,9 +979,9 @@ show_bootstrap_location_error() {
     write_plain "Expected location: ${expected_location}"
     echo ""
     write_yellow "SOLUTION:"
-    write_cyan "Navigate to your terraform-provider-azurerm repository and run:"
-    write_plain "  cd /path/to/terraform-provider-azurerm/.github/AIinstaller"
-    write_plain "  ./install-copilot-setup.sh -bootstrap"
+    write_cyan "Navigate to a git clone of terraform-azurerm-ai-assisted-development and run:"
+    write_plain "  cd /path/to/terraform-azurerm-ai-assisted-development/installer"
+    write_plain "  ./install-copilot-setup.sh -bootstrap -contributor"
     echo ""
 }
 
@@ -990,11 +990,11 @@ show_bootstrap_directory_validation_error() {
     local current_location="$1"
 
     echo ""
-    write_error_message "Bootstrap must be run from terraform-provider-azurerm root or .github/AIinstaller directory"
+    write_error_message "Bootstrap must be run from a git clone of terraform-azurerm-ai-assisted-development"
     echo ""
     write_plain "Current location: ${current_location}"
     write_cyan "Expected structure:"
-    write_plain "  From repo root: .github/AIinstaller/install-copilot-setup.sh"
+    write_plain "  From repo root: installer/install-copilot-setup.sh"
     write_plain "  From installer: install-copilot-setup.sh, modules/"
     echo ""
 }
@@ -1012,7 +1012,7 @@ show_repository_directory_required_error() {
     write_plain "  ./install-copilot-setup.sh -repo-directory /path/to/terraform-provider-azurerm"
     echo ""
     write_cyan "Alternative: Bootstrap installer to user profile"
-    write_plain "  ./install-copilot-setup.sh -bootstrap"
+    write_plain "  ./install-copilot-setup.sh -bootstrap -contributor"
     echo ""
 }
 

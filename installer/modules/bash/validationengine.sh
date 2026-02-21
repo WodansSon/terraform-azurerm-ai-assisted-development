@@ -401,8 +401,11 @@ verify_installation() {
         write_plain "  ${installer_dir}/file-manifest.config"
         write_plain "  ${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
         echo ""
-        write_plain "TIP: If running from user profile, run bootstrap first:"
-        write_plain "  ./install-copilot-setup.sh -bootstrap"
+        write_plain "TIP: If running from user profile, ensure the release bundle is extracted into:"
+        write_plain "  ${HOME}/.terraform-azurerm-ai-installer"
+        echo ""
+        write_plain "Contributors: run bootstrap from a local git clone:"
+        write_plain "  ./install-copilot-setup.sh -bootstrap -contributor"
         return 1
     fi
 

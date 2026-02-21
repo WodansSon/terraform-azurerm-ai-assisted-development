@@ -262,19 +262,19 @@ function Show-SourceBranchHelp {
     Write-Host ""
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
-    Write-Host "                    Run this from the source branch to set up for feature branch use"
+    Write-Host "                    Contributors only (requires -Contributor); must be run from a git clone (.git present)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
-    Write-Host "  Bootstrap installer (run from source branch):"
-    Write-Host "    .\install-copilot-setup.ps1 -Bootstrap"
+    Write-Host "  Bootstrap installer (contributors only; run from a git clone):"
+    Write-Host "    .\install-copilot-setup.ps1 -Bootstrap -Contributor"
     Write-Host ""
     Write-Host "  Verify setup:"
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
     Write-Host ""
     Write-Host "BOOTSTRAP WORKFLOW:" -ForegroundColor Cyan
-    Write-Host "  1. Run -Bootstrap from source branch (main) to copy installer to user profile"
+    Write-Host "  1. Run -Bootstrap -Contributor from a git clone to copy installer to user profile"
     Write-Host "  2. Switch to your feature branch: git checkout feature/your-branch-name"
     Write-Host "  3. Navigate to user profile: cd $(Get-CrossPlatformInstallerPath)"
     Write-Host "  4. Run installer: .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
@@ -376,7 +376,7 @@ function Show-UnknownBranchHelp {
     Write-Host ""
 
     Write-Host "ALL OPTIONS:" -ForegroundColor Cyan
-    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
+    Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\) (contributors only; requires -Contributor)"
     Write-Host "  -RepoDirectory    Repository path for git operations (when running from user profile)"
     Write-Host "  -Branch           GitHub branch to pull AI files from (requires -Contributor, default: main)"
     Write-Host "  -LocalPath        Local directory to copy AI files from (requires -Contributor)"
@@ -389,7 +389,7 @@ function Show-UnknownBranchHelp {
 
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
     Write-Host "  Source Branch Operations:" -ForegroundColor DarkCyan
-    Write-Host "    .\install-copilot-setup.ps1 -Bootstrap"
+    Write-Host "    .\install-copilot-setup.ps1 -Bootstrap -Contributor"
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
     Write-Host ""
     Write-Host "  Feature Branch Operations:" -ForegroundColor DarkCyan

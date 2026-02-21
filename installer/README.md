@@ -23,7 +23,7 @@ The installer supports **Windows**, **macOS**, and **Linux** with flexible platf
 **Recommended for Windows environments:**
 ```powershell
 .\install-copilot-setup.ps1 -Help
-.\install-copilot-setup.ps1 -Bootstrap
+.\install-copilot-setup.ps1 -Bootstrap -Contributor
 .\install-copilot-setup.ps1 -RepoDirectory "C:\path\to\repo"
 ```
 
@@ -39,14 +39,14 @@ brew install powershell
 
 # Run the installer
 pwsh ./install-copilot-setup.ps1 -Help
-pwsh ./install-copilot-setup.ps1 -Bootstrap
+pwsh ./install-copilot-setup.ps1 -Bootstrap -Contributor
 pwsh ./install-copilot-setup.ps1 -RepoDirectory "/path/to/repo"
 ```
 
 **Option 2: Bash (Traditional)**
 ```bash
 ./install-copilot-setup.sh -help
-./install-copilot-setup.sh -bootstrap
+./install-copilot-setup.sh -bootstrap -contributor
 ./install-copilot-setup.sh -repo-directory "/path/to/repo"
 ```
 
@@ -64,7 +64,7 @@ brew install powershell
 
 # 2. Run the installer
 pwsh ./install-copilot-setup.ps1 -Help
-pwsh ./install-copilot-setup.ps1 -Bootstrap
+pwsh ./install-copilot-setup.ps1 -Bootstrap -Contributor
 ```
 
 ## ✨ User Experience
@@ -249,7 +249,7 @@ Download and extract the latest installer bundle directly to your user profile:
 # Download the latest installer bundle
 Invoke-WebRequest -Uri "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.zip" -OutFile "$env:TEMP\terraform-azurerm-ai-installer.zip"
 
-# Extract directly to user profile (equivalent to -Bootstrap)
+# Extract directly to user profile (recommended / official installation)
 Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -DestinationPath "$env:USERPROFILE\.terraform-azurerm-ai-installer" -Force
 
 # Verify installation
@@ -261,7 +261,7 @@ Expand-Archive -Path "$env:TEMP\terraform-azurerm-ai-installer.zip" -Destination
 # Download the latest installer bundle
 curl -L -o /tmp/terraform-azurerm-ai-installer.tar.gz "https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest/download/terraform-azurerm-ai-installer.tar.gz"
 
-# Extract directly to user profile (equivalent to -bootstrap)
+# Extract directly to user profile (recommended / official installation)
 mkdir -p ~/.terraform-azurerm-ai-installer
 tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-installer --strip-components=1
 
@@ -274,7 +274,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 > ```bash
 > # From the cloned repository
 > cd terraform-azurerm-ai-assisted-development/installer
-> ./install-copilot-setup.sh -bootstrap  # or .\install-copilot-setup.ps1 -Bootstrap on Windows
+> ./install-copilot-setup.sh -bootstrap -contributor  # or .\install-copilot-setup.ps1 -Bootstrap -Contributor on Windows
 > ```
 
 ### ⚠️ Platform-Specific Considerations
@@ -286,7 +286,7 @@ If you encounter execution policy errors on Windows, you have several options:
 ##### Option 1: Bypass for single execution (Recommended)
 ```powershell
 # Run with execution policy bypass (safest for one-time use)
-powershell -ExecutionPolicy Bypass -File .\installer\install-copilot-setup.ps1 -Bootstrap
+powershell -ExecutionPolicy Bypass -File .\installer\install-copilot-setup.ps1 -Help
 
 # Or for the user profile installer
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1"
@@ -296,14 +296,14 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.terraform-azurerm-ai
 ```powershell
 # Unblock all installer files
 Get-ChildItem -Path .\installer -Recurse | Unblock-File
-.\installer\install-copilot-setup.ps1 -Bootstrap
+.\installer\install-copilot-setup.ps1 -Help
 ```
 
 ##### Option 3: Set execution policy for current user (Permanent)
 ```powershell
 # Allow local scripts for current user
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-.\installer\install-copilot-setup.ps1 -Bootstrap
+.\installer\install-copilot-setup.ps1 -Help
 ```
 
 #### macOS/Linux - Script Permissions
@@ -315,7 +315,7 @@ If you encounter permission errors on macOS/Linux:
 chmod +x installer/*.sh
 
 # Then run the installer
-./install-copilot-setup.sh -bootstrap
+./install-copilot-setup.sh -help
 ```
 
 ## 🚀 Quick Start
@@ -457,7 +457,7 @@ Simply use slash commands to invoke the prompts directly:
 
 | Command | Description | Available On |
 |---------|-------------|--------------|
-| `.\install-copilot-setup.ps1 -Bootstrap` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
+| `\.\install-copilot-setup.ps1 -Bootstrap -Contributor` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\repo"` | **Install AI infrastructure** (run from anywhere after setup) | Feature branches |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\repo"` | **Check installation status** (run from anywhere after setup) | Any branch |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\repo"` | **Remove AI infrastructure** (run from anywhere after setup) | Feature branches |
@@ -467,7 +467,7 @@ Simply use slash commands to invoke the prompts directly:
 
 | Command | Description | Available On |
 |---------|-------------|--------------|
-| `./install-copilot-setup.sh -bootstrap` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
+| `./install-copilot-setup.sh -bootstrap -contributor` | **Copy installer to user profile from cloned repo** (contributors only) | When cloned locally |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/repo"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
 

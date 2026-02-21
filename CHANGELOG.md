@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **BREAKING (planned release: `2.0.0`)**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
 - Set `installer/VERSION` to `0.0.0` to make it clear that it is a placeholder for source checkouts (release bundles are stamped from the tag).
+- `-Bootstrap` / `-bootstrap` is now a hard-gated contributor-only command (requires `-Contributor` / `-contributor`) and must be run from a git clone (repo root contains `.git`). Official installation is via the release bundle.
 - Renamed the Agent Skills slash commands to remove the `azurerm-` prefix: `/azurerm-docs-writer`, `/azurerm-resource-implementation`, and `/azurerm-acceptance-testing` are now `/docs-writer`, `/resource-implementation`, and `/acceptance-testing`.
 - Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/docs-review` (file: `.github/prompts/docs-review.prompt.md`) to better match end-user expectations.
 - Updated `/docs-review` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).

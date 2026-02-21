@@ -36,7 +36,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 # Then run the installer
-.\install-copilot-setup.ps1 -Bootstrap
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Help
 ```
 
 ---
@@ -105,7 +105,7 @@ This happens when `-Verify` / `-verify` detects that the **local installer manif
 
 **Common causes:**
 - You have an older `~/.terraform-azurerm-ai-installer` / `%USERPROFILE%\.terraform-azurerm-ai-installer` from a previous release.
-- You updated your local clone but did not re-bootstrap the user-profile installer.
+- You updated your local clone but did not re-bootstrap the user-profile installer (contributors only).
 
 **Fix:** refresh your installer, then run verify again.
 
@@ -145,7 +145,7 @@ Permission denied: ./install-copilot-setup.sh
 chmod +x install-copilot-setup.sh
 
 # Then run it
-./install-copilot-setup.sh -bootstrap
+./install-copilot-setup.sh -help
 ```
 
 ---
@@ -542,10 +542,10 @@ If none of these solutions work:
 ### Reinstall Everything
 ```powershell
 # Windows
-.\install-copilot-setup.ps1 -Bootstrap -Force
+.\install-copilot-setup.ps1 -Bootstrap -Contributor -Force
 
 # macOS/Linux
-./install-copilot-setup.sh -bootstrap -force
+./install-copilot-setup.sh -bootstrap -contributor -force
 ```
 
 ### Uninstall

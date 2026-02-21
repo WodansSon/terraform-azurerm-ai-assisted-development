@@ -52,10 +52,10 @@ function Show-EarlyErrorHeader {
 function Show-EarlyValidationError {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BootstrapConflict', 'MutuallyExclusive', 'ContributorRequired', 'EmptyLocalPath', 'LocalPathNotFound')]
+        [ValidateSet('BootstrapConflict', 'BootstrapContributorOnly', 'BootstrapRequiresGitRepo', 'MutuallyExclusive', 'ContributorRequired', 'EmptyLocalPath', 'LocalPathNotFound')]
         [string]$ErrorType,
 
-        [string]$LocalPath
+        [string]$Path
     )
 
     Show-EarlyErrorHeader
@@ -68,6 +68,28 @@ function Show-EarlyValidationError {
             Write-Host " -Bootstrap copies installer files into your user profile" -ForegroundColor Cyan
             Write-Host " -Branch is for pulling AI files from a published GitHub branch" -ForegroundColor Cyan
             Write-Host " -Use -Contributor -LocalPath with -Bootstrap to copy from a local AI dev repo" -ForegroundColor Cyan
+        }
+        'BootstrapContributorOnly' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -Bootstrap is a contributor-only command" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Official installation is via the release bundle (download + extract into your user profile):" -ForegroundColor Cyan
+            Write-Host "   https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases" -ForegroundColor White
+            Write-Host ""
+            Write-Host " Contributors can bootstrap from a local git clone:" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor" -ForegroundColor White
+            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+        'BootstrapRequiresGitRepo' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -Bootstrap must be run from a git clone (directory containing .git)" -ForegroundColor Cyan
+            Write-Host ""
+            if (-not [string]::IsNullOrWhiteSpace($Path)) {
+                Write-Host " Checked path: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Path" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " -Bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy." -ForegroundColor Cyan
         }
         'MutuallyExclusive' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
@@ -96,7 +118,7 @@ function Show-EarlyValidationError {
             Write-Host " -LocalPath directory does not exist" -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
-            Write-Host "$LocalPath" -ForegroundColor Yellow
+            Write-Host "$Path" -ForegroundColor Yellow
             Write-Host ""
             Write-Host " Please verify the directory path exists:" -ForegroundColor Cyan
             Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
@@ -123,7 +145,7 @@ function Get-ParameterSuggestion {
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor"
         Write-Host ""
         exit 1
     }
@@ -173,7 +195,7 @@ function Test-ParameterTypo {
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor"
         Write-Host ""
         exit 1
     }
@@ -216,7 +238,7 @@ while ($i -lt $args.Count) {
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
+        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap -Contributor" -ForegroundColor White
         Write-Host ""
         exit 1
     }
@@ -333,6 +355,27 @@ if ($Bootstrap -and $Branch) {
     exit 1
 }
 
+# PRIORITY 1.1: Hard gate -Bootstrap behind -Contributor
+if ($Bootstrap -and -not $Contributor) {
+    Show-EarlyValidationError -ErrorType 'BootstrapContributorOnly'
+    exit 1
+}
+
+# PRIORITY 1.2: -Bootstrap must be run from a git clone (repo root contains .git)
+if ($Bootstrap) {
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+    if (-not (Test-Path (Join-Path $repoRoot '.git'))) {
+        Show-EarlyValidationError -ErrorType 'BootstrapRequiresGitRepo' -Path $repoRoot
+        exit 1
+    }
+
+    # When bootstrapping from a local source path, the local source must also be a git clone root.
+    if ($LocalPath -and -not (Test-Path (Join-Path $LocalPath '.git'))) {
+        Show-EarlyValidationError -ErrorType 'BootstrapRequiresGitRepo' -Path $LocalPath
+        exit 1
+    }
+}
+
 # PRIORITY 2: Validate mutually exclusive parameters
 if ($Branch -and $LocalPath) {
     Show-EarlyValidationError -ErrorType 'MutuallyExclusive'
@@ -364,7 +407,7 @@ if ($localPathArgIndex -ge 0) {
 
     # Validate path exists
     if (-not (Test-Path $LocalPath)) {
-        Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -LocalPath $LocalPath
+        Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -Path $LocalPath
         exit 1
     }
 }

@@ -72,6 +72,28 @@ show_early_validation_error() {
     echo ""
 
     case "${error_type}" in
+        "BootstrapContributorOnly")
+            echo -e "${RED} Error:${NC}${CYAN} -bootstrap is a contributor-only command${NC}"
+            echo ""
+            echo -e "${CYAN} Official installation is via the release bundle (download + extract into your user profile):${NC}"
+            echo -e "   ${WHITE}https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases${NC}"
+            echo ""
+            echo -e "${CYAN} Contributors can bootstrap from a local git clone:${NC}"
+            echo -e "   ${WHITE}${script_name} -bootstrap -contributor${NC}"
+            echo -e "   ${WHITE}${script_name} -bootstrap -contributor -local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "BootstrapRequiresGitRepo")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -bootstrap must be run from a git clone (directory containing .git)${NC}"
+            echo ""
+            if [[ -n "${path}" ]]; then
+                echo -e "${CYAN} Checked path: ${WHITE}${path}${NC}"
+                echo ""
+            fi
+            echo -e "${CYAN} -bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy.${NC}"
+            ;;
+
         "BootstrapConflict")
             echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch with -bootstrap${NC}"
             echo ""
@@ -179,8 +201,11 @@ import_required_modules() {
             echo "============================================================"
             echo "[ERROR] Required module '${module}' not found at: ${module_path}"
             echo ""
-            echo "If running from user profile, run bootstrap first:"
-            echo "  $0 -bootstrap"
+            echo "If running from user profile, ensure the release bundle is extracted into your installer directory:"
+            echo "  ${HOME}/.terraform-azurerm-ai-installer"
+            echo ""
+            echo "Contributors: run bootstrap from a local git clone:"
+            echo "  $0 -bootstrap -contributor"
             echo ""
             return 1
         fi
@@ -282,6 +307,28 @@ main() {
     if [[ -n "${SOURCE_BRANCH}" ]] && [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
         show_early_validation_error "MutuallyExclusive" "$0"
         exit 1
+    fi
+
+    # STEP 1.61: Hard gate -bootstrap behind -contributor
+    if [[ "${BOOTSTRAP}" == "true" ]] && [[ "${CONTRIBUTOR}" != "true" ]]; then
+        show_early_validation_error "BootstrapContributorOnly" "$0"
+        exit 1
+    fi
+
+    # STEP 1.62: -bootstrap must be run from a git clone (directory containing .git)
+    if [[ "${BOOTSTRAP}" == "true" ]]; then
+        local bootstrap_repo_root
+        bootstrap_repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+        if [[ ! -e "${bootstrap_repo_root}/.git" ]]; then
+            show_early_validation_error "BootstrapRequiresGitRepo" "$0" "${bootstrap_repo_root}"
+            exit 1
+        fi
+
+        # If a local source path is provided, it must also be a git clone root
+        if [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -e "${LOCAL_SOURCE_PATH%/}/.git" ]]; then
+            show_early_validation_error "BootstrapRequiresGitRepo" "$0" "${LOCAL_SOURCE_PATH%/}"
+            exit 1
+        fi
     fi
 
     # STEP 1.65: Validate -local-path is not empty (NEW CHECK)
