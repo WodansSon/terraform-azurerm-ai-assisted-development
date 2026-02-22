@@ -36,21 +36,7 @@ get_manifest_config() {
         return 1
     fi
 
-    # Validate branch exists by checking if installer/file-manifest.config is accessible.
-    # This is only required for installs that pull files from GitHub.
-    if [[ "${skip_remote_validation}" != "true" ]]; then
-        local test_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/${branch}/installer/file-manifest.config"
-
-        if command -v curl >/dev/null 2>&1; then
-            if ! curl -fsSI "${test_url}" >/dev/null 2>&1; then
-                write_error_message "Branch '${branch}' does not exist in the terraform-azurerm-ai-assisted-development repository. Please specify a valid branch name."
-                return 1
-            fi
-        else
-            write_error_message "curl is required to validate remote branches"
-            return 1
-        fi
-    fi
+    # Remote validation removed (offline payload/local source only)
 
     # Parse manifest sections (simplified - just check if file exists and is readable)
     local has_instructions=false
@@ -69,7 +55,7 @@ get_manifest_config() {
     echo "Branch=${branch}"
     echo "HasInstructions=${has_instructions}"
     echo "HasUniversal=${has_universal}"
-    echo "SourceRepository=https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
+    echo "SourceRepository=payload"
 
     return 0
 }

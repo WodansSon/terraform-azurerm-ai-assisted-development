@@ -49,7 +49,6 @@ if ($script:InstallerVersion -eq 'dev' -and (Test-Path $versionPath)) {
 $Bootstrap = $false
 $RepoDirectory = ""
 $LocalPath = ""
-$DryRun = $false
 $Verify = $false
 $Clean = $false
 $Help = $false
@@ -135,7 +134,7 @@ function Get-ParameterSuggestion {
         Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
+        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>"
         Write-Host "   -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
@@ -156,7 +155,6 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -match '^cl') { $suggestion = 'Clean' }
     elseif ($cleanParam -match '^ve') { $suggestion = 'Verify' }
     elseif ($cleanParam -match '^he') { $suggestion = 'Help' }
-    elseif ($cleanParam -match '^dr') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
     elseif ($cleanParam -match '^lo') { $suggestion = 'LocalPath' }
     # Fuzzy matching (lower priority)
@@ -164,7 +162,6 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -like '*boo*') { $suggestion = 'Bootstrap' }
     elseif ($cleanParam -like '*ver*') { $suggestion = 'Verify' }
     elseif ($cleanParam -like '*hel*') { $suggestion = 'Help' }
-    elseif ($cleanParam -like '*dry*') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
     elseif ($cleanParam -like '*local*') { $suggestion = 'LocalPath' }
     elseif ($cleanParam -like '*source*') { $suggestion = 'LocalPath' }
@@ -181,7 +178,7 @@ function Test-ParameterTypo {
         Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
+        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>"
         Write-Host "   -LocalPath <path>"
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
@@ -224,7 +221,7 @@ while ($i -lt $args.Count) {
         Write-Host " Invalid parameter '$($args[$i])' (incomplete parameter)" -ForegroundColor Cyan
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>" -ForegroundColor White
+        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>" -ForegroundColor White
         Write-Host "   -LocalPath <path>" -ForegroundColor White
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
@@ -258,10 +255,6 @@ while ($i -lt $args.Count) {
             }
             $LocalPath = $args[$i + 1]
             $i += 2
-        }
-        '-dry-run' {
-            $DryRun = $true
-            $i++
         }
         '-verify' {
             $Verify = $true
@@ -318,7 +311,7 @@ while ($i -lt $args.Count) {
 #   - A single dash '-' (PowerShell consumed it)
 #   - A double dash '--' (PowerShell consumed it)
 # In all cases, showing help is the appropriate response
-if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
     $Help = $true
 }
 
@@ -327,7 +320,7 @@ if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -o
 #region Parameter Validation
 
 # PRIORITY 1: -Bootstrap must be a standalone operation (no additional flags)
-if ($Bootstrap -and ($RepoDirectory -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+if ($Bootstrap -and ($RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
     Show-EarlyValidationError -ErrorType 'BootstrapNoArgs'
     exit 1
 }
@@ -526,7 +519,8 @@ function Main {
         # Step 2: Early workspace validation before doing anything else
         $workspaceValidation = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
 
-        # Step 3: Manifest is always sourced from GitHub main unless -LocalPath is used for local installs.
+        # Step 3: Manifest is always sourced locally from the installer directory.
+        # AI infrastructure files are sourced from the bundled payload (aii/) or from -LocalPath.
         $effectiveBranch = "main"
 
         # Step 4: Initialize global configuration
@@ -552,68 +546,9 @@ function Main {
             }
 
             try {
-                $skipRemoteValidation = [bool]($Bootstrap -or (-not [string]::IsNullOrWhiteSpace($LocalPath)))
-                $Global:SkipRemoteManifestValidation = $skipRemoteValidation
-                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$skipRemoteValidation
-
-                # If downloading from GitHub (no -LocalPath), hard-fail when the local manifest does not match the remote manifest.
-                # This commonly happens when a bootstrapped installer was created from a dev branch, but the default download source is GitHub `main`.
-                if (-not $skipRemoteValidation) {
-                    $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
-                    if ($remoteManifestUrl -and (Test-Path $manifestPath)) {
-                        $localManifest = (Get-Content -Path $manifestPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
-
-                        $remoteManifestResponse = $null
-                        try {
-                            $remoteManifestResponse = Invoke-WebRequest -Uri $remoteManifestUrl -UseBasicParsing -ErrorAction Stop
-                        }
-                        catch {
-                            Write-Host " Error: cannot fetch remote manifest from GitHub" -ForegroundColor Red
-                            Write-Host ""
-                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
-                            Write-Host ""
-                            Write-Host " This installer will download files from GitHub '$effectiveBranch'." -ForegroundColor Yellow
-                            Write-Host " Without the remote manifest, the installer cannot prove it is using the correct file list." -ForegroundColor Yellow
-                            Write-Host ""
-                            Write-Host " Fix:" -ForegroundColor Yellow
-                            Write-Host "  - Check network/proxy access to raw.githubusercontent.com, OR" -ForegroundColor Yellow
-                            Write-Host "  - Use -LocalPath to install from your local working tree (offline/dev), OR" -ForegroundColor Yellow
-                            Write-Host "  - Install from the official release bundle." -ForegroundColor Yellow
-                            Write-Host ""
-                            exit 1
-                        }
-
-                        $remoteManifest = $remoteManifestResponse.Content
-                        $remoteManifest = $remoteManifest -replace "`r`n", "`n" -replace "`r", "`n"
-
-                        if ([string]::IsNullOrWhiteSpace($remoteManifest)) {
-                            Write-Host " Error: remote manifest response was empty" -ForegroundColor Red
-                            Write-Host ""
-                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
-                            Write-Host ""
-                            Write-Host " Fix: check network/proxy access to GitHub raw content, or use -LocalPath." -ForegroundColor Yellow
-                            Write-Host ""
-                            exit 1
-                        }
-
-                        if ($localManifest -ne $remoteManifest) {
-                            Write-Host ""
-                            Write-Host " Error: local manifest does not match GitHub manifest" -ForegroundColor Red
-                            Write-Host " Local manifest : $(Get-RelativePath $manifestPath)" -ForegroundColor Cyan
-                            Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
-                            Write-Host ""
-                            Write-Host " This installer will download files from GitHub '$effectiveBranch'." -ForegroundColor Yellow
-                            Write-Host " Your local manifest references a different file set, which will cause hard-to-debug 404s." -ForegroundColor Yellow
-                            Write-Host ""
-                            Write-Host " Fix:" -ForegroundColor Yellow
-                            Write-Host "  - Use -LocalPath to install from your local working tree (dev branch), OR" -ForegroundColor Yellow
-                            Write-Host "  - Re-bootstrap from a clone of GitHub '$effectiveBranch' so the manifest matches." -ForegroundColor Yellow
-                            Write-Host ""
-
-                            exit 1
-                        }
-                    }
-                }
+                # Remote manifest validation is no longer required; this installer does not download AI files from GitHub.
+                $Global:SkipRemoteManifestValidation = $true
+                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$true
             }
             catch {
                 Show-ValidationError -ErrorType 'BranchValidation' -Branch $effectiveBranch
@@ -715,7 +650,6 @@ function Main {
         elseif ($Verify) { $attemptedCommand = "-Verify" }
         elseif ($Clean) { $attemptedCommand = "-Clean" }
         elseif ($Help) { $attemptedCommand = "-Help" }
-        elseif ($DryRun) { $attemptedCommand = "-Dry-Run" }
         elseif ($LocalPath) { $attemptedCommand = "-LocalPath `"$LocalPath`"" }
         elseif ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             $attemptedCommand = "-RepoDirectory `"$RepoDirectory`""
@@ -754,7 +688,7 @@ function Main {
         }
 
         if ($Clean) {
-            $cleanResult = Invoke-CleanWorkspace -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:([bool]$RepoDirectory)
+            $cleanResult = Invoke-CleanWorkspace -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:([bool]$RepoDirectory)
 
             # Return clean result without automatic verification
             # The clean operation provides its own success/failure messaging
@@ -768,7 +702,7 @@ function Main {
         # Installation path (when -RepoDirectory is provided and not other specific operations)
         if ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             # Proceed with installation - require that target is a Terraform provider repo
-            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -LocalSourcePath $LocalPath | Out-Null
+            Invoke-InstallInfrastructure -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -LocalSourcePath $LocalPath | Out-Null
             return
         }
 

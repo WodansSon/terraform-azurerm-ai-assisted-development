@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING (planned release: `2.0.0`)**: simplified installer CLI:
   - Removed `-Contributor` / `-contributor`
   - Removed `-Branch` / `-branch`
-  - `-LocalPath` / `-local-path` is now the only source override (default source is GitHub `main`)
+  - `-LocalPath` / `-local-path` is now the only source override (default source is bundled payload `aii/`)
 - Set `installer/VERSION` to `0.0.0` to make it clear that it is a placeholder for source checkouts (release bundles are stamped from the tag).
 - `-Bootstrap` / `-bootstrap` is now a standalone command (no other parameters accepted) and must be run from a git clone (repo root contains `.git`). Official installation is via the release bundle.
 - Bash installer no longer references legacy AzureRM-provider repo layouts/branches (removed `exp/terraform_copilot` and `.github/AIinstaller` fallbacks); bootstrap guidance now consistently points to `./installer/install-copilot-setup.sh`.
@@ -33,27 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
 - Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
 - Expanded `CONTRIBUTING.md` to provide more detailed contribution and validation guidance, including PowerShell/Bash parity expectations to avoid installer drift.
+- Removed `-Dry-Run` / `-dry-run` from the installer to keep the workflow focused on install/clean/verify.
+- Removed legacy remote download scaffolding; installs now copy from the bundled payload or `-LocalPath` only.
 
 ### Upgrade Notes (from 1.x)
-- `-Contributor` / `-contributor` and `-Branch` / `-branch` were removed.
+- `-Contributor` / `-contributor`, `-Branch` / `-branch`, and `-Dry-Run` / `-dry-run` were removed.
   - To test local/uncommitted AI changes or install offline, use `-LocalPath` / `-local-path`.
-  - Default source remains this repository's GitHub `main` (WodansSon/terraform-azurerm-ai-assisted-development) when `-LocalPath` / `-local-path` is not provided.
+  - Default source is the bundled offline payload (`aii/`) shipped with the release/bootstrapped installer.
 - `-Bootstrap` / `-bootstrap` is now standalone (no extra flags). Previous usage like `-Bootstrap -Contributor` becomes just `-Bootstrap`.
 - Installs still target a terraform-provider-azurerm working copy via `-RepoDirectory` / `-repo-directory` (validated via `go.mod` module identity and repo structure).
 
 ### Fixed
 - Fixed a regression where `/docs-review` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
 - When running the installer directly from a git clone with placeholder `installer/VERSION` (`0.0.0`), the displayed version now matches bootstrap-stamped versions (`dev-<git sha>` with optional `-dirty`).
-- `-LocalPath` / `-local-path` installs can run without internet connectivity (internet validation is required only for GitHub downloads).
-- PowerShell `-Dry-Run` now reports `-LocalPath` install actions as simulated/skipped instead of failures, preventing misleading "0 successful / N failed" summaries.
-- Bash `-dry-run` now matches PowerShell semantics: `Files Installed: 0` / `Files Skipped: N`, and it prints the correct manifest-relative paths while showing `Copying` vs `Downloading`.
+- Installer installs no longer require internet connectivity (offline payload by default).
+- Clarified bootstrap summary labels to distinguish installer files vs payload files (PowerShell and Bash).
+- Removed unused installer helpers/exports in PowerShell and Bash modules to reduce dead code.
 - Installer summaries now include `Source`, `Manifest`, and `Command` details to make it explicit which files were attempted from which location/ref.
-- GitHub-source installs (default mode when `-LocalPath` / `-local-path` is not provided) now hard-fail when the remote manifest cannot be fetched or the local manifest does not match the GitHub `main` manifest, with a clear fix message (re-extract the latest release bundle, or re-bootstrap from a local clone, or use `-LocalPath` / `-local-path`).
-- Bash GitHub-mode `-dry-run` now validates the remote source contains all manifest files (fails fast instead of printing misleading "would download" lines for files that would 404).
+- Release bundles and bootstrapped installs now include an offline payload (`aii/`) so installs do not fetch AI files from GitHub.
 - Bash repository validation for `-repo-directory` now requires the terraform-provider-azurerm `go.mod` module declaration (reduces false positives from substring matches).
-- `-verify` now fails fast with a clear "manifest file mismatch" error when the local installer `file-manifest.config` differs from the remote manifest, which prevents misleading missing-file results when a stale user-profile installer is present.
-- Bash `-verify` now fails fast (in GitHub mode) when the remote manifest cannot be fetched/validated (for example DNS/firewall/proxy restrictions), with guidance to use `-local-path` for offline/local workflows.
-- `-verify` no longer fails with "manifest file mismatch" when using local source workflows (`-LocalPath` / `-local-path`), since local working trees may intentionally diverge from GitHub.
+- `-verify` is offline-only and no longer depends on GitHub connectivity or remote manifest validation.
 
 ## [1.0.5] - 2026-02-18
 

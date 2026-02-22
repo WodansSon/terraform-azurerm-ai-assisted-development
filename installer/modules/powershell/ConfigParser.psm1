@@ -57,20 +57,10 @@ function Get-ManifestConfig {
 
     $manifest = @{
         Branch = $Branch
-        BaseUrl = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
+        # BaseUrl is retained for backward compatibility with older UI/debug output,
+        # but this installer no longer downloads AI files from GitHub.
+        BaseUrl = ""
         Sections = @{}
-    }
-
-    # Validate remote source is accessible by checking if file-manifest.config is reachable.
-    # This is only required for installs that pull files from GitHub.
-    if (-not $SkipRemoteValidation) {
-        try {
-            $testUrl = "$($manifest.BaseUrl)/installer/file-manifest.config"
-            $null = Invoke-WebRequest -Uri $testUrl -Method Head -UseBasicParsing -ErrorAction Stop
-        }
-        catch {
-            throw "cannot reach source repository at '$testUrl'. check network access to GitHub or use -LocalPath for local installs"
-        }
     }
 
     $currentSection = $null
@@ -124,8 +114,8 @@ function Get-InstallerConfig {
         [string]$Branch = "main"
     )
 
-    # DOWNLOAD SOURCE: Use specified branch for downloading AI files
-    # DOWNLOAD TARGET: Copy files to the local workspace directory (regardless of local branch)
+    # SOURCE FILES: Use the bundled payload or local-path override
+    # TARGET FILES: Copy files to the local workspace directory
 
     $version = "dev"
     $versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
@@ -161,7 +151,7 @@ function Get-InstallerConfig {
     return @{
         Version = $version
         Branch = $Branch
-        SourceRepository = "https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/$Branch"
+        SourceRepository = "payload"
         Files = @{
             Instructions = @{
                 Source = ".github/copilot-instructions.md"

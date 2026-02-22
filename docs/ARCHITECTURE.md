@@ -9,64 +9,65 @@
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Developer Workspace                        │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │               VS Code with GitHub Copilot                  │ │
-│  │  ┌──────────────────────────────────────────────────────┐  │ │
-│  │  │   terraform-provider-azurerm Repository              │  │ │
-│  │  │                                                      │  │ │
-│  │  │   ├── internal/services/                             │  │ │
-│  │  │   │   └── [Your Resource Code]                       │  │ │
-│  │  │   └── website/docs/                                  │  │ │
-│  │  │                                                      │  │ │
-│  │  │   ┌───────────────────────────────────────────────┐  │  │ │
-│  │  │   │   AI Infrustructure file install locations    │  │  │ │
-│  │  │   │                                               │  │  │ │
-│  │  │   │  ├──.github/                                  │  │  │ │
-│  │  │   │  │  ├── copilot-instructions.md (Main)        │  │  │ │
-│  │  │   │  │  ├── prompts/                              │  │  │ │
-│  │  │   │  │  │   ├── code-review-local-changes...      │  │  │ │
-│  │  │   │  │  │   ├── code-review-committed-changes...  │  │  │ │
-│  │  │   │  │  │   └── docs-review.prompt.md             │  │  │ │
-│  │  │   │  │  ├── skills/                               │  │  │ │
-│  │  │   │  │  │   ├── docs-writer/SKILL.md              │  │  │ │
-│  │  │   │  │  │   └── [other skill files]               │  │  │ │
-│  │  │   │  │  └── instructions/                         │  │  │ │
-│  │  │   │  │      ├── api-evolution-patterns.md         │  │  │ │
-│  │  │   │  │      ├── azure-patterns.md                 │  │  │ │
-│  │  │   │  │      ├── testing-guidelines.md             │  │  │ │
-│  │  │   │  │      └── [12+ more instruction files]      │  │  │ │
-│  │  │   │  └── .vscode/settings.json                    │  │  │ │
-│  │  │   └───────────────────────────────────────────────┘  │  │ │
-│  │  └──────────────────────────────────────────────────────┘  │ │
-│  │                                                            │ │
-│  │  ┌──────────────────────────────────────────────────────┐  │ │
-│  │  │          VS Code GitHub Copilot AI Engine            │  │ │
-│  │  │                                                      │  │ │
-│  │  │  - Reads instruction files automatically             │  │ │
-│  │  │  - Loads Agent Skills from .github/skills/           │  │ │
-│  │  │  - Applies context-aware patterns                    │  │ │
-│  │  │  - Generates code following HashiCorp standards      │  │ │
-│  │  │  - Provides intelligent code reviews                 │  │ │
-│  │  └──────────────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Developer Workspace                         │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │               VS Code with GitHub Copilot                   │ │
+│  │  ┌───────────────────────────────────────────────────────┐  │ │
+│  │  │   terraform-provider-azurerm Repository               │  │ │
+│  │  │                                                       │  │ │
+│  │  │   ├── internal/services/                              │  │ │
+│  │  │   │   └── [Your Resource Code]                        │  │ │
+│  │  │   └── website/docs/                                   │  │ │
+│  │  │                                                       │  │ │
+│  │  │   ┌────────────────────────────────────────────────┐  │  │ │
+│  │  │   │   AI Infrustructure file install locations     │  │  │ │
+│  │  │   │                                                │  │  │ │
+│  │  │   │  ├──.github/                                   │  │  │ │
+│  │  │   │  │  ├── copilot-instructions.md (Main)         │  │  │ │
+│  │  │   │  │  ├── prompts/                               │  │  │ │
+│  │  │   │  │  │   ├── code-review-local-changes...       │  │  │ │
+│  │  │   │  │  │   ├── code-review-committed-changes...   │  │  │ │
+│  │  │   │  │  │   └── docs-review.prompt.md              │  │  │ │
+│  │  │   │  │  ├── skills/                                │  │  │ │
+│  │  │   │  │  │   ├── docs-writer/SKILL.md               │  │  │ │
+│  │  │   │  │  │   └── [other skill files]                │  │  │ │
+│  │  │   │  │  └── instructions/                          │  │  │ │
+│  │  │   │  │      ├── api-evolution-patterns.md          │  │  │ │
+│  │  │   │  │      ├── azure-patterns.md                  │  │  │ │
+│  │  │   │  │      ├── testing-guidelines.md              │  │  │ │
+│  │  │   │  │      └── [12+ more instruction files]       │  │  │ │
+│  │  │   │  └── .vscode/settings.json                     │  │  │ │
+│  │  │   └────────────────────────────────────────────────┘  │  │ │
+│  │  └───────────────────────────────────────────────────────┘  │ │
+│  │                                                             │ │
+│  │  ┌───────────────────────────────────────────────────────┐  │ │
+│  │  │          VS Code GitHub Copilot AI Engine             │  │ │
+│  │  │                                                       │  │ │
+│  │  │  - Reads instruction files automatically              │  │ │
+│  │  │  - Loads Agent Skills from .github/skills/            │  │ │
+│  │  │  - Applies context-aware patterns                     │  │ │
+│  │  │  - Generates code following HashiCorp standards       │  │ │
+│  │  │  - Provides intelligent code reviews                  │  │ │
+│  │  └───────────────────────────────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────┐
-│                  Installation & Distribution                    │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  terraform-azurerm-ai-assisted-development Repository      │ │
-│  │                                                            │ │
-│  │  installer/                                                │ │
-│  │  ├── install-copilot-setup.ps1 (Windows)                   │ │
-│  │  ├── install-copilot-setup.sh (Cross-platform)             │ │
-│  │  ├── file-manifest.config                                  │ │
-│  │  └── modules/                                              │ │
-│  │      ├── powershell/                                       │ │
-│  │      └── bash/                                             │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                  Installation & Distribution                     │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │  terraform-azurerm-ai-assisted-development Repository       │ │
+│  │                                                             │ │
+│  │  installer/                                                 │ │
+│  │  ├── install-copilot-setup.ps1 (Windows)                    │ │
+│  │  ├── install-copilot-setup.sh (Cross-platform)              │ │
+│  │  ├── file-manifest.config                                   │ │
+│  │  ├── aii/ (payload root - populated in bundles/bootstrap)   │ │
+│  │  └── modules/                                               │ │
+│  │      ├── powershell/                                        │ │
+│  │      └── bash/                                              │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Installation Flow
@@ -94,8 +95,8 @@
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Installer Downloads AI Files via GitHub                    │
-│  raw URLs to Target Repo :                                  │
+│  Installer Copies AI Files from Bundled Payload             │
+│  (offline, no GitHub/raw downloads at runtime):             │
 │                                                             │
 │  ├── .github/copilot-instructions.md                        │
 │  ├── .github/prompts/                                       │
@@ -115,7 +116,7 @@
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Success: GitHub Copilot Ready!                             │
-│  - Files installed from GitHub                              │
+│  - Files copied from local payload                          │
 │  - AI development environment active                        │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -123,41 +124,49 @@
 ### Option 2: Bootstrap from Cloned Repo
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Clone Repository (Contributors)                            │
-│  - git checkout branch                                      │
-└────────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Clone Repository (Contributors)                             │
+│  - git checkout branch                                       │
+└────────────────────────────┬─────────────────────────────────┘
                              │
                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Run Bootstrap from Cloned Repo Branch                      │
-│  PowerShell: -Bootstrap                                     │
-│  Bash: -bootstrap                                           │
-└────────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Run Bootstrap from Cloned Repo Branch                       │
+│  PowerShell: -Bootstrap                                      │
+│  Bash: -bootstrap                                            │
+└────────────────────────────┬─────────────────────────────────┘
                              │
                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Copies Installer from Source Repo to User Profile          │
-│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer   │
-│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer            │
-│                                                             │
-│  installer/                                                 │
-│  ├── install-copilot-setup.ps1 (Windows)                    │
-│  ├── install-copilot-setup.sh (Cross-platform)              │
-│  ├── file-manifest.config                                   │
-│  └── modules/                                               │
-│      ├── powershell/                                        │
-│      └── bash/                                              │
-└────────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Copies Installer from Source Repo to User Profile           │
+│  - Windows: %USERPROFILE%\.terraform-azurerm-ai-installer    │
+│  - MacOS/Unix: ~/.terraform-azurerm-ai-installer             │
+│                                                              │
+│  installer/                                                  │
+│  ├── install-copilot-setup.ps1 (Windows)                     │
+│  ├── install-copilot-setup.sh (Cross-platform)               │
+│  ├── file-manifest.config                                    │
+│  ├── aii/ (offline payload built from manifest)              │
+│  └── modules/                                                │
+│      ├── powershell/                                         │
+│      └── bash/                                               │
+└────────────────────────────┬─────────────────────────────────┘
                              │
                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Run Installer from User Profile with Target Repository     │
-│  Same execution location as Option 1, but source AI files   │
-│  from your working tree using -LocalPath / -local-path      │
-│  (PowerShell/Bash also pass -RepoDirectory/-repo-directory) │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Run Installer from User Profile with Target Repository      │
+│  Same execution location as Option 1 (payload is local).     │
+│  -LocalPath / -local-path is a contributor override to       │
+│  source AI files from a working tree instead of the payload. │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+
+#### Source Model Summary
+
+- Default source: bundled offline payload in `aii/` next to the installer you are running.
+- Override source: `-LocalPath` / `-local-path` (copies from a local working tree; useful for contributors).
+- Runtime network access: not required (after you have the release bundle or have bootstrapped from a clone).
 
 ## GitHub Copilot Integration
 
@@ -310,6 +319,7 @@ terraform-azurerm-ai-assisted-development/
 │   ├── install-copilot-setup.ps1    # Cross-platform PowerShell
 │   ├── install-copilot-setup.sh     # Traditional Bash
 │   ├── file-manifest.config         # Files to copy
+│   ├── aii                          # AI Infrustructure files
 │   │
 │   ├── modules/
 │   │   ├── powershell/

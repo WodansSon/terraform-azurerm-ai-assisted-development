@@ -472,13 +472,9 @@ Simply use slash commands to invoke the prompts directly:
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/repo"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
 
 > [!NOTE]
-> `-Verify` / `-verify` will fail fast with **"Manifest file mismatch"** if your local installer `file-manifest.config` does not match the upstream manifest from GitHub.
-> Refresh your user-profile installer (re-extract the latest release bundle or re-run Bootstrap from a local clone) and try again.
->
-> When using local source workflows (`-LocalPath` / `-local-path`), remote manifest validation is skipped by design.
->
-> In GitHub-source mode (the default when `-LocalPath` / `-local-path` is not provided), `-Verify` / `-verify` fails fast if it cannot reach GitHub (for example DNS/firewall/proxy restrictions).
-> Use `-LocalPath` / `-local-path` for offline/local workflows.
+> `-Verify` / `-verify` is **offline-only** and checks your workspace against the local `file-manifest.config`.
+> If the installer directory is incomplete (missing manifest or bundled payload), refresh your user-profile installer
+> (re-extract the latest release bundle or re-run Bootstrap from a local clone) and try again.
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/repo"` | **Remove AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help` | **Show detailed help** (run from anywhere after bootstrap) | Any branch |
 
@@ -489,16 +485,14 @@ Simply use slash commands to invoke the prompts directly:
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-RepoDirectory` | **Specify repository path** | Running from user profile | `-RepoDirectory "C:\path\to\terraform-provider-azurerm"` |
-| `-LocalPath` | **Copy AI files from a local directory** (instead of GitHub `main`) | Offline installs / local testing | `-LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
-| `-Dry-Run` | Preview changes without applying | Optional | `-Dry-Run` |
+| `-LocalPath` | **Copy AI files from a local directory** (source override; instead of bundled payload) | Contributor/dev installs | `-LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
 
 **macOS/Linux (Bash):**
 
 | Parameter | Description | Required When | Example |
 |-----------|-------------|---------------|---------|
 | `-repo-directory` | **Specify repository path** | Running from user profile | `-repo-directory "/path/to/terraform-provider-azurerm"` |
-| `-local-path` | **Copy AI files from a local directory** (instead of GitHub `main`) | Offline installs / local testing | `-local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
-| `-dry-run` | Preview changes without applying | Optional | `-dry-run` |
+| `-local-path` | **Copy AI files from a local directory** (source override; instead of bundled payload) | Contributor/dev installs | `-local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
 
 ### 🚨 Important: Repository Directory Parameter
 
@@ -675,7 +669,7 @@ The installer includes **intelligent deprecation management** that automatically
 During each installation, the tool automatically:
 
 - **🔍 Scans** existing instruction, prompt, and skill files in your workspace
-- **📋 Compares** them against the current manifest from the source branch
+- **📋 Compares** them against the local installer manifest (`file-manifest.config`)
 - **🗑️ Removes** deprecated files that are no longer part of the AI infrastructure
 - **✅ Preserves** current files that remain active
 
@@ -721,22 +715,10 @@ During each installation, the tool automatically:
 #   Removed 2 deprecated file(s)
 ```
 
-**Dry-Run Preview:**
-```powershell
-# Preview what would be removed (Windows)
-.\install-copilot-setup.ps1 -Dry-Run -RepoDirectory "C:\path\to\repo"
-
-# Output example:
-# [DRY-RUN] Would remove instruction file: old-pattern.instructions.md
-# [DRY-RUN] Would remove prompt file: legacy-prompt.prompt.md
-# Found 2 deprecated file(s) that would be removed
-```
-
 ### 🛡️ Safety Features
 
-- **Non-destructive preview** with `-Dry-Run` / `-dry-run` flag
 - **Branch protection** - Only operates on feature branches, never on source branch
-- **Manifest validation** - Only removes files not in current official manifest
+- **Manifest validation** - Only removes files not in the local installer manifest
 - **Error handling** - Graceful handling of permission issues or file locks
 
 ### 🚀 Benefits
@@ -829,8 +811,6 @@ Combine multiple commands for complex tasks:
 # After installing to user profile - run from anywhere
 & "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 
-# Preview what would be removed
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Clean -Dry-Run -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **macOS/Linux:**
@@ -838,13 +818,12 @@ Combine multiple commands for complex tasks:
 # After installing to user profile - run from anywhere
 ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -repo-directory "/path/to/terraform-provider-azurerm"
 
-# Preview what would be removed
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -clean -dry-run -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 ### Local Source Install (Offline / Local Testing)
 
-By default, the installer downloads AI files from GitHub `main`. If you need to install **offline** or test AI instruction changes from a local working tree, use `-LocalPath` / `-local-path` to copy files from a local directory instead.
+By default, the installer copies AI files from the **bundled offline payload** (`aii/`) shipped with the release/bootstrapped installer.
+If you are a contributor and want to test AI instruction changes from a local working tree, use `-LocalPath` / `-local-path` to override the bundled payload.
 
 **Windows:**
 ```powershell

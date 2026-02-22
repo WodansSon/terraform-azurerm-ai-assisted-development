@@ -194,8 +194,7 @@ write_file_operation_status() {
 show_operation_summary() {
     local operation_name="$1"
     local success="$2"
-    local dry_run="${3:-false}"
-    shift 3
+    shift 2
 
     # Parse arguments for details and next steps (bash 3.2 compatible)
     local details_keys=""
@@ -250,12 +249,7 @@ show_operation_summary() {
         color="${RED}"
     fi
 
-    local completion_message
-    if [[ "$dry_run" == "true" ]]; then
-        completion_message=" ${operation_name} ${status_text} (dry run)"
-    else
-        completion_message=" ${operation_name} ${status_text}"
-    fi
+    local completion_message=" ${operation_name} ${status_text}"
 
     echo ""
     echo -e "${color}${completion_message}${NC}"
@@ -280,7 +274,7 @@ show_operation_summary() {
             expected_order="Branch Type|Target Branch|Operation Type|Files Removed|Directories Cleaned|Location"
         elif [[ "${operation_lower}" == "bootstrap" ]]; then
             # Bootstrap operation order (matches PowerShell)
-            expected_order="Files Copied|Total Size|Location"
+            expected_order="Installer Files Copied|Payload Files Copied (aii/)|Total Size (installer + payload)|Location"
         else
             # Installation operation orde
             expected_order="Branch Type|Target Branch|Files Installed|Total Size|Files Skipped|Location"
@@ -358,21 +352,6 @@ show_operation_summary() {
         done
         echo ""
     fi
-}
-
-# Function to display next steps after successful bootstrap operation
-show_bootstrap_next_steps() {
-    local target_directory="${1:-$HOME/.terraform-azurerm-ai-installer}"
-
-    write_cyan "NEXT STEPS:"
-    echo ""
-    write_cyan "  1. In your terraform-provider-azurerm working copy, switch to a feature branch:"
-    write_white "     git checkout -b feature/your-branch-name"
-    echo ""
-    write_cyan "  2. Run the installer from your user profile:"
-    write_white "     cd \"\$HOME/.terraform-azurerm-ai-installer\""
-    write_white "     ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
-    echo ""
 }
 
 # Helper function to print colored separator line
@@ -809,24 +788,19 @@ show_feature_branch_help() {
 
     write_cyan "AVAILABLE OPTIONS:"
     write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
-    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of GitHub 'main')"
-    write_plain "  -dry-run          Show what would be done without making changes"
+    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
 
     write_cyan "EXAMPLES:"
-    write_cyan "  Install AI infrastructure (default - from GitHub 'main'):"
+    write_cyan "  Install AI infrastructure (default - from bundled payload):"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
     write_cyan "  Install from local files (offline or local testing):"
     write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/repo\""
-    echo ""
-    write_cyan "  Dry-Run (preview changes):"
-    write_plain "    cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" -dry-run"
     echo ""
     write_cyan "  Clean removal:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
@@ -859,7 +833,7 @@ show_feature_branch_help() {
     write_plain "  4. Use -clean to remove AI infrastructure when done"
     echo ""
     write_cyan "LOCAL SOURCE WORKFLOW:"
-    write_plain "  Use -local-path to copy AI files from a local directory instead of GitHub."
+    write_plain "  Use -local-path to copy AI files from a local directory instead of the bundled payload."
     echo ""
 }
 
@@ -902,8 +876,7 @@ show_unknown_branch_help() {
     write_cyan "ALL OPTIONS:"
     write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
     write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
-    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of GitHub 'main')"
-    write_plain "  -dry-run          Show what would be done without making changes"
+    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
@@ -933,24 +906,6 @@ show_source_branch_welcome() {
     local branch_name="${1:-main}"
 
     write_green " WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
-    echo ""
-}
-
-# Function to show bootstrap failure error with troubleshooting
-show_bootstrap_failure_error() {
-    local files_failed="$1"
-    local user_profile="$2"
-    local script_name="$3"
-
-    echo ""
-    write_error_message "Bootstrap failed with ${files_failed} file(s) failing to copy"
-    echo ""
-    write_yellow "TROUBLESHOOTING:"
-    write_plain "  1. Check file permissions in source directory"
-    write_plain "  2. Ensure sufficient disk space in ${user_profile}"
-    write_plain "  3. Verify you're running from the correct directory"
-    echo ""
-    write_plain "For help: ${script_name} -help"
     echo ""
 }
 
@@ -1017,19 +972,19 @@ show_branch_validation_failed() {
     local script_name="${2:-./install-copilot-setup.sh}"
 
     echo ""
-    write_red " Error: Remote source validation failed"
+    write_red " Error: Installer configuration validation failed"
     echo ""
-    write_cyan " Source: GitHub (main)"
+    write_cyan " Source: Bundled payload (aii/)"
     echo ""
-    write_cyan " The installer could not access the remote source used for default installs."
+    write_cyan " The installer could not load the required local files (manifest/payload)."
     echo ""
     write_cyan " Notes:"
-    write_cyan " - This applies when pulling files from GitHub (default behavior)."
-    write_cyan " - If you need to install without GitHub access, use -local-path to copy files from a local directory."
+    write_cyan " - Default installs use the bundled payload in the installer directory."
+    write_cyan " - Use -local-path to source files from a local working tree (contributor/dev override)."
     echo ""
     write_cyan " Suggested actions:"
-    write_plain " - Check network/proxy/firewall settings and try again"
-    write_plain " - Use local source install:"
+    write_plain " - Re-extract the latest release bundle into your user profile and try again"
+    write_plain " - Or use local source install:"
     write_plain "   ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
     write_cyan " For more help, run:"
@@ -1037,28 +992,6 @@ show_branch_validation_failed() {
     echo ""
 }
 
-# Function to display manifest mismatch message
-show_manifest_mismatch_error() {
-    local local_manifest_path="$1"
-    local remote_manifest_url="$2"
-    local script_name="${3:-./install-copilot-setup.sh}"
-
-    write_red " Error: Manifest file mismatch"
-    echo ""
-    write_cyan " Local manifest: ${local_manifest_path}"
-    write_cyan " Remote manifest: ${remote_manifest_url}"
-    echo ""
-    write_cyan " Your local installer manifest does not match the remote manifest."
-    write_cyan " This usually means the installer in your user profile is out of date."
-    echo ""
-    write_yellow " FIX: Refresh the local installer/manifest, then re-run -verify"
-    write_cyan " - If you installed from a release bundle, re-download and re-extract the latest release bundle into your user profile installer directory."
-    write_cyan " - If you are a contributor with a local clone, run bootstrap from that clone (not from a stale user-profile copy):"
-    write_plain "     /path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh -bootstrap"
-    echo ""
-    write_cyan " For more help, run:"
-    write_plain "   ${script_name} -help"
-    echo ""
 }
 
 # Function to display safety violation message for source branch operations
@@ -1123,6 +1056,5 @@ export -f write_error_message write_warning_message write_success_message
 export -f write_file_operation_status show_completion_summary show_safety_violation
 export -f show_usage show_source_branch_welcome show_workspace_validation_error
 export -f show_branch_validation_failed
-export -f show_manifest_mismatch_error
 export -f show_operation_summary
 export -f print_separator get_user_profile format_aligned_label_spacing calculate_max_filename_length

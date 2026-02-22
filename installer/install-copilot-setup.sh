@@ -36,21 +36,20 @@ if [[ "${VERSION}" == "0.0.0" ]] && command -v git >/dev/null 2>&1; then
 fi
 
 # Global variables
-BRANCH="main"
-SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
+# Note: AI infrastructure files are sourced from a local payload (aii/) by default.
+BRANCH=""
+SOURCE_REPOSITORY=""
 
 # Command line parameters with help text
 BOOTSTRAP=false           # Copy installer to user profile for feature branch use
 REPO_DIRECTORY=""         # Path to the repository directory for git operations (when running from user profile)
-LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from instead of GitHub
-DRY_RUN=false             # Show what would be done without making changes
+LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from instead of bundled payload
 VERIFY=false              # Check the current state of the workspace
 CLEAN=false               # Remove AI infrastructure from the workspace
 HELP=false                # Show detailed help information
 
 # Export variables that need to be accessible to modules as global variables
 # Note: Other variables are passed as function parameters, so they don't need to be exported
-export DRY_RUN
 
 # ============================================================================
 # COLOR DEFINITIONS - Required for early error display
@@ -270,7 +269,7 @@ main() {
     parse_arguments "$@"
 
     # STEP 1.1: -bootstrap must be a standalone operation (no additional flags)
-    if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${REPO_DIRECTORY}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]] || [[ "${DRY_RUN}" == "true" ]] || [[ "${VERIFY}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ "${HELP}" == "true" ]]; }; then
+    if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${REPO_DIRECTORY}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]] || [[ "${VERIFY}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ "${HELP}" == "true" ]]; }; then
         show_early_validation_error "BootstrapNoArgs" "$0"
         exit 1
     fi
@@ -410,8 +409,6 @@ main() {
         attempted_command="-clean"
     elif [[ "${HELP}" == "true" ]]; then
         attempted_command="-help"
-    elif [[ "${DRY_RUN}" == "true" ]]; then
-        attempted_command="-dry-run"
     elif [[ -n "${LOCAL_SOURCE_PATH}" ]]; then
         attempted_command="-local-path \"${LOCAL_SOURCE_PATH}\""
     elif [[ -n "${REPO_DIRECTORY}" && "${HELP}" != "true" && "${VERIFY}" != "true" && "${BOOTSTRAP}" != "true" && "${CLEAN}" != "true" ]]; then
@@ -464,8 +461,9 @@ main() {
             user_profile=$(get_user_profile)
             local size_kb=$((BOOTSTRAP_STATS_TOTAL_SIZE / 1024))
             show_operation_summary "Bootstrap" "true" "false" \
-                "Files Copied:${BOOTSTRAP_STATS_FILES_COPIED}" \
-                "Total Size:${size_kb} KB" \
+                "Installer Files Copied:${BOOTSTRAP_STATS_FILES_COPIED}" \
+                "Payload Files Copied (aii/):${BOOTSTRAP_STATS_PAYLOAD_FILES_COPIED:-0}" \
+                "Total Size (installer + payload):${size_kb} KB" \
                 "Location:${user_profile}" \
                 --next-steps \
                 " 1. In your terraform-provider-azurerm working copy, switch to a feature branch:" \
@@ -533,8 +531,6 @@ check_typos() {
         suggestion="verify"
     elif echo "${lower_param}" | grep -q '^he'; then
         suggestion="help"
-    elif echo "${lower_param}" | grep -q '^dr'; then
-        suggestion="dry-run"
     elif echo "${lower_param}" | grep -q '^re'; then
         suggestion="repo-directory"
     elif echo "${lower_param}" | grep -q '^lo'; then
@@ -548,8 +544,6 @@ check_typos() {
         suggestion="verify"
     elif [[ "${lower_param}" == *hel* ]]; then
         suggestion="help"
-    elif [[ "${lower_param}" == *dry* ]]; then
-        suggestion="dry-run"
     elif [[ "${lower_param}" == *repo* ]]; then
         suggestion="repo-directory"
     elif [[ "${lower_param}" == *local* ]]; then
@@ -592,11 +586,6 @@ parse_arguments() {
                 fi
                 LOCAL_SOURCE_PATH="$2"
                 shift 2
-                ;;
-            -dry-run)
-                DRY_RUN=true
-                export DRY_RUN
-                shift
                 ;;
             -verify)
                 VERIFY=true

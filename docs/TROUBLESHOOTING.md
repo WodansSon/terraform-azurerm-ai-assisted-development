@@ -56,17 +56,19 @@ Error: Could not locate terraform-provider-azurerm repository
 
 ---
 
-### Remote Source Validation Failed
+### Installer Configuration Validation Failed / Payload Missing
 
-This happens when the installer cannot access the **default remote source** (GitHub `main`) used to download AI files.
+This happens when the installer cannot load the required local files (manifest and/or the bundled offline payload).
 
 Common causes:
-- Network restrictions (DNS/firewall/proxy) preventing access to `raw.githubusercontent.com`
-- Temporary GitHub outage
+- The installer directory is incomplete (missing `file-manifest.config`, missing `modules/`, or missing `aii/`).
+- The release bundle was not extracted correctly into the expected user profile directory.
+- You are running a stale user-profile installer that predates the offline payload model.
 
 **Fix options:**
-- **Preferred (offline/local)**: use `-LocalPath` / `-local-path` to copy AI files from a local directory.
-- **Alternative (remote)**: fix network access to GitHub and retry.
+- **Recommended**: re-extract the latest release bundle into your user profile directory.
+- **Contributor/dev**: run `-Bootstrap` / `-bootstrap` from a git clone to refresh your user-profile installer (this also stages the payload).
+- **Override**: use `-LocalPath` / `-local-path` to source AI files from a local working tree instead of the bundled payload.
 
 > [!IMPORTANT]
 > The commands below assume the installer in your user profile is up-to-date (v2.0.0+).
@@ -75,60 +77,45 @@ Common causes:
 
 **Solution (PowerShell):**
 ```powershell
-# Keep execution consistent with release installs:
-# 1) Refresh the user-profile installer from your local clone (or re-extract the latest release bundle)
+# 1) (Preferred) Re-extract the latest release bundle into your user profile.
+#    OR (Contributor) refresh the user-profile installer from your local clone.
 & "C:\path\to\terraform-azurerm-ai-assisted-development\installer\install-copilot-setup.ps1" -Bootstrap
 
-# 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
-#    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
+# 2) Run the installer from your user profile.
+#    Default behavior uses the bundled payload (aii/); no -LocalPath is required.
 cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
-.\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+.\install-copilot-setup.ps1 -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+
+# Optional contributor override (source from working tree instead of payload):
+# .\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
 ```
 
 **Solution (Bash):**
 ```bash
-# Keep execution consistent with release installs:
-# 1) Refresh the user-profile installer from your local clone (or re-extract the latest release bundle)
+# 1) (Preferred) Re-extract the latest release bundle into your user profile.
+#    OR (Contributor) refresh the user-profile installer from your local clone.
 "/path/to/terraform-azurerm-ai-assisted-development/installer/install-copilot-setup.sh" -bootstrap
 
-# 2) Run the freshly bootstrapped installer from your user profile, sourcing AI files from your working tree
-#    (Do not run this step unless you just ran step (1), or you may be running an older installer.)
+# 2) Run the installer from your user profile.
+#    Default behavior uses the bundled payload (aii/); no -local-path is required.
 cd ~/.terraform-azurerm-ai-installer
-./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
+./install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
+
+# Optional contributor override (source from working tree instead of payload):
+# ./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
 ---
 
-### Manifest File Mismatch (Verify)
+### Verify Shows Missing Files After Clean
 
-This happens when `-Verify` / `-verify` detects that the **local installer manifest** (`file-manifest.config` next to the installer you are running) does not match the **remote manifest** from GitHub.
+`-Verify` / `-verify` checks whether the AI infrastructure is present in the target repository.
 
-**Common causes:**
-- You have an older `~/.terraform-azurerm-ai-installer` / `%USERPROFILE%\.terraform-azurerm-ai-installer` from a previous release.
-- You updated your local clone but did not re-bootstrap the user-profile installer (if you are developing the installer itself).
+After running `-Clean` / `-clean`, missing files and directories are expected.
 
-**Fix:** refresh your installer, then run verify again.
-
-**Windows (PowerShell):**
-```powershell
-# Re-extract the latest release bundle (recommended), or re-bootstrap from a local clone.
-
-# Then verify against your target repo:
-& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\terraform-provider-azurerm"
-```
-
-**macOS/Linux (Bash):**
-```bash
-# Re-extract the latest release bundle (recommended), or re-bootstrap from a local clone.
-
-# Then verify against your target repo:
-~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/terraform-provider-azurerm"
-```
-
-> [!NOTE]
-> If the installer cannot reach GitHub (for example DNS/firewall/proxy restrictions), `-Verify` / `-verify` fails fast in GitHub-source mode. Use `-LocalPath` / `-local-path` for offline/local workflows (remote manifest validation is skipped by design).
->
-> If you are intentionally installing from a local AI dev repo using `-LocalPath` / `-local-path`, remote manifest validation is skipped by design.
+If you want to confirm cleanup, check that:
+- `.github/instructions/`, `.github/prompts/`, and `.github/skills/` are removed when empty.
+- `.vscode/` remains (repository-standard), but `.vscode/settings.json` is removed.
 
 ---
 
@@ -493,17 +480,11 @@ sudo pacman -S curl jq
 
 **Installer**:
 ```powershell
-# PowerShell: preview without making changes
-.\install-copilot-setup.ps1 -Dry-Run -RepoDirectory "C:\path\to\terraform-provider-azurerm"
-
 # Optional: PowerShell script-level tracing (very verbose)
 # Set-PSDebug -Trace 1; .\install-copilot-setup.ps1 -Help; Set-PSDebug -Off
 ```
 
 ```bash
-# Bash: preview without making changes
-./install-copilot-setup.sh -dry-run -repo-directory "/path/to/terraform-provider-azurerm"
-
 # Optional: Bash script-level tracing (very verbose)
 # bash -x ./install-copilot-setup.sh -help
 ```

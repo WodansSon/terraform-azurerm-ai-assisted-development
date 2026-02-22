@@ -59,7 +59,7 @@ test_bash_version() {
 
 # Function to test required commands
 test_required_commands() {
-    local required_commands=("git" "curl" "mkdir" "cp" "rm" "dirname" "realpath")
+    local required_commands=("git" "mkdir" "cp" "rm" "dirname" "realpath")
     local missing_commands=()
     local valid=true
 
@@ -124,22 +124,13 @@ validate_repository() {
 test_system_requirements() {
     local bash_result=$(test_bash_version)
     local commands_result=$(test_required_commands)
-    local internet_result=""
-
-    # Test internet connectivity
-    if test_internet_connectivity; then
-        internet_result="Connected=true"$'\n'"Reason=Internet connectivity verified"
-    else
-        internet_result="Connected=false"$'\n'"Reason=No internet connectivity detected. Check network connection and firewall settings."
-    fi
 
     # Parse results
     local bash_valid=$(echo "${bash_result}" | grep "Valid=" | cut -d= -f2)
     local commands_valid=$(echo "${commands_result}" | grep "Valid=" | cut -d= -f2)
-    local internet_connected=$(echo "${internet_result}" | grep "Connected=" | cut -d= -f2)
 
     # Overall validation
-    if [[ "${bash_valid}" == "true" && "${commands_valid}" == "true" && "${internet_connected}" == "true" ]]; then
+    if [[ "${bash_valid}" == "true" && "${commands_valid}" == "true" ]]; then
         echo "OverallValid=true"
     else
         echo "OverallValid=false"
@@ -147,17 +138,11 @@ test_system_requirements() {
 
     echo "Bash=${bash_result}"
     echo "Commands=${commands_result}"
-    echo "Internet=${internet_result}"
 }
 
 # Function to test system requirements (original version for compatibility)
 test_system_requirements_basic() {
     local missing_tools=()
-
-    # Check for curl or wget
-    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-        missing_tools+=("curl or wget")
-    fi
 
     # Check for basic Unix tools
     local required_tools=("bash" "mkdir" "cp" "rm" "dirname" "realpath")
@@ -358,23 +343,6 @@ get_workspace_root() {
     find_workspace_root "${start_path}"
 }
 
-# Function to test internet connectivity
-test_internet_connectivity() {
-    local test_url="https://raw.githubusercontent.com"
-
-    if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL --connect-timeout 10 "${test_url}" >/dev/null 2>&1; then
-            return 0
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget -q --timeout=10 --tries=1 "${test_url}" -O /dev/null 2>/dev/null; then
-            return 0
-        fi
-    fi
-
-    return 1
-}
-
 # Function to verify AI infrastructure installation
 verify_installation() {
     local workspace_root="${1:-$(get_workspace_root)}"
@@ -409,126 +377,12 @@ verify_installation() {
         return 1
     fi
 
-    # GitHub mode verification is pinned to GitHub `main`. In that mode we must be able to:
-    # 1) fetch the remote manifest, and
-    # 2) prove the local manifest matches it.
-    #
-    # For local source installs (-local-path), skip remote manifest validation by design.
-    if [[ -n "${LOCAL_SOURCE_PATH:-}" ]]; then
-        :
-    else
-        local remote_base_url="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development/main"
-        local remote_manifest_url="${remote_base_url}/installer/file-manifest.config"
-
-        local local_manifest_content
-        local_manifest_content="$(tr -d '\r' < "${manifest_file}" 2>/dev/null || true)"
-
-        local remote_manifest_content=""
-
-        if command -v curl >/dev/null 2>&1; then
-            local remote_manifest_raw
-            local curl_exit
-
-            local errexit_was_set=false
-            if [[ "$-" == *e* ]]; then
-                errexit_was_set=true
-                set +e
-            fi
-
-            remote_manifest_raw="$(curl -fsSL --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${remote_manifest_url}" 2>/dev/null)"
-            curl_exit=$?
-
-            if [[ "${errexit_was_set}" == "true" ]]; then
-                set -e
-            fi
-
-            if [[ ${curl_exit} -ne 0 ]] || [[ -z "${remote_manifest_raw}" ]]; then
-                write_error_message "cannot fetch remote manifest from GitHub"
-                write_plain ""
-                write_plain " Remote manifest: ${remote_manifest_url}"
-                write_plain ""
-                write_plain " This installer will verify against files from GitHub 'main'."
-                write_plain " Fix: check network/proxy access to raw.githubusercontent.com, or use -local-path."
-                return 1
-            fi
-
-            remote_manifest_content="$(printf '%s' "${remote_manifest_raw}" | tr -d '\r')"
-        elif command -v wget >/dev/null 2>&1; then
-            remote_manifest_content="$(wget -q --timeout=20 --tries=2 --user-agent="terraform-azurerm-ai-installer" "${remote_manifest_url}" -O - 2>/dev/null | tr -d '\r')"
-            if [[ -z "${remote_manifest_content}" ]]; then
-                write_error_message "cannot fetch remote manifest from GitHub"
-                write_plain ""
-                write_plain " Remote manifest: ${remote_manifest_url}"
-                write_plain ""
-                write_plain " Fix: check network/proxy access to raw.githubusercontent.com, or use -local-path."
-                return 1
-            fi
-        else
-            write_error_message "cannot validate remote manifest (curl/wget not found)"
-            write_plain ""
-            write_plain " This installer will verify against files from GitHub 'main'."
-            write_plain " Fix: install curl or wget, or use -local-path."
-            return 1
-        fi
-
-        if [[ -z "${remote_manifest_content}" ]]; then
-            write_error_message "remote manifest response was empty"
-            write_plain " Remote manifest: ${remote_manifest_url}"
-            return 1
-        fi
-
-        if [[ "${local_manifest_content}" != "${remote_manifest_content}" ]]; then
-            show_manifest_mismatch_error "${manifest_file}" "${remote_manifest_url}" "$0"
-            return 1
-        fi
-
-        # Fail fast if the remote source does not actually contain the files referenced by the manifest.
-        # This prevents confusing "manifest matches" situations where individual files 404 due to renames.
-        local missing_remote=()
-        local sections=("MAIN_FILES" "INSTRUCTION_FILES" "PROMPT_FILES" "SKILL_FILES" "UNIVERSAL_FILES")
-        local section
-
-        for section in "${sections[@]}"; do
-            local entries
-            entries=$(get_manifest_files "${section}" "${manifest_file}" 2>/dev/null || true)
-            [[ -z "${entries}" ]] && continue
-
-            while IFS= read -r entry; do
-                [[ -z "${entry}" ]] && continue
-                local url="${remote_base_url}/${entry}"
-
-                if command -v curl >/dev/null 2>&1; then
-                    if ! curl -fsSI --connect-timeout 10 --max-time 20 -A "terraform-azurerm-ai-installer" "${url}" >/dev/null 2>&1; then
-                        missing_remote+=("${entry}")
-                    fi
-                else
-                    if ! wget -q --spider --timeout=20 --tries=1 --user-agent="terraform-azurerm-ai-installer" "${url}" 2>/dev/null; then
-                        missing_remote+=("${entry}")
-                    fi
-                fi
-            done <<< "${entries}"
-        done
-
-        if [[ ${#missing_remote[@]} -gt 0 ]]; then
-            write_error_message "remote source is missing manifest files on GitHub 'main'"
-            write_plain ""
-            write_plain " Remote base: ${remote_base_url}"
-            write_plain ""
-            write_plain " Missing (showing up to 10):"
-            local i=0
-            while [[ $i -lt ${#missing_remote[@]} && $i -lt 10 ]]; do
-                write_plain "  - ${missing_remote[$i]}"
-                i=$((i + 1))
-            done
-            write_plain ""
-            write_plain " Fix: use -local-path for dev installs, or update GitHub 'main' to include these paths."
-            return 1
-        fi
-    fi
+    # Offline-only verification: no remote manifest checks.
 
     write_cyan " Using manifest: ${manifest_file}"
     echo ""
     local files_checked=0
+    local dirs_checked=0
     local files_passed=0
     local files_failed=0
     local missing_items=()  # Array to track specific missing files/directories
@@ -559,7 +413,7 @@ verify_installation() {
     if [[ $? -eq 0 && -n "${instruction_files}" ]]; then
         # Check if instructions directory exists
         local instructions_dir="${workspace_root}/.github/instructions"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${instructions_dir}" ]]; then
             write_green "  [FOUND  ] .github/instructions/"
             files_passed=$((files_passed + 1))
@@ -593,7 +447,7 @@ verify_installation() {
     if [[ $? -eq 0 && -n "${prompt_files}" ]]; then
         # Check if prompts directory exists
         local prompts_dir="${workspace_root}/.github/prompts"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${prompts_dir}" ]]; then
             write_green "  [FOUND  ] .github/prompts/"
             files_passed=$((files_passed + 1))
@@ -627,7 +481,7 @@ verify_installation() {
     if [[ -n "${skill_files}" ]]; then
         # Check if skills directory exists
         local skills_dir="${workspace_root}/.github/skills"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${skills_dir}" ]]; then
             write_green "  [FOUND  ] .github/skills/"
             files_passed=$((files_passed + 1))
@@ -681,7 +535,7 @@ verify_installation() {
             else
                 # Regular file processing
                 # Count directory first (like PowerShell does)
-                files_checked=$((files_checked + 1))
+                dirs_checked=$((dirs_checked + 1))
                 if [[ -d "${workspace_root}/${dir_path}" ]]; then
                     write_green "  [FOUND  ] ${dir_path}/"
                     files_passed=$((files_passed + 1))
@@ -726,14 +580,15 @@ verify_installation() {
             fi
             local issues_found=0
 
-            # Match PowerShell order: Branch Type, Target Branch, Files Verified, Issues Found, Location
+            # Match PowerShell order: Branch Type, Target Branch, Files Verified, Directories Verified, Issues Found, Location
             # Clean branch_type variable to remove any potential line breaks or whitespace
             branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            show_operation_summary "Verification" "true" "false" \
+            show_operation_summary "Verification" "true" \
                 "Branch Type: ${branch_type}" \
                 "Target Branch: ${current_branch}" \
                 "Files Verified: ${files_checked}" \
+                "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
                 "Location: ${workspace_root}"
         fi
@@ -772,10 +627,11 @@ verify_installation() {
             # Clean branch_type variable to remove any potential line breaks or whitespace
             branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            show_operation_summary "Verification" "false" "false" \
+            show_operation_summary "Verification" "false" \
                 "Branch Type: ${branch_type}" \
                 "Target Branch: ${current_branch}" \
                 "Files Verified: ${files_checked}" \
+                "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
                 "Location: ${workspace_root}" \
                 --next-steps \
@@ -882,4 +738,4 @@ test_is_azurerm_provider_repo() {
 
 # Export functions for use in other scripts
 export -f test_system_requirements validate_repository test_is_azurerm_provider_repo
-export -f test_git_repository test_workspace_valid test_internet_connectivity verify_installation
+export -f test_git_repository test_workspace_valid verify_installation

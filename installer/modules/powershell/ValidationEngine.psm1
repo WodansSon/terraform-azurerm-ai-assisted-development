@@ -137,60 +137,6 @@ function Test-RequiredCommand {
     }
 }
 
-function Test-InternetConnectivity {
-    <#
-    .SYNOPSIS
-    Test internet connectivity to required endpoints
-    #>
-
-    $testUrls = @(
-        "https://api.github.com",
-        "https://raw.githubusercontent.com"
-    )
-
-    $results = @{
-        Connected = $false
-        TestedEndpoints = @{}
-        Reason = ""
-    }
-
-    $successCount = 0
-
-    foreach ($url in $testUrls) {
-        try {
-            # Disable progress bar to prevent console flashing
-            $ProgressPreference = 'SilentlyContinue'
-            $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 10 -UseBasicParsing
-            $results.TestedEndpoints[$url] = @{
-                Success = $true
-                StatusCode = $response.StatusCode
-                ResponseTime = 0
-            }
-            $successCount++
-        }
-        catch {
-            $results.TestedEndpoints[$url] = @{
-                Success = $false
-                StatusCode = 0
-                Error = $_.Exception.Message
-            }
-        }
-        finally {
-            # Restore progress preference
-            $ProgressPreference = 'Continue'
-        }
-    }
-
-    $results.Connected = $successCount -gt 0
-    $results.Reason = if ($results.Connected) {
-        "Internet connectivity verified ($successCount/$($testUrls.Count) endpoints reachable)"
-    } else {
-        "No internet connectivity detected. Check network connection and firewall settings."
-    }
-
-    return $results
-}
-
 function Test-GitRepository {
     <#
     .SYNOPSIS
@@ -621,23 +567,19 @@ function Test-SystemRequirement {
     Test all system requirements for the AI installer
     #>
 
-    param(
-        [bool]$RequireInternet = $true
-    )
+    param()
 
     $results = @{
         OverallValid = $true
         PowerShell = Test-PowerShellVersion
         ExecutionPolicy = Test-ExecutionPolicy
         Commands = Test-RequiredCommand
-        Internet = if ($RequireInternet) { Test-InternetConnectivity } else { @{ Connected = $true; Reason = "Skipped (local source install)" } }
     }
 
     # Check if any requirement failed
     $results.OverallValid = $results.PowerShell.Valid -and
                            $results.ExecutionPolicy.Valid -and
-                           $results.Commands.Valid -and
-                           $results.Internet.Connected
+                           $results.Commands.Valid
 
     return $results
 }
@@ -654,13 +596,10 @@ function Test-PreInstallation {
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Used when installing via -RepoDirectory to a target repository.
 
-    .PARAMETER RequireInternet
-    Require internet connectivity (needed for GitHub downloads). Set to false for -LocalPath installs.
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
-        [bool]$RequireProviderRepo = $false,
-        [bool]$RequireInternet = $true
+        [bool]$RequireProviderRepo = $false
     )
 
     $results = @{
@@ -682,7 +621,7 @@ function Test-PreInstallation {
         $results.OverallValid = $false
 
         # Still run system requirements (these are always safe to check)
-        $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
+        $results.SystemRequirements = Test-SystemRequirement
 
         # Skip workspace and detailed checks due to safety violation
         $results.Workspace = @{
@@ -696,7 +635,7 @@ function Test-PreInstallation {
 
     # Continue with full validation if Git is safe
     $results.Workspace = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
-    $results.SystemRequirements = Test-SystemRequirement -RequireInternet:$RequireInternet
+    $results.SystemRequirements = Test-SystemRequirement
 
     # CRITICAL SAFETY CHECKS: Verify target repository and uncommitted changes
     # If RequireProviderRepo is true, reject AI dev repo (used when installing via -RepoDirectory)
@@ -718,44 +657,6 @@ function Test-PreInstallation {
     }
 
     return $results
-}
-
-function Test-SourceRepository {
-    <#
-    .SYNOPSIS
-    Determines if we're running on the source repository vs a target repository
-
-    .DESCRIPTION
-    Checks various indicators to determine if this is the source repository where
-    AI infrastructure files are maintained vs a target repository where they
-    would be installed.
-
-    .OUTPUTS
-    Boolean - True if this is the source repository, False if target
-
-    .NOTES
-    CRITICAL FUNCTION: This provides essential source repository protection.
-    The logic here determines whether files should be copied locally or downloaded
-    remotely, preventing accidental overwriting of source files.
-    #>
-
-    # Check if we're on a source branch (main, master)
-    try {
-        Push-Location $Global:WorkspaceRoot
-        $currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
-        $sourceBranches = @("main", "master")
-        if ($currentBranch -in $sourceBranches) {
-            return $true
-        }
-    } catch {
-        # Git not available or not in a git repo
-    } finally {
-        Pop-Location
-    }
-
-    # Since toolkit is now separate, source detection is only branch-based
-    # The presence of .github directories in target repo doesn't mean it's source
-    return $false
 }
 
 function Invoke-VerifyWorkspace {
@@ -841,50 +742,14 @@ function Invoke-VerifyWorkspace {
         Write-Separator
         Write-Host ""
 
-        # Fail fast if the local installer manifest does not match the remote manifest.
-        # This prevents misleading verification results when a stale user-profile installer is present.
-        #
-        # Contributor local-path workflows explicitly source files from a local working tree and may
-        # legitimately diverge from the GitHub manifest. In that case, skip remote manifest validation.
-        if (-not $Global:SkipRemoteManifestValidation) {
-        try {
-            $localManifestPath = Join-Path $Global:ScriptRoot "file-manifest.config"
-            $remoteManifestUrl = "$($Global:ManifestConfig.BaseUrl)/installer/file-manifest.config"
-
-            if (Test-Path $localManifestPath -and $remoteManifestUrl) {
-                $localManifest = (Get-Content -Path $localManifestPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
-                $remoteManifest = (Invoke-WebRequest -Uri $remoteManifestUrl -UseBasicParsing -ErrorAction Stop).Content
-                $remoteManifest = $remoteManifest -replace "`r`n", "`n" -replace "`r", "`n"
-
-                if ($localManifest -ne $remoteManifest) {
-                    Write-Host " Manifest file mismatch" -ForegroundColor Red
-                    Write-Host ""
-                    Write-Host " Local manifest: $(Get-RelativePath $localManifestPath)" -ForegroundColor Cyan
-                    Write-Host " Remote manifest: $remoteManifestUrl" -ForegroundColor Cyan
-                    Write-Host ""
-                    Write-Host " The local installer manifest does not match the remote manifest." -ForegroundColor Cyan
-                    Write-Host " This usually means your installer is out of date." -ForegroundColor Cyan
-                    Write-Host ""
-                    Write-Host " FIX: Refresh the installer/manifest (re-run Bootstrap or re-extract the latest release bundle), then run -Verify again." -ForegroundColor Yellow
-                    Write-Host ""
-
-                    $results.Success = $false
-                    $results.Issues += "file-manifest.config mismatch"
-                    return $results
-                }
-            }
-        }
-        catch {
-            # If remote manifest cannot be fetched (DNS/firewall/proxy), do not block verification.
-            Write-Host " NOTE: Could not validate remote manifest; continuing verification" -ForegroundColor Yellow
-        }
-        }
+        # This installer uses an offline payload; verification does not require remote manifest checks.
 
         # Check main instructions file
         $instructionsFile = $Global:InstallerConfig.Files.Instructions.Target
         if (Test-Path $instructionsFile) {
             $results.Files += @{
                 Path = $instructionsFile
+                ItemType = "File"
                 Status = "Present"
                 Description = "Main Copilot instructions"
             }
@@ -892,6 +757,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $instructionsFile
+                ItemType = "File"
                 Status = "Missing"
                 Description = "Main Copilot instructions"
             }
@@ -904,6 +770,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $instructionsDir -PathType Container) {
             $results.Files += @{
                 Path = $instructionsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Instructions directory"
             }
@@ -925,6 +792,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Instruction file"
                     }
@@ -932,6 +800,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Instruction file"
                     }
@@ -942,6 +811,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $instructionsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Instructions directory"
             }
@@ -954,6 +824,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $promptsDir -PathType Container) {
             $results.Files += @{
                 Path = $promptsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Prompts directory"
             }
@@ -975,6 +846,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Prompt file"
                     }
@@ -982,6 +854,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Prompt file"
                     }
@@ -992,6 +865,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $promptsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Prompts directory"
             }
@@ -1004,6 +878,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $skillsDir -PathType Container) {
             $results.Files += @{
                 Path = $skillsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Skills directory"
             }
@@ -1018,6 +893,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Skill file"
                     }
@@ -1025,6 +901,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Skill file"
                     }
@@ -1035,6 +912,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $skillsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Skills directory"
             }
@@ -1048,6 +926,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $settingsFile) {
             $results.Files += @{
                 Path = ".vscode/settings.json"
+                ItemType = "File"
                 Status = "Present"
                 Description = "AI infrastructure settings file"
             }
@@ -1056,6 +935,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = ".vscode/settings.json"
+                ItemType = "File"
                 Status = "Not Present"
                 Description = "AI infrastructure not installed"
             }
@@ -1108,6 +988,8 @@ function Invoke-VerifyWorkspace {
 
         # Prepare details for centralized summary
         $details = @()
+        $directoriesChecked = @($results.Files | Where-Object { $_.ItemType -eq 'Directory' }).Count
+        $filesCheckedTotal = @($results.Files | Where-Object { $_.ItemType -eq 'File' }).Count
         $totalItemsChecked = $results.Files.Count
         $issuesFound = $results.Issues.Count
         $itemsSuccessful = $totalItemsChecked - $issuesFound
@@ -1125,7 +1007,8 @@ function Invoke-VerifyWorkspace {
 
         $details += "Branch Type: $branchType"
         $details += "Target Branch: $currentBranch"
-        $details += "Files Verified: $totalItemsChecked"
+        $details += "Files Verified: $filesCheckedTotal"
+        $details += "Directories Verified: $directoriesChecked"
         $details += "Issues Found: $issuesFound"
         $details += "Location: $workspaceRoot"
 
@@ -1139,7 +1022,7 @@ function Invoke-VerifyWorkspace {
         # Success determination depends on context:
         # - AfterClean: Success = issues found (files removed)
         # - Normal verify: Success = no issues (files present)
-        Show-OperationSummary -OperationName "Verification" -Success $results.Success -DryRun $false -Details $details -NextSteps $nextSteps
+        Show-OperationSummary -OperationName "Verification" -Success $results.Success -Details $details -NextSteps $nextSteps
 
         return $results
     }
@@ -1155,7 +1038,6 @@ Export-ModuleMember -Function @(
     'Test-WorkspaceValid',
     'Test-PreInstallation',
     'Invoke-VerifyWorkspace',
-    'Test-SourceRepository',
     'Test-IsAzureRMProviderRepo',
     'Test-UncommittedChange'
 )

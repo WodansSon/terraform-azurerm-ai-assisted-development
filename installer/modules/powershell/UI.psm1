@@ -115,20 +115,20 @@ function Show-ValidationError {
     switch ($ErrorType) {
         'BranchValidation' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Remote source validation failed" -ForegroundColor Cyan
+            Write-Host " Installer configuration validation failed" -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Source: " -ForegroundColor Cyan -NoNewline
-            Write-Host "GitHub (main)" -ForegroundColor Yellow
+            Write-Host "Bundled payload (aii/)" -ForegroundColor Yellow
             Write-Host ""
-            Write-Host " The installer could not access the remote source used for default installs." -ForegroundColor Cyan
+            Write-Host " The installer could not load the required local files (manifest/payload)." -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Notes:" -ForegroundColor Cyan
-            Write-Host " - This applies when pulling files from GitHub (default behavior)." -ForegroundColor Cyan
-            Write-Host " - If you need to install without GitHub access, use -LocalPath to copy files from a local directory." -ForegroundColor Cyan
+            Write-Host " - Default installs use the bundled payload in the installer directory." -ForegroundColor Cyan
+            Write-Host " - Use -LocalPath to source files from a local working tree (contributor/dev override)." -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Suggested actions:" -ForegroundColor Cyan
-            Write-Host " - Check network/proxy/firewall settings and try again" -ForegroundColor White
-            Write-Host " - Use local source install:" -ForegroundColor White
+            Write-Host " - Re-extract the latest release bundle into your user profile and try again" -ForegroundColor White
+            Write-Host " - Or use local source install:" -ForegroundColor White
             Write-Host "   .\install-copilot-setup.ps1 -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`" -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
         }
         'EmptyLocalPath' {
@@ -321,24 +321,19 @@ function Show-FeatureBranchHelp {
 
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
-    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of GitHub 'main')"
-    Write-Host "  -Dry-Run          Show what would be done without making changes"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
 
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
-    Write-Host "  Install AI infrastructure (default - from GitHub 'main'):"
+    Write-Host "  Install AI infrastructure (default - from bundled payload):"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-        Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm working copy`""
+    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm working copy`""
     Write-Host ""
     Write-Host "  Install from local files (offline or local testing):"
     Write-Host "    .\install-copilot-setup.ps1 -LocalPath `"/path/to/terraform-azurerm-ai-assisted-development`" -RepoDirectory `"/path/to/repo`""
-    Write-Host ""
-    Write-Host "  Dry-Run (preview changes):"
-    Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm`" -Dry-Run"
     Write-Host ""
     Write-Host "  Clean removal:"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
@@ -352,7 +347,7 @@ function Show-FeatureBranchHelp {
     Write-Host "  4. Use -Clean to remove AI infrastructure when done"
     Write-Host ""
     Write-Host "LOCAL SOURCE WORKFLOW:" -ForegroundColor Cyan
-    Write-Host "  Use -LocalPath to copy AI files from a local directory instead of GitHub." -ForegroundColor White
+    Write-Host "  Use -LocalPath to copy AI files from a local directory instead of the bundled payload." -ForegroundColor White
     Write-Host ""
 }
 
@@ -399,8 +394,7 @@ function Show-UnknownBranchHelp {
     Write-Host "ALL OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
     Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
-    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of GitHub 'main')"
-    Write-Host "  -Dry-Run          Show what would be done without making changes"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
@@ -529,7 +523,7 @@ function Show-AIInstallerNotFoundError {
         "Resolution: Run bootstrap from your terraform-azurerm-ai-assisted-development clone"
     )
 
-    Show-OperationSummary -OperationName "Bootstrap" -Success $false -DryRun $false `
+        Show-OperationSummary -OperationName "Bootstrap" -Success $false `
         -ItemsProcessed 0 -ItemsSuccessful 0 -ItemsFailed 1 `
         -Details $details
 
@@ -730,8 +724,6 @@ function Show-OperationSummary {
     .PARAMETER ItemsFailed
     Number of items that failed processing
 
-    .PARAMETER DryRun
-    Whether this was a dry run operation
     #>
     param(
         [Parameter(Mandatory)]
@@ -744,8 +736,6 @@ function Show-OperationSummary {
         [int]$ItemsSuccessful = 0,
         [int]$ItemsFailed = 0,
 
-        [bool]$DryRun = $false,
-
         [string[]]$Details = @(),
 
         [string[]]$NextSteps = @()
@@ -755,11 +745,7 @@ function Show-OperationSummary {
 
     # Show operation completion with consistent formatting for all operations
     $statusText = if ($Success) { "completed successfully" } else { "failed" }
-    $completionMessage = if ($DryRun) {
-        " $($OperationName) $statusText (dry run)"
-    } else {
-        " $($OperationName) $statusText"
-    }
+    $completionMessage = " $($OperationName) $statusText"
     Write-Host $completionMessage -ForegroundColor $(if ($Success) { "Green" } else { "Red" })
     Write-Host ""
 
