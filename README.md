@@ -80,8 +80,17 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 > [!NOTE]
 > **About `-Verify` / `-verify`:** verification checks whether your target repository has all required AI files.
 > - If it reports **"Manifest file mismatch"**, your local installer manifest is out of date (or from a different release/branch).
->   Re-extract the latest release bundle (recommended) or (contributors only) re-run Bootstrap from a local git clone, then run verify again.
+>   Re-extract the latest release bundle (recommended), or re-run `-Bootstrap` from a local git clone (contributors only), then run verify again.
 > - `-Verify` is offline-only and checks against the local `file-manifest.config` and bundled payload in the installer directory.
+> - Verification summaries include both files and directories checked.
+<!-- -->
+> [!NOTE]
+> **Offline-only operations**: install, verify, and clean use the bundled payload (`aii/`) and local manifest. No network downloads occur during these operations.
+> Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap`.
+<!-- -->
+> [!NOTE]
+> Target installs require a `terraform-provider-azurerm` clone with an origin remote configured.
+> The AI development repository is a source-only workspace and is not a valid install target.
 <!-- -->
 > [!NOTE]
 > **Install a specific version (pinning)**: replace `latest/download` with a tagged release URL (`download/vX.Y.Z`).

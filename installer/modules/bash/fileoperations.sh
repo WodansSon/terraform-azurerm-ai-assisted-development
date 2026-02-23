@@ -26,22 +26,6 @@ read_into_array() {
     rm -f "$temp_file"
 }
 
-# Function to get workspace root directory
-get_workspace_root() {
-    local current_dir="$(pwd)"
-
-    # Look for terraform-provider-azurerm indicators
-    while [[ "${current_dir}" != "/" ]]; do
-        if [[ -f "${current_dir}/go.mod" ]] && grep -q "terraform-provider-azurerm" "${current_dir}/go.mod" 2>/dev/null; then
-            echo "${current_dir}"
-            return 0
-        fi
-        current_dir="$(dirname "${current_dir}")"
-    done
-
-    return 1
-}
-
 # Function to get file size
 get_file_size() {
     local filepath="$1"
@@ -219,7 +203,6 @@ remove_deprecated_files() {
     local quiet="${3:-false}"
 
     local deprecated_count=0
-    local deprecated_files=()
 
     # Ensure manifest file exists
     if [[ ! -f "${manifest_file}" ]]; then
@@ -257,8 +240,6 @@ remove_deprecated_files() {
 
                 # If not in current manifest, mark for removal
                 if [[ "${is_current}" == "false" ]]; then
-                    deprecated_files+=("${existing_file}:Instruction:${basename_file}")
-
                     if rm -f "${existing_file}" 2>/dev/null; then
                         [[ "${quiet}" == "false" ]] && echo "  Removed deprecated instruction file: ${basename_file}"
                     else
@@ -292,8 +273,6 @@ remove_deprecated_files() {
 
                 # If not in current manifest, mark for removal
                 if [[ "${is_current}" == "false" ]]; then
-                    deprecated_files+=("${existing_file}:Prompt:${basename_file}")
-
                     if rm -f "${existing_file}" 2>/dev/null; then
                         [[ "${quiet}" == "false" ]] && echo "  Removed deprecated prompt file: ${basename_file}"
                     else
@@ -329,8 +308,6 @@ remove_deprecated_files() {
                 if [[ "${is_current}" == "false" ]]; then
                     local skill_name
                     skill_name=$(basename "$(dirname "${rel_path}")")
-                    deprecated_files+=("${existing_file}:Skill:${skill_name}/SKILL.md")
-
                     if rm -f "${existing_file}" 2>/dev/null; then
                         [[ "${quiet}" == "false" ]] && echo "  Removed deprecated skill file: ${skill_name}/SKILL.md"
                     else
@@ -421,7 +398,6 @@ install_infrastructure() {
             local_source_path="$(cd "${local_source_path}" 2>/dev/null && pwd)"
         fi
         export SOURCE_REPOSITORY="file://${local_source_path}"
-        export BRANCH=""  # Not used for local files
         export SOURCE_LOCAL_PATH="${local_source_path}"
         write_cyan "Installing from local path: ${local_source_path}"
         echo ""
@@ -437,7 +413,6 @@ install_infrastructure() {
         fi
 
         export SOURCE_REPOSITORY="file://${payload_root}"
-        export BRANCH=""  # Not used for local files
         export SOURCE_LOCAL_PATH="${payload_root}"
         write_cyan "Installing from bundled payload: ${payload_root}"
         echo ""
@@ -708,7 +683,7 @@ show_installation_summary() {
     if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
         source_value="${SOURCE_REPOSITORY#file://}"
     else
-        source_value="${SOURCE_REPOSITORY:-}""/""${BRANCH:-main}"
+        source_value="${SOURCE_REPOSITORY:-}"
     fi
 
     local manifest_value="${INSTALLER_MANIFEST_FILE:-}"
@@ -1200,6 +1175,11 @@ bootstrap_files_to_profile() {
     fi
     echo "${bootstrap_version}" > "${user_profile}/VERSION"
 
+    if ! write_installer_checksum "${user_profile}"; then
+        write_error_message "Failed to generate installer checksum"
+        return 1
+    fi
+
     # Make installer script executable
     chmod +x "${user_profile}/install-copilot-setup.sh"
 
@@ -1235,8 +1215,8 @@ bootstrap_files_to_profile() {
 # ==============================================================================
 
 # Export all functions for use in other scripts
-export -f get_workspace_root is_source_repository validate_operation_allowed validate_bootstrap_prerequisites
-export -f copy_file get_file_size get_directory_size create_directory_structure
+export -f validate_operation_allowed
+export -f get_file_size get_directory_size create_directory_structure
 export -f remove_path backup_file verify_file make_executable
 export -f remove_deprecated_files install_infrastructure clean_infrastructure bootstrap_files_to_profile
 export -f get_files_for_cleanup

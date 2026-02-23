@@ -144,15 +144,16 @@ function Test-GitRepository {
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
+        [bool]$RequireOriginRemote = $false,
         [string]$WorkspacePath = ""
     )
 
     $results = @{
         Valid = $false
         IsGitRepo = $false
-        HasRemote = $false
+        HasOriginRemote = $false
         CurrentBranch = ""
-        RemoteUrl = ""
+        OriginRemoteUrl = ""
         Reason = ""
     }
 
@@ -181,33 +182,35 @@ function Test-GitRepository {
                     $results.CurrentBranch = "Unknown"
                 }
 
-                # Get remote URL
+                # Get origin remote URL
                 try {
-                    $results.RemoteUrl = git remote get-url origin 2>$null
-                    $results.HasRemote = $LASTEXITCODE -eq 0 -and $results.RemoteUrl
+                    $results.OriginRemoteUrl = git remote get-url origin 2>$null
+                    $results.HasOriginRemote = $LASTEXITCODE -eq 0 -and $results.OriginRemoteUrl
                 }
                 catch {
-                    $results.HasRemote = $false
+                    $results.HasOriginRemote = $false
                 }
 
                 # CRITICAL SAFETY CHECK: Prevent running on source branch (unless bootstrap)
                 $sourceBranches = @("main", "master")
                 $isSourceBranch = $results.CurrentBranch -in $sourceBranches
 
-                $results.Valid = $results.IsGitRepo -and $results.HasRemote -and (-not $isSourceBranch -or $AllowBootstrapOnSource)
+                $results.Valid = $results.IsGitRepo -and (-not $isSourceBranch -or $AllowBootstrapOnSource) -and (-not $RequireOriginRemote -or $results.HasOriginRemote)
 
                 if ($isSourceBranch -and -not $AllowBootstrapOnSource) {
                     $results.Reason = "SAFETY VIOLATION: Cannot run installer on source branch '$($results.CurrentBranch)'. Switch to a different branch to install AI infrastructure."
                 }
+                elseif ($RequireOriginRemote -and -not $results.HasOriginRemote) {
+                    $results.Reason = "Git repository has no origin remote configured"
+                }
                 elseif ($results.Valid) {
                     if ($isSourceBranch -and $AllowBootstrapOnSource) {
                         $results.Reason = "Source branch - bootstrap operations allowed"
+                    } elseif ($RequireOriginRemote) {
+                        $results.Reason = "Valid git repository with origin remote configured"
                     } else {
-                        $results.Reason = "Valid git repository with remote origin"
+                        $results.Reason = "Valid git repository"
                     }
-                }
-                elseif (-not $results.HasRemote) {
-                    $results.Reason = "Git repository has no remote origin configured"
                 }
             }
             else {
@@ -584,6 +587,110 @@ function Test-SystemRequirement {
     return $results
 }
 
+function Get-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $manifestPath = Join-Path $InstallerRoot "file-manifest.config"
+    $payloadRoot = Join-Path $InstallerRoot "aii"
+
+    if (-not (Test-Path $manifestPath)) {
+        return @{ Valid = $false; Reason = "Installer manifest not found" }
+    }
+    if (-not (Test-Path $payloadRoot)) {
+        return @{ Valid = $false; Reason = "Installer payload not found" }
+    }
+
+    $entries = @()
+    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash
+    $entries += "$manifestHash  file-manifest.config"
+
+    $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
+    foreach ($file in $payloadFiles) {
+        $relPath = $file.FullName.Substring($payloadRoot.Length + 1) -replace "\\", "/"
+        $fileHash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
+        $entries += "$fileHash  aii/$relPath"
+    }
+
+    $combined = ($entries | Sort-Object) -join "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $hashBytes = $sha256.ComputeHash($bytes)
+    $overallHash = ($hashBytes | ForEach-Object { $_.ToString("x2") }) -join ""
+
+    return @{ Valid = $true; Hash = $overallHash }
+}
+
+function Write-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot,
+
+        [string]$Version
+    )
+
+    $checksumPath = Join-Path $InstallerRoot "aii.checksum"
+    $result = Get-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $result.Valid) {
+        return $result
+    }
+
+    if (-not $Version) {
+        $versionPath = Join-Path $InstallerRoot "VERSION"
+        if (Test-Path $versionPath) {
+            $Version = (Get-Content -Path $versionPath -Raw).Trim()
+        }
+    }
+
+    if (-not $Version) {
+        $Version = "dev"
+    }
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    @(
+        "version=$Version",
+        "timestamp=$timestamp",
+        "hash=$($result.Hash)"
+    ) | Set-Content -Path $checksumPath
+
+    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath }
+}
+
+function Test-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $checksumPath = Join-Path $InstallerRoot "aii.checksum"
+    if (-not (Test-Path $checksumPath)) {
+        return @{ Valid = $false; Reason = "Installer checksum file not found" }
+    }
+
+    $hashLine = Get-Content -Path $checksumPath | Where-Object { $_ -match '^hash=' } | Select-Object -First 1
+    if (-not $hashLine) {
+        return @{ Valid = $false; Reason = "Installer checksum file missing hash" }
+    }
+
+    $expected = $hashLine.Substring(5).Trim()
+    if (-not $expected) {
+        return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
+    }
+
+    $computed = Get-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $computed.Valid) {
+        return @{ Valid = $false; Reason = $computed.Reason }
+    }
+
+    if ($expected -ne $computed.Hash) {
+        return @{ Valid = $false; Reason = "Installer checksum mismatch"; Expected = $expected; Actual = $computed.Hash }
+    }
+
+    return @{ Valid = $true; Hash = $computed.Hash }
+}
+
 function Test-PreInstallation {
     <#
     .SYNOPSIS
@@ -613,7 +720,7 @@ function Test-PreInstallation {
     # CRITICAL: Check Git first for branch safety
     # Use the workspace root for git operations if available
     $gitPath = if ($Global:WorkspaceRoot) { $Global:WorkspaceRoot } else { (Get-Location).Path }
-    $results.Git = Test-GitRepository -AllowBootstrapOnSource $AllowBootstrapOnSource -WorkspacePath $gitPath
+    $results.Git = Test-GitRepository -AllowBootstrapOnSource $AllowBootstrapOnSource -RequireOriginRemote $RequireProviderRepo -WorkspacePath $gitPath
 
     # If Git validation fails due to branch safety, short-circuit other validations
     # This prevents running unnecessary tests when we know we can't proceed
@@ -1037,6 +1144,8 @@ function Invoke-VerifyWorkspace {
 Export-ModuleMember -Function @(
     'Test-WorkspaceValid',
     'Test-PreInstallation',
+    'Test-InstallerChecksum',
+    'Write-InstallerChecksum',
     'Invoke-VerifyWorkspace',
     'Test-IsAzureRMProviderRepo',
     'Test-UncommittedChange'

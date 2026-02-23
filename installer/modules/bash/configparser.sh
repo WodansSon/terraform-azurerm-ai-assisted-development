@@ -2,112 +2,6 @@
 # ConfigParser Module for Terraform AzureRM Provider AI Setup (Bash)
 # STREAMLINED VERSION - Contains only functions actually used by main script
 
-# Function to get manifest configuration - equivalent to PowerShell Get-ManifestConfig
-get_manifest_config() {
-    local manifest_path="${1:-}"
-    local branch="${2:-main}"
-    local skip_remote_validation="${3:-false}"
-
-    # Find manifest file if not specified
-    if [[ -z "${manifest_path}" ]]; then
-        # Try multiple locations (equivalent to PowerShell logic)
-        local possible_paths=(
-            "${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
-            "$(dirname "$(dirname "$0")")/file-manifest.config"
-            "$(dirname "$(dirname "$(dirname "$0")")")/file-manifest.config"
-        )
-
-        for path in "${possible_paths[@]}"; do
-            if [[ -f "${path}" ]]; then
-                manifest_path="${path}"
-                break
-            fi
-        done
-
-        # Fallback
-        if [[ -z "${manifest_path}" ]]; then
-            local script_root="$(dirname "$(dirname "$0")")"
-            manifest_path="${script_root}/file-manifest.config"
-        fi
-    fi
-
-    if [[ ! -f "${manifest_path}" ]]; then
-        write_error_message "Manifest file not found: ${manifest_path}"
-        return 1
-    fi
-
-    # Remote validation removed (offline payload/local source only)
-
-    # Parse manifest sections (simplified - just check if file exists and is readable)
-    local has_instructions=false
-    local has_universal=false
-
-    if grep -q "\[INSTRUCTION_FILES\]" "${manifest_path}" 2>/dev/null; then
-        has_instructions=true
-    fi
-
-    if grep -q "\[UNIVERSAL_FILES\]" "${manifest_path}" 2>/dev/null; then
-        has_universal=true
-    fi
-
-    # Return structured data (equivalent to PowerShell PSCustomObject)
-    echo "ManifestPath=${manifest_path}"
-    echo "Branch=${branch}"
-    echo "HasInstructions=${has_instructions}"
-    echo "HasUniversal=${has_universal}"
-    echo "SourceRepository=payload"
-
-    return 0
-}
-
-# Function to get installer configuration - equivalent to PowerShell Get-InstallerConfig
-get_installer_config() {
-    local workspace_root="${1:-}"
-
-    if [[ -z "${workspace_root}" ]]; then
-        workspace_root="$(get_workspace_root)"
-    fi
-
-    if [[ -z "${workspace_root}" ]]; then
-        write_error_message "Could not determine workspace root"
-        return 1
-    fi
-
-    # Return installer configuration (equivalent to PowerShell logic)
-    echo "WorkspaceRoot=${workspace_root}"
-    echo "Repository=WodansSon/terraform-azurerm-ai-assisted-development"
-    echo "InstallationPath=${HOME}/.terraform-azurerm-ai-installer"
-
-    return 0
-}
-
-# Helper function to get workspace root (used by get_installer_config)
-get_workspace_root() {
-    # Try to find .git directory to determine workspace root
-    local current_dir="$(pwd)"
-    local search_dir="${current_dir}"
-
-    # Search up to 10 levels for .git directory
-    local i=1
-    while [[ $i -le 10 ]]; do
-        if [[ -d "${search_dir}/.git" ]]; then
-            echo "${search_dir}"
-            return 0
-        fi
-
-        local parent_dir="$(dirname "${search_dir}")"
-        if [[ "${parent_dir}" == "${search_dir}" ]]; then
-            break  # Reached filesystem root
-        fi
-        search_dir="${parent_dir}"
-        i=$((i + 1))
-    done
-
-    # Fallback to current directory
-    echo "${current_dir}"
-    return 0
-}
-
 # Function to parse manifest section (used by get_manifest_files)
 parse_manifest_section() {
     local manifest_file="$1"
@@ -164,4 +58,4 @@ get_manifest_files() {
 }
 
 # Export functions used by the installer and fileoperations modules
-export -f get_manifest_config get_installer_config get_workspace_root parse_manifest_section get_manifest_files
+export -f parse_manifest_section get_manifest_files

@@ -129,21 +129,6 @@ function Show-EarlyValidationError {
 function Get-ParameterSuggestion {
     param([string]$param)
 
-    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
-    if ($param -eq '--') {
-        Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
-        Write-Host ""
-        Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>"
-        Write-Host "   -LocalPath <path>"
-        Write-Host ""
-        Write-Host " Examples:" -ForegroundColor Green
-        Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
-        Write-Host ""
-        exit 1
-    }
-
     $lowerParam = $param.ToLower()
     $suggestion = $null
 
@@ -167,44 +152,6 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -like '*source*') { $suggestion = 'LocalPath' }
 
     return $suggestion
-}
-
-# Function to check for parameter typos and suggest corrections
-function Test-ParameterTypo {
-    param([string]$param)
-
-    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
-    if ($param -eq '--') {
-        Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
-        Write-Host ""
-        Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>"
-        Write-Host "   -LocalPath <path>"
-        Write-Host ""
-        Write-Host " Examples:" -ForegroundColor Green
-        Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
-        Write-Host ""
-        exit 1
-    }
-
-    # Use the new Get-ParameterSuggestion function
-    $suggestion = Get-ParameterSuggestion $param
-
-    if ($suggestion) {
-        Write-Host " Error:" -ForegroundColor Red -NoNewline
-        Write-Host " Failed to parse command-line argument:" -ForegroundColor Cyan
-        Write-Host " Argument provided but not defined: " -ForegroundColor Cyan -NoNewline
-        Write-Host "$param" -ForegroundColor Yellow
-        Write-Host " Did you mean: " -ForegroundColor Cyan -NoNewline
-        Write-Host "-$suggestion" -ForegroundColor Green -NoNewline
-        Write-Host "?" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host " For more help on using this command, run:" -ForegroundColor Cyan
-        Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-        Write-Host ""
-        exit 1
-    }
 }
 
 #endregion Early Helper Functions
@@ -547,7 +494,6 @@ function Main {
 
             try {
                 # Remote manifest validation is no longer required; this installer does not download AI files from GitHub.
-                $Global:SkipRemoteManifestValidation = $true
                 $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$true
             }
             catch {
@@ -561,17 +507,6 @@ function Main {
             # Invalid workspace - provide minimal configuration for UI display
             $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
             $Global:ManifestConfig = @{}
-        }
-
-        # Step 5: Get branch information for UI display and safety checks
-        try {
-            $currentBranch = git branch --show-current 2>$null
-            if (-not $currentBranch -or $currentBranch.Trim() -eq "") {
-                $currentBranch = "Unknown"
-            }
-        }
-        catch {
-            $currentBranch = "Unknown"
         }
 
         # Step 4: Get branch information for UI display and safety checks
@@ -668,6 +603,15 @@ function Main {
             # Show help menu for guidance
             Show-Help -BranchType $branchType -WorkspaceValid $false -WorkspaceIssue $workspaceValidation.Reason -FromUserProfile $isFromUserProfile -AttemptedCommand $attemptedCommand
             exit 1
+        }
+
+        $needsChecksumCheck = $Verify -or ($RepoDirectory -and -not ($Help -or $Bootstrap -or $Clean))
+        if ($needsChecksumCheck) {
+            $checksum = Test-InstallerChecksum -InstallerRoot $ScriptDirectory
+            if (-not $checksum.Valid) {
+                Show-ValidationError -ErrorType 'InstallerChecksum' -Reason $checksum.Reason
+                exit 1
+            }
         }
 
         if ($Verify) {

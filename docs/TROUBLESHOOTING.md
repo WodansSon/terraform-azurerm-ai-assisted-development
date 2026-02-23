@@ -56,6 +56,45 @@ Error: Could not locate terraform-provider-azurerm repository
 
 ---
 
+### Origin Remote Not Configured
+
+**Error**:
+```
+Git repository has no origin remote configured
+```
+
+**Cause**:
+The target directory is not a cloned `terraform-provider-azurerm` repository, or the `origin` remote was removed.
+
+**Solution**:
+```bash
+# Option 1: clone the official repo (recommended)
+git clone https://github.com/hashicorp/terraform-provider-azurerm.git
+
+# Option 2: add an origin remote to your existing clone
+git remote add origin https://github.com/hashicorp/terraform-provider-azurerm.git
+```
+
+---
+
+### AI Development Repo Is Not a Target
+
+**Error**:
+```
+Target directory is the AI development repository, not a Terraform provider repository
+```
+
+**Cause**:
+The AI-assisted development repo is a source workspace only. It is not a valid install target.
+
+**Solution**:
+```powershell
+# Install into your terraform-provider-azurerm working copy instead
+& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+```
+
+---
+
 ### Installer Configuration Validation Failed / Payload Missing
 
 This happens when the installer cannot load the required local files (manifest and/or the bundled offline payload).
@@ -106,6 +145,21 @@ cd ~/.terraform-azurerm-ai-installer
 ```
 
 ---
+
+### Installer Payload Checksum Failed
+
+**Error**:
+```
+Installer payload checksum validation failed
+```
+
+**Cause**:
+The installer payload (`aii/`) and manifest are out of sync (stale or modified installer directory).
+
+**Fix options:**
+- **Recommended**: re-extract the latest release bundle into your user profile directory.
+- **Contributor/dev**: re-run `-Bootstrap` / `-bootstrap` from a git clone to refresh the user-profile installer.
+
 
 ### Verify Shows Missing Files After Clean
 

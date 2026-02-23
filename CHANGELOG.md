@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded `CONTRIBUTING.md` to provide more detailed contribution and validation guidance, including PowerShell/Bash parity expectations to avoid installer drift.
 - Removed `-Dry-Run` / `-dry-run` from the installer to keep the workflow focused on install/clean/verify.
 - Removed legacy remote download scaffolding; installs now copy from the bundled payload or `-LocalPath` only.
+- Installer now validates a bundled payload checksum on install/verify to prevent mixed-state runs; bootstrap and release bundles generate `aii.checksum`.
 
 ### Upgrade Notes (from 1.x)
 - `-Contributor` / `-contributor`, `-Branch` / `-branch`, and `-Dry-Run` / `-dry-run` were removed.

@@ -11,3 +11,6 @@ Thumbs.db
 # Backup files
 *.bak
 *.backup
+
+# Installer artifacts
+installer/aii.checksum

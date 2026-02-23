@@ -75,16 +75,6 @@ write_red() {
     echo -e "${RED}${message}${NC}"
 }
 
-write_blue() {
-    local message="$1"
-    echo -e "${BLUE}${message}${NC}"
-}
-
-write_gray() {
-    local message="$1"
-    echo -e "${GRAY}${message}${NC}"
-}
-
 # ============================================================================
 # Early Validation Error Display (Centralized)
 # ============================================================================
@@ -240,7 +230,6 @@ show_operation_summary() {
 
     # Show operation completion with consistent formatting
     local status_text
-    local colo
     if [[ "$success" == "true" ]]; then
         status_text="completed successfully"
         color="${GREEN}"
@@ -263,22 +252,6 @@ show_operation_summary() {
         print_separator 60 "${CYAN}" "="
         echo ""
         write_section_header "DETAILS"
-
-        # Define expected order based on operation type (bash 3.2 compatible)
-        local expected_order=""
-        local operation_lower="$(echo "${operation_name}" | tr '[:upper:]' '[:lower:]')"
-        if [[ "${operation_lower}" == "verification" ]]; then
-            expected_order="Branch Type|Target Branch|Files Verified|Issues Found|Location"
-        elif [[ "${operation_lower}" == "cleanup" ]]; then
-            # Always use full cleanup order - follows PowerShell master orde
-            expected_order="Branch Type|Target Branch|Operation Type|Files Removed|Directories Cleaned|Location"
-        elif [[ "${operation_lower}" == "bootstrap" ]]; then
-            # Bootstrap operation order (matches PowerShell)
-            expected_order="Installer Files Copied|Payload Files Copied (aii/)|Total Size (installer + payload)|Location"
-        else
-            # Installation operation orde
-            expected_order="Branch Type|Target Branch|Files Installed|Total Size|Files Skipped|Location"
-        fi
 
         # Split the keys and values for processing
         local IFS='|'
@@ -720,6 +693,13 @@ show_usage() {
     write_plain "  Download and extract the latest bundle into your user profile installer directory:"
     write_cyan "    https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest"
     echo ""
+    write_plain "  Installer operations are offline-only and use the bundled payload (aii/)."
+    write_plain "  No network downloads occur during install, verify, or clean."
+    write_plain "  Install and verify validate the bundled payload checksum (aii.checksum)."
+    echo ""
+    write_plain "  Target installs require a terraform-provider-azurerm clone with an origin remote."
+    write_plain "  The AI development repo is a source-only workspace and is not a valid target."
+    echo ""
     write_yellow "  Note: -bootstrap must be run from a git clone (repo root contains .git)."
     echo ""
 
@@ -799,8 +779,8 @@ show_feature_branch_help() {
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
-    write_cyan "  Install from local files (offline or local testing):"
-    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/repo\""
+    write_cyan "  Install from local files (contributor override):"
+    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
     write_cyan "  Clean removal:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
@@ -892,8 +872,8 @@ show_unknown_branch_help() {
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" -clean"
     echo ""
-    write_dark_cyan "  Local Source Operations (Offline/Local Testing):"
-    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/ai-repo\" -repo-directory \"/path/to/repo\""
+    write_dark_cyan "  Local Source Operations (Contributor Override):"
+    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/ai-repo\" -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
 
     write_cyan "BRANCH DETECTION:"
@@ -992,8 +972,6 @@ show_branch_validation_failed() {
     echo ""
 }
 
-}
-
 # Function to display safety violation message for source branch operations
 show_safety_violation() {
     local branch_name="${1:-main}"
@@ -1049,7 +1027,7 @@ show_workspace_validation_error() {
 
 
 # Export all UI functions for use in other scripts
-export -f write_cyan write_green write_yellow write_white write_red write_blue write_gray
+export -f write_cyan write_green write_yellow write_white write_red
 export -f write_plain write_label write_colored_label write_section_header write_section
 export -f write_header write_operation_status
 export -f write_error_message write_warning_message write_success_message

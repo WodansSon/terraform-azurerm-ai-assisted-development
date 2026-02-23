@@ -37,8 +37,6 @@ fi
 
 # Global variables
 # Note: AI infrastructure files are sourced from a local payload (aii/) by default.
-BRANCH=""
-SOURCE_REPOSITORY=""
 
 # Command line parameters with help text
 BOOTSTRAP=false           # Copy installer to user profile for feature branch use
@@ -63,71 +61,6 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 WHITE='\033[0;37m'
 NC='\033[0m' # No Color
-
-# ============================================================================
-# EARLY VALIDATION ERROR DISPLAY
-# ============================================================================
-# This function must be defined BEFORE module loading
-# Called during parameter validation (before main header)
-
-show_early_validation_error() {
-    local error_type="$1"
-    local script_name="${2:-$0}"
-
-    # Always show error header first in cyan
-    echo ""
-    echo -e "${CYAN}============================================================${NC}"
-    echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
-    echo -e "${CYAN} Version: ${VERSION}${NC}"
-    echo -e "${CYAN}============================================================${NC}"
-    echo ""
-
-    case "${error_type}" in
-        "BootstrapNoArgs")
-            echo -e "${RED} Error:${NC}${CYAN} -bootstrap does not accept any other parameters${NC}"
-            echo ""
-            echo -e "${CYAN} Run bootstrap from a local git clone (no other flags):${NC}"
-            echo -e "   ${WHITE}${script_name} -bootstrap${NC}"
-            ;;
-
-        "BootstrapRequiresGitRepo")
-            local path="$3"
-            echo -e "${RED} Error:${NC}${CYAN} -bootstrap must be run from a git clone (directory containing .git)${NC}"
-            echo ""
-            if [[ -n "${path}" ]]; then
-                echo -e "${CYAN} Checked path: ${WHITE}${path}${NC}"
-                echo ""
-            fi
-            echo -e "${CYAN} -bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy.${NC}"
-            ;;
-
-        "EmptyLocalPath")
-            echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
-            echo ""
-            echo -e "${CYAN} Please provide a valid local directory path:${NC}"
-            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
-            ;;
-
-        "LocalPathNotFound")
-            local path="$3"
-            echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
-            echo ""
-            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
-            echo ""
-            echo -e "${CYAN} Please verify the directory path exists:${NC}"
-            echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
-            ;;
-
-        *)
-            echo -e "${RED} Error:${NC}${CYAN} Unknown validation error type: ${error_type}${NC}"
-            ;;
-    esac
-
-    echo ""
-    echo -e "${CYAN} For more help, run:${NC}"
-    echo -e "   ${WHITE}${script_name} -help${NC}"
-    echo ""
-}
 
 # ============================================================================
 # MODULE LOADING - This must succeed or the script cannot continue
@@ -193,8 +126,6 @@ import_required_modules() {
 
     # Verify critical functions are available
     local required_functions=(
-        "get_manifest_config"
-        "get_installer_config"
         "write_header"
         "verify_installation"
     )
@@ -439,6 +370,12 @@ main() {
         # Show help menu for guidance
         show_usage "${branch_type}" "false" "${workspace_reason}" "${attempted_command}"
         exit 1
+    fi
+
+    if [[ "${VERIFY}" == "true" ]] || ([[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]); then
+        if ! verify_installer_checksum "${SCRIPT_DIR}"; then
+            exit 1
+        fi
     fi
 
     # STEP 12: Execute single operation based on parameters (like PowerShell)

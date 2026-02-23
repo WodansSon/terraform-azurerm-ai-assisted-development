@@ -140,87 +140,6 @@ test_system_requirements() {
     echo "Commands=${commands_result}"
 }
 
-# Function to test system requirements (original version for compatibility)
-test_system_requirements_basic() {
-    local missing_tools=()
-
-    # Check for basic Unix tools
-    local required_tools=("bash" "mkdir" "cp" "rm" "dirname" "realpath")
-    for tool in "${required_tools[@]}"; do
-        if ! command -v "${tool}" >/dev/null 2>&1; then
-            missing_tools+=("${tool}")
-        fi
-    done
-
-    if [[ ${#missing_tools[@]} -gt 0 ]]; then
-        write_error_message "Missing required system tools: ${missing_tools[*]}"
-        return 1
-    fi
-
-    return 0
-}
-
-# Function to test Git repository with branch safety checks
-test_git_repository() {
-    local repo_dir="$1"
-    local allow_bootstrap_on_source="${2:-false}"
-
-    # Initialize result variables
-    local valid=false
-    local is_git_repo=false
-    local has_remote=false
-    local current_branch="Unknown"
-    local is_source_branch=false
-    local reason=""
-
-    if [[ ! -d "${repo_dir}/.git" ]]; then
-        reason="Not a Git repository: ${repo_dir}"
-            write_warning_message "${reason}"
-    else
-        is_git_repo=true
-
-        # Check if git command is available
-        if ! command -v git >/dev/null 2>&1; then
-            reason="Git command not available"
-            write_warning_message "${reason}"
-        else
-            # Get current branch
-            current_branch=$(cd "${repo_dir}" && git branch --show-current 2>/dev/null || echo "Unknown")
-
-            # Check for remote
-            if cd "${repo_dir}" && git remote -v >/dev/null 2>&1; then
-                has_remote=true
-            fi
-
-            # Check if on source branch (main, master)
-            case "${current_branch}" in
-                "main"|"master")
-                    is_source_branch=true
-                    ;;
-            esac
-
-            # Validate based on branch safety rules
-            if [[ "${is_source_branch}" == "true" ]] && [[ "${allow_bootstrap_on_source}" != "true" ]]; then
-                valid=false
-                reason="Cannot install on source branch '${current_branch}' without explicit permission. Use feature branch for safety."
-            else
-                valid=true
-                reason="Git repository validation passed"
-            fi
-        fi
-    fi
-
-    # Output results in a structured format
-    echo "Valid=${valid}"
-    echo "IsGitRepo=${is_git_repo}"
-    echo "HasRemote=${has_remote}"
-    echo "CurrentBranch=${current_branch}"
-    echo "IsSourceBranch=${is_source_branch}"
-    echo "Reason=${reason}"
-
-    [[ "${valid}" == "true" ]]
-}
-
 # Function to test workspace validity
 test_workspace_valid() {
     local workspace_path="${1:-$(pwd)}"
@@ -286,62 +205,7 @@ test_workspace_valid() {
     [[ "${valid}" == "true" ]]
 }
 
-# Function to run comprehensive pre-installation validation
-test_pre_installation() {
-    local allow_bootstrap_on_source="${1:-false}"
-    local workspace_path="${2:-$(pwd)}"
-
-    # Initialize results
-    local overall_valid=true
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-    # Get workspace root for git operations
-    local workspace_root=$(find_workspace_root "${workspace_path}")
-
-    # Test Git repository (CRITICAL: check first for branch safety)
-    local git_result=""
-    if [[ -n "${workspace_root}" ]]; then
-        git_result=$(test_git_repository "${workspace_root}" "${allow_bootstrap_on_source}")
-    else
-        git_result=$(test_git_repository "${workspace_path}" "${allow_bootstrap_on_source}")
-    fi
-
-    local git_valid=$(echo "${git_result}" | grep "Valid=" | cut -d= -f2)
-    if [[ "${git_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Test workspace validity
-    local workspace_result=$(test_workspace_valid "${workspace_path}")
-    local workspace_valid=$(echo "${workspace_result}" | grep "Valid=" | cut -d= -f2)
-    if [[ "${workspace_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Test system requirements
-    local system_result=$(test_system_requirements)
-    local system_valid=$(echo "${system_result}" | grep "OverallValid=" | cut -d= -f2)
-    if [[ "${system_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Output comprehensive results
-    echo "OverallValid=${overall_valid}"
-    echo "Timestamp=${timestamp}"
-    echo "Git=${git_result}"
-    echo "Workspace=${workspace_result}"
-    echo "SystemRequirements=${system_result}"
-
-    [[ "${overall_valid}" == "true" ]]
-}
-
 # Public Functions
-
-# Function to get workspace root (public wrapper for find_workspace_root)
-get_workspace_root() {
-    local start_path="${1:-$(pwd)}"
-    find_workspace_root "${start_path}"
-}
 
 # Function to verify AI infrastructure installation
 verify_installation() {
@@ -736,6 +600,108 @@ test_is_azurerm_provider_repo() {
     echo "Reason=${reason}"
 }
 
+compute_installer_checksum() {
+    local installer_root="$1"
+    local manifest_file="${installer_root}/file-manifest.config"
+    local payload_root="${installer_root}/aii"
+
+    if [[ ! -f "${manifest_file}" ]]; then
+        write_error_message "Installer manifest not found"
+        return 1
+    fi
+    if [[ ! -d "${payload_root}" ]]; then
+        write_error_message "Installer payload not found"
+        return 1
+    fi
+
+    hash_file() {
+        local file_path="$1"
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${file_path}" | awk '{print $1}'
+        else
+            shasum -a 256 "${file_path}" | awk '{print $1}'
+        fi
+    }
+
+    hash_text() {
+        local content="$1"
+        if command -v sha256sum >/dev/null 2>&1; then
+            printf "%s" "${content}" | sha256sum | awk '{print $1}'
+        else
+            printf "%s" "${content}" | shasum -a 256 | awk '{print $1}'
+        fi
+    }
+
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    local manifest_hash
+    manifest_hash="$(hash_file "${manifest_file}")"
+    printf "%s  %s\n" "${manifest_hash}" "file-manifest.config" > "${tmp_file}"
+
+    while IFS= read -r file; do
+        local rel_path
+        rel_path="${file#${payload_root}/}"
+        local file_hash
+        file_hash="$(hash_file "${file}")"
+        printf "%s  %s\n" "${file_hash}" "aii/${rel_path}" >> "${tmp_file}"
+    done < <(find "${payload_root}" -type f | LC_ALL=C sort)
+
+    local combined
+    combined="$(cat "${tmp_file}")"
+    rm -f "${tmp_file}"
+
+    hash_text "${combined}"
+}
+
+write_installer_checksum() {
+    local installer_root="$1"
+    local checksum_file="${installer_root}/aii.checksum"
+
+    local version="dev"
+    if [[ -f "${installer_root}/VERSION" ]]; then
+        version="$(tr -d '\r\n' < "${installer_root}/VERSION")"
+    fi
+
+    local timestamp
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    local overall_hash
+    overall_hash="$(compute_installer_checksum "${installer_root}")" || return 1
+
+    printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+}
+
+verify_installer_checksum() {
+    local installer_root="$1"
+    local checksum_file="${installer_root}/aii.checksum"
+
+    if [[ ! -f "${checksum_file}" ]]; then
+        write_error_message "Installer checksum file not found"
+        write_plain "Fix: re-extract the latest release bundle, or re-run -bootstrap from a local clone."
+        return 1
+    fi
+
+    local expected
+    expected="$(grep '^hash=' "${checksum_file}" | head -n 1 | cut -d= -f2-)"
+    if [[ -z "${expected}" ]]; then
+        write_error_message "Installer checksum file missing hash"
+        return 1
+    fi
+
+    local actual
+    actual="$(compute_installer_checksum "${installer_root}")" || return 1
+
+    if [[ "${expected}" != "${actual}" ]]; then
+        write_error_message "Installer checksum mismatch"
+        write_plain "Fix: re-extract the latest release bundle, or re-run -bootstrap from a local clone."
+        return 1
+    fi
+
+    return 0
+}
+
 # Export functions for use in other scripts
 export -f test_system_requirements validate_repository test_is_azurerm_provider_repo
-export -f test_git_repository test_workspace_valid verify_installation
+export -f test_workspace_valid verify_installation
+export -f write_installer_checksum verify_installer_checksum

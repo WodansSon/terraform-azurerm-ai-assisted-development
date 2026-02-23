@@ -97,7 +97,7 @@ function Show-ValidationError {
     #>
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BranchValidation', 'EmptyLocalPath', 'LocalPathNotFound', 'WorkspaceValidation')]
+        [ValidateSet('BranchValidation', 'EmptyLocalPath', 'LocalPathNotFound', 'WorkspaceValidation', 'InstallerChecksum')]
         [string]$ErrorType,
 
         [string]$Branch,
@@ -157,6 +157,19 @@ function Show-ValidationError {
             Write-Host ""
             Write-Host " Please ensure you're running in a valid terraform-provider-azurerm repository:" -ForegroundColor Cyan
             Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
+        }
+        'InstallerChecksum' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Installer payload checksum validation failed" -ForegroundColor Cyan
+            Write-Host ""
+            if ($Reason) {
+                Write-Host " Reason: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Reason" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " Fix:" -ForegroundColor Cyan
+            Write-Host " - Re-extract the latest release bundle into your user profile, or" -ForegroundColor White
+            Write-Host " - Re-run -Bootstrap from a local git clone to refresh the installer" -ForegroundColor White
         }
     }
 
@@ -259,6 +272,13 @@ function Show-Help {
     Write-Host "  Download and extract the latest bundle into your user profile installer directory:" -ForegroundColor White
     Write-Host "    https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest" -ForegroundColor Cyan
     Write-Host ""
+    Write-Host "  Installer operations are offline-only and use the bundled payload (aii/)." -ForegroundColor White
+    Write-Host "  No network downloads occur during install, verify, or clean." -ForegroundColor White
+    Write-Host "  Install and verify validate the bundled payload checksum (aii.checksum)." -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Target installs require a terraform-provider-azurerm clone with an origin remote." -ForegroundColor White
+    Write-Host "  The AI development repo is a source-only workspace and is not a valid target." -ForegroundColor White
+    Write-Host ""
     Write-Host "  Note: -Bootstrap must be run from a git clone (repo root contains .git)." -ForegroundColor Yellow
     Write-Host ""
 
@@ -332,8 +352,8 @@ function Show-FeatureBranchHelp {
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm working copy`""
     Write-Host ""
-    Write-Host "  Install from local files (offline or local testing):"
-    Write-Host "    .\install-copilot-setup.ps1 -LocalPath `"/path/to/terraform-azurerm-ai-assisted-development`" -RepoDirectory `"/path/to/repo`""
+    Write-Host "  Install from local files (contributor override):"
+    Write-Host "    .\install-copilot-setup.ps1 -LocalPath `"/path/to/terraform-azurerm-ai-assisted-development`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host ""
     Write-Host "  Clean removal:"
     Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
@@ -410,8 +430,8 @@ function Show-UnknownBranchHelp {
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/terraform-provider-azurerm`" -Clean"
     Write-Host ""
-    Write-Host "  Local Source Operations (Offline/Local Testing):" -ForegroundColor DarkCyan
-    Write-Host "    .\install-copilot-setup.ps1 -LocalPath `"/path/to/ai-repo`" -RepoDirectory `"/path/to/repo`""
+    Write-Host "  Local Source Operations (Contributor Override):" -ForegroundColor DarkCyan
+    Write-Host "    .\install-copilot-setup.ps1 -LocalPath `"/path/to/ai-repo`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host ""
 
     Write-Host "BRANCH DETECTION:" -ForegroundColor Cyan
@@ -648,28 +668,6 @@ function Show-AIDevRepoViolation {
     Write-Host ""
 }
 
-function Show-BootstrapGitError {
-    <#
-    .SYNOPSIS
-    Display error when Bootstrap cannot detect git branch
-
-    .DESCRIPTION
-    Shows a standardized error message when -Bootstrap fails to detect
-    the current git branch, which is required for copying installer files.
-    #>
-    param(
-        [string]$WorkspaceRoot
-    )
-
-    Write-Host ""
-    Write-Host " ERROR: Bootstrap requires a valid git repository with a current branch" -ForegroundColor Red
-    Write-Host " Could not detect current git branch in: $WorkspaceRoot" -ForegroundColor Red
-    Write-Host ""
-    Write-Host " Bootstrap copies the current branch's installer files to your user profile." -ForegroundColor Cyan
-    Write-Host " Ensure you are in a valid git repository with a checked-out branch." -ForegroundColor Cyan
-    Write-Host ""
-}
-
 function Show-WorkspaceValidationError {
     <#
     .SYNOPSIS
@@ -841,7 +839,6 @@ Export-ModuleMember -Function @(
     'Show-AIInstallerNotFoundError',
     'Show-ValidationError',
     'Show-BootstrapViolation',
-    'Show-BootstrapGitError',
     'Show-OperationSummary',
     'Show-InstallationResult',
     'Show-CleanupReminder'

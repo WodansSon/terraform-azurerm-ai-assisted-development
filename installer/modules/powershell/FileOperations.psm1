@@ -1135,6 +1135,15 @@ function Invoke-Bootstrap {
         catch {
         }
 
+        $checksumResult = Write-InstallerChecksum -InstallerRoot $targetDirectory -Version $bootstrapVersion
+        if (-not $checksumResult.Valid) {
+            $details = @(
+                "Checksum error: $($checksumResult.Reason)"
+            )
+            Show-OperationSummary -OperationName "Bootstrap" -Success $false -Details $details
+            return @{ Success = $false; Statistics = $statistics }
+        }
+
         # Prepare details for centralized summary
         $details = @()
         $totalSizeKB = [math]::Round($statistics["Total Size"] / 1KB, 1)
