@@ -402,7 +402,12 @@ install_infrastructure() {
         write_cyan "Installing from local path: ${local_source_path}"
         echo ""
     else
-        local payload_root="${SCRIPT_DIR}/aii"
+        local payload_root=""
+        if [[ -n "${INSTALLER_DIR:-}" ]]; then
+            payload_root="${INSTALLER_DIR}/aii"
+        else
+            payload_root="${HOME}/.terraform-azurerm-ai-installer/aii"
+        fi
         if [[ ! -d "${payload_root}" ]]; then
             write_error_message "bundled payload directory not found"
             write_plain ""
