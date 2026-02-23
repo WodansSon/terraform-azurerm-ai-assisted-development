@@ -372,7 +372,7 @@ main() {
         exit 1
     fi
 
-    if [[ "${VERIFY}" == "true" ]] || ([[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]); then
+    if [[ "${VERIFY}" == "true" ]] || { [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${CLEAN}" != "true" ]]; }; then
         if ! verify_installer_checksum "${SCRIPT_DIR}"; then
             exit 1
         fi
