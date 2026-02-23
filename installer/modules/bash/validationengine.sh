@@ -70,6 +70,11 @@ test_required_commands() {
         fi
     done
 
+    if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+        missing_commands+=("sha256sum|shasum")
+        valid=false
+    fi
+
     echo "Valid=${valid}"
     if [[ ${valid} == "true" ]]; then
         echo "Reason=All required commands available"
