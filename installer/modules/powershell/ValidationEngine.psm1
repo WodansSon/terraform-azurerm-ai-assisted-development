@@ -603,18 +603,32 @@ function Get-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer payload not found" }
     }
 
-    $entries = @()
-    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash
-    $entries += "$manifestHash  file-manifest.config"
+    # IMPORTANT: This checksum algorithm must match the Bash/release implementation.
+    # Bash behavior:
+    # - Write manifest hash line first
+    # - Then append payload file hash lines, with payload files sorted by path using LC_ALL=C
+    # - Hash the resulting text (with \n newlines) including the trailing final newline
+    # - sha256sum outputs lowercase hex
+
+    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("$manifestHash  file-manifest.config")
 
     $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
+    $payloadEntries = [System.Collections.Generic.List[object]]::new()
     foreach ($file in $payloadFiles) {
-        $relPath = $file.FullName.Substring($payloadRoot.Length + 1) -replace "\\", "/"
-        $fileHash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
-        $entries += "$fileHash  aii/$relPath"
+        $relPath = [System.IO.Path]::GetRelativePath($payloadRoot, $file.FullName)
+        $relPath = $relPath -replace "\\", "/"
+        $payloadEntries.Add([PSCustomObject]@{ RelPath = $relPath; FullName = $file.FullName })
     }
 
-    $combined = ($entries | Sort-Object) -join "`n"
+    $payloadEntriesSorted = $payloadEntries | Sort-Object -Property RelPath
+    foreach ($entry in $payloadEntriesSorted) {
+        $fileHash = (Get-FileHash -Path $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $lines.Add("$fileHash  aii/$($entry.RelPath)")
+    }
+
+    $combined = ($lines -join "`n") + "`n"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     $hashBytes = $sha256.ComputeHash($bytes)
@@ -678,6 +692,9 @@ function Test-InstallerChecksum {
     if (-not $expected) {
         return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
     }
+
+    # Normalize to lowercase to avoid case-only mismatches
+    $expected = $expected.ToLowerInvariant()
 
     $computed = Get-InstallerChecksum -InstallerRoot $InstallerRoot
     if (-not $computed.Valid) {

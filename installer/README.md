@@ -133,22 +133,18 @@ NEXT STEPS:
 
 > [!IMPORTANT]
 > **Critical: Correct Extraction Location**
->
 > The installer **MUST** be extracted to your user profile directory:
 > - **Windows**: `$env:USERPROFILE\.terraform-azurerm-ai-installer\`
 > - **macOS/Linux**: `~/.terraform-azurerm-ai-installer/`
->
 > **Do NOT run the installer from:**
 > - Downloads folder
 > - Desktop
 > - Temporary directories
 > - Arbitrary locations
->
 > Running from incorrect locations will cause **directory traversal errors** and the installer will fail with errors like:
 > ```
 > A positional parameter cannot be found that accepts argument 'settings.json'
 > ```
->
 > The installer requires a specific directory structure to load modules and configuration files correctly.
 
 ### 🌍 Cross-Platform Quick Start
@@ -178,9 +174,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 
 > [!NOTE]
 > **Install a specific version (pinning)**: replace `latest/download` with a tagged release URL (`download/vX.Y.Z`).
->
 > The version is the `vX.Y.Z` segment in the URL path. The filename can be either the stable (unversioned) asset name or the versioned asset name.
->
 > - Example pinned URL (stable filename):
 >   - `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v1.0.1/terraform-azurerm-ai-installer.tar.gz`
 > - Example pinned URL (versioned filename):
@@ -408,7 +402,7 @@ The installer sets up a complete AI development environment:
 - `.github/prompts/` - AI prompt templates for common development tasks:
 
 ### 🧠 Agent Skills
-- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/docs-writer`)
+- `.github/skills/` - Agent Skills for specialized Copilot workflows (invocable via slash commands like `/docs-writer`)
 
 > [!TIP]
 > The `docs-writer` skill supports a dry run/testing mode for docs scaffolding: when you ask for a test/dry run, it uses `-website-path website_scaffold_tmp` to avoid overwriting `website/docs/**`.
@@ -483,6 +477,15 @@ Simply use slash commands to invoke the prompts directly:
 > Install, verify, and clean use the bundled payload (`aii/`) and local manifest only.
 > No network downloads occur during these operations.
 > Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap` (contributors only).
+<!-- -->
+> [!NOTE]
+> **Contributors: verify a staged bundle checksum**
+> If you are preparing or validating a release bundle (or reproducing a user-reported checksum failure), use the repo helper script:
+> - **Stage a bundle from the current repo and verify it:**
+>   - `pwsh -NoProfile -File .\tools\verify-bundle-checksum.ps1 -StageFromRepo`
+> - **Verify an already extracted user-profile bundle:**
+>   - `pwsh -NoProfile -File .\tools\verify-bundle-checksum.ps1 -InstallerRoot "$env:USERPROFILE\.terraform-azurerm-ai-installer"`
+> The script validates `aii.checksum` via the PowerShell installer logic and (when available) cross-checks the computed hash against a Bash implementation.
 <!-- -->
 > [!NOTE]
 > Target installs require a `terraform-provider-azurerm` clone with an origin remote configured.
@@ -575,7 +578,6 @@ If you're **contributing to this AI infrastructure project** and have it cloned 
 
 > [!NOTE]
 > **Recommended contributor workflow**: bootstrap from your local clone to refresh the installed bundle content, then run installs from your user profile as normal. If you are testing/iterating on local, uncommitted AI files (prompts/instructions/skills), you can use the `-LocalPath <your-clone>` (`-local-path <your-clone>` for Bash) parameter to override your bootstrapped/installed bundle files when installing the AI infrastructure files into your `terraform-provider-azurerm` branch/clone.
->
 > For troubleshooting, see: [Installer Configuration Validation Failed / Payload Missing](../docs/TROUBLESHOOTING.md#installer-configuration-validation-failed--payload-missing).
 
 **Windows:**
