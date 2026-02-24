@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+
+## [2.0.1] - 2026-02-24
+
+### Fixed
 - Fixed a checksum validation regression on Windows where release bundles stamped on Linux/macOS could fail `aii.checksum` verification due to PowerShell/Bash algorithm drift (PowerShell checksum computation now matches the Bash implementation).
 
 ## [2.0.0] - 2026-02-24
