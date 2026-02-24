@@ -137,60 +137,6 @@ function Test-RequiredCommand {
     }
 }
 
-function Test-InternetConnectivity {
-    <#
-    .SYNOPSIS
-    Test internet connectivity to required endpoints
-    #>
-
-    $testUrls = @(
-        "https://api.github.com",
-        "https://raw.githubusercontent.com"
-    )
-
-    $results = @{
-        Connected = $false
-        TestedEndpoints = @{}
-        Reason = ""
-    }
-
-    $successCount = 0
-
-    foreach ($url in $testUrls) {
-        try {
-            # Disable progress bar to prevent console flashing
-            $ProgressPreference = 'SilentlyContinue'
-            $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 10 -UseBasicParsing
-            $results.TestedEndpoints[$url] = @{
-                Success = $true
-                StatusCode = $response.StatusCode
-                ResponseTime = 0
-            }
-            $successCount++
-        }
-        catch {
-            $results.TestedEndpoints[$url] = @{
-                Success = $false
-                StatusCode = 0
-                Error = $_.Exception.Message
-            }
-        }
-        finally {
-            # Restore progress preference
-            $ProgressPreference = 'Continue'
-        }
-    }
-
-    $results.Connected = $successCount -gt 0
-    $results.Reason = if ($results.Connected) {
-        "Internet connectivity verified ($successCount/$($testUrls.Count) endpoints reachable)"
-    } else {
-        "No internet connectivity detected. Check network connection and firewall settings."
-    }
-
-    return $results
-}
-
 function Test-GitRepository {
     <#
     .SYNOPSIS
@@ -198,15 +144,16 @@ function Test-GitRepository {
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
+        [bool]$RequireOriginRemote = $false,
         [string]$WorkspacePath = ""
     )
 
     $results = @{
         Valid = $false
         IsGitRepo = $false
-        HasRemote = $false
+        HasOriginRemote = $false
         CurrentBranch = ""
-        RemoteUrl = ""
+        OriginRemoteUrl = ""
         Reason = ""
     }
 
@@ -235,33 +182,35 @@ function Test-GitRepository {
                     $results.CurrentBranch = "Unknown"
                 }
 
-                # Get remote URL
+                # Get origin remote URL
                 try {
-                    $results.RemoteUrl = git remote get-url origin 2>$null
-                    $results.HasRemote = $LASTEXITCODE -eq 0 -and $results.RemoteUrl
+                    $results.OriginRemoteUrl = git remote get-url origin 2>$null
+                    $results.HasOriginRemote = $LASTEXITCODE -eq 0 -and $results.OriginRemoteUrl
                 }
                 catch {
-                    $results.HasRemote = $false
+                    $results.HasOriginRemote = $false
                 }
 
                 # CRITICAL SAFETY CHECK: Prevent running on source branch (unless bootstrap)
                 $sourceBranches = @("main", "master")
                 $isSourceBranch = $results.CurrentBranch -in $sourceBranches
 
-                $results.Valid = $results.IsGitRepo -and $results.HasRemote -and (-not $isSourceBranch -or $AllowBootstrapOnSource)
+                $results.Valid = $results.IsGitRepo -and (-not $isSourceBranch -or $AllowBootstrapOnSource) -and (-not $RequireOriginRemote -or $results.HasOriginRemote)
 
                 if ($isSourceBranch -and -not $AllowBootstrapOnSource) {
                     $results.Reason = "SAFETY VIOLATION: Cannot run installer on source branch '$($results.CurrentBranch)'. Switch to a different branch to install AI infrastructure."
                 }
+                elseif ($RequireOriginRemote -and -not $results.HasOriginRemote) {
+                    $results.Reason = "Git repository has no origin remote configured"
+                }
                 elseif ($results.Valid) {
                     if ($isSourceBranch -and $AllowBootstrapOnSource) {
                         $results.Reason = "Source branch - bootstrap operations allowed"
+                    } elseif ($RequireOriginRemote) {
+                        $results.Reason = "Valid git repository with origin remote configured"
                     } else {
-                        $results.Reason = "Valid git repository with remote origin"
+                        $results.Reason = "Valid git repository"
                     }
-                }
-                elseif (-not $results.HasRemote) {
-                    $results.Reason = "Git repository has no remote origin configured"
                 }
             }
             else {
@@ -621,21 +570,125 @@ function Test-SystemRequirement {
     Test all system requirements for the AI installer
     #>
 
+    param()
+
     $results = @{
         OverallValid = $true
         PowerShell = Test-PowerShellVersion
         ExecutionPolicy = Test-ExecutionPolicy
         Commands = Test-RequiredCommand
-        Internet = Test-InternetConnectivity
     }
 
     # Check if any requirement failed
     $results.OverallValid = $results.PowerShell.Valid -and
                            $results.ExecutionPolicy.Valid -and
-                           $results.Commands.Valid -and
-                           $results.Internet.Connected
+                           $results.Commands.Valid
 
     return $results
+}
+
+function Get-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $manifestPath = Join-Path $InstallerRoot "file-manifest.config"
+    $payloadRoot = Join-Path $InstallerRoot "aii"
+
+    if (-not (Test-Path $manifestPath)) {
+        return @{ Valid = $false; Reason = "Installer manifest not found" }
+    }
+    if (-not (Test-Path $payloadRoot)) {
+        return @{ Valid = $false; Reason = "Installer payload not found" }
+    }
+
+    $entries = @()
+    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash
+    $entries += "$manifestHash  file-manifest.config"
+
+    $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
+    foreach ($file in $payloadFiles) {
+        $relPath = $file.FullName.Substring($payloadRoot.Length + 1) -replace "\\", "/"
+        $fileHash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
+        $entries += "$fileHash  aii/$relPath"
+    }
+
+    $combined = ($entries | Sort-Object) -join "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $hashBytes = $sha256.ComputeHash($bytes)
+    $overallHash = ($hashBytes | ForEach-Object { $_.ToString("x2") }) -join ""
+
+    return @{ Valid = $true; Hash = $overallHash }
+}
+
+function Write-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot,
+
+        [string]$Version
+    )
+
+    $checksumPath = Join-Path $InstallerRoot "aii.checksum"
+    $result = Get-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $result.Valid) {
+        return $result
+    }
+
+    if (-not $Version) {
+        $versionPath = Join-Path $InstallerRoot "VERSION"
+        if (Test-Path $versionPath) {
+            $Version = (Get-Content -Path $versionPath -Raw).Trim()
+        }
+    }
+
+    if (-not $Version) {
+        $Version = "dev"
+    }
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    @(
+        "version=$Version",
+        "timestamp=$timestamp",
+        "hash=$($result.Hash)"
+    ) | Set-Content -Path $checksumPath
+
+    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath }
+}
+
+function Test-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $checksumPath = Join-Path $InstallerRoot "aii.checksum"
+    if (-not (Test-Path $checksumPath)) {
+        return @{ Valid = $false; Reason = "Installer checksum file not found" }
+    }
+
+    $hashLine = Get-Content -Path $checksumPath | Where-Object { $_ -match '^hash=' } | Select-Object -First 1
+    if (-not $hashLine) {
+        return @{ Valid = $false; Reason = "Installer checksum file missing hash" }
+    }
+
+    $expected = $hashLine.Substring(5).Trim()
+    if (-not $expected) {
+        return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
+    }
+
+    $computed = Get-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $computed.Valid) {
+        return @{ Valid = $false; Reason = $computed.Reason }
+    }
+
+    if ($expected -ne $computed.Hash) {
+        return @{ Valid = $false; Reason = "Installer checksum mismatch"; Expected = $expected; Actual = $computed.Hash }
+    }
+
+    return @{ Valid = $true; Hash = $computed.Hash }
 }
 
 function Test-PreInstallation {
@@ -649,10 +702,13 @@ function Test-PreInstallation {
     .PARAMETER RequireProviderRepo
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Used when installing via -RepoDirectory to a target repository.
+
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+
+        [bool]$WarnOnUncommittedChanges = $true
     )
 
     $results = @{
@@ -666,7 +722,7 @@ function Test-PreInstallation {
     # CRITICAL: Check Git first for branch safety
     # Use the workspace root for git operations if available
     $gitPath = if ($Global:WorkspaceRoot) { $Global:WorkspaceRoot } else { (Get-Location).Path }
-    $results.Git = Test-GitRepository -AllowBootstrapOnSource $AllowBootstrapOnSource -WorkspacePath $gitPath
+    $results.Git = Test-GitRepository -AllowBootstrapOnSource $AllowBootstrapOnSource -RequireOriginRemote $RequireProviderRepo -WorkspacePath $gitPath
 
     # If Git validation fails due to branch safety, short-circuit other validations
     # This prevents running unnecessary tests when we know we can't proceed
@@ -705,49 +761,11 @@ function Test-PreInstallation {
 
     # If there are uncommitted changes, warn but don't fail validation
     # The main script should handle this and prompt the user
-    if ($results.UncommittedChanges.HasUncommittedChanges) {
+    if ($WarnOnUncommittedChanges -and $results.UncommittedChanges.HasUncommittedChanges) {
         Write-Warning "Target repository has uncommitted changes that may be overwritten"
     }
 
     return $results
-}
-
-function Test-SourceRepository {
-    <#
-    .SYNOPSIS
-    Determines if we're running on the source repository vs a target repository
-
-    .DESCRIPTION
-    Checks various indicators to determine if this is the source repository where
-    AI infrastructure files are maintained vs a target repository where they
-    would be installed.
-
-    .OUTPUTS
-    Boolean - True if this is the source repository, False if target
-
-    .NOTES
-    CRITICAL FUNCTION: This provides essential source repository protection.
-    The logic here determines whether files should be copied locally or downloaded
-    remotely, preventing accidental overwriting of source files.
-    #>
-
-    # Check if we're on a source branch (main, master)
-    try {
-        Push-Location $Global:WorkspaceRoot
-        $currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
-        $sourceBranches = @("main", "master")
-        if ($currentBranch -in $sourceBranches) {
-            return $true
-        }
-    } catch {
-        # Git not available or not in a git repo
-    } finally {
-        Pop-Location
-    }
-
-    # Since toolkit is now separate, source detection is only branch-based
-    # The presence of .github directories in target repo doesn't mean it's source
-    return $false
 }
 
 function Invoke-VerifyWorkspace {
@@ -799,7 +817,7 @@ function Invoke-VerifyWorkspace {
 
     try {
         # CRITICAL: Use centralized validation (replaces Test-SourceRepository)
-        $validation = Test-PreInstallation -AllowBootstrapOnSource:$true  # Allow verification on source
+        $validation = Test-PreInstallation -AllowBootstrapOnSource:$true -WarnOnUncommittedChanges:$false  # Allow verification on source
 
         $results = @{
             Success = $validation.OverallValid
@@ -833,11 +851,14 @@ function Invoke-VerifyWorkspace {
         Write-Separator
         Write-Host ""
 
+        # This installer uses an offline payload; verification does not require remote manifest checks.
+
         # Check main instructions file
         $instructionsFile = $Global:InstallerConfig.Files.Instructions.Target
         if (Test-Path $instructionsFile) {
             $results.Files += @{
                 Path = $instructionsFile
+                ItemType = "File"
                 Status = "Present"
                 Description = "Main Copilot instructions"
             }
@@ -845,6 +866,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $instructionsFile
+                ItemType = "File"
                 Status = "Missing"
                 Description = "Main Copilot instructions"
             }
@@ -857,6 +879,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $instructionsDir -PathType Container) {
             $results.Files += @{
                 Path = $instructionsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Instructions directory"
             }
@@ -878,6 +901,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Instruction file"
                     }
@@ -885,6 +909,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Instruction file"
                     }
@@ -895,6 +920,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $instructionsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Instructions directory"
             }
@@ -907,6 +933,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $promptsDir -PathType Container) {
             $results.Files += @{
                 Path = $promptsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Prompts directory"
             }
@@ -928,6 +955,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Prompt file"
                     }
@@ -935,6 +963,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Prompt file"
                     }
@@ -945,6 +974,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $promptsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Prompts directory"
             }
@@ -957,6 +987,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $skillsDir -PathType Container) {
             $results.Files += @{
                 Path = $skillsDir
+                ItemType = "Directory"
                 Status = "Present"
                 Description = "Skills directory"
             }
@@ -971,6 +1002,7 @@ function Invoke-VerifyWorkspace {
                 if (Test-Path $filePath) {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Present"
                         Description = "Skill file"
                     }
@@ -978,6 +1010,7 @@ function Invoke-VerifyWorkspace {
                 } else {
                     $results.Files += @{
                         Path = $file
+                        ItemType = "File"
                         Status = "Missing"
                         Description = "Skill file"
                     }
@@ -988,6 +1021,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = $skillsDir
+                ItemType = "Directory"
                 Status = "Missing"
                 Description = "Skills directory"
             }
@@ -1001,6 +1035,7 @@ function Invoke-VerifyWorkspace {
         if (Test-Path $settingsFile) {
             $results.Files += @{
                 Path = ".vscode/settings.json"
+                ItemType = "File"
                 Status = "Present"
                 Description = "AI infrastructure settings file"
             }
@@ -1009,6 +1044,7 @@ function Invoke-VerifyWorkspace {
         } else {
             $results.Files += @{
                 Path = ".vscode/settings.json"
+                ItemType = "File"
                 Status = "Not Present"
                 Description = "AI infrastructure not installed"
             }
@@ -1031,12 +1067,7 @@ function Invoke-VerifyWorkspace {
                 $results.Success = $false
                 Write-Host ""
                 Write-Host " Some AI infrastructure files are missing!" -ForegroundColor Red
-                Write-Host ""
-                Write-Host " Issues Found:" -ForegroundColor Yellow
-                Write-Host ""
-                foreach ($item in $results.Issues) {
-                    Write-Host "  - $item" -ForegroundColor Red
-                }
+                Write-IssuesBlock -Issues $results.Issues
 
                 if (-not $results.IsSourceRepo) {
                     Write-Host ""
@@ -1061,6 +1092,8 @@ function Invoke-VerifyWorkspace {
 
         # Prepare details for centralized summary
         $details = @()
+        $directoriesChecked = @($results.Files | Where-Object { $_.ItemType -eq 'Directory' }).Count
+        $filesCheckedTotal = @($results.Files | Where-Object { $_.ItemType -eq 'File' }).Count
         $totalItemsChecked = $results.Files.Count
         $issuesFound = $results.Issues.Count
         $itemsSuccessful = $totalItemsChecked - $issuesFound
@@ -1078,7 +1111,8 @@ function Invoke-VerifyWorkspace {
 
         $details += "Branch Type: $branchType"
         $details += "Target Branch: $currentBranch"
-        $details += "Files Verified: $totalItemsChecked"
+        $details += "Files Verified: $filesCheckedTotal"
+        $details += "Directories Verified: $directoriesChecked"
         $details += "Issues Found: $issuesFound"
         $details += "Location: $workspaceRoot"
 
@@ -1092,7 +1126,9 @@ function Invoke-VerifyWorkspace {
         # Success determination depends on context:
         # - AfterClean: Success = issues found (files removed)
         # - Normal verify: Success = no issues (files present)
-        Show-OperationSummary -OperationName "Verification" -Success $results.Success -DryRun $false -Details $details -NextSteps $nextSteps
+        Show-OperationSummary -OperationName "Verification" -Success $results.Success -Details $details
+        Write-NextStepsBlock -Steps $nextSteps
+        Show-SourceBranchWelcome
 
         return $results
     }
@@ -1101,14 +1137,110 @@ function Invoke-VerifyWorkspace {
     }
 }
 
+function Invoke-VerifyInstallerBundle {
+    <#
+    .SYNOPSIS
+    Verifies the integrity of the local installer bundle (user profile/release extraction)
+
+    .DESCRIPTION
+    Checks for required installer files, bundled payload (aii/), and validates the payload checksum.
+    This is a local self-check and does not verify installation into a target repository.
+
+    .PARAMETER InstallerRoot
+    The root directory containing the installer scripts (install-copilot-setup.ps1/.sh), modules, and aii/.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $results = @{
+        Success = $true
+        Issues = @()
+        InstallerRoot = $InstallerRoot
+    }
+
+    Write-Host ""
+    Write-Separator
+    Write-Host " Installer Bundle Verification" -ForegroundColor Cyan
+    Write-Separator
+    Write-Host ""
+
+    $requiredPaths = @(
+        @{ Display = "file-manifest.config"; Path = (Join-Path $InstallerRoot "file-manifest.config"); Type = "File" },
+        @{ Display = "install-copilot-setup.ps1"; Path = (Join-Path $InstallerRoot "install-copilot-setup.ps1"); Type = "File" },
+        @{ Display = "install-copilot-setup.sh"; Path = (Join-Path $InstallerRoot "install-copilot-setup.sh"); Type = "File" },
+        @{ Display = "modules/powershell"; Path = (Join-Path $InstallerRoot "modules\powershell"); Type = "Directory" },
+        @{ Display = "modules/bash"; Path = (Join-Path $InstallerRoot "modules\bash"); Type = "Directory" },
+        @{ Display = "aii/"; Path = (Join-Path $InstallerRoot "aii"); Type = "Directory" },
+        @{ Display = "aii.checksum"; Path = (Join-Path $InstallerRoot "aii.checksum"); Type = "File" }
+    )
+
+    foreach ($item in $requiredPaths) {
+        $exists = if ($item.Type -eq "Directory") {
+            Test-Path -Path $item.Path -PathType Container
+        } else {
+            Test-Path -Path $item.Path -PathType Leaf
+        }
+
+        if ($exists) {
+            Write-Host "  [FOUND  ] $($item.Display)" -ForegroundColor Green
+        }
+        else {
+            $results.Success = $false
+            $results.Issues += $item.Display
+            Write-Host "  [MISSING] $($item.Display)" -ForegroundColor Red
+        }
+    }
+
+    $checksum = Test-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $checksum.Valid) {
+        $results.Success = $false
+        $results.Issues += "payload checksum validation failed: $($checksum.Reason)"
+        Write-Host ""
+        Write-Host " Payload checksum validation failed: $($checksum.Reason)" -ForegroundColor Yellow
+    }
+
+    $details = @(
+        "Location: $InstallerRoot",
+        "Issues Found: $($results.Issues.Count)"
+    )
+
+    $scriptPath = Join-Path $InstallerRoot 'install-copilot-setup.ps1'
+
+    $nextSteps = if ($results.Success) {
+        @(
+            "1. Change directory to your installer bundle:",
+            "     cd `"$InstallerRoot`"",
+            "2. To verify a target repository: .\install-copilot-setup.ps1 -Verify -RepoDirectory `"<path-to-terraform-provider-azurerm>`"",
+            "3. To install AI infrastructure: .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-terraform-provider-azurerm>`""
+        )
+    }
+    else {
+        @(
+            "  If using a release bundle: re-extract the latest bundle to your user profile",
+            "  If contributing: re-run -Bootstrap from a local git clone",
+            "  Then re-run: & `"$scriptPath`" -Verify"
+        )
+    }
+
+    Show-OperationSummary -OperationName "Bundle Verification" -Success $results.Success -Details $details
+    Write-NextStepsBlock -Steps $nextSteps
+    Show-SourceBranchWelcome
+
+    return $results
+}
+
 #endregion
 
 # Export only the functions actually used by the main script and inter-module dependencies
 Export-ModuleMember -Function @(
     'Test-WorkspaceValid',
     'Test-PreInstallation',
+    'Test-InstallerChecksum',
+    'Write-InstallerChecksum',
+    'Invoke-VerifyInstallerBundle',
     'Invoke-VerifyWorkspace',
-    'Test-SourceRepository',
     'Test-IsAzureRMProviderRepo',
     'Test-UncommittedChange'
 )

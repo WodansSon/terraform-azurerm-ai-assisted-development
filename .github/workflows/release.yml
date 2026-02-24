@@ -57,6 +57,81 @@ jobs:
           # Copy Bash modules
           cp installer/modules/bash/*.sh release/.terraform-azurerm-ai-installer/modules/bash/
 
+      - name: Build and copy offline payload (aii/) to bundle
+        run: |
+          set -euo pipefail
+
+          payload_root="release/.terraform-azurerm-ai-installer/aii"
+          mkdir -p "${payload_root}"
+
+          # Copy only the AI infrastructure files referenced by the manifest.
+          # This keeps the release bundle self-contained and avoids shipping unrelated repo content.
+          copy_manifest_section() {
+            local section="$1"
+
+            awk -v section="[${section}]" '
+              $0 ~ /^\[/ { in_section = ($0 == section) }
+              in_section && $0 !~ /^\[/ {
+                if ($0 ~ /^#/ || $0 ~ /^[[:space:]]*$/) next
+                print $0
+              }
+            ' installer/file-manifest.config | while IFS= read -r relpath; do
+              mkdir -p "${payload_root}/$(dirname "${relpath}")"
+              cp "${relpath}" "${payload_root}/${relpath}"
+            done
+          }
+
+          copy_manifest_section "MAIN_FILES"
+          copy_manifest_section "INSTRUCTION_FILES"
+          copy_manifest_section "PROMPT_FILES"
+          copy_manifest_section "SKILL_FILES"
+          copy_manifest_section "UNIVERSAL_FILES"
+
+      - name: Generate installer payload checksum
+        run: |
+          set -euo pipefail
+
+          installer_root="release/.terraform-azurerm-ai-installer"
+          manifest_file="${installer_root}/file-manifest.config"
+          payload_root="${installer_root}/aii"
+          checksum_file="${installer_root}/aii.checksum"
+
+          hash_file() {
+            local file_path="$1"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "${file_path}" | awk '{print $1}'
+            else
+              shasum -a 256 "${file_path}" | awk '{print $1}'
+            fi
+          }
+
+          hash_text() {
+            local content="$1"
+            if command -v sha256sum >/dev/null 2>&1; then
+              printf "%s" "${content}" | sha256sum | awk '{print $1}'
+            else
+              printf "%s" "${content}" | shasum -a 256 | awk '{print $1}'
+            fi
+          }
+
+          tmp_file="$(mktemp)"
+          manifest_hash="$(hash_file "${manifest_file}")"
+          printf "%s  %s\n" "${manifest_hash}" "file-manifest.config" > "${tmp_file}"
+
+          while IFS= read -r file; do
+            rel_path="${file#${payload_root}/}"
+            file_hash="$(hash_file "${file}")"
+            printf "%s  %s\n" "${file_hash}" "aii/${rel_path}" >> "${tmp_file}"
+          done < <(find "${payload_root}" -type f | LC_ALL=C sort)
+
+          combined="$(cat "${tmp_file}")"
+          overall_hash="$(hash_text "${combined}")"
+
+          version="$(cat "${installer_root}/VERSION" | tr -d '\r\n')"
+          timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+
       - name: Make bundled bash scripts executable
         run: |
           chmod +x release/.terraform-azurerm-ai-installer/install-copilot-setup.sh

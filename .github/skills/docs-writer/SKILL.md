@@ -1,8 +1,8 @@
 ---
-name: azurerm-docs-writer
+name: docs-writer
 description: Write or update terraform-provider-azurerm documentation pages (website/docs/**/*.html.markdown) in HashiCorp style. Use when creating/updating resource or data source docs, fixing docs lint issues, or when you need to find correct argument/attribute descriptions.
 ---
-# azurerm-docs-writer (AzureRM Provider)
+# docs-writer (AzureRM Provider)
 ## Mandatory: read the entire skill
 Before applying this skill, scan this file end-to-end. Do not stop after the first N lines.
 
@@ -26,6 +26,16 @@ Use this skill when working on Terraform AzureRM provider documentation pages un
 
 Your goal is to produce docs that match provider conventions and stay consistent with the actual Terraform schema.
 
+## Minimal user input policy
+Assume the user request may be minimal (for example: "fix this doc" / "make it compliant" / "follow Hashi standards").
+
+When this skill is invoked, you must still:
+- verify schema parity and enforce ordering
+- enforce the standard generic ForceNew sentence
+- add missing required notes (schema constraints, `CustomizeDiff`, and implicit behavior)
+
+Do not require the user to explicitly ask for these checks.
+
 ## Where to look (glossary)
 - Example name/value conventions: `Examples`
 - ForceNew phrasing rules: `ForceNew` sections
@@ -38,6 +48,8 @@ Your goal is to produce docs that match provider conventions and stay consistent
 - Output marker rules: `Verification (assistant response only)`
 
 ## Decision tree (fast path)
+- If user intent is review/audit/check: run an audit-style report first and do not edit files unless the user explicitly asks for fixes.
+- If user intent is fix/apply/update: run a quick audit-first pass (schema parity + ordering + required notes), then proceed with edits.
 - Active file is not under `website/docs/**`: do not run docs work under this skill.
 - `website/docs/r/**` (Resource): must have Example Usage, Arguments Reference, Attributes Reference, Import; include Timeouts only if schema defines timeouts.
 - `website/docs/d/**` (Data Source): must have Example Usage, Arguments Reference, Attributes Reference; do not include Import; include Timeouts only if schema defines timeouts.
@@ -63,7 +75,7 @@ In testing mode:
 ## Verification (assistant response only)
 When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
 
-Skill used: azurerm-docs-writer
+Skill used: docs-writer
 
 Rules:
 - Do NOT write this marker into any repository file (docs, code, generated files).
@@ -136,6 +148,21 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
       - Use a `~> **Note:**` only for cross-field/conditional requirements that commonly trip users up.
       - For simple enum validation in `ValidateFunc`, document allowed values in the field description rather than adding extra notes.
 
+   **Mandatory: add missing conditional notes (automatic fix)**
+   - When the schema or provider implementation enforces cross-field/conditional requirements that affect successful `plan/apply`, the docs must include a `~> **Note:**` describing the condition.
+   - This is not optional auditing guidance: when writing/updating docs under this skill, you must *add* the missing note if it is not already present.
+   - At minimum, treat these as note-worthy constraints when present:
+      - Schema: `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith`, `RequiredWithAll`
+      - Diff-time: `CustomizeDiff` rules and helper functions that implement "required when …" / "only valid when …" constraints
+      - Implicit behavior: expand/flatten logic that toggles feature state based on block/list presence, or hardcodes an API value because only one value is supported and the schema does not expose it
+   - Keep notes concise and user-actionable. Prefer `~> **Note:**` (warning) for these constraints.
+
+   **Required-notes coverage checklist (must include in your final response)**
+   - List each cross-field/conditional requirement you found (schema + `CustomizeDiff` + implicit behavior) and state whether:
+      - an existing note already covered it, or
+      - you added/updated a note to cover it.
+   - If you cannot confidently determine whether the docs already cover a constraint, treat it as missing and add a note.
+
 5. Write clean docs content
    - Keep sentences short, factual, and present tense.
    - Avoid copying vendor documentation verbatim; paraphrase.
@@ -160,13 +187,13 @@ At minimum, always enforce:
    - If you are documenting a ForceNew condition that applies in both directions between two sets of values, do not rely on “and vice versa”.
    - If the text contains the phrase “and vice versa”, you must rewrite the sentence to remove it.
    - Prefer an explicit, bidirectional phrasing that preserves meaning, e.g.:
-      - Prefer: “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+   - Prefer: “Changing this forces a new resource to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
       - Avoid: “... when types `A`, `B` and `C` are changed to `D`, `E` or `F` and vice versa.”
 
 - **ForceNew conditions for “subset switching” enums**
    - When a ForceNew is triggered specifically by switching between two subsets of values within the same enum, document it as a “between subsets” rule.
    - Preferred pattern:
-      - “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+      - “Changing this forces a new resource to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
    - Avoid patterns that read like a one-way transformation or require “vice versa”.
 
 - **Enum wording (provider standard)**
@@ -237,7 +264,7 @@ At minimum, always enforce:
 
 - **ForceNew rewrite (subset switching) — canonical form**
    - If you see the pattern “... when types `A`, `B` and `C` are changed to `D`, `E` or `F` and vice versa”, rewrite it into the canonical “two groups” form:
-      - “Changing this forces a new {{RESOURCE_NAME}} to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
+      - “Changing this forces a new resource to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.”
    - This rewrite is preferred because it is bidirectional, removes “vice versa”, and makes the boundary-switch behavior unambiguous.
 
 - **Consistent value quoting**
@@ -263,6 +290,7 @@ At minimum, always enforce:
    - In `## Attributes Reference`, always list `id` as the first exported attribute.
    - List remaining exported attributes in alphabetical order.
    - Do not bury `id` in the middle of the list.
+   - Do not special-case `name`, `resource_group_name`, `location`, or `tags` in Attributes Reference ordering.
 
 If you are only asked to make a narrow change, still apply these style rules to any lines you touch and to any immediately-adjacent “Possible values …” lines in the same section.
 
@@ -272,7 +300,7 @@ If you are only asked to make a narrow change, still apply these style rules to 
    - Follow the **TODO resolution ladder** below before giving up. If you still cannot resolve a `TODO` from verifiable sources, replace it with the minimal verified description and explicitly list the remaining uncertainty in your output checklist.
 
    **TODO resolution ladder (use before giving up):**
-   1. Provider schema + implementation (preferred)
+   1. Terraform schema + provider implementation (preferred)
       - `Description:` strings in schema
       - expand/flatten behavior in `internal/**`
       - validation/CustomizeDiff rules that create user-facing constraints
@@ -363,7 +391,7 @@ Do not use a mild note where a warning/caution is required.
 
 After writing or updating a page, run a standards + schema parity pass.
 
-- For the full, structured audit procedure and output format, use: `.github/prompts/docs-schema-audit.prompt.md`
+- For the full, structured audit procedure and output format, use: `.github/prompts/code-review-docs.prompt.md` (run `/code-review-docs` with the target `website/docs/**` file open)
 
 If you cannot locate the schema under `internal/**`, say so explicitly and do a docs-standards-only review.
 
@@ -394,19 +422,17 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Attributes Reference ordering**
    - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
+   - No other exceptions (do not special-case `name`, `resource_group_name`, `location`, or `tags`)
 
 - **ForceNew wording (resources only)**
    - Every ForceNew argument description ends with a ForceNew sentence.
-   - Existing documentation pages may continue to use the legacy sentence: "Changing this forces a new resource to be created.".
-   - For new documentation pages (and when updating/touching an argument description), use the more descriptive sentence: "Changing this forces a new {{RESOURCE_NAME}} to be created.".
-   - Set `{{RESOURCE_NAME}}` to the specific Azure resource name used by the page (preferred):
-      - Use the noun from the page description/title, e.g. "Storage Account", "Key Vault", "Virtual Network".
-      - Keep it consistent across the page (same capitalization and wording).
-   - If you cannot reliably determine the Azure resource name from the page content, use a deterministic fallback:
-      - "Changing this forces a new `azurerm_<name>` to be created." (Terraform resource name in backticks)
+   - Use the standard generic sentence: "Changing this forces a new resource to be created.".
+   - If a ForceNew sentence is missing, add it.
+   - If a ForceNew sentence is present but differs from the standard, rewrite it to the standard.
 
 - **Notes**
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
+   - If a note applies to a single field, place it inline with that field. If it applies to multiple fields or a combined behavior, place it after the relevant list to preserve ordering
 
 - **Examples**
    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
@@ -425,11 +451,29 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
+
+## Mandatory post-edit validation (no exceptions)
+
+After modifying a docs page under `website/docs/**`, you must:
+
+- Re-read the entire modified section(s)
+- Verify Arguments ordering: required (`name`, `resource_group_name`, `location`, then remaining required alphabetical), then optional alphabetical, `tags` last
+- Verify Attributes ordering: `id` first, then alphabetical
+- Verify no duplicate argument or attribute blocks
+- Verify note markers match meaning (`->` info, `~>` warning, `!>` irreversible)
+- Verify notes are inline for single-field rules; place multi-field notes after the relevant list to preserve ordering
+- Re-run `/code-review-docs` and fix all issues before final response
+- Explicitly state `Validation complete` in the final response
+
+## Patch failure rule
+
+If an edit fails to apply, re-open the target section and retry. Do not proceed without validating the change.
+
 ## Where to get field descriptions (when not obvious)
 
 When you need to document an argument/attribute and the wording is not already present:
 
-1. Prefer the provider schema
+1. Prefer the Terraform schema
    - Look for `Description:` values in schema definitions.
    - Also check how fields are expanded/flattened in the implementation (typed or untyped) to document actual behavior.
 

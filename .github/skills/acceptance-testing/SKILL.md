@@ -1,5 +1,5 @@
 ---
-name: azurerm-acceptance-testing
+name: acceptance-testing
 description: Write and troubleshoot terraform-provider-azurerm acceptance tests safely and consistently (BuildTestData, ExistsInAzure, ImportStep, requiresImport). Use when adding or fixing TestAcc* tests.
 ---
 
@@ -9,7 +9,7 @@ description: Write and troubleshoot terraform-provider-azurerm acceptance tests 
 
 When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
 
-Skill used: azurerm-acceptance-testing
+Skill used: acceptance-testing
 
 Rules:
 - Do NOT write this marker into any repository file (docs, code, generated files).

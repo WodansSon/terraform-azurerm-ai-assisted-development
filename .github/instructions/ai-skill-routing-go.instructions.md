@@ -7,7 +7,7 @@ description: Route Go implementation work to the appropriate Agent Skill(s) and 
 
 When editing or generating code under `internal/**/*.go`, you must consult and follow the skill definition in:
 
-- `.github/skills/azurerm-resource-implementation/SKILL.md`
+- `.github/skills/resource-implementation/SKILL.md`
 
 This is required even if the user does not explicitly ask to “use the skill”. Treat the skill as the authoritative checklist for provider implementation patterns, schema design, error handling, PATCH/residual-state behavior, and validation approach.
 
@@ -15,7 +15,7 @@ This is required even if the user does not explicitly ask to “use the skill”
 
 Because use of this skill is mandatory for `internal/**/*.go`, the assistant's final response must include this line:
 
-Skill used: azurerm-resource-implementation
+Skill used: resource-implementation
 
 Rules:
 - Do not write this marker into repository files.

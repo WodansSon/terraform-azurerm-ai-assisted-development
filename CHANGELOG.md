@@ -7,8 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
 ### Changed
+
+### Fixed
+
+## [2.0.0] - 2026-02-24
+
+### Added
+- Added a GitHub pull request template at `.github/pull_request_template.md` to standardize PR titles, scope, testing, changelog updates, and AI assistance disclosure.
+
+### Changed
+- **BREAKING**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
+- **BREAKING**: simplified installer CLI:
+  - Removed `-Contributor` / `-contributor`
+  - Removed `-Branch` / `-branch`
+  - `-LocalPath` / `-local-path` is now the only source override (default source is bundled payload `aii/`)
 - Set `installer/VERSION` to `0.0.0` to make it clear that it is a placeholder for source checkouts (release bundles are stamped from the tag).
+- `-Bootstrap` / `-bootstrap` is now a standalone command (no other parameters accepted) and must be run from a git clone (repo root contains `.git`). Official installation is via the release bundle.
+- Bash installer no longer references legacy AzureRM-provider repo layouts/branches (removed `exp/terraform_copilot` and `.github/AIinstaller` fallbacks); bootstrap guidance now consistently points to `./installer/install-copilot-setup.sh`.
+- Standardized installer help/examples to refer to the terraform-provider-azurerm working copy directory (rather than legacy "feature branch directory" phrasing) and removed incorrect guidance that bootstrap must run from `main`.
+- Installer help output (`-Help` / `-help`) now consistently describes `-RepoDirectory` / `-repo-directory` as pointing to a terraform-provider-azurerm working copy, and avoids showing "attempted command" notes when the user explicitly requests help.
+- Renamed the Agent Skills slash commands to remove the `azurerm-` prefix: `/azurerm-docs-writer`, `/azurerm-resource-implementation`, and `/azurerm-acceptance-testing` are now `/docs-writer`, `/resource-implementation`, and `/acceptance-testing`.
+- Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/code-review-docs` (file: `.github/prompts/code-review-docs.prompt.md`) to group review prompts consistently.
+- Updated `/code-review-docs` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
+- Updated `/code-review-docs` to also extract and report implicit behavior constraints from expand/flatten logic (for example feature enablement toggled by block presence, or hardcoded API values not exposed in schema).
+- Updated `/code-review-docs` output to include a "required notes coverage" checklist and to require explicit reporting of detected notes and conditional constraints (or an explicit "none found").
+- Updated `/code-review-docs` to validate note content for correctness (notes describing constraints must match the extracted schema/diff-time/implicit behavior rules).
+- Strengthened `/code-review-docs` and `/docs-writer` instructions so full parity/ordering/notes checks run even when the user provides minimal prompts.
+- Aligned `## Arguments Reference` ordering rules in `/code-review-docs` with provider standards (`name`, `resource_group_name`, `location`, then required alphabetical, then optional alphabetical, `tags` last).
+- Clarified `## Attributes Reference` ordering to be strictly `id` first, then remaining attributes alphabetical (no special-casing `tags`, `name`, `resource_group_name`, or `location`).
+- Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
+- Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
+- Expanded `CONTRIBUTING.md` to provide more detailed contribution and validation guidance, including PowerShell/Bash parity expectations to avoid installer drift.
+- Removed `-Dry-Run` / `-dry-run` from the installer to keep the workflow focused on install/clean/verify.
+- Removed legacy remote download scaffolding; installs now copy from the bundled payload or `-LocalPath` only.
+- Installer now validates a bundled payload checksum on install/verify to prevent mixed-state runs; bootstrap and release bundles generate `aii.checksum`.
+- `-Verify` / `-verify` now has two modes:
+  - Without `-RepoDirectory` / `-repo-directory` (typically from the user-profile installer directory), it performs an **installer bundle self-check** (manifest/modules/payload/checksum).
+  - With `-RepoDirectory` / `-repo-directory`, it verifies AI infrastructure presence in the **target repository**.
+- `-Verify -RepoDirectory` (and the equivalent Bash form) now hard-fails if the repo directory points at the installer source repository, to prevent false-positive verification.
+
+### Upgrade Notes (from 1.x)
+- `-Contributor` / `-contributor`, `-Branch` / `-branch`, and `-Dry-Run` / `-dry-run` were removed.
+  - To test local/uncommitted AI changes or install offline, use `-LocalPath` / `-local-path`.
+  - Default source is the bundled offline payload (`aii/`) shipped with the release/bootstrapped installer.
+- `-Bootstrap` / `-bootstrap` is now standalone (no extra flags). Previous usage like `-Bootstrap -Contributor` becomes just `-Bootstrap`.
+- Installs still target a terraform-provider-azurerm working copy via `-RepoDirectory` / `-repo-directory` (validated via `go.mod` module identity and repo structure).
+
+### Fixed
+- Fixed a regression where `/code-review-docs` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
+- When running the installer directly from a git clone with placeholder `installer/VERSION` (`0.0.0`), the displayed version now matches bootstrap-stamped versions (`dev-<git sha>` with optional `-dirty`).
+- Installer installs no longer require internet connectivity (offline payload by default).
+- Clarified bootstrap summary labels to distinguish installer files vs payload files (PowerShell and Bash).
+- Removed unused installer helpers/exports in PowerShell and Bash modules to reduce dead code.
+- Installer summaries now include `Source`, `Manifest`, and `Command` details to make it explicit which files were attempted from which location/ref.
+- Release bundles and bootstrapped installs now include an offline payload (`aii/`) so installs do not fetch AI files from GitHub.
+- Bash repository validation for `-repo-directory` now requires the terraform-provider-azurerm `go.mod` module declaration (reduces false positives from substring matches).
+- `-verify` is offline-only and no longer depends on GitHub connectivity or remote manifest validation.
+- Unified PowerShell/Bash early validation and error output to reduce cross-platform drift (for example, `-RepoDirectory` / `-repo-directory` now fails fast when the target path does not exist).
 
 ## [1.0.5] - 2026-02-18
 
@@ -18,8 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.4] - 2026-02-18
 
 ### Changed
-- Updated the `.github/prompts/docs-schema-audit.prompt.md` prompt to reflect proposed upstream contributor documentation standards (based on [hashicorp/terraform-provider-azurerm PR #31772](https://github.com/hashicorp/terraform-provider-azurerm/pull/31772)) for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
-- Updated the `/azurerm-docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
+- Updated the `.github/prompts/docs-review.prompt.md` prompt to reflect proposed upstream contributor documentation standards (based on [hashicorp/terraform-provider-azurerm PR #31772](https://github.com/hashicorp/terraform-provider-azurerm/pull/31772)) for nested block field ordering (arguments and attributes) and ForceNew wording guidance.
+- Updated the `/docs-writer` skill to enforce nested block field ordering and align ForceNew wording guidance (legacy vs descriptive phrasing), while keeping the skill under the 500-line limit.
 - Removed empty `##` spacer headings from README files to avoid bogus headings and keep GitHub Markdown rendering consistent.
 - Centralized the installer version into `installer/VERSION` (PowerShell + Bash now read from that file) and updated the release workflow to write the tagged version into the bundled installer.
 - Updated `-Bootstrap` to stamp a contributor-friendly version in the user profile installer (`dev-<git sha>` with optional `-dirty`) to clearly indicate a local, bootstrapped build.
@@ -27,22 +85,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.3] - 2026-02-17
 
 ### Changed
-- Clarified the `/azurerm-docs-writer` skill final checklist to explicitly restate canonical `## Arguments Reference` argument ordering.
-- Audited and clarified the `/azurerm-docs-writer` skill instructions to remove duplicated/contradictory rules and improve example clarity.
+- Clarified the `/docs-writer` skill final checklist to explicitly restate canonical `## Arguments Reference` argument ordering.
+- Audited and clarified the `/docs-writer` skill instructions to remove duplicated/contradictory rules and improve example clarity.
 - GitHub Release notes now correctly include the version-specific `CHANGELOG.md` section (previously blank due to extraction logic).
 - Standardized GitHub Release notes headings to plain text (removed emojis).
 
 ## [1.0.2] - 2026-02-15
 
 ### Added
-- Agent Skill files under `.github/skills/` (for example `/azurerm-docs-writer`) are now distributed by the installer.
+- Agent Skill files under `.github/skills/` (for example `/docs-writer`) are now distributed by the installer.
 
 ### Changed
 - Installer now installs, verifies, and cleans `.github/skills` alongside instructions and prompts, including automated deprecation removal based on the manifest.
 - CI markdownlint configuration now disables `MD007` (unordered list indentation) to avoid false positives with HashiCorp-style indentation.
 
 ### Fixed
-- Fixed markdownlint failures in `.github/skills/azurerm-docs-writer/SKILL.md` (for example `MD029` ordered list numbering).
+- Fixed markdownlint failures in `.github/skills/docs-writer/SKILL.md` (for example `MD029` ordered list numbering).
 
 ## [1.0.1] - 2026-02-12
 
@@ -51,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `terraform-azurerm-ai-installer.zip`
   - `terraform-azurerm-ai-installer.tar.gz`
 - New optional documentation audit prompt:
-  - `.github/prompts/docs-schema-audit.prompt.md`
+  - `.github/prompts/docs-review.prompt.md`
 
 ### Changed
 - Documentation now clearly distinguishes installing the latest release (`releases/latest/download/...`) from pinning a specific version (`releases/download/vX.Y.Z/...`)

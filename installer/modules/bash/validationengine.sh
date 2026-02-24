@@ -59,7 +59,7 @@ test_bash_version() {
 
 # Function to test required commands
 test_required_commands() {
-    local required_commands=("git" "curl" "mkdir" "cp" "rm" "dirname" "realpath")
+    local required_commands=("git" "mkdir" "cp" "rm" "dirname" "realpath")
     local missing_commands=()
     local valid=true
 
@@ -69,6 +69,11 @@ test_required_commands() {
             valid=false
         fi
     done
+
+    if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+        missing_commands+=("sha256sum|shasum")
+        valid=false
+    fi
 
     echo "Valid=${valid}"
     if [[ ${valid} == "true" ]]; then
@@ -97,7 +102,7 @@ validate_repository() {
     # Check for go.mod and its content
     if [[ -f "${repo_dir}/go.mod" ]]; then
         has_go_mod=true
-        if grep -q "terraform-provider-azurerm" "${repo_dir}/go.mod" 2>/dev/null; then
+        if grep -q "module github.com/hashicorp/terraform-provider-azurerm" "${repo_dir}/go.mod" 2>/dev/null; then
             has_azurerm_content=true
         fi
     fi
@@ -124,22 +129,13 @@ validate_repository() {
 test_system_requirements() {
     local bash_result=$(test_bash_version)
     local commands_result=$(test_required_commands)
-    local internet_result=""
-
-    # Test internet connectivity
-    if test_internet_connectivity; then
-        internet_result="Connected=true"$'\n'"Reason=Internet connectivity verified"
-    else
-        internet_result="Connected=false"$'\n'"Reason=No internet connectivity detected. Check network connection and firewall settings."
-    fi
 
     # Parse results
     local bash_valid=$(echo "${bash_result}" | grep "Valid=" | cut -d= -f2)
     local commands_valid=$(echo "${commands_result}" | grep "Valid=" | cut -d= -f2)
-    local internet_connected=$(echo "${internet_result}" | grep "Connected=" | cut -d= -f2)
 
     # Overall validation
-    if [[ "${bash_valid}" == "true" && "${commands_valid}" == "true" && "${internet_connected}" == "true" ]]; then
+    if [[ "${bash_valid}" == "true" && "${commands_valid}" == "true" ]]; then
         echo "OverallValid=true"
     else
         echo "OverallValid=false"
@@ -147,93 +143,6 @@ test_system_requirements() {
 
     echo "Bash=${bash_result}"
     echo "Commands=${commands_result}"
-    echo "Internet=${internet_result}"
-}
-
-# Function to test system requirements (original version for compatibility)
-test_system_requirements_basic() {
-    local missing_tools=()
-
-    # Check for curl or wget
-    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-        missing_tools+=("curl or wget")
-    fi
-
-    # Check for basic Unix tools
-    local required_tools=("bash" "mkdir" "cp" "rm" "dirname" "realpath")
-    for tool in "${required_tools[@]}"; do
-        if ! command -v "${tool}" >/dev/null 2>&1; then
-            missing_tools+=("${tool}")
-        fi
-    done
-
-    if [[ ${#missing_tools[@]} -gt 0 ]]; then
-        write_error_message "Missing required system tools: ${missing_tools[*]}"
-        return 1
-    fi
-
-    return 0
-}
-
-# Function to test Git repository with branch safety checks
-test_git_repository() {
-    local repo_dir="$1"
-    local allow_bootstrap_on_source="${2:-false}"
-
-    # Initialize result variables
-    local valid=false
-    local is_git_repo=false
-    local has_remote=false
-    local current_branch="Unknown"
-    local is_source_branch=false
-    local reason=""
-
-    if [[ ! -d "${repo_dir}/.git" ]]; then
-        reason="Not a Git repository: ${repo_dir}"
-            write_warning_message "${reason}"
-    else
-        is_git_repo=true
-
-        # Check if git command is available
-        if ! command -v git >/dev/null 2>&1; then
-            reason="Git command not available"
-            write_warning_message "${reason}"
-        else
-            # Get current branch
-            current_branch=$(cd "${repo_dir}" && git branch --show-current 2>/dev/null || echo "Unknown")
-
-            # Check for remote
-            if cd "${repo_dir}" && git remote -v >/dev/null 2>&1; then
-                has_remote=true
-            fi
-
-            # Check if on source branch (main, master, or exp/terraform_copilot)
-            case "${current_branch}" in
-                "main"|"master"|"exp/terraform_copilot")
-                    is_source_branch=true
-                    ;;
-            esac
-
-            # Validate based on branch safety rules
-            if [[ "${is_source_branch}" == "true" ]] && [[ "${allow_bootstrap_on_source}" != "true" ]]; then
-                valid=false
-                reason="Cannot install on source branch '${current_branch}' without explicit permission. Use feature branch for safety."
-            else
-                valid=true
-                reason="Git repository validation passed"
-            fi
-        fi
-    fi
-
-    # Output results in a structured format
-    echo "Valid=${valid}"
-    echo "IsGitRepo=${is_git_repo}"
-    echo "HasRemote=${has_remote}"
-    echo "CurrentBranch=${current_branch}"
-    echo "IsSourceBranch=${is_source_branch}"
-    echo "Reason=${reason}"
-
-    [[ "${valid}" == "true" ]]
 }
 
 # Function to test workspace validity
@@ -301,91 +210,46 @@ test_workspace_valid() {
     [[ "${valid}" == "true" ]]
 }
 
-# Function to run comprehensive pre-installation validation
-test_pre_installation() {
-    local allow_bootstrap_on_source="${1:-false}"
-    local workspace_path="${2:-$(pwd)}"
-
-    # Initialize results
-    local overall_valid=true
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-    # Get workspace root for git operations
-    local workspace_root=$(find_workspace_root "${workspace_path}")
-
-    # Test Git repository (CRITICAL: check first for branch safety)
-    local git_result=""
-    if [[ -n "${workspace_root}" ]]; then
-        git_result=$(test_git_repository "${workspace_root}" "${allow_bootstrap_on_source}")
-    else
-        git_result=$(test_git_repository "${workspace_path}" "${allow_bootstrap_on_source}")
-    fi
-
-    local git_valid=$(echo "${git_result}" | grep "Valid=" | cut -d= -f2)
-    if [[ "${git_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Test workspace validity
-    local workspace_result=$(test_workspace_valid "${workspace_path}")
-    local workspace_valid=$(echo "${workspace_result}" | grep "Valid=" | cut -d= -f2)
-    if [[ "${workspace_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Test system requirements
-    local system_result=$(test_system_requirements)
-    local system_valid=$(echo "${system_result}" | grep "OverallValid=" | cut -d= -f2)
-    if [[ "${system_valid}" != "true" ]]; then
-        overall_valid=false
-    fi
-
-    # Output comprehensive results
-    echo "OverallValid=${overall_valid}"
-    echo "Timestamp=${timestamp}"
-    echo "Git=${git_result}"
-    echo "Workspace=${workspace_result}"
-    echo "SystemRequirements=${system_result}"
-
-    [[ "${overall_valid}" == "true" ]]
-}
-
 # Public Functions
-
-# Function to get workspace root (public wrapper for find_workspace_root)
-get_workspace_root() {
-    local start_path="${1:-$(pwd)}"
-    find_workspace_root "${start_path}"
-}
-
-# Function to test internet connectivity
-test_internet_connectivity() {
-    local test_url="https://raw.githubusercontent.com"
-
-    if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL --connect-timeout 10 "${test_url}" >/dev/null 2>&1; then
-            return 0
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget -q --timeout=10 --tries=1 "${test_url}" -O /dev/null 2>/dev/null; then
-            return 0
-        fi
-    fi
-
-    return 1
-}
 
 # Function to verify AI infrastructure installation
 verify_installation() {
     local workspace_root="${1:-$(get_workspace_root)}"
 
-    write_cyan " Workspace Verification"
-    print_separator
-    echo ""
+    write_section "Workspace Verification"
 
     local all_good=true
-    local manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    local manifest_file=""
+    # Prefer the manifest shipped with the running installer to avoid using a stale user-profile manifest.
+    local module_dir
+    module_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local installer_dir
+    installer_dir="$(cd "${module_dir}/../.." && pwd)"
+
+    if [[ -f "${installer_dir}/file-manifest.config" ]]; then
+        manifest_file="${installer_dir}/file-manifest.config"
+    elif [[ -f "${HOME}/.terraform-azurerm-ai-installer/file-manifest.config" ]]; then
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    else
+        write_error_message "Manifest file not found"
+        write_plain "Expected one of:"
+        write_plain "  ${installer_dir}/file-manifest.config"
+        write_plain "  ${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+        echo ""
+        write_plain "TIP: If running from user profile, ensure the release bundle is extracted into:"
+        write_plain "  ${HOME}/.terraform-azurerm-ai-installer"
+        echo ""
+        write_plain "Run bootstrap from a local git clone:"
+        write_plain "  ./install-copilot-setup.sh -bootstrap"
+        return 1
+    fi
+
+    # Offline-only verification: no remote manifest checks.
+
+    write_cyan " Using manifest: ${manifest_file}"
+    echo ""
     local files_checked=0
+    local dirs_checked=0
     local files_passed=0
     local files_failed=0
     local missing_items=()  # Array to track specific missing files/directories
@@ -416,7 +280,7 @@ verify_installation() {
     if [[ $? -eq 0 && -n "${instruction_files}" ]]; then
         # Check if instructions directory exists
         local instructions_dir="${workspace_root}/.github/instructions"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${instructions_dir}" ]]; then
             write_green "  [FOUND  ] .github/instructions/"
             files_passed=$((files_passed + 1))
@@ -450,7 +314,7 @@ verify_installation() {
     if [[ $? -eq 0 && -n "${prompt_files}" ]]; then
         # Check if prompts directory exists
         local prompts_dir="${workspace_root}/.github/prompts"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${prompts_dir}" ]]; then
             write_green "  [FOUND  ] .github/prompts/"
             files_passed=$((files_passed + 1))
@@ -484,7 +348,7 @@ verify_installation() {
     if [[ -n "${skill_files}" ]]; then
         # Check if skills directory exists
         local skills_dir="${workspace_root}/.github/skills"
-        files_checked=$((files_checked + 1))
+        dirs_checked=$((dirs_checked + 1))
         if [[ -d "${skills_dir}" ]]; then
             write_green "  [FOUND  ] .github/skills/"
             files_passed=$((files_passed + 1))
@@ -538,7 +402,7 @@ verify_installation() {
             else
                 # Regular file processing
                 # Count directory first (like PowerShell does)
-                files_checked=$((files_checked + 1))
+                dirs_checked=$((dirs_checked + 1))
                 if [[ -d "${workspace_root}/${dir_path}" ]]; then
                     write_green "  [FOUND  ] ${dir_path}/"
                     files_passed=$((files_passed + 1))
@@ -573,7 +437,7 @@ verify_installation() {
             if command -v git >/dev/null 2>&1 && [[ -d "${workspace_root}/.git" ]]; then
                 current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
                 # Determine branch type
-                local source_branches=("main" "master" "exp/terraform_copilot")
+                local source_branches=("main" "master")
                 for branch in "${source_branches[@]}"; do
                     if [[ "$current_branch" == "$branch" ]]; then
                         branch_type="source"
@@ -583,28 +447,23 @@ verify_installation() {
             fi
             local issues_found=0
 
-            # Match PowerShell order: Branch Type, Target Branch, Files Verified, Issues Found, Location
+            # Match PowerShell order: Branch Type, Target Branch, Files Verified, Directories Verified, Issues Found, Location
             # Clean branch_type variable to remove any potential line breaks or whitespace
             branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            show_operation_summary "Verification" "true" "false" \
+            show_operation_summary "Verification" "true" \
                 "Branch Type: ${branch_type}" \
                 "Target Branch: ${current_branch}" \
                 "Files Verified: ${files_checked}" \
+                "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
                 "Location: ${workspace_root}"
+            show_source_branch_welcome
         fi
     else
         echo ""
         write_red " Some AI infrastructure files are missing!"
-        echo ""
-        write_yellow " Issues Found:"
-        echo ""
-
-        # List specific missing files/directories
-        for item in "${missing_items[@]}"; do
-            write_red "  - ${item}"
-        done
+        write_issues_block "${missing_items[@]}"
         echo ""
         write_cyan " TIP: To install missing files, run the installer from user profile"
 
@@ -616,7 +475,7 @@ verify_installation() {
             if command -v git >/dev/null 2>&1 && [[ -d "${workspace_root}/.git" ]]; then
                 current_branch=$(cd "${workspace_root}" && git branch --show-current 2>/dev/null || echo "unknown")
                 # Determine branch type
-                local source_branches=("main" "master" "exp/terraform_copilot")
+                local source_branches=("main" "master")
                 for branch in "${source_branches[@]}"; do
                     if [[ "$current_branch" == "$branch" ]]; then
                         branch_type="source"
@@ -629,15 +488,18 @@ verify_installation() {
             # Clean branch_type variable to remove any potential line breaks or whitespace
             branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-            show_operation_summary "Verification" "false" "false" \
+            show_operation_summary "Verification" "false" \
                 "Branch Type: ${branch_type}" \
                 "Target Branch: ${current_branch}" \
                 "Files Verified: ${files_checked}" \
+                "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
-                "Location: ${workspace_root}" \
-                --next-steps \
+                "Location: ${workspace_root}"
+
+            write_next_steps_block \
                 "Run installation if components are missing" \
                 "Use -clean option to remove installation if needed"
+            show_source_branch_welcome
         else
             echo "Run the installer to restore missing files."
         fi
@@ -737,6 +599,108 @@ test_is_azurerm_provider_repo() {
     echo "Reason=${reason}"
 }
 
+compute_installer_checksum() {
+    local installer_root="$1"
+    local manifest_file="${installer_root}/file-manifest.config"
+    local payload_root="${installer_root}/aii"
+
+    if [[ ! -f "${manifest_file}" ]]; then
+        write_error_message "Installer manifest not found"
+        return 1
+    fi
+    if [[ ! -d "${payload_root}" ]]; then
+        write_error_message "Installer payload not found"
+        return 1
+    fi
+
+    hash_file() {
+        local file_path="$1"
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${file_path}" | awk '{print $1}'
+        else
+            shasum -a 256 "${file_path}" | awk '{print $1}'
+        fi
+    }
+
+    hash_text() {
+        local content="$1"
+        if command -v sha256sum >/dev/null 2>&1; then
+            printf "%s" "${content}" | sha256sum | awk '{print $1}'
+        else
+            printf "%s" "${content}" | shasum -a 256 | awk '{print $1}'
+        fi
+    }
+
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    local manifest_hash
+    manifest_hash="$(hash_file "${manifest_file}")"
+    printf "%s  %s\n" "${manifest_hash}" "file-manifest.config" > "${tmp_file}"
+
+    while IFS= read -r file; do
+        local rel_path
+        rel_path="${file#${payload_root}/}"
+        local file_hash
+        file_hash="$(hash_file "${file}")"
+        printf "%s  %s\n" "${file_hash}" "aii/${rel_path}" >> "${tmp_file}"
+    done < <(find "${payload_root}" -type f | LC_ALL=C sort)
+
+    local combined
+    combined="$(cat "${tmp_file}")"
+    rm -f "${tmp_file}"
+
+    hash_text "${combined}"
+}
+
+write_installer_checksum() {
+    local installer_root="$1"
+    local checksum_file="${installer_root}/aii.checksum"
+
+    local version="dev"
+    if [[ -f "${installer_root}/VERSION" ]]; then
+        version="$(tr -d '\r\n' < "${installer_root}/VERSION")"
+    fi
+
+    local timestamp
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    local overall_hash
+    overall_hash="$(compute_installer_checksum "${installer_root}")" || return 1
+
+    printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+}
+
+verify_installer_checksum() {
+    local installer_root="$1"
+    local checksum_file="${installer_root}/aii.checksum"
+
+    if [[ ! -f "${checksum_file}" ]]; then
+        write_error_message "Installer checksum file not found"
+        write_plain "Fix: re-extract the latest release bundle, or re-run -bootstrap from a local clone."
+        return 1
+    fi
+
+    local expected
+    expected="$(grep '^hash=' "${checksum_file}" | head -n 1 | cut -d= -f2-)"
+    if [[ -z "${expected}" ]]; then
+        write_error_message "Installer checksum file missing hash"
+        return 1
+    fi
+
+    local actual
+    actual="$(compute_installer_checksum "${installer_root}")" || return 1
+
+    if [[ "${expected}" != "${actual}" ]]; then
+        write_error_message "Installer checksum mismatch"
+        write_plain "Fix: re-extract the latest release bundle, or re-run -bootstrap from a local clone."
+        return 1
+    fi
+
+    return 0
+}
+
 # Export functions for use in other scripts
 export -f test_system_requirements validate_repository test_is_azurerm_provider_repo
-export -f test_git_repository test_workspace_valid test_internet_connectivity verify_installation
+export -f test_workspace_valid verify_installation
+export -f write_installer_checksum verify_installer_checksum

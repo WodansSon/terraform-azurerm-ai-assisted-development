@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # FileOperations Module for Terraform AzureRM Provider AI Setup (Bash)
-# Handles file operations, downloads, and installation tasks
+# Handles file operations and installation tasks
 
 # Bash 3.2 compatible function to read command output into array
 # Usage: read_into_array array_name "command"
@@ -13,7 +13,7 @@ read_into_array() {
     # Execute command and store output in temp file
     eval "$command" > "$temp_file"
 
-    # Read lines into array using a counte
+    # Read lines into array using a counter
     local counter=0
     while IFS= read -r line; do
         eval "${array_name}[$counter]=\"\$line\""
@@ -24,215 +24,6 @@ read_into_array() {
     eval "${array_name}_size=$counter"
 
     rm -f "$temp_file"
-}
-
-# Function to get workspace root directory
-get_workspace_root() {
-    local current_dir="$(pwd)"
-
-    # Look for terraform-provider-azurerm indicators
-    while [[ "${current_dir}" != "/" ]]; do
-        if [[ -f "${current_dir}/go.mod" ]] && grep -q "terraform-provider-azurerm" "${current_dir}/go.mod" 2>/dev/null; then
-            echo "${current_dir}"
-            return 0
-        fi
-        if [[ -f "${current_dir}/main.go" ]] && [[ -d "${current_dir}/internal/services" ]]; then
-            echo "${current_dir}"
-            return 0
-        fi
-        current_dir="$(dirname "${current_dir}")"
-    done
-
-    # Fallback to current directory
-    echo "$(pwd)"
-}
-
-# Function to check if current directory is source repository
-is_source_repository() {
-    local dir="${1:-$(pwd)}"
-
-    # Check if this is the terraform-provider-azurerm source repository
-    if [[ -f "${dir}/go.mod" ]] && grep -q "terraform-provider-azurerm" "${dir}/go.mod" 2>/dev/null; then
-        return 0
-    fi
-
-    if [[ -f "${dir}/main.go" ]] && [[ -d "${dir}/internal/services" ]] && [[ -d "${dir}/.github/AIinstaller" ]]; then
-        return 0
-    fi
-
-    return 1
-}
-
-# Function to validate bootstrap operation prerequisites
-validate_bootstrap_prerequisites() {
-    local current_dir="$1"
-    local user_profile="$2"
-    local current_branch="$3"
-    local branch_type="$4"
-
-    # Rule 1: CRITICAL - Must NOT be running from user profile directory
-    # Bootstrap should ONLY be run from the source repository, never from ~/.terraform-ai-installe
-    if [[ "${current_dir}" == *".terraform-azurerm-ai-installer"* ]]; then
-        write_red " BOOTSTRAP VIOLATION: Cannot run bootstrap from user profile directory"
-        echo ""
-        write_yellow " Bootstrap must be run from the source terraform-provider-azurerm repository."
-        write_yellow " You are currently running from: '${current_dir}'"
-        echo ""
-        print_separator
-        echo ""
-        write_cyan "SOLUTION:"
-        write_cyan "  1. Navigate to the exp/terraform_copilot branch::"
-        write_plain "    cd \"<path-to-your-terraform-provider-azurerm>\""
-        write_plain "    git checkout exp/terraform_copilot"
-        echo ""
-        write_cyan "  2. Then run bootstrap from there:"
-        write_plain "    ./.github/AIinstaller/install-copilot-setup.sh -bootstrap"
-        echo ""
-        return 1
-    fi
-
-    return 0
-}
-
-# Function to copy file with progress
-copy_file() {
-    local source="$1"
-    local target="$2"
-    local description="$3"
-    local max_length="$4"  # Optional max length for formatting
-
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo "  [DRY-RUN] Would copy: ${description}"
-        return 0
-    fi
-
-    # Create target directory if it doesn't exist
-    mkdir -p "$(dirname "${target}")"
-
-    if cp "${source}" "${target}"; then
-        show_file_operation "Copying" "${description}" "OK" "${max_length}"
-        return 0
-    else
-        show_file_operation "Copying" "${description}" "FAILED" "${max_length}"
-        return 1
-    fi
-}
-
-# Function to download file from repository
-download_file() {
-    local source_path="$1"
-    local target_path="$2"
-    local description="$3"
-
-    # Check if using local source (file:// protocol)
-    if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
-        local local_source="${SOURCE_REPOSITORY#file://}"
-        local local_file="${local_source}/${source_path}"
-
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            echo "  [DRY-RUN] Would copy from local: ${description}"
-            return 0
-        fi
-
-        # Copy from local source
-        if [[ -f "${local_file}" ]]; then
-            mkdir -p "$(dirname "${target_path}")"
-            if cp "${local_file}" "${target_path}"; then
-                return 0
-            else
-                return 1
-            fi
-        else
-            return 1
-        fi
-    fi
-
-    # Otherwise, download from GitHub
-    local url="${SOURCE_REPOSITORY:-https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development}/${BRANCH:-main}/${source_path}"
-
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo "  [DRY-RUN] Would download: ${description}"
-        return 0
-    fi
-
-    # Check if file already exists and compare freshness
-    if [[ -f "${target_path}" ]]; then
-        local local_timestamp
-        local remote_timestamp
-
-        # Get local file modification time
-        if command -v stat >/dev/null 2>&1; then
-            # Try GNU stat first, then BSD stat
-            local_timestamp=$(stat -c%Y "${target_path}" 2>/dev/null || stat -f%m "${target_path}" 2>/dev/null || echo "0")
-        else
-            local_timestamp="0"
-        fi
-
-        # Try to get remote file timestamp using HEAD request
-        local is_remote_newer=true  # Default to downloading if we can't determine
-
-        if command -v curl >/dev/null 2>&1; then
-            # Get Last-Modified header from remote file
-            local last_modified_heade
-            last_modified_header=$(curl -sI "${url}" 2>/dev/null | grep -i "last-modified:" | cut -d' ' -f2- | tr -d '\r\n')
-
-            if [[ -n "${last_modified_header}" ]]; then
-                # Convert HTTP date to timestamp (this is a simplified approach)
-                if command -v date >/dev/null 2>&1; then
-                    # Try to parse the HTTP date format
-                    remote_timestamp=$(date -d "${last_modified_header}" +%s 2>/dev/null || echo "0")
-
-                    if [[ "${remote_timestamp}" != "0" && "${local_timestamp}" != "0" ]]; then
-                        if [[ "${remote_timestamp}" -le "${local_timestamp}" ]]; then
-                            is_remote_newer=false
-                        fi
-                    fi
-                fi
-            fi
-        fi
-
-        # If local file is up-to-date, skip download
-        if [[ "${is_remote_newer}" == "false" ]]; then
-            return 0  # File is up-to-date, no need to download
-        fi
-    fi
-
-    # Create target directory if it doesn't exist
-    mkdir -p "$(dirname "${target_path}")"
-
-    # Try download with proper error handling
-    local download_success=false
-    local error_msg=""
-
-    if command -v curl >/dev/null 2>&1; then
-        # Use curl with proper error handling
-        if curl -fsSL "${url}" -o "${target_path}" 2>/dev/null; then
-            download_success=true
-        else
-            error_msg="curl failed to download from ${url}"
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        # Use wget with proper error handling
-        if wget -q "${url}" -O "${target_path}" 2>/dev/null; then
-            download_success=true
-        else
-            error_msg="wget failed to download from ${url}"
-        fi
-    else
-        write_error_message "Neither curl nor wget is available for downloading files"
-        return 1
-    fi
-
-    if [[ "${download_success}" == "true" ]]; then
-        # Verify file was actually created and has content
-        if [[ -f "${target_path}" && -s "${target_path}" ]]; then
-            return 0
-        else
-            return 1
-        fi
-    else
-        return 1
-    fi
 }
 
 # Function to get file size
@@ -276,11 +67,6 @@ create_directory_structure() {
     local target_dir="$1"
     local description="${2:-directory structure}"
 
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo "  [DRY-RUN] Would create: ${description}"
-        return 0
-    fi
-
     if mkdir -p "${target_dir}"; then
         echo "  Creating: ${description} [OK]"
         return 0
@@ -290,15 +76,49 @@ create_directory_structure() {
     fi
 }
 
+# Function to copy a file with consistent status output
+copy_file() {
+    local source_path="$1"
+    local target_path="$2"
+    local filename="$3"
+    local max_length="${4:-0}"
+
+    if [[ -z "${filename}" ]]; then
+        filename="$(basename "${source_path}")"
+    fi
+
+    local target_dir
+    target_dir="$(dirname "${target_path}")"
+    if [[ ! -d "${target_dir}" ]]; then
+        mkdir -p "${target_dir}" 2>/dev/null || true
+    fi
+
+    local display_name="${filename}"
+    if [[ "${max_length}" -gt 0 ]]; then
+        display_name="$(printf "%-${max_length}s" "${filename}")"
+    fi
+
+    if cp -f "${source_path}" "${target_path}" 2>/dev/null; then
+        if declare -f write_file_operation_status >/dev/null 2>&1; then
+            write_file_operation_status "Copy" "${display_name}" "OK"
+        else
+            echo "  Copy: ${display_name} [OK]"
+        fi
+        return 0
+    fi
+
+    if declare -f write_file_operation_status >/dev/null 2>&1; then
+        write_file_operation_status "Copy" "${display_name}" "FAILED"
+    else
+        echo "  Copy: ${display_name} [FAILED]"
+    fi
+    return 1
+}
+
 # Function to remove file or directory
 remove_path() {
     local target_path="$1"
     local description="${2:-$(basename "${target_path}")}"
-
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo "  [DRY-RUN] Would remove: ${description}"
-        return 0
-    fi
 
     if [[ -e "${target_path}" ]]; then
         if rm -rf "${target_path}"; then
@@ -321,11 +141,6 @@ backup_file() {
 
     if [[ -f "${filepath}" ]]; then
         local backup_path="${filepath}${backup_suffix}"
-
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            echo "  [DRY-RUN] Would backup: $(basename "${filepath}") -> $(basename "${backup_path}")"
-            return 0
-        fi
 
         if cp "${filepath}" "${backup_path}"; then
             echo "  Backup: $(basename "${filepath}") -> $(basename "${backup_path}") [OK]"
@@ -361,11 +176,6 @@ make_executable() {
     local filepath="$1"
     local description="${2:-$(basename "${filepath}")}"
 
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo "  [DRY-RUN] Would make executable: ${description}"
-        return 0
-    fi
-
     if [[ -f "${filepath}" ]]; then
         if chmod +x "${filepath}"; then
             echo "  Make executable: ${description} [OK]"
@@ -378,64 +188,6 @@ make_executable() {
         echo "  Make executable: ${description} [FILE NOT FOUND]"
         return 1
     fi
-}
-
-# Function to copy multiple files with error tracking
-copy_files_with_stats() {
-    local -n files_array=$1
-    local target_dir="$2"
-    local source_dir="${3:-$(pwd)}"
-
-    local files_copied=0
-    local files_failed=0
-    local total_size=0
-
-    # Calculate max filename length for consistent formatting (extract filenames only)
-    local filenames_only=()
-    for file in "${files_array[@]}"; do
-        filenames_only+=("$(basename "${file}")")
-    done
-    local max_length
-    max_length=$(calculate_max_filename_length "${filenames_only[@]}")
-
-    for file in "${files_array[@]}"; do
-        local source_path="${source_dir}/${file}"
-        local target_path="${target_dir}/${file}"
-        local filename=$(basename "${file}")
-
-        echo -n ""  # No inline display needed - show_file_operation handles it
-
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            show_file_operation "Copying" "${filename}" "DRY-RUN" "${max_length}"
-            files_copied=$((files_copied + 1))
-        elif [[ -f "${source_path}" ]]; then
-            # Create target directory structure
-            mkdir -p "$(dirname "${target_path}")"
-
-            if cp "${source_path}" "${target_path}"; then
-                # Calculate file size
-                local file_size
-                file_size=$(get_file_size "${target_path}")
-                total_size=$((total_size + file_size))
-
-                show_file_operation "Copying" "${filename}" "OK" "${max_length}"
-                files_copied=$((files_copied + 1))
-            else
-                show_file_operation "Copying" "${filename}" "FAILED" "${max_length}"
-                files_failed=$((files_failed + 1))
-            fi
-        else
-            show_file_operation "Copying" "${filename}" "SOURCE NOT FOUND" "${max_length}"
-            files_failed=$((files_failed + 1))
-        fi
-    done
-
-    # Return statistics via global variables (bash doesn't support complex return values)
-    COPY_STATS_FILES_COPIED=${files_copied}
-    COPY_STATS_FILES_FAILED=${files_failed}
-    COPY_STATS_TOTAL_SIZE=${total_size}
-
-    return $([[ ${files_failed} -eq 0 ]] && echo 0 || echo 1)
 }
 
 # Function to validate operation is allowed on current branch
@@ -458,18 +210,13 @@ validate_operation_allowed() {
     if declare -f validate_repository >/dev/null 2>&1; then
         # Check repository validation (returns 0 for valid, 1 for invalid)
         if ! validate_repository "${workspace_root}"; then
-            echo ""
-            write_error_message "WORKSPACE VALIDATION FAILED: Missing required files"
-            echo ""
-            write_plain "Expected to find terraform-provider-azurerm structure"
-            write_plain "Directory: ${workspace_root}"
-            write_plain "Reason: Missing required files (go.mod with azurerm content, main.go, or internal/services directory)"
-            echo ""
-            write_plain "Please ensure you are in the correct terraform-provider-azurerm repository directory."
-            echo "${operation_name^} cancelled due to invalid repository structure"
-            echo ""
-            print_separator
-            echo ""
+            if declare -f show_workspace_validation_error >/dev/null 2>&1; then
+                show_workspace_validation_error "Missing required files (go.mod with azurerm content, main.go, or internal/services directory)" "false"
+            else
+                echo ""
+                write_error_message "WORKSPACE VALIDATION FAILED: Missing required files"
+                echo ""
+            fi
 
             # Show help menu for guidance (matching PowerShell behavior)
             if declare -f show_usage >/dev/null 2>&1; then
@@ -487,11 +234,9 @@ validate_operation_allowed() {
 remove_deprecated_files() {
     local workspace_root="$1"
     local manifest_file="${2:-${HOME}/.terraform-azurerm-ai-installer/file-manifest.config}"
-    local dry_run="${3:-false}"
-    local quiet="${4:-false}"
+    local quiet="${3:-false}"
 
     local deprecated_count=0
-    local deprecated_files=()
 
     # Ensure manifest file exists
     if [[ ! -f "${manifest_file}" ]]; then
@@ -529,16 +274,10 @@ remove_deprecated_files() {
 
                 # If not in current manifest, mark for removal
                 if [[ "${is_current}" == "false" ]]; then
-                    deprecated_files+=("${existing_file}:Instruction:${basename_file}")
-
-                    if [[ "${dry_run}" == "false" ]]; then
-                        if rm -f "${existing_file}" 2>/dev/null; then
-                            [[ "${quiet}" == "false" ]] && echo "  Removed deprecated instruction file: ${basename_file}"
-                        else
-                            [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
-                        fi
+                    if rm -f "${existing_file}" 2>/dev/null; then
+                        [[ "${quiet}" == "false" ]] && echo "  Removed deprecated instruction file: ${basename_file}"
                     else
-                        [[ "${quiet}" == "false" ]] && echo "  [DRY-RUN] Would remove instruction file: ${basename_file}"
+                        [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
                     fi
                     ((deprecated_count++))
                 fi
@@ -568,16 +307,10 @@ remove_deprecated_files() {
 
                 # If not in current manifest, mark for removal
                 if [[ "${is_current}" == "false" ]]; then
-                    deprecated_files+=("${existing_file}:Prompt:${basename_file}")
-
-                    if [[ "${dry_run}" == "false" ]]; then
-                        if rm -f "${existing_file}" 2>/dev/null; then
-                            [[ "${quiet}" == "false" ]] && echo "  Removed deprecated prompt file: ${basename_file}"
-                        else
-                            [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
-                        fi
+                    if rm -f "${existing_file}" 2>/dev/null; then
+                        [[ "${quiet}" == "false" ]] && echo "  Removed deprecated prompt file: ${basename_file}"
                     else
-                        [[ "${quiet}" == "false" ]] && echo "  [DRY-RUN] Would remove prompt file: ${basename_file}"
+                        [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
                     fi
                     ((deprecated_count++))
                 fi
@@ -609,16 +342,10 @@ remove_deprecated_files() {
                 if [[ "${is_current}" == "false" ]]; then
                     local skill_name
                     skill_name=$(basename "$(dirname "${rel_path}")")
-                    deprecated_files+=("${existing_file}:Skill:${skill_name}/SKILL.md")
-
-                    if [[ "${dry_run}" == "false" ]]; then
-                        if rm -f "${existing_file}" 2>/dev/null; then
-                            [[ "${quiet}" == "false" ]] && echo "  Removed deprecated skill file: ${skill_name}/SKILL.md"
-                        else
-                            [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
-                        fi
+                    if rm -f "${existing_file}" 2>/dev/null; then
+                        [[ "${quiet}" == "false" ]] && echo "  Removed deprecated skill file: ${skill_name}/SKILL.md"
                     else
-                        [[ "${quiet}" == "false" ]] && echo "  [DRY-RUN] Would remove skill file: ${skill_name}/SKILL.md"
+                        [[ "${quiet}" == "false" ]] && write_error_message "  Failed to remove: ${existing_file}"
                     fi
                     ((deprecated_count++))
                 fi
@@ -637,8 +364,7 @@ install_infrastructure() {
     local workspace_root="$1"
     local current_branch="$2"
     local branch_type="$3"
-    local source_branch="${4:-}"
-    local local_source_path="${5:-}"
+    local local_source_path="${4:-}"
 
     write_section "Installing AI Infrastructure"
 
@@ -648,32 +374,31 @@ install_infrastructure() {
     fi
 
     # Verify manifest file exists
-    local manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    local manifest_file=""
+    if [[ -n "${INSTALLER_DIR:-}" ]] && [[ -f "${INSTALLER_DIR}/file-manifest.config" ]]; then
+        manifest_file="${INSTALLER_DIR}/file-manifest.config"
+    elif [[ -f "${HOME}/.terraform-azurerm-ai-installer/file-manifest.config" ]]; then
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    else
+        manifest_file="${HOME}/.terraform-azurerm-ai-installer/file-manifest.config"
+    fi
     if [[ ! -f "${manifest_file}" ]]; then
         write_error_message "Manifest file not found: ${manifest_file}"
         echo "Please run with -bootstrap first to set up the installer."
         return 1
     fi
 
-    # Step 1: Show dry run notice if applicable
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        write_yellow "DRY RUN - No files will be created or removed"
-        echo ""
-    fi
+    export INSTALLER_MANIFEST_FILE="${manifest_file}"
 
     # Step 2: Check for deprecated files (automatic part of installation)
     write_cyan "Checking for deprecated files..."
 
     # Remove deprecated files automatically
     local deprecated_count
-    deprecated_count=$(remove_deprecated_files "${workspace_root}" "${manifest_file}" "${DRY_RUN:-false}" false)
+    deprecated_count=$(remove_deprecated_files "${workspace_root}" "${manifest_file}" false)
 
     if [[ "${deprecated_count}" -gt 0 ]]; then
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            write_cyan "  Found ${deprecated_count} deprecated file(s) that would be removed"
-        else
-            write_cyan "  Removed ${deprecated_count} deprecated file(s)"
-        fi
+        write_cyan "  Removed ${deprecated_count} deprecated file(s)"
     else
         write_cyan "  No deprecated files found"
     fi
@@ -699,7 +424,7 @@ install_infrastructure() {
     write_green "All prerequisites validated successfully!"
     echo ""
 
-    # Step 4.5: Configure source repository and branch based on parameters
+    # Step 4.5: Configure source repository (offline-only)
     if [[ -n "${local_source_path}" ]]; then
         # Use local source path (file:// protocol)
         # Expand to absolute path if needed
@@ -707,20 +432,28 @@ install_infrastructure() {
             local_source_path="$(cd "${local_source_path}" 2>/dev/null && pwd)"
         fi
         export SOURCE_REPOSITORY="file://${local_source_path}"
-        export BRANCH=""  # Not used for local files
+        export SOURCE_LOCAL_PATH="${local_source_path}"
         write_cyan "Installing from local path: ${local_source_path}"
         echo ""
-    elif [[ -n "${source_branch}" ]]; then
-        # Use GitHub with specified branch
-        export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
-        export BRANCH="${source_branch}"
-        write_cyan "Downloading files from GitHub (branch: ${source_branch})..."
-        echo ""
     else
-        # Use default GitHub main branch
-        export SOURCE_REPOSITORY="https://raw.githubusercontent.com/WodansSon/terraform-azurerm-ai-assisted-development"
-        export BRANCH="main"
-        write_cyan "Downloading files from GitHub (branch: main)..."
+        local payload_root=""
+        if [[ -n "${INSTALLER_DIR:-}" ]]; then
+            payload_root="${INSTALLER_DIR}/aii"
+        else
+            payload_root="${HOME}/.terraform-azurerm-ai-installer/aii"
+        fi
+        if [[ ! -d "${payload_root}" ]]; then
+            write_error_message "bundled payload directory not found"
+            write_plain ""
+            write_plain " Expected payload at: ${payload_root}"
+            write_plain ""
+            write_plain " Fix: extract the official release bundle into your user profile, re-run -bootstrap from a git clone, or use -local-path."
+            return 1
+        fi
+
+        export SOURCE_REPOSITORY="file://${payload_root}"
+        export SOURCE_LOCAL_PATH="${payload_root}"
+        write_cyan "Installing from bundled payload: ${payload_root}"
         echo ""
     fi
 
@@ -732,6 +465,8 @@ install_infrastructure() {
     build_file_list "${manifest_file}" "${workspace_root}" all_files file_destinations
 
     local total_files=${#all_files[@]}
+
+    # Step 5.5: Remote source validation removed (offline payload/local source only)
 
     # Step 6: Show preparation message
     write_cyan "Preparing to install ${total_files} files..."
@@ -817,7 +552,7 @@ install_all_files() {
     mkdir -p "${workspace_root}/.github/prompts"
     mkdir -p "${workspace_root}/.github/skills"
 
-    # Temporarily disable exit on error for the download loop
+    # Temporarily disable exit on error for the copy loop
     set +e
 
     for ((i=0; i<total_files; i++)); do
@@ -833,18 +568,18 @@ install_all_files() {
         local percentage=$(( (i + 1) * 100 / total_files ))
 
         # Use right-aligned 3-digit format like show_completion function (automatically handles padding)
-        printf "  ${CYAN}Downloading ${GREEN}[%3d%%]${CYAN}: ${NC}%s\n" "${percentage}" "${relative_path}"
+        local operation_label="Copying"
+        printf "  ${CYAN}%s ${GREEN}[%3d%%]${CYAN}: ${NC}%s\n" "${operation_label}" "${percentage}" "${relative_path}"
 
         # Create target directory if needed
         local target_dir=$(dirname "${target_path}")
         mkdir -p "${target_dir}"
 
-        # Determine download category for consistency
-        local download_category
-        download_category=$(get_download_category "${source_file}")
+        local source_root="${SOURCE_LOCAL_PATH:-}"
+        local source_path="${source_root}/${source_file}"
 
-        # Download the file - handle errors gracefully to continue with other files
-        if download_file "${source_file}" "${target_path}" "${download_category}/${filename}"; then
+        # Copy the file from local payload/path - handle errors gracefully to continue
+        if [[ -f "${source_path}" ]] && cp -f "${source_path}" "${target_path}"; then
             ((successful_ref++))
         else
             ((failed_ref++))
@@ -852,7 +587,7 @@ install_all_files() {
         fi
     done
 
-    # Re-enable exit on erro
+    # Re-enable exit on error
     set -e
 }
 
@@ -864,24 +599,6 @@ get_relative_display_path() {
     # Remove workspace root prefix to show relative path
     local relative_path="${target_path#${workspace_root}/}"
     echo "${relative_path}"
-}
-
-# Helper function to determine download category
-get_download_category() {
-    local source_file="$1"
-
-    # Use pattern matching instead of regex for bash 3.2 compatibility
-    case "${source_file}" in
-        *.github/instructions/*)
-            echo "instructions"
-            ;;
-        *.github/prompts/*)
-            echo "prompts"
-            ;;
-        *)
-            echo "files"
-            ;;
-    esac
 }
 
 # Function to calculate total size of files in KB
@@ -985,22 +702,55 @@ show_installation_summary() {
     local current_branch="$5"
     local branch_type="$6"
 
+    local total_size_kb=0
+    local skipped_files=0
+
     # Calculate actual total size of installed files
-    local total_size_kb
     total_size_kb=$(calculate_installed_files_size "${workspace_root}")
-    local skipped_files=$((total_files - successful_files - failed_files))
+    skipped_files=$((total_files - successful_files - failed_files))
 
     # Show detailed summary using the sophisticated show_operation_summary function
     # Clean branch_type variable to remove any potential line breaks or whitespace
     branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    show_operation_summary "Installation" "true" "false" \
+    local success_status="true"
+    if [[ "${failed_files}" -gt 0 ]]; then
+        success_status="false"
+    fi
+
+    local source_value=""
+    if [[ "${SOURCE_REPOSITORY:-}" == file://* ]]; then
+        source_value="${SOURCE_REPOSITORY#file://}"
+    else
+        source_value="${SOURCE_REPOSITORY:-}"
+    fi
+
+    local manifest_value="${INSTALLER_MANIFEST_FILE:-}"
+    if [[ -n "${manifest_value}" ]]; then
+        local manifest_hash=""
+        if command -v sha256sum >/dev/null 2>&1; then
+            manifest_hash=$(sha256sum "${manifest_value}" 2>/dev/null | awk '{print $1}')
+        elif command -v shasum >/dev/null 2>&1; then
+            manifest_hash=$(shasum -a 256 "${manifest_value}" 2>/dev/null | awk '{print $1}')
+        fi
+        if [[ -n "${manifest_hash}" ]]; then
+            manifest_value="${manifest_value} (${manifest_hash:0:8})"
+        fi
+    fi
+
+    show_operation_summary "Installation" "${success_status}" \
         "Branch Type: ${branch_type}" \
         "Target Branch: ${current_branch}" \
+        "Source: ${source_value}" \
+        "Manifest: ${manifest_value}" \
+        "Command: ${INSTALLER_COMMAND_LINE:-${INSTALLER_ATTEMPTED_COMMAND:-}}" \
         "Files Installed: ${successful_files}" \
         "Total Size: ${total_size_kb} KB" \
         "Files Skipped: ${skipped_files}" \
         "Location: ${workspace_root}"
+
+    # Always end with a single trailing blank line so the prompt does not run into output.
+    show_source_branch_welcome
 }
 
 # Function to get all files that should be cleaned up from manifest
@@ -1051,7 +801,7 @@ clean_infrastructure() {
     local branch_type="$3"
 
     # CRITICAL: Clean operations are FORBIDDEN on source branches for safety
-    # Validate operation is allowed on current branch BEFORE showing section heade
+    # Validate operation is allowed on current branch BEFORE showing section header
     if ! validate_operation_allowed "${workspace_root}" "cleanup" "${current_branch}" "${branch_type}"; then
         return 1
     fi
@@ -1128,6 +878,24 @@ clean_infrastructure() {
         fi
     done
 
+    # Also include the base AI directories (e.g. `.github/skills`) so they can be removed
+    # after child directories are deleted and they become empty.
+    for ai_dir in "${ai_directories[@]}"; do
+        local ai_dir_full_path="${workspace_root}/${ai_dir}"
+
+        local ai_dir_needed=false
+        for file in "${cleanup_files[@]}"; do
+            if [[ "${file}" == "${ai_dir}/"* ]]; then
+                ai_dir_needed=true
+                break
+            fi
+        done
+
+        if [[ "${ai_dir_needed}" == "true" ]] && [[ -d "${ai_dir_full_path}" ]]; then
+            directories_to_check+=("${ai_dir_full_path}")
+        fi
+    done
+
     # Check for existing directories
     for dir in "${directories_to_check[@]}"; do
         if [[ -d "${dir}" ]]; then
@@ -1135,9 +903,9 @@ clean_infrastructure() {
         fi
     done
 
-    # Remove duplicates from directories
+    # Remove duplicates and sort by depth (deepest first)
     local unique_dirs=($(printf '%s\n' "${existing_directories[@]}" | sort -u))
-    existing_directories=("${unique_dirs[@]}")
+    existing_directories=($(printf '%s\n' "${unique_dirs[@]}" | awk -F'/' '{print NF":"$0}' | sort -t: -k1,1nr -k2,2 | cut -d: -f2-))
 
     # If nothing exists, show clean message and exit early (match PowerShell behavior)
     if [[ ${#existing_files[@]} -eq 0 ]] && [[ ${#existing_directories[@]} -eq 0 ]]; then
@@ -1145,14 +913,16 @@ clean_infrastructure() {
         write_green " Workspace is already clean!"
 
         # Show detailed cleanup summary using the sophisticated show_operation_summary function
-        # for "already clean" scenario - follows PowerShell master orde
-        show_operation_summary "Cleanup" "true" "${DRY_RUN:-false}" \
+        # for "already clean" scenario - follows PowerShell master order
+        show_operation_summary "Cleanup" "true" \
             "Branch Type: ${branch_type}" \
             "Target Branch: ${current_branch}" \
-            "Operation Type: $(if [[ "${DRY_RUN:-false}" == "true" ]]; then echo "Dry run cleanup"; else echo "Live cleanup"; fi)" \
+            "Operation Type: Live cleanup" \
             "Files Removed: 0" \
             "Directories Cleaned: 0" \
             "Location: ${workspace_root}"
+
+        show_source_branch_welcome
 
         return 0
     fi
@@ -1180,10 +950,8 @@ clean_infrastructure() {
         fi
     done
 
-    # Display heade
-    echo ""
-    write_cyan "Removing AI Infrastructure Files"
-    print_separator
+    # Display header
+    write_section "Removing AI Infrastructure Files"
 
     # Calculate total work for progress - add safety check
     local total_work=$((${#existing_files[@]} + ${#existing_directories[@]}))
@@ -1224,22 +992,15 @@ clean_infrastructure() {
         # Display removal operation using exact PowerShell format
         printf "  ${CYAN}Removing File      ${GREEN}[%s%%%s]${CYAN}: ${NC}%s%s " "${percent_complete}" "${progress_padding}" "${filename}" "${filename_padding}"
 
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            echo -e "${YELLOW}[WOULD REMOVE]${NC}"
+        if rm -rf "${full_path}" 2>/dev/null; then
+            echo -e "${GREEN}[OK]${NC}"
         else
-            if rm -rf "${full_path}" 2>/dev/null; then
-                echo -e "${GREEN}[OK]${NC}"
-            else
-                echo -e "${RED}[FAILED]${NC}"
-            fi
+            echo -e "${RED}[FAILED]${NC}"
         fi
     done
 
-    # Process directories (show progress in both dry-run and live modes)
-    # Sort directories by depth (deepest first) to remove from bottom up
-    local sorted_dirs=($(printf '%s\n' "${existing_directories[@]}" | sort -r))
-
-    for dir in "${sorted_dirs[@]}"; do
+    # Process directories (already depth-sorted)
+    for dir in "${existing_directories[@]}"; do
         # Always increment work_completed for progress tracking (whether we remove or skip)
         work_completed=$((work_completed + 1))
 
@@ -1271,20 +1032,16 @@ clean_infrastructure() {
         # Display directory removal using exact PowerShell format
         printf "  ${CYAN}Removing Directory ${GREEN}[%s%%%s]${CYAN}: ${NC}%s%s " "${percent_complete}" "${progress_padding}" "${dirname}" "${dirname_padding}"
 
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            echo -e "${YELLOW}[WOULD REMOVE]${NC}"
-        else
-            # Only actually try to remove if directory exists and is empty (live mode only)
-            if [[ -d "${dir}" ]] && [[ -z "$(ls -A "${dir}" 2>/dev/null)" ]]; then
-                if rmdir "${dir}" 2>/dev/null; then
-                    echo -e "${GREEN}[OK]${NC}"
-                else
-                    echo -e "${YELLOW}[NOT EMPTY]${NC}"
-                fi
+        # Only actually try to remove if directory exists and is empty
+        if [[ -d "${dir}" ]] && [[ -z "$(ls -A "${dir}" 2>/dev/null)" ]]; then
+            if rmdir "${dir}" 2>/dev/null; then
+                echo -e "${GREEN}[OK]${NC}"
             else
-                # Directory doesn't exist or isn't empty - show as skipped
-                echo -e "${YELLOW}[SKIPPED]${NC}"
+                echo -e "${YELLOW}[NOT EMPTY]${NC}"
             fi
+        else
+            # Directory doesn't exist or isn't empty - show as skipped
+            echo -e "${YELLOW}[SKIPPED]${NC}"
         fi
     done
 
@@ -1293,19 +1050,21 @@ clean_infrastructure() {
     local dirs_removed=${#existing_directories[@]}
 
     # Determine success status
-    local success_status="true"  # Cleanup operations are considered successful unless there was an erro
+    local success_status="true"  # Cleanup operations are considered successful unless there was an error
 
     # Show detailed cleanup summary using the sophisticated show_operation_summary function
-    # follows PowerShell master orde
+    # follows PowerShell master order
     branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    show_operation_summary "Cleanup" "${success_status}" "${DRY_RUN:-false}" \
+    show_operation_summary "Cleanup" "${success_status}" \
         "Branch Type: ${branch_type}" \
         "Target Branch: ${current_branch}" \
-        "Operation Type: $(if [[ "${DRY_RUN:-false}" == "true" ]]; then echo "Dry run cleanup"; else echo "Live cleanup"; fi)" \
+        "Operation Type: Live cleanup" \
         "Files Removed: ${files_removed}" \
         "Directories Cleaned: ${dirs_removed}" \
         "Location: ${workspace_root}"
+
+    show_source_branch_welcome
 
     # Disable error tracing
     set +e
@@ -1313,6 +1072,20 @@ clean_infrastructure() {
 }
 
 # Note: Function exports moved to end of script
+
+validate_bootstrap_prerequisites() {
+    local current_dir="$1"
+    local user_profile="$2"
+    local current_branch="$3"
+    local branch_type="$4"
+
+    if [[ -n "${user_profile}" ]] && [[ "${current_dir}" == "${user_profile}"* ]]; then
+        show_bootstrap_location_error "${current_dir}" "${user_profile}"
+        return 1
+    fi
+
+    return 0
+}
 
 # Function to perform bootstrap operation (copy installer files to user profile)
 bootstrap_files_to_profile() {
@@ -1368,8 +1141,7 @@ bootstrap_files_to_profile() {
     for file_path in "${bootstrap_files[@]}"; do
         # Remove installer/ prefix to get relative path within installer directory
         local relative_path="${file_path#installer/}"
-        # For AI dev repo, script_dir is already the installer directory
-        # For provider repo with .github/AIinstaller, this would be handled differently
+        # For this repository, script_dir is already the installer directory
         local source_path="${script_dir}/${relative_path}"
         local filename=$(basename "${relative_path}")
 
@@ -1377,15 +1149,11 @@ bootstrap_files_to_profile() {
         local target_path
         if [[ "${filename}" == *.psm1 ]]; then
             # PowerShell modules go in modules/powershell/ subdirectory
-            if [[ "${DRY_RUN}" != "true" ]]; then
-                mkdir -p "${user_profile}/modules/powershell"
-            fi
+            mkdir -p "${user_profile}/modules/powershell"
             target_path="${user_profile}/modules/powershell/${filename}"
         elif [[ "${filename}" == *.sh ]] && [[ "${relative_path}" == modules/bash/* ]]; then
             # Bash modules go in modules/bash/ subdirectory
-            if [[ "${DRY_RUN}" != "true" ]]; then
-                mkdir -p "${user_profile}/modules/bash"
-            fi
+            mkdir -p "${user_profile}/modules/bash"
             target_path="${user_profile}/modules/bash/${filename}"
         else
             # Main files (config, scripts) go directly in target directory
@@ -1405,6 +1173,50 @@ bootstrap_files_to_profile() {
         fi
     done
 
+    # Stage the offline payload (aii/) so the bootstrapped installer is fully self-contained.
+    echo ""
+    write_cyan "Staging offline payload (aii/) from current repository..."
+
+    local payload_root="${user_profile}/aii"
+    mkdir -p "${payload_root}"
+
+    local payload_files_list=""
+    payload_files_list+="$(get_manifest_files "MAIN_FILES" "${manifest_file}" 2>/dev/null || true)"$'\n'
+    payload_files_list+="$(get_manifest_files "INSTRUCTION_FILES" "${manifest_file}" 2>/dev/null || true)"$'\n'
+    payload_files_list+="$(get_manifest_files "PROMPT_FILES" "${manifest_file}" 2>/dev/null || true)"$'\n'
+    payload_files_list+="$(get_manifest_files "SKILL_FILES" "${manifest_file}" 2>/dev/null || true)"$'\n'
+    payload_files_list+="$(get_manifest_files "UNIVERSAL_FILES" "${manifest_file}" 2>/dev/null || true)"$'\n'
+
+    local payload_copied=0
+    local payload_failed=0
+    local payload_size=0
+
+    while IFS= read -r relpath; do
+        [[ -z "${relpath}" ]] && continue
+
+        local source_file="${current_dir}/${relpath}"
+        local dest_file="${payload_root}/${relpath}"
+
+        if [[ ! -f "${source_file}" ]]; then
+            payload_failed=$((payload_failed + 1))
+            continue
+        fi
+
+        mkdir -p "$(dirname "${dest_file}")"
+        if cp -f "${source_file}" "${dest_file}"; then
+            payload_copied=$((payload_copied + 1))
+            local file_size
+            file_size=$(get_file_size "${dest_file}")
+            payload_size=$((payload_size + file_size))
+        else
+            payload_failed=$((payload_failed + 1))
+        fi
+    done <<< "${payload_files_list}"
+
+    total_size=$((total_size + payload_size))
+    BOOTSTRAP_STATS_PAYLOAD_FILES_COPIED=${payload_copied}
+    BOOTSTRAP_STATS_PAYLOAD_FILES_FAILED=${payload_failed}
+
     # Stamp a dev version into the bootstrapped installer directory
     # so contributors can distinguish bootstrapped builds from releases.
     local bootstrap_version="dev"
@@ -1418,14 +1230,15 @@ bootstrap_files_to_profile() {
             bootstrap_version="${bootstrap_version}-dirty"
         fi
     fi
-    if [[ "${DRY_RUN}" != "true" ]]; then
-        echo "${bootstrap_version}" > "${user_profile}/VERSION"
+    echo "${bootstrap_version}" > "${user_profile}/VERSION"
+
+    if ! write_installer_checksum "${user_profile}"; then
+        write_error_message "Failed to generate installer checksum"
+        return 1
     fi
 
     # Make installer script executable
-    if [[ "${DRY_RUN}" != "true" ]]; then
-        chmod +x "${user_profile}/install-copilot-setup.sh"
-    fi
+    chmod +x "${user_profile}/install-copilot-setup.sh"
 
     # Validate critical files were copied
     local critical_files=(
@@ -1459,8 +1272,8 @@ bootstrap_files_to_profile() {
 # ==============================================================================
 
 # Export all functions for use in other scripts
-export -f get_workspace_root is_source_repository validate_operation_allowed validate_bootstrap_prerequisites
-export -f copy_file download_file get_file_size get_directory_size create_directory_structure
-export -f remove_path backup_file verify_file make_executable copy_files_with_stats
+export -f validate_operation_allowed
+export -f get_file_size get_directory_size create_directory_structure
+export -f remove_path backup_file verify_file make_executable
 export -f remove_deprecated_files install_infrastructure clean_infrastructure bootstrap_files_to_profile
 export -f get_files_for_cleanup

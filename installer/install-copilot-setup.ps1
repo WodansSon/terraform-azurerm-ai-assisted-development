@@ -13,8 +13,30 @@ $script:InstallerVersion = "dev"
 $versionPath = Join-Path $PSScriptRoot "VERSION"
 if (Test-Path $versionPath) {
     $candidate = (Get-Content -Path $versionPath -Raw).Trim()
-    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$') {
+    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$' -and $candidate -ne '0.0.0') {
         $script:InstallerVersion = $candidate
+    }
+}
+
+# If running from a git clone, show a contributor-friendly version even when VERSION is a placeholder.
+if ($script:InstallerVersion -eq 'dev' -and (Test-Path $versionPath)) {
+    try {
+        $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+        if ($candidate -eq '0.0.0') {
+            $repoRoot = Split-Path $PSScriptRoot -Parent
+            if (Test-Path (Join-Path $repoRoot '.git')) {
+                $sha = (git -C $repoRoot rev-parse --short HEAD 2>$null).Trim()
+                if ($sha) {
+                    $script:InstallerVersion = "dev-$sha"
+                    $dirty = git -C $repoRoot status --porcelain 2>$null
+                    if ($dirty) {
+                        $script:InstallerVersion = "$script:InstallerVersion-dirty"
+                    }
+                }
+            }
+        }
+    }
+    catch {
     }
 }
 
@@ -26,10 +48,7 @@ if (Test-Path $versionPath) {
 
 $Bootstrap = $false
 $RepoDirectory = ""
-$Contributor = $false
-$Branch = ""
 $LocalPath = ""
-$DryRun = $false
 $Verify = $false
 $Clean = $false
 $Help = $false
@@ -52,37 +71,37 @@ function Show-EarlyErrorHeader {
 function Show-EarlyValidationError {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BootstrapConflict', 'MutuallyExclusive', 'ContributorRequired', 'EmptyLocalPath', 'LocalPathNotFound')]
+        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'EmptyLocalPath', 'LocalPathNotFound', 'EmptyRepoDirectory', 'RepoDirectoryNotFound')]
         [string]$ErrorType,
 
-        [string]$LocalPath
+        [string]$Path = ""
     )
 
     Show-EarlyErrorHeader
 
     switch ($ErrorType) {
-        'BootstrapConflict' {
+        'BootstrapNoArgs' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Cannot use -Branch or -LocalPath with -Bootstrap" -ForegroundColor Cyan
+            Write-Host " -Bootstrap does not accept any other parameters" -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " -Bootstrap always uses the current local branch" -ForegroundColor Cyan
-            Write-Host " -Branch and -LocalPath are for updating from user profile" -ForegroundColor Cyan
+            Write-Host " Run bootstrap from a local git clone (no other flags):" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
+            Write-Host ""
+            Write-Host " To install AI infrastructure, run the bootstrapped bundle from your user profile directory with the -RepoDirectory parameter." -ForegroundColor Cyan
         }
-        'MutuallyExclusive' {
+
+        'BootstrapRequiresGitRepo' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Cannot specify both -Branch and -LocalPath" -ForegroundColor Cyan
+            Write-Host " -Bootstrap must be run from a git clone (directory containing .git)" -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " Use -Branch to pull AI files from a published GitHub branch" -ForegroundColor Cyan
-            Write-Host " Use -LocalPath to copy AI files from a local unpublished directory" -ForegroundColor Cyan
+            if (-not [string]::IsNullOrWhiteSpace($Path)) {
+                Write-Host " Checked path: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Path" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " -Bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy." -ForegroundColor Cyan
         }
-        'ContributorRequired' {
-            Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " -Branch and -LocalPath require -Contributor flag" -ForegroundColor Cyan
-            Write-Host ""
-            Write-Host " These are contributor features for testing AI file changes:" -ForegroundColor Cyan
-            Write-Host "   -Contributor -Branch <name>     Test published branch changes" -ForegroundColor White
-            Write-Host "   -Contributor -LocalPath <path>  Test uncommitted local changes" -ForegroundColor White
-        }
+
         'EmptyLocalPath' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -LocalPath parameter cannot be empty" -ForegroundColor Cyan
@@ -90,15 +109,37 @@ function Show-EarlyValidationError {
             Write-Host " Please provide a valid local directory path:" -ForegroundColor Cyan
             Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
         }
+
         'LocalPathNotFound' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -LocalPath directory does not exist" -ForegroundColor Cyan
             Write-Host ""
             Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
-            Write-Host "$LocalPath" -ForegroundColor Yellow
+            Write-Host "$Path" -ForegroundColor Yellow
             Write-Host ""
             Write-Host " Please verify the directory path exists:" -ForegroundColor Cyan
             Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+
+        'EmptyRepoDirectory' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory parameter cannot be empty" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Please provide the path to your terraform-provider-azurerm working copy:" -ForegroundColor Cyan
+            Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
+        }
+
+        'RepoDirectoryNotFound' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory path does not exist" -ForegroundColor Cyan
+            Write-Host ""
+            if (-not [string]::IsNullOrWhiteSpace($Path)) {
+                Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Path" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " Please provide the path to your terraform-provider-azurerm working copy:" -ForegroundColor Cyan
+            Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
         }
     }
 
@@ -112,21 +153,6 @@ function Show-EarlyValidationError {
 function Get-ParameterSuggestion {
     param([string]$param)
 
-    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
-    if ($param -eq '--') {
-        Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
-        Write-Host ""
-        Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
-        Write-Host ""
-        Write-Host " Examples:" -ForegroundColor Green
-        Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
-        Write-Host ""
-        exit 1
-    }
-
     $lowerParam = $param.ToLower()
     $suggestion = $null
 
@@ -138,62 +164,18 @@ function Get-ParameterSuggestion {
     elseif ($cleanParam -match '^cl') { $suggestion = 'Clean' }
     elseif ($cleanParam -match '^ve') { $suggestion = 'Verify' }
     elseif ($cleanParam -match '^he') { $suggestion = 'Help' }
-    elseif ($cleanParam -match '^dr') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
-    elseif ($cleanParam -match '^co') { $suggestion = 'Contributor' }
     elseif ($cleanParam -match '^lo') { $suggestion = 'LocalPath' }
-    elseif ($cleanParam -match '^br') { $suggestion = 'Branch' }
     # Fuzzy matching (lower priority)
     elseif ($cleanParam -like '*cle*') { $suggestion = 'Clean' }
     elseif ($cleanParam -like '*boo*') { $suggestion = 'Bootstrap' }
     elseif ($cleanParam -like '*ver*') { $suggestion = 'Verify' }
     elseif ($cleanParam -like '*hel*') { $suggestion = 'Help' }
-    elseif ($cleanParam -like '*dry*') { $suggestion = 'Dry-Run' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
-    elseif ($cleanParam -like '*cont*') { $suggestion = 'Contributor' }
     elseif ($cleanParam -like '*local*') { $suggestion = 'LocalPath' }
     elseif ($cleanParam -like '*source*') { $suggestion = 'LocalPath' }
-    elseif ($cleanParam -like '*bra*') { $suggestion = 'Branch' }
 
     return $suggestion
-}
-
-# Function to check for parameter typos and suggest corrections
-function Test-ParameterTypo {
-    param([string]$param)
-
-    # Handle bare dash edge case (only -- can be detected, - is caught by PowerShell runtime)
-    if ($param -eq '--') {
-        Write-Host " ERROR: Invalid parameter '$param' (incomplete parameter)" -ForegroundColor Red
-        Write-Host ""
-        Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>"
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>"
-        Write-Host ""
-        Write-Host " Examples:" -ForegroundColor Green
-        Write-Host "   .\install-copilot-setup.ps1 -Help"
-        Write-Host "   .\install-copilot-setup.ps1 -Bootstrap"
-        Write-Host ""
-        exit 1
-    }
-
-    # Use the new Get-ParameterSuggestion function
-    $suggestion = Get-ParameterSuggestion $param
-
-    if ($suggestion) {
-        Write-Host " Error:" -ForegroundColor Red -NoNewline
-        Write-Host " Failed to parse command-line argument:" -ForegroundColor Cyan
-        Write-Host " Argument provided but not defined: " -ForegroundColor Cyan -NoNewline
-        Write-Host "$param" -ForegroundColor Yellow
-        Write-Host " Did you mean: " -ForegroundColor Cyan -NoNewline
-        Write-Host "-$suggestion" -ForegroundColor Green -NoNewline
-        Write-Host "?" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host " For more help on using this command, run:" -ForegroundColor Cyan
-        Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
-        Write-Host ""
-        exit 1
-    }
 }
 
 #endregion Early Helper Functions
@@ -210,8 +192,8 @@ while ($i -lt $args.Count) {
         Write-Host " Invalid parameter '$($args[$i])' (incomplete parameter)" -ForegroundColor Cyan
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -Dry-Run, -RepoDirectory <path>" -ForegroundColor White
-        Write-Host "   -Branch <name>, -Contributor, -LocalPath <path>" -ForegroundColor White
+        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>" -ForegroundColor White
+        Write-Host "   -LocalPath <path>" -ForegroundColor White
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
         Write-Host "   .\install-copilot-setup.ps1 -Help" -ForegroundColor White
@@ -227,41 +209,19 @@ while ($i -lt $args.Count) {
         }
         '-repodirectory' {
             if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -RepoDirectory requires a directory path" -ForegroundColor Red
-                Write-Host ""
+                Show-EarlyValidationError -ErrorType 'EmptyRepoDirectory'
                 exit 1
             }
             $RepoDirectory = $args[$i + 1]
             $i += 2
         }
-        '-branch' {
-            if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -Branch requires a branch name" -ForegroundColor Red
-                Write-Host ""
-                exit 1
-            }
-            $Branch = $args[$i + 1]
-            $i += 2
-        }
         '-localpath' {
             if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -LocalPath requires a directory path" -ForegroundColor Red
-                Write-Host ""
+                Show-EarlyValidationError -ErrorType 'EmptyLocalPath'
                 exit 1
             }
             $LocalPath = $args[$i + 1]
             $i += 2
-        }
-        '-contributor' {
-            $Contributor = $true
-            $i++
-        }
-        '-dry-run' {
-            $DryRun = $true
-            $i++
         }
         '-verify' {
             $Verify = $true
@@ -318,7 +278,7 @@ while ($i -lt $args.Count) {
 #   - A single dash '-' (PowerShell consumed it)
 #   - A double dash '--' (PowerShell consumed it)
 # In all cases, showing help is the appropriate response
-if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor -or $Branch -or $LocalPath -or $DryRun -or $Verify -or $Clean -or $Help)) {
+if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
     $Help = $true
 }
 
@@ -326,22 +286,19 @@ if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $Contributor 
 
 #region Parameter Validation
 
-# PRIORITY 1: Validate -Bootstrap conflicts first (fail fast on foundational operation)
-if ($Bootstrap -and ($Branch -or $LocalPath)) {
-    Show-EarlyValidationError -ErrorType 'BootstrapConflict'
+# PRIORITY 1: -Bootstrap must be a standalone operation (no additional flags)
+if ($Bootstrap -and ($RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
+    Show-EarlyValidationError -ErrorType 'BootstrapNoArgs'
     exit 1
 }
 
-# PRIORITY 2: Validate mutually exclusive parameters
-if ($Branch -and $LocalPath) {
-    Show-EarlyValidationError -ErrorType 'MutuallyExclusive'
-    exit 1
-}
-
-# PRIORITY 3: Validate -Branch and -LocalPath require -Contributor flag
-if (($Branch -or $LocalPath) -and -not $Contributor) {
-    Show-EarlyValidationError -ErrorType 'ContributorRequired'
-    exit 1
+# PRIORITY 1.2: -Bootstrap must be run from a git clone (repo root contains .git)
+if ($Bootstrap) {
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+    if (-not (Test-Path (Join-Path $repoRoot '.git'))) {
+        Show-EarlyValidationError -ErrorType 'BootstrapRequiresGitRepo' -Path $repoRoot
+        exit 1
+    }
 }
 
 # PRIORITY 4: Validate -LocalPath is not empty and exists when provided
@@ -363,7 +320,28 @@ if ($localPathArgIndex -ge 0) {
 
     # Validate path exists
     if (-not (Test-Path $LocalPath)) {
-        Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -LocalPath $LocalPath
+        Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -Path $LocalPath
+        exit 1
+    }
+}
+
+# PRIORITY 4.1: Validate -RepoDirectory exists when provided
+$repoDirectoryArgIndex = -1
+for ($idx = 0; $idx -lt $args.Count; $idx++) {
+    if ($args[$idx] -eq '-repodirectory') {
+        $repoDirectoryArgIndex = $idx
+        break
+    }
+}
+
+if ($repoDirectoryArgIndex -ge 0) {
+    if ([string]::IsNullOrWhiteSpace($RepoDirectory)) {
+        Show-EarlyValidationError -ErrorType 'EmptyRepoDirectory'
+        exit 1
+    }
+
+    if (-not (Test-Path -LiteralPath $RepoDirectory)) {
+        Show-EarlyValidationError -ErrorType 'RepoDirectoryNotFound' -Path $RepoDirectory
         exit 1
     }
 }
@@ -455,7 +433,7 @@ $ScriptDirectory = if ($PSScriptRoot) {
 } elseif ($MyInvocation.MyCommand.Path) {
     Split-Path $MyInvocation.MyCommand.Path -Parent
 } else {
-    # Fallback: assume we're in the AIinstaller directory
+    # Fallback: assume we're in the installer directory
     Get-Location | ForEach-Object { $_.Path }
 }
 
@@ -478,6 +456,9 @@ $Global:ScriptRoot = $null
 # Configuration will be loaded on-demand in functions that need it
 $Global:ManifestConfig = $null
 $Global:InstallerConfig = $null
+$Global:InstallerCommandLine = $MyInvocation.Line
+$Global:InstallerManifestPath = $null
+$Global:InstallerManifestHash = $null
 
 #endregion Module Loading
 
@@ -518,46 +499,43 @@ function Main {
     #>
 
      try {
-        # Step 1: Initialize workspace and validate it's a proper terraform-provider-azurerm repo
+        # Step 1: Initialize workspace
+        # Detect workspace root from -RepoDirectory or current script directory.
         $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory
         $Global:ScriptRoot = $ScriptDirectory
 
         # Step 2: Early workspace validation before doing anything else
         $workspaceValidation = Test-WorkspaceValid -WorkspacePath $Global:WorkspaceRoot
 
-        # Step 3: Determine effective branch for manifest config
-        # -Bootstrap always uses current branch, otherwise use -Branch parameter or default to "main"
-        $effectiveBranch = "main"  # Default fallback
+        # Step 3: Manifest is always sourced locally from the installer directory.
+        # AI infrastructure files are sourced from the bundled payload (aii/) or from -LocalPath.
+        $effectiveBranch = "main"
 
-        if ($Bootstrap) {
-            # Bootstrap mode: Always use current git branch (required)
-            try {
-                $detectedBranch = git branch --show-current 2>$null
-                if ($detectedBranch -and $detectedBranch.Trim() -ne "") {
-                    $effectiveBranch = $detectedBranch.Trim()
-                }
-                else {
-                    throw "Could not detect current git branch"
-                }
-            }
-            catch {
-                Show-BootstrapGitError -WorkspaceRoot $Global:WorkspaceRoot
-                exit 1
-            }
-        }
-        elseif ($Branch) {
-            # User provided -Branch parameter (contributor mode)
-            $effectiveBranch = $Branch
-        }
-        # else: use default "main"        # Step 4: Initialize global configuration
+        # Step 4: Initialize global configuration
+        # IMPORTANT: -Help should never require network access or remote manifest validation.
         if ($workspaceValidation.Valid) {
+            if ($Help) {
+                $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
+                $Global:ManifestConfig = @{}
+            }
+            else {
             # Manifest is always in the same directory as the script
             # - When running from source repo: repo/installer/file-manifest.config
             # - When running after bootstrap: ~/.terraform-azurerm-ai-installer/file-manifest.config
             $manifestPath = Join-Path $ScriptDirectory "file-manifest.config"
+            $Global:InstallerManifestPath = $manifestPath
+            if (Test-Path $manifestPath) {
+                try {
+                    $Global:InstallerManifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash
+                }
+                catch {
+                    $Global:InstallerManifestHash = $null
+                }
+            }
 
             try {
-                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch
+                # Remote manifest validation is no longer required; this installer does not download AI files from GitHub.
+                $Global:ManifestConfig = Get-ManifestConfig -ManifestPath $manifestPath -Branch $effectiveBranch -SkipRemoteValidation:$true
             }
             catch {
                 Show-ValidationError -ErrorType 'BranchValidation' -Branch $effectiveBranch
@@ -565,21 +543,11 @@ function Main {
             }
 
             $Global:InstallerConfig = Get-InstallerConfig -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -Branch $Global:ManifestConfig.Branch
+            }
         } else {
             # Invalid workspace - provide minimal configuration for UI display
             $Global:InstallerConfig = @{ Version = $script:InstallerVersion }
             $Global:ManifestConfig = @{}
-        }
-
-        # Step 5: Get branch information for UI display and safety checks
-        try {
-            $currentBranch = git branch --show-current 2>$null
-            if (-not $currentBranch -or $currentBranch.Trim() -eq "") {
-                $currentBranch = "Unknown"
-            }
-        }
-        catch {
-            $currentBranch = "Unknown"
         }
 
         # Step 4: Get branch information for UI display and safety checks
@@ -626,37 +594,82 @@ function Main {
         }
 
         # CONSISTENT PATTERN: Every operation gets the same header and branch detection
-        Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer" -Version $Global:InstallerConfig.Version
+        Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer"
         Show-BranchDetection -BranchName $currentBranch -BranchType $branchType
 
-        # SAFETY CHECK 1 - Block operations targeting AI dev repo when using -RepoDirectory (except Verify, Help, Bootstrap)
-        if ($RepoDirectory -and -not ($Verify -or $Help -or $Bootstrap)) {
-            # Quick check: Is target directory the AI dev repo?
+        $operationName = if ($Clean) { 'Clean' } else { 'Install' }
+
+        # SAFETY CHECK 1 - Never allow -RepoDirectory to target the AI dev repo for operations that are
+        # intended to validate/modify a terraform-provider-azurerm working copy.
+        if ($RepoDirectory) {
             $repoCheck = Test-IsAzureRMProviderRepo -Path $Global:WorkspaceRoot -RequireProviderRepo
             if (-not $repoCheck.Valid -and $repoCheck.IsAIDevRepo) {
-                Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot
-                exit 1
+                if ($Verify) {
+                    Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot -Operation 'Verify'
+                    exit 1
+                }
+
+                if (-not ($Help -or $Bootstrap)) {
+                    Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot -Operation $operationName
+                    exit 1
+                }
             }
         }
 
         # SAFETY CHECK 2 - Block operations on source branch when using -RepoDirectory (except Verify, Help, Bootstrap)
         if ($RepoDirectory) {
             if ($currentBranch -in $sourceBranches -and -not ($Verify -or $Help -or $Bootstrap)) {
-                Show-SafetyViolation -BranchName $currentBranch -Operation "Install" -FromUserProfile
+                Show-SafetyViolation -BranchName $currentBranch -Operation $operationName -FromUserProfile
                 exit 1
             }
         }
 
-        # SAFETY CHECK 3 - Block -Contributor mode when running from source repo on main branch
-        if ($Contributor -and $isSourceRepo -and -not $RepoDirectory) {
-            Show-ContributorModeViolation -BranchName $currentBranch
-            exit 1
+        # Detect if we're running from user profile directory (needed for all help contexts)
+        # Use the script location, not the current working directory, since users often run
+        # the installer from any directory via a fully-qualified path.
+        $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
+
+        $scriptDirPath = try {
+            (Resolve-Path -LiteralPath $ScriptDirectory -ErrorAction Stop).Path
+        } catch {
+            [System.IO.Path]::GetFullPath($ScriptDirectory)
         }
 
-        # Detect if we're running from user profile directory (needed for all help contexts)
-        $currentDir = Get-Location
-        $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
-        $isFromUserProfile = $currentDir.Path -eq $userProfileInstallerDir -or [bool]$RepoDirectory
+        $userProfileInstallerDirPath = try {
+            (Resolve-Path -LiteralPath $userProfileInstallerDir -ErrorAction Stop).Path
+        } catch {
+            [System.IO.Path]::GetFullPath($userProfileInstallerDir)
+        }
+
+        $isFromUserProfile = $scriptDirPath -eq $userProfileInstallerDirPath -or [bool]$RepoDirectory
+
+        # When running from the user profile installer, we require -RepoDirectory for operations
+        # that target a workspace (install/clean). -Verify without -RepoDirectory is allowed and
+        # performs an installer bundle self-check.
+        if ($isFromUserProfile -and -not ($Help -or $Bootstrap -or $Verify) -and -not $RepoDirectory) {
+            Write-Host ""
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory is required when running from your user profile" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Example:" -ForegroundColor Cyan
+            $invokedPath = if ($PSCommandPath) {
+                $PSCommandPath
+            }
+            elseif ($MyInvocation.MyCommand.Path) {
+                $MyInvocation.MyCommand.Path
+            }
+            else {
+                Join-Path $userProfileInstallerDir 'install-copilot-setup.ps1'
+            }
+
+            $cmdExample = if ($Verify) { "-Verify" }
+            elseif ($Clean) { "-Clean" }
+            elseif ($LocalPath) { "-LocalPath `"$LocalPath`"" }
+            else { "-Help" }
+            Write-Host "   & `"$invokedPath`" -RepoDirectory `"<path-to-terraform-provider-azurerm>`" $cmdExample" -ForegroundColor White
+            Write-Host ""
+            exit 1
+        }
 
         # Detect what command was attempted (for better error messages)
         $attemptedCommand = ""
@@ -664,9 +677,7 @@ function Main {
         elseif ($Verify) { $attemptedCommand = "-Verify" }
         elseif ($Clean) { $attemptedCommand = "-Clean" }
         elseif ($Help) { $attemptedCommand = "-Help" }
-        elseif ($DryRun) { $attemptedCommand = "-Dry-Run" }
         elseif ($LocalPath) { $attemptedCommand = "-LocalPath `"$LocalPath`"" }
-        elseif ($Branch) { $attemptedCommand = "-Branch `"$Branch`"" }
         elseif ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             $attemptedCommand = "-RepoDirectory `"$RepoDirectory`""
         }
@@ -675,6 +686,16 @@ function Main {
         if ($Help) {
             Show-Help -BranchType $branchType -WorkspaceValid $workspaceValidation.Valid -WorkspaceIssue $workspaceValidation.Reason -FromUserProfile $isFromUserProfile -AttemptedCommand $attemptedCommand
             return
+        }
+
+        # VERIFY MODE (no -RepoDirectory from user profile): verify the local installer bundle.
+        # This is a self-check and does not require the current directory to be a provider repo.
+        if ($Verify -and $isFromUserProfile -and -not $RepoDirectory) {
+            $bundleResult = Invoke-VerifyInstallerBundle -InstallerRoot $ScriptDirectory
+            if (-not $bundleResult.Success) {
+                exit 1
+            }
+            exit 0
         }
 
         # For all other operations, workspace must be valid
@@ -686,9 +707,21 @@ function Main {
             exit 1
         }
 
+        $needsChecksumCheck = $Verify -or ($RepoDirectory -and -not ($Help -or $Bootstrap -or $Clean))
+        if ($needsChecksumCheck) {
+            $checksum = Test-InstallerChecksum -InstallerRoot $ScriptDirectory
+            if (-not $checksum.Valid) {
+                Show-ValidationError -ErrorType 'InstallerChecksum' -Reason $checksum.Reason
+                exit 1
+            }
+        }
+
         if ($Verify) {
-            Invoke-VerifyWorkspace -BranchType $branchType | Out-Null
-            return
+            $verifyResult = Invoke-VerifyWorkspace -BranchType $branchType
+            if (-not $verifyResult.Success) {
+                exit 1
+            }
+            exit 0
         }
 
         if ($Bootstrap) {
@@ -701,7 +734,7 @@ function Main {
         }
 
         if ($Clean) {
-            $cleanResult = Invoke-CleanWorkspace -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:([bool]$RepoDirectory)
+            $cleanResult = Invoke-CleanWorkspace -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:$isFromUserProfile
 
             # Return clean result without automatic verification
             # The clean operation provides its own success/failure messaging
@@ -715,7 +748,7 @@ function Main {
         # Installation path (when -RepoDirectory is provided and not other specific operations)
         if ($RepoDirectory -and -not ($Help -or $Verify -or $Bootstrap -or $Clean)) {
             # Proceed with installation - require that target is a Terraform provider repo
-            Invoke-InstallInfrastructure -DryRun $DryRun -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -SourceBranch $Branch -LocalSourcePath $LocalPath | Out-Null
+            Invoke-InstallInfrastructure -WorkspaceRoot $Global:WorkspaceRoot -ManifestConfig $Global:ManifestConfig -TargetBranch $currentBranch -RequireProviderRepo $true -LocalSourcePath $LocalPath | Out-Null
             return
         }
 

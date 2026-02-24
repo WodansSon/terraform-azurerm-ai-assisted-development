@@ -53,7 +53,7 @@ jobs:
             Write-Host "Module $($module.Name) loaded successfully"
           }
 
-      - name: Dry-run installer (Help)
+      - name: Installer help output (Help)
         shell: pwsh
         run: |
           ./installer/install-copilot-setup.ps1 -Help
@@ -98,7 +98,7 @@ jobs:
           chmod +x ./installer/install-copilot-setup.sh
           chmod +x ./installer/modules/bash/*.sh
 
-      - name: Dry-run installer (Help)
+      - name: Installer help output (Help)
         run: |
           ./installer/install-copilot-setup.sh -help
 

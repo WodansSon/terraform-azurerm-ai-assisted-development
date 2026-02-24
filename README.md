@@ -78,6 +78,24 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ```
 
 > [!NOTE]
+> **About `-Verify` / `-verify`:** verification has two modes:
+> - **Bundle self-check (no repo directory):** when run from the user-profile installer directory *without* `-RepoDirectory` / `-repo-directory`, it verifies the installer bundle itself (manifest/modules/payload/checksum).
+> - **Target repo verification:** when run *with* `-RepoDirectory` / `-repo-directory`, it checks whether the target repository has all required AI files.
+> - `-Verify -RepoDirectory` / `-verify -repo-directory` hard-fails if the repo directory points at the installer source repository, to prevent false-positive verification.
+> - If it reports **"Manifest file mismatch"**, your local installer manifest is out of date (or from a different release/branch).
+>   Re-extract the latest release bundle (recommended), or re-run `-Bootstrap` from a local git clone (contributors only), then run verify again.
+> - `-Verify` is offline-only and checks against the local `file-manifest.config` and bundled payload in the installer directory.
+> - Verification summaries include both files and directories checked.
+<!-- -->
+> [!NOTE]
+> **Offline-only operations**: install, verify, and clean use the bundled payload (`aii/`) and local manifest. No network downloads occur during these operations.
+> Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap`.
+<!-- -->
+> [!NOTE]
+> Target installs require a `terraform-provider-azurerm` clone with an origin remote configured.
+> The AI development repository is a source-only workspace and is not a valid install target.
+<!-- -->
+> [!NOTE]
 > **Install a specific version (pinning)**: replace `latest/download` with a tagged release URL (`download/vX.Y.Z`).
 >
 > The version is the `vX.Y.Z` segment in the URL path. The filename can be either the stable (unversioned) asset name or the versioned asset name.
@@ -88,16 +106,29 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 >   - `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/download/v1.0.1/terraform-azurerm-ai-installer-v1.0.1.tar.gz`
 <!-- -->
 > [!TIP]
-> **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, use the `-Bootstrap` command to work with your local changes:
+> **For Contributors**: If you're contributing to this AI infrastructure project itself and have the repository cloned locally, the most reliable workflow is:
+> 1) **From your local clone**, run Bootstrap to refresh the user-profile installer, then
+> 2) run installs from your user profile using `-LocalPath` / `-local-path` to source AI files from your working tree.
 > ```bash
+> # Step 1 (Bootstrap) - run from your local clone
 > cd terraform-azurerm-ai-assisted-development/installer
-> ./install-copilot-setup.sh -bootstrap  # or .\install-copilot-setup.ps1 -Bootstrap on Windows
+> ./install-copilot-setup.sh -bootstrap
+> # PowerShell:
+> #   cd terraform-azurerm-ai-assisted-development\installer
+> #   .\install-copilot-setup.ps1 -Bootstrap
+>
+> # Step 2 (Install) - run from your user profile, sourcing AI files from your working tree
+> # PowerShell:
+> #   cd "$env:USERPROFILE\.terraform-azurerm-ai-installer"
+> #   .\install-copilot-setup.ps1 -LocalPath "C:\path\to\terraform-azurerm-ai-assisted-development" -RepoDirectory "C:\path\to\terraform-provider-azurerm"
+> # Bash:
+> #   cd ~/.terraform-azurerm-ai-installer
+> #   ./install-copilot-setup.sh -local-path "/path/to/terraform-azurerm-ai-assisted-development" -repo-directory "/path/to/terraform-provider-azurerm"
 > ```
 >
 > **Why use Bootstrap instead of the release package?**
 > - Tests your uncommitted changes to instruction files, installer scripts, and prompts
 > - Copies your local working copy to the user profile installer location
-> - Enables the `-Contributor` workflow for iterative development
 > - Perfect for testing improvements before submitting a PR
 >
 > Normal users should use the release package download (above) - Bootstrap is only for contributors working on the AI infrastructure itself.
@@ -105,7 +136,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ### What the Installer Does
 
 - 🔧 **Installs AI instruction files** to your target repository's `.github/` directory
-- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invokable via slash commands like `/azurerm-docs-writer`)
+- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invokable via slash commands like `/docs-writer`)
 - 🔧 **Configures workspace settings** in `.vscode/settings.json` for AI assistance
 - 🔧 **Works per-repository** - each repo gets its own AI infrastructure
 - 🔧 **Non-invasive** - doesn't modify your personal VS Code settings
@@ -282,13 +313,13 @@ As you type, Copilot suggests:
 
 - **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/code-review-committed-changes** - Review commits and PRs for standards
-- **/docs-schema-audit** - Audit a `website/docs/**` page for docs standards + schema parity
+- **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 
 ### 🧠 Agent Skills
 
-- **/azurerm-docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware; supports dry-run scaffolding into `website_scaffold_tmp`)
-- **/azurerm-resource-implementation** - Implement/update AzureRM provider resources using provider patterns
-- **/azurerm-acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
+- **/docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware; supports dry-run scaffolding into `website_scaffold_tmp`)
+- **/resource-implementation** - Implement/update AzureRM provider resources using provider patterns
+- **/acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
 
 ### ⚙️ Configuration Templates
 
@@ -333,7 +364,7 @@ This is a community project! Contributions are welcome:
 2. **Improve instructions** - Know a better pattern?
 3. **Add examples** - Share your experience
 4. **Test and provide feedback** - Help make it better
-5. **Contributor testing mode** - Test your AI instruction changes before pushing to GitHub using `-Contributor -Branch <name>` or `-Contributor -LocalPath <path>` ([see contributor mode docs](installer/README.md#contributor-mode-ai-dev-repo-contributors))
+5. **Local source testing** - Test your AI instruction changes before publishing by installing from your working tree using `-LocalPath` / `-local-path` ([see installer docs](installer/README.md))
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 

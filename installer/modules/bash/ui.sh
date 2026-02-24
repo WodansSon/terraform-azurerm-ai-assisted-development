@@ -27,7 +27,7 @@ if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
     export GRAY='\033[0;37m'
     export WHITE='\033[1;37m'
     export BOLD='\033[1m'
-    export NC='\033[0m' # No Colo
+    export NC='\033[0m' # No Color
 else
     # No color support (pipes, non-interactive, etc.)
     export RED=''
@@ -75,16 +75,6 @@ write_red() {
     echo -e "${RED}${message}${NC}"
 }
 
-write_blue() {
-    local message="$1"
-    echo -e "${BLUE}${message}${NC}"
-}
-
-write_gray() {
-    local message="$1"
-    echo -e "${GRAY}${message}${NC}"
-}
-
 # ============================================================================
 # Early Validation Error Display (Centralized)
 # ============================================================================
@@ -99,31 +89,27 @@ show_early_validation_error() {
     echo ""
     echo -e "${CYAN}============================================================${NC}"
     echo -e "${CYAN} Terraform AzureRM Provider - AI Infrastructure Installer${NC}"
-    echo -e "${CYAN} Version: ${INSTALLER_VERSION}${NC}"
+    echo -e "${CYAN} Version: ${VERSION:-${INSTALLER_VERSION}}${NC}"
     echo -e "${CYAN}============================================================${NC}"
     echo ""
 
     case "${error_type}" in
-        "BootstrapConflict")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot use -branch or -local-path with -bootstrap${NC}"
+        "BootstrapNoArgs")
+            echo -e "${RED} Error:${NC}${CYAN} -bootstrap does not accept any other parameters${NC}"
             echo ""
-            echo -e "${CYAN} -bootstrap always uses the current local branch${NC}"
-            echo -e "${CYAN} -branch and -local-path are for updating from user profile${NC}"
+            echo -e "${CYAN} Run bootstrap from a local git clone (no other flags):${NC}"
+            echo -e "   ${WHITE}${script_name} -bootstrap${NC}"
             ;;
 
-        "MutuallyExclusive")
-            echo -e "${RED} Error:${NC}${CYAN} Cannot specify both -branch and -local-path${NC}"
+        "BootstrapRequiresGitRepo")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -bootstrap must be run from a git clone (directory containing .git)${NC}"
             echo ""
-            echo -e "${CYAN} Use -branch to pull AI files from a published GitHub branch${NC}"
-            echo -e "${CYAN} Use -local-path to copy AI files from a local unpublished directory${NC}"
-            ;;
-
-        "ContributorRequired")
-            echo -e "${RED} Error:${NC}${CYAN} -branch and -local-path require -contributor flag${NC}"
-            echo ""
-            echo -e "${CYAN} These are contributor features for testing AI file changes:${NC}"
-            echo -e "   ${WHITE}-contributor -branch <name>      Test published branch changes${NC}"
-            echo -e "   ${WHITE}-contributor -local-path <path>  Test uncommitted local changes${NC}"
+            if [[ -n "${path}" ]]; then
+                echo -e "${CYAN} Checked path: ${WHITE}${path}${NC}"
+                echo ""
+            fi
+            echo -e "${CYAN} -bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy.${NC}"
             ;;
 
         "EmptyLocalPath")
@@ -131,6 +117,13 @@ show_early_validation_error() {
             echo ""
             echo -e "${CYAN} Please provide a valid local directory path:${NC}"
             echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "EmptyRepoDirectory")
+            echo -e "${RED} Error:${NC}${CYAN} -repo-directory parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide the path to your terraform-provider-azurerm working copy:${NC}"
+            echo -e "   ${WHITE}-repo-directory \"/path/to/terraform-provider-azurerm\"${NC}"
             ;;
 
         "LocalPathNotFound")
@@ -141,6 +134,18 @@ show_early_validation_error() {
             echo ""
             echo -e "${CYAN} Please verify the directory path exists:${NC}"
             echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "RepoDirectoryNotFound")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -repo-directory path does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide the path to your terraform-provider-azurerm working copy:${NC}"
+            echo -e "   ${WHITE}-repo-directory \"/path/to/terraform-provider-azurerm\"${NC}"
+            echo ""
+            echo -e "${CYAN} Tip: on WSL, Windows paths are typically under ${WHITE}/mnt/<drive>/${NC}"
             ;;
 
         *)
@@ -198,35 +203,23 @@ write_file_operation_status() {
 show_operation_summary() {
     local operation_name="$1"
     local success="$2"
-    local dry_run="${3:-false}"
-    shift 3
+    shift 2
 
-    # Parse arguments for details and next steps (bash 3.2 compatible)
+    # Parse arguments for details (bash 3.2 compatible)
+    # NOTE: NEXT STEPS are rendered by write_next_steps_block at call sites.
     local details_keys=""
     local details_values=""
     local longest_key=""
-    local next_steps=""
-    local parsing_steps=false
 
-    # Process all remaining arguments
     while [[ $# -gt 0 ]]; do
         if [[ "$1" == "--next-steps" ]]; then
-            parsing_steps=true
-            shift
-            continue
+            break
         fi
 
-        if [[ "$parsing_steps" == true ]]; then
-            if [[ -n "$next_steps" ]]; then
-                next_steps="${next_steps}|$1"
-            else
-                next_steps="$1"
-            fi
-        elif echo "$1" | grep -q '^[^:]\+:[[:space:]]*.\+$'; then
+        if echo "$1" | grep -q '^[^:]\+:[[:space:]]*.\+$'; then
             local key="$(echo "$1" | sed 's/^\([^:]\+\):[[:space:]]*.\+$/\1/')"  # Preserve spaces in key names
             local value="$(echo "$1" | sed 's/^[^:]\+:[[:space:]]*\(.\+\)$/\1/')"
 
-            # Store key-value pairs using delimited strings
             if [[ -n "$details_keys" ]]; then
                 details_keys="${details_keys}|${key}"
                 details_values="${details_values}|${value}"
@@ -235,17 +228,16 @@ show_operation_summary() {
                 details_values="${value}"
             fi
 
-            # Track longest key for alignment
             if [[ ${#key} -gt ${#longest_key} ]]; then
                 longest_key="$key"
             fi
         fi
+
         shift
     done
 
     # Show operation completion with consistent formatting
     local status_text
-    local colo
     if [[ "$success" == "true" ]]; then
         status_text="completed successfully"
         color="${GREEN}"
@@ -254,41 +246,17 @@ show_operation_summary() {
         color="${RED}"
     fi
 
-    local completion_message
-    if [[ "$dry_run" == "true" ]]; then
-        completion_message=" ${operation_name} ${status_text} (dry run)"
-    else
-        completion_message=" ${operation_name} ${status_text}"
-    fi
+    local completion_message=" ${operation_name} ${status_text}"
 
     echo ""
     echo -e "${color}${completion_message}${NC}"
-    echo ""
 
     # Display details if any exist
     if [[ -n "$details_keys" ]]; then
-        # Summary section with cyan headers (matches PowerShell structure)
-        print_separator 60 "${CYAN}" "="
-        write_cyan " $(echo "${operation_name}" | tr '[:lower:]' '[:upper:]') SUMMARY:"
-        print_separator 60 "${CYAN}" "="
+        # Summary section (self-spacing block header)
+        write_block_header "$(echo "${operation_name}" | tr '[:lower:]' '[:upper:]') SUMMARY:"
         echo ""
         write_section_header "DETAILS"
-
-        # Define expected order based on operation type (bash 3.2 compatible)
-        local expected_order=""
-        local operation_lower="$(echo "${operation_name}" | tr '[:upper:]' '[:lower:]')"
-        if [[ "${operation_lower}" == "verification" ]]; then
-            expected_order="Branch Type|Target Branch|Files Verified|Issues Found|Location"
-        elif [[ "${operation_lower}" == "cleanup" ]]; then
-            # Always use full cleanup order - follows PowerShell master orde
-            expected_order="Branch Type|Target Branch|Operation Type|Files Removed|Directories Cleaned|Location"
-        elif [[ "${operation_lower}" == "bootstrap" ]]; then
-            # Bootstrap operation order (matches PowerShell)
-            expected_order="Files Copied|Total Size|Location"
-        else
-            # Installation operation orde
-            expected_order="Branch Type|Target Branch|Files Installed|Total Size|Files Skipped|Location"
-        fi
 
         # Split the keys and values for processing
         local IFS='|'
@@ -329,54 +297,9 @@ show_operation_summary() {
 
             i=$((i + 1))
         done
-        echo ""  # Add newline after DETAILS section
     fi
 
-    # Add next steps if provided
-    if [[ -n "$next_steps" ]]; then
-        write_cyan "NEXT STEPS:"
-        echo ""
-
-        # Split next steps and display them - no automatic numbering since input is pre-formatted
-        local IFS='|'
-        set -- $next_steps
-        local steps=("$@")
-        IFS=' '
-
-        local j=0
-        while [[ $j -lt ${#steps[@]} ]]; do
-            local step="${steps[$j]}"
-            # Display step with appropriate coloring
-            if [[ -n "$step" ]]; then
-                # Check if step starts with optional whitespace followed by a number - display in cyan
-                if echo "$step" | grep -q '^ *[0-9][0-9]*\.'; then
-                    write_cyan "$step"
-                else
-                    # Indented step or continuation - display in white
-                    write_white "$step"
-                fi
-            else
-                echo ""  # Empty line for spacing
-            fi
-            j=$((j + 1))
-        done
-        echo ""
-    fi
-}
-
-# Function to display next steps after successful bootstrap operation
-show_bootstrap_next_steps() {
-    local target_directory="${1:-$HOME/.terraform-azurerm-ai-installer}"
-
-    write_cyan "NEXT STEPS:"
-    echo ""
-    write_cyan "  1. Switch to your feature branch:"
-    write_white "     git checkout feature/your-branch-name"
-    echo ""
-    write_cyan "  2. Run the installer from your user profile:"
-    write_white "     cd \"\$HOME/.terraform-azurerm-ai-installer\""
-    write_white "     ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
-    echo ""
+    # No trailing blank line; callers control spacing by using self-spacing blocks.
 }
 
 # Helper function to print colored separator line
@@ -392,7 +315,80 @@ print_separator() {
     printf "${NC}\n"
 }
 
-# Function to display main application heade
+# Function to display a self-spacing block header (separator/title/separator)
+# Starts with a leading blank line to avoid "sticking" to previous output.
+write_block_header() {
+    local title="$1"
+    local length="${2:-60}"
+
+    echo ""
+    print_separator "${length}" "${CYAN}" "="
+    write_cyan " ${title}"
+    print_separator "${length}" "${CYAN}" "="
+}
+
+# Function to display a standardized NEXT STEPS block
+# - Always starts with a leading blank line
+# - No blank line between header and first step
+# - Ensures each step starts with two spaces unless already indented
+write_next_steps_block() {
+    if [[ $# -le 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    write_cyan "NEXT STEPS:"
+
+    local has_numbered=false
+    local step
+
+    for step in "$@"; do
+        [[ -z "${step}" ]] && continue
+        if echo "${step}" | grep -Eq '^[[:space:]]*[0-9]+[\.|\)]\s'; then
+            has_numbered=true
+            break
+        fi
+    done
+
+    local printed_first_numbered=false
+    for step in "$@"; do
+        [[ -z "${step}" ]] && continue
+
+        if [[ "${has_numbered}" == "true" ]] && echo "${step}" | grep -Eq '^[[:space:]]*[0-9]+[\.|\)]\s'; then
+            if [[ "${printed_first_numbered}" == "true" ]]; then
+                echo ""
+            fi
+            printed_first_numbered=true
+        fi
+
+        if echo "${step}" | grep -q '^[[:space:]]'; then
+            write_plain "${step}"
+        else
+            write_plain "  ${step}"
+        fi
+    done
+}
+
+# Function to display a standardized issues list block
+# - Always starts with a leading blank line
+# - No blank line between header and first item
+# - Items printed as "  - <item>" in red
+write_issues_block() {
+    if [[ $# -le 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    write_yellow " Issues Found:"
+
+    local issue
+    for issue in "$@"; do
+        [[ -z "${issue}" ]] && continue
+        write_red "  - ${issue}"
+    done
+}
+
+# Function to display main application header
 write_header() {
     local title="${1:-Terraform AzureRM Provider - AI Infrastructure Installer}"
     local version="${2:-$DEFAULT_VERSION}"
@@ -478,7 +474,6 @@ show_branch_detection() {
 # Function to display section headers
 write_section() {
     local section_title="$1"
-
     write_cyan " ${section_title}"
     print_separator
     echo ""
@@ -700,18 +695,17 @@ show_next_steps() {
     local steps=("$@")
 
     if [[ ${#steps[@]} -gt 0 ]]; then
-        write_cyan "NEXT STEPS:"
-        echo ""
-
+        local formatted_steps=()
         for i in "${!steps[@]}"; do
             local step_num=$((i + 1))
-            write_plain "  ${step_num}. ${steps[i]}"
+            formatted_steps+=("${step_num}. ${steps[i]}")
         done
-        echo ""
+
+        write_next_steps_block "${formatted_steps[@]}"
     fi
 }
 
-# Function to show divide
+# Function to show divider
 show_divider() {
     local char="${1:--}"
     local length="${2:-60}"
@@ -740,6 +734,21 @@ show_usage() {
     write_plain "  GitHub Copilot with Terraform-specific knowledge, patterns, and best practices."
     echo ""
 
+    write_cyan "OFFICIAL INSTALLATION:"
+    write_plain "  This installer is distributed as a release bundle."
+    write_plain "  Download and extract the latest bundle into your user profile installer directory:"
+    write_cyan "    https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest"
+    echo ""
+    write_plain "  Installer operations are offline-only and use the bundled payload (aii/)."
+    write_plain "  No network downloads occur during install, verify, or clean."
+    write_plain "  Install and verify validate the bundled payload checksum (aii.checksum)."
+    echo ""
+    write_plain "  Target installs require a terraform-provider-azurerm clone with an origin remote."
+    write_plain "  The AI development repo is a source-only workspace and is not a valid target."
+    echo ""
+    write_yellow "  Note: -bootstrap must be run from a git clone (repo root contains .git)."
+    echo ""
+
     # Dynamic options and examples based on branch type
     case "${branch_type}" in
         "source")
@@ -766,12 +775,12 @@ show_source_branch_help() {
     echo ""
     write_cyan "AVAILABLE OPTIONS:"
     write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
-    write_plain "                    Run this from the source branch to set up for feature branch use"
+    write_plain "                    Must be run from a git clone (.git present)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -help             Show this help information"
     echo ""
     write_cyan "EXAMPLES:"
-    write_plain "  Bootstrap installer (run from source branch):"
+    write_plain "  Bootstrap installer (run from a git clone):"
     write_plain "    ./install-copilot-setup.sh -bootstrap"
     echo ""
     write_plain "  Verify setup:"
@@ -787,10 +796,11 @@ show_source_branch_help() {
     fi
 
     write_cyan "BOOTSTRAP WORKFLOW:"
-    write_plain "  1. Run -bootstrap from source branch (exp/terraform_copilot) to copy installer to user profile"
-    write_plain "  2. Switch to your feature branch: git checkout feature/your-branch-name"
+    write_plain "  1. Run -bootstrap from a git clone to copy installer to user profile"
+    write_plain "  2. In your terraform-provider-azurerm working copy, switch to a feature branch:"
+    write_plain "     git checkout -b feature/your-branch-name"
     write_plain "  3. Navigate to user profile: cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "  4. Run installer: ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
+    write_plain "  4. Run installer: ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
 }
 
@@ -803,38 +813,29 @@ show_feature_branch_help() {
     echo ""
 
     write_cyan "AVAILABLE OPTIONS:"
-    write_plain "  -repo-directory   Repository path (path to your feature branch directory)"
-    write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
-    write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
-    write_plain "  -contributor      Enable contributor mode for testing AI file changes"
-    write_plain "  -dry-run          Show what would be done without making changes"
+    write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
+    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
 
     write_cyan "EXAMPLES:"
-    write_cyan "  Install AI infrastructure (default - from main branch):"
+    write_cyan "  Install AI infrastructure (default - from bundled payload):"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
-    write_cyan "  Install from specific GitHub branch (contributor testing):"
-    write_plain "    ./install-copilot-setup.sh -contributor -branch feature/new-ai-files -repo-directory \"/path/to/repo\""
-    echo ""
-    write_cyan "  Install from local uncommitted changes (contributor testing):"
-    write_plain "    ./install-copilot-setup.sh -contributor -local-path \"/path/to/ai-installer-repo\" -repo-directory \"/path/to/repo\""
-    echo ""
-    write_cyan "  Dry-Run (preview changes):"
-    write_plain "    cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -dry-run"
+    write_cyan "  Install from local files (contributor override):"
+    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
     write_cyan "  Clean removal:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -clean"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" -clean"
     echo ""
 
-    # Show command-specific help if a command was attempted
-    if [[ -n "${attempted_command}" ]]; then
+    # Show command-specific help if a command was attempted.
+    # Suppress this note when the user explicitly requested help/verify.
+    if [[ -n "${attempted_command}" ]] && [[ "${attempted_command}" != "-help" ]] && [[ "${attempted_command}" != "-verify" ]]; then
         echo ""
         write_yellow "NOTE: You tried to run '${attempted_command}'."
         case "${attempted_command}" in
@@ -853,14 +854,12 @@ show_feature_branch_help() {
 
     write_cyan "WORKFLOW:"
     write_plain "  1. Navigate to user profile installer directory: cd ~/.terraform-azurerm-ai-installer/"
-    write_plain "  2. Run installer with path to your feature branch"
+    write_plain "  2. Run installer with -repo-directory pointing to your terraform-provider-azurerm working copy"
     write_plain "  3. Start developing with enhanced GitHub Copilot AI features"
     write_plain "  4. Use -clean to remove AI infrastructure when done"
     echo ""
-    write_cyan "CONTRIBUTOR WORKFLOW (Testing AI File Changes):"
-    write_plain "  Test uncommitted changes: Use -local-path to copy from your local AI repo"
-    write_plain "  Test published branch:    Use -branch to pull from GitHub branch"
-    write_plain "  Test main branch:         Omit both flags to use default (main)"
+    write_cyan "LOCAL SOURCE WORKFLOW:"
+    write_plain "  Use -local-path to copy AI files from a local directory instead of the bundled payload."
     echo ""
 }
 
@@ -902,11 +901,8 @@ show_unknown_branch_help() {
 
     write_cyan "ALL OPTIONS:"
     write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
-    write_plain "  -repo-directory   Repository path for git operations (when running from user profile)"
-    write_plain "  -branch           GitHub branch to pull AI files from (requires -contributor, default: main)"
-    write_plain "  -local-path       Local directory to copy AI files from (requires -contributor)"
-    write_plain "  -contributor      Enable contributor mode for testing AI file changes"
-    write_plain "  -dry-run          Show what would be done without making changes"
+    write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
+    write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
@@ -919,12 +915,11 @@ show_unknown_branch_help() {
     echo ""
     write_dark_cyan "  Feature Branch Operations:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer"
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\""
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/your/feature/branch\" -clean"
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\""
+    write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" -clean"
     echo ""
-    write_dark_cyan "  Contributor Operations (Testing AI Changes):"
-    write_plain "    ./install-copilot-setup.sh -contributor -branch feature/ai-updates -repo-directory \"/path/to/repo\""
-    write_plain "    ./install-copilot-setup.sh -contributor -local-path \"/path/to/ai-repo\" -repo-directory \"/path/to/repo\""
+    write_dark_cyan "  Local Source Operations (Contributor Override):"
+    write_plain "    ./install-copilot-setup.sh -local-path \"/path/to/ai-repo\" -repo-directory \"/path/to/terraform-provider-azurerm\""
     echo ""
 
     write_cyan "BRANCH DETECTION:"
@@ -934,27 +929,15 @@ show_unknown_branch_help() {
 
 # Function to display source branch welcome and guidance
 show_source_branch_welcome() {
-    local branch_name="${1:-exp/terraform_copilot}"
+    local branch_name="${1:-}"
 
-    write_green " WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
-    echo ""
-}
-
-# Function to show bootstrap failure error with troubleshooting
-show_bootstrap_failure_error() {
-    local files_failed="$1"
-    local user_profile="$2"
-    local script_name="$3"
+    if [[ -z "${branch_name}" ]]; then
+        echo ""
+        return 0
+    fi
 
     echo ""
-    write_error_message "Bootstrap failed with ${files_failed} file(s) failing to copy"
-    echo ""
-    write_yellow "TROUBLESHOOTING:"
-    write_plain "  1. Check file permissions in source directory"
-    write_plain "  2. Ensure sufficient disk space in ${user_profile}"
-    write_plain "  3. Verify you're running from the correct directory"
-    echo ""
-    write_plain "For help: ${script_name} -help"
+    write_green "WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
     echo ""
 }
 
@@ -964,7 +947,7 @@ write_plain() {
     echo -e "${message}"
 }
 
-# Function to show bootstrap location erro
+# Function to show bootstrap location error
 show_bootstrap_location_error() {
     local current_location="$1"
     local expected_location="$2"
@@ -978,22 +961,22 @@ show_bootstrap_location_error() {
     write_plain "Expected location: ${expected_location}"
     echo ""
     write_yellow "SOLUTION:"
-    write_cyan "Navigate to your terraform-provider-azurerm repository and run:"
-    write_plain "  cd /path/to/terraform-provider-azurerm/.github/AIinstaller"
+    write_cyan "Navigate to a git clone of terraform-azurerm-ai-assisted-development and run:"
+    write_plain "  cd /path/to/terraform-azurerm-ai-assisted-development/installer"
     write_plain "  ./install-copilot-setup.sh -bootstrap"
     echo ""
 }
 
-# Function to show bootstrap directory validation erro
+# Function to show bootstrap directory validation error
 show_bootstrap_directory_validation_error() {
     local current_location="$1"
 
     echo ""
-    write_error_message "Bootstrap must be run from terraform-provider-azurerm root or .github/AIinstaller directory"
+    write_error_message "Bootstrap must be run from a git clone of terraform-azurerm-ai-assisted-development"
     echo ""
     write_plain "Current location: ${current_location}"
     write_cyan "Expected structure:"
-    write_plain "  From repo root: .github/AIinstaller/install-copilot-setup.sh"
+    write_plain "  From repo root: installer/install-copilot-setup.sh"
     write_plain "  From installer: install-copilot-setup.sh, modules/"
     echo ""
 }
@@ -1015,14 +998,40 @@ show_repository_directory_required_error() {
     echo ""
 }
 
+# Function to display branch validation failed message (matches PowerShell UX)
+show_branch_validation_failed() {
+    local branch_name="$1"
+    local script_name="${2:-./install-copilot-setup.sh}"
+
+    echo ""
+    write_red " Error: Installer configuration validation failed"
+    echo ""
+    write_cyan " Source: Bundled payload (aii/)"
+    echo ""
+    write_cyan " The installer could not load the required local files (manifest/payload)."
+    echo ""
+    write_cyan " Notes:"
+    write_cyan " - Default installs use the bundled payload in the installer directory."
+    write_cyan " - Use -local-path to source files from a local working tree (contributor/dev override)."
+    echo ""
+    write_cyan " Suggested actions:"
+    write_plain " - Re-extract the latest release bundle into your user profile and try again"
+    write_plain " - Or use local source install:"
+    write_plain "   ./install-copilot-setup.sh -local-path \"/path/to/terraform-azurerm-ai-assisted-development\" -repo-directory \"/path/to/terraform-provider-azurerm\""
+    echo ""
+    write_cyan " For more help, run:"
+    write_plain "   ${script_name} -help"
+    echo ""
+}
+
 # Function to display safety violation message for source branch operations
 show_safety_violation() {
-    local branch_name="${1:-exp/terraform_copilot}"
+    local branch_name="${1:-main}"
     local operation="${2:-operation}"
     local from_user_profile="${3:-false}"
     local workspace_root="${4:-$PWD}"
 
-    write_red " SAFETY VIOLATION: Cannot perform operations on source branch"
+    write_red " SAFETY VIOLATION: Cannot ${operation} on source branch"
     print_separator 60 "${CYAN}" "="
     echo ""
 
@@ -1039,9 +1048,8 @@ show_safety_violation() {
     write_plain "    cd \"<path-to-your-terraform-provider-azurerm>\""
     write_plain "    git checkout -b feature/your-branch-name"
     echo ""
-    write_cyan "  Then run the installer from your user profile:"
-    write_plain "    cd \"\$HOME/.terraform-azurerm-ai-installer\""
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
+    write_cyan "  Then run the installer again and target your terraform-provider-azurerm repo directory:"
+    write_plain "    \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
     echo ""
 }
 
@@ -1056,12 +1064,13 @@ show_workspace_validation_error() {
 
     # Context-aware error message based on how the script was invoked
     if [[ "${from_user_profile}" == "true" ]]; then
-        write_yellow " Running from user profile directory (\$HOME/.terraform-azurerm-ai-installer)"
-        write_yellow " Please ensure -RepoDirectory points to a valid terraform-provider-azurerm repository:"
-        write_yellow "   ./install-copilot-setup.sh -RepoDirectory \"<path-to-terraform-provider-azurerm>\""
+        write_yellow " Running from your user profile directory (\$HOME/.terraform-azurerm-ai-installer)"
+        write_yellow " Please ensure -repo-directory points to a valid terraform-provider-azurerm working copy:"
+        write_yellow "   \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\""
     else
-        write_yellow " Bootstrap must be run from the terraform-azurerm-ai-assisted-development repository."
-        write_yellow " After bootstrap, run from user profile (\$HOME/.terraform-azurerm-ai-installer) with -RepoDirectory ."
+        write_yellow " Bootstrap must be run from a git clone of terraform-azurerm-ai-assisted-development (repo root contains .git)."
+        write_yellow " After bootstrap, run from your user profile directory and target your provider repo:"
+        write_yellow "   \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\""
     fi
     echo ""
     print_separator
@@ -1070,11 +1079,15 @@ show_workspace_validation_error() {
 
 
 # Export all UI functions for use in other scripts
-export -f write_cyan write_green write_yellow write_white write_red write_blue write_gray
+export -f write_cyan write_green write_yellow write_white write_red
 export -f write_plain write_label write_colored_label write_section_header write_section
+export -f write_block_header
+export -f write_next_steps_block
+export -f write_issues_block
 export -f write_header write_operation_status
 export -f write_error_message write_warning_message write_success_message
 export -f write_file_operation_status show_completion_summary show_safety_violation
 export -f show_usage show_source_branch_welcome show_workspace_validation_error
+export -f show_branch_validation_failed
 export -f show_operation_summary
 export -f print_separator get_user_profile format_aligned_label_spacing calculate_max_filename_length

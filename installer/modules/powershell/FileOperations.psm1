@@ -45,8 +45,6 @@ function Copy-LocalAIFile {
         [Parameter(Mandatory)]
         [string]$SourceFile,
 
-        [bool]$DryRun = $false,
-
         [Parameter(Mandatory)]
         [string]$WorkspaceRoot
     )
@@ -74,13 +72,6 @@ function Copy-LocalAIFile {
             return $result
         }
 
-        if ($DryRun) {
-            $result.Success = $true
-            $result.Action = "DryRun"
-            $result.Message = "Would copy from $SourceFile"
-            return $result
-        }
-
         # Copy the file
         Copy-Item -Path $SourceFile -Destination $targetFilePath -Force
 
@@ -103,201 +94,6 @@ function Copy-LocalAIFile {
     return $result
 }
 
-function Install-AIFile {
-    <#
-    .SYNOPSIS
-    Download and install a single AI infrastructure file
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$FilePath,
-
-        [Parameter(Mandatory)]
-        [string]$DownloadUrl,
-
-        [bool]$DryRun = $false,
-
-        [Parameter(Mandatory)]
-        [string]$WorkspaceRoot
-    )
-
-    $result = @{
-        FilePath = $FilePath
-        Success = $false
-        Action = "None"
-        Message = ""
-        Size = 0
-        DebugInfo = @{}
-    }
-
-    try {
-        # Resolve the full file path by joining workspace root with relative path
-        $resolvedFilePath = Join-Path $WorkspaceRoot $FilePath
-        $result.DebugInfo.WorkspaceRoot = $WorkspaceRoot
-        $result.DebugInfo.OriginalPath = $FilePath
-        $result.DebugInfo.ResolvedPath = $resolvedFilePath
-        $result.DebugInfo.PathMethod = "Join-Path"
-
-        # Update result with resolved path
-        $result.FilePath = $resolvedFilePath
-
-        # Record initial state
-        $result.DebugInfo.StartTime = Get-Date
-        $result.DebugInfo.DownloadUrl = $DownloadUrl
-        $result.DebugInfo.TargetPath = $resolvedFilePath
-
-        # Check if file already exists and get file info for comparison
-        $fileExists = Test-Path $resolvedFilePath
-        $result.DebugInfo.FileExisted = $fileExists
-
-        if ($fileExists) {
-            # Get local file information
-            $localFile = Get-Item $resolvedFilePath
-            $localLastWrite = $localFile.LastWriteTime
-            $result.DebugInfo.LocalLastWrite = $localLastWrite
-
-            # Download file headers to check remote file timestamp
-            try {
-                $headResponse = Invoke-WebRequest -Uri $DownloadUrl -Method Head -UseBasicParsing -ErrorAction Stop
-                $remoteLastModified = $null
-
-                # Try to parse Last-Modified header
-                if ($headResponse.Headers['Last-Modified']) {
-                    try {
-                        $remoteLastModified = [DateTime]::ParseExact($headResponse.Headers['Last-Modified'], "ddd, dd MMM yyyy HH:mm:ss 'GMT'", [System.Globalization.CultureInfo]::InvariantCulture)
-                        $result.DebugInfo.RemoteLastModified = $remoteLastModified
-                    }
-                    catch {
-                        Write-Verbose "Could not parse Last-Modified header: $($headResponse.Headers['Last-Modified'])"
-                    }
-                }
-
-                # If we have both timestamps, compare them
-                if ($remoteLastModified) {
-                    $isRemoteNewer = $remoteLastModified -gt $localLastWrite
-                    $result.DebugInfo.IsRemoteNewer = $isRemoteNewer
-
-                    if (-not $isRemoteNewer) {
-                        $result.Action = "Skipped"
-                        $result.Success = $true
-                        $result.Message = "Local file is up-to-date"
-                        return $result
-                    }
-                }
-                else {
-                    # If we can't determine remote timestamp, check file size as fallback
-                    $contentLengthHeader = $headResponse.Headers['Content-Length']
-                    if ($contentLengthHeader) {
-                        $remoteSize = [int64]$contentLengthHeader
-                        $localSize = $localFile.Length
-                        $result.DebugInfo.RemoteSize = $remoteSize
-                        $result.DebugInfo.LocalSize = $localSize
-
-                        if ($remoteSize -eq $localSize) {
-                            $result.Action = "Skipped"
-                            $result.Success = $true
-                            $result.Message = "File appears up-to-date (same size)"
-                            return $result
-                        }
-                    }
-                }
-            }
-            catch {
-                Write-Verbose "Could not check remote file metadata: $_"
-                # If we can't check remote metadata, proceed with download to be safe
-            }
-        }
-
-        # Create directory if needed
-        $directory = Split-Path $resolvedFilePath -Parent
-        $result.DebugInfo.TargetDirectory = $directory
-
-        if ($directory -and -not (Assert-DirectoryExist $directory)) {
-            $result.Message = "Failed to create directory: $directory"
-            return $result
-        }
-
-        if ($DryRun) {
-            $result.Action = if ($fileExists) { "Would Overwrite" } else { "Would Download" }
-            $result.Success = $true
-            $result.Message = "Dry run - no changes made"
-            return $result
-        }
-
-        # Download file
-        Write-Verbose "Downloading: $DownloadUrl"
-
-        $downloadStart = Get-Date
-
-        # Hide progress bar during download
-        $originalProgressPreference = $ProgressPreference
-        $ProgressPreference = 'SilentlyContinue'
-
-        try {
-            $response = Invoke-WebRequest -Uri $DownloadUrl -UseBasicParsing -ErrorAction Stop
-        }
-        finally {
-            $ProgressPreference = $originalProgressPreference
-        }
-
-        $downloadEnd = Get-Date
-
-        if ($downloadEnd -and $downloadStart) {
-            $result.DebugInfo.DownloadDuration = ($downloadEnd - $downloadStart).TotalMilliseconds
-        } else {
-            $result.DebugInfo.DownloadDuration = 0
-        }
-        $result.DebugInfo.ResponseSize = $response.Content.Length
-        $result.DebugInfo.StatusCode = $response.StatusCode
-
-        # Save file (all AI infrastructure files are text-based)
-        try {
-            # Use UTF8 encoding without BOM for all text files
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::WriteAllText($resolvedFilePath, $response.Content, $utf8NoBom)
-            $result.DebugInfo.SaveMethod = "WriteAllText (UTF8 no BOM)"
-        } catch {
-            $result.DebugInfo.SaveException = $_.Exception.Message
-            throw
-        }
-
-        # Verify file was created
-        if (Test-Path $resolvedFilePath) {
-            $fileInfo = Get-Item $resolvedFilePath
-            $result.Size = $fileInfo.Length
-            $result.Action = if ($fileExists) { "Overwritten" } else { "Downloaded" }
-            $result.Success = $true
-            $result.Message = "Successfully installed ($($result.Size) bytes)"
-            $result.DebugInfo.FinalSize = $result.Size
-        } else {
-            $result.Message = "File was not created"
-        }
-    }
-    catch {
-        $result.Message = "Download failed: $($_.Exception.Message)"
-        $result.DebugInfo.Exception = $_.Exception.GetType().Name
-        $result.DebugInfo.ExceptionMessage = $_.Exception.Message
-
-        # Additional debug for specific error types
-        if ($_.Exception -is [System.Net.WebException]) {
-            $webEx = $_.Exception
-            if ($webEx.Response) {
-                $result.DebugInfo.HttpStatusCode = [int]$webEx.Response.StatusCode
-                $result.DebugInfo.HttpStatusDescription = $webEx.Response.StatusDescription
-            }
-        }
-    }
-
-    $result.DebugInfo.EndTime = Get-Date
-    if ($result.DebugInfo.EndTime -and $result.DebugInfo.StartTime) {
-        $result.DebugInfo.TotalDuration = ($result.DebugInfo.EndTime - $result.DebugInfo.StartTime).TotalMilliseconds
-    } else {
-        $result.DebugInfo.TotalDuration = 0
-    }
-
-    return $result
-}
-
 function Install-AllAIFile {
     <#
     .SYNOPSIS
@@ -308,11 +104,10 @@ function Install-AllAIFile {
     Used when installing via -RepoDirectory to a target repository.
 
     .PARAMETER LocalSourcePath
-    Local directory to copy AI files from instead of downloading from GitHub.
+    Local directory to copy AI files from instead of the bundled payload.
     Contributor feature for testing uncommitted changes.
     #>
     param(
-        [bool]$DryRun = $false,
         [string]$Branch = "main",
         [string]$WorkspaceRoot = $null,
         [hashtable]$ManifestConfig = $null,
@@ -322,6 +117,8 @@ function Install-AllAIFile {
 
     # CRITICAL: Use centralized pre-installation validation (replaces scattered safety checks)
     Write-Host "Validating installation prerequisites..." -ForegroundColor Cyan
+    # This installer no longer downloads AI files from the network.
+    # Source is always local: bundled payload (aii/) or -LocalPath.
     $validation = Test-PreInstallation -AllowBootstrapOnSource:$false -RequireProviderRepo:$RequireProviderRepo
 
     if (-not $validation.OverallValid) {
@@ -349,9 +146,6 @@ function Install-AllAIFile {
             }
             if (-not $validation.SystemRequirements.Commands.Valid) {
                 Write-Host "     - Required Commands: Missing $(($validation.SystemRequirements.Commands.MissingCommands) -join ', ')" -ForegroundColor Yellow
-            }
-            if (-not $validation.SystemRequirements.Internet.Connected) {
-                Write-Host "     - Internet: Not connected (required for downloading files)" -ForegroundColor Yellow
             }
         }
 
@@ -437,31 +231,6 @@ function Install-AllAIFile {
         Write-Host "  3. Then re-run this installer" -ForegroundColor White
         Write-Host ""
 
-        # Prompt user for confirmation
-        $response = Read-Host "Do you want to continue anyway and OVERWRITE uncommitted changes? (yes/no)"
-
-        if ($response -ne "yes") {
-            Write-Host ""
-            Write-Host "Installation cancelled. Please commit or stash your changes and try again." -ForegroundColor Cyan
-            Write-Host ""
-
-            return @{
-                TotalFiles = 0
-                Successful = 0
-                Failed = 0
-                Skipped = 0
-                Files = @{}
-                OverallSuccess = $false
-                UserCancelled = $true
-                ValidationResults = $validation
-                DebugInfo = @{
-                    StartTime = Get-Date
-                    Branch = $Branch
-                    FailureReason = "User cancelled due to uncommitted changes"
-                }
-            }
-        }
-
         Write-Host ""
         Write-Host "Proceeding with installation..." -ForegroundColor Yellow
         Write-Host ""
@@ -506,14 +275,16 @@ function Install-AllAIFile {
         DebugInfo = @{
             StartTime = Get-Date
             Branch = $Branch
-            BaseUrl = $manifestConfig.BaseUrl
             LocalSourcePath = $LocalSourcePath
+            SourceMode = ""
+            SourceRoot = ""
         }
     }
 
     # Determine source for AI files
-    # Priority: LocalSourcePath (contributor) > toolkit source directory (auto-detect) > GitHub (default)
-    $toolkitSourceRoot = $null
+    # Priority: LocalSourcePath (contributor) > bundled payload (aii/) (default)
+    $sourceRoot = $null
+    $sourceMode = $null
 
     # Check if LocalSourcePath parameter was explicitly provided
     $localPathWasProvided = $PSBoundParameters.ContainsKey('LocalSourcePath')
@@ -533,42 +304,37 @@ function Install-AllAIFile {
             return $results
         }
 
-        $toolkitSourceRoot = $LocalSourcePath
+        $sourceRoot = $LocalSourcePath
+        $sourceMode = "local-path"
         Write-Host "Installing from local path: " -ForegroundColor Cyan -NoNewline
         Write-Host $LocalSourcePath -ForegroundColor White
     }
-    elseif ($Global:ScriptRoot) {
-        # Auto-detect if we're running from the toolkit source directory
-        # Check if instructions directory exists relative to script location
-        $potentialSource = Split-Path $Global:ScriptRoot -Parent
-        if (Test-Path (Join-Path $potentialSource "instructions")) {
-            $toolkitSourceRoot = $potentialSource
-            # Show which branch we're installing from
-            # In contributor mode (SourceBranch or LocalSourcePath specified), always show branch
-            # In normal mode, only show if not "main" to reduce noise
-            $isContributorMode = $SourceBranch -or $LocalSourcePath
-            $branchInfo = if ($Branch -and ($isContributorMode -or $Branch -ne "main")) {
-                " (branch: $Branch)"
-            } else {
-                ""
+    else {
+        $payloadRoot = if ($Global:ScriptRoot) { Join-Path $Global:ScriptRoot "aii" } else { $null }
+        if ($payloadRoot -and (Test-Path $payloadRoot)) {
+            $sourceRoot = $payloadRoot
+            $sourceMode = "payload"
+            Write-Host "Installing from bundled payload: " -ForegroundColor Cyan -NoNewline
+            Write-Host $payloadRoot -ForegroundColor White
+        } else {
+            Write-Host ""
+            Write-Host "ERROR: Bundled payload directory not found." -ForegroundColor Red
+            if ($payloadRoot) {
+                Write-Host "Expected payload at: $payloadRoot" -ForegroundColor Yellow
             }
-            Write-Host "Installing from local toolkit repository$branchInfo..." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Fix:" -ForegroundColor Yellow
+            Write-Host "  - Extract the official release bundle into your user profile, OR" -ForegroundColor Yellow
+            Write-Host "  - Re-run -Bootstrap from a git clone, OR" -ForegroundColor Yellow
+            Write-Host "  - Use -LocalPath to install directly from a local working tree." -ForegroundColor Yellow
+            Write-Host ""
+            $results.OverallSuccess = $false
+            return $results
         }
     }
 
-    $useLocalCopy = $null -ne $toolkitSourceRoot
-    if (-not $useLocalCopy) {
-        # Show which branch we're downloading from
-        # In contributor mode (SourceBranch or LocalSourcePath specified), always show branch
-        # In normal mode, only show if not "main" to reduce noise
-        $isContributorMode = $SourceBranch -or $LocalSourcePath
-        $branchInfo = if ($Branch -and ($isContributorMode -or $Branch -ne "main")) {
-            " (branch: $Branch)"
-        } else {
-            ""
-        }
-        Write-Host "Downloading files from GitHub$branchInfo..." -ForegroundColor Cyan
-    }
+    $results.DebugInfo.SourceMode = $sourceMode
+    $results.DebugInfo.SourceRoot = $sourceRoot
 
     Write-Host "Preparing to install $($allFiles.Count) files..." -ForegroundColor Cyan
     Write-Host ""
@@ -577,54 +343,22 @@ function Install-AllAIFile {
     foreach ($filePath in $allFiles) {
         $fileIndex++
 
-        # Determine source - either local file path or download URL
-        if ($useLocalCopy) {
-            # For local copies, files are at the same paths as in GitHub (including .github/ prefix)
-            $sourceFile = Join-Path $toolkitSourceRoot $filePath
-            $downloadUrl = $null
-        } else {
-            $downloadUrl = "$($manifestConfig.BaseUrl)/$filePath"
-            $sourceFile = $null
-
-            # Debug: Show the constructed URL
-            Write-Verbose "Constructed URL: $downloadUrl"
-            Write-Verbose "Base URL       : $($manifestConfig.BaseUrl)"
-            Write-Verbose "File Path      : $filePath"
-        }
-
-        # Validate source (either local file exists or download URL is valid)
-        if ($useLocalCopy) {
-            if (-not (Test-Path $sourceFile)) {
-                Write-Warning "Local file not found: $sourceFile"
-                $results.Files[$filePath] = @{
-                    FilePath = $filePath
-                    Success = $false
-                    Action = "Skipped"
-                    Message = "Local file not found"
-                    Size = 0
-                    DebugInfo = @{
-                        SourceFile = $sourceFile
-                        UseLocalCopy = $useLocalCopy
-                    }
+        $sourceFile = Join-Path $sourceRoot $filePath
+        if (-not (Test-Path $sourceFile)) {
+            Write-Warning "Source file not found: $sourceFile"
+            $results.Files[$filePath] = @{
+                FilePath = $filePath
+                Success = $false
+                Action = "Skipped"
+                Message = "Source file not found"
+                Size = 0
+                DebugInfo = @{
+                    SourceFile = $sourceFile
+                    SourceRoot = $sourceRoot
+                    SourceMode = $sourceMode
                 }
-                continue
             }
-        } else {
-            if (-not $downloadUrl -or $downloadUrl -eq "/$filePath" -or [string]::IsNullOrWhiteSpace($manifestConfig.BaseUrl)) {
-                Write-Warning "Could not determine download URL for file: $filePath (BaseUrl: '$($manifestConfig.BaseUrl)')"
-                $results.Files[$filePath] = @{
-                    FilePath = $filePath
-                    Success = $false
-                    Action = "Skipped"
-                    Message = "Could not determine download URL - BaseUrl is empty or invalid"
-                    Size = 0
-                    DebugInfo = @{
-                        BaseUrl = $manifestConfig.BaseUrl
-                        ConstructedUrl = $downloadUrl
-                    }
-                }
-                continue
-            }
+            continue
         }
 
         $percentComplete = [math]::Round(($fileIndex / $allFiles.Count) * 100)
@@ -632,23 +366,15 @@ function Install-AllAIFile {
         $progressPadding = if ($percentComplete -lt 10) { "  " } elseif ($percentComplete -lt 100) { " " } else { "" }
         $progressText = "[$percentComplete%$progressPadding]"
 
-        if ($useLocalCopy) {
-            Write-Host "  Copying " -ForegroundColor Cyan -NoNewline
-        } else {
-            Write-Host "  Downloading " -ForegroundColor Cyan -NoNewline
-        }
+        Write-Host "  Copying " -ForegroundColor Cyan -NoNewline
         Write-Host $progressText -ForegroundColor Green -NoNewline
         Write-Host ": " -ForegroundColor Cyan -NoNewline
         Write-Host $filePath -ForegroundColor White
 
-        if ($useLocalCopy) {
-            $fileResult = Copy-LocalAIFile -FilePath $filePath -SourceFile $sourceFile -DryRun $DryRun -WorkspaceRoot $WorkspaceRoot
-        } else {
-            $fileResult = Install-AIFile -FilePath $filePath -DownloadUrl $downloadUrl -DryRun $DryRun -WorkspaceRoot $WorkspaceRoot
-        }
+        $fileResult = Copy-LocalAIFile -FilePath $filePath -SourceFile $sourceFile -WorkspaceRoot $WorkspaceRoot
         $results.Files[$filePath] = $fileResult
 
-        # Show error details if download failed
+        # Show error details if copy failed
         if (-not $fileResult.Success) {
             Write-Host "   ERROR: $($fileResult.Message)" -ForegroundColor Red
             if ($fileResult.DebugInfo.ExceptionMessage) {
@@ -657,8 +383,8 @@ function Install-AllAIFile {
         }
 
         switch ($fileResult.Action) {
-            { $_ -in @("Downloaded", "Overwritten", "Copied") } { $results.Successful++ }
-            "Skipped" { $results.Skipped++ }
+            { $_ -in @("Copied") } { $results.Successful++ }
+            { $_ -in @("Skipped") } { $results.Skipped++ }
             default {
                 $results.Failed++
                 $results.OverallSuccess = $false
@@ -695,8 +421,6 @@ function Remove-AIFile {
         [Parameter(Mandatory)]
         [string]$FilePath,
 
-        [bool]$DryRun = $false,
-
         [string]$WorkspaceRoot = ""
     )
 
@@ -722,13 +446,6 @@ function Remove-AIFile {
             return $result
         }
 
-        if ($DryRun) {
-            $result.Action = "Would Remove"
-            $result.Success = $true
-            $result.Message = "Dry run - no changes made"
-            return $result
-        }
-
         # Remove file
         Remove-Item -Path $resolvedFilePath -Force -ErrorAction Stop
 
@@ -749,7 +466,6 @@ function Remove-AllAIFile {
     Remove all AI infrastructure files and clean up
     #>
     param(
-        [bool]$DryRun = $false,
         [string]$Branch = "main",
         [string]$WorkspaceRoot = "",
         [hashtable]$ManifestConfig = $null
@@ -815,6 +531,17 @@ function Remove-AllAIFile {
             if ($allowedForCleanup) {
                 $uniqueDirectories[$directory] = $true
                 $directoriesToCheck += $directory
+
+                # Also include the parent AI directory (e.g. `.github/skills`) so it can be removed
+                # after child directories are deleted and it becomes empty.
+                foreach ($aiDir in $aiDirectories) {
+                    if ($normalizedDirectory.StartsWith("$aiDir/")) {
+                        if (-not $uniqueDirectories.ContainsKey($aiDir)) {
+                            $uniqueDirectories[$aiDir] = $true
+                            $directoriesToCheck += $aiDir
+                        }
+                    }
+                }
             }
         }
     }
@@ -879,6 +606,9 @@ function Remove-AllAIFile {
             $existingDirectories += $dirPath
         }
     }
+
+    # Ensure deepest directories are removed first (parents last)
+    $existingDirectories = $existingDirectories | Sort-Object { ($_ -split '[/\\]').Count } -Descending
 
     # If nothing exists, show clean message and exit early
     if ($existingFiles.Count -eq 0 -and $existingDirectories.Count -eq 0) {
@@ -950,7 +680,7 @@ function Remove-AllAIFile {
         Write-Host ": " -ForegroundColor Cyan -NoNewline
         Write-Host "$fileName$fileNamePadding " -ForegroundColor White -NoNewline
 
-        $fileResult = Remove-AIFile -FilePath $filePath -DryRun $DryRun -WorkspaceRoot $WorkspaceRoot
+        $fileResult = Remove-AIFile -FilePath $filePath -WorkspaceRoot $WorkspaceRoot
         $results.Files[$filePath] = $fileResult
 
         switch ($fileResult.Action) {
@@ -958,11 +688,6 @@ function Remove-AllAIFile {
                 $results.Removed++
                 $results.FilesRemoved++
                 Write-Host "[OK]" -ForegroundColor Green
-            }
-            "Would Remove" {
-                $results.Removed++  # Count as success for dry run
-                $results.FilesRemoved++
-                Write-Host "[WOULD REMOVE]" -ForegroundColor Yellow
             }
             "Not Found" {
                 $results.NotFound++
@@ -1019,27 +744,20 @@ function Remove-AllAIFile {
             # Check if directory is empty first
             $dirContents = Get-ChildItem $resolvedDirPath -Force
             if ($dirContents.Count -eq 0) {
-                if ($DryRun) {
-                    $dirResult.Action = "Would Remove"
-                    $dirResult.Message = "Empty directory would be removed"
+                try {
+                    Remove-Item -Path $resolvedDirPath -Force -ErrorAction Stop
+                    $dirResult.Action = "Removed"
+                    $dirResult.Message = "Empty directory removed"
                     $results.DirectoriesCleaned++
-                    Write-Host "[WOULD REMOVE]" -ForegroundColor Yellow
-                } else {
-                    try {
-                        Remove-Item -Path $resolvedDirPath -Force -ErrorAction Stop
-                        $dirResult.Action = "Removed"
-                        $dirResult.Message = "Empty directory removed"
-                        $results.DirectoriesCleaned++
-                        Write-Host "[OK]" -ForegroundColor Green
-                    }
-                    catch {
-                        $dirResult.Action = "Failed"
-                        $dirResult.Success = $false
-                        $dirResult.Message = "Failed to remove directory: $($_.Exception.Message)"
-                        $results.Success = $false
-                        $results.Issues += "Failed to remove directory ${resolvedDirPath}: $($_.Exception.Message)"
-                        Write-Host "[FAILED]" -ForegroundColor Red
-                    }
+                    Write-Host "[OK]" -ForegroundColor Green
+                }
+                catch {
+                    $dirResult.Action = "Failed"
+                    $dirResult.Success = $false
+                    $dirResult.Message = "Failed to remove directory: $($_.Exception.Message)"
+                    $results.Success = $false
+                    $results.Issues += "Failed to remove directory ${resolvedDirPath}: $($_.Exception.Message)"
+                    Write-Host "[FAILED]" -ForegroundColor Red
                 }
             } else {
                 $dirResult.Action = "Not Empty"
@@ -1073,7 +791,6 @@ function Remove-DeprecatedFile {
         [Parameter(Mandatory)]
         [string]$WorkspaceRoot,
 
-        [bool]$DryRun = $false,
         [bool]$Quiet = $false
     )
 
@@ -1144,29 +861,27 @@ function Remove-DeprecatedFile {
             }
         }
 
-        if (-not $DryRun) {
-            # Automatically remove deprecated files without prompting
-            $removedCount = 0
-            foreach ($file in $deprecatedFiles) {
-                try {
-                    Remove-Item -Path $file.Path -Force
-                    if (-not $Quiet) {
-                        Write-Host "  Removed: $($file.RelativePath)" -ForegroundColor Green
-                    }
-                    $removedCount++
+        # Automatically remove deprecated files without prompting
+        $removedCount = 0
+        foreach ($file in $deprecatedFiles) {
+            try {
+                Remove-Item -Path $file.Path -Force
+                if (-not $Quiet) {
+                    Write-Host "  Removed: $($file.RelativePath)" -ForegroundColor Green
                 }
-                catch {
-                    if (-not $Quiet) {
-                        Write-Host "  Failed to remove: $($file.RelativePath) - $($_.Exception.Message)" -ForegroundColor Red
-                    }
-                }
+                $removedCount++
             }
-            if (-not $Quiet) {
-                Write-Host ""
-                Write-Host "Removed $removedCount deprecated files." -ForegroundColor Green
+            catch {
+                if (-not $Quiet) {
+                    Write-Host "  Failed to remove: $($file.RelativePath) - $($_.Exception.Message)" -ForegroundColor Red
+                }
             }
         }
-    } elseif (-not $DryRun -and -not $Quiet) {
+        if (-not $Quiet) {
+            Write-Host ""
+            Write-Host "Removed $removedCount deprecated files." -ForegroundColor Green
+        }
+    } elseif (-not $Quiet) {
         Write-Host "No deprecated files found." -ForegroundColor Green
     }
 
@@ -1256,14 +971,12 @@ function Invoke-Bootstrap {
         # Statistics
         $statistics = @{
             "Files Copied" = 0
-            "Files Downloaded" = 0
             "Files Failed" = 0
             "Total Size" = 0
         }
 
-        # CRITICAL: Bootstrap should ONLY be allowed from the source branch (main)
-        # This ensures you're copying the correct, official installer files to your user profile
-        # The validation in Test-PreInstallation should have already verified we're on the source branch
+        # Bootstrap is only supported when running from a git clone of this repository (repo root contains .git).
+        # It copies the installer files from the current working tree into the user profile installer directory.
         $aiInstallerSourcePath = Join-Path $Global:WorkspaceRoot "installer"
 
         if (Test-Path $aiInstallerSourcePath) {
@@ -1345,8 +1058,57 @@ function Invoke-Bootstrap {
                     $statistics["Files Failed"]++
                 }
             }
+
+            # Build the offline payload (aii/) in the bootstrapped installer directory.
+            # This keeps the user-profile installer fully self-contained and avoids any network downloads.
+            Write-Host ""
+            Write-Host "Staging offline payload (aii/) from current repository..." -ForegroundColor Cyan
+
+            $payloadRoot = Join-Path $targetDirectory "aii"
+            if (-not (Test-Path $payloadRoot)) {
+                New-Item -ItemType Directory -Path $payloadRoot -Force | Out-Null
+            }
+
+            $payloadFiles = @()
+            foreach ($section in @("MAIN_FILES", "INSTRUCTION_FILES", "PROMPT_FILES", "SKILL_FILES", "UNIVERSAL_FILES")) {
+                if ($Global:ManifestConfig.Sections.ContainsKey($section) -and $Global:ManifestConfig.Sections[$section]) {
+                    $payloadFiles += $Global:ManifestConfig.Sections[$section]
+                }
+            }
+
+            $payloadCopied = 0
+            $payloadFailed = 0
+            $payloadBytes = 0
+
+            foreach ($relPath in $payloadFiles) {
+                try {
+                    $sourceFile = Join-Path $Global:WorkspaceRoot $relPath
+                    $destFile = Join-Path $payloadRoot $relPath
+                    $destDir = Split-Path $destFile -Parent
+
+                    if (-not (Test-Path $sourceFile)) {
+                        $payloadFailed++
+                        continue
+                    }
+
+                    if (-not (Test-Path $destDir)) {
+                        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                    }
+
+                    Copy-Item -Path $sourceFile -Destination $destFile -Force
+                    $payloadCopied++
+                    $payloadBytes += (Get-Item $destFile).Length
+                }
+                catch {
+                    $payloadFailed++
+                }
+            }
+
+            $statistics["Payload Files Copied"] = $payloadCopied
+            $statistics["Payload Files Failed"] = $payloadFailed
+            $statistics["Total Size"] += $payloadBytes
         } else {
-            # AIinstaller directory not found in current repository
+            # installer directory not found in current repository
             Show-AIInstallerNotFoundError
             exit 1
         }
@@ -1372,27 +1134,41 @@ function Invoke-Bootstrap {
         catch {
         }
 
+        $checksumResult = Write-InstallerChecksum -InstallerRoot $targetDirectory -Version $bootstrapVersion
+        if (-not $checksumResult.Valid) {
+            $details = @(
+                "Checksum error: $($checksumResult.Reason)"
+            )
+            Show-OperationSummary -OperationName "Bootstrap" -Success $false -Details $details
+            return @{ Success = $false; Statistics = $statistics }
+        }
+
         # Prepare details for centralized summary
         $details = @()
         $totalSizeKB = [math]::Round($statistics["Total Size"] / 1KB, 1)
 
         if ($statistics["Files Copied"] -gt 0) {
-            $details += "Files Copied: $($statistics["Files Copied"])"
+            $details += "Installer Files Copied: $($statistics["Files Copied"])"
         }
-        if ($statistics["Files Downloaded"] -gt 0) {
-            $details += "Files Downloaded: $($statistics["Files Downloaded"])"
+        if ($statistics.ContainsKey("Payload Files Copied") -and $statistics["Payload Files Copied"] -gt 0) {
+            $details += "Payload Files Copied (aii/): $($statistics["Payload Files Copied"])"
         }
-        $details += "Total Size: $totalSizeKB KB"
+        $details += "Total Size (installer + payload): $totalSizeKB KB"
         $details += "Location: $targetDirectory"
+
+        $nextSteps = @()
+        $scriptPath = Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer\install-copilot-setup.ps1'
+        $nextSteps += '1. In your terraform-provider-azurerm working copy, switch to a feature branch:'
+        $nextSteps += '     git checkout -b feature/your-branch-name'
+        $nextSteps += '2. Run the installer again and target your terraform-provider-azurerm repo directory:'
+        $nextSteps += "     & `"$scriptPath`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`""
 
         if ($statistics["Files Failed"] -eq 0) {
             # Use centralized success reporting
-            Show-OperationSummary -OperationName "Bootstrap" -Success $true -DryRun $false -Details $details
+            Show-OperationSummary -OperationName "Bootstrap" -Success $true -Details $details
 
-            # Show next steps using UI module function
-            Show-BootstrapNextStep
+            Write-NextStepsBlock -Steps $nextSteps
 
-            # Show welcome message after successful bootstrap
             Show-SourceBranchWelcome -BranchName $CurrentBranch
 
             return @{
@@ -1402,7 +1178,7 @@ function Invoke-Bootstrap {
             }
         } else {
             # Use centralized failure reporting
-            Show-OperationSummary -OperationName "Bootstrap" -Success $false -DryRun $false -Details $details
+            Show-OperationSummary -OperationName "Bootstrap" -Success $false -Details $details
 
             return @{
                 Success = $false
@@ -1411,7 +1187,7 @@ function Invoke-Bootstrap {
         }
     }
     catch {
-        Show-OperationSummary -OperationName "Bootstrap" -Success $false -DryRun $false `
+        Show-OperationSummary -OperationName "Bootstrap" -Success $false `
             -Details @("Error: $($_.Exception.Message)")
         return @{
             Success = $false
@@ -1424,9 +1200,6 @@ function Invoke-CleanWorkspace {
     <#
     .SYNOPSIS
     High-level clean workspace operation with complete UI experience
-
-    .PARAMETER DryRun
-    Show what would be done without making changes
 
     .PARAMETER WorkspaceRoot
     Root directory of the workspace
@@ -1441,7 +1214,6 @@ function Invoke-CleanWorkspace {
     Type of branch (source/feature/unknown) for summary display
     #>
     param(
-        [bool]$DryRun,
         [string]$WorkspaceRoot,
         [bool]$FromUserProfile = $false,
         [string]$CurrentBranch = "unknown",
@@ -1462,66 +1234,30 @@ function Invoke-CleanWorkspace {
     Write-Separator
     Write-Host ""
 
-    if ($DryRun) {
-        Write-Host "DRY RUN - No files will be deleted" -ForegroundColor Yellow
-        Write-Host ""
-    }
-
     # Use the FileOperations module to properly remove all AI files
     try {
-        $result = Remove-AllAIFile -DryRun:$DryRun -WorkspaceRoot $WorkspaceRoot
+        $result = Remove-AllAIFile -WorkspaceRoot $WorkspaceRoot
 
         if ($result.Success) {
             # Use Show-OperationSummary for consistent format
             $details = @(
                 "Branch Type: $BranchType",
                 "Target Branch: $CurrentBranch",
-                "Operation Type: $(if ($DryRun) { 'Dry run cleanup' } else { 'Live cleanup' })",
+                "Operation Type: Live cleanup",
                 "Files Removed: $($result.FilesRemoved)",
                 "Directories Cleaned: $($result.DirectoriesCleaned)",
                 "Location: $WorkspaceRoot"
             )
 
-            Show-OperationSummary -OperationName "Cleanup" -Success $true -DryRun $DryRun -Details $details
+            Show-OperationSummary -OperationName "Cleanup" -Success $true -Details $details
             Write-Host ""
         } else {
             Write-Host ""
-
-            # Handle dry-run vs actual operation messaging differently
-            if ($DryRun) {
-                # For dry-run, show positive confirmation that files were verified
-                $dryRunIssues = $result.Issues | Where-Object { $_ -match "Dry run - no changes made" }
-                $actualIssues = $result.Issues | Where-Object { $_ -notmatch "Dry run - no changes made" }
-
-                if ($dryRunIssues.Count -gt 0) {
-                    Write-Host "Dry run completed successfully - all $($dryRunIssues.Count) files verified and ready for removal" -ForegroundColor Green
-                    Write-Host ""
-                    Write-Host "Files that would be removed:" -ForegroundColor Cyan
-                    Write-Separator
-                    foreach ($issue in $dryRunIssues) {
-                        # Extract just the filename from the error message
-                        $fileName = ($issue -split ": Dry run")[0] -replace "Failed to remove ", ""
-                        Write-Host "  - $fileName" -ForegroundColor Gray
-                    }
-                }
-
-                # Show any actual issues (non-dry-run related)
-                if ($actualIssues.Count -gt 0) {
-                    Write-Host "Actual Issues Encountered:" -ForegroundColor Cyan
-                    Write-Separator
-                    foreach ($issue in $actualIssues) {
-                        Write-Host "  - $issue" -ForegroundColor Red
-                    }
-                    Write-Host ""
-                }
-            } else {
-                # For actual operations, show the issues as errors
-                Write-Host "Clean Operation Encountered Issues:" -ForegroundColor Cyan
-                foreach ($issue in $result.Issues) {
-                    Write-Host "  - $issue" -ForegroundColor Red
-                }
-                Write-Host ""
+            Write-Host "Clean Operation Encountered Issues:" -ForegroundColor Cyan
+            foreach ($issue in $result.Issues) {
+                Write-Host "  - $issue" -ForegroundColor Red
             }
+            Write-Host ""
         }
 
         return $result
@@ -1537,9 +1273,6 @@ function Invoke-InstallInfrastructure {
     .SYNOPSIS
     High-level install infrastructure operation with complete UI experience
 
-    .PARAMETER DryRun
-    Show what would be done without making changes
-
     .PARAMETER WorkspaceRoot
     Root directory of the workspace
 
@@ -1553,19 +1286,14 @@ function Invoke-InstallInfrastructure {
     Require that the workspace is a Terraform provider repository (not AI dev repo).
     Set to true when installing via -RepoDirectory to a target repository.
 
-    .PARAMETER SourceBranch
-    GitHub branch to pull AI files from (default: main). Contributor feature.
-
     .PARAMETER LocalSourcePath
-    Local directory to copy AI files from instead of GitHub. Contributor feature.
+    Local directory to copy AI files from instead of the bundled payload.
     #>
     param(
-        [bool]$DryRun,
         [string]$WorkspaceRoot,
         [hashtable]$ManifestConfig,
         [string]$TargetBranch = "Unknown",
         [bool]$RequireProviderRepo = $false,
-        [string]$SourceBranch = "",
         [string]$LocalSourcePath = ""
     )
 
@@ -1573,14 +1301,9 @@ function Invoke-InstallInfrastructure {
     Write-Separator
     Write-Host ""
 
-    if ($DryRun) {
-        Write-Host "DRY RUN - No files will be created or removed" -ForegroundColor Yellow
-        Write-Host ""
-    }
-
     # Step 1: Clean up deprecated files first (automatic part of installation)
     Write-Host "Checking for deprecated files..." -ForegroundColor Cyan
-    $deprecatedFiles = Remove-DeprecatedFile -ManifestConfig $ManifestConfig -WorkspaceRoot $WorkspaceRoot -DryRun $DryRun -Quiet $true
+    $deprecatedFiles = Remove-DeprecatedFile -ManifestConfig $ManifestConfig -WorkspaceRoot $WorkspaceRoot -Quiet $true
 
     if ($deprecatedFiles.Count -gt 0) {
         Write-Host "  Removed $($deprecatedFiles.Count) deprecated files" -ForegroundColor Green
@@ -1594,12 +1317,10 @@ function Invoke-InstallInfrastructure {
 
     # Use the FileOperations module to actually install files
     try {
-        # Determine which branch to use
-        $branchToUse = if ($SourceBranch) { $SourceBranch } else { "main" }
+        $branchToUse = "main"
 
         # Build Install-AllAIFile parameters - only include LocalSourcePath if it's not empty
         $installParams = @{
-            DryRun = $DryRun
             WorkspaceRoot = $WorkspaceRoot
             ManifestConfig = $ManifestConfig
             RequireProviderRepo = $RequireProviderRepo
@@ -1642,6 +1363,24 @@ function Invoke-InstallInfrastructure {
             $details = [ordered]@{}
             $details["Branch Type"] = $branchType
             $details["Target Branch"] = $currentBranch
+
+            # Source/manifest context
+            $sourceValue = if ($LocalSourcePath) { $LocalSourcePath } elseif ($result.DebugInfo -and $result.DebugInfo.SourceRoot) { $result.DebugInfo.SourceRoot } else { "" }
+            if ($sourceValue) {
+                $details["Source"] = $sourceValue
+            }
+
+            $manifestValue = $Global:InstallerManifestPath
+            if ($manifestValue -and $Global:InstallerManifestHash) {
+                $manifestValue = "$manifestValue ($($Global:InstallerManifestHash.Substring(0,8)))"
+            }
+            if ($manifestValue) {
+                $details["Manifest"] = $manifestValue
+            }
+
+            if ($Global:InstallerCommandLine) {
+                $details["Command"] = $Global:InstallerCommandLine
+            }
             if ($result.Successful -gt 0) {
                 $details["Files Installed"] = $result.Successful
             }
@@ -1696,7 +1435,6 @@ function Invoke-InstallInfrastructure {
 
 Export-ModuleMember -Function @(
     'Copy-LocalAIFile',
-    'Install-AIFile',
     'Install-AllAIFile',
     'Remove-AIFile',
     'Remove-AllAIFile',

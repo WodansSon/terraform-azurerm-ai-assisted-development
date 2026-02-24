@@ -14,8 +14,30 @@ $script:DefaultVersion = "dev"
 $versionPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "VERSION"
 if (Test-Path $versionPath) {
     $candidate = (Get-Content -Path $versionPath -Raw).Trim()
-    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$') {
+    if ($candidate -match '^(?:\d+\.\d+\.\d+|dev(?:-[0-9a-f]{7,40})?(?:-dirty)?)$' -and $candidate -ne '0.0.0') {
         $script:DefaultVersion = $candidate
+    }
+}
+
+# If VERSION is a placeholder (0.0.0) and we're running from a git clone, show a dev build version.
+if ($script:DefaultVersion -eq 'dev' -and (Test-Path $versionPath)) {
+    try {
+        $candidate = (Get-Content -Path $versionPath -Raw).Trim()
+        if ($candidate -eq '0.0.0') {
+            $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+            if (Test-Path (Join-Path $repoRoot '.git')) {
+                $sha = (git -C $repoRoot rev-parse --short HEAD 2>$null).Trim()
+                if ($sha) {
+                    $script:DefaultVersion = "dev-$sha"
+                    $dirty = git -C $repoRoot status --porcelain 2>$null
+                    if ($dirty) {
+                        $script:DefaultVersion = "$script:DefaultVersion-dirty"
+                    }
+                }
+            }
+        }
+    }
+    catch {
     }
 }
 
@@ -50,6 +72,106 @@ function Write-Separator {
     Write-Host $($Character * $Length) -ForegroundColor $Color
 }
 
+function Write-BlockHeader {
+    <#
+    .SYNOPSIS
+    Display a self-spacing block header (separator/title/separator)
+
+    .DESCRIPTION
+    Writes a leading blank line, then a separator line, then the title, then another
+    separator line. This keeps section blocks visually separated regardless of what
+    was printed immediately before.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Title,
+
+        [ValidateSet('Black','DarkBlue','DarkGreen','DarkCyan','DarkRed','DarkMagenta','DarkYellow','Gray','DarkGray','Blue','Green','Cyan','Red','Magenta','Yellow','White')]
+        [string]$Color = 'Cyan',
+
+        [int]$Length = 60,
+
+        [ValidateNotNullOrEmpty()]
+        [string]$Character = '='
+    )
+
+    Write-Host ""
+    Write-Separator -Length $Length -Color $Color -Character $Character
+    Write-Host " $Title" -ForegroundColor $Color
+    Write-Separator -Length $Length -Color $Color -Character $Character
+}
+
+function Write-NextStepsBlock {
+    <#
+    .SYNOPSIS
+    Display a standardized NEXT STEPS block
+
+    .DESCRIPTION
+    Prints a leading blank line, a "NEXT STEPS:" header, and then each step on its own line.
+    No blank line is printed between the header and the first step.
+
+    Steps are normalized to start with two spaces unless they already begin with whitespace.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Steps
+    )
+
+    if ($null -eq $Steps -or $Steps.Count -eq 0) {
+        return
+    }
+
+    Write-Host ""
+    Write-Host "NEXT STEPS:" -ForegroundColor Cyan
+
+    $hasNumberedSteps = $Steps | Where-Object { $_ -match '^\s*\d+[\.|\)]\s' } | Select-Object -First 1
+    $printedFirstNumbered = $false
+
+    foreach ($step in $Steps) {
+        if ([string]::IsNullOrWhiteSpace($step)) {
+            continue
+        }
+
+        if ($hasNumberedSteps -and ($step -match '^\s*\d+[\.|\)]\s')) {
+            if ($printedFirstNumbered) {
+                Write-Host ""
+            }
+            $printedFirstNumbered = $true
+        }
+
+        $line = if ($step -match '^\s') { $step } else { "  $step" }
+        Write-Host $line -ForegroundColor Gray
+    }
+}
+
+function Write-IssuesBlock {
+    <#
+    .SYNOPSIS
+    Display a standardized issues list block
+
+    .DESCRIPTION
+    Prints a leading blank line, an "Issues Found:" header, and then each issue on its own line.
+    No blank line is printed between the header and the first item.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Issues
+    )
+
+    if ($null -eq $Issues -or $Issues.Count -eq 0) {
+        return
+    }
+
+    Write-Host ""
+    Write-Host " Issues Found:" -ForegroundColor Yellow
+    foreach ($issue in $Issues) {
+        if ([string]::IsNullOrWhiteSpace($issue)) {
+            continue
+        }
+        Write-Host "  - $issue" -ForegroundColor Red
+    }
+}
+
 function Write-Header {
     <#
     .SYNOPSIS
@@ -75,7 +197,7 @@ function Show-ValidationError {
     #>
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BranchValidation', 'EmptyLocalPath', 'LocalPathNotFound', 'WorkspaceValidation')]
+        [ValidateSet('BranchValidation', 'EmptyLocalPath', 'LocalPathNotFound', 'WorkspaceValidation', 'InstallerChecksum')]
         [string]$ErrorType,
 
         [string]$Branch,
@@ -93,15 +215,21 @@ function Show-ValidationError {
     switch ($ErrorType) {
         'BranchValidation' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " Branch validation failed" -ForegroundColor Cyan
+            Write-Host " Installer configuration validation failed" -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " Branch: " -ForegroundColor Cyan -NoNewline
-            Write-Host "$Branch" -ForegroundColor Yellow
+            Write-Host " Source: " -ForegroundColor Cyan -NoNewline
+            Write-Host "Bundled payload (aii/)" -ForegroundColor Yellow
             Write-Host ""
-            Write-Host " The specified branch does not exist in the AI development repository." -ForegroundColor Cyan
+            Write-Host " The installer could not load the required local files (manifest/payload)." -ForegroundColor Cyan
             Write-Host ""
-            Write-Host " Please verify the branch name and try again:" -ForegroundColor Cyan
-            Write-Host "   -Contributor -Branch `"valid-branch-name`"" -ForegroundColor White
+            Write-Host " Notes:" -ForegroundColor Cyan
+            Write-Host " - Default installs use the bundled payload in the installer directory." -ForegroundColor Cyan
+            Write-Host " - Use -LocalPath to source files from a local working tree (contributor/dev override)." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Suggested actions:" -ForegroundColor Cyan
+            Write-Host " - Re-extract the latest release bundle into your user profile and try again" -ForegroundColor White
+            Write-Host " - Or use local source install:" -ForegroundColor White
+            Write-Host "   .\install-copilot-setup.ps1 -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`" -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
         }
         'EmptyLocalPath' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
@@ -129,6 +257,19 @@ function Show-ValidationError {
             Write-Host ""
             Write-Host " Please ensure you're running in a valid terraform-provider-azurerm repository:" -ForegroundColor Cyan
             Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
+        }
+        'InstallerChecksum' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " Installer payload checksum validation failed" -ForegroundColor Cyan
+            Write-Host ""
+            if ($Reason) {
+                Write-Host " Reason: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Reason" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " Fix:" -ForegroundColor Cyan
+            Write-Host " - Re-extract the latest release bundle into your user profile, or" -ForegroundColor White
+            Write-Host " - Re-run -Bootstrap from a local git clone to refresh the installer" -ForegroundColor White
         }
     }
 
@@ -226,6 +367,21 @@ function Show-Help {
     Write-Host "  GitHub Copilot with Terraform-specific knowledge, patterns, and best practices."
     Write-Host ""
 
+    Write-Host "OFFICIAL INSTALLATION:" -ForegroundColor Cyan
+    Write-Host "  This installer is distributed as a release bundle." -ForegroundColor White
+    Write-Host "  Download and extract the latest bundle into your user profile installer directory:" -ForegroundColor White
+    Write-Host "    https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/latest" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Installer operations are offline-only and use the bundled payload (aii/)." -ForegroundColor White
+    Write-Host "  No network downloads occur during install, verify, or clean." -ForegroundColor White
+    Write-Host "  Install and verify validate the bundled payload checksum (aii.checksum)." -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Target installs require a terraform-provider-azurerm clone with an origin remote." -ForegroundColor White
+    Write-Host "  The AI development repo is a source-only workspace and is not a valid target." -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Note: -Bootstrap must be run from a git clone (repo root contains .git)." -ForegroundColor Yellow
+    Write-Host ""
+
     # Dynamic options and examples based on branch type
     switch ($BranchType) {
         "source" {
@@ -254,22 +410,22 @@ function Show-SourceBranchHelp {
     Write-Host ""
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
-    Write-Host "                    Run this from the source branch to set up for feature branch use"
+    Write-Host "                    Must be run from a git clone (.git present)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
-    Write-Host "  Bootstrap installer (run from source branch):"
+    Write-Host "  Bootstrap installer (run from a git clone):"
     Write-Host "    .\install-copilot-setup.ps1 -Bootstrap"
     Write-Host ""
     Write-Host "  Verify setup:"
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
     Write-Host ""
     Write-Host "BOOTSTRAP WORKFLOW:" -ForegroundColor Cyan
-    Write-Host "  1. Run -Bootstrap from source branch (main) to copy installer to user profile"
-    Write-Host "  2. Switch to your feature branch: git checkout feature/your-branch-name"
-    Write-Host "  3. Navigate to user profile: cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "  4. Run installer: .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
+    Write-Host "  1. Run -Bootstrap from a git clone to copy installer to user profile"
+    Write-Host "  2. In your terraform-provider-azurerm working copy, switch to a feature branch: git checkout -b feature/your-branch-name"
+    Write-Host "  3. Run the installer again and target your terraform-provider-azurerm repo directory:"
+    Write-Host "     & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host ""
 }
 
@@ -284,46 +440,32 @@ function Show-FeatureBranchHelp {
     Write-Host ""
 
     Write-Host "AVAILABLE OPTIONS:" -ForegroundColor Cyan
-    Write-Host "  -RepoDirectory    Repository path (path to your feature branch directory)"
-    Write-Host "  -Branch           GitHub branch to pull AI files from (requires -Contributor, default: main)"
-    Write-Host "  -LocalPath        Local directory to copy AI files from (requires -Contributor)"
-    Write-Host "  -Contributor      Enable contributor mode for testing AI file changes"
-    Write-Host "  -Dry-Run          Show what would be done without making changes"
+    Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
 
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
-    Write-Host "  Install AI infrastructure (default - from main branch):"
-    Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
+    Write-Host "  Install AI infrastructure (default - from bundled payload):"
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm working copy`""
     Write-Host ""
-    Write-Host "  Install from specific GitHub branch (contributor testing):"
-    Write-Host "    .\install-copilot-setup.ps1 -Contributor -Branch feature/new-ai-files -RepoDirectory `"/path/to/repo`""
-    Write-Host ""
-    Write-Host "  Install from local uncommitted changes (contributor testing):"
-    Write-Host "    .\install-copilot-setup.ps1 -Contributor -LocalPath `"/path/to/ai-installer-repo`" -RepoDirectory `"/path/to/repo`""
-    Write-Host ""
-    Write-Host "  Dry-Run (preview changes):"
-    Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`" -Dry-Run"
+    Write-Host "  Install from local files (contributor override):"
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -LocalPath `"/path/to/terraform-azurerm-ai-assisted-development`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host ""
     Write-Host "  Clean removal:"
-    Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`" -Clean"
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`" -Clean"
     Write-Host ""
 
     Write-Host "WORKFLOW:" -ForegroundColor Cyan
-    Write-Host "  1. Navigate to user profile installer directory: cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "  2. Run installer with path to your feature branch"
-    Write-Host "  3. Start developing with enhanced GitHub Copilot AI features"
-    Write-Host "  4. Use -Clean to remove AI infrastructure when done"
+    Write-Host "  1. Run the installer script with the -RepoDirectory parameter pointing to your terraform-provider-azurerm working copy"
+    Write-Host "     & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
+    Write-Host "  2. Start developing with enhanced GitHub Copilot AI features"
+    Write-Host "  3. Use -Clean to remove AI infrastructure when done"
     Write-Host ""
-    Write-Host "CONTRIBUTOR WORKFLOW (Testing AI File Changes):" -ForegroundColor Cyan
-    Write-Host "  Test uncommitted changes: Use -LocalPath to copy from your local AI repo"
-    Write-Host "  Test published branch:    Use -Branch to pull from GitHub branch"
-    Write-Host "  Test main branch:         Omit both flags to use default (main)"
+    Write-Host "LOCAL SOURCE WORKFLOW:" -ForegroundColor Cyan
+    Write-Host "  Use -LocalPath to copy AI files from a local directory instead of the bundled payload." -ForegroundColor White
     Write-Host ""
 }
 
@@ -369,11 +511,8 @@ function Show-UnknownBranchHelp {
 
     Write-Host "ALL OPTIONS:" -ForegroundColor Cyan
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
-    Write-Host "  -RepoDirectory    Repository path for git operations (when running from user profile)"
-    Write-Host "  -Branch           GitHub branch to pull AI files from (requires -Contributor, default: main)"
-    Write-Host "  -LocalPath        Local directory to copy AI files from (requires -Contributor)"
-    Write-Host "  -Contributor      Enable contributor mode for testing AI file changes"
-    Write-Host "  -Dry-Run          Show what would be done without making changes"
+    Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
+    Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
@@ -385,13 +524,11 @@ function Show-UnknownBranchHelp {
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
     Write-Host ""
     Write-Host "  Feature Branch Operations:" -ForegroundColor DarkCyan
-    Write-Host "    cd $(Get-CrossPlatformInstallerPath)"
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`""
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"/path/to/your/feature/branch`" -Clean"
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`" -Clean"
     Write-Host ""
-    Write-Host "  Contributor Operations (Testing AI Changes):" -ForegroundColor DarkCyan
-    Write-Host "    .\install-copilot-setup.ps1 -Contributor -Branch feature/ai-updates -RepoDirectory `"/path/to/repo`""
-    Write-Host "    .\install-copilot-setup.ps1 -Contributor -LocalPath `"/path/to/ai-repo`" -RepoDirectory `"/path/to/repo`""
+    Write-Host "  Local Source Operations (Contributor Override):" -ForegroundColor DarkCyan
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -LocalPath `"/path/to/ai-repo`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""
     Write-Host ""
 
     Write-Host "BRANCH DETECTION:" -ForegroundColor Cyan
@@ -453,11 +590,16 @@ function Show-SourceBranchWelcome {
     Display streamlined welcome message for source branch users
     #>
     param(
-        [Parameter(Mandatory)]
         [string]$BranchName
     )
 
-    Write-Host " WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT" -ForegroundColor Green
+    if ([string]::IsNullOrWhiteSpace($BranchName)) {
+        Write-Host ""
+        return
+    }
+
+    Write-Host ""
+    Write-Host "WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -474,24 +616,23 @@ function Show-BootstrapNextStep {
         [string]$TargetDirectory = (Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer")
     )
 
-    Write-Host "NEXT STEPS:" -ForegroundColor "Cyan"
-    Write-Host ""
-    Write-Host "  1. Switch to your feature branch:" -ForegroundColor "Cyan"
-    Write-Host "     git checkout feature/your-branch-name" -ForegroundColor "White"
-    Write-Host ""
-    Write-Host "  2. Run the installer from your user profile:" -ForegroundColor "Cyan"
-    Write-Host "     cd $(Get-CrossPlatformInstallerPath)" -ForegroundColor "White"
-    Write-Host "     .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor "White"
-    Write-Host ""
+    $scriptPath = Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer\install-copilot-setup.ps1'
+    $steps = @(
+        '1. In your terraform-provider-azurerm working copy, switch to a feature branch:',
+        '     git checkout -b feature/your-branch-name',
+        '2. Run the installer again and target your terraform-provider-azurerm repo directory:',
+        "     & `"$scriptPath`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`""
+    )
+    Write-NextStepsBlock -Steps $steps
 }
 
 function Show-AIInstallerNotFoundError {
     <#
     .SYNOPSIS
-    Display error message when AIinstaller directory is not found
+    Display error message when installer directory is not found
 
     .DESCRIPTION
-    Shows a helpful error message when bootstrap fails because the AIinstaller
+    Shows a helpful error message when bootstrap fails because the installer
     directory is not found in the current repository. Provides clear steps
     for resolution. Uses standardized UI formatting.
     #>
@@ -499,21 +640,20 @@ function Show-AIInstallerNotFoundError {
     # Use standardized operation summary with failure details
     $details = @(
         "Issue: installer directory not found in current repository",
-        "Requirement: Bootstrap must be run from source branch (main)",
-        "Resolution: Switch to source branch and run bootstrap again"
+        "Requirement: Bootstrap must be run from a git clone (repo root contains .git)",
+        "Resolution: Run bootstrap from your terraform-azurerm-ai-assisted-development clone"
     )
 
-    Show-OperationSummary -OperationName "Bootstrap" -Success $false -DryRun $false `
+        Show-OperationSummary -OperationName "Bootstrap" -Success $false `
         -ItemsProcessed 0 -ItemsSuccessful 0 -ItemsFailed 1 `
         -Details $details
 
     Write-Host ""
     Write-Host "RESOLUTION STEPS:" -ForegroundColor Cyan
-    Write-Host "  1. Switch to the source branch: " -ForegroundColor Cyan -NoNewline
-    Write-Host "git checkout main" -ForegroundColor White
-    Write-Host "  2. Ensure you're in the correct repository: " -ForegroundColor Cyan -NoNewline
-    Write-Host "terraform-azurerm-ai-assisted-development" -ForegroundColor White
-    Write-Host "  3. Run bootstrap again from the source branch" -ForegroundColor Cyan
+    Write-Host "  1. Ensure you're in a local clone of this repository (repo root contains .git):" -ForegroundColor Cyan
+    Write-Host "     terraform-azurerm-ai-assisted-development" -ForegroundColor White
+    Write-Host "  2. Run bootstrap from that clone:" -ForegroundColor Cyan
+    Write-Host "     .\installer\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
     Write-Host ""
 }
 
@@ -534,15 +674,14 @@ function Show-BootstrapViolation {
     Write-Host ""
     Write-Host " BOOTSTRAP VIOLATION: Cannot run bootstrap from user profile directory" -ForegroundColor Red
     Write-Host ""
-    Write-Host " Bootstrap must be run from the source AI development repository." -ForegroundColor Yellow
+    Write-Host " Bootstrap must be run from a git clone of the AI development repository." -ForegroundColor Yellow
     Write-Host " You are currently running from: '$ScriptDirectory'" -ForegroundColor Yellow
     Write-Host ""
     Write-Separator
     Write-Host ""
     Write-Host "SOLUTION:" -ForegroundColor Cyan
-    Write-Host "  1. Navigate to the main branch:" -ForegroundColor Cyan
+    Write-Host "  1. Navigate to your terraform-azurerm-ai-assisted-development clone:" -ForegroundColor Cyan
     Write-Host "    cd `"<path-to-your-terraform-azurerm-ai-assisted-development>`"" -ForegroundColor White
-    Write-Host "    git checkout main" -ForegroundColor White
     Write-Host ""
     Write-Host "  2. Then run bootstrap from there:" -ForegroundColor Cyan
     Write-Host "    .\installer\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
@@ -577,7 +716,7 @@ function Show-SafetyViolation {
     Write-Host " Operations other than -Verify, -Help, and -Bootstrap are not allowed on the source branch." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "SOLUTION:" -ForegroundColor Cyan
-    Write-Host "  Switch to a feature branch in your target repository:" -ForegroundColor DarkCyan
+    Write-Host "  Switch to a feature branch in your terraform-provider-azurerm working copy:" -ForegroundColor DarkCyan
 
     if ($FromUserProfile) {
         Write-Host "    cd `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Gray
@@ -589,9 +728,8 @@ function Show-SafetyViolation {
     Write-Host ""
 
     if ($FromUserProfile) {
-        Write-Host "  Then run the installer from your user profile:" -ForegroundColor DarkCyan
-        Write-Host "    cd $(Get-CrossPlatformInstallerPath)" -ForegroundColor Gray
-        Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Gray
+        Write-Host "  Then run the installer again and target your terraform-provider-azurerm repo directory:" -ForegroundColor DarkCyan
+        Write-Host "    `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer\install-copilot-setup.ps1')`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Gray
         Write-Host ""
     }
 }
@@ -599,88 +737,39 @@ function Show-SafetyViolation {
 function Show-AIDevRepoViolation {
     <#
     .SYNOPSIS
-    Display safety violation when attempting to install into AI development repository
+    Display error when -RepoDirectory points to the AI development repository
 
     .DESCRIPTION
     Shows error message when -RepoDirectory points to the AI development repository
     instead of the terraform-provider-azurerm repository.
     #>
     param(
-        [string]$WorkspaceRoot
+        [string]$WorkspaceRoot,
+
+        [ValidateSet('Install', 'Verify', 'Clean')]
+        [string]$Operation = 'Install'
     )
+
+    $operationMessage = switch ($Operation) {
+        'Verify' { 'Cannot verify against AI Development Repository' }
+        'Clean' { 'Cannot clean AI Development Repository' }
+        default { 'Cannot install into AI Development Repository' }
+    }
 
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Red
-    Write-Host " SAFETY VIOLATION: Cannot install into AI Development Repository" -ForegroundColor Red
+    Write-Host " SAFETY VIOLATION: $operationMessage" -ForegroundColor Red
     Write-Host "============================================================" -ForegroundColor Red
     Write-Host ""
     Write-Host " The -RepoDirectory points to the AI development repository:" -ForegroundColor Yellow
     Write-Host " $WorkspaceRoot" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host " This repository contains the source files. Use -RepoDirectory to point" -ForegroundColor Yellow
-    Write-Host " to your terraform-provider-azurerm working copy instead." -ForegroundColor Yellow
+    Write-Host " This repository contains the installer source files." -ForegroundColor Yellow
+    Write-Host " -RepoDirectory must point to your terraform-provider-azurerm working copy." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "SOLUTION:" -ForegroundColor Green
-    Write-Host "  Clone or navigate to your terraform-provider-azurerm repository:" -ForegroundColor White
-    Write-Host "    cd `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  Then run the installer from your user profile:" -ForegroundColor White
-    Write-Host "    cd `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer')`"" -ForegroundColor Cyan
-    Write-Host "    .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
-    Write-Host ""
-}
-
-function Show-ContributorModeViolation {
-    <#
-    .SYNOPSIS
-    Display safety violation for Contributor mode on source branch
-
-    .DESCRIPTION
-    Shows a standardized error message when -Contributor mode is used
-    on the source branch (main/master) of the AI development repository.
-    #>
-    param(
-        [string]$BranchName = "main"
-    )
-
-    Write-Host ""
-    Write-Host "============================================================" -ForegroundColor Red
-    Write-Host " SAFETY VIOLATION: Cannot use -Contributor mode on source branch" -ForegroundColor Red
-    Write-Host "============================================================" -ForegroundColor Red
-    Write-Host ""
-    Write-Host " You are on the '$BranchName' branch of the AI development repository." -ForegroundColor Yellow
-    Write-Host " -Contributor mode is for testing changes on feature branches only." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "SOLUTION:" -ForegroundColor Green
-    Write-Host "  1. Create a feature branch for your changes:" -ForegroundColor White
-    Write-Host "     git checkout -b feature/your-feature-name" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  2. Make your changes to the AI infrastructure files" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  3. Test with -Contributor -LocalPath:" -ForegroundColor White
-    Write-Host "     .\install-copilot-setup.ps1 -Contributor -LocalPath `".`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`"" -ForegroundColor Cyan
-    Write-Host ""
-}
-
-function Show-BootstrapGitError {
-    <#
-    .SYNOPSIS
-    Display error when Bootstrap cannot detect git branch
-
-    .DESCRIPTION
-    Shows a standardized error message when -Bootstrap fails to detect
-    the current git branch, which is required for copying installer files.
-    #>
-    param(
-        [string]$WorkspaceRoot
-    )
-
-    Write-Host ""
-    Write-Host " ERROR: Bootstrap requires a valid git repository with a current branch" -ForegroundColor Red
-    Write-Host " Could not detect current git branch in: $WorkspaceRoot" -ForegroundColor Red
-    Write-Host ""
-    Write-Host " Bootstrap copies the current branch's installer files to your user profile." -ForegroundColor Cyan
-    Write-Host " Ensure you are in a valid git repository with a checked-out branch." -ForegroundColor Cyan
+    Write-Host "  Run the installer again and target your terraform-provider-azurerm repo directory:" -ForegroundColor White
+    Write-Host "    `"$(Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer\install-copilot-setup.ps1')`" -RepoDirectory `"<path-to-terraform-provider-azurerm>`"" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -703,12 +792,12 @@ function Show-WorkspaceValidationError {
     Write-Host ""
     # Context-aware error message based on how the script was invoked
     if ($FromUserProfile) {
-        Write-Host " Running from user profile directory ($(Get-CrossPlatformInstallerPath))" -ForegroundColor Yellow
+        Write-Host " Running from your user profile directory ($(Get-CrossPlatformInstallerPath))" -ForegroundColor Yellow
         Write-Host " Please use -RepoDirectory to point to a valid terraform-provider-azurerm repository:" -ForegroundColor Yellow
         Write-Host "   .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-terraform-provider-azurerm>`"" -ForegroundColor Gray
     } else {
         Write-Host " This script must be run from the terraform-azurerm-ai-assisted-development repository." -ForegroundColor Yellow
-        Write-Host " After bootstrap, run from user profile ($(Get-CrossPlatformInstallerPath)) with -RepoDirectory." -ForegroundColor Yellow
+        Write-Host " After bootstrap, run from your user profile directory with the -RepoDirectory parameter." -ForegroundColor Yellow
     }
     Write-Host ""
     Write-Separator
@@ -738,8 +827,6 @@ function Show-OperationSummary {
     .PARAMETER ItemsFailed
     Number of items that failed processing
 
-    .PARAMETER DryRun
-    Whether this was a dry run operation
     #>
     param(
         [Parameter(Mandatory)]
@@ -752,24 +839,21 @@ function Show-OperationSummary {
         [int]$ItemsSuccessful = 0,
         [int]$ItemsFailed = 0,
 
-        [bool]$DryRun = $false,
-
         [string[]]$Details = @(),
 
-        [string[]]$NextSteps = @()
+        [switch]$ExtraBlankLineAfterCompletion
     )
 
     Write-Host ""
 
     # Show operation completion with consistent formatting for all operations
     $statusText = if ($Success) { "completed successfully" } else { "failed" }
-    $completionMessage = if ($DryRun) {
-        " $($OperationName) $statusText (dry run)"
-    } else {
-        " $($OperationName) $statusText"
-    }
+    $completionMessage = " $($OperationName) $statusText"
     Write-Host $completionMessage -ForegroundColor $(if ($Success) { "Green" } else { "Red" })
-    Write-Host ""
+
+    if ($ExtraBlankLineAfterCompletion) {
+        Write-Host ""
+    }
 
     # Initialize details hashtable with ordered preservation
     $detailsHash = [ordered]@{}
@@ -801,9 +885,7 @@ function Show-OperationSummary {
 
     # Display details using consistent UI formatting
     if ($detailsHash.Count -gt 0) {
-        Write-Separator -Color Cyan
-        Write-Host " $($OperationName.ToUpper()) SUMMARY:" -ForegroundColor Cyan
-        Write-Separator -Color Cyan
+        Write-BlockHeader -Title "$($OperationName.ToUpper()) SUMMARY:" -Color Cyan
         Write-Host ""
         Write-Host "DETAILS:" -ForegroundColor Cyan
 
@@ -829,20 +911,6 @@ function Show-OperationSummary {
             }
         }
     }
-
-    # Display next steps if provided
-    if ($NextSteps.Count -gt 0) {
-        Write-Host ""
-        Write-Host "NEXT STEPS:" -ForegroundColor Cyan
-        Write-Host ""
-        foreach ($step in $NextSteps) {
-            Write-Host $step -ForegroundColor Gray
-        }
-        Write-Host ""
-    }
-
-    # End with blank line (following output paradigm)
-    Write-Host ""
 }
 
 #endregion
@@ -850,6 +918,9 @@ function Show-OperationSummary {
 # Export only the functions actually used by the main script
 Export-ModuleMember -Function @(
     'Write-Separator',
+    'Write-BlockHeader',
+    'Write-NextStepsBlock',
+    'Write-IssuesBlock',
     'Write-Header',
     'Format-AlignedLabel',
     'Show-BranchDetection',
@@ -858,13 +929,11 @@ Export-ModuleMember -Function @(
     'Show-SourceBranchWelcome',
     'Show-SafetyViolation',
     'Show-AIDevRepoViolation',
-    'Show-ContributorModeViolation',
     'Show-WorkspaceValidationError',
     'Show-BootstrapNextStep',
     'Show-AIInstallerNotFoundError',
     'Show-ValidationError',
     'Show-BootstrapViolation',
-    'Show-BootstrapGitError',
     'Show-OperationSummary',
     'Show-InstallationResult',
     'Show-CleanupReminder'

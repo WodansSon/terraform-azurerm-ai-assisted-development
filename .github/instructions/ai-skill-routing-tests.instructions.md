@@ -7,7 +7,7 @@ description: Route acceptance test work to the appropriate Agent Skill(s) and re
 
 When editing or generating acceptance tests under `internal/**/*_test.go`, you must consult and follow the skill definition in:
 
-- `.github/skills/azurerm-acceptance-testing/SKILL.md`
+- `.github/skills/acceptance-testing/SKILL.md`
 
 This is required even if the user does not explicitly ask to “use the skill”. Treat the skill as the authoritative checklist for acceptance test patterns (`BuildTestData`, `ExistsInAzure`, `ImportStep`, `RequiresImportErrorStep`) and safe test execution guidance.
 
@@ -15,7 +15,7 @@ This is required even if the user does not explicitly ask to “use the skill”
 
 Because use of this skill is mandatory for `internal/**/*_test.go`, the assistant's final response must include this line:
 
-Skill used: azurerm-acceptance-testing
+Skill used: acceptance-testing
 
 Rules:
 - Do not write this marker into repository files.

@@ -255,11 +255,11 @@ The `timeouts` block allows you to specify timeouts...
 
 ---
 
-### Docs + Schema Audit
+### Docs Review
 
-**Scenario**: You have a provider documentation page and want to confirm it meets AzureRM docs standards and matches the actual Terraform schema.
+**Scenario**: You have a provider documentation page and want to confirm it meets AzureRM docs standards and matches the Terraform schema.
 
-**Step 1**: Open the documentation file you want to audit in your editor (the prompt only runs against the currently-open file under `website/docs/**`).
+**Step 1**: Open the documentation file you want to review in your editor (the prompt only runs against the currently-open file under `website/docs/**`).
 
 Example resource doc:
 - `website/docs/r/cdn_frontdoor_profile.html.markdown`
@@ -267,19 +267,19 @@ Example resource doc:
 Example data source doc:
 - `website/docs/d/cdn_frontdoor_profile.html.markdown`
 
-**Step 2**: Run the audit prompt:
+**Step 2**: Run the docs review prompt:
 
 ```
-You: /docs-schema-audit
+You: /code-review-docs
 ```
 
 If the active editor is not a file under `website/docs/**`, the prompt will tell you to open the target docs page and re-run it.
 
 **What Copilot Does**:
 1. ✅ Determines whether the doc is a resource (`website/docs/r/**`) or data source (`website/docs/d/**`)
-2. ✅ Locates the schema under `internal/**` (when possible) and snapshots required/optional/computed/ForceNew fields
+2. ✅ Locates the Terraform schema under `internal/**` (when possible) and snapshots required/optional/computed/ForceNew fields
 3. ✅ Checks docs structure rules (required sections differ for resources vs data sources; Import/Timeouts handled correctly)
-4. ✅ Enforces parity: argument/attribute coverage, ordering rules, schema shape (block vs inline), ForceNew wording (resources only)
+4. ✅ Enforces parity: argument/attribute coverage, ordering rules, block vs inline shape, ForceNew wording (resources only)
 5. ✅ Validates examples, note notation, and link locale hygiene
 6. ✅ Produces patch-ready minimal fixes for any issues
 
@@ -294,7 +294,7 @@ If the active editor is not a file under `website/docs/**`, the prompt will tell
 
 **Docs writing**:
 ```
-You: /azurerm-docs-writer
+You: /docs-writer
 ```
 
 > [!TIP]
@@ -310,12 +310,12 @@ You: /azurerm-docs-writer
 
 **Resource implementation**:
 ```
-You: /azurerm-resource-implementation
+You: /resource-implementation
 ```
 
 **Acceptance testing**:
 ```
-You: /azurerm-acceptance-testing
+You: /acceptance-testing
 ```
 
 ---
