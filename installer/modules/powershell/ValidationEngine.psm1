@@ -614,7 +614,7 @@ function Get-InstallerChecksum {
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add("$manifestHash  file-manifest.config")
 
-    $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
+    $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File -Force
     $payloadEntries = [System.Collections.Generic.List[object]]::new()
     foreach ($file in $payloadFiles) {
         $relPath = [System.IO.Path]::GetRelativePath($payloadRoot, $file.FullName)

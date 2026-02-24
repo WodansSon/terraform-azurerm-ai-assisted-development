@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [2.0.3] - 2026-02-24
+
+### Fixed
+- Fixed installer bundle checksum validation on non-Windows PowerShell by including hidden dot-directories (for example `.github/`, `.vscode/`) when computing the payload hash. This prevents false checksum mismatches in release verification.
+
 ## [2.0.2] - 2026-02-24
 
 ### Fixed
