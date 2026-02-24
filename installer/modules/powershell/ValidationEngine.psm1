@@ -615,18 +615,17 @@ function Get-InstallerChecksum {
     $lines.Add("$manifestHash  file-manifest.config")
 
     $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
-    $payloadPaths = [System.Collections.Generic.List[string]]::new()
+    $payloadEntries = [System.Collections.Generic.List[object]]::new()
     foreach ($file in $payloadFiles) {
-        $relPath = $file.FullName.Substring($payloadRoot.Length + 1) -replace "\\", "/"
-        $payloadPaths.Add($relPath)
+        $relPath = [System.IO.Path]::GetRelativePath($payloadRoot, $file.FullName)
+        $relPath = $relPath -replace "\\", "/"
+        $payloadEntries.Add([PSCustomObject]@{ RelPath = $relPath; FullName = $file.FullName })
     }
-    $payloadPaths.Sort([System.StringComparer]::Ordinal)
 
-    $dirSep = [System.IO.Path]::DirectorySeparatorChar
-    foreach ($relPath in $payloadPaths) {
-        $fullPath = Join-Path $payloadRoot ($relPath -replace "/", [string]$dirSep)
-        $fileHash = (Get-FileHash -Path $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        $lines.Add("$fileHash  aii/$relPath")
+    $payloadEntriesSorted = $payloadEntries | Sort-Object -Property RelPath
+    foreach ($entry in $payloadEntriesSorted) {
+        $fileHash = (Get-FileHash -Path $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $lines.Add("$fileHash  aii/$($entry.RelPath)")
     }
 
     $combined = ($lines -join "`n") + "`n"
