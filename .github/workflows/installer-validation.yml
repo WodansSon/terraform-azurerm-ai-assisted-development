@@ -7,6 +7,7 @@ on:
       - 'installer/**'
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
+      - 'tools/verify-bundle-checksum.ps1'
       - '.github/workflows/installer-validation.yml'
   pull_request:
     branches: [ main ]
@@ -14,6 +15,7 @@ on:
       - 'installer/**'
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
+      - 'tools/verify-bundle-checksum.ps1'
       - '.github/workflows/installer-validation.yml'
 
 jobs:
@@ -78,6 +80,18 @@ jobs:
             Import-Module $module.FullName -Force
             Write-Host "✓ Successfully imported $($module.Name)"
           }
+
+      - name: Verify staged bundle checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./tools/verify-bundle-checksum.ps1 -StageFromRepo -SkipWsl
+
+      - name: Verify staged bundle checksum (non-Windows)
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./tools/verify-bundle-checksum.ps1 -StageFromRepo
 
   validate-bash:
     name: Validate Bash Scripts

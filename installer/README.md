@@ -483,6 +483,18 @@ Simply use slash commands to invoke the prompts directly:
 > Install, verify, and clean use the bundled payload (`aii/`) and local manifest only.
 > No network downloads occur during these operations.
 > Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap` (contributors only).
+
+> [!NOTE]
+> **Contributors: verify a staged bundle checksum**
+>
+> If you are preparing or validating a release bundle (or reproducing a user-reported checksum failure), use the repo helper script:
+>
+> - **Stage a bundle from the current repo and verify it:**
+>   - `pwsh -NoProfile -File .\tools\verify-bundle-checksum.ps1 -StageFromRepo`
+> - **Verify an already extracted user-profile bundle:**
+>   - `pwsh -NoProfile -File .\tools\verify-bundle-checksum.ps1 -InstallerRoot "$env:USERPROFILE\.terraform-azurerm-ai-installer"`
+>
+> The script validates `aii.checksum` via the PowerShell installer logic and (when available) cross-checks the computed hash against a Bash implementation.
 <!-- -->
 > [!NOTE]
 > Target installs require a `terraform-provider-azurerm` clone with an origin remote configured.

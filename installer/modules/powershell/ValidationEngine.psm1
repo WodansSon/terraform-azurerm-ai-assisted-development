@@ -603,18 +603,33 @@ function Get-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer payload not found" }
     }
 
-    $entries = @()
-    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash
-    $entries += "$manifestHash  file-manifest.config"
+    # IMPORTANT: This checksum algorithm must match the Bash/release implementation.
+    # Bash behavior:
+    # - Write manifest hash line first
+    # - Then append payload file hash lines, with payload files sorted by path using LC_ALL=C
+    # - Hash the resulting text (with \n newlines) including the trailing final newline
+    # - sha256sum outputs lowercase hex
+
+    $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("$manifestHash  file-manifest.config")
 
     $payloadFiles = Get-ChildItem -Path $payloadRoot -Recurse -File
+    $payloadPaths = [System.Collections.Generic.List[string]]::new()
     foreach ($file in $payloadFiles) {
         $relPath = $file.FullName.Substring($payloadRoot.Length + 1) -replace "\\", "/"
-        $fileHash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
-        $entries += "$fileHash  aii/$relPath"
+        $payloadPaths.Add($relPath)
+    }
+    $payloadPaths.Sort([System.StringComparer]::Ordinal)
+
+    $dirSep = [System.IO.Path]::DirectorySeparatorChar
+    foreach ($relPath in $payloadPaths) {
+        $fullPath = Join-Path $payloadRoot ($relPath -replace "/", [string]$dirSep)
+        $fileHash = (Get-FileHash -Path $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $lines.Add("$fileHash  aii/$relPath")
     }
 
-    $combined = ($entries | Sort-Object) -join "`n"
+    $combined = ($lines -join "`n") + "`n"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     $hashBytes = $sha256.ComputeHash($bytes)
@@ -678,6 +693,9 @@ function Test-InstallerChecksum {
     if (-not $expected) {
         return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
     }
+
+    # Normalize to lowercase to avoid case-only mismatches
+    $expected = $expected.ToLowerInvariant()
 
     $computed = Get-InstallerChecksum -InstallerRoot $InstallerRoot
     if (-not $computed.Valid) {
