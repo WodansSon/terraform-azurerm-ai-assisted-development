@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [2.0.4] - 2026-02-24
+
+### Fixed
+- Fixed Bash installer bundle checksum verification to hash the manifest+payload listing bytes directly (preserves the trailing newline), matching the release and PowerShell implementations. This prevents checksum mismatches on Linux/WSL.
+
 ## [2.0.3] - 2026-02-24
 
 ### Fixed

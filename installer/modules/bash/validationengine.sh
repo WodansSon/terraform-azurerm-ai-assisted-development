@@ -622,15 +622,6 @@ compute_installer_checksum() {
         fi
     }
 
-    hash_text() {
-        local content="$1"
-        if command -v sha256sum >/dev/null 2>&1; then
-            printf "%s" "${content}" | sha256sum | awk '{print $1}'
-        else
-            printf "%s" "${content}" | shasum -a 256 | awk '{print $1}'
-        fi
-    }
-
     local tmp_file
     tmp_file="$(mktemp)"
 
@@ -646,11 +637,13 @@ compute_installer_checksum() {
         printf "%s  %s\n" "${file_hash}" "aii/${rel_path}" >> "${tmp_file}"
     done < <(find "${payload_root}" -type f | LC_ALL=C sort)
 
-    local combined
-    combined="$(cat "${tmp_file}")"
+    # IMPORTANT: hash the tmp file bytes directly so the trailing newline is
+    # preserved (command substitution strips trailing newlines).
+    local overall_hash
+    overall_hash="$(hash_file "${tmp_file}")"
     rm -f "${tmp_file}"
 
-    hash_text "${combined}"
+    printf "%s" "${overall_hash}"
 }
 
 write_installer_checksum() {
