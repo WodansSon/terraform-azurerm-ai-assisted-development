@@ -310,7 +310,7 @@ As you type, Copilot suggests:
 
 - **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/code-review-committed-changes** - Review commits and PRs for standards
-- **/docs-review** - Review a `website/docs/**` page for docs standards + schema parity
+- **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 
 ### 🧠 Agent Skills
 

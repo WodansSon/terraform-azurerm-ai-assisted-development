@@ -1,10 +1,13 @@
 ---
-description: "Docs review + schema parity prompt for Terraform AzureRM Provider"
+description: "Code review (docs) + schema parity prompt for Terraform AzureRM Provider"
 ---
 
-# 📋 Docs Review (AzureRM)
+# 📋 Code Review - Docs (AzureRM)
 
 # 🚫 EXECUTION GUARDRAILS (READ FIRST)
+
+## Audit-only mode
+This prompt is **audit-only**. Do not modify files. Do not propose or apply patches unless the user explicitly asks for fixes.
 
 ## Renderer artifact
 Some chat UIs may display a leading `-` before this prompt's content. Treat that as a rendering artifact and **do not** comment on it. Proceed with the audit.
@@ -16,7 +19,7 @@ If the active editor is not a file under `website/docs/**` (for example if the a
 
 Instead, respond with:
 
-"Cannot run docs review: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt."
+"Cannot run code-review-docs: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt."
 
 Audit the **currently-open** documentation page under `website/docs/**` for:
 - AzureRM documentation standards, and
@@ -96,6 +99,14 @@ Then, locate and extract **implicit behavior constraints** from expand/flatten l
 - Explicitly list the implicit behavior constraints you found.
 - If none are present/visible, explicitly state: `No implicit behavior constraints found.`
 - For each, include evidence: file path under `internal/**` + function name/snippet reference.
+
+### 3.5) Coverage preflight (no silent skips)
+- Before auditing, **enumerate every doc section** you will cover in this review (e.g. Example Usage, Arguments Reference, each nested block section, Attributes Reference, Timeouts, Import).
+- If any required section is missing from the doc (based on the doc type rules below), **stop** and report it as an Issue.
+- Build a quick **schema-to-doc map**:
+  - For each required argument, optional argument, and computed attribute, explicitly mark: `documented` or `missing`.
+  - If any required argument or computed attribute is missing, mark the review as **incomplete coverage** and report those missing items under Issues.
+- Do **not** proceed with fixes until coverage is complete (missing items must be listed first).
 
 ### 4) Audit the documentation for standards + parity
 
@@ -186,6 +197,7 @@ Validate:
   - Example: a note says "enabled when zero blocks" but code says "disabled when zero blocks".
   - Example: a note lists only one of two allowed/required cases.
 - Prefer minimal edits: rewrite the note text to match the extracted rule and keep the marker appropriate (`~>` for reversible but error-prone constraints).
+- **Placement rule:** if a note applies to a single field, place it inline with that field. If it applies to multiple fields or a combined behavior, place it after the relevant list to preserve ordering.
 
 **Conditional requirements (MUST be documented as notes):**
 - If the schema (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`), `CustomizeDiff`/diff-time validation, or implicit behavior constraints (from expand/flatten) enforce cross-field/conditional behavior, the docs must include a `~> **Note:**` that describes the condition in a user-actionable way.
@@ -239,7 +251,7 @@ Output must be **rendered Markdown**.
 - Use the section headings **exactly as written below** (including the emoji). Do not rename headings or remove emoji.
 
 
-# 📋 **Docs Review**: ${terraform_name}
+# 📋 **Code Review - Docs**: ${terraform_name}
 
 ## 📌 **COMPLIANCE RESULT**
 - **Status**: Valid / Invalid
@@ -290,6 +302,10 @@ Output must be **rendered Markdown**.
 Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes small and targeted.
 
 ## 🏆 **OVERALL ASSESSMENT**
+
+If any Issues are found, end the response with:
+
+"Do you want me to apply a patch?"
 One paragraph summary of what to change to become compliant.
 
 ### Notes

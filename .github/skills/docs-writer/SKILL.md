@@ -48,6 +48,8 @@ Do not require the user to explicitly ask for these checks.
 - Output marker rules: `Verification (assistant response only)`
 
 ## Decision tree (fast path)
+- If user intent is review/audit/check: run an audit-style report first and do not edit files unless the user explicitly asks for fixes.
+- If user intent is fix/apply/update: run a quick audit-first pass (schema parity + ordering + required notes), then proceed with edits.
 - Active file is not under `website/docs/**`: do not run docs work under this skill.
 - `website/docs/r/**` (Resource): must have Example Usage, Arguments Reference, Attributes Reference, Import; include Timeouts only if schema defines timeouts.
 - `website/docs/d/**` (Data Source): must have Example Usage, Arguments Reference, Attributes Reference; do not include Import; include Timeouts only if schema defines timeouts.
@@ -389,7 +391,7 @@ Do not use a mild note where a warning/caution is required.
 
 After writing or updating a page, run a standards + schema parity pass.
 
-- For the full, structured audit procedure and output format, use: `.github/prompts/docs-review.prompt.md` (run `/docs-review` with the target `website/docs/**` file open)
+- For the full, structured audit procedure and output format, use: `.github/prompts/code-review-docs.prompt.md` (run `/code-review-docs` with the target `website/docs/**` file open)
 
 If you cannot locate the schema under `internal/**`, say so explicitly and do a docs-standards-only review.
 
@@ -430,6 +432,7 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Notes**
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
+   - If a note applies to a single field, place it inline with that field. If it applies to multiple fields or a combined behavior, place it after the relevant list to preserve ordering
 
 - **Examples**
    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
@@ -448,6 +451,24 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
+
+## Mandatory post-edit validation (no exceptions)
+
+After modifying a docs page under `website/docs/**`, you must:
+
+- Re-read the entire modified section(s)
+- Verify Arguments ordering: required (`name`, `resource_group_name`, `location`, then remaining required alphabetical), then optional alphabetical, `tags` last
+- Verify Attributes ordering: `id` first, then alphabetical
+- Verify no duplicate argument or attribute blocks
+- Verify note markers match meaning (`->` info, `~>` warning, `!>` irreversible)
+- Verify notes are inline for single-field rules; place multi-field notes after the relevant list to preserve ordering
+- Re-run `/code-review-docs` and fix all issues before final response
+- Explicitly state `Validation complete` in the final response
+
+## Patch failure rule
+
+If an edit fails to apply, re-open the target section and retry. Do not proceed without validating the change.
+
 ## Where to get field descriptions (when not obvious)
 
 When you need to document an argument/attribute and the wording is not already present:

@@ -22,13 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized installer help/examples to refer to the terraform-provider-azurerm working copy directory (rather than legacy "feature branch directory" phrasing) and removed incorrect guidance that bootstrap must run from `main`.
 - Installer help output (`-Help` / `-help`) now consistently describes `-RepoDirectory` / `-repo-directory` as pointing to a terraform-provider-azurerm working copy, and avoids showing "attempted command" notes when the user explicitly requests help.
 - Renamed the Agent Skills slash commands to remove the `azurerm-` prefix: `/azurerm-docs-writer`, `/azurerm-resource-implementation`, and `/azurerm-acceptance-testing` are now `/docs-writer`, `/resource-implementation`, and `/acceptance-testing`.
-- Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/docs-review` (file: `.github/prompts/docs-review.prompt.md`) to better match end-user expectations.
-- Updated `/docs-review` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
-- Updated `/docs-review` to also extract and report implicit behavior constraints from expand/flatten logic (for example feature enablement toggled by block presence, or hardcoded API values not exposed in schema).
-- Updated `/docs-review` output to include a "required notes coverage" checklist and to require explicit reporting of detected notes and conditional constraints (or an explicit "none found").
-- Updated `/docs-review` to validate note content for correctness (notes describing constraints must match the extracted schema/diff-time/implicit behavior rules).
-- Strengthened `/docs-review` and `/docs-writer` instructions so full parity/ordering/notes checks run even when the user provides minimal prompts.
-- Aligned `## Arguments Reference` ordering rules in `/docs-review` with provider standards (`name`, `resource_group_name`, `location`, then required alphabetical, then optional alphabetical, `tags` last).
+- Renamed the docs prompt `/docs-schema-audit` (file: `.github/prompts/docs-schema-audit.prompt.md`) to `/code-review-docs` (file: `.github/prompts/code-review-docs.prompt.md`) to group review prompts consistently.
+- Updated `/code-review-docs` to explicitly extract and report cross-field constraints from both the Terraform schema (for example `ConflictsWith`, `ExactlyOneOf`) and diff-time validation (`CustomizeDiff`).
+- Updated `/code-review-docs` to also extract and report implicit behavior constraints from expand/flatten logic (for example feature enablement toggled by block presence, or hardcoded API values not exposed in schema).
+- Updated `/code-review-docs` output to include a "required notes coverage" checklist and to require explicit reporting of detected notes and conditional constraints (or an explicit "none found").
+- Updated `/code-review-docs` to validate note content for correctness (notes describing constraints must match the extracted schema/diff-time/implicit behavior rules).
+- Strengthened `/code-review-docs` and `/docs-writer` instructions so full parity/ordering/notes checks run even when the user provides minimal prompts.
+- Aligned `## Arguments Reference` ordering rules in `/code-review-docs` with provider standards (`name`, `resource_group_name`, `location`, then required alphabetical, then optional alphabetical, `tags` last).
 - Clarified `## Attributes Reference` ordering to be strictly `id` first, then remaining attributes alphabetical (no special-casing `tags`, `name`, `resource_group_name`, or `location`).
 - Updated `/docs-writer` to automatically add missing `~> **Note:**` blocks for schema and `CustomizeDiff` conditional requirements when updating docs.
 - Standardized `ForceNew` argument wording to use the generic sentence: `Changing this forces a new resource to be created.`.
@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installs still target a terraform-provider-azurerm working copy via `-RepoDirectory` / `-repo-directory` (validated via `go.mod` module identity and repo structure).
 
 ### Fixed
-- Fixed a regression where `/docs-review` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
+- Fixed a regression where `/code-review-docs` could miss conditional requirements that should be documented as `~> **Note:**` blocks (from schema cross-field constraints and diff-time validation), by making extraction and coverage reporting non-optional.
 - When running the installer directly from a git clone with placeholder `installer/VERSION` (`0.0.0`), the displayed version now matches bootstrap-stamped versions (`dev-<git sha>` with optional `-dirty`).
 - Installer installs no longer require internet connectivity (offline payload by default).
 - Clarified bootstrap summary labels to distinguish installer files vs payload files (PowerShell and Bash).

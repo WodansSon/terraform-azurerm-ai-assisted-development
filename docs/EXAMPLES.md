@@ -270,7 +270,7 @@ Example data source doc:
 **Step 2**: Run the docs review prompt:
 
 ```
-You: /docs-review
+You: /code-review-docs
 ```
 
 If the active editor is not a file under `website/docs/**`, the prompt will tell you to open the target docs page and re-run it.

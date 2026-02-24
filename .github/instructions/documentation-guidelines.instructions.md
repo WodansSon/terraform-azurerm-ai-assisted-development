@@ -13,7 +13,7 @@ This document outlines the standards and guidelines for writing documentation fo
 
 To run a complete standards + schema parity audit for the currently-open docs page, run:
 
-- <a href="../prompts/docs-review.prompt.md">.github/prompts/docs-review.prompt.md</a>
+- <a href="../prompts/code-review-docs.prompt.md">.github/prompts/code-review-docs.prompt.md</a>
 
 This audit is optional and user-invoked (no CI enforcement).
 

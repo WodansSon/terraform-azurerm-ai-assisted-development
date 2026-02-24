@@ -28,7 +28,7 @@
 │  │  │   │  │  ├── prompts/                               │  │  │ │
 │  │  │   │  │  │   ├── code-review-local-changes...       │  │  │ │
 │  │  │   │  │  │   ├── code-review-committed-changes...   │  │  │ │
-│  │  │   │  │  │   └── docs-review.prompt.md              │  │  │ │
+│  │  │   │  │  │   └── code-review-docs.prompt.md         │  │  │ │
 │  │  │   │  │  ├── skills/                                │  │  │ │
 │  │  │   │  │  │   ├── docs-writer/SKILL.md               │  │  │ │
 │  │  │   │  │  │   └── [other skill files]                │  │  │ │
@@ -102,7 +102,7 @@
 │  ├── .github/prompts/                                       │
 │  │   ├── code-review-local-changes.prompt.md                │
 │  │   ├── code-review-committed-changes.prompt.md            │
-│  │   └── docs-review.prompt.md                              │
+│  │   └── code-review-docs.prompt.md                         │
 │  ├── .github/skills/                                        │
 │  │   └── */SKILL.md                                         │
 │  ├── .github/instructions/                                  │
@@ -302,7 +302,7 @@ terraform-azurerm-ai-assisted-development/
 │   ├── prompts/
 │   │   ├── code-review-local-changes.prompt.md
 │   │   ├── code-review-committed-changes.prompt.md
-│   │   └── docs-review.prompt.md
+│   │   └── code-review-docs.prompt.md
 │   │
 │   ├── skills/
 │   │   ├── acceptance-testing/SKILL.md
