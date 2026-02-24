@@ -136,7 +136,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ### What the Installer Does
 
 - 🔧 **Installs AI instruction files** to your target repository's `.github/` directory
-- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invokable via slash commands like `/docs-writer`)
+- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invocable via slash commands like `/docs-writer`)
 - 🔧 **Configures workspace settings** in `.vscode/settings.json` for AI assistance
 - 🔧 **Works per-repository** - each repo gets its own AI infrastructure
 - 🔧 **Non-invasive** - doesn't modify your personal VS Code settings

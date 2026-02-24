@@ -402,7 +402,7 @@ The installer sets up a complete AI development environment:
 - `.github/prompts/` - AI prompt templates for common development tasks:
 
 ### 🧠 Agent Skills
-- `.github/skills/` - Agent Skills for specialized Copilot workflows (invokable via slash commands like `/docs-writer`)
+- `.github/skills/` - Agent Skills for specialized Copilot workflows (invocable via slash commands like `/docs-writer`)
 
 > [!TIP]
 > The `docs-writer` skill supports a dry run/testing mode for docs scaffolding: when you ask for a test/dry run, it uses `-website-path website_scaffold_tmp` to avoid overwriting `website/docs/**`.
