@@ -706,7 +706,9 @@ function Test-PreInstallation {
     #>
     param(
         [bool]$AllowBootstrapOnSource = $false,
-        [bool]$RequireProviderRepo = $false
+        [bool]$RequireProviderRepo = $false,
+
+        [bool]$WarnOnUncommittedChanges = $true
     )
 
     $results = @{
@@ -759,7 +761,7 @@ function Test-PreInstallation {
 
     # If there are uncommitted changes, warn but don't fail validation
     # The main script should handle this and prompt the user
-    if ($results.UncommittedChanges.HasUncommittedChanges) {
+    if ($WarnOnUncommittedChanges -and $results.UncommittedChanges.HasUncommittedChanges) {
         Write-Warning "Target repository has uncommitted changes that may be overwritten"
     }
 
@@ -815,7 +817,7 @@ function Invoke-VerifyWorkspace {
 
     try {
         # CRITICAL: Use centralized validation (replaces Test-SourceRepository)
-        $validation = Test-PreInstallation -AllowBootstrapOnSource:$true  # Allow verification on source
+        $validation = Test-PreInstallation -AllowBootstrapOnSource:$true -WarnOnUncommittedChanges:$false  # Allow verification on source
 
         $results = @{
             Success = $validation.OverallValid
@@ -1065,12 +1067,7 @@ function Invoke-VerifyWorkspace {
                 $results.Success = $false
                 Write-Host ""
                 Write-Host " Some AI infrastructure files are missing!" -ForegroundColor Red
-                Write-Host ""
-                Write-Host " Issues Found:" -ForegroundColor Yellow
-                Write-Host ""
-                foreach ($item in $results.Issues) {
-                    Write-Host "  - $item" -ForegroundColor Red
-                }
+                Write-IssuesBlock -Issues $results.Issues
 
                 if (-not $results.IsSourceRepo) {
                     Write-Host ""
@@ -1129,13 +1126,109 @@ function Invoke-VerifyWorkspace {
         # Success determination depends on context:
         # - AfterClean: Success = issues found (files removed)
         # - Normal verify: Success = no issues (files present)
-        Show-OperationSummary -OperationName "Verification" -Success $results.Success -Details $details -NextSteps $nextSteps
+        Show-OperationSummary -OperationName "Verification" -Success $results.Success -Details $details
+        Write-NextStepsBlock -Steps $nextSteps
+        Show-SourceBranchWelcome
 
         return $results
     }
     finally {
         Pop-Location
     }
+}
+
+function Invoke-VerifyInstallerBundle {
+    <#
+    .SYNOPSIS
+    Verifies the integrity of the local installer bundle (user profile/release extraction)
+
+    .DESCRIPTION
+    Checks for required installer files, bundled payload (aii/), and validates the payload checksum.
+    This is a local self-check and does not verify installation into a target repository.
+
+    .PARAMETER InstallerRoot
+    The root directory containing the installer scripts (install-copilot-setup.ps1/.sh), modules, and aii/.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $results = @{
+        Success = $true
+        Issues = @()
+        InstallerRoot = $InstallerRoot
+    }
+
+    Write-Host ""
+    Write-Separator
+    Write-Host " Installer Bundle Verification" -ForegroundColor Cyan
+    Write-Separator
+    Write-Host ""
+
+    $requiredPaths = @(
+        @{ Display = "file-manifest.config"; Path = (Join-Path $InstallerRoot "file-manifest.config"); Type = "File" },
+        @{ Display = "install-copilot-setup.ps1"; Path = (Join-Path $InstallerRoot "install-copilot-setup.ps1"); Type = "File" },
+        @{ Display = "install-copilot-setup.sh"; Path = (Join-Path $InstallerRoot "install-copilot-setup.sh"); Type = "File" },
+        @{ Display = "modules/powershell"; Path = (Join-Path $InstallerRoot "modules\powershell"); Type = "Directory" },
+        @{ Display = "modules/bash"; Path = (Join-Path $InstallerRoot "modules\bash"); Type = "Directory" },
+        @{ Display = "aii/"; Path = (Join-Path $InstallerRoot "aii"); Type = "Directory" },
+        @{ Display = "aii.checksum"; Path = (Join-Path $InstallerRoot "aii.checksum"); Type = "File" }
+    )
+
+    foreach ($item in $requiredPaths) {
+        $exists = if ($item.Type -eq "Directory") {
+            Test-Path -Path $item.Path -PathType Container
+        } else {
+            Test-Path -Path $item.Path -PathType Leaf
+        }
+
+        if ($exists) {
+            Write-Host "  [FOUND  ] $($item.Display)" -ForegroundColor Green
+        }
+        else {
+            $results.Success = $false
+            $results.Issues += $item.Display
+            Write-Host "  [MISSING] $($item.Display)" -ForegroundColor Red
+        }
+    }
+
+    $checksum = Test-InstallerChecksum -InstallerRoot $InstallerRoot
+    if (-not $checksum.Valid) {
+        $results.Success = $false
+        $results.Issues += "payload checksum validation failed: $($checksum.Reason)"
+        Write-Host ""
+        Write-Host " Payload checksum validation failed: $($checksum.Reason)" -ForegroundColor Yellow
+    }
+
+    $details = @(
+        "Location: $InstallerRoot",
+        "Issues Found: $($results.Issues.Count)"
+    )
+
+    $scriptPath = Join-Path $InstallerRoot 'install-copilot-setup.ps1'
+
+    $nextSteps = if ($results.Success) {
+        @(
+            "1. Change directory to your installer bundle:",
+            "     cd `"$InstallerRoot`"",
+            "2. To verify a target repository: .\install-copilot-setup.ps1 -Verify -RepoDirectory `"<path-to-terraform-provider-azurerm>`"",
+            "3. To install AI infrastructure: .\install-copilot-setup.ps1 -RepoDirectory `"<path-to-terraform-provider-azurerm>`""
+        )
+    }
+    else {
+        @(
+            "  If using a release bundle: re-extract the latest bundle to your user profile",
+            "  If contributing: re-run -Bootstrap from a local git clone",
+            "  Then re-run: & `"$scriptPath`" -Verify"
+        )
+    }
+
+    Show-OperationSummary -OperationName "Bundle Verification" -Success $results.Success -Details $details
+    Write-NextStepsBlock -Steps $nextSteps
+    Show-SourceBranchWelcome
+
+    return $results
 }
 
 #endregion
@@ -1146,6 +1239,7 @@ Export-ModuleMember -Function @(
     'Test-PreInstallation',
     'Test-InstallerChecksum',
     'Write-InstallerChecksum',
+    'Invoke-VerifyInstallerBundle',
     'Invoke-VerifyWorkspace',
     'Test-IsAzureRMProviderRepo',
     'Test-UncommittedChange'

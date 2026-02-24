@@ -78,7 +78,10 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ```
 
 > [!NOTE]
-> **About `-Verify` / `-verify`:** verification checks whether your target repository has all required AI files.
+> **About `-Verify` / `-verify`:** verification has two modes:
+> - **Bundle self-check (no repo directory):** when run from the user-profile installer directory *without* `-RepoDirectory` / `-repo-directory`, it verifies the installer bundle itself (manifest/modules/payload/checksum).
+> - **Target repo verification:** when run *with* `-RepoDirectory` / `-repo-directory`, it checks whether the target repository has all required AI files.
+> - `-Verify -RepoDirectory` / `-verify -repo-directory` hard-fails if the repo directory points at the installer source repository, to prevent false-positive verification.
 > - If it reports **"Manifest file mismatch"**, your local installer manifest is out of date (or from a different release/branch).
 >   Re-extract the latest release bundle (recommended), or re-run `-Bootstrap` from a local git clone (contributors only), then run verify again.
 > - `-Verify` is offline-only and checks against the local `file-manifest.config` and bundled payload in the installer directory.

@@ -10,6 +10,18 @@
 set -euo pipefail
 
 # ============================================================================
+# DEFAULTS - Required because we run with `set -u`
+# ============================================================================
+
+BOOTSTRAP="false"
+REPO_DIRECTORY=""
+REPO_DIRECTORY_EXPLICIT="false"
+LOCAL_SOURCE_PATH=""
+VERIFY="false"
+CLEAN="false"
+HELP="false"
+
+# ============================================================================
 # PARAMETER DEFINITIONS
 # ============================================================================
 
@@ -22,34 +34,19 @@ else
 fi
 
 # If VERSION is a placeholder (0.0.0) and we're running from a git clone, show a dev build version.
-if [[ "${VERSION}" == "0.0.0" ]] && command -v git >/dev/null 2>&1; then
+if [[ "${VERSION}" == "0.0.0" ]]; then
     repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
-    if [[ -e "${repo_root}/.git" ]]; then
-        sha="$(git -C "${repo_root}" rev-parse --short HEAD 2>/dev/null | tr -d '\r\n')"
+    if [[ -d "${repo_root}/.git" ]] && command -v git >/dev/null 2>&1; then
+        sha="$(git -C "${repo_root}" rev-parse --short HEAD 2>/dev/null || true)"
         if [[ -n "${sha}" ]]; then
             VERSION="dev-${sha}"
-            if [[ -n "$(git -C "${repo_root}" status --porcelain 2>/dev/null)" ]]; then
+            dirty="$(git -C "${repo_root}" status --porcelain 2>/dev/null || true)"
+            if [[ -n "${dirty}" ]]; then
                 VERSION="${VERSION}-dirty"
             fi
         fi
     fi
 fi
-
-# Global variables
-# Note: AI infrastructure files are sourced from a local payload (aii/) by default.
-
-# Command line parameters with help text
-BOOTSTRAP=false           # Copy installer to user profile for feature branch use
-REPO_DIRECTORY=""         # Path to the repository directory for git operations (when running from user profile)
-LOCAL_SOURCE_PATH=""      # Local directory to copy AI files from instead of bundled payload
-VERIFY=false              # Check the current state of the workspace
-CLEAN=false               # Remove AI infrastructure from the workspace
-HELP=false                # Show detailed help information
-
-# Export variables that need to be accessible to modules as global variables
-# Note: Other variables are passed as function parameters, so they don't need to be exported
-
-# ============================================================================
 # COLOR DEFINITIONS - Required for early error display
 # ============================================================================
 # These must be defined BEFORE module loading for early validation errors
@@ -199,6 +196,18 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
+    # STEP 1.0: Validate -repo-directory is not empty/whitespace when explicitly provided
+    if [[ "${REPO_DIRECTORY_EXPLICIT}" == "true" ]] && [[ -z "${REPO_DIRECTORY//[[:space:]]/}" ]]; then
+        show_early_validation_error "EmptyRepoDirectory" "$0"
+        exit 1
+    fi
+
+    # STEP 1.1: Validate -repo-directory exists (fail fast under set -u)
+    if [[ "${REPO_DIRECTORY_EXPLICIT}" == "true" ]] && [[ ! -d "${REPO_DIRECTORY}" ]]; then
+        show_early_validation_error "RepoDirectoryNotFound" "$0" "${REPO_DIRECTORY}"
+        exit 1
+    fi
+
     # STEP 1.1: -bootstrap must be a standalone operation (no additional flags)
     if [[ "${BOOTSTRAP}" == "true" ]] && { [[ -n "${REPO_DIRECTORY}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]] || [[ "${VERIFY}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ "${HELP}" == "true" ]]; }; then
         show_early_validation_error "BootstrapNoArgs" "$0"
@@ -231,6 +240,84 @@ main() {
     # STEP 2: Show header immediately for consistent user experience
     write_header "Terraform AzureRM Provider - AI Infrastructure Installer" "${VERSION}"
 
+    # VERIFY MODE (no -repo-directory): verify the local installer bundle (user profile / release extraction)
+    # This is a self-check and does not validate installation into a target repo.
+    if [[ "${VERIFY}" == "true" ]] && [[ -z "${REPO_DIRECTORY}" ]]; then
+        print_separator
+        write_cyan " Installer Bundle Verification"
+        print_separator
+        echo ""
+
+        local ok=true
+        local missing_count=0
+
+        local required_files=(
+            "file-manifest.config"
+            "install-copilot-setup.ps1"
+            "install-copilot-setup.sh"
+            "aii.checksum"
+        )
+
+        local required_dirs=(
+            "modules/powershell"
+            "modules/bash"
+            "aii"
+        )
+
+        for f in "${required_files[@]}"; do
+            if [[ -f "${SCRIPT_DIR}/${f}" ]]; then
+                echo -e "  ${GREEN}[FOUND  ]${NC} ${f}"
+            else
+                ok=false
+                missing_count=$((missing_count + 1))
+                echo -e "  ${RED}[MISSING]${NC} ${f}"
+            fi
+        done
+
+        for d in "${required_dirs[@]}"; do
+            if [[ -d "${SCRIPT_DIR}/${d}" ]]; then
+                echo -e "  ${GREEN}[FOUND  ]${NC} ${d}/"
+            else
+                ok=false
+                missing_count=$((missing_count + 1))
+                echo -e "  ${RED}[MISSING]${NC} ${d}/"
+            fi
+        done
+
+        echo ""
+        if verify_installer_checksum "${SCRIPT_DIR}"; then
+            echo -e "  ${GREEN}[OK     ]${NC} payload checksum validated"
+        else
+            ok=false
+            echo -e "  ${YELLOW}[WARN   ]${NC} payload checksum validation failed"
+        fi
+
+        if [[ "${ok}" == "true" ]]; then
+            show_operation_summary "Bundle Verification" "true" \
+                "Location: ${SCRIPT_DIR}" \
+                "Issues Found: 0"
+
+            write_next_steps_block \
+                "1. Change directory to your installer bundle:" \
+                "     cd \"${SCRIPT_DIR}\"" \
+                "2. To verify a target repository: ./install-copilot-setup.sh -verify -repo-directory \"<path-to-terraform-provider-azurerm>\"" \
+                "3. To install AI infrastructure: ./install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\""
+            show_source_branch_welcome
+            exit 0
+        fi
+
+        show_operation_summary "Bundle Verification" "false" \
+            "Location: ${SCRIPT_DIR}" \
+            "Issues Found: ${missing_count}"
+
+        write_next_steps_block \
+            "1. If using a release bundle: re-extract the latest bundle to your user profile" \
+            "2. If contributing: re-run -bootstrap from a local git clone" \
+            "3. Then re-run: ${SCRIPT_DIR}/install-copilot-setup.sh -verify"
+        show_source_branch_welcome
+        exit 1
+    fi
+
     # STEP 3: Get workspace root and branch information for display and safety checks
     local workspace_root
     workspace_root="$(get_workspace_root "${REPO_DIRECTORY}" "${SCRIPT_DIR}")"
@@ -249,8 +336,29 @@ main() {
     # STEP 4: Show branch detection immediately after getting branch info
     show_branch_detection "${current_branch}" "${workspace_root}"
 
-    # STEP 4.5: SAFETY CHECK 1 - Block operations targeting AI dev repo when using -repo-directory
-    if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]]; then
+    # Detect if we're running from the user profile installer directory
+    local user_profile_installer_dir="${HOME}/.terraform-azurerm-ai-installer"
+    local is_from_user_profile=false
+    if [[ "${SCRIPT_DIR}" == "${user_profile_installer_dir}" ]]; then
+        is_from_user_profile=true
+    fi
+
+    # When running from the user profile installer, require -repo-directory for operations
+    # that target a workspace (install/clean). -verify without -repo-directory is allowed
+    # and performs an installer bundle self-check.
+    if [[ "${is_from_user_profile}" == "true" ]] && [[ -z "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]] && [[ "${VERIFY}" != "true" ]]; then
+        show_repository_directory_required_error "${SCRIPT_DIR}"
+        exit 1
+    fi
+
+    local operation_name="Install"
+    if [[ "${CLEAN}" == "true" ]]; then
+        operation_name="Clean"
+    fi
+
+    # STEP 4.5: SAFETY CHECK 1 - Never allow -repo-directory to target the installer source repo
+    # for operations intended to validate/modify a terraform-provider-azurerm working copy.
+    if [[ -n "${REPO_DIRECTORY}" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]]; then
         # Quick check: Is target directory the AI dev repo?
         local repo_check_result
         repo_check_result=$(test_is_azurerm_provider_repo "${workspace_root}" "true")
@@ -260,24 +368,35 @@ main() {
         local repo_reason=$(echo "${repo_check_result}" | grep "^Reason=" | cut -d= -f2-)
 
         if [[ "${repo_valid}" != "true" ]] && [[ "${is_ai_dev_repo}" == "true" ]]; then
+            local operation_label="${operation_name}"
+            if [[ "${VERIFY}" == "true" ]]; then
+                operation_label="Verify"
+            fi
+
             echo ""
             echo -e "${CYAN}============================================================${NC}"
-            echo -e "${RED} SAFETY VIOLATION: Cannot install into AI Development Repository${NC}"
+            case "${operation_label}" in
+                "Verify")
+                    echo -e "${RED} SAFETY VIOLATION: Cannot verify against AI Development Repository${NC}"
+                    ;;
+                "Clean")
+                    echo -e "${RED} SAFETY VIOLATION: Cannot clean AI Development Repository${NC}"
+                    ;;
+                *)
+                    echo -e "${RED} SAFETY VIOLATION: Cannot install into AI Development Repository${NC}"
+                    ;;
+            esac
             echo -e "${CYAN}============================================================${NC}"
             echo ""
-            echo -e "${YELLOW} The -repo-directory points to the AI development repository:${NC}"
+            echo -e "${YELLOW} The -repo-directory points to the installer source repository:${NC}"
             echo -e "${CYAN} ${workspace_root}${NC}"
             echo ""
-            echo -e "${YELLOW} This repository contains the source files. Use -repo-directory to point${NC}"
-            echo -e "${YELLOW} to your terraform-provider-azurerm working copy instead.${NC}"
+            echo -e "${YELLOW} This repository contains the installer source files.${NC}"
+            echo -e "${YELLOW} -repo-directory must point to your terraform-provider-azurerm working copy.${NC}"
             echo ""
             echo -e "${GREEN}SOLUTION:${NC}"
-            echo -e "${WHITE}  Clone or navigate to your terraform-provider-azurerm repository:${NC}"
-            echo -e "${CYAN}    cd \"<path-to-your-terraform-provider-azurerm>\"${NC}"
-            echo ""
-            echo -e "${WHITE}  Then run the installer from your user profile:${NC}"
-            echo -e "${CYAN}    cd \"${HOME}/.terraform-azurerm-ai-installer\"${NC}"
-            echo -e "${CYAN}    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\"${NC}"
+            echo -e "${WHITE}  Run the installer again and target your terraform-provider-azurerm repo directory:${NC}"
+            echo -e "${CYAN}    ${HOME}/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\"${NC}"
             echo ""
             exit 1
         fi
@@ -298,7 +417,7 @@ main() {
 
         if [[ "${is_source_branch}" == "true" ]] && [[ "${VERIFY}" != "true" ]] && [[ "${HELP}" != "true" ]] && [[ "${BOOTSTRAP}" != "true" ]]; then
             # Safety violation - header and branch detection already shown above
-            show_safety_violation "${current_branch}" "Install" "true"
+            show_safety_violation "${current_branch}" "${operation_name}" "true"
             exit 1
         fi
     fi
@@ -401,14 +520,13 @@ main() {
                 "Installer Files Copied:${BOOTSTRAP_STATS_FILES_COPIED}" \
                 "Payload Files Copied (aii/):${BOOTSTRAP_STATS_PAYLOAD_FILES_COPIED:-0}" \
                 "Total Size (installer + payload):${size_kb} KB" \
-                "Location:${user_profile}" \
-                --next-steps \
-                " 1. In your terraform-provider-azurerm working copy, switch to a feature branch:" \
-                "    git checkout -b feature/your-branch-name" \
-                "" \
-                " 2. Run the installer from your user profile:" \
-                "    cd ~/.terraform-azurerm-ai-installer" \
-                "    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
+                "Location:${user_profile}"
+
+            write_next_steps_block \
+                "1. In your terraform-provider-azurerm working copy, switch to a feature branch:" \
+                "     git checkout -b feature/your-branch-name" \
+                "2. Run the installer again and target your terraform-provider-azurerm repo directory:" \
+                "     ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
 
             # Show welcome message after successful bootstrap
             show_source_branch_welcome "${current_branch}"
@@ -510,15 +628,16 @@ parse_arguments() {
                 ;;
             -repo-directory)
                 if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
-                    write_error_message " Option -repo-directory requires a directory path"
+                    show_early_validation_error "EmptyRepoDirectory" "$0"
                     exit 1
                 fi
                 REPO_DIRECTORY="$2"
+                REPO_DIRECTORY_EXPLICIT="true"
                 shift 2
                 ;;
             -local-path)
                 if [[ $# -lt 2 ]] || [[ "${2:-}" == -* ]]; then
-                    write_error_message " Option -local-path requires a directory path"
+                    show_early_validation_error "EmptyLocalPath" "$0"
                     exit 1
                 fi
                 LOCAL_SOURCE_PATH="$2"

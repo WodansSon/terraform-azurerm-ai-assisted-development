@@ -46,14 +46,23 @@ function Get-CrossPlatformInstallerPath {
     .EXAMPLE
     Write-Host "Navigate to: $(Get-CrossPlatformInstallerPath)"
     #>
+    param(
+        [switch]$Raw
+    )
+
     $homeDir = Get-UserHomeDirectory
-    if ($IsWindows -or $env:OS -eq "Windows_NT" -or (-not $PSVersionTable.Platform)) {
-        # Windows style path
-        return "`"$homeDir\.terraform-azurerm-ai-installer`""
-    } else {
-        # Unix style path
-        return "`"$homeDir/.terraform-azurerm-ai-installer`""
+    $path = if ($IsWindows -or $env:OS -eq "Windows_NT" -or (-not $PSVersionTable.Platform)) {
+        "$homeDir\.terraform-azurerm-ai-installer"
     }
+    else {
+        "$homeDir/.terraform-azurerm-ai-installer"
+    }
+
+    if ($Raw) {
+        return $path
+    }
+
+    return "`"$path`""
 }
 
 #endregion

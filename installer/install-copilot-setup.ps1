@@ -71,15 +71,25 @@ function Show-EarlyErrorHeader {
 function Show-EarlyValidationError {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'EmptyLocalPath', 'LocalPathNotFound')]
+        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'EmptyLocalPath', 'LocalPathNotFound', 'EmptyRepoDirectory', 'RepoDirectoryNotFound')]
         [string]$ErrorType,
 
-        [string]$Path
+        [string]$Path = ""
     )
 
     Show-EarlyErrorHeader
 
     switch ($ErrorType) {
+        'BootstrapNoArgs' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -Bootstrap does not accept any other parameters" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Run bootstrap from a local git clone (no other flags):" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
+            Write-Host ""
+            Write-Host " To install AI infrastructure, run the bootstrapped bundle from your user profile directory with the -RepoDirectory parameter." -ForegroundColor Cyan
+        }
+
         'BootstrapRequiresGitRepo' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -Bootstrap must be run from a git clone (directory containing .git)" -ForegroundColor Cyan
@@ -91,15 +101,7 @@ function Show-EarlyValidationError {
             }
             Write-Host " -Bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy." -ForegroundColor Cyan
         }
-        'BootstrapNoArgs' {
-            Write-Host " Error:" -ForegroundColor Red -NoNewline
-            Write-Host " -Bootstrap does not accept any other parameters" -ForegroundColor Cyan
-            Write-Host ""
-            Write-Host " Run bootstrap from a local git clone (no other flags):" -ForegroundColor Cyan
-            Write-Host "   .\install-copilot-setup.ps1 -Bootstrap" -ForegroundColor White
-            Write-Host ""
-            Write-Host " To install AI infrastructure, run from your user profile installer directory with -RepoDirectory." -ForegroundColor Cyan
-        }
+
         'EmptyLocalPath' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -LocalPath parameter cannot be empty" -ForegroundColor Cyan
@@ -107,6 +109,7 @@ function Show-EarlyValidationError {
             Write-Host " Please provide a valid local directory path:" -ForegroundColor Cyan
             Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
         }
+
         'LocalPathNotFound' {
             Write-Host " Error:" -ForegroundColor Red -NoNewline
             Write-Host " -LocalPath directory does not exist" -ForegroundColor Cyan
@@ -116,6 +119,27 @@ function Show-EarlyValidationError {
             Write-Host ""
             Write-Host " Please verify the directory path exists:" -ForegroundColor Cyan
             Write-Host "   -LocalPath `"C:\path\to\terraform-azurerm-ai-assisted-development`"" -ForegroundColor White
+        }
+
+        'EmptyRepoDirectory' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory parameter cannot be empty" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Please provide the path to your terraform-provider-azurerm working copy:" -ForegroundColor Cyan
+            Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
+        }
+
+        'RepoDirectoryNotFound' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory path does not exist" -ForegroundColor Cyan
+            Write-Host ""
+            if (-not [string]::IsNullOrWhiteSpace($Path)) {
+                Write-Host " Specified path: " -ForegroundColor Cyan -NoNewline
+                Write-Host "$Path" -ForegroundColor Yellow
+                Write-Host ""
+            }
+            Write-Host " Please provide the path to your terraform-provider-azurerm working copy:" -ForegroundColor Cyan
+            Write-Host "   -RepoDirectory `"C:\path\to\terraform-provider-azurerm`"" -ForegroundColor White
         }
     }
 
@@ -185,9 +209,7 @@ while ($i -lt $args.Count) {
         }
         '-repodirectory' {
             if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -RepoDirectory requires a directory path" -ForegroundColor Red
-                Write-Host ""
+                Show-EarlyValidationError -ErrorType 'EmptyRepoDirectory'
                 exit 1
             }
             $RepoDirectory = $args[$i + 1]
@@ -195,9 +217,7 @@ while ($i -lt $args.Count) {
         }
         '-localpath' {
             if (($i + 1) -ge $args.Count -or $args[$i + 1].StartsWith('-')) {
-                Write-Host ""
-                Write-Host " ERROR: Option -LocalPath requires a directory path" -ForegroundColor Red
-                Write-Host ""
+                Show-EarlyValidationError -ErrorType 'EmptyLocalPath'
                 exit 1
             }
             $LocalPath = $args[$i + 1]
@@ -301,6 +321,27 @@ if ($localPathArgIndex -ge 0) {
     # Validate path exists
     if (-not (Test-Path $LocalPath)) {
         Show-EarlyValidationError -ErrorType 'LocalPathNotFound' -Path $LocalPath
+        exit 1
+    }
+}
+
+# PRIORITY 4.1: Validate -RepoDirectory exists when provided
+$repoDirectoryArgIndex = -1
+for ($idx = 0; $idx -lt $args.Count; $idx++) {
+    if ($args[$idx] -eq '-repodirectory') {
+        $repoDirectoryArgIndex = $idx
+        break
+    }
+}
+
+if ($repoDirectoryArgIndex -ge 0) {
+    if ([string]::IsNullOrWhiteSpace($RepoDirectory)) {
+        Show-EarlyValidationError -ErrorType 'EmptyRepoDirectory'
+        exit 1
+    }
+
+    if (-not (Test-Path -LiteralPath $RepoDirectory)) {
+        Show-EarlyValidationError -ErrorType 'RepoDirectoryNotFound' -Path $RepoDirectory
         exit 1
     }
 }
@@ -556,28 +597,79 @@ function Main {
         Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer"
         Show-BranchDetection -BranchName $currentBranch -BranchType $branchType
 
-        # SAFETY CHECK 1 - Block operations targeting AI dev repo when using -RepoDirectory (except Verify, Help, Bootstrap)
-        if ($RepoDirectory -and -not ($Verify -or $Help -or $Bootstrap)) {
-            # Quick check: Is target directory the AI dev repo?
+        $operationName = if ($Clean) { 'Clean' } else { 'Install' }
+
+        # SAFETY CHECK 1 - Never allow -RepoDirectory to target the AI dev repo for operations that are
+        # intended to validate/modify a terraform-provider-azurerm working copy.
+        if ($RepoDirectory) {
             $repoCheck = Test-IsAzureRMProviderRepo -Path $Global:WorkspaceRoot -RequireProviderRepo
             if (-not $repoCheck.Valid -and $repoCheck.IsAIDevRepo) {
-                Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot
-                exit 1
+                if ($Verify) {
+                    Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot -Operation 'Verify'
+                    exit 1
+                }
+
+                if (-not ($Help -or $Bootstrap)) {
+                    Show-AIDevRepoViolation -WorkspaceRoot $Global:WorkspaceRoot -Operation $operationName
+                    exit 1
+                }
             }
         }
 
         # SAFETY CHECK 2 - Block operations on source branch when using -RepoDirectory (except Verify, Help, Bootstrap)
         if ($RepoDirectory) {
             if ($currentBranch -in $sourceBranches -and -not ($Verify -or $Help -or $Bootstrap)) {
-                Show-SafetyViolation -BranchName $currentBranch -Operation "Install" -FromUserProfile
+                Show-SafetyViolation -BranchName $currentBranch -Operation $operationName -FromUserProfile
                 exit 1
             }
         }
 
         # Detect if we're running from user profile directory (needed for all help contexts)
-        $currentDir = Get-Location
+        # Use the script location, not the current working directory, since users often run
+        # the installer from any directory via a fully-qualified path.
         $userProfileInstallerDir = Join-Path (Get-UserHomeDirectory) ".terraform-azurerm-ai-installer"
-        $isFromUserProfile = $currentDir.Path -eq $userProfileInstallerDir -or [bool]$RepoDirectory
+
+        $scriptDirPath = try {
+            (Resolve-Path -LiteralPath $ScriptDirectory -ErrorAction Stop).Path
+        } catch {
+            [System.IO.Path]::GetFullPath($ScriptDirectory)
+        }
+
+        $userProfileInstallerDirPath = try {
+            (Resolve-Path -LiteralPath $userProfileInstallerDir -ErrorAction Stop).Path
+        } catch {
+            [System.IO.Path]::GetFullPath($userProfileInstallerDir)
+        }
+
+        $isFromUserProfile = $scriptDirPath -eq $userProfileInstallerDirPath -or [bool]$RepoDirectory
+
+        # When running from the user profile installer, we require -RepoDirectory for operations
+        # that target a workspace (install/clean). -Verify without -RepoDirectory is allowed and
+        # performs an installer bundle self-check.
+        if ($isFromUserProfile -and -not ($Help -or $Bootstrap -or $Verify) -and -not $RepoDirectory) {
+            Write-Host ""
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -RepoDirectory is required when running from your user profile" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Example:" -ForegroundColor Cyan
+            $invokedPath = if ($PSCommandPath) {
+                $PSCommandPath
+            }
+            elseif ($MyInvocation.MyCommand.Path) {
+                $MyInvocation.MyCommand.Path
+            }
+            else {
+                Join-Path $userProfileInstallerDir 'install-copilot-setup.ps1'
+            }
+
+            $cmdExample = if ($Verify) { "-Verify" }
+            elseif ($Clean) { "-Clean" }
+            elseif ($LocalPath) { "-LocalPath `"$LocalPath`"" }
+            else { "-Help" }
+            Write-Host "   & `"$invokedPath`" -RepoDirectory `"<path-to-terraform-provider-azurerm>`" $cmdExample" -ForegroundColor White
+            Write-Host ""
+            exit 1
+        }
 
         # Detect what command was attempted (for better error messages)
         $attemptedCommand = ""
@@ -594,6 +686,16 @@ function Main {
         if ($Help) {
             Show-Help -BranchType $branchType -WorkspaceValid $workspaceValidation.Valid -WorkspaceIssue $workspaceValidation.Reason -FromUserProfile $isFromUserProfile -AttemptedCommand $attemptedCommand
             return
+        }
+
+        # VERIFY MODE (no -RepoDirectory from user profile): verify the local installer bundle.
+        # This is a self-check and does not require the current directory to be a provider repo.
+        if ($Verify -and $isFromUserProfile -and -not $RepoDirectory) {
+            $bundleResult = Invoke-VerifyInstallerBundle -InstallerRoot $ScriptDirectory
+            if (-not $bundleResult.Success) {
+                exit 1
+            }
+            exit 0
         }
 
         # For all other operations, workspace must be valid
@@ -632,7 +734,7 @@ function Main {
         }
 
         if ($Clean) {
-            $cleanResult = Invoke-CleanWorkspace -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:([bool]$RepoDirectory)
+            $cleanResult = Invoke-CleanWorkspace -WorkspaceRoot $Global:WorkspaceRoot -CurrentBranch $currentBranch -BranchType $branchType -FromUserProfile:$isFromUserProfile
 
             # Return clean result without automatic verification
             # The clean operation provides its own success/failure messaging

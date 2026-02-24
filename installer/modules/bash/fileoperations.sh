@@ -13,7 +13,7 @@ read_into_array() {
     # Execute command and store output in temp file
     eval "$command" > "$temp_file"
 
-    # Read lines into array using a counte
+    # Read lines into array using a counter
     local counter=0
     while IFS= read -r line; do
         eval "${array_name}[$counter]=\"\$line\""
@@ -74,6 +74,45 @@ create_directory_structure() {
         echo "  Creating: ${description} [FAILED]"
         return 1
     fi
+}
+
+# Function to copy a file with consistent status output
+copy_file() {
+    local source_path="$1"
+    local target_path="$2"
+    local filename="$3"
+    local max_length="${4:-0}"
+
+    if [[ -z "${filename}" ]]; then
+        filename="$(basename "${source_path}")"
+    fi
+
+    local target_dir
+    target_dir="$(dirname "${target_path}")"
+    if [[ ! -d "${target_dir}" ]]; then
+        mkdir -p "${target_dir}" 2>/dev/null || true
+    fi
+
+    local display_name="${filename}"
+    if [[ "${max_length}" -gt 0 ]]; then
+        display_name="$(printf "%-${max_length}s" "${filename}")"
+    fi
+
+    if cp -f "${source_path}" "${target_path}" 2>/dev/null; then
+        if declare -f write_file_operation_status >/dev/null 2>&1; then
+            write_file_operation_status "Copy" "${display_name}" "OK"
+        else
+            echo "  Copy: ${display_name} [OK]"
+        fi
+        return 0
+    fi
+
+    if declare -f write_file_operation_status >/dev/null 2>&1; then
+        write_file_operation_status "Copy" "${display_name}" "FAILED"
+    else
+        echo "  Copy: ${display_name} [FAILED]"
+    fi
+    return 1
 }
 
 # Function to remove file or directory
@@ -171,18 +210,13 @@ validate_operation_allowed() {
     if declare -f validate_repository >/dev/null 2>&1; then
         # Check repository validation (returns 0 for valid, 1 for invalid)
         if ! validate_repository "${workspace_root}"; then
-            echo ""
-            write_error_message "WORKSPACE VALIDATION FAILED: Missing required files"
-            echo ""
-            write_plain "Expected to find terraform-provider-azurerm structure"
-            write_plain "Directory: ${workspace_root}"
-            write_plain "Reason: Missing required files (go.mod with azurerm content, main.go, or internal/services directory)"
-            echo ""
-            write_plain "Please ensure you are in the correct terraform-provider-azurerm repository directory."
-            echo "${operation_name^} cancelled due to invalid repository structure"
-            echo ""
-            print_separator
-            echo ""
+            if declare -f show_workspace_validation_error >/dev/null 2>&1; then
+                show_workspace_validation_error "Missing required files (go.mod with azurerm content, main.go, or internal/services directory)" "false"
+            else
+                echo ""
+                write_error_message "WORKSPACE VALIDATION FAILED: Missing required files"
+                echo ""
+            fi
 
             # Show help menu for guidance (matching PowerShell behavior)
             if declare -f show_usage >/dev/null 2>&1; then
@@ -553,7 +587,7 @@ install_all_files() {
         fi
     done
 
-    # Re-enable exit on erro
+    # Re-enable exit on error
     set -e
 }
 
@@ -714,6 +748,9 @@ show_installation_summary() {
         "Total Size: ${total_size_kb} KB" \
         "Files Skipped: ${skipped_files}" \
         "Location: ${workspace_root}"
+
+    # Always end with a single trailing blank line so the prompt does not run into output.
+    show_source_branch_welcome
 }
 
 # Function to get all files that should be cleaned up from manifest
@@ -764,7 +801,7 @@ clean_infrastructure() {
     local branch_type="$3"
 
     # CRITICAL: Clean operations are FORBIDDEN on source branches for safety
-    # Validate operation is allowed on current branch BEFORE showing section heade
+    # Validate operation is allowed on current branch BEFORE showing section header
     if ! validate_operation_allowed "${workspace_root}" "cleanup" "${current_branch}" "${branch_type}"; then
         return 1
     fi
@@ -876,7 +913,7 @@ clean_infrastructure() {
         write_green " Workspace is already clean!"
 
         # Show detailed cleanup summary using the sophisticated show_operation_summary function
-        # for "already clean" scenario - follows PowerShell master orde
+        # for "already clean" scenario - follows PowerShell master order
         show_operation_summary "Cleanup" "true" \
             "Branch Type: ${branch_type}" \
             "Target Branch: ${current_branch}" \
@@ -884,6 +921,8 @@ clean_infrastructure() {
             "Files Removed: 0" \
             "Directories Cleaned: 0" \
             "Location: ${workspace_root}"
+
+        show_source_branch_welcome
 
         return 0
     fi
@@ -911,10 +950,8 @@ clean_infrastructure() {
         fi
     done
 
-    # Display heade
-    echo ""
-    write_cyan "Removing AI Infrastructure Files"
-    print_separator
+    # Display header
+    write_section "Removing AI Infrastructure Files"
 
     # Calculate total work for progress - add safety check
     local total_work=$((${#existing_files[@]} + ${#existing_directories[@]}))
@@ -1013,10 +1050,10 @@ clean_infrastructure() {
     local dirs_removed=${#existing_directories[@]}
 
     # Determine success status
-    local success_status="true"  # Cleanup operations are considered successful unless there was an erro
+    local success_status="true"  # Cleanup operations are considered successful unless there was an error
 
     # Show detailed cleanup summary using the sophisticated show_operation_summary function
-    # follows PowerShell master orde
+    # follows PowerShell master order
     branch_type=$(echo "${branch_type}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     show_operation_summary "Cleanup" "${success_status}" \
@@ -1027,12 +1064,28 @@ clean_infrastructure() {
         "Directories Cleaned: ${dirs_removed}" \
         "Location: ${workspace_root}"
 
+    show_source_branch_welcome
+
     # Disable error tracing
     set +e
     set +x
 }
 
 # Note: Function exports moved to end of script
+
+validate_bootstrap_prerequisites() {
+    local current_dir="$1"
+    local user_profile="$2"
+    local current_branch="$3"
+    local branch_type="$4"
+
+    if [[ -n "${user_profile}" ]] && [[ "${current_dir}" == "${user_profile}"* ]]; then
+        show_bootstrap_location_error "${current_dir}" "${user_profile}"
+        return 1
+    fi
+
+    return 0
+}
 
 # Function to perform bootstrap operation (copy installer files to user profile)
 bootstrap_files_to_profile() {
@@ -1123,7 +1176,6 @@ bootstrap_files_to_profile() {
     # Stage the offline payload (aii/) so the bootstrapped installer is fully self-contained.
     echo ""
     write_cyan "Staging offline payload (aii/) from current repository..."
-    echo ""
 
     local payload_root="${user_profile}/aii"
     mkdir -p "${payload_root}"

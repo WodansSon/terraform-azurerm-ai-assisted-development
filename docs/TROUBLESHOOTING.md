@@ -163,7 +163,12 @@ The installer payload (`aii/`) and manifest are out of sync (stale or modified i
 
 ### Verify Shows Missing Files After Clean
 
-`-Verify` / `-verify` checks whether the AI infrastructure is present in the target repository.
+`-Verify` / `-verify` has two modes:
+
+- **Bundle self-check (no repo directory):** verifies the installer bundle in your user profile (manifest/modules/payload/checksum).
+- **Target repo verification (with repo directory):** checks whether the AI infrastructure is present in the target repository.
+
+`-Verify -RepoDirectory` / `-verify -repo-directory` hard-fails if the repo directory points at the installer source repository, to prevent false-positive verification.
 
 After running `-Clean` / `-clean`, missing files and directories are expected.
 

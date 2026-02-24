@@ -1063,7 +1063,6 @@ function Invoke-Bootstrap {
             # This keeps the user-profile installer fully self-contained and avoids any network downloads.
             Write-Host ""
             Write-Host "Staging offline payload (aii/) from current repository..." -ForegroundColor Cyan
-            Write-Host ""
 
             $payloadRoot = Join-Path $targetDirectory "aii"
             if (-not (Test-Path $payloadRoot)) {
@@ -1157,14 +1156,19 @@ function Invoke-Bootstrap {
         $details += "Total Size (installer + payload): $totalSizeKB KB"
         $details += "Location: $targetDirectory"
 
+        $nextSteps = @()
+        $scriptPath = Join-Path (Get-UserHomeDirectory) '.terraform-azurerm-ai-installer\install-copilot-setup.ps1'
+        $nextSteps += '1. In your terraform-provider-azurerm working copy, switch to a feature branch:'
+        $nextSteps += '     git checkout -b feature/your-branch-name'
+        $nextSteps += '2. Run the installer again and target your terraform-provider-azurerm repo directory:'
+        $nextSteps += "     & `"$scriptPath`" -RepoDirectory `"<path-to-your-terraform-provider-azurerm>`""
+
         if ($statistics["Files Failed"] -eq 0) {
             # Use centralized success reporting
             Show-OperationSummary -OperationName "Bootstrap" -Success $true -Details $details
 
-            # Show next steps using UI module function
-            Show-BootstrapNextStep
+            Write-NextStepsBlock -Steps $nextSteps
 
-            # Show welcome message after successful bootstrap
             Show-SourceBranchWelcome -BranchName $CurrentBranch
 
             return @{

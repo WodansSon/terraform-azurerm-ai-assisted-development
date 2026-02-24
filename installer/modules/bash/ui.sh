@@ -27,7 +27,7 @@ if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
     export GRAY='\033[0;37m'
     export WHITE='\033[1;37m'
     export BOLD='\033[1m'
-    export NC='\033[0m' # No Colo
+    export NC='\033[0m' # No Color
 else
     # No color support (pipes, non-interactive, etc.)
     export RED=''
@@ -119,6 +119,13 @@ show_early_validation_error() {
             echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
             ;;
 
+        "EmptyRepoDirectory")
+            echo -e "${RED} Error:${NC}${CYAN} -repo-directory parameter cannot be empty${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide the path to your terraform-provider-azurerm working copy:${NC}"
+            echo -e "   ${WHITE}-repo-directory \"/path/to/terraform-provider-azurerm\"${NC}"
+            ;;
+
         "LocalPathNotFound")
             local path="$3"
             echo -e "${RED} Error:${NC}${CYAN} -local-path directory does not exist${NC}"
@@ -127,6 +134,18 @@ show_early_validation_error() {
             echo ""
             echo -e "${CYAN} Please verify the directory path exists:${NC}"
             echo -e "   ${WHITE}-local-path \"/path/to/terraform-azurerm-ai-assisted-development\"${NC}"
+            ;;
+
+        "RepoDirectoryNotFound")
+            local path="$3"
+            echo -e "${RED} Error:${NC}${CYAN} -repo-directory path does not exist${NC}"
+            echo ""
+            echo -e "${CYAN} Specified path: ${WHITE}${path}${NC}"
+            echo ""
+            echo -e "${CYAN} Please provide the path to your terraform-provider-azurerm working copy:${NC}"
+            echo -e "   ${WHITE}-repo-directory \"/path/to/terraform-provider-azurerm\"${NC}"
+            echo ""
+            echo -e "${CYAN} Tip: on WSL, Windows paths are typically under ${WHITE}/mnt/<drive>/${NC}"
             ;;
 
         *)
@@ -186,32 +205,21 @@ show_operation_summary() {
     local success="$2"
     shift 2
 
-    # Parse arguments for details and next steps (bash 3.2 compatible)
+    # Parse arguments for details (bash 3.2 compatible)
+    # NOTE: NEXT STEPS are rendered by write_next_steps_block at call sites.
     local details_keys=""
     local details_values=""
     local longest_key=""
-    local next_steps=""
-    local parsing_steps=false
 
-    # Process all remaining arguments
     while [[ $# -gt 0 ]]; do
         if [[ "$1" == "--next-steps" ]]; then
-            parsing_steps=true
-            shift
-            continue
+            break
         fi
 
-        if [[ "$parsing_steps" == true ]]; then
-            if [[ -n "$next_steps" ]]; then
-                next_steps="${next_steps}|$1"
-            else
-                next_steps="$1"
-            fi
-        elif echo "$1" | grep -q '^[^:]\+:[[:space:]]*.\+$'; then
+        if echo "$1" | grep -q '^[^:]\+:[[:space:]]*.\+$'; then
             local key="$(echo "$1" | sed 's/^\([^:]\+\):[[:space:]]*.\+$/\1/')"  # Preserve spaces in key names
             local value="$(echo "$1" | sed 's/^[^:]\+:[[:space:]]*\(.\+\)$/\1/')"
 
-            # Store key-value pairs using delimited strings
             if [[ -n "$details_keys" ]]; then
                 details_keys="${details_keys}|${key}"
                 details_values="${details_values}|${value}"
@@ -220,11 +228,11 @@ show_operation_summary() {
                 details_values="${value}"
             fi
 
-            # Track longest key for alignment
             if [[ ${#key} -gt ${#longest_key} ]]; then
                 longest_key="$key"
             fi
         fi
+
         shift
     done
 
@@ -242,14 +250,11 @@ show_operation_summary() {
 
     echo ""
     echo -e "${color}${completion_message}${NC}"
-    echo ""
 
     # Display details if any exist
     if [[ -n "$details_keys" ]]; then
-        # Summary section with cyan headers (matches PowerShell structure)
-        print_separator 60 "${CYAN}" "="
-        write_cyan " $(echo "${operation_name}" | tr '[:lower:]' '[:upper:]') SUMMARY:"
-        print_separator 60 "${CYAN}" "="
+        # Summary section (self-spacing block header)
+        write_block_header "$(echo "${operation_name}" | tr '[:lower:]' '[:upper:]') SUMMARY:"
         echo ""
         write_section_header "DETAILS"
 
@@ -292,39 +297,9 @@ show_operation_summary() {
 
             i=$((i + 1))
         done
-        echo ""  # Add newline after DETAILS section
     fi
 
-    # Add next steps if provided
-    if [[ -n "$next_steps" ]]; then
-        write_cyan "NEXT STEPS:"
-        echo ""
-
-        # Split next steps and display them - no automatic numbering since input is pre-formatted
-        local IFS='|'
-        set -- $next_steps
-        local steps=("$@")
-        IFS=' '
-
-        local j=0
-        while [[ $j -lt ${#steps[@]} ]]; do
-            local step="${steps[$j]}"
-            # Display step with appropriate coloring
-            if [[ -n "$step" ]]; then
-                # Check if step starts with optional whitespace followed by a number - display in cyan
-                if echo "$step" | grep -q '^ *[0-9][0-9]*\.'; then
-                    write_cyan "$step"
-                else
-                    # Indented step or continuation - display in white
-                    write_white "$step"
-                fi
-            else
-                echo ""  # Empty line for spacing
-            fi
-            j=$((j + 1))
-        done
-        echo ""
-    fi
+    # No trailing blank line; callers control spacing by using self-spacing blocks.
 }
 
 # Helper function to print colored separator line
@@ -340,7 +315,80 @@ print_separator() {
     printf "${NC}\n"
 }
 
-# Function to display main application heade
+# Function to display a self-spacing block header (separator/title/separator)
+# Starts with a leading blank line to avoid "sticking" to previous output.
+write_block_header() {
+    local title="$1"
+    local length="${2:-60}"
+
+    echo ""
+    print_separator "${length}" "${CYAN}" "="
+    write_cyan " ${title}"
+    print_separator "${length}" "${CYAN}" "="
+}
+
+# Function to display a standardized NEXT STEPS block
+# - Always starts with a leading blank line
+# - No blank line between header and first step
+# - Ensures each step starts with two spaces unless already indented
+write_next_steps_block() {
+    if [[ $# -le 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    write_cyan "NEXT STEPS:"
+
+    local has_numbered=false
+    local step
+
+    for step in "$@"; do
+        [[ -z "${step}" ]] && continue
+        if echo "${step}" | grep -Eq '^[[:space:]]*[0-9]+[\.|\)]\s'; then
+            has_numbered=true
+            break
+        fi
+    done
+
+    local printed_first_numbered=false
+    for step in "$@"; do
+        [[ -z "${step}" ]] && continue
+
+        if [[ "${has_numbered}" == "true" ]] && echo "${step}" | grep -Eq '^[[:space:]]*[0-9]+[\.|\)]\s'; then
+            if [[ "${printed_first_numbered}" == "true" ]]; then
+                echo ""
+            fi
+            printed_first_numbered=true
+        fi
+
+        if echo "${step}" | grep -q '^[[:space:]]'; then
+            write_plain "${step}"
+        else
+            write_plain "  ${step}"
+        fi
+    done
+}
+
+# Function to display a standardized issues list block
+# - Always starts with a leading blank line
+# - No blank line between header and first item
+# - Items printed as "  - <item>" in red
+write_issues_block() {
+    if [[ $# -le 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    write_yellow " Issues Found:"
+
+    local issue
+    for issue in "$@"; do
+        [[ -z "${issue}" ]] && continue
+        write_red "  - ${issue}"
+    done
+}
+
+# Function to display main application header
 write_header() {
     local title="${1:-Terraform AzureRM Provider - AI Infrastructure Installer}"
     local version="${2:-$DEFAULT_VERSION}"
@@ -426,7 +474,6 @@ show_branch_detection() {
 # Function to display section headers
 write_section() {
     local section_title="$1"
-
     write_cyan " ${section_title}"
     print_separator
     echo ""
@@ -648,18 +695,17 @@ show_next_steps() {
     local steps=("$@")
 
     if [[ ${#steps[@]} -gt 0 ]]; then
-        write_cyan "NEXT STEPS:"
-        echo ""
-
+        local formatted_steps=()
         for i in "${!steps[@]}"; do
             local step_num=$((i + 1))
-            write_plain "  ${step_num}. ${steps[i]}"
+            formatted_steps+=("${step_num}. ${steps[i]}")
         done
-        echo ""
+
+        write_next_steps_block "${formatted_steps[@]}"
     fi
 }
 
-# Function to show divide
+# Function to show divider
 show_divider() {
     local char="${1:--}"
     local length="${2:-60}"
@@ -883,9 +929,15 @@ show_unknown_branch_help() {
 
 # Function to display source branch welcome and guidance
 show_source_branch_welcome() {
-    local branch_name="${1:-main}"
+    local branch_name="${1:-}"
 
-    write_green " WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
+    if [[ -z "${branch_name}" ]]; then
+        echo ""
+        return 0
+    fi
+
+    echo ""
+    write_green "WELCOME TO AI-ASSISTED TERRAFORM AZURERM DEVELOPMENT"
     echo ""
 }
 
@@ -895,7 +947,7 @@ write_plain() {
     echo -e "${message}"
 }
 
-# Function to show bootstrap location erro
+# Function to show bootstrap location error
 show_bootstrap_location_error() {
     local current_location="$1"
     local expected_location="$2"
@@ -915,7 +967,7 @@ show_bootstrap_location_error() {
     echo ""
 }
 
-# Function to show bootstrap directory validation erro
+# Function to show bootstrap directory validation error
 show_bootstrap_directory_validation_error() {
     local current_location="$1"
 
@@ -979,7 +1031,7 @@ show_safety_violation() {
     local from_user_profile="${3:-false}"
     local workspace_root="${4:-$PWD}"
 
-    write_red " SAFETY VIOLATION: Cannot perform operations on source branch"
+    write_red " SAFETY VIOLATION: Cannot ${operation} on source branch"
     print_separator 60 "${CYAN}" "="
     echo ""
 
@@ -996,9 +1048,8 @@ show_safety_violation() {
     write_plain "    cd \"<path-to-your-terraform-provider-azurerm>\""
     write_plain "    git checkout -b feature/your-branch-name"
     echo ""
-    write_cyan "  Then run the installer from your user profile:"
-    write_plain "    cd \"\$HOME/.terraform-azurerm-ai-installer\""
-    write_plain "    ./install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
+    write_cyan "  Then run the installer again and target your terraform-provider-azurerm repo directory:"
+    write_plain "    \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-your-terraform-provider-azurerm>\""
     echo ""
 }
 
@@ -1013,12 +1064,13 @@ show_workspace_validation_error() {
 
     # Context-aware error message based on how the script was invoked
     if [[ "${from_user_profile}" == "true" ]]; then
-        write_yellow " Running from user profile directory (\$HOME/.terraform-azurerm-ai-installer)"
-        write_yellow " Please ensure -RepoDirectory points to a valid terraform-provider-azurerm repository:"
-        write_yellow "   ./install-copilot-setup.sh -RepoDirectory \"<path-to-terraform-provider-azurerm>\""
+        write_yellow " Running from your user profile directory (\$HOME/.terraform-azurerm-ai-installer)"
+        write_yellow " Please ensure -repo-directory points to a valid terraform-provider-azurerm working copy:"
+        write_yellow "   \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\""
     else
-        write_yellow " Bootstrap must be run from the terraform-azurerm-ai-assisted-development repository."
-        write_yellow " After bootstrap, run from user profile (\$HOME/.terraform-azurerm-ai-installer) with -RepoDirectory ."
+        write_yellow " Bootstrap must be run from a git clone of terraform-azurerm-ai-assisted-development (repo root contains .git)."
+        write_yellow " After bootstrap, run from your user profile directory and target your provider repo:"
+        write_yellow "   \$HOME/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory \"<path-to-terraform-provider-azurerm>\""
     fi
     echo ""
     print_separator
@@ -1029,6 +1081,9 @@ show_workspace_validation_error() {
 # Export all UI functions for use in other scripts
 export -f write_cyan write_green write_yellow write_white write_red
 export -f write_plain write_label write_colored_label write_section_header write_section
+export -f write_block_header
+export -f write_next_steps_block
+export -f write_issues_block
 export -f write_header write_operation_status
 export -f write_error_message write_warning_message write_success_message
 export -f write_file_operation_status show_completion_summary show_safety_violation

@@ -216,9 +216,7 @@ test_workspace_valid() {
 verify_installation() {
     local workspace_root="${1:-$(get_workspace_root)}"
 
-    write_cyan " Workspace Verification"
-    print_separator
-    echo ""
+    write_section "Workspace Verification"
 
     local all_good=true
     local manifest_file=""
@@ -460,18 +458,12 @@ verify_installation() {
                 "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
                 "Location: ${workspace_root}"
+            show_source_branch_welcome
         fi
     else
         echo ""
         write_red " Some AI infrastructure files are missing!"
-        echo ""
-        write_yellow " Issues Found:"
-        echo ""
-
-        # List specific missing files/directories
-        for item in "${missing_items[@]}"; do
-            write_red "  - ${item}"
-        done
+        write_issues_block "${missing_items[@]}"
         echo ""
         write_cyan " TIP: To install missing files, run the installer from user profile"
 
@@ -502,10 +494,12 @@ verify_installation() {
                 "Files Verified: ${files_checked}" \
                 "Directories Verified: ${dirs_checked}" \
                 "Issues Found: ${issues_found}" \
-                "Location: ${workspace_root}" \
-                --next-steps \
+                "Location: ${workspace_root}"
+
+            write_next_steps_block \
                 "Run installation if components are missing" \
                 "Use -clean option to remove installation if needed"
+            show_source_branch_welcome
         else
             echo "Run the installer to restore missing files."
         fi

@@ -8,11 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [2.0.0] - 2026-02-24
+
+### Added
 - Added a GitHub pull request template at `.github/pull_request_template.md` to standardize PR titles, scope, testing, changelog updates, and AI assistance disclosure.
 
 ### Changed
-- **BREAKING (planned release: `2.0.0`)**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
-- **BREAKING (planned release: `2.0.0`)**: simplified installer CLI:
+- **BREAKING**: this release intentionally does not provide backward compatibility for renamed commands/behavior.
+- **BREAKING**: simplified installer CLI:
   - Removed `-Contributor` / `-contributor`
   - Removed `-Branch` / `-branch`
   - `-LocalPath` / `-local-path` is now the only source override (default source is bundled payload `aii/`)
@@ -36,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `-Dry-Run` / `-dry-run` from the installer to keep the workflow focused on install/clean/verify.
 - Removed legacy remote download scaffolding; installs now copy from the bundled payload or `-LocalPath` only.
 - Installer now validates a bundled payload checksum on install/verify to prevent mixed-state runs; bootstrap and release bundles generate `aii.checksum`.
+- `-Verify` / `-verify` now has two modes:
+  - Without `-RepoDirectory` / `-repo-directory` (typically from the user-profile installer directory), it performs an **installer bundle self-check** (manifest/modules/payload/checksum).
+  - With `-RepoDirectory` / `-repo-directory`, it verifies AI infrastructure presence in the **target repository**.
+- `-Verify -RepoDirectory` (and the equivalent Bash form) now hard-fails if the repo directory points at the installer source repository, to prevent false-positive verification.
 
 ### Upgrade Notes (from 1.x)
 - `-Contributor` / `-contributor`, `-Branch` / `-branch`, and `-Dry-Run` / `-dry-run` were removed.
@@ -54,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release bundles and bootstrapped installs now include an offline payload (`aii/`) so installs do not fetch AI files from GitHub.
 - Bash repository validation for `-repo-directory` now requires the terraform-provider-azurerm `go.mod` module declaration (reduces false positives from substring matches).
 - `-verify` is offline-only and no longer depends on GitHub connectivity or remote manifest validation.
+- Unified PowerShell/Bash early validation and error output to reduce cross-platform drift (for example, `-RepoDirectory` / `-repo-directory` now fails fast when the target path does not exist).
 
 ## [1.0.5] - 2026-02-18
 
