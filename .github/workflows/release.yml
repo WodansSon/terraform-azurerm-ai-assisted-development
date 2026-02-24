@@ -105,15 +105,6 @@ jobs:
             fi
           }
 
-          hash_text() {
-            local content="$1"
-            if command -v sha256sum >/dev/null 2>&1; then
-              printf "%s" "${content}" | sha256sum | awk '{print $1}'
-            else
-              printf "%s" "${content}" | shasum -a 256 | awk '{print $1}'
-            fi
-          }
-
           tmp_file="$(mktemp)"
           manifest_hash="$(hash_file "${manifest_file}")"
           printf "%s  %s\n" "${manifest_hash}" "file-manifest.config" > "${tmp_file}"
@@ -124,13 +115,21 @@ jobs:
             printf "%s  %s\n" "${file_hash}" "aii/${rel_path}" >> "${tmp_file}"
           done < <(find "${payload_root}" -type f | LC_ALL=C sort)
 
-          combined="$(cat "${tmp_file}")"
-          overall_hash="$(hash_text "${combined}")"
+          # IMPORTANT: hash the tmp file bytes directly so the trailing newline
+          # is preserved (command substitution strips trailing newlines).
+          overall_hash="$(hash_file "${tmp_file}")"
 
           version="$(cat "${installer_root}/VERSION" | tr -d '\r\n')"
           timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
           printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+
+          rm -f "${tmp_file}"
+
+      - name: Verify installer bundle checksum
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./tools/verify-bundle-checksum.ps1 -InstallerRoot ./release/.terraform-azurerm-ai-installer
 
       - name: Make bundled bash scripts executable
         run: |

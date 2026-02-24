@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [2.0.2] - 2026-02-24
+
+### Fixed
+- Fixed release bundle generation so `aii.checksum` is computed from the exact bytes being validated (preserves the trailing newline in the hashed manifest+payload listing). This prevents installer payload checksum validation failures when running from extracted release bundles.
+
 ## [2.0.1] - 2026-02-24
 
 ### Fixed
