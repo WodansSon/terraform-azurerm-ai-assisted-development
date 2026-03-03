@@ -342,6 +342,22 @@ This applies instructions only to Go files in the `internal/` directory.
 
 ---
 
+### `/code-review-docs` Keeps Finding the Same Issues After Applying Fixes
+
+**Symptoms**:
+- You run `/code-review-docs`, apply the suggested patch-ready fixes, then rerun and see the same Issues again
+- The prompt output varies run-to-run (for example it suggests different "fix strategies")
+
+**Checks**:
+1. **Confirm the active editor is the doc page** under `website/docs/**` (not a prompt file).
+2. **Update your installed AI files**:
+   - Normal users: re-extract the latest release bundle to your user profile installer directory
+   - Contributors: re-run `-Bootstrap` from a git clone to refresh the user-profile installer
+3. **Reinstall into the target repo** (from your user profile installer directory), then rerun `/code-review-docs`.
+4. **Restart VS Code** to ensure updated prompts/skills are loaded.
+
+---
+
 ## Performance Issues
 
 ### Copilot Slow to Respond

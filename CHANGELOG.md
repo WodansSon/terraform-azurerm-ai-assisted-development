@@ -11,7 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Hardened `/code-review-docs` determinism rules to avoid run-to-run "guessing" (no A/B options; patch-ready snippets must be fully specified).
+- Updated `/code-review-docs` and `/docs-writer` guidance to consistently treat next-major deprecations as vNext surface area (do not require legacy fields for docs parity).
+
 ### Fixed
+
+- Fixed repeated audit findings by requiring `/code-review-docs` to emit fully patch-ready ordering fixes (including full corrected nested block snippets) and a self-check mapping each Issue to a specific snippet.
+- Fixed a docs regression where "Example ..." sections could be converted to prose to satisfy self-containment, leading to inconsistent outcomes. Example sections now remain copy/pasteable Terraform and fixes expand examples to be page-self-contained.
+- Fixed common doc-quality regressions by enforcing enum phrasing rewrites (for example `Possible values are` -> `Possible values include`) and treating example naming conventions as patch-ready low-priority nits.
+- Fixed docs security guidance so hard-coded secrets in examples are flagged and replaced with context-appropriate `var.<name>` references (variable block optional).
 
 ## [2.0.4] - 2026-02-24
 

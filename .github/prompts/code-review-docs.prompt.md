@@ -37,6 +37,14 @@ Assume the user may invoke this prompt with minimal instructions (for example: "
 
 When this prompt is invoked, you must run the **entire** mandatory procedure below and you must not skip checks simply because the user did not explicitly mention them.
 
+## Determinism policy (mandatory)
+This prompt is used in a review→apply→re-review loop. To avoid run-to-run "guessing":
+
+- Do not present multiple fix options (no "either A or B"). Choose a single fix.
+- Every Issue must have a patch-ready fix that is fully specified (exact replacement text/snippet), not a vague instruction.
+- When fixing ordering issues, always include the complete corrected list/block in the patch-ready section.
+- Prefer the smallest deterministic fix that removes the Issue and is consistent with the rules in this prompt and HashiCorp's documentation standards (for example `contributing/topics/reference-documentation-standards.md`).
+
 ## ⚡ Mandatory procedure
 
 ### 1) Identify the Terraform object from the doc path
@@ -61,6 +69,26 @@ From the schema, extract:
 - computed attributes
 - ForceNew fields (`ForceNew: true`)
 - constraints that affect docs (e.g. `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, validations), if clearly visible
+
+**Mandatory: next-major (vNext) deprecated field policy**
+The AzureRM provider uses a "next major version" feature-flag deprecation system to phase out legacy fields (for example `features.FivePointOh()` today).
+
+When the schema indicates FivePointOh-based deprecation, docs should describe the **vNext** surface area:
+- **Do not require deprecated legacy fields to be documented**, even if they exist in the code as 4.x-only fields.
+- **Do require replacement field(s)** to be documented.
+
+How to detect next-major deprecations while reading `internal/**`:
+- Schema entries inside `if !features.<NextMajorFlag>() { ... }` blocks (for example `if !features.FivePointOh() { ... }`).
+- Fields with `Deprecated:` messages mentioning removal in a major version (for example v5.0, v6.0).
+- Typed model fields tagged `removedInNextMajorVersion`.
+
+Reporting requirement:
+- Explicitly list the deprecated legacy fields you detected (by name) under `## 🟡 **OBSERVATIONS**`.
+- If none are visible, explicitly state: `No next-major deprecated fields detected.`
+
+Parity rules for deprecated fields:
+- If docs **include** a deprecated legacy field, mark as an **Issue** (docs should focus on current supported/vNext behavior).
+- If docs **omit** a deprecated legacy field, do **not** mark it missing.
 
 **Mandatory: extract cross-field schema constraints**
 - Enumerate any cross-field constraints present in the schema (when visible), including:
@@ -139,6 +167,7 @@ Validate:
 #### B) Arguments Reference parity and ordering
 - All schema required args must be documented
 - Documented args must exist in schema
+- **Next-major deprecation parity:** if you detect legacy fields that are only present outside next-major mode (e.g. `if !features.<NextMajorFlag>()` or `removedInNextMajorVersion`), do **not** require them to be documented; if they are documented, flag as an Issue.
 - **Schema shape parity (block vs inline):** docs must match the schema's structural shape.
   - If schema defines an argument as a **nested block** (typically `TypeList`/`TypeSet` with `Elem: &Resource{Schema: ...}` and `MaxItems: 1` for single blocks), docs must describe it as a `... block` and include a section like: "A `${block}` block supports the following:" listing the nested fields.
   - If schema defines an argument as a **scalar/inline field** (`TypeString`/`TypeBool`/`TypeInt`/etc.), docs must not describe it as a block and must not document nested subfields under it.
@@ -157,7 +186,11 @@ Validate:
   - If a ForceNew sentence is present but does not match the standard generic sentence, mark as an **Issue** and suggest rewriting it to the standard form.
 - **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
 - If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
-- Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
+- **Mandatory enum phrasing rewrites (no exceptions when found):**
+  - Replace `Valid options are` with `Possible values include`.
+  - Replace `Valid values are` with `Possible values include`.
+  - Replace `Possible values are` with `Possible values include`.
+  - If any of these legacy phrases appear anywhere in the doc page, mark it as an **Issue** and suggest the minimal rewrite.
 - If schema defines a default value, docs must include "Defaults to `...`."
 
 **Nested block arguments (ordering rules):**
@@ -166,6 +199,11 @@ Validate:
   2. Optional nested arguments next (alphabetical), with `tags` always last if present.
   3. If nested arguments include ID segments such as `name` / `resource_group_name`, or include `location`, those should appear first in the same order used for top-level arguments.
   4. Apply the same rules recursively for nested blocks inside blocks.
+
+**Mandatory patch-ready ordering fixes (one-pass reliability):**
+- If you flag an ordering issue for any nested block, your `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` section must include the **full corrected block snippet** (the entire nested bullet list for that block), already reordered.
+- Do not write a vague instruction like "reorder alphabetically" without showing the exact corrected order.
+- Keep any note blocks (->/~>/!>) attached to the field they describe when moving bullets.
 
 #### C) Attributes Reference parity
 - All schema computed attributes must be present in Attributes Reference
@@ -228,14 +266,30 @@ Validate:
 - Resources: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` (subject to service naming constraints).
   - This does not apply to Terraform block labels like `resource "..." "example"`.
   - Prefer deriving the suffix from the specific resource type of the block (e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`).
-  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
+  - If this convention is not followed, record it as a **⛏️ Nit Issue** with **🔵 Low** priority and provide a minimal patch-ready rename.
+  - Do **not** mark the overall review `Invalid` solely due to example naming conventions.
 - Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
-  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
-- No hard-coded secrets (passwords/tokens/keys). Use `variable` with `sensitive = true` or a generator pattern.
+  - If this convention is not followed, record it as a **⛏️ Nit Issue** with **🔵 Low** priority and provide a minimal patch-ready rename.
+  - Do **not** mark the overall review `Invalid` solely due to example naming conventions.
+- **Mandatory security rule:** no hard-coded secrets (passwords/tokens/keys/client secrets/private keys/SAS tokens).
+  - If hard-coded secrets are present, mark as an **Issue** with **🔥 Critical** priority.
+  - Suggested fix must be patch-ready:
+    - replace the literal with a context-appropriate `var.<name>` reference
+    - do not require adding a `variable` block unless needed for clarity
 - Example references must be internally consistent
+
+**Non-self-contained examples (mandatory deterministic fix):**
+- If you find a Terraform code block under any heading that starts with `Example` (for example `## Example CNAME Record Usage`) and it references resources not defined elsewhere on the same page, mark it as an **Issue**.
+- **Do not delete or convert "Example …" Terraform code blocks into prose.** An Example section must remain copy/pasteable Terraform.
+- In `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`, choose exactly one fix (do not offer multiple options):
+  1) **Preferred:** expand the primary `## Example Usage` code block to define the missing referenced resources once, then keep the secondary example block referencing them.
+  2) If there is no primary Example Usage block, expand the example block itself to include the missing resource definitions.
+- "Self-contained" for this rule means: all referenced Terraform resources/data sources used in the example code exist somewhere on the same page (typically in `## Example Usage`).
 
 #### F) Language
 - Fix obvious grammar/spelling and consistency issues
+- **Mandatory casing hygiene (common provider nits):**
+  - If the page refers to Azure Front Door tiers as "(standard/premium)" in prose, rewrite to "(Standard/Premium)".
 
 #### G) Link hygiene
 - Documentation links should be locale-neutral.
@@ -262,6 +316,7 @@ Output must be **rendered Markdown**.
 - **Schema File(s)**: ${schema_file_paths}
 - **Required Args**: ${required_args}
 - **Optional Args**: ${optional_args}
+ - **Next-major Deprecated Fields**: ${next_major_deprecated_fields}
 - **Computed Attributes**: ${computed_attrs}
 - **ForceNew Fields**: ${force_new_fields}
 - **Cross-field Constraints**: ${cross_field_constraints}
@@ -279,7 +334,7 @@ Output must be **rendered Markdown**.
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
 - **Note Accuracy**: pass/fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
+- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions are low-priority nit issues with patch-ready fixes, but do not make the page `Invalid` by themselves)
 
 ## 🟢 **STRENGTHS**
 - ...
@@ -300,6 +355,12 @@ Output must be **rendered Markdown**.
 
 ## 🛠️ **MINIMAL FIXES (PATCH-READY)**
 Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes small and targeted.
+
+**Required self-check (prevents repeated findings):**
+- After writing the patch-ready snippets, re-list each 🔴 Issue as a checklist item and state: `fixed by snippet <X>`.
+- If any Issue is not fully fixed by the provided snippet(s), you must either:
+  - expand the snippet to fully fix it, or
+  - change the Issue classification (for example, if it is actually not a real issue).
 
 ## 🏆 **OVERALL ASSESSMENT**
 

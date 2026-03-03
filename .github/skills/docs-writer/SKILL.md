@@ -43,6 +43,7 @@ Do not require the user to explicitly ask for these checks.
 - Enabled boolean phrasing: `Boolean *_enabled` fields
 - Block placement rules: `Block placement`
 - Attributes ordering: `Attributes Reference ordering`
+- Next-major deprecations (vNext-only docs): `Next-major (vNext) deprecated field handling`
 - Audit expectations: `Schema + docs audit` + `Quick audit checklist`
 - Timeouts link + duration wording: `Timeouts link hygiene` + `Timeout duration readability`
 - Output marker rules: `Verification (assistant response only)`
@@ -53,9 +54,10 @@ Do not require the user to explicitly ask for these checks.
 - Active file is not under `website/docs/**`: do not run docs work under this skill.
 - `website/docs/r/**` (Resource): must have Example Usage, Arguments Reference, Attributes Reference, Import; include Timeouts only if schema defines timeouts.
 - `website/docs/d/**` (Data Source): must have Example Usage, Arguments Reference, Attributes Reference; do not include Import; include Timeouts only if schema defines timeouts.
+- If the schema indicates next-major deprecations (vNext flag / `removedInNextMajorVersion`): do not document legacy fields, do not require them for parity, and ensure replacement fields are documented.
 - If the user requests a test/dry run: use **Testing mode** (scaffold with `-website-path website_scaffold_tmp`).
 - Editing Example Usage: apply the full `Examples` rules.
-- Editing enums/"valid values" wording: enforce `Possible values include ...` + Oxford comma.
+- Editing enums/"valid values" wording: enforce `Possible values include ...` + Oxford comma (and rewrite any `Possible values are ...` you see).
 - Editing `*_enabled`: enforce canonical `*_enabled` phrasing rules.
 
 ## Testing mode (scaffold into scratch)
@@ -134,6 +136,21 @@ If the user wants validation, prefer phrasing like "To validate, run: …" rathe
       - computed attributes
       - defaults, allowed values, and constraints
          - conditional requirements and cross-field constraints (from schema and diff/validation logic)
+
+   **Next-major (vNext) deprecated field handling (mandatory)**
+   When the provider uses a "next major version" feature-flag deprecation system (for example `features.FivePointOh()` today), documentation must reflect the **vNext** surface area:
+   - **Do not document deprecated legacy fields** (these are intentionally 4.x-only fields).
+   - **Do document the replacement field(s)** and describe them as the supported behavior.
+
+   How to detect next-major deprecations in the provider code:
+   - Schema entries inside `if !features.<NextMajorFlag>() { ... }` blocks (for example `if !features.FivePointOh() { ... }`).
+   - Schema entries with `Deprecated:` messages indicating removal in the next major (for example "removed in v5.0", "removed in v6.0").
+   - Typed resource model tags like `tfschema:"legacy_field,removedInNextMajorVersion"`.
+
+   What to do when updating docs:
+   - If the doc page currently lists a deprecated legacy field in `## Arguments Reference`, remove that bullet and any nested block section for it.
+   - If a deprecated field appears in Example Usage, remove it and update the example to use the vNext replacement.
+   - If needed, you may mention the relationship in the replacement field description (e.g. "replaces the deprecated `legacy_field`") but do not add breaking-change guidance or long migration notes to resource docs.
 
    - When documenting conditional behavior, prefer the provider implementation as the source of truth and keep notes high-signal:
       - Primary sources for conditional requirements that should be documented as notes:
@@ -365,6 +382,30 @@ Do not invent alternative section intro wording unless the page already uses a p
 - Data source doc lead sentence should start with: `Gets information about ...`
 - Data source docs must not include resource-only wording (for example ForceNew language).
 
+## Example naming conventions (mandatory when editing examples)
+
+When you add or edit `## Example Usage`, enforce provider-style example naming:
+
+- Resource examples: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` where feasible (subject to service naming constraints).
+- Data source examples: prefer descriptive `existing-...` placeholder values for required identifiers.
+
+If an example uses generic placeholders like `"example"` for name-like values, rewrite to a descriptive `example-...` value.
+
+### Secrets in examples (mandatory)
+
+Examples must not contain hard-coded secrets (passwords, tokens, shared keys, client secrets, private keys, SAS tokens, etc.).
+
+If you see a hard-coded secret in an example:
+- Replace it with a Terraform `var.<name>` reference (for example `var.client_secret`). The `<name>` must be context-aware and match the setting being configured.
+- Do not add a full `variable` block unless it materially improves the clarity of the example.
+
+Preferred pattern (minimal):
+```hcl
+resource "azurerm_..." "example" {
+   client_secret = var.client_secret
+}
+```
+
 ### Frontmatter rule: data source `page_title`
 
 For data source docs under `website/docs/d/**`, the doc type is already implied by the path.
@@ -406,6 +447,7 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - All required args are documented
    - No undocumented args appear (do not invent fields)
    - All computed attributes are in Attributes Reference (`id` first)
+   - Next-major deprecated legacy fields are not documented and are not treated as missing (vNext-only docs)
 
 - **Schema shape**
    - Blocks vs inline fields match the schema (do not document nested fields for scalars/maps)
@@ -420,6 +462,8 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
       4) all remaining fields in that group in alphabetical order
       5) `tags` last (if present)
 
+   - Nested blocks: when a block section exists (e.g. "A `tls` block supports the following:"), reorder the nested field bullets deterministically using the field names (alphabetical after required), and move any adjacent note blocks with the field they describe.
+
 - **Attributes Reference ordering**
    - `id` is the first exported attribute and all remaining exported attributes are in alphabetical order
    - No other exceptions (do not special-case `name`, `resource_group_name`, `location`, or `tags`)
@@ -430,12 +474,19 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
    - If a ForceNew sentence is missing, add it.
    - If a ForceNew sentence is present but differs from the standard, rewrite it to the standard.
 
+- **Casing hygiene (common regressions)**
+   - Preserve correct product/edition casing in short descriptions.
+   - Example: prefer "Front Door (Standard/Premium)" (not "Front Door (standard/premium)").
+
 - **Notes**
    - Notes use exact `->` / `~>` / `!>` markers and the marker matches the note’s impact
    - If a note applies to a single field, place it inline with that field. If it applies to multiple fields or a combined behavior, place it after the relevant list to preserve ordering
 
 - **Examples**
    - Includes all required args, no `provider`/`terraform` blocks, no hard-coded secrets, internally consistent references
+   - Any section whose heading starts with `Example` must contain a copy/pasteable Terraform code block (do not replace it with prose to "fix" self-containment).
+   - If an Example section references other resources (for example an endpoint/route/policy), ensure those resources are defined somewhere on the same page.
+      - Prefer defining shared dependencies once in the primary `## Example Usage` block, then referencing them from secondary Example sections.
    - Resources: for user-supplied name-like arguments (for example `name`, `profile_name`, `vault_name`), use descriptive values prefixed with `example-` where feasible.
       - Avoid generic placeholders like `"example"`.
       - This applies to argument values like `name = "..."`, not Terraform block labels like `resource "..." "example"`.
@@ -448,6 +499,7 @@ If you cannot locate the schema under `internal/**`, say so explicitly and do a 
       - Only shorten this if required by a documented service naming constraint (length/charset), and keep it as descriptive as possible.
    - Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
       - Avoid the bare placeholder value `"existing"`.
+   - Secrets: if any example contains a hard-coded secret, replace it with a context-appropriate `var.<name>` reference.
 
 - **Link hygiene**
    - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
@@ -460,6 +512,7 @@ After modifying a docs page under `website/docs/**`, you must:
 - Verify Arguments ordering: required (`name`, `resource_group_name`, `location`, then remaining required alphabetical), then optional alphabetical, `tags` last
 - Verify Attributes ordering: `id` first, then alphabetical
 - Verify no duplicate argument or attribute blocks
+- Re-scan every nested block section you touched and confirm nested fields are in the intended order (required first, then optional alphabetical, `tags` last)
 - Verify note markers match meaning (`->` info, `~>` warning, `!>` irreversible)
 - Verify notes are inline for single-field rules; place multi-field notes after the relevant list to preserve ordering
 - Re-run `/code-review-docs` and fix all issues before final response

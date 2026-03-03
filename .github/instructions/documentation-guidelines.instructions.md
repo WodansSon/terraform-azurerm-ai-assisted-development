@@ -605,7 +605,7 @@ The following arguments are supported:
 ### Deprecation and Breaking Change Documentation
 
 **Deprecated Field Documentation:**
-When fields are deprecated using the `FivePointOh` feature flag system, follow HashiCorp's standard practice:
+When fields are deprecated using the provider's "next major version" feature flag system (for example `FivePointOh` today), follow HashiCorp's standard practice:
 
 **Remove deprecated fields from documentation** - Users will receive deprecation warnings directly from the resource implementation when they use deprecated fields. Documentation should only show the current, supported fields.
 
@@ -625,7 +625,7 @@ When fields are deprecated using the `FivePointOh` feature flag system, follow H
 - **Major version docs**: Clean up all legacy references and focus on current API
 - **Upgrade guides**: Migration instructions belong in upgrade guides, not resource docs
 
-**For complete deprecation patterns and FivePointOh usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#🚀-fivepointoh-feature-flag-patterns)
+**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#🚀-fivepointoh-feature-flag-patterns)
 
 ### Cross-Implementation Documentation Consistency
 
