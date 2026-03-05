@@ -176,9 +176,9 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │  1. Developer Opens File in VS Code                                  │
 │     internal/services/cdn/cdn_frontdoor_profile_resource.go          │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │
-                         ▼
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │  2. Copilot Loads Applicable Instructions                            │
 │                                                                      │
@@ -188,15 +188,15 @@
 │     Loads: .github/instructions/implementation-guide.instructions.md │
 │     Loads: .github/instructions/error-patterns.instructions.md       │
 │     Loads: .github/skills/*/SKILL.md (when invoked)                  │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │
-                         ▼
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │  3. Developer Types or Prompts Copilot                               │
 │     "Create PATCH update operation for this resource"                │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │
-                         ▼
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │  4. Copilot Generates Code Using Instructions                        │
 │                                                                      │
@@ -351,6 +351,13 @@ terraform-azurerm-ai-assisted-development/
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
+
+### Prompt Files (high-level)
+
+The prompt files under `.github/prompts/` are invoked via slash commands in GitHub Copilot Chat.
+
+- `/code-review-local-changes` and `/code-review-committed-changes`: code review loops for Go/Terraform changes.
+- `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, page-self-contained examples with no undefined references, import example ID shape validation, and human-readable timeout defaults).
 
 ## Design Principles
 

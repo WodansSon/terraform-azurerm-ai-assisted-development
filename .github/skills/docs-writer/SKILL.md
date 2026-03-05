@@ -16,6 +16,21 @@ If time-constrained, at minimum full-text search within this file for these head
 - `Quick audit checklist`
 - `### Quick audit checklist (high-signal)`
 
+## Preflight checklist (hard stop; do not proceed on partial reads)
+
+Before you start an audit or edit, you MUST complete this checklist. If you cannot truthfully complete it (for example because the UI only loaded part of this skill), you MUST stop and request the remaining context.
+
+Checklist:
+- [ ] I have read this skill file end-to-end (or loaded all remaining sections until EOF).
+- [ ] I have located and applied: **Example naming conventions** and **Naming constraints (ValidateFunc)**.
+- [ ] I have located and applied: **Code fence language (mandatory in Example sections)**.
+
+Hard-stop rule:
+- If preflight is not complete, do not audit and do not propose edits.
+- If preflight is not complete, you MUST respond with EXACTLY the following two lines (no additional text before or after):
+   - `Preflight complete: no (skill file not fully loaded; load this skill to EOF, then re-run /docs-writer)`
+   - `Skill used: docs-writer`
+
 ## Scope
 Intended for use with the HashiCorp `terraform-provider-azurerm` repository (`website/docs` and `internal/`). Works best with repo search + access to the schema implementation.
 
@@ -49,6 +64,7 @@ Do not require the user to explicitly ask for these checks.
 - Output marker rules: `Verification (assistant response only)`
 
 ## Decision tree (fast path)
+- If the **Preflight checklist** is not complete: stop, request/load remaining skill context, then restart.
 - If user intent is review/audit/check: run an audit-style report first and do not edit files unless the user explicitly asks for fixes.
 - If user intent is fix/apply/update: run a quick audit-first pass (schema parity + ordering + required notes), then proceed with edits.
 - Active file is not under `website/docs/**`: do not run docs work under this skill.
@@ -75,9 +91,17 @@ In testing mode:
   - Diff tip (data source): `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
 
 ## Verification (assistant response only)
-When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:
+When (and only when) this skill is invoked, the assistant MUST append the following lines to the end of the assistant's final response (in this order):
 
+Preflight complete: yes
 Skill used: docs-writer
+
+If you cannot complete preflight due to missing context, you MUST stop and respond with:
+
+Preflight complete: no (skill file not fully loaded; load this skill to EOF, then re-run /docs-writer)
+Skill used: docs-writer
+
+In that preflight-failed case, the response must contain no other content (no analysis, no audit, no Observations, no suggested edits).
 
 Rules:
 - Do NOT write this marker into any repository file (docs, code, generated files).
@@ -386,10 +410,33 @@ Do not invent alternative section intro wording unless the page already uses a p
 
 When you add or edit `## Example Usage`, enforce provider-style example naming:
 
-- Resource examples: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` where feasible (subject to service naming constraints).
-- Data source examples: prefer descriptive `existing-...` placeholder values for required identifiers.
+ Resource examples: for user-supplied name-like argument values (for example `name = "..."`), the string value must start with the prefix `example-` where feasible (subject to service naming constraints).
+- Data source examples: for required identifier-like argument values, the string value must start with the prefix `existing-` where feasible.
 
-If an example uses generic placeholders like `"example"` for name-like values, rewrite to a descriptive `example-...` value.
+Rules:
+- A value that merely contains `example` but does not start with `example-` (for example `rg-example`) is non-compliant; rewrite it.
+- Default to deriving the suffix from the full Terraform resource type (kebab-case) so examples are consistent and predictable:
+   - `azurerm_resource_group` -> `example-resource-group`
+   - `azurerm_cdn_frontdoor_firewall_policy` -> `example-cdn-frontdoor-firewall-policy`
+   - `azurerm_palo_alto_local_rulestack` -> `example-palo-alto-local-rulestack`
+- This applies to argument values like `name = "..."`, not Terraform block labels like `resource "..." "example"`.
+
+Naming constraints (mandatory; use schema evidence):
+- Before finalizing a name-like example value, consult the Terraform schema for that specific field and use the field's `ValidateFunc` to determine naming constraints (length, allowed characters, regex patterns, etc.).
+- If the default full resource-type-derived value violates `ValidateFunc` constraints, abbreviate only as much as required to make it valid.
+- Do not guess naming constraints. If you cannot locate the schema/`ValidateFunc`, use the full resource-type-derived value by default.
+
+## Code fence language (mandatory in Example sections)
+
+For headings that start with `Example` (for example `## Example Usage`, `## Example ...`), use the correct fence language:
+
+- Terraform configuration blocks: use `hcl` (```hcl)
+- Terraform CLI command blocks (for example `terraform import ...`): use `shell` (```shell)
+- Transcript-style CLI blocks with prompts/output: use `shell-session` (```shell-session)
+
+Do not use unlabeled fences (plain ``` ) in Example sections. If you encounter one, rewrite it to the correct language fence based on whether the block content is configuration (HCL) or CLI commands.
+
+Do not treat fence-language choices outside headings starting with `Example` as failures for this rule.
 
 ### Secrets in examples (mandatory)
 

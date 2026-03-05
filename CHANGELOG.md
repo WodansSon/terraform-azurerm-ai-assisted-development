@@ -12,7 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Hardened `/code-review-docs` determinism rules to avoid run-to-run "guessing" (no A/B options; patch-ready snippets must be fully specified).
+- Expanded `/code-review-docs` docs-quality checks (timeouts readability, import example ID shape validation, `hcl` code fences, and page-self-contained example reference scans).
 - Updated `/code-review-docs` and `/docs-writer` guidance to consistently treat next-major deprecations as vNext surface area (do not require legacy fields for docs parity).
+- Tightened example naming convention enforcement: name-like values must start with `example-` (resources) / `existing-` (data sources); values like `rg-example` are now flagged as non-compliant.
+- Defaulted resource example `name` values to `example-<full-resource-type-kebab>` unless the schema field `ValidateFunc` requires a shorter/adjusted value.
+- Updated `/code-review-local-changes` and `/code-review-committed-changes` to flag string enum boolean toggles (`Enabled`/`Disabled`, `On`/`Off`, with optional `None` tri-state) and prefer boolean `*_enabled` for new schema surface area; added matching guidance to schema patterns.
 
 ### Fixed
 

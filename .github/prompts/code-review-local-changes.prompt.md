@@ -154,6 +154,9 @@ As a principal Terraform provider engineer with expertise in Go development, Azu
 - Terraform resource implementation best practices
 - Azure SDK for Go usage patterns
 - Plugin SDK schema definitions and validation
+- Schema standards: flag `TypeString` fields that are effectively boolean toggles (e.g. allowed values `Enabled`/`Disabled`, `Enable`/`Disable`, or `On`/`Off`) and prefer a boolean `*_enabled` instead
+  - Tri-state nuance: if the API includes a third value like `None` (e.g. `Enabled`/`Disabled`/`None` or `On`/`Off`/`None`), confirm whether `None` is equivalent to omitted/default (still prefer optional `*_enabled`) vs a distinct user-settable state (string enum may be justified but must be explicitly justified)
+  - Scope note: treat this as a standard for new fields; for already-shipped schemas, prefer deprecation/migration patterns over breaking renames
 - CustomizeDiff function validation logic and patterns
 - Implementation approach appropriateness (Typed for new, Untyped maintenance only)
 - Error handling and context propagation

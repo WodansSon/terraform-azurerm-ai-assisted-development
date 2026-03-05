@@ -129,6 +129,9 @@ Then, locate and extract **implicit behavior constraints** from expand/flatten l
 - For each, include evidence: file path under `internal/**` + function name/snippet reference.
 
 ### 3.5) Coverage preflight (no silent skips)
+- Hard-stop: if you cannot confirm you have the full prompt content (for example the UI truncated this prompt), do not proceed with auditing.
+- In this hard-stop case, respond with EXACTLY the following line and nothing else:
+  - `Cannot run code-review-docs: prompt content not fully loaded. Re-run /code-review-docs; if it repeats, reload the chat (or VS Code window) and try again.`
 - Before auditing, **enumerate every doc section** you will cover in this review (e.g. Example Usage, Arguments Reference, each nested block section, Attributes Reference, Timeouts, Import).
 - If any required section is missing from the doc (based on the doc type rules below), **stop** and report it as an Issue.
 - Build a quick **schema-to-doc map**:
@@ -164,6 +167,24 @@ Validate:
   - If the docs file already existed (modified but not newly added), record this as an **Observation** (existing pages may keep the older link for consistency).
   - If you cannot determine whether the file is new vs existing from the available context, default to **Observation**.
 
+**Timeouts duration readability (mandatory):**
+- If a Timeouts section is present, validate each timeout bullet uses human-readable durations.
+- **Rule:** when a default duration is greater than 60 minutes, it must be documented in hours.
+  - Example rewrites:
+    - `(Defaults to 720 minutes)` → `(Defaults to 12 hours)`
+    - `(Defaults to 1440 minutes)` → `(Defaults to 24 hours)`
+  - Keep minutes for `<= 60 minutes` (e.g. `5 minutes`, `30 minutes`).
+- If the Timeouts section uses minutes for a value >60, mark as an **Issue** and provide a patch-ready replacement.
+
+**Import example correctness (mandatory for resources):**
+- For resources, validate the Import section:
+  - uses the standard wording: "can be imported using the resource id, e.g." (or equivalent), and
+  - includes a `terraform import <resource_address> <resource_id>` example.
+- Validate the **shape** of the example resource ID against the provider implementation:
+  - Find the `Importer:` block and identify the parsing function used (e.g. `parse.<X>ID(...)` or `afdcustomdomains.ParseCustomDomainID(...)`).
+  - Derive the expected ID segment pattern from the corresponding ID type (prefer the `.ID()` / constructor format used in Create/Read) and ensure the doc’s example matches that pattern.
+- If the Import example ID is malformed (missing required segments, wrong provider/resource types, placeholder missing subscription GUID, etc.), mark as an **Issue** and provide a patch-ready corrected import line.
+
 #### B) Arguments Reference parity and ordering
 - All schema required args must be documented
 - Documented args must exist in schema
@@ -180,6 +201,11 @@ Validate:
   3. `location` (if present)
   4. remaining required arguments (alphabetical)
   5. optional arguments (alphabetical), with `tags` last (if present)
+
+**Mandatory patch-ready ordering fixes (top-level, one-pass reliability):**
+- If you flag any ordering issue for the **top-level** argument bullets under `## Arguments Reference` (including required-vs-optional grouping, or alphabetical ordering inside a group), your `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` section must include the **full corrected top-level bullet list snippet** (the entire argument bullet list for that section), already reordered.
+- Do not write a vague instruction like "move `tls` above `dns_zone_id`" without showing the exact corrected bullet list.
+- If the doc contains commented-out example blocks adjacent to the argument list, keep them in place and do not let comments break the required/optional grouping.
 - **Resources only:** for every ForceNew field in schema, the argument description must end with a ForceNew sentence.
   - Use the standard generic sentence: `Changing this forces a new resource to be created.`
   - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**.
@@ -263,12 +289,29 @@ Validate:
 - Example must not include a `terraform` or `provider` block
 - Example should be functional and self-contained (no undefined references)
 - Resource/data source instance name should generally be `example`
-- Resources: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` (subject to service naming constraints).
+- **Mandatory: code fence language (avoid false positives; deterministic scope)**
+  - **Scope (strict):** enforce fence-language rules **only** for fenced code blocks under headings that start with `Example` (for example `## Example Usage`, `## Example ...`).
+  - **Out of scope:** do **not** flag or rewrite fence languages for code blocks outside `Example*` headings (for example `## Arguments Reference`, `## Import`, `## Timeouts`, `## Attributes Reference`).
+    - If you notice suspicious/unlabeled fences outside Example sections, you may record an **Observation** only, but do not create an **Issue** for it.
+  - **Terraform configuration** examples must use fenced code blocks labeled `hcl` (for example: ```hcl).
+  - **Terraform CLI command** examples must use fenced code blocks labeled `shell` (single commands) or `shell-session` (transcript-style with prompts/output).
+  - If an Example section uses an unlabeled fence (plain ```), record an **Issue** and provide a patch-ready rewrite with the correct fence language:
+    - use `hcl` when the block is Terraform configuration (starts with `resource`, `data`, `module`, `variable`, `output`, etc.)
+    - use `shell`/`shell-session` when the block is CLI commands (starts with `terraform`, `$ terraform`, etc.)
+  - If an Example section uses a Terraform configuration fence other than `hcl` (for example ```terraform), record an **Issue** and provide a patch-ready fix that rewrites the fence info string to `hcl`.
+- **Mandatory: example naming scan (no silent skip)**
+  - Scan every `name = "..."` style assignment inside `## Example Usage` (and any other heading starting with `Example`) and evaluate whether the **string value** follows the naming convention below.
+  - If any name-like value violates the convention, you must:
+    1) record a **⛏️ Nit Issue** (🔵 Low) describing the non-compliant value(s), and
+    2) include a patch-ready fix under `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` with exact line replacements (or a full corrected example block).
+- Resources: for user-supplied name-like argument values (for example `name = "..."`), the string value must start with the prefix `example-` where feasible (subject to service naming constraints).
   - This does not apply to Terraform block labels like `resource "..." "example"`.
-  - Prefer deriving the suffix from the specific resource type of the block (e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`).
+  - Default to a descriptive value derived from the full Terraform resource type (kebab-case), e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`.
+  - If the full resource-type-derived value would violate naming constraints, use the schema field's `ValidateFunc` as evidence and abbreviate only as much as required to be compliant.
+  - A value that merely contains `example` but does not start with `example-` (for example `rg-example`) does **not** satisfy this convention and must be flagged.
   - If this convention is not followed, record it as a **⛏️ Nit Issue** with **🔵 Low** priority and provide a minimal patch-ready rename.
   - Do **not** mark the overall review `Invalid` solely due to example naming conventions.
-- Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
+- Data sources: for required identifier-like argument values, the string value must start with the prefix `existing-` where feasible.
   - If this convention is not followed, record it as a **⛏️ Nit Issue** with **🔵 Low** priority and provide a minimal patch-ready rename.
   - Do **not** mark the overall review `Invalid` solely due to example naming conventions.
 - **Mandatory security rule:** no hard-coded secrets (passwords/tokens/keys/client secrets/private keys/SAS tokens).
@@ -280,6 +323,14 @@ Validate:
 
 **Non-self-contained examples (mandatory deterministic fix):**
 - If you find a Terraform code block under any heading that starts with `Example` (for example `## Example CNAME Record Usage`) and it references resources not defined elsewhere on the same page, mark it as an **Issue**.
+- **Mandatory: reference scan (no silent skip)**
+  - For each Terraform code block under any heading that starts with `Example` (including `## Example Usage`), enumerate:
+    - all `resource` blocks declared in that block (type + name)
+    - all `data` blocks declared in that block (type + name)
+    - all `module` blocks declared in that block (name)
+    - all references used in expressions to `azurerm_*.*`, `data.*.*`, and `module.*`.
+  - Explicitly state whether each referenced object is declared somewhere on the same page.
+  - If any reference is not declared on the page, the example is not self-contained and this must be recorded as an **Issue** with a patch-ready fix.
 - **Do not delete or convert "Example …" Terraform code blocks into prose.** An Example section must remain copy/pasteable Terraform.
 - In `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`, choose exactly one fix (do not offer multiple options):
   1) **Preferred:** expand the primary `## Example Usage` code block to define the missing referenced resources once, then keep the secondary example block referencing them.
@@ -311,12 +362,17 @@ Output must be **rendered Markdown**.
 - **Status**: Valid / Invalid
 - **Doc File**: ${docs_file_path}
 - **Doc Type**: Resource / Data Source
+- **Preflight complete**: yes/no
+
+Rule:
+- You may only produce the full structured review output when **Preflight complete** is `yes`.
+- If you cannot truthfully set **Preflight complete** to `yes`, you MUST hard-stop and output only the applicable hard-stop message (no partial review).
 
 ## 🧾 **SCHEMA SNAPSHOT**
 - **Schema File(s)**: ${schema_file_paths}
 - **Required Args**: ${required_args}
 - **Optional Args**: ${optional_args}
- - **Next-major Deprecated Fields**: ${next_major_deprecated_fields}
+- **Next-major Deprecated Fields**: ${next_major_deprecated_fields}
 - **Computed Attributes**: ${computed_attrs}
 - **ForceNew Fields**: ${force_new_fields}
 - **Cross-field Constraints**: ${cross_field_constraints}
@@ -333,6 +389,8 @@ Output must be **rendered Markdown**.
 - **Conditional Notes**: pass/fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
 - **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
 - **Note Accuracy**: pass/fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
+- **Timeouts Readability**: pass/fail (convert defaults >60 minutes to hours)
+- **Import Example**: pass/fail (resources only, ID shape matches importer/parser)
 - **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
 - **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions are low-priority nit issues with patch-ready fixes, but do not make the page `Invalid` by themselves)
 
@@ -361,6 +419,13 @@ Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes s
 - If any Issue is not fully fixed by the provided snippet(s), you must either:
   - expand the snippet to fully fix it, or
   - change the Issue classification (for example, if it is actually not a real issue).
+- Checklist formatting rule (determinism/readability):
+  - Do not use emoji in the checklist items.
+  - Use this exact format for each item: `- Issue "<issue_title>": fixed by snippet <X>`
+- Explicitly confirm:
+  - all Terraform **configuration** code fences under headings starting with `Example` use `hcl` (no ```terraform or unlabeled fences remain for Terraform config examples)
+  - all Terraform **CLI command** examples under headings starting with `Example` use `shell` or `shell-session` (no unlabeled fences remain for CLI examples)
+  - all Terraform code blocks under headings starting with `Example` are self-contained (no undefined references)
 
 ## 🏆 **OVERALL ASSESSMENT**
 

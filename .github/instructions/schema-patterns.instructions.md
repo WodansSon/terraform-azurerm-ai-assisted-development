@@ -488,6 +488,26 @@ func ExpandConditionalFeature(input []interface{}, skuTier string) *azureapi.Con
 
 ### Advanced "Enabled" Property Handling Patterns
 
+### Avoid "Enabled/Disabled" string enums (schema standards)
+
+High-signal smell:
+- A `TypeString` schema field (or equivalent) whose only meaningful allowed values are `Enabled`/`Disabled`, `Enable`/`Disable`, or `On`/`Off` is a strong hint the provider schema is modeling a boolean as an enum.
+
+Preferred pattern:
+- Model these as a boolean `*_enabled` instead of a string enum.
+
+Scope note:
+- This is primarily a **new schema surface area** standard; for already-shipped fields, prefer deprecation/migration patterns over breaking renames.
+
+Tri-state nuance (for example `Enabled`/`Disabled`/`None` or `On`/`Off`/`None`):
+- Do not accept a string enum by default.
+- First determine whether `None` is semantically equivalent to omitted/default behavior.
+    - If `None` == omitted/default: prefer an *optional* `*_enabled` boolean and map:
+        - Terraform null/omitted -> Azure `None` (or omit the property)
+        - `true` -> Azure `Enabled`
+        - `false` -> Azure `Disabled`
+    - If `None` is a distinct, user-settable state (not representable as omission): a string enum may be justified, but the implementation must explicitly justify why a boolean cannot model the API semantics.
+
 **Dynamic Enable/Disable Based on Azure Service Capabilities:**
 ```go
 // SKU-dependent enable patterns
