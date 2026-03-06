@@ -28,7 +28,8 @@ Audit the **currently-open** documentation page under `website/docs/**` for:
 When reviewing documentation standards, treat these as authoritative:
 - `contributing/topics/reference-documentation-standards.md`
 - `.github/instructions/documentation-guidelines.instructions.md`
-- `.github/skills/docs-writer/SKILL.md` (this repo's enforcement rules)
+
+Do not treat `.github/skills/docs-writer/SKILL.md` as a canonical rules source. The skill exists for workflow/orchestration; the rules live in the upstream contributor standards + instruction files.
 
 This audit is **optional** and **user-invoked** (no CI enforcement).
 
@@ -46,6 +47,11 @@ This prompt is used in a review→apply→re-review loop. To avoid run-to-run "g
 - Prefer the smallest deterministic fix that removes the Issue and is consistent with the rules in this prompt and HashiCorp's documentation standards (for example `contributing/topics/reference-documentation-standards.md`).
 
 ## ⚡ Mandatory procedure
+
+### 0) Load canonical standards
+
+- If `contributing/topics/reference-documentation-standards.md` exists in the current workspace, read it and apply it.
+- Read and apply `.github/instructions/documentation-guidelines.instructions.md`.
 
 ### 1) Identify the Terraform object from the doc path
 - Resource docs: `website/docs/r/<name>.html.markdown` → `azurerm_<name>`
@@ -69,6 +75,25 @@ From the schema, extract:
 - computed attributes
 - ForceNew fields (`ForceNew: true`)
 - constraints that affect docs (e.g. `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, validations), if clearly visible
+
+**Mandatory: validate all example-used fields against schema evidence (not just `name`)**
+- Enumerate every argument assignment used in any Terraform configuration block under headings starting with `Example` (for example: `name = ...`, `sku_name = ...`, `ttl = ...`, nested blocks, and meta-arguments like `depends_on`).
+- For each referenced field, locate and record the relevant schema/implementation evidence that constrains it, including (when present):
+  - `ValidateFunc` (regex/length/charset/enums)
+  - `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith`
+  - Diff-time / CustomizeDiff constraints and any helper validation functions
+- Use that evidence to verify the example values are valid and pasteable.
+
+**Mandatory: Example Validation Matrix (no silent validation):**
+- Under `## 🟡 **OBSERVATIONS**`, add a subsection named `Example Validation Matrix`.
+- For each Example Terraform configuration block (each fenced `hcl` block under headings starting with `Example`), list every example-used field as a separate bullet with:
+  - the resource/data type it belongs to (e.g. `azurerm_virtual_network`)
+  - the field path (e.g. `name`, `sku_name`, `identity.0.type`)
+  - the example value as written
+  - the evidence source (schema file path + the specific constraint type, e.g. `ValidateFunc`, `ConflictsWith`, diff-time validation)
+  - the validation result: `validated: pass` or `validated: fail`
+- If any line is `validated: fail`, you must record an **Issue** and provide a patch-ready fix.
+- If you cannot locate the relevant schema/implementation evidence for any example-used field, record an **Issue** (example validity cannot be proven) and do not guess a compliant value.
 
 **Mandatory: next-major (vNext) deprecated field policy**
 The AzureRM provider uses a "next major version" feature-flag deprecation system to phase out legacy fields (for example `features.FivePointOh()` today).
@@ -129,9 +154,6 @@ Then, locate and extract **implicit behavior constraints** from expand/flatten l
 - For each, include evidence: file path under `internal/**` + function name/snippet reference.
 
 ### 3.5) Coverage preflight (no silent skips)
-- Hard-stop: if you cannot confirm you have the full prompt content (for example the UI truncated this prompt), do not proceed with auditing.
-- In this hard-stop case, respond with EXACTLY the following line and nothing else:
-  - `Cannot run code-review-docs: prompt content not fully loaded. Re-run /code-review-docs; if it repeats, reload the chat (or VS Code window) and try again.`
 - Before auditing, **enumerate every doc section** you will cover in this review (e.g. Example Usage, Arguments Reference, each nested block section, Attributes Reference, Timeouts, Import).
 - If any required section is missing from the doc (based on the doc type rules below), **stop** and report it as an Issue.
 - Build a quick **schema-to-doc map**:
@@ -219,6 +241,16 @@ Validate:
   - If any of these legacy phrases appear anywhere in the doc page, mark it as an **Issue** and suggest the minimal rewrite.
 - If schema defines a default value, docs must include "Defaults to `...`."
 
+**Field description vs note split (mandatory, readability):**
+- For each argument bullet, keep the bullet text to a crisp definition of what the field is/does (prefer 1 sentence; 2 max).
+- If the bullet includes extra caveats, conditional guidance, setup instructions, or multi-paragraph explanations, move that content into an inline note immediately under the field it applies to.
+  - Use `-> **Note:**` for informational guidance.
+  - Use `~> **Note:**` for conditional requirements/conflicts/ForceNew guidance that prevents common configuration errors.
+  - Use `!> **Note:**` for irreversible/high-impact warnings.
+- When you apply this split, provide a patch-ready replacement that includes both:
+  1) the shortened bullet, and
+  2) the new note block directly below it.
+
 **Nested block arguments (ordering rules):**
 - For each block subsection under `## Arguments Reference` (e.g. `A <block> block supports the following:`), verify nested field ordering follows the same contributor rules:
   1. Required nested arguments first (alphabetical).
@@ -267,6 +299,12 @@ Validate:
 - If the schema (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`), `CustomizeDiff`/diff-time validation, or implicit behavior constraints (from expand/flatten) enforce cross-field/conditional behavior, the docs must include a `~> **Note:**` that describes the condition in a user-actionable way.
 - If such constraints exist in code but are not documented as notes, mark as an **Issue**.
 
+**Note de-duplication (mandatory when applicable):**
+- If two or more `~> **Note:**` blocks describe the same conditional constraint in opposite directions (for example "X is required when Y" and "X cannot be specified unless Y"), prefer combining them into a **single** note that states both sides.
+- Prefer a single sentence when possible.
+- Example combined note pattern (adjust wording to match the extracted constraint evidence):
+  - `~> **Note:** The `X` block is required when `Y` is set to `A` and must not be specified when `Y` is not set to `A`.`
+
 **Required-notes coverage checklist (MUST produce):**
 - Build a checklist of "required notes" from these sources:
   1) schema cross-field constraints you extracted (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`)
@@ -289,6 +327,43 @@ Validate:
 - Example must not include a `terraform` or `provider` block
 - Example should be functional and self-contained (no undefined references)
 - Resource/data source instance name should generally be `example`
+
+**Mandatory: preserve example meta-arguments (prevents depends_on regressions):**
+- When rewriting any Terraform configuration example block under an `Example*` heading, preserve any existing meta-arguments that appear in the original example (especially `depends_on`).
+- `depends_on` rules:
+  - Atomic copy rule (mandatory): if the original example contains a `depends_on = [...]` line, copy that `depends_on` line verbatim into the rewritten example block.
+    - Only modify it if you can cite concrete schema/implementation evidence that a dependency is unnecessary or incorrect, and if you also update any doc note that claimed it was required.
+  - If the original example includes `depends_on = [...]`, the rewritten example must also include `depends_on` with the same referenced resources (unless you can cite concrete provider/schema evidence that the ordering constraint is unnecessary and you also update any doc note that claimed it was required).
+  - If the docs prose/note says you **must** include `depends_on` referencing specific resources, the example must include that `depends_on` exactly as described (do not weaken it to fewer dependencies).
+  - Never remove `depends_on` to satisfy “minimal examples” or “self-containedness”; fix self-containedness by adding missing referenced resources.
+
+**Mandatory: preserve required Example notes when rewriting examples:**
+- If an `Example*` section contains a note immediately above the example that describes required sequencing/validation (for example “You must include `depends_on` … otherwise validation fails”), do not delete that note when rewriting the example.
+- If you change the example in a way that would invalidate the note, update the note so it remains accurate.
+
+**Mandatory: HCL validity sanity pass (Example sections only):**
+- For every fenced Terraform configuration block under headings starting with `Example` (i.e. `hcl` blocks), perform a final structural sanity pass:
+  - Braces are balanced (every `{` has a matching `}`)
+  - No orphan attributes exist outside a block (for example a line like `resource_group_name = ...` after a resource block has closed)
+  - No extra trailing `}` or stray `)`
+  - No duplicate closing braces caused by copy/paste
+- If the example fails this sanity pass, record an **Issue** and provide a patch-ready full corrected example block.
+
+**Mandatory: example rewrite cleanup (prevents leftover lines):**
+- When you fix or rewrite any Terraform configuration example under an `Example*` heading, provide a patch-ready fix as a **full fenced block replacement** (rewrite the entire ```hcl block).
+- Do not provide partial edits that only show added lines; the fix must include both removals and the final correct block so leftover lines cannot remain.
+- After writing the corrected block, re-scan it for:
+  - mis-indented or out-of-block attributes
+  - duplicate attributes introduced by merging old and new content
+  - stray closing braces
+  - meta-argument preservation (mandatory): if the original example block contained `depends_on = [...]` (or the section note requires it), verify the rewritten block still contains that `depends_on = [...]` line verbatim (including all referenced resources). If it does not, treat the rewrite as invalid and rewrite the block again before continuing.
+
+**Mandatory: example minimalism (required-only by default):**
+- Examples must be copy/pasteable and should include **only required arguments** by default.
+- Do not add optional arguments to an example unless they are necessary to:
+  - satisfy schema constraints (including `ValidateFunc` naming constraints, cross-field constraints, or diff-time rules), or
+  - demonstrate the specific behavior described by that Example section heading.
+- If an example contains optional arguments that are not necessary for validity or the scenario, mark it as an **Issue** and provide a patch-ready minimal rewrite.
 - **Mandatory: code fence language (avoid false positives; deterministic scope)**
   - **Scope (strict):** enforce fence-language rules **only** for fenced code blocks under headings that start with `Example` (for example `## Example Usage`, `## Example ...`).
   - **Out of scope:** do **not** flag or rewrite fence languages for code blocks outside `Example*` headings (for example `## Arguments Reference`, `## Import`, `## Timeouts`, `## Attributes Reference`).
@@ -306,8 +381,29 @@ Validate:
     2) include a patch-ready fix under `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` with exact line replacements (or a full corrected example block).
 - Resources: for user-supplied name-like argument values (for example `name = "..."`), the string value must start with the prefix `example-` where feasible (subject to service naming constraints).
   - This does not apply to Terraform block labels like `resource "..." "example"`.
-  - Default to a descriptive value derived from the full Terraform resource type (kebab-case), e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`.
+  - Derivation rule (mandatory, deterministic): derive the example value from the **Terraform block type that the argument belongs to**, not from the doc topic.
+    - Example: for `resource "azurerm_resource_group" "example" { name = "..." }` the name must be derived from `azurerm_resource_group` (e.g. `example-resource-group`), even if the doc page is about a different service.
+  - Default to a descriptive value derived from the full Terraform resource type:
+    - Base: the resource type suffix with underscores replaced by hyphens (kebab-case)
+    - Example: `azurerm_resource_group` -> `example-resource-group`
+    - Example: `azurerm_virtual_network` -> `example-virtual-network`
+  - ValidateFunc-safe fallback (mandatory): if schema `ValidateFunc` evidence indicates hyphens are not allowed for the field value, do **not** use kebab-case.
+    - Use a lowercase, no-separator form instead:
+      - Prefix rule (mandatory): do not use the `example-` prefix when hyphens are forbidden. Use the prefix `example` (no hyphen).
+      - `example` + `<resource type suffix>` with underscores removed
+      - Example: `azurerm_virtual_network` -> `examplevirtualnetwork`
+    - Hyphen enforcement (mandatory): if `ValidateFunc` forbids hyphens for the field, any example value containing `-` is invalid and must be recorded as an **Issue** and rewritten.
+    - Guardrail (generic; prevents regressions when schema evidence is missed): if you cannot locate reliable validation evidence (schema `ValidateFunc` and/or equivalent implementation constraints) for any example-used field value, you must:
+      1) mark that field as unproven in the Example Validation Matrix (with `validated: fail`),
+      2) record an **Issue** stating that constraints could not be proven from schema/implementation evidence, and
+      3) not guess a rewritten example value.
+    - If further constraints exist (length/charset/regex), adjust deterministically:
+      1) remove disallowed separators/characters
+      2) if too long: truncate from the right
+      3) if still invalid/ambiguous: abbreviate minimally using schema evidence and record an Issue rather than guessing
   - If the full resource-type-derived value would violate naming constraints, use the schema field's `ValidateFunc` as evidence and abbreviate only as much as required to be compliant.
+  - If the schema indicates additional naming constraints (length/charset/regex) via `ValidateFunc`, you must validate that the proposed example value satisfies those constraints.
+  - If you cannot confidently derive a compliant value from the available schema evidence, do not guess; instead, mark it as an **Issue** and state what constraint evidence is missing/unclear.
   - A value that merely contains `example` but does not start with `example-` (for example `rg-example`) does **not** satisfy this convention and must be flagged.
   - If this convention is not followed, record it as a **⛏️ Nit Issue** with **🔵 Low** priority and provide a minimal patch-ready rename.
   - Do **not** mark the overall review `Invalid` solely due to example naming conventions.
@@ -322,7 +418,7 @@ Validate:
 - Example references must be internally consistent
 
 **Non-self-contained examples (mandatory deterministic fix):**
-- If you find a Terraform code block under any heading that starts with `Example` (for example `## Example CNAME Record Usage`) and it references resources not defined elsewhere on the same page, mark it as an **Issue**.
+- If you find a Terraform code block under any heading that starts with `Example` (for example `## Example DNS Record Usage`) and it references resources not defined elsewhere on the same page, mark it as an **Issue**.
 - **Mandatory: reference scan (no silent skip)**
   - For each Terraform code block under any heading that starts with `Example` (including `## Example Usage`), enumerate:
     - all `resource` blocks declared in that block (type + name)
@@ -332,6 +428,16 @@ Validate:
   - Explicitly state whether each referenced object is declared somewhere on the same page.
   - If any reference is not declared on the page, the example is not self-contained and this must be recorded as an **Issue** with a patch-ready fix.
 - **Do not delete or convert "Example …" Terraform code blocks into prose.** An Example section must remain copy/pasteable Terraform.
+
+**depends_on preservation rule (mandatory; prevents regressions):**
+- If an Example block includes a `depends_on = [...]` meta-argument, do not remove entries purely to make the example “self-contained”.
+- If the example is not self-contained because `depends_on` references missing resources, fix it by **adding the missing referenced resources** to the page (prefer the primary `## Example Usage` block), not by weakening `depends_on`.
+- If the surrounding docs text/note explicitly requires a `depends_on` that references multiple resources (for example both a route and a security policy), preserve all required references.
+- If an Example section's prose/note says the user **must** include `depends_on` referencing specific resources, then the Example HCL must include that `depends_on`.
+  - If the Example HCL omits it, record a **🔴 Issue** (not a Nit) and provide a patch-ready fix.
+- Net-new docs guidance (mandatory): do not introduce `depends_on` in examples unless you can cite concrete schema/implementation evidence that ordering is required (or the doc is explicitly teaching an ordering constraint).
+- If you cannot reliably determine whether the doc page is net-new vs existing from the available context, default to the conservative behavior: treat it as existing and preserve the `depends_on` intent.
+- Only remove or simplify `depends_on` if you can cite concrete schema/implementation evidence that it is unnecessary (and if you also update any note that claimed it was required).
 - In `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`, choose exactly one fix (do not offer multiple options):
   1) **Preferred:** expand the primary `## Example Usage` code block to define the missing referenced resources once, then keep the secondary example block referencing them.
   2) If there is no primary Example Usage block, expand the example block itself to include the missing resource definitions.
@@ -339,13 +445,30 @@ Validate:
 
 #### F) Language
 - Fix obvious grammar/spelling and consistency issues
-- **Mandatory casing hygiene (common provider nits):**
-  - If the page refers to Azure Front Door tiers as "(standard/premium)" in prose, rewrite to "(Standard/Premium)".
 
 #### G) Link hygiene
 - Documentation links should be locale-neutral.
 - Flag links containing locale path segments such as `/en-us/`, `/en-gb/`, `/de-de/`, etc.
 - Suggested fix is to remove the locale segment (e.g. prefer `https://learn.microsoft.com/azure/...` over `https://learn.microsoft.com/en-us/azure/...`) unless there is a strong reason the localized link is required.
+
+## Prompt-only guidance (do not include as headings in output)
+
+Notes:
+- Always cite the schema file path(s) you used.
+- Prefer referencing doc section headings / argument names over line numbers.
+- Do not invent schema fields; if schema cannot be located, explicitly say so and run a docs-only standards check.
+
+Individual Suggestions Format (legend):
+- Priority System: 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
+- Review Type Icons:
+  - 🔧 Change request - Standards/parity issues requiring fixes
+  - ❓ Question - Clarification needed about schema intent or doc meaning
+  - ⛏️ Nitpick - Minor style/consistency issues (typos, wording, formatting)
+  - ♻️ Refactor suggestion - Structural doc improvements (only when necessary)
+  - 🤔 Thought/concern - Potential mismatch or ambiguous behavior requiring discussion
+  - 🚀 Positive feedback - Excellent documentation patterns worth highlighting
+  - ℹ️ Explanatory note - Context about schema behavior or provider conventions
+  - 📌 Future consideration - Larger scope items for follow-up
 
 ## ✅ Review output format (use this exact structure)
 
@@ -355,6 +478,26 @@ Output must be **rendered Markdown**.
 - Use real headings, bullets, and bold text so it renders in chat.
 - Use the section headings **exactly as written below** (including the emoji). Do not rename headings or remove emoji.
 
+Hard determinism rules (mandatory):
+- Output must contain exactly one instance of each heading listed below, in this exact order:
+  1) `# 📋 **Code Review - Docs**: ${terraform_name}`
+  2) `## 📌 **COMPLIANCE RESULT**`
+  3) `## 🧾 **SCHEMA SNAPSHOT**`
+  4) `## 📊 **DOC STANDARDS CHECK**`
+  5) `## 🟢 **STRENGTHS**`
+  6) `## 🟡 **OBSERVATIONS**`
+  7) `## 🔴 **ISSUES** (only actual problems)`
+  8) `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`
+  9) `## 🏆 **OVERALL ASSESSMENT**`
+- Do not output `## 🏆 **OVERALL ASSESSMENT**` until after you have completed `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` including all snippets, the required self-check, and the explicit confirmations.
+
+Footer rules (mandatory; prevents template restarts):
+- After the Overall Assessment content (including the final question when applicable), output exactly these two lines (no bullets, no heading), each on its own line:
+  - `Preflight complete: yes`
+  - `Skill used: docs-writer`
+- These two footer lines must appear exactly once and must be the final lines of the response.
+- If you emit the line `Skill used: docs-writer` at any point, you must not output anything else after it.
+
 
 # 📋 **Code Review - Docs**: ${terraform_name}
 
@@ -362,11 +505,6 @@ Output must be **rendered Markdown**.
 - **Status**: Valid / Invalid
 - **Doc File**: ${docs_file_path}
 - **Doc Type**: Resource / Data Source
-- **Preflight complete**: yes/no
-
-Rule:
-- You may only produce the full structured review output when **Preflight complete** is `yes`.
-- If you cannot truthfully set **Preflight complete** to `yes`, you MUST hard-stop and output only the applicable hard-stop message (no partial review).
 
 ## 🧾 **SCHEMA SNAPSHOT**
 - **Schema File(s)**: ${schema_file_paths}
@@ -414,7 +552,11 @@ Rule:
 ## 🛠️ **MINIMAL FIXES (PATCH-READY)**
 Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes small and targeted.
 
-**Required self-check (prevents repeated findings):**
+Ordering rule (mandatory): complete this entire section (snippets + required self-check + explicit confirmations) **before** writing `## 🏆 **OVERALL ASSESSMENT**`. Do not move the self-check or confirmations outside this section.
+
+Placement rule (mandatory): all `### Snippet ...` blocks must appear inside this section and nowhere else.
+
+### Required self-check (prevents repeated findings)
 - After writing the patch-ready snippets, re-list each 🔴 Issue as a checklist item and state: `fixed by snippet <X>`.
 - If any Issue is not fully fixed by the provided snippet(s), you must either:
   - expand the snippet to fully fix it, or
@@ -422,33 +564,24 @@ Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes s
 - Checklist formatting rule (determinism/readability):
   - Do not use emoji in the checklist items.
   - Use this exact format for each item: `- Issue "<issue_title>": fixed by snippet <X>`
-- Explicitly confirm:
-  - all Terraform **configuration** code fences under headings starting with `Example` use `hcl` (no ```terraform or unlabeled fences remain for Terraform config examples)
-  - all Terraform **CLI command** examples under headings starting with `Example` use `shell` or `shell-session` (no unlabeled fences remain for CLI examples)
-  - all Terraform code blocks under headings starting with `Example` are self-contained (no undefined references)
+
+### Explicit confirmations (must be the final lines of MINIMAL FIXES)
+- all Terraform **configuration** code fences under headings starting with `Example` use `hcl` (no ```terraform or unlabeled fences remain for Terraform config examples)
+- all Terraform **CLI command** examples under headings starting with `Example` use `shell` or `shell-session` (no unlabeled fences remain for CLI examples)
+- all Terraform code blocks under headings starting with `Example` are self-contained (no undefined references)
+- if any Example block originally included `depends_on = [...]` (or an Example note requires it), the final rewritten Example blocks still include the exact `depends_on = [...]` line verbatim (no dependencies removed)
+- if any Example section includes `depends_on` (or a note requires it), the final rewritten Example blocks still include the required `depends_on` entries (not removed or weakened)
+
+Ordering guard (mandatory): the last lines of `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` must be the explicit confirmations above. Do not place any other content after them except `## 🏆 **OVERALL ASSESSMENT**`.
 
 ## 🏆 **OVERALL ASSESSMENT**
 
-If any Issues are found, end the response with:
+Content rules (user-facing only; do not include internal process notes here):
+- Start with a single-line verdict: `Result: pass` or `Result: needs changes`
+- Then add one short paragraph summarizing what must change to become compliant.
+- If any 🔴 Issues are found, end this section with the exact question:
+  - `Do you want me to apply a patch?`
 
-"Do you want me to apply a patch?"
-One paragraph summary of what to change to become compliant.
-
-### Notes
-- Always cite the schema file path(s) you used.
-- Prefer referencing doc section headings / argument names over line numbers.
-- Do not invent schema fields; if schema cannot be located, explicitly say so and run a docs-only standards check.
-
-### Individual Suggestions Format (legend)
-
-**Priority System:** 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
-
-**Review Type Icons:**
-* 🔧 Change request - Standards/parity issues requiring fixes
-* ❓ Question - Clarification needed about schema intent or doc meaning
-* ⛏️ Nitpick - Minor style/consistency issues (typos, wording, formatting)
-* ♻️ Refactor suggestion - Structural doc improvements (only when necessary)
-* 🤔 Thought/concern - Potential mismatch or ambiguous behavior requiring discussion
-* 🚀 Positive feedback - Excellent documentation patterns worth highlighting
-* ℹ️ Explanatory note - Context about schema behavior or provider conventions
-* 📌 Future consideration - Larger scope items for follow-up
+Formatting rules:
+- The question `Do you want me to apply a patch?` must be on its own line.
+- If the question is present, it must be the final line of the Overall Assessment section content.
