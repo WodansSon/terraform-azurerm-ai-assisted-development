@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [2.0.5] - 2026-03-09
+
+### Changed
+
 - Hardened `/code-review-docs` determinism rules to avoid run-to-run "guessing" (no A/B options; patch-ready snippets must be fully specified).
 - Expanded `/code-review-docs` docs-quality checks (timeouts readability, import example ID shape validation, `hcl` code fences, and page-self-contained example reference scans).
 - Moved docs compliance rules into a shared docs compliance contract and refactored `/code-review-docs` + `/docs-writer` to reference stable `DOCS-*` IDs instead of duplicating large rule blocks.
