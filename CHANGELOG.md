@@ -13,16 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Hardened `/code-review-docs` determinism rules to avoid run-to-run "guessing" (no A/B options; patch-ready snippets must be fully specified).
 - Expanded `/code-review-docs` docs-quality checks (timeouts readability, import example ID shape validation, `hcl` code fences, and page-self-contained example reference scans).
+- Moved docs compliance rules into a shared docs compliance contract and refactored `/code-review-docs` + `/docs-writer` to reference stable `DOCS-*` IDs instead of duplicating large rule blocks.
+- Added new hard-compliance docs contract rules for note de-duplication, argument bullet length caps, net-new `depends_on` restrictions, and legacy (non-vNext) field exclusion (`DOCS-NOTE-008`, `DOCS-ARG-011`, `DOCS-EX-017`, `DOCS-DEPR-002`).
+- Aligned `/docs-writer` with `/code-review-docs` by adding concrete evidence-extraction procedures for `CustomizeDiff` call-chain tracing and Importer/ID-shape derivation (follow parser → ID type → formatter; do not guess without evidence).
 - Updated `/code-review-docs` and `/docs-writer` guidance to consistently treat next-major deprecations as vNext surface area (do not require legacy fields for docs parity).
-- Tightened example naming convention enforcement: name-like values must start with `example-` (resources) / `existing-` (data sources); values like `rg-example` are now flagged as non-compliant.
-- Defaulted resource example `name` values to `example-<full-resource-type-kebab>` unless the schema field `ValidateFunc` requires a shorter/adjusted value.
+- Standardized example naming guidance: name-like values should use `example-`/`existing-` prefixes where feasible (nit-level), and recommend deterministic type-derived names when schema/`ValidateFunc` evidence proves the derived value is valid.
+- Prevented duplicated `/code-review-docs` headings by requiring atomic output buffering (assemble the full 9-heading review internally, then emit once).
+- Aligned `.github/instructions/documentation-guidelines.instructions.md` with the shared docs contract to avoid conflicting precedence/examples.
+- Clarified scaffolding usage: docs scaffolding is a writer workflow (skill) for brand-new docs pages or explicit scaffold/dry-run requests; `/code-review-docs` remains audit-only.
+- Prohibited `/code-review-docs` from suggesting or invoking repo tooling (scaffold/validators/linters); audits are derived from static workspace evidence only.
 - Updated `/code-review-local-changes` and `/code-review-committed-changes` to flag string enum boolean toggles (`Enabled`/`Disabled`, `On`/`Off`, with optional `None` tri-state) and prefer boolean `*_enabled` for new schema surface area; added matching guidance to schema patterns.
 
 ### Fixed
 
 - Fixed repeated audit findings by requiring `/code-review-docs` to emit fully patch-ready ordering fixes (including full corrected nested block snippets) and a self-check mapping each Issue to a specific snippet.
 - Fixed a docs regression where "Example ..." sections could be converted to prose to satisfy self-containment, leading to inconsistent outcomes. Example sections now remain copy/pasteable Terraform and fixes expand examples to be page-self-contained.
-- Fixed common doc-quality regressions by enforcing enum phrasing rewrites (for example `Possible values are` -> `Possible values include`) and treating example naming conventions as patch-ready low-priority nits.
+- Fixed common doc-quality regressions by enforcing canonical enum phrasing and mandatory legacy-phrase rewrites (for example `Valid values are` -> `Possible values are`) and treating example naming conventions as patch-ready low-priority nits.
+- Fixed `/docs-writer` enum wording guidance to match the shared docs compliance contract (`DOCS-WORD-002`).
 - Fixed docs security guidance so hard-coded secrets in examples are flagged and replaced with context-appropriate `var.<name>` references (variable block optional).
 
 ## [2.0.4] - 2026-02-24

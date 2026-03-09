@@ -356,8 +356,26 @@ terraform-azurerm-ai-assisted-development/
 
 The prompt files under `.github/prompts/` are invoked via slash commands in GitHub Copilot Chat.
 
+Docs components (quick links):
+- Contract: `.github/instructions/docs-compliance-contract.instructions.md`
+- Auditor prompt: `.github/prompts/code-review-docs.prompt.md`
+- Writer skill: `.github/skills/docs-writer/SKILL.md`
+
 - `/code-review-local-changes` and `/code-review-committed-changes`: code review loops for Go/Terraform changes.
 - `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, page-self-contained examples with no undefined references, import example ID shape validation, and human-readable timeout defaults).
+
+### Docs governance (contract, prompt, skill)
+
+This repository intentionally separates docs *rules* from docs *workflows*:
+
+- **Contract (rules)**: `.github/instructions/docs-compliance-contract.instructions.md`
+  - Single source of truth for docs compliance rules (`DOCS-*` IDs), precedence, and evidence guardrails.
+- **Prompt (auditor)**: `.github/prompts/code-review-docs.prompt.md`
+  - Audit-only validation of the currently-open `website/docs/**` page.
+  - Does not run repo tooling; derives findings from static workspace evidence.
+- **Skill (writer)**: `.github/skills/docs-writer/SKILL.md`
+  - Applies the contract to write/update docs.
+  - Uses docs scaffolding only for brand-new docs pages (or when explicitly requested as a scaffold/dry-run baseline).
 
 ## Design Principles
 

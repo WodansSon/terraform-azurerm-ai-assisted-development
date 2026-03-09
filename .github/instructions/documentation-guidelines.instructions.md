@@ -23,12 +23,13 @@ Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources v
 
 ## Canonical sources (must follow)
 
-This file is a convenience guide, but the canonical standards for provider documentation live in the upstream provider repository and may change over time.
+This file is a convenience guide. Canonical sources, precedence, and conflict resolution are defined by the docs compliance contract:
+- `.github/instructions/docs-compliance-contract.instructions.md` (see "Canonical sources of truth (precedence)").
 
 Rules:
-- Treat `contributing/topics/reference-documentation-standards.md` (in the target `hashicorp/terraform-provider-azurerm` repo) as the primary source of truth for docs structure, ordering, and formatting rules.
-- Use this instruction file to capture AzureRM-specific guidance and high-signal patterns not covered upstream.
-- If this instruction file conflicts with the upstream contributor standards, follow the upstream file and update this repo later to re-align.
+- Treat `contributing/topics/reference-documentation-standards.md` (in the target `hashicorp/terraform-provider-azurerm` repo) as the baseline reference.
+- Use this instruction file to capture AzureRM-specific guidance and high-signal patterns.
+- If this instruction file conflicts with the docs compliance contract, follow the contract and update this file to re-align.
 
 ## Optional AI docs review (recommended)
 
@@ -44,7 +45,7 @@ This audit is optional and user-invoked (no CI enforcement).
 
 <a id="ai-docs-checks"></a>
 
-When using AI assistance to write or review docs, treat the upstream contributor standards file as canonical (`contributing/topics/reference-documentation-standards.md`). The checklist below captures the minimum set of provider-specific and high-signal checks that should not regress.
+When using AI assistance to write or review docs, treat canonical sources + precedence as defined by `.github/instructions/docs-compliance-contract.instructions.md`. The checklist below captures the minimum set of provider-specific and high-signal checks that should not regress.
 
 ### Required structure (high level)
 
@@ -107,7 +108,7 @@ Additional example guidance:
 - Cross-field/conditional requirements enforced by schema constraints or diff-time validation must be documented as `~> **Note:**` blocks.
 
 Constraint presentation guidance (avoid note spam):
-- Prefer embedding simple, field-local constraints in the field description (for example: `Possible values include ...`).
+- Prefer embedding simple, field-local constraints in the field description (for example: `Possible values are ...`).
 - Use `~> **Note:**` for cross-field/conditional requirements that commonly trip users up.
 
 Mandatory: add missing conditional notes (automatic fix)
@@ -145,16 +146,16 @@ Follow upstream ordering rules. At minimum:
 
 ### Enum / wording hygiene
 
-- Use `Possible values include ...` (rewrite `Valid values/options are ...` and `Possible values are ...`).
+- Use `Possible values are ...` (rewrite `Valid values/options are ...` and `Possible values include ...`).
 - Use the Oxford comma for lists of 3+ values.
 
 Avoid:
 - `Valid options are ...` / `Valid values are ...`
 
 Mandatory rewrites when editing docs:
-- Replace `Valid options are` with `Possible values include`
-- Replace `Valid values are` with `Possible values include`
-- Replace `Possible values are` with `Possible values include`
+- Replace `Valid options are` with `Possible values are`
+- Replace `Valid values are` with `Possible values are`
+- Replace `Possible values include` with `Possible values are`
 
 ### Mandatory HashiCorp docs style enforcement
 
@@ -165,11 +166,11 @@ When you touch or update any existing documentation page, proactively enforce th
 At minimum, enforce these high-signal items:
 
 - Oxford comma for 3+ values
-  - Incorrect: Possible values include `Default`, `InitiatorOnly` and `ResponderOnly`.
-  - Correct: Possible values include `Default`, `InitiatorOnly`, and `ResponderOnly`.
+  - Incorrect: Possible values are `Default`, `InitiatorOnly` and `ResponderOnly`.
+  - Correct: Possible values are `Default`, `InitiatorOnly`, and `ResponderOnly`.
 - Enum wording (provider standard)
-  - Prefer: `Possible values include ...`
-  - Rewrite: `Valid values are ...`, `Valid options are ...`, and `Possible values are ...`.
+  - Prefer: `Possible values are ...`
+  - Rewrite: `Valid values are ...`, `Valid options are ...`, and `Possible values include ...`.
 - ForceNew subset switching
   - Avoid "and vice versa"; use the explicit two-group wording (see `ForceNew subset-switch wording`).
 - Apply style rules to the entire bullet
@@ -252,7 +253,7 @@ Rules:
 
 In `## Attributes Reference`, do not use argument-only phrases such as:
 - `Defaults to ...`
-- `Possible values include ...`
+- `Possible values are ...`
 
 Attributes should be concise and describe what is exported.
 
@@ -497,12 +498,12 @@ Manages a Service Resource.
 
 ```hcl
 resource "azurerm_resource_group" "example" {
-  name     = "example-resources"
+  name     = "example-resource-group"
   location = "West Europe"
 }
 
 resource "azurerm_service_resource" "example" {
-  name                = "example-resource"
+  name                = "example-service-resource"
   resource_group_name = azurerm_resource_group.example.name
   location            = azurerm_resource_group.example.location
 
@@ -526,7 +527,7 @@ The following arguments are supported:
 
 * `auto_scaling_enabled` - (Optional) Is auto scaling enabled for this Service Resource? Defaults to `true`.
 
-* `sku_name` - (Optional) The SKU name for this Service Resource. Possible values include `Standard` and `Premium`.
+* `sku_name` - (Optional) The SKU name for this Service Resource. Possible values are `Standard` and `Premium`.
 
 * `tags` - (Optional) A mapping of tags to assign to the resource.
 
@@ -549,10 +550,10 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 
 ## Import
 
-Service Resources can be imported using the `resource id`, e.g.
+A Service Resource can be imported using the `resource id`, e.g.
 
 ```shell
-terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group1/providers/Microsoft.Service/resources/resource1
+terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/resourceGroup1/providers/Microsoft.Service/resources/resource1
 ```
 ````
 
@@ -604,8 +605,8 @@ Use this data source to access information about an existing Service Resource.
 
 ```hcl
 data "azurerm_service_resource" "example" {
-  name                = "existing-resource"
-  resource_group_name = "existing-resources"
+  name                = "existing-service-resource"
+  resource_group_name = "existing-resource-group"
 }
 
 output "service_resource_id" {
@@ -768,10 +769,10 @@ When adding new fields to existing resources, follow this guidance for documenta
 ````markdown
 ## Import
 
-Service Resources can be imported using the `resource id`, e.g.
+A Service Resource can be imported using the `resource id`, e.g.
 
 ```shell
-terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group1/providers/Microsoft.Service/resources/resource1
+terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/resourceGroup1/providers/Microsoft.Service/resources/resource1
 ```
 ````
 
@@ -856,7 +857,7 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ### SKU Documentation
 ```markdown
 # For Resources
-* `sku_name` - (Required) The SKU name for this Resource. Possible values include `Standard_S1`, `Standard_S2`, and `Premium_P1`.
+* `sku_name` - (Required) The SKU name for this Resource. Possible values are `Standard_S1`, `Standard_S2`, and `Premium_P1`.
 
 # For Data Sources
 * `sku_name` - The SKU name of the Resource.
@@ -976,7 +977,7 @@ The following arguments are supported:
 
 * `auto_scaling_enabled` - (Optional) Is auto scaling enabled for this Service Resource? Defaults to `true`.
 
-* `sku_name` - (Optional) The SKU name for this Service Resource. Possible values include `Standard` and `Premium`.
+* `sku_name` - (Optional) The SKU name for this Service Resource. Possible values are `Standard` and `Premium`.
 
 * `timeout_seconds` - (Optional) The timeout in seconds. Defaults to `300`.
 
@@ -1058,7 +1059,7 @@ Use informational note blocks when providing additional useful information, reco
 
 **Example - Additional information on supported values:**
 ```markdown
-* `type` - (Required) The type. Possible values include `This`, `That`, and `Other`.
+* `type` - (Required) The type. Possible values are `This`, `That`, and `Other`.
 
 -> **Note:** More information on each of the supported types can be found in [type documentation](https://docs.microsoft.com/azure/service-name/)
 ```

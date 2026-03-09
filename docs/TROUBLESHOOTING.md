@@ -476,13 +476,14 @@ This applies instructions only to Go files in the `internal/` directory.
 
 **Symptom**: After using `/docs-writer` (or the website scaffold tool), the generated docs land under `website_scaffold_tmp/docs/...` instead of `website/docs/...`.
 
-**Cause**: The docs-writer skill has a **testing/dry run mode** to avoid overwriting real docs. It can trigger when your prompt includes phrases like: `test`, `testing`, `dry run`, `scaffold-only`, or `generate into scratch`.
+**Cause**: You are in a scaffold/dry-run workflow (or explicitly requested scratch output). The docs-writer skill can scaffold into `website_scaffold_tmp` to avoid overwriting real docs.
 
 **Fix**:
-- If you want normal behavior, explicitly say you are **not** doing a dry run and ask it to scaffold to the real website root (`-website-path website`).
+- If you are updating an existing docs page and want normal behavior, ask it to **edit the existing docs file in place** and avoid requesting scaffolding/dry-run output.
 - If you intended a dry run, keep using the scratch output and diff it against the real docs:
    - Resource: `git diff --no-index website_scaffold_tmp/docs/r/<name>.html.markdown website/docs/r/<name>.html.markdown`
    - Data source: `git diff --no-index website_scaffold_tmp/docs/d/<name>.html.markdown website/docs/d/<name>.html.markdown`
+- If you are creating a brand-new docs page and want the real page created under `website/docs/**`, explicitly say you are **not** doing a dry run and ask it to scaffold/create the docs page in the real website root.
 
 ---
 
