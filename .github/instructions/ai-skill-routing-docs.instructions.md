@@ -13,8 +13,14 @@ This is required even if the user does not explicitly ask to “use the skill”
 
 ## Verification marker (assistant response only)
 
-Because use of this skill is mandatory for `website/docs/**/*.html.markdown`, the assistant's final response must include this line:
+Because use of this skill is mandatory for `website/docs/**/*.html.markdown`, the assistant's final response must include the docs-writer verification footer lines (in this exact order):
 
+Preflight complete: yes
+Skill used: docs-writer
+
+If preflight cannot be completed due to missing context, the assistant must instead output the docs-writer preflight-failed footer (and nothing else):
+
+Preflight complete: no (skill file not fully loaded; load this skill to EOF, then re-run /docs-writer)
 Skill used: docs-writer
 
 Rules:

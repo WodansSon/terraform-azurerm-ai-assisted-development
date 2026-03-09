@@ -298,7 +298,9 @@ You: /docs-writer
 ```
 
 > [!TIP]
-> **Dry run / testing:** tell Copilot you are "testing" or doing a "dry run" and it will scaffold docs into a scratch website root using `-website-path website_scaffold_tmp`.
+> **Dry run / scaffolding:** if you want a scaffolded baseline (for example when creating a brand-new docs page or when explicitly doing a dry-run scaffold), tell Copilot to **scaffold into scratch** and it will use `-website-path website_scaffold_tmp`.
+>
+> When updating an existing docs page, `/docs-writer` should edit the existing file in place by default (no scaffolding) unless you explicitly ask for scaffolding.
 >
 > Expected outputs:
 > - Resources: `website_scaffold_tmp/docs/r/<name>.html.markdown`

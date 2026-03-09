@@ -23,7 +23,7 @@ This is a **community-maintained AI enhancement** for developers working on the 
 - ✅ **AI-Powered Code Generation** - Generate Azure resources following HashiCorp patterns
 - ✅ **Intelligent Code Review** - Automated reviews using provider-specific guidelines
 - ✅ **Test Generation** - Create comprehensive acceptance tests automatically
-- ✅ **Documentation Generation** - Generate docs that match provider standards (including nested block ordering and ForceNew phrasing)
+- ✅ **Documentation Generation** - Generate docs that match provider standards with a deterministic audit→apply→re-audit workflow (including nested block ordering, Example section self-containment, and ForceNew phrasing)
 - ✅ **Best Practice Enforcement** - Real-time guidance on Azure API integration
 
 ### 🎯 Who Is This For?
@@ -199,6 +199,14 @@ AI Chat: "Create comprehensive acceptance tests for azurerm_cdn_frontdoor_profil
 ```
 AI Chat: "Create documentation following provider standards for azurerm_cdn_frontdoor_profile"
 ```
+
+> [!TIP]
+> For doc pages under `website/docs/**`, use `/code-review-docs` as a tight loop:
+> 1) run the audit
+> 2) apply the patch-ready fixes
+> 3) rerun the audit and expect no repeated Issues
+>
+> `/code-review-docs` also enforces deterministic doc-quality checks such as `hcl` fences in examples, page-self-contained examples (no undefined references), import example ID shape validation, and human-readable timeout defaults.
 
 
 ## 🎬 See It In Action

@@ -19,16 +19,18 @@ If the active editor is not a file under `website/docs/**` (for example if the a
 
 Instead, respond with:
 
-"Cannot run code-review-docs: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt."
+Exact failure output (mandatory):
+- Output exactly this one line and nothing else:
+  - `Cannot run code-review-docs: active file is not under `website/docs/**`. Open the target docs page and re-run this prompt.`
 
 Audit the **currently-open** documentation page under `website/docs/**` for:
 - AzureRM documentation standards, and
 - parity with the Terraform schema under `internal/**`.
 
-When reviewing documentation standards, treat these as authoritative:
-- `contributing/topics/reference-documentation-standards.md`
-- `.github/instructions/documentation-guidelines.instructions.md`
-- `.github/skills/docs-writer/SKILL.md` (this repo's enforcement rules)
+When reviewing documentation standards, treat the **canonical sources + precedence** as defined by:
+- `.github/instructions/docs-compliance-contract.instructions.md` (see "Canonical sources of truth (precedence)")
+
+Do not treat `.github/skills/docs-writer/SKILL.md` as a canonical rules source.
 
 This audit is **optional** and **user-invoked** (no CI enforcement).
 
@@ -37,7 +39,71 @@ Assume the user may invoke this prompt with minimal instructions (for example: "
 
 When this prompt is invoked, you must run the **entire** mandatory procedure below and you must not skip checks simply because the user did not explicitly mention them.
 
+## Determinism policy (mandatory)
+This prompt is used in a review→apply→re-review loop. To avoid run-to-run "guessing":
+
+- Do not present multiple fix options (no "either A or B"). Choose a single fix.
+- Every Issue must have a concrete, deterministic fix (no vague instruction).
+- Do not output patch-ready replacement snippets in the review output; keep fixes concise and actionable.
+
+No-snippets determinism guardrail (mandatory):
+- Not emitting snippets must NOT reduce correctness.
+- Derive fixes internally from workspace evidence (`internal/**` then `vendor/**`) and include enough literal detail in each `Fix N` to apply deterministically (exact argument names, exact ordering lists, exact enum values, and exact example `name` strings when constrained).
+- The text of `Fix N` is a user-facing instruction summary; do not treat it as the source of truth for the actual patch.
+- Evidence sources must follow the contract evidence hierarchy:
+  1) `internal/**` schema + provider implementation
+  2) `vendor/**` SDK constants/models when referenced by validation logic
+  3) existing in-repo docs/examples for tone/structure
+  4) Azure docs (Microsoft Learn) for semantics only, as a last resort
+- External/web sources must NEVER be used to infer provider validation rules, required arguments, import ID shapes, or example values.
+- External/web sources must NEVER be used as templates for Terraform example configuration blocks.
+- Azure docs may be used only for service semantics in prose/notes, as a last resort.
+- Do not invent example resources or values based on "typical" configurations. If you cannot prove a configuration/value from workspace evidence, record an Observation and cite `DOCS-EVID-001`.
+
+No repo-tool invocation (mandatory):
+- Do NOT suggest, attempt, or instruct running any repository tooling as part of this audit.
+  - This includes (but is not limited to) any docs schema validators, scaffolding tools, linters/formatters, or generator commands (for example `go run ...`, `make docs`, `website-scaffold`, `documentfmt`, `document-lint`, or similar).
+- All findings and fixes must be derived from static workspace evidence only (`website/docs/**`, `internal/**`, and `vendor/**` when referenced by validation logic).
+- Prefer the smallest deterministic fix that removes the Issue and is consistent with the rules in this prompt and HashiCorp's documentation standards (for example `contributing/topics/reference-documentation-standards.md`).
+
+No TODO lists / plans (mandatory; output determinism):
+- Do not output TODO lists, task lists, plans, or checklists.
+- Do not use checkbox syntax (e.g. `- [ ]` / `- [x]`).
+- Do not add extra sections like "Plan", "Todo", "Steps", or "Checklist".
+- The only allowed output is the 9-heading review template defined in this prompt.
+
+No preamble / no progress narration (mandatory):
+- Do NOT output any sentences before the 9-heading review.
+- The first character of your normal (non-hard-stop) output MUST be `#`.
+- Do NOT output progress narration such as "loaded most of the contract", "next I will", "now I will", or similar.
+- If you cannot complete the audit (for example contract not loaded to EOF), follow the exact hard-stop output rules below.
+
 ## ⚡ Mandatory procedure
+
+### Optional: VS Code Todos progress (must not regress)
+This prompt may use the VS Code Todos UI (via the `manage_todo_list` tool) to show progress.
+
+Rules (mandatory):
+- If you create a Todo list, you MUST keep it updated as you progress.
+- You MUST finish by marking all Todo items as `completed` before emitting the final 9-heading review output.
+- Do NOT leave a Todo list with items stuck in `not-started` or `in-progress` at the end.
+- If you are not going to update the Todo list, do not create it.
+
+### 0) Load canonical standards
+
+- If `contributing/topics/reference-documentation-standards.md` exists in the current workspace, read it and apply it.
+- Read and apply `.github/instructions/documentation-guidelines.instructions.md`.
+- Read and apply `.github/instructions/docs-compliance-contract.instructions.md` **to EOF** (entire file).
+  - EOF marker verification (mandatory): the last non-empty line of the loaded contract MUST be `<!-- DOCS-CONTRACT-EOF -->`.
+    - If you do not see that marker, treat the contract as not fully loaded and hard-stop.
+  - Hard-stop: if you cannot load the contract file to EOF (for example due to partial context), do not proceed with the audit.
+  - In that case, exact failure output (mandatory):
+    - Output exactly this one line and nothing else:
+      - `Cannot run code-review-docs: docs compliance contract not fully loaded. Load `.github/instructions/docs-compliance-contract.instructions.md` to EOF and re-run this prompt.`
+  - Output rule (mandatory): do not narrate this step.
+    - Do not say the contract is long.
+    - Do not say you are continuing to read it.
+    - Either complete the audit normally, or hard-stop with the exact failure text above.
 
 ### 1) Identify the Terraform object from the doc path
 - Resource docs: `website/docs/r/<name>.html.markdown` → `azurerm_<name>`
@@ -62,185 +128,101 @@ From the schema, extract:
 - ForceNew fields (`ForceNew: true`)
 - constraints that affect docs (e.g. `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, validations), if clearly visible
 
-**Mandatory: extract cross-field schema constraints**
-- Enumerate any cross-field constraints present in the schema (when visible), including:
-  - `ConflictsWith`
-  - `ExactlyOneOf`
-  - `AtLeastOneOf`
-  - `RequiredWith`
-  - `RequiredWithAll`
-  - `AtLeastOneOf` / `AtMostOneOf`-style sets (when represented via helper wrappers)
-- Record each constraint as a human-readable rule (for example: "exactly one of `a`, `b`", "`x` conflicts with `y`", "at least one of `p`, `q`", "`m` is required with `n`").
-- Treat these schema cross-field constraints as **documentation-required** because they change valid configuration.
+**Mandatory: validate all example-used fields against schema evidence (not just `name`)**
+- Enumerate every argument assignment used in any Terraform configuration block under headings starting with `Example` (for example: `name = ...`, `sku_name = ...`, `ttl = ...`, nested blocks, and meta-arguments like `depends_on`).
+- Mandatory scope expansion (prevents skipped auxiliary blocks):
+  - This validation applies to **every** Terraform `resource` and `data` block that appears in any `Example*` section, not only the primary object being documented.
+  - For each such block type (for example `azurerm_resource_group`, `azurerm_dns_zone`, etc.), you MUST locate its schema under `internal/**` and validate the example-used fields against that schema/implementation evidence.
+- For each referenced field, locate and record the relevant schema/implementation evidence that constrains it, including (when present):
+  - `ValidateFunc` (regex/length/charset/enums)
+  - `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith`
+  - Diff-time / CustomizeDiff constraints and any helper validation functions
+- Use that evidence to verify the example values are valid and pasteable.
 
-**Mandatory reporting requirement (no silent passes):**
-- Explicitly list the cross-field schema constraints you found.
-- If none are present/visible, explicitly state: `No cross-field schema constraints found.`
-- For each constraint, include schema evidence: schema file path + the argument(s) involved.
+Vendored constants allowance (mandatory):
+- If the schema/validation logic references SDK constants/enums (e.g. cipher suite constants), use `vendor/**` as supporting evidence for the allowed values.
 
-Then, locate and extract **diff-time validation / conditional requirement** facts from the provider implementation under `internal/**`:
-- Search for `CustomizeDiff` and record any user-facing conditional requirements (for example: "required when X is set", "must be set when Y", "only valid when Z").
-- If the schema uses helper functions (for example `CustomizeDiff:` calling other functions), follow them until you find the actual conditions.
-- Treat these diff-time rules as **documentation-required constraints** when they affect successful `plan/apply`.
+**Mandatory: deterministic example naming + ValidateFunc evidence (no invented names):**
+- If you must introduce new Terraform blocks into an example to satisfy self-containedness (`DOCS-EX-003`), any name-like string values you add or rename MUST follow `DOCS-EX-015` (derive from the Terraform type suffix; do not make up values like `example-route`).
+- If the value is constrained by `ValidateFunc`/validation logic, you MUST derive a compliant deterministic value from workspace evidence.
+  - Primary: `internal/**` validation logic.
+  - Supporting (when referenced): `vendor/**` SDK constants/enums.
+  - Guardrail: if you cannot prove the allowed charset/length/enum from workspace evidence, do not guess a placeholder; record an Observation and cite `DOCS-EVID-001`.
 
-**Mandatory reporting requirement (no silent passes):**
-- Explicitly list the diff-time constraints you found.
-- If none are present/visible, explicitly state: `No diff-time constraints found.`
-- For each diff-time constraint, include evidence: file path under `internal/**` + the function name (or closest identifiable snippet reference).
+**Mandatory: apply `DOCS-EX-015` only when a rename is required (contract-accurate):**
+- `DOCS-EX-015` is a deterministic *derivation rule* for replacement values when you must propose/apply a rename.
+- Do NOT treat `DOCS-EX-015` as a blanket requirement that every Example `name = "..."` literal must equal the type-derived value.
+- When you do need to rename a name-like value (for example to satisfy `DOCS-EX-007`, or to replace an invalid value per `DOCS-EX-016`, or when adding/updating scaffolding blocks for self-containedness), derive the new value per `DOCS-EX-015` and ensure it is ValidateFunc-safe per `DOCS-EX-016`.
 
-Then, locate and extract **implicit behavior constraints** from expand/flatten logic under `internal/**`:
-- Look for behavior that is not directly represented as an argument constraint, but changes resource behavior based on configuration shape.
-- Common patterns:
-  - Feature enablement/disablement toggled purely by presence/absence of a nested block or list/set length (e.g. 0 blocks => disabled, 1+ blocks => enabled).
-  - Provider hardcodes an Azure API value because only one value is supported and it is not exposed as a schema field.
-- Treat these as **documentation-required notes** when they are user-visible and likely to surprise users.
+Generalized deterministic-name preference (nit-level; evidence-gated):
+- For any Terraform `resource`/`data` block in `Example*` sections, when a `name = "..."` **string literal** is present:
+  - If the value does not follow `DOCS-EX-007` (missing `example-`/`existing-` where feasible), record a 🔵 Low nit Issue and propose a deterministic rename per `DOCS-EX-015`.
+  - If the value follows the prefix convention but does not match the `DOCS-EX-015` type-derived value, you MUST record a 🔵 Low nit Issue recommending renaming to the type-derived value **only when** schema/implementation evidence proves that the derived value is valid for that specific field (`DOCS-EX-016`).
+    - If the field has domain/label-style constraints (for example DNS zone names, hostnames) and the type-derived value cannot be proven valid, do not suggest an exact-match rename; keep it as-is and, if needed, record an Observation per `DOCS-EVID-001`.
 
-**Mandatory reporting requirement (no silent passes):**
-- Explicitly list the implicit behavior constraints you found.
-- If none are present/visible, explicitly state: `No implicit behavior constraints found.`
-- For each, include evidence: file path under `internal/**` + function name/snippet reference.
+**Mandatory: evidence-gated renames (prevents invalid “fixes”):**
+- You MUST NOT propose or apply a rename for any Example string literal (including `name` and other name-like fields) unless you can cite schema/implementation evidence for that specific field’s constraints (for example `ValidateFunc`, enum validation, length bounds, charset/regex).
+- If you cannot prove the replacement value is valid for that field from `internal/**` (and `vendor/**` only when referenced by validation logic), do NOT guess a “better” example value; record an Observation and cite `DOCS-EVID-001`.
+- This evidence gate applies even to nit-level example naming conventions (`DOCS-EX-007`) and deterministic derivation (`DOCS-EX-015`).
 
-### 3.5) Coverage preflight (no silent skips)
-- Before auditing, **enumerate every doc section** you will cover in this review (e.g. Example Usage, Arguments Reference, each nested block section, Attributes Reference, Timeouts, Import).
-- If any required section is missing from the doc (based on the doc type rules below), **stop** and report it as an Issue.
-- Build a quick **schema-to-doc map**:
-  - For each required argument, optional argument, and computed attribute, explicitly mark: `documented` or `missing`.
-  - If any required argument or computed attribute is missing, mark the review as **incomplete coverage** and report those missing items under Issues.
-- Do **not** proceed with fixes until coverage is complete (missing items must be listed first).
+**Mandatory: internal example validation (no silent skip; compact output):**
+- Perform the full validation described above, but do not print a full per-field matrix.
+- Output rule (default/compact):
+  - Only surface validation failures as **Issues** (with schema/implementation evidence + a concrete fix step).
+  - In `## 🟡 **OBSERVATIONS**`, include at most one short line summarizing example validation status, for example: `Example validation: 0 failures` or `Example validation: 3 failures (see Issues)`.
 
-### 4) Audit the documentation for standards + parity
+### 3.5) Extract additional evidence (compact; contract-driven)
+In addition to the schema snapshot above, extract and report (or state `none` for each):
+- **Next-major deprecated fields**: detect next-major deprecations from `internal/**` (feature flag blocks / `Deprecated:` / typed model tags).
+- **Cross-field constraints**: from schema (`ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`, etc.).
+- **Diff-time constraints**: follow the `CustomizeDiff` call chain to the actual condition logic.
+- **Implicit behavior constraints**: expand/flatten behavior that changes semantics based on block presence/shape.
 
-#### A) Formatting and structure
-Validate:
-- Frontmatter includes `subcategory`, `layout`, `page_title`, `description`
-- H1 matches the doc type:
-  - Resources: `# azurerm_<name>`
-  - Data Sources: `# Data Source: azurerm_<name>`
+Evidence requirements:
+- Always cite `internal/**` file path + function/helper name for any diff-time/implicit behavior claim.
+- Use `vendor/**` only as supporting evidence when validation logic references SDK constants/enums.
 
-**Resource vs Data Source hard rules (must enforce):**
+Doc requirements (contract-driven):
+- Any constraint that affects valid config must be documented as notes per `DOCS-NOTE-*`.
+- If evidence cannot be proven, do not guess; record an Observation per `DOCS-EVID-001`.
 
-- **Resources** (`website/docs/r/**`)
-  - Must include: Example Usage, Arguments Reference, Attributes Reference, Import
-  - Timeouts: required **only if** the resource schema defines timeouts (look for `Timeouts:` in the resource implementation)
+### 4) Audit the documentation (contract-driven)
+Audit the active docs page against `.github/instructions/docs-compliance-contract.instructions.md`.
 
-- **Data Sources** (`website/docs/d/**`)
-  - Must include: Example Usage, Arguments Reference, Attributes Reference
-  - Must **not** include: Import
-  - Timeouts: required **only if** the data source schema defines timeouts (look for `Timeouts:` in the data source implementation)
+Full-coverage rule (mandatory; handles large docs without user guidance):
+- You MUST audit the entire page end-to-end.
+- The user MUST NOT have to tell you which sections to check.
+- Do not ask the user to "scope" the audit to specific sections as a workaround for page length.
+- If the page is large, you MUST still cover all required sections by doing internal passes (below) rather than skipping content.
+- Output rule: do not mention page length or reading progress.
 
-**Timeouts link standard (new vs existing docs):**
-- When a Timeouts section is present, validate the link uses the current format for **new** documentation pages:
-  - `https://developer.hashicorp.com/terraform/language/resources/configure#define-operation-timeouts`
-- If the page uses the legacy Terraform.io link (for example `https://www.terraform.io/language/resources/syntax#operation-timeouts`):
-  - If the docs file appears to be **newly added** in git (e.g. `git status` shows it as untracked/added), mark this as an **Issue** and fail the relevant standards check.
-  - If the docs file already existed (modified but not newly added), record this as an **Observation** (existing pages may keep the older link for consistency).
-  - If you cannot determine whether the file is new vs existing from the available context, default to **Observation**.
+Internal multi-pass audit (mandatory):
+1) **Index pass (internal only)**: build a mental index of major headings and block subsections.
+2) **Structure pass**: enforce `DOCS-FM-*` and `DOCS-STRUCT-*` (frontmatter, required sections, section order).
+    - Mandatory exact-intro checks (contract-driven; prevents tiny drift):
+      - Under `## Attributes Reference`, the intro line MUST be exactly: `In addition to the Arguments listed above - the following Attributes are exported:` (hyphen form, not a comma).
+3) **Arguments/Attributes pass**:
+    - Top-level ordering and coverage (`DOCS-ARG-*`, `DOCS-ATTR-*`)
+    - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
+    - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
+    - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
+      - Trigger (mandatory; prevents misses): if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
+      - Note format (mandatory): the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
+4) **Examples pass**: enforce `DOCS-EX-*` (fences, self-containedness, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
+5) **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
-#### B) Arguments Reference parity and ordering
-- All schema required args must be documented
-- Documented args must exist in schema
-- **Schema shape parity (block vs inline):** docs must match the schema's structural shape.
-  - If schema defines an argument as a **nested block** (typically `TypeList`/`TypeSet` with `Elem: &Resource{Schema: ...}` and `MaxItems: 1` for single blocks), docs must describe it as a `... block` and include a section like: "A `${block}` block supports the following:" listing the nested fields.
-  - If schema defines an argument as a **scalar/inline field** (`TypeString`/`TypeBool`/`TypeInt`/etc.), docs must not describe it as a block and must not document nested subfields under it.
-  - If schema defines an argument as a **collection of primitives** (`TypeList`/`TypeSet` with `Elem: &Schema{Type: ...}`), docs should describe it as a list/set of values (not as a block with named subfields).
-  - If schema defines an argument as a **map** (`TypeMap`), docs must describe it as a map and not as a block.
-  - If docs describe `${arg}` as a block but schema indicates `${arg}` is an inline field (common when blocks have been flattened), mark as a parity failure and suggest updating the docs to reflect the flattened field shape.
-- Argument ordering must follow `contributing/topics/reference-documentation-standards.md`:
-  1. `name` (if present)
-  2. `resource_group_name` (if present)
-  3. `location` (if present)
-  4. remaining required arguments (alphabetical)
-  5. optional arguments (alphabetical), with `tags` last (if present)
-- **Resources only:** for every ForceNew field in schema, the argument description must end with a ForceNew sentence.
-  - Use the standard generic sentence: `Changing this forces a new resource to be created.`
-  - Audit rule: if a ForceNew sentence is missing entirely, mark as an **Issue**.
-  - If a ForceNew sentence is present but does not match the standard generic sentence, mark as an **Issue** and suggest rewriting it to the standard form.
-- **Data sources:** do not use "Changing this forces a new … to be created" wording (data sources do not create resources)
-- If schema validations constrain values (e.g. `validation.StringInSlice`, `validation.IntBetween`), docs must include "Possible values …" using the standard phrasing.
-- Standard phrasing preference: use `Possible values include ...` (avoid `Valid values are ...`, `Valid options are ...`, and prefer rewriting `Possible values are ...` to `Possible values include ...` when touched).
-- If schema defines a default value, docs must include "Defaults to `...`."
+If you cannot confidently verify a section due to missing workspace evidence, do not guess; record an Observation and cite `DOCS-EVID-001`.
 
-**Nested block arguments (ordering rules):**
-- For each block subsection under `## Arguments Reference` (e.g. `A <block> block supports the following:`), verify nested field ordering follows the same contributor rules:
-  1. Required nested arguments first (alphabetical).
-  2. Optional nested arguments next (alphabetical), with `tags` always last if present.
-  3. If nested arguments include ID segments such as `name` / `resource_group_name`, or include `location`, those should appear first in the same order used for top-level arguments.
-  4. Apply the same rules recursively for nested blocks inside blocks.
+Output rules (keep compact; no snippets):
+- **Issues**: must map to `DOCS-*` rule IDs and include schema/implementation evidence.
+- **Minimal fixes**: `Fix N` steps only (no fenced/indented blocks); include exact ordering lists and exact constrained literal values when needed.
+- **Notes coverage**: in Observations, include a compact "required notes coverage" summary (constraints extracted vs documented notes).
 
-#### C) Attributes Reference parity
-- All schema computed attributes must be present in Attributes Reference
-- Ordering must follow `contributing/topics/reference-documentation-standards.md`: `id` first, then remaining attributes alphabetical
-- Attribute descriptions must be concise and must not include possible/default values
-
-**Nested block attributes (ordering rules):**
-- For each block subsection under `## Attributes Reference` (e.g. `A <block> block exports the following:`), verify nested attribute ordering is:
-  1. the `id` attribute (if present)
-  2. the remaining nested attributes, sorted alphabetically
-
-#### D) Notes / note notation
-- All note blocks must use the exact standard format: `(->|~>|!>) **Note:** ...`
-- Flag invalid/legacy note styles (e.g. `Important:`, `NOTE:`, missing marker, wrong casing)
-- **Semantic validation (marker must match meaning):** validate that the chosen marker is appropriate for what the note says.
-  - `->` (informational): tips, extra context, recommendations, external links, clarifications that do not prevent errors or warn about irreversible impact.
-  - `~>` (warning): guidance to avoid configuration errors or surprising behavior that is *reversible* (e.g. conditional requirements, conflicts, exactly-one-of, ForceNew behavior, API limitations that block create/update, deprecation/retirement where a configuration will error).
-  - `!>` (caution): irreversible or high-impact guidance (e.g. data loss, permanent deletion, cannot be undone/disabled, security exposure with serious consequences).
-  - **ForceNew-related guidance** should generally be `~> **Note:**` (do not use `->` for ForceNew warnings).
-  - If a note’s content indicates one marker but another is used, mark **Note Notation** as fail and add an Issue suggesting the correct marker.
-- Breaking changes should not be documented as notes (they belong in the changelog/upgrade guide)
-
-**Note correctness (content must match code/schema):**
-- When a note claims a conditional requirement, conflict, implicit behavior, or a forced value, validate it against what you extracted from:
-  - schema cross-field constraints
-  - `CustomizeDiff`/diff-time validation
-  - implicit behavior constraints (expand/flatten)
-- If a note is **contradictory** or materially **incomplete** compared to the extracted rule(s), mark this as an **Issue**.
-  - Example: a note says "enabled when zero blocks" but code says "disabled when zero blocks".
-  - Example: a note lists only one of two allowed/required cases.
-- Prefer minimal edits: rewrite the note text to match the extracted rule and keep the marker appropriate (`~>` for reversible but error-prone constraints).
-- **Placement rule:** if a note applies to a single field, place it inline with that field. If it applies to multiple fields or a combined behavior, place it after the relevant list to preserve ordering.
-
-**Conditional requirements (MUST be documented as notes):**
-- If the schema (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`), `CustomizeDiff`/diff-time validation, or implicit behavior constraints (from expand/flatten) enforce cross-field/conditional behavior, the docs must include a `~> **Note:**` that describes the condition in a user-actionable way.
-- If such constraints exist in code but are not documented as notes, mark as an **Issue**.
-
-**Required-notes coverage checklist (MUST produce):**
-- Build a checklist of "required notes" from these sources:
-  1) schema cross-field constraints you extracted (for example `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith*`)
-  2) diff-time constraints you extracted (from `CustomizeDiff` and helper functions)
-  3) implicit behavior constraints you extracted (from expand/flatten logic)
-- For each item in the checklist, explicitly state whether the docs contain a corresponding note.
-  - If present: record the doc section/argument it appears under and a short summary.
-  - If present but incorrect/incomplete: mark as an **Issue** and suggest corrected wording.
-  - If missing: record what note should be added and mark it as an **Issue**.
-- Put the checklist under `## 🟡 **OBSERVATIONS**` (even when everything passes) so missing notes are easy to spot.
-
-**Mandatory reporting requirement (no silent passes):**
-- Enumerate **all** note blocks found in the doc (including ones that are fully compliant).
-- If there are no notes, explicitly state: `No note blocks found.`
-- Put this enumeration under the `## 🟡 **OBSERVATIONS**` section (even when `Note Notation` is `pass`).
-- For each note, include: marker (`->`/`~>`/`!>`), the heading/section it appears in (or the argument/attribute name), and a short one-line summary of what it says.
-
-#### E) Example Usage correctness
-- Example must include all schema required args
-- Example must not include a `terraform` or `provider` block
-- Example should be functional and self-contained (no undefined references)
-- Resource/data source instance name should generally be `example`
-- Resources: for user-supplied name-like argument values (for example `name = "..."`), prefer values prefixed with `example-` (subject to service naming constraints).
-  - This does not apply to Terraform block labels like `resource "..." "example"`.
-  - Prefer deriving the suffix from the specific resource type of the block (e.g. `azurerm_spring_cloud_service` -> `example-spring-cloud-service`).
-  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
-- Data sources: prefer descriptive `existing-...` placeholders for required identifiers.
-  - If this convention is not followed, record it as an **Observation** (not an Issue) and do not fail compliance solely for this.
-- No hard-coded secrets (passwords/tokens/keys). Use `variable` with `sensitive = true` or a generator pattern.
-- Example references must be internally consistent
-
-#### F) Language
-- Fix obvious grammar/spelling and consistency issues
-
-#### G) Link hygiene
-- Documentation links should be locale-neutral.
-- Flag links containing locale path segments such as `/en-us/`, `/en-gb/`, `/de-de/`, etc.
-- Suggested fix is to remove the locale segment (e.g. prefer `https://learn.microsoft.com/azure/...` over `https://learn.microsoft.com/en-us/azure/...`) unless there is a strong reason the localized link is required.
+No TODO/tasklist rule (mandatory; avoids confusing stale checklists):
+- Do NOT output Markdown task lists anywhere (no `- [ ]` / `- [x]`).
+- Do NOT output a separate "TODO" section or checklist.
+- The actionable task list for end users is `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`.
+- The status checklist is `## 📊 **DOC STANDARDS CHECK**` (Pass/Fail rows).
 
 ## ✅ Review output format (use this exact structure)
 
@@ -249,6 +231,58 @@ Output must be **rendered Markdown**.
 - Do **not** wrap the review output in triple-backtick code fences.
 - Use real headings, bullets, and bold text so it renders in chat.
 - Use the section headings **exactly as written below** (including the emoji). Do not rename headings or remove emoji.
+
+Hard determinism rules (mandatory):
+- Output must contain exactly one instance of each heading listed below, in this exact order:
+  1) `# 📋 **Code Review - Docs**: ${terraform_name}`
+  2) `## 📌 **COMPLIANCE RESULT**`
+  3) `## 🧾 **SCHEMA SNAPSHOT**`
+  4) `## 📊 **DOC STANDARDS CHECK**`
+  5) `## 🟢 **STRENGTHS**`
+  6) `## 🟡 **OBSERVATIONS**`
+  7) `## 🔴 **ISSUES** (only actual problems)`
+  8) `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`
+  9) `## 🏆 **OVERALL ASSESSMENT**`
+- Do not output `## 🏆 **OVERALL ASSESSMENT**` until after you have completed `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` (all fix steps included).
+
+Heading emission guardrail (mandatory; prevents accidental duplicate headings):
+- You MUST NOT output any of the 9 required heading lines anywhere except as the actual section headings.
+- Do NOT start any non-heading line with `#` or `##`.
+- If you need to refer to a required section in prose (for example in an Issue `Location`), write it as plain text like `OVERALL ASSESSMENT section` (no leading `#`).
+
+Two-phase generation rule (mandatory; enables validation without duplication):
+- You MUST perform two internal passes:
+  1) Draft pass (internal only): gather evidence and draft the review structure.
+  2) Validation pass (internal only): re-check the draft for correctness, missing evidence, and contract mapping; then trim any duplicate text.
+- Output rule: emit the structured review **exactly once** (a single 9-heading review) after the validation pass.
+- Do not restart the template, do not repeat any headings, and do not re-emit `## 🏆 **OVERALL ASSESSMENT**`.
+- If you realize you forgot content during drafting, fix it internally before you emit output (do not append a second mini-review).
+
+Atomic output buffering rule (mandatory; prevents multi-pass leakage):
+- Treat both passes as strictly internal. Do NOT emit any portion of the 9-heading review during Draft pass or mid-Validation pass.
+- Before emitting any user-visible text, assemble the entire 9-heading review in an internal buffer (all sections, including `## 🏆 **OVERALL ASSESSMENT**` and, when applicable, the final `Do you want me to apply a patch?` line).
+- Emit the buffer exactly once as the final output. Do not "stream" partial sections, then revise by reprinting headings.
+- If you detect any duplicate headings while assembling the buffer, delete the duplicates before emitting (keep only the first complete 9-heading review).
+
+Post-review patch question rule (mandatory; prevents restarts but keeps the handoff):
+- You MUST include exactly one patch handoff question when there is at least one Issue:
+  - `Do you want me to apply a patch?`
+- Place it immediately after the OVERALL ASSESSMENT section.
+- It must appear at most once, must not be a heading, and must be the last non-footer line you generate.
+  - Absolute terminator: after outputting `Do you want me to apply a patch?`, stop generating prompt output immediately (the docs-writer skill may append its verification footer externally).
+  - Formatting guardrail: the patch question MUST be on its own line and MUST end with a newline so it cannot concatenate with any following content.
+
+Docs-writer footer interaction rule (mandatory; prevents duplicated assessments):
+- The docs-writer skill may append a verification footer after your output:
+  - `Preflight complete: ...`
+  - `Skill used: docs-writer`
+- You MUST NOT output these lines yourself.
+- Treat those lines as an external trailer. Your job is to end cleanly before them.
+- If you ever see a line starting with `Preflight complete:` or `Skill used:` in the output (even if appended externally), stop generating immediately and do not emit any further headings or content.
+
+Skill footer rule (mandatory; prevents duplicate sections):
+- Do not output `Preflight complete:` or `Skill used:` lines anywhere in the structured review.
+- The docs-writer skill appends its verification footer after the review output; emitting these lines inside the review causes template restarts and duplicated sections.
 
 
 # 📋 **Code Review - Docs**: ${terraform_name}
@@ -262,6 +296,7 @@ Output must be **rendered Markdown**.
 - **Schema File(s)**: ${schema_file_paths}
 - **Required Args**: ${required_args}
 - **Optional Args**: ${optional_args}
+- **Next-major Deprecated Fields**: ${next_major_deprecated_fields}
 - **Computed Attributes**: ${computed_attrs}
 - **ForceNew Fields**: ${force_new_fields}
 - **Cross-field Constraints**: ${cross_field_constraints}
@@ -269,17 +304,24 @@ Output must be **rendered Markdown**.
 - **Implicit Behavior Constraints**: ${implicit_behavior_constraints}
 
 ## 📊 **DOC STANDARDS CHECK**
-- **Frontmatter**: pass/fail + missing keys (if any)
-- **Section Order**: pass/fail + missing sections (if any)
-- **Argument Ordering**: pass/fail (`name`, `resource_group_name`, `location` first when present, then remaining required alphabetical, then optional alphabetical, `tags` last)
-- **Schema Shape**: pass/fail (docs describe blocks vs inline fields consistently with schema)
-- **Attributes Coverage**: pass/fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)
-- **ForceNew Wording**: pass/fail (resources only, missing “Changing this forces…” sentence)
-- **Conditional Notes**: pass/fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
-- **Note Notation**: pass/fail (->/~>/!> exact format + marker meaning matches note content)
-- **Note Accuracy**: pass/fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
-- **Link Locales**: pass/fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: pass/fail (functional/self-contained, no hard-coded secrets; naming conventions like `example-...` are observations)
+- **Frontmatter**: Pass/Fail + missing keys (if any)
+- **Section Order**: Pass/Fail + missing sections (if any)
+- **Argument Ordering**: Pass/Fail (ID segments first per contract ordering, `location` next when present, remaining required alphabetical, then optional alphabetical, `tags` last)
+- **Argument Bullet Conciseness**: Pass/Fail (long bullets split into inline notes per `DOCS-ARG-011`)
+- **Nested Block Field Ordering**: Pass/Fail (nested args: required alpha then optional alpha, `tags` last via `DOCS-SHAPE-006`; nested attrs: `id` first then alpha via `DOCS-ATTR-005`)
+- **Schema Shape**: Pass/Fail (docs describe blocks vs inline fields consistently with schema)
+- **Attributes Coverage**: Pass/Fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)
+- **ForceNew Wording**: Pass/Fail (resources only, missing “Changing this forces…” sentence)
+- **Conditional Notes**: Pass/Fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
+- **Note Notation**: Pass/Fail (->/~>/!> exact format + marker meaning matches note content)
+- **Note Accuracy**: Pass/Fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
+- **Timeouts Readability**: Pass/Fail (convert defaults >60 minutes to hours)
+- **Import Text**: Pass/Fail (resources only, resource-specific sentence per `DOCS-IMP-002`)
+- **Import Example**: Pass/Fail (resources only, ID shape matches importer/parser)
+- **Link Locales**: Pass/Fail (no locale segments like `/en-us/` in URLs)
+- **Examples**: Pass/Fail (functional/self-contained, no hard-coded secrets; naming conventions are low-priority nit issues with fix steps, but do not make the page `Invalid` by themselves)
+- **Example Invariants**: Pass/Fail (preserve example-adjacent notes per `DOCS-EX-018`, preserve existing `depends_on` per `DOCS-EX-004`, do not replace references with invented literals per `DOCS-EX-019`, ensure transitive self-containedness per `DOCS-EX-020`, preserve reference semantics per `DOCS-EX-021`)
+- **Example `name` Values**: Pass/Fail (nit-level; Example `name` values follow `DOCS-EX-007` where feasible and satisfy `DOCS-EX-016` constraints; when a rename is required, the replacement value is derived deterministically per `DOCS-EX-015`)
 
 ## 🟢 **STRENGTHS**
 - ...
@@ -291,38 +333,76 @@ Output must be **rendered Markdown**.
 
 ## 🔴 **ISSUES** (only actual problems)
 
+Rule tagging (mandatory; prevents drift):
+- Every Issue MUST include one or more `DOCS-...` rule IDs from `.github/instructions/docs-compliance-contract.instructions.md`.
+- If you cannot map a finding to a contract rule, do not report it as an Issue. Instead, treat it as a suggested improvement or update the contract (out of band).
+
 ### ${🔧/⛏️/❓} ${summary}
 * **Priority**: 🔥 Critical / 🔴 High / 🟡 Medium / 🔵 Low / ✅ Good
 * **Location**: ${doc_section_or_argument_name}
+* **Rule ID(s)**: ${DOCS-...}
 * **Schema Evidence**: ${what_in_schema_proves_this}
 * **Problem**: clear description
-* **Suggested Fix**: minimal edit/snippet
+* **Suggested Fix**: one sentence only (single line), referencing the relevant `Fix N` in `## 🛠️ **MINIMAL FIXES (PATCH-READY)**`.
+  - Do not include any replacement text, any bullet lists, or any multi-step "from/to" descriptions here.
+
+Hard guardrail (mandatory):
+- Do not include any multi-line snippets anywhere in `## 🔴 **ISSUES**` (no fenced code blocks, no indented code blocks, no "from/to" blocks, no embedded replacement paragraphs).
+- If you accidentally drafted multi-line snippet content inside Issues, delete it and move the detailed fix steps into `## 🛠️ **MINIMAL FIXES (PATCH-READY)**` before emitting output.
 
 ## 🛠️ **MINIMAL FIXES (PATCH-READY)**
-Provide a minimal set of edits/snippets that fix all 🔴 Issues. Keep changes small and targeted.
+This section is **mandatory** and must contain concise, deterministic fix steps for every Issue.
+
+Determinism rules (mandatory):
+- Do not include code blocks or patch snippets.
+- Provide exactly one fix path per Issue (no A/B options).
+- Use `### Fix N: <short summary>` headings.
+- Each fix must be implementable without guessing (name exact section/argument/block and what to add/change/remove).
+
+If there are **no Issues**, write exactly one bullet:
+- `No changes required.`
 
 ## 🏆 **OVERALL ASSESSMENT**
 
-If any Issues are found, end the response with:
+Content rules (user-facing only; do not include internal process notes here):
+- Start with a single-line verdict: `**Result:** Pass` or `**Result:** Needs Changes`
+- Insert exactly one blank line after the verdict line.
+- Then output a patch plan summary that describes what the proposed patch would change (future/conditional tense).
+  - Do NOT write this in a way that implies the doc is already fixed.
+  - This summary must align with the Issues and `Fix N` steps (no new work items).
+- Then add one short paragraph summarizing what must change to become compliant.
 
-"Do you want me to apply a patch?"
-One paragraph summary of what to change to become compliant.
+Hard stop rule (mandatory; prevents duplicate sections):
+- After the final sentence of this section:
+  - If there are Issues: output exactly one final line `Do you want me to apply a patch?` and then stop.
+  - If there are no Issues: stop generating immediately.
+  - Do not emit anything after that (no footers, no extra headings, no second assessment).
 
-### Notes
-- Always cite the schema file path(s) you used.
-- Prefer referencing doc section headings / argument names over line numbers.
-- Do not invent schema fields; if schema cannot be located, explicitly say so and run a docs-only standards check.
+Post-pass trimming rule (mandatory):
+- Before finalizing the response, scan your draft output and ensure:
+  - `## 🏆 **OVERALL ASSESSMENT**` appears exactly once
+  - nothing appears after the end of `## 🏆 **OVERALL ASSESSMENT**` except (when Issues exist) a single final line: `Do you want me to apply a patch?`
+  - when Issues exist: `Do you want me to apply a patch?` appears exactly once
+  - when Issues exist: no headings (`#` or `##`) appear after the patch question line
+  - if any duplicate content exists (fix steps, headings, repeated assessment), delete the duplicates and keep only the first complete 9-heading review.
 
-### Individual Suggestions Format (legend)
+Patch plan summary (mandatory when Issues exist; output after the verdict):
+- Output this exact line:
+  - `**Fix coverage:** All reported 🔴 Issues have concrete fix steps in MINIMAL FIXES.`
+- Then output 3–6 bullets describing what the patch would change, using future/conditional tense (e.g. "will", "would").
+  - These bullets must be specific (name the section/argument/block) and must not include code.
+  - The bullets must not claim execution (avoid "fixed", "updated", "corrected" without qualifiers).
+  - Allowed phrasing examples: "Will update …", "Would make …", "Will document …", "Would normalize …".
+  - If there are more than 6 Issues/Fix steps:
+    - Group related fixes into themes so you can stay within 3–6 bullets.
+    - Include one final catch-all bullet that references the remaining items, for example:
+      - ``And would apply the remaining fixes listed in `MINIMAL FIXES` above.``
+      - (Optional when helpful) You may include a Fix range, but prefer plain language.
+    - Do not omit major themes (schema parity, examples, ordering/notes/import/timeouts).
 
-**Priority System:** 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
+Spacing rule (mandatory; output formatting):
+- When Issues exist and you output `Do you want me to apply a patch?`, insert exactly one blank line immediately before that question.
 
-**Review Type Icons:**
-* 🔧 Change request - Standards/parity issues requiring fixes
-* ❓ Question - Clarification needed about schema intent or doc meaning
-* ⛏️ Nitpick - Minor style/consistency issues (typos, wording, formatting)
-* ♻️ Refactor suggestion - Structural doc improvements (only when necessary)
-* 🤔 Thought/concern - Potential mismatch or ambiguous behavior requiring discussion
-* 🚀 Positive feedback - Excellent documentation patterns worth highlighting
-* ℹ️ Explanatory note - Context about schema behavior or provider conventions
-* 📌 Future consideration - Larger scope items for follow-up
+Formatting rules:
+- If there are Issues, the last non-footer line you generate must be exactly: `Do you want me to apply a patch?`
+- If there are no Issues, the last non-footer line you generate must be the last line of `## 🏆 **OVERALL ASSESSMENT**`.
