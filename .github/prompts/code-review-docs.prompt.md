@@ -199,15 +199,15 @@ Full-coverage rule (mandatory; handles large docs without user guidance):
 Internal multi-pass audit (mandatory):
 1) **Index pass (internal only)**: build a mental index of major headings and block subsections.
 2) **Structure pass**: enforce `DOCS-FM-*` and `DOCS-STRUCT-*` (frontmatter, required sections, section order).
-  - Mandatory exact-intro checks (contract-driven; prevents tiny drift):
-    - Under `## Attributes Reference`, the intro line MUST be exactly: `In addition to the Arguments listed above - the following Attributes are exported:` (hyphen form, not a comma).
+    - Mandatory exact-intro checks (contract-driven; prevents tiny drift):
+      - Under `## Attributes Reference`, the intro line MUST be exactly: `In addition to the Arguments listed above - the following Attributes are exported:` (hyphen form, not a comma).
 3) **Arguments/Attributes pass**:
-  - Top-level ordering and coverage (`DOCS-ARG-*`, `DOCS-ATTR-*`)
-  - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
-  - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
-  - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
-    - Trigger (mandatory; prevents misses): if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
-    - Note format (mandatory): the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
+    - Top-level ordering and coverage (`DOCS-ARG-*`, `DOCS-ATTR-*`)
+    - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
+    - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
+    - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
+      - Trigger (mandatory; prevents misses): if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
+      - Note format (mandatory): the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
 4) **Examples pass**: enforce `DOCS-EX-*` (fences, self-containedness, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
 5) **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
