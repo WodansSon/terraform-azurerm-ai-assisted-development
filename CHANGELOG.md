@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed flaky macOS PowerShell validation in CI by using the hosted runner's existing `pwsh` when available, falling back to Homebrew installation only when PowerShell is missing.
+
 ## [2.0.5] - 2026-03-09
 
 ### Changed
