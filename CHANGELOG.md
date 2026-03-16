@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [2.0.6] - 2026-03-16
+
+### Added
+
+### Changed
+
 - Tightened the shared docs compliance contract with deterministic rules for intra-section block reference direction (`as defined above` vs `as defined below`), mandatory block subsection separators in `Arguments Reference` and `Attributes Reference`, and canonical resource-name usage in resource `Attributes Reference`, `Timeouts`, and `Import` prose.
 
 ### Fixed
