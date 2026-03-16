@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tightened the shared docs compliance contract with deterministic rules for intra-section block reference direction (`as defined above` vs `as defined below`), mandatory block subsection separators in `Arguments Reference` and `Attributes Reference`, and canonical resource-name usage in resource `Attributes Reference`, `Timeouts`, and `Import` prose.
+
 ### Fixed
+
+- Fixed flaky macOS PowerShell validation in CI by using the hosted runner's existing `pwsh` when available, falling back to Homebrew installation only when PowerShell is missing.
 
 ## [2.0.5] - 2026-03-09
 

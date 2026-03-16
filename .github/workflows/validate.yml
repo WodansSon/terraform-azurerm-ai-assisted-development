@@ -30,7 +30,12 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y powershell
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install --cask powershell
+            if command -v pwsh >/dev/null 2>&1; then
+              echo "PowerShell already available on macOS runner"
+            else
+              brew update
+              brew install --cask powershell
+            fi
           fi
 
       - name: Run PSScriptAnalyzer

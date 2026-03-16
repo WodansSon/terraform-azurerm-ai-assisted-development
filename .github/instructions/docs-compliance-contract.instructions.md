@@ -204,6 +204,17 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Required vs optional MUST be derived from the nested schema (do not guess).
 - **Rule**: Any note blocks that apply to a nested field MUST remain directly attached to that field when reordering.
 
+### DOCS-SHAPE-007: Directional block references must match subsection position
+- **Scope**: block references inside block subsections (for example nested bullets that describe another documented block subsection in the same page section).
+- **Rule**: When directional wording is used for a referenced block subsection in the same section, `as defined above` MUST be used when the referenced block subsection appears earlier in that section, and `as defined below` MUST be used when the referenced block subsection appears later in that section.
+- **Rule**: This does not change the canonical top-level block bullet pattern under `## Arguments Reference` or `## Attributes Reference`, which continues to use `as defined below`.
+
+### DOCS-SHAPE-008: Block subsection separators
+- **Scope**: `## Arguments Reference` and `## Attributes Reference`.
+- **Rule**: Insert `---` immediately before the first block subsection heading that follows the top-level bullet list.
+- **Rule**: Insert `---` between adjacent block subsections.
+- **Rule**: Do not insert `---` between ordinary top-level argument or attribute bullets.
+
 ---
 
 ## Examples
@@ -484,6 +495,15 @@ Example (rewrite long bullet to bullet + note):
 ### DOCS-WORD-005: Oxford comma for lists
 - **Rule**: For lists of 3+ items in prose (including enum lists), use the Oxford comma.
 - **Example**: `Possible values are `A`, `B`, and `C`.` (not `Possible values are `A`, `B` and `C`.`)
+
+### DOCS-WORD-006: Use the canonical resource name in section prose
+- **Scope**: resource docs under `website/docs/r/**`.
+- **Rule**: In `## Attributes Reference`, `## Timeouts`, and `## Import`, prose that refers to the documented resource object MUST use the page's canonical resource name from the summary sentence, not a broader generic service object name.
+- **Rule**: The canonical resource name is the singular resource noun phrase used in the summary sentence (for example, from `Manages an Orchestrated Virtual Machine Scale Set ...`, use `Orchestrated Virtual Machine Scale Set`).
+- **Rule**: This applies to descriptive phrases such as attribute descriptions, timeout action lines, and import lead-in sentences.
+- **Examples**:
+  - Prefer `The ID of the Orchestrated Virtual Machine Scale Set.` over `The ID of the Virtual Machine Scale Set.`
+  - Prefer `Used when creating the Orchestrated Virtual Machine Scale Set.` over `Used when creating the Virtual Machine Scale Set.`
 
 ---
 
