@@ -21,17 +21,25 @@ Two independent workflows MUST follow this contract:
 
 ## Canonical sources of truth (precedence)
 
-When writing or auditing docs, treat these as canonical sources (in priority order):
+Use these sources with the following roles:
 1) Upstream contributor standards in the target repo: `contributing/topics/reference-documentation-standards.md`
-2) This repo’s docs instruction file: `.github/instructions/documentation-guidelines.instructions.md`
-3) This contract: `.github/instructions/docs-compliance-contract.instructions.md`
+  - Baseline source for provider documentation standards.
+  - Applicable upstream standards MUST be represented in this contract.
+2) This contract: `.github/instructions/docs-compliance-contract.instructions.md`
+  - Authoritative compliance rules for this repository.
+  - Audits and edits MUST enforce this contract.
+3) This repo’s docs instruction file: `.github/instructions/documentation-guidelines.instructions.md`
+  - Companion guidance only.
+  - May explain workflows, provide examples, and add heuristics, but MUST NOT weaken or contradict this contract.
 
 Conflict resolution:
 - This contract is authoritative for documentation compliance in this repository.
 - Upstream contributor standards are the baseline reference, but this contract MAY extend or be stricter than upstream to close gaps and prevent run-to-run drift.
+- If upstream contributor standards add or tighten a standard, update this contract so coverage is preserved.
 - If upstream contributor standards explicitly contradict a contract rule:
   - Follow the contract for this repository’s audits/edits.
   - Treat the discrepancy as a signal to re-evaluate the rule and (if appropriate) update either the contract or the local docs instructions.
+- If the companion guidance differs from this contract, follow this contract and update the guidance to re-align.
 
 ## Rule IDs
 
@@ -101,14 +109,40 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Docs pages must include required frontmatter keys as defined by repo standards.
 - **Minimum** (as enforced today): `subcategory`, `layout`, `page_title`, `description`.
 
-### DOCS-FM-002: Data source `page_title` must not include "Data Source:"
+### DOCS-FM-007: Frontmatter must appear at the beginning of the file
+- **Rule**: Resource and data source reference docs MUST include YAML frontmatter at the beginning of the documentation file.
+
+### DOCS-FM-003: Resource `page_title` canonical format
+- **Scope**: resource docs under `website/docs/r/**`.
+- **Rule**: Resource docs MUST use the canonical YAML `page_title` format: `page_title: "Azure Resource Manager: azurerm_<name>"`.
+
+### DOCS-FM-002: Data source `page_title` must include "Data Source:"
 - **Scope**: data source docs under `website/docs/d/**`.
-- **Rule**: Do not include `Data Source:` in the YAML `page_title`.
-- **Rule**: Use the canonical format: `page_title: "Azure Resource Manager: azurerm_<name>"`.
+- **Rule**: You must include `Data Source:` in the YAML `page_title`.
+- **Rule**: Use the canonical format: `page_title: "Azure Resource Manager: Data Source: azurerm_<name>"`.
+
+### DOCS-FM-004: Frontmatter `description` must match the doc type summary style
+- **Rule**: The YAML `description` MUST be a short summary sentence matching the doc type.
+- **Rule**: Resource docs MUST use the canonical resource summary style defined by `DOCS-WORD-003` (for example `Manages ...`).
+- **Rule**: Data source docs MUST use the canonical data source summary style defined by `DOCS-WORD-003` (for example `Gets information about an existing ...`).
+
+### DOCS-FM-005: `subcategory` must match the service website category
+- **Rule**: The YAML `subcategory` value MUST match the website category used for that service in the target provider repo.
+- **Rule**: When the target repo exposes an allowed-category list or existing service docs, use that evidence instead of guessing.
+- **Rule**: If multiple valid website categories exist for the same service, match the existing documentation for that service.
+- **Guardrail**: if the correct category cannot be proven from workspace evidence or the target repo standards, do not guess (see `DOCS-EVID-001`).
+
+### DOCS-FM-006: `layout` must be `azurerm`
+- **Rule**: The YAML `layout` value for resource and data source reference docs MUST be `azurerm`.
 
 ---
 
 ## Structure
+
+### DOCS-STRUCT-006: Reference doc path and filename must match the Terraform name
+- **Rule**: Resource documentation for `azurerm_<name>` MUST live at `website/docs/r/<name>.html.markdown`.
+- **Rule**: Data source documentation for `azurerm_<name>` MUST live at `website/docs/d/<name>.html.markdown`.
+- **Rule**: The documentation filename MUST match the Terraform type suffix exactly.
 
 ### DOCS-STRUCT-001: Required sections by doc type
 - **Resource docs** (`website/docs/r/**`) MUST include: `Example Usage`, `Arguments Reference`, `Attributes Reference`, `Import`.
@@ -125,6 +159,11 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Resources** (`website/docs/r/**`): the top-level heading must be `# azurerm_<name>`.
 - **Data sources** (`website/docs/d/**`): the top-level heading must be `# Data Source: azurerm_<name>`.
 
+### DOCS-STRUCT-005: Summary sentence must appear directly below the title
+- **Rule**: Immediately below the top-level heading, the page MUST include a short summary sentence.
+- **Rule**: Resource docs MUST use the canonical resource summary style defined by `DOCS-WORD-003` (for example `Manages ...`).
+- **Rule**: Data source docs MUST use the canonical data source summary style defined by `DOCS-WORD-003` (for example `Gets information about ...`).
+
 ---
 
 ## Formatting
@@ -136,6 +175,10 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 ### DOCS-FMT-002: Backticks for arguments and values
 - **Rule**: Always use backticks around argument/attribute names (for example `resource_group_name`).
 - **Rule**: Always use backticks around specific values/enums (for example `Standard`, `Premium`).
+
+### DOCS-FMT-003: Use the most specific code fence language
+- **Rule**: Code fences should use the most specific language that matches the snippet.
+- **Rule**: Terraform configuration snippets MUST use `hcl` fences; do not use `terraform` fences for HCL configuration.
 
 ---
 
