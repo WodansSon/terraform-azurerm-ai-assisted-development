@@ -22,13 +22,13 @@ Two independent workflows MUST follow this contract:
 ## Canonical sources of truth (precedence)
 
 Use these sources with the following roles:
-1) Upstream contributor standards in the target repo: `contributing/topics/reference-documentation-standards.md`
+- Upstream contributor standards in the target repo: `contributing/topics/reference-documentation-standards.md`
   - Baseline source for provider documentation standards.
   - Applicable upstream standards MUST be represented in this contract.
-2) This contract: `.github/instructions/docs-compliance-contract.instructions.md`
+- This contract: `.github/instructions/docs-compliance-contract.instructions.md`
   - Authoritative compliance rules for this repository.
   - Audits and edits MUST enforce this contract.
-3) This repo’s docs instruction file: `.github/instructions/documentation-guidelines.instructions.md`
+- This repo’s docs instruction file: `.github/instructions/documentation-guidelines.instructions.md`
   - Companion guidance only.
   - May explain workflows, provide examples, and add heuristics, but MUST NOT weaken or contradict this contract.
 
@@ -73,10 +73,10 @@ Areas:
 ## Evidence hierarchy
 
 When a rule requires behavioral claims, use this evidence order:
-1) Terraform schema + provider implementation (`internal/**`)
-2) Vendored SDK constants/models in this repo (`vendor/**`) when referenced by validation logic (enums, cipher suites, SDK constants)
-3) Existing provider docs (tone/phrasing patterns)
-4) Azure docs for semantics only (service behavior/background), not for provider validation/requirements
+- Terraform schema + provider implementation (`internal/**`)
+- Vendored SDK constants/models in this repo (`vendor/**`) when referenced by validation logic (enums, cipher suites, SDK constants)
+- Existing provider docs (tone/phrasing patterns)
+- Azure docs for semantics only (service behavior/background), not for provider validation/requirements
 
 If you cannot locate workspace evidence for a claim that affects validity, do not guess.
 
