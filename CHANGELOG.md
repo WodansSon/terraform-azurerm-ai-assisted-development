@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [2.0.7] - 2026-03-18
+
+### Added
+
+### Changed
+
 - Tightened the shared docs compliance contract so it is the authoritative compliance layer for docs work, added explicit rules to cover the upstream contributor documentation standards (including frontmatter placement/content, doc path naming, summary sentence placement, and `hcl` code-fence requirements), and refactored `.github/instructions/documentation-guidelines.instructions.md` into companion guidance that points back to the contract instead of duplicating normative rules.
 
 ### Fixed
