@@ -23,13 +23,19 @@ Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources v
 
 ## Canonical sources (must follow)
 
-This file is a convenience guide. Canonical sources, precedence, and conflict resolution are defined by the docs compliance contract:
+This file is a companion guide. Documentation compliance rules are defined by the docs compliance contract:
 - `.github/instructions/docs-compliance-contract.instructions.md` (see "Canonical sources of truth (precedence)").
 
 Rules:
 - Treat `contributing/topics/reference-documentation-standards.md` (in the target `hashicorp/terraform-provider-azurerm` repo) as the baseline reference.
-- Use this instruction file to capture AzureRM-specific guidance and high-signal patterns.
+- Use this instruction file for authoring guidance, worked examples, and AzureRM-specific heuristics.
+- Do not treat this file as a second compliance source.
 - If this instruction file conflicts with the docs compliance contract, follow the contract and update this file to re-align.
+
+Practical split:
+- Contract: defines what is compliant.
+- This file: explains how to produce compliant docs efficiently.
+- Prompt/skill: define workflow and output behavior while consuming the contract.
 
 ## Optional AI docs review (recommended)
 
@@ -45,123 +51,42 @@ This audit is optional and user-invoked (no CI enforcement).
 
 <a id="ai-docs-checks"></a>
 
-When using AI assistance to write or review docs, treat canonical sources + precedence as defined by `.github/instructions/docs-compliance-contract.instructions.md`. The checklist below captures the minimum set of provider-specific and high-signal checks that should not regress.
+When using AI assistance to write or review docs, treat canonical sources + precedence as defined by `.github/instructions/docs-compliance-contract.instructions.md`.
 
-### Required structure (high level)
+Use the contract for exact compliance requirements:
+- `DOCS-FM-*`: frontmatter
+- `DOCS-STRUCT-*`: required sections, section order, title shape, timeouts presence
+- `DOCS-FMT-*`: canonical intro lines, backticks, formatting conventions
+- `DOCS-EX-*`: examples, fences, self-containedness, secrets, `depends_on`, determinism
+- `DOCS-IMP-*`: import wording and importer-derived example shapes
+- `DOCS-SHAPE-*`: block vs inline vs map parity, block placement, nested ordering
+- `DOCS-ARG-*` and `DOCS-ATTR-*`: coverage and ordering
+- `DOCS-NOTE-*`: note markers, placement, de-duplication
+- `DOCS-WORD-*`, `DOCS-TIMEOUT-*`, `DOCS-LINK-*`, `DOCS-SEC-*`, and `DOCS-EVID-*`: wording, timeouts, link hygiene, secrets, and evidence guardrails
 
-Resources (`website/docs/r/**`) should include:
-- YAML frontmatter (`subcategory`, `layout`, `page_title`, `description`)
-- `# azurerm_<name>`
-- Short description repeated after the title
-- `## Example Usage`
-- `## Arguments Reference`
-- `## Attributes Reference`
-- `## Timeouts` (only if schema defines timeouts)
-- `## Import`
+Use this file for companion guidance:
+- how to gather schema evidence
+- how to choose or structure examples
+- AzureRM-specific documentation heuristics
+- illustrative templates and snippets
 
-Data sources (`website/docs/d/**`) should include:
-- YAML frontmatter
-- `# Data Source: azurerm_<name>`
-- `## Example Usage`
-- `## Arguments Reference`
-- `## Attributes Reference`
-
-### Canonical section intro lines
-
-Use provider-standard intro lines unless the page already uses a standard variant:
-- Under `## Arguments Reference`: `The following arguments are supported:`
-- Under `## Attributes Reference`:
-  - Resources: `In addition to the Arguments listed above - the following Attributes are exported:`
-  - Data sources: `In addition to the Arguments listed above - the following Attributes are exported:`
-
-### Wording guardrails
-
-- Resource docs should start with `Manages ...`.
-- Data source docs should start with `Gets information about ...`.
-- Data source docs must not include resource-only phrases (for example ForceNew wording).
-
-### Resource vs data source wording guardrails
-
-- Resources: use action verbs (`Manages`, `Creates`, `Configures`).
-- Data sources: use retrieval verbs (`Gets information about`, `Use this data source to ...`).
-- Do not mix resource-only wording into data source pages.
-
-### Example requirements
-
-- Enforce example naming conventions (see the `Example naming conventions (provider style)` section below).
-- Example sections must use the correct code fence language (see `Code blocks` formatting rules below).
-- Examples must not contain hard-coded secrets; replace literals with `var.<name>`.
-- Example blocks should be self-contained: referenced resources/data sources/modules must be declared somewhere on the same page.
-
-Example minimalism (required-only by default):
-- Examples should include only required arguments by default.
-- Do not add optional arguments unless they are necessary to satisfy a constraint (schema validation, `ValidateFunc`, cross-field constraint) or to demonstrate the scenario.
-
-Additional example guidance:
-- Prefer defining shared dependencies once in the primary `## Example Usage` block, then referencing them from secondary Example sections.
-- Avoid generic placeholders like `"example"`.
-- Avoid the bare placeholder value `"existing"` for required identifiers; use `existing-...`.
-
-### Notes / conditional requirements
-
-- Use the correct marker: `->` informational, `~>` warning, `!>` caution.
-- Cross-field/conditional requirements enforced by schema constraints or diff-time validation must be documented as `~> **Note:**` blocks.
-
-Constraint presentation guidance (avoid note spam):
-- Prefer embedding simple, field-local constraints in the field description (for example: `Possible values are ...`).
-- Use `~> **Note:**` for cross-field/conditional requirements that commonly trip users up.
-
-Mandatory: add missing conditional notes (automatic fix)
-- If the schema or provider implementation enforces a cross-field/conditional requirement that affects successful `plan/apply`, documentation must include a `~> **Note:**` describing the condition.
-- Treat these as note-worthy when present:
-  - Schema: `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith`, `RequiredWithAll`
-  - Diff-time: `CustomizeDiff` rules that implement "required when ..." / "only valid when ..." constraints
-
-Note de-duplication:
-- If two notes describe the same conditional requirement in opposite directions, prefer a single combined note that states both sides.
-- Example: `~> **Note:** The `X` block is required when `Y` is set to `A` and must not be specified when `Y` is not set to `A`.`
-
-Field description vs note split (readability):
-- Keep argument bullet descriptions concise: a crisp definition of what the field is/does (prefer 1 sentence; 2 max).
-- Move caveats, conditional guidance, and setup/operational instructions into a note block directly under the field.
-  - Use `-> **Note:**` for informational guidance.
-  - Use `~> **Note:**` for conditional requirements/conflicts/ForceNew guidance.
-  - Use `!> **Note:**` for irreversible/high-impact warnings.
-
-### Notes and warnings (HashiCorp doc style)
-
-Use the correct note prefix:
-- Informational: `-> **Note:**` (tips, extra info)
-- Warning: `~> **Note:**` (prevent common errors; ForceNew and conditional requirements)
-- Caution: `!> **Note:**` (irreversible changes, data loss)
-
-Do not use a mild note where a warning/caution is required.
-
-### Ordering (high signal)
-
-Follow upstream ordering rules. At minimum:
-- Under `## Arguments Reference`: group required then optional, order `name`, `resource_group_name`, `location` first when present, and `tags` last when present.
-- Under `## Attributes Reference`: `id` first, then remaining attributes alphabetical (no other exceptions).
-- Nested blocks: required first (alphabetical), optional next (alphabetical), with `tags` last when present.
-
-### Enum / wording hygiene
-
-- Use `Possible values are ...` (rewrite `Valid values/options are ...` and `Possible values include ...`).
-- Use the Oxford comma for lists of 3+ values.
-
-Avoid:
-- `Valid options are ...` / `Valid values are ...`
-
-Mandatory rewrites when editing docs:
-- Replace `Valid options are` with `Possible values are`
-- Replace `Valid values are` with `Possible values are`
-- Replace `Possible values include` with `Possible values are`
+Practical authoring reminders:
+- Preserve the resource vs data source distinction in tone and examples.
+- Repeat the short summary sentence immediately below the top-level heading; for the exact requirement, see `DOCS-STRUCT-005` and `DOCS-WORD-003` in the contract.
+- Keep argument descriptions short, then move caveats or conditions into notes.
+- Prefer shared example dependencies in the primary `## Example Usage` block.
+- When a rule needs exact wording or ordering, look up the contract instead of relying on memory.
 
 ### Mandatory HashiCorp docs style enforcement
 
 <a id="ai-docs-style-enforcement"></a>
 
 When you touch or update any existing documentation page, proactively enforce the upstream contributor style rules even if the user did not explicitly ask for style fixes.
+
+For exact compliance behavior, use the contract as the source of truth:
+- `DOCS-FMT-*` for canonical lines and formatting
+- `DOCS-WORD-*` for wording conventions
+- `DOCS-ATTR-*` and `DOCS-TIMEOUT-*` for attribute ordering and timeout presentation
 
 At minimum, enforce these high-signal items:
 
@@ -190,9 +115,12 @@ At minimum, enforce these high-signal items:
 
 ### Timeouts and import
 
-- Use the current timeouts link for new/standardized sections: `https://developer.hashicorp.com/terraform/language/resources/configure#define-operation-timeouts`.
-- Express defaults >60 minutes as hours.
-- Import example IDs must match the provider importer/parser evidence; do not guess ID shapes.
+For exact requirements, see `DOCS-TIMEOUT-*`, `DOCS-IMP-*`, and `DOCS-EVID-001` in the contract.
+
+Companion guidance:
+- Use the current timeouts link for new or standardized sections.
+- Express defaults greater than 60 minutes as hours for readability.
+- When verifying imports, derive the shape from implementation evidence rather than example drift.
 
 ### ForceNew subset-switch wording (high-signal)
 
@@ -200,10 +128,9 @@ At minimum, enforce these high-signal items:
 
 If ForceNew behavior is triggered when switching between subsets of values (for example between two groups inside an enum), document it explicitly and bidirectionally.
 
-Rules:
-- Do not use the phrase "and vice versa".
+Companion guidance:
 - Avoid “and vice versa” in ForceNew conditions.
-- Prefer the canonical "between these two groups" wording:
+- Prefer the canonical "between these two groups" wording from the contract and use it consistently when a field switches between enumerated subsets:
   - Changing this forces a new resource to be created when changing `{{FIELD_NAME}}` between these two groups: `A`, `B`, and `C`; `D`, `E`, and `F`.
 
 This rewrite is preferred because it is bidirectional, removes “vice versa”, and makes the boundary-switch behavior unambiguous.
@@ -212,7 +139,7 @@ This rewrite is preferred because it is bidirectional, removes “vice versa”,
 
 <a id="ai-docs-enabled-fields"></a>
 
-For boolean arguments ending in `_enabled`:
+For boolean arguments ending in `_enabled`, use the contract for exact compliance and this file for phrasing guidance:
 - **Arguments Reference** (bullets containing `(Required)`/`(Optional)`): use the canonical question phrasing.
 - In `## Arguments Reference`: prefer: Should `{{THING}}` be enabled? (and include defaults when known).
 - In `## Attributes Reference`: prefer: Is `{{THING}}` enabled.
@@ -227,6 +154,8 @@ Derive `<thing>` from the field name:
 <a id="ai-docs-block-placement"></a>
 
 Do not place all block subsections in one location.
+
+For exact placement, article, separator, and ordering rules, see `DOCS-SHAPE-*` in the contract.
 
 Rules:
 - Block arguments belong under `## Arguments Reference`:
@@ -257,11 +186,11 @@ In `## Attributes Reference`, do not use argument-only phrases such as:
 
 Attributes should be concise and describe what is exported.
 
-### Frontmatter rule: data source `page_title`
+### Frontmatter and document shape
 
-For data source docs under `website/docs/d/**`:
-- Do not include `Data Source:` in the YAML `page_title`.
-- Use: `page_title: "Azure Resource Manager: azurerm_<name>"`
+For exact frontmatter, section, and title rules, see `DOCS-FM-*` and `DOCS-STRUCT-*` in the contract.
+
+This file's templates below are illustrative. When a template and the contract differ, update the template and follow the contract.
 
 ### TODO placeholder resolution ladder (when scaffolding)
 
@@ -281,6 +210,8 @@ After editing a docs page, re-check:
 - Notes use correct markers (`->`/`~>`/`!>`) and placement
 - Examples are fenced correctly in `Example*` sections (`hcl` for config, `shell`/`shell-session` for CLI) and contain no hard-coded secrets
 - Import example ID shape matches importer/parser evidence
+
+For the authoritative pass/fail criteria, use the contract and the deterministic review prompt.
 
 ### Secrets in examples (mandatory)
 
@@ -312,22 +243,16 @@ After writing or updating a page, run a standards + schema parity pass.
 
 <a id="ai-docs-quick-audit"></a>
 
-- Doc type and required sections
-  - Resources: Example Usage, Arguments Reference, Attributes Reference, Import
-  - Data sources: Example Usage, Arguments Reference, Attributes Reference (no Import)
-  - Timeouts section is required only if the schema defines timeouts
-- Parity
-  - All required args are documented
-  - No undocumented args appear (do not invent fields)
-  - All computed attributes are in Attributes Reference (`id` first)
-  - Next-major deprecated legacy fields are not documented and are not treated as missing (vNext-only docs)
-- Schema shape
-  - Blocks vs inline fields match the schema (do not document nested fields for scalars/maps)
-  - Collections of primitives are described as lists/sets, not blocks
-- Casing hygiene
-  - Preserve correct product/edition casing in short descriptions
-- Link hygiene
-  - Prefer locale-neutral Learn links (avoid `/en-us/` etc.)
+Use the contract rule families as the audit checklist instead of relying on this section as a second rule source:
+- `DOCS-FM-*` and `DOCS-STRUCT-*`
+- `DOCS-ARG-*`, `DOCS-ATTR-*`, and `DOCS-SHAPE-*`
+- `DOCS-EX-*`, `DOCS-IMP-*`, and `DOCS-TIMEOUT-*`
+- `DOCS-WORD-*`, `DOCS-LINK-*`, `DOCS-DEPR-*`, and `DOCS-EVID-*`
+
+Companion reminders:
+- Preserve product casing in short descriptions.
+- Do not invent undocumented fields or example values.
+- Prefer locale-neutral Learn links when adding external references.
 
 ### Mandatory post-edit validation (no exceptions)
 
@@ -340,6 +265,8 @@ After modifying a docs page under `website/docs/**`:
 - Re-run the deterministic audit (`/code-review-docs`) and fix Issues before considering the page done
 
 Ensure Markdown formatting passes linting.
+
+The contract remains the source of truth for what constitutes an Issue.
 
 Do not treat fence-language choices outside headings starting with `Example` as failures for this rule.
 
@@ -481,6 +408,8 @@ website/docs/
 
 ### Standard Resource Documentation Structure
 
+This template is illustrative. Exact compliance still comes from the docs compliance contract.
+
 ````markdown
 ---
 subcategory: "Service Name"
@@ -588,11 +517,13 @@ terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0
 
 ### Standard Data Source Documentation Structure
 
+This template is illustrative. Exact compliance still comes from the docs compliance contract.
+
 ````markdown
 ---
 subcategory: "Service Name"
 layout: "azurerm"
-page_title: "Azure Resource Manager: azurerm_service_resource"
+page_title: "Azure Resource Manager: Data Source: azurerm_service_resource"
 description: |-
   Gets information about an existing Service Resource.
 ---
@@ -665,14 +596,14 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ---
 subcategory: "Service Name"                                  # Azure service category
 layout: "azurerm"                                            # Always "azurerm"
-page_title: "Azure Resource Manager: azurerm_resource_name"  # Page title
+page_title: "Azure Resource Manager: azurerm_resource_name"  # Resource page title; for data sources use: "Azure Resource Manager: Data Source: azurerm_resource_name"
 description: |-                                              # Brief description
   Manages a Service Resource.                                # For resources
   Gets information about an existing Service Resource.       # For data sources
 ---
 ```
 
-**Note:** The `subcategory` value should match the service name from `./internal/services/[service-name]/registration.go`
+**Note:** The `subcategory` value should match the service name from `./internal/services/[service-name]/registration.go`. For exact frontmatter requirements, use `DOCS-FM-*` in the contract.
 
 ### Nested Block Documentation
 ```markdown
@@ -766,6 +697,8 @@ When adding new fields to existing resources, follow this guidance for documenta
 ## 📁 Import Documentation
 
 ### Resource Import Format
+
+This section is companion guidance only. Use the contract for exact import wording and example determinism.
 ````markdown
 ## Import
 
@@ -807,7 +740,7 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 
 ### Timeout default readability (mandatory)
 
-Rule:
+Companion guidance:
 - When documenting timeout defaults greater than 60 minutes, express them in hours (for example `12 hours`, `24 hours`) rather than raw minutes.
 
 ### Data Source Timeout Block
@@ -924,6 +857,8 @@ In addition to the Arguments listed above - the following Attributes are exporte
 
 ### 🚨 **CRITICAL: Field Ordering Standards - MUST FOLLOW**
 
+For exact ordering requirements, use `DOCS-ARG-*`, `DOCS-ATTR-*`, and `DOCS-SHAPE-*` in the contract. This section explains the house style and common review expectations.
+
 **⚠️ MANDATORY ALPHABETICAL ORDERING ⚠️**
 
 **BEFORE writing ANY field documentation, you MUST:**
@@ -989,8 +924,8 @@ The following arguments are supported:
 - **Optional**: `auto_scaling_enabled`, `sku_name`, `timeout_seconds`, `tags` (A-Z)
 
 ### Azure-Specific Documentation Standards
-- **Valid values only**: Only document values that are actually supported by the Azure service
-- **API validation**: Verify all possible values against Azure SDK constants and API documentation
+- **Valid values only**: Only document values that are actually supported by the provider implementation and service behavior
+- **API validation**: Verify all possible values against Terraform schema evidence first, then Azure SDK constants and service documentation when appropriate
 - **Cross-reference validation**: When implementing similar features across resources, ensure consistent value documentation
 - **SDK alignment**: Match documentation values with Azure SDK enum constants where applicable
 
