@@ -139,10 +139,10 @@ This rewrite is preferred because it is bidirectional, removes “vice versa”,
 
 <a id="ai-docs-enabled-fields"></a>
 
-For boolean arguments ending in `_enabled`, use the contract for exact compliance and this file for phrasing guidance:
-- **Arguments Reference** (bullets containing `(Required)`/`(Optional)`): use the canonical question phrasing.
-- In `## Arguments Reference`: prefer: Should `{{THING}}` be enabled? (and include defaults when known).
-- In `## Attributes Reference`: prefer: Is `{{THING}}` enabled.
+For boolean fields ending in `_enabled`, use the contract for exact compliance and this file for phrasing guidance:
+- In resource docs, prefer: Whether `{{THING}}` is enabled.
+- When a default is known in resource docs, add a separate sentence: Defaults to `<value>`.
+- In data source docs, prefer: Whether `{{THING}}` is enabled.
 
 Derive `<thing>` from the field name:
 - Remove the trailing `_enabled`.
@@ -183,6 +183,13 @@ Rules:
 In `## Attributes Reference`, do not use argument-only phrases such as:
 - `Defaults to ...`
 - `Possible values are ...`
+
+In `## Attributes Reference`, do not use lifecycle, mutation, or import wording such as:
+- `Creates ...`
+- `Updates ...`
+- `Deletes ...`
+- `Changing this forces a new resource to be created.`
+- `Import ...`
 
 Attributes should be concise and describe what is exported.
 
@@ -454,7 +461,7 @@ The following arguments are supported:
 
 * `location` - (Required) The Azure Region where the Service Resource should exist. Changing this forces a new resource to be created.
 
-* `auto_scaling_enabled` - (Optional) Is auto scaling enabled for this Service Resource? Defaults to `true`.
+* `auto_scaling_enabled` - (Optional) Whether `auto scaling` is enabled. Defaults to `true`.
 
 * `sku_name` - (Optional) The SKU name for this Service Resource. Possible values are `Standard` and `Premium`.
 
@@ -839,7 +846,7 @@ In addition to the Arguments listed above - the following Attributes are exporte
 
 * `sku_name` - The SKU name of the Service Resource.
 
-* `resource_enabled` - Is the Service Resource enabled?
+* `resource_enabled` - Is the `resource` enabled?
 
 * `configuration` - A `configuration` block as defined below.
 
@@ -910,7 +917,7 @@ The following arguments are supported:
 
 * `location` - (Required) The Azure Region where the Service Resource should exist. Changing this forces a new resource to be created.
 
-* `auto_scaling_enabled` - (Optional) Is auto scaling enabled for this Service Resource? Defaults to `true`.
+* `auto_scaling_enabled` - (Optional) Whether `auto scaling` is enabled. Defaults to `true`.
 
 * `sku_name` - (Optional) The SKU name for this Service Resource. Possible values are `Standard` and `Premium`.
 
@@ -1004,7 +1011,7 @@ Use warning note blocks when providing information that the user needs to avoid 
 
 **Example - Conditional argument requirements:**
 ```markdown
-* `optional_argument_enabled` - (Optional) Is the optional argument enabled? Defaults to `false`.
+* `optional_argument_enabled` - (Optional) Whether `optional argument` is enabled. Defaults to `false`.
 
 * `optional_argument` - (Optional) An optional argument.
 
@@ -1016,7 +1023,7 @@ Use caution note blocks when providing critical information on potential irrever
 
 **Example - Irreversible changes:**
 ```markdown
-* `irreversible_argument_enabled` - (Optional) Is irreversible argument enabled? Defaults to `false`.
+* `irreversible_argument_enabled` - (Optional) Whether `irreversible argument` is enabled. Defaults to `false`.
 
 !> **Note:** The argument `irreversible_argument_enabled` cannot be disabled after being enabled.
 ```

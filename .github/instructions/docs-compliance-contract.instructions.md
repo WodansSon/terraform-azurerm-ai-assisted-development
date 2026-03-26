@@ -498,6 +498,7 @@ Example (rewrite long bullet to bullet + note):
 
 ### DOCS-ATTR-003: Attribute descriptions must not include defaults/enums
 - **Rule**: Attribute descriptions should be concise and must not include possible values or default values (those belong in Arguments Reference).
+- **Rule**: Attribute descriptions must not use lifecycle, mutation, or import wording (for example `Creates`, `Updates`, `Deletes`, `Import`, or ForceNew wording); they should describe exported data only.
 
 ### DOCS-ATTR-004: Do not special-case common fields in Attributes Reference
 - **Rule**: Do not special-case `name`, `resource_group_name`, `location`, or `tags` under `## Attributes Reference`.
@@ -516,11 +517,12 @@ Example (rewrite long bullet to bullet + note):
 ### DOCS-WORD-003: Resource vs data source summary sentence
 - **Rule**: Resource docs should start with an action verb (prefer `Manages ...`).
 - **Rule**: Data source docs should start with a retrieval verb (prefer `Gets information about ...`).
-- **Rule**: Data source docs must not use resource-only wording (for example `Manages`, `Creates`, or ForceNew wording).
+- **Rule**: Data source summary sentences must not use resource-only wording (for example `Manages`, `Creates`, or ForceNew wording).
 
-### DOCS-WORD-004: `*_enabled` field phrasing differs by section
-- **Rule**: In `## Arguments Reference`, for boolean fields ending in `_enabled`, prefer: `Should <thing> be enabled?` (include defaults when known).
-- **Rule**: In `## Attributes Reference`, prefer: `Is <thing> enabled?`
+### DOCS-WORD-004: `*_enabled` field phrasing
+- **Rule**: In resource docs, for boolean fields ending in `_enabled`, prefer: `Whether <thing> is enabled.`
+- **Rule**: When a default is known in resource docs, add a separate sentence: `Defaults to `<value>`.`
+- **Rule**: In data source docs, prefer: `Whether <thing> is enabled.`
 - **Rule**: Derive `<thing>` from the field name by removing the trailing `_enabled`, replacing underscores with spaces, and wrapping the result in backticks.
 
 ### DOCS-WORD-001: ForceNew sentence
