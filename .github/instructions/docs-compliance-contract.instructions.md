@@ -455,9 +455,11 @@ Additional auditor behavior (deterministic suffix; nit-level):
 ### DOCS-ARG-008: Argument descriptions must be concise
 - **Rule**: Argument descriptions should be concise and avoid excessive detail or external links.
 - **Rule**: If more detail is needed, use a note block under the argument.
+- **Rule**: Core argument semantics should remain in the bullet when they read cleanly, including the field definition, `Possible values are ...`, and `Defaults to ...` when applicable.
 
 ### DOCS-ARG-011: Argument bullet length cap
 - **Rule**: Each argument bullet description MUST be a crisp definition of the field (prefer 1 sentence; 2 sentences maximum).
+- **Rule**: Do not move core argument semantics into a note purely for brevity when they fit cleanly in the bullet. In particular, keep `Possible values are ...` and `Defaults to ...` in the bullet unless doing so would make the bullet unwieldy.
 - **Rule**: Additional caveats, conditional requirements, setup instructions, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
 - **Placement**: The note block MUST appear immediately under the argument bullet it applies to (do not move this content into a separate “Notes” section, and do not leave it embedded in the bullet).
 - **Marker**: Use `-> **Note:**` for informational setup/background. Use `~> **Note:**` when the note describes a conditional requirement/conflict that affects valid configuration.
@@ -498,6 +500,7 @@ Example (rewrite long bullet to bullet + note):
 
 ### DOCS-ATTR-003: Attribute descriptions must not include defaults/enums
 - **Rule**: Attribute descriptions should be concise and must not include possible values or default values (those belong in Arguments Reference).
+- **Rule**: Attribute descriptions must not use lifecycle, mutation, or import wording (for example `Creates`, `Updates`, `Deletes`, `Import`, or ForceNew wording); they should describe exported data only.
 
 ### DOCS-ATTR-004: Do not special-case common fields in Attributes Reference
 - **Rule**: Do not special-case `name`, `resource_group_name`, `location`, or `tags` under `## Attributes Reference`.
@@ -516,11 +519,12 @@ Example (rewrite long bullet to bullet + note):
 ### DOCS-WORD-003: Resource vs data source summary sentence
 - **Rule**: Resource docs should start with an action verb (prefer `Manages ...`).
 - **Rule**: Data source docs should start with a retrieval verb (prefer `Gets information about ...`).
-- **Rule**: Data source docs must not use resource-only wording (for example `Manages`, `Creates`, or ForceNew wording).
+- **Rule**: Data source summary sentences must not use resource-only wording (for example `Manages`, `Creates`, or ForceNew wording).
 
-### DOCS-WORD-004: `*_enabled` field phrasing differs by section
-- **Rule**: In `## Arguments Reference`, for boolean fields ending in `_enabled`, prefer: `Should <thing> be enabled?` (include defaults when known).
-- **Rule**: In `## Attributes Reference`, prefer: `Is <thing> enabled?`
+### DOCS-WORD-004: `*_enabled` field phrasing
+- **Rule**: In resource docs, for boolean fields ending in `_enabled`, prefer: `Whether <thing> is enabled.`
+- **Rule**: When a default is known in resource docs, add a separate sentence: `Defaults to `<value>`.`
+- **Rule**: In data source docs, prefer: `Whether <thing> is enabled.`
 - **Rule**: Derive `<thing>` from the field name by removing the trailing `_enabled`, replacing underscores with spaces, and wrapping the result in backticks.
 
 ### DOCS-WORD-001: ForceNew sentence
