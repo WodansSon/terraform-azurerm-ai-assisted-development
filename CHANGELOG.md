@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Aligned the shared docs compliance contract and companion documentation guidance with HashiCorp's preferred `*_enabled` wording so both resources and data sources use statement phrasing (`Whether ... is enabled.`), with resource docs keeping a separate `Defaults to ...` sentence when applicable; also clarified that data source summary-sentence restrictions are separate from Attributes Reference wording restrictions.
+- Aligned the shared docs compliance contract and companion documentation guidance with HashiCorp's preferred `*_enabled` wording so both resources and data sources use statement phrasing (`Whether ... is enabled.`), with resource docs keeping a separate `Defaults to ...` sentence when applicable; clarified that data source summary-sentence restrictions are separate from Attributes Reference wording restrictions; and tightened argument guidance so core semantics like `Possible values are ...` and `Defaults to ...` stay in the bullet by default instead of being pushed into notes.
 
 ## [2.0.7] - 2026-03-18
 

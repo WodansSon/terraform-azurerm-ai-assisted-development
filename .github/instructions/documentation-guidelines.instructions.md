@@ -100,6 +100,9 @@ At minimum, enforce these high-signal items:
   - Avoid "and vice versa"; use the explicit two-group wording (see `ForceNew subset-switch wording`).
 - Apply style rules to the entire bullet
   - If you edit an Arguments Reference bullet, enforce enum wording and Oxford commas consistently throughout that bullet.
+- Keep core semantics in the bullet when they read cleanly
+  - Prefer keeping the field definition, `Possible values are ...`, and `Defaults to ...` in the argument bullet.
+  - Use notes for conditional requirements, conflicts, setup caveats, and overflow detail rather than moving basic field semantics into notes by default.
 - Consistent value quoting
   - Enum values must be wrapped in backticks.
 - Attributes Reference ordering

@@ -455,9 +455,11 @@ Additional auditor behavior (deterministic suffix; nit-level):
 ### DOCS-ARG-008: Argument descriptions must be concise
 - **Rule**: Argument descriptions should be concise and avoid excessive detail or external links.
 - **Rule**: If more detail is needed, use a note block under the argument.
+- **Rule**: Core argument semantics should remain in the bullet when they read cleanly, including the field definition, `Possible values are ...`, and `Defaults to ...` when applicable.
 
 ### DOCS-ARG-011: Argument bullet length cap
 - **Rule**: Each argument bullet description MUST be a crisp definition of the field (prefer 1 sentence; 2 sentences maximum).
+- **Rule**: Do not move core argument semantics into a note purely for brevity when they fit cleanly in the bullet. In particular, keep `Possible values are ...` and `Defaults to ...` in the bullet unless doing so would make the bullet unwieldy.
 - **Rule**: Additional caveats, conditional requirements, setup instructions, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
 - **Placement**: The note block MUST appear immediately under the argument bullet it applies to (do not move this content into a separate “Notes” section, and do not leave it embedded in the bullet).
 - **Marker**: Use `-> **Note:**` for informational setup/background. Use `~> **Note:**` when the note describes a conditional requirement/conflict that affects valid configuration.
