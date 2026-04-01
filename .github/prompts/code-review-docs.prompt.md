@@ -183,7 +183,8 @@ Evidence requirements:
 - Use `vendor/**` only as supporting evidence when validation logic references SDK constants/enums.
 
 Doc requirements (contract-driven):
-- Any constraint that affects valid config must be documented as notes per `DOCS-NOTE-*`.
+- In resource docs, any constraint that affects valid config must be documented as notes per `DOCS-NOTE-*`.
+- In data source docs, enforce the contract rule that field documentation stays concise and limited to explaining what the field is, with no field-level note blocks.
 - If evidence cannot be proven, do not guess; record an Observation per `DOCS-EVID-001`.
 
 ### 4) Audit the documentation (contract-driven)
@@ -206,8 +207,9 @@ Internal multi-pass audit (mandatory):
     - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
     - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
     - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
-      - Trigger (mandatory; prevents misses): if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
-      - Note format (mandatory): the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
+  - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
+  - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
+  - Note format (mandatory): when a resource field note is required, the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
 4) **Examples pass**: enforce `DOCS-EX-*` (fences, self-containedness, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
 5) **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
@@ -307,12 +309,12 @@ Skill footer rule (mandatory; prevents duplicate sections):
 - **Frontmatter**: Pass/Fail + missing keys (if any)
 - **Section Order**: Pass/Fail + missing sections (if any)
 - **Argument Ordering**: Pass/Fail (ID segments first per contract ordering, `location` next when present, remaining required alphabetical, then optional alphabetical, `tags` last)
-- **Argument Bullet Conciseness**: Pass/Fail (long bullets split into inline notes per `DOCS-ARG-011`)
+- **Argument Bullet Conciseness**: Pass/Fail (resource docs: long bullets split into inline notes per `DOCS-ARG-011`; data source docs: bullets stay short and field-definitional)
 - **Nested Block Field Ordering**: Pass/Fail (nested args: required alpha then optional alpha, `tags` last via `DOCS-SHAPE-006`; nested attrs: `id` first then alpha via `DOCS-ATTR-005`)
 - **Schema Shape**: Pass/Fail (docs describe blocks vs inline fields consistently with schema)
 - **Attributes Coverage**: Pass/Fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)
 - **ForceNew Wording**: Pass/Fail (resources only, missing “Changing this forces…” sentence)
-- **Conditional Notes**: Pass/Fail (cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`)
+- **Conditional Notes**: Pass/Fail (resource docs: cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`; data source docs: field-level note blocks are absent and field text stays concise)
 - **Note Notation**: Pass/Fail (->/~>/!> exact format + marker meaning matches note content)
 - **Note Accuracy**: Pass/Fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
 - **Timeouts Readability**: Pass/Fail (convert defaults >60 minutes to hours)

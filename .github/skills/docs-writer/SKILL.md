@@ -51,7 +51,7 @@ Assume the user request may be minimal (for example: "fix this doc" / "make it c
 When this skill is invoked, you must still:
 - verify schema parity and enforce ordering
 - enforce the standard generic ForceNew sentence
-- add missing required notes (schema constraints, `CustomizeDiff`, and implicit behavior)
+- add missing required notes where the contract permits them (for example resource field notes and example-adjacent notes), and enforce the data source no-field-notes rule
 
 Do not require the user to explicitly ask for these checks.
 
@@ -79,7 +79,7 @@ Use this to avoid missing common compliance breakpoints. The authoritative detai
 
 - Structure + frontmatter: `DOCS-FM-*`, `DOCS-STRUCT-*`
 - Arguments parity + ordering + shape: `DOCS-ARG-*`, `DOCS-SHAPE-*` (including bullet split via `DOCS-ARG-011`)
-- Bullet split trigger (mandatory; prevents misses): if an argument bullet mixes the definition with validation-style constraints (length/charset/regex/start/end rules) or includes the ForceNew sentence plus constraints, split constraints into an inline note per `DOCS-ARG-011` + `DOCS-NOTE-003`.
+- Bullet split trigger (mandatory; prevents misses): in resource docs, if an argument bullet mixes the definition with validation-style constraints (length/charset/regex/start/end rules) or includes the ForceNew sentence plus constraints, split constraints into an inline note per `DOCS-ARG-011` + `DOCS-NOTE-003`; in data source docs, keep the bullet short and field-definitional instead of adding a field-level note.
 - Nested block field ordering: `DOCS-SHAPE-006`, `DOCS-ATTR-005`
 - ForceNew + wording hygiene: `DOCS-WORD-*` (including enum phrasing + Oxford comma) and `DOCS-ARG-003/006/009`
 - Notes required/marker correctness + de-dup: `DOCS-NOTE-*`

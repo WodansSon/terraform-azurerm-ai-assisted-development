@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tightened the docs compliance contract so data source arguments, attributes, and nested fields must stay short and only explain what the field is, without field-level note blocks; aligned `.github/instructions/documentation-guidelines.instructions.md`, `.github/skills/docs-writer/SKILL.md`, and `.github/prompts/code-review-docs.prompt.md` to enforce the same rule consistently.
+
 ### Fixed
 
 ## [2.0.8] - 2026-03-26

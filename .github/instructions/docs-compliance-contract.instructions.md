@@ -429,6 +429,12 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Example combined note pattern** (adjust wording to match the extracted constraint evidence):
   - `~> **Note:** The `X` block is required when `Y` is set to `A` and must not be specified when `Y` is not set to `A`.`
 
+### DOCS-NOTE-009: Data source field notes are prohibited
+- **Scope**: data source docs under `website/docs/d/**`.
+- **Rule**: Data source documentation for arguments, attributes, and nested fields MUST stay concise and limited to explaining what the field is.
+- **Rule**: Data source docs MUST NOT use field-level note blocks for additional caveats, setup guidance, conditional requirements, or extended explanations.
+- **Auditor behavior**: any field-level `-> **Note:**`, `~> **Note:**`, or `!> **Note:**` in a data source doc is an Issue.
+
 ---
 
 ## Arguments Reference
@@ -454,15 +460,17 @@ Additional auditor behavior (deterministic suffix; nit-level):
 
 ### DOCS-ARG-008: Argument descriptions must be concise
 - **Rule**: Argument descriptions should be concise and avoid excessive detail or external links.
-- **Rule**: If more detail is needed, use a note block under the argument.
+- **Rule**: In resource docs, if more detail is needed, use a note block under the argument.
+- **Rule**: In data source docs, keep the bullet short and limited to explaining what the field is; do not add field-level note blocks or extended caveats.
 - **Rule**: Core argument semantics should remain in the bullet when they read cleanly, including the field definition, `Possible values are ...`, and `Defaults to ...` when applicable.
 
 ### DOCS-ARG-011: Argument bullet length cap
 - **Rule**: Each argument bullet description MUST be a crisp definition of the field (prefer 1 sentence; 2 sentences maximum).
 - **Rule**: Do not move core argument semantics into a note purely for brevity when they fit cleanly in the bullet. In particular, keep `Possible values are ...` and `Defaults to ...` in the bullet unless doing so would make the bullet unwieldy.
-- **Rule**: Additional caveats, conditional requirements, setup instructions, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
-- **Placement**: The note block MUST appear immediately under the argument bullet it applies to (do not move this content into a separate “Notes” section, and do not leave it embedded in the bullet).
-- **Marker**: Use `-> **Note:**` for informational setup/background. Use `~> **Note:**` when the note describes a conditional requirement/conflict that affects valid configuration.
+- **Rule**: In resource docs, additional caveats, conditional requirements, setup instructions, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
+- **Rule**: In data source docs, field-level note blocks are prohibited (see DOCS-NOTE-009); keep the bullet concise, short, and focused on what the field is.
+- **Placement**: In resource docs, the note block MUST appear immediately under the argument bullet it applies to (do not move this content into a separate “Notes” section, and do not leave it embedded in the bullet).
+- **Marker**: In resource docs, use `-> **Note:**` for informational setup/background. Use `~> **Note:**` when the note describes a conditional requirement/conflict that affects valid configuration.
 
 Example (rewrite long bullet to bullet + note):
 - Before (non-compliant):

@@ -73,7 +73,8 @@ Use this file for companion guidance:
 Practical authoring reminders:
 - Preserve the resource vs data source distinction in tone and examples.
 - Repeat the short summary sentence immediately below the top-level heading; for the exact requirement, see `DOCS-STRUCT-005` and `DOCS-WORD-003` in the contract.
-- Keep argument descriptions short, then move caveats or conditions into notes.
+- In resource docs, keep argument descriptions short, then move caveats or conditions into notes.
+- In data source docs, keep field descriptions short and limited to explaining what the field is; do not use field-level note blocks.
 - Prefer shared example dependencies in the primary `## Example Usage` block.
 - When a rule needs exact wording or ordering, look up the contract instead of relying on memory.
 
@@ -102,7 +103,8 @@ At minimum, enforce these high-signal items:
   - If you edit an Arguments Reference bullet, enforce enum wording and Oxford commas consistently throughout that bullet.
 - Keep core semantics in the bullet when they read cleanly
   - Prefer keeping the field definition, `Possible values are ...`, and `Defaults to ...` in the argument bullet.
-  - Use notes for conditional requirements, conflicts, setup caveats, and overflow detail rather than moving basic field semantics into notes by default.
+  - In resource docs, use notes for conditional requirements, conflicts, setup caveats, and overflow detail rather than moving basic field semantics into notes by default.
+  - In data source docs, keep the bullet concise and field-definitional rather than adding field-level notes.
 - Consistent value quoting
   - Enum values must be wrapped in backticks.
 - Attributes Reference ordering
@@ -971,7 +973,7 @@ When documenting related Azure resources (like Linux and Windows VMSS), ensure c
 **Field Documentation Consistency:**
 - **Identical descriptions**: Use the same field descriptions for shared functionality across resource variants
 - **Consistent validation rules**: Document the same validation requirements for equivalent fields
-- **Synchronized note blocks**: Apply identical conditional logic notes to both implementations
+- **Synchronized note blocks**: For resource docs and other note-eligible contexts, apply identical conditional logic notes to both implementations
 - **Cross-reference accuracy**: When updating one variant's documentation, verify and update the related variant
 
 **Common Mistakes to Avoid:**
@@ -982,7 +984,7 @@ When documenting related Azure resources (like Linux and Windows VMSS), ensure c
 **Documentation Validation Checklist:**
 - [ ] Field requirements match between Linux and Windows variants
 - [ ] Default value claims verified against Azure SDK behavior
-- [ ] Note blocks use consistent conditional logic across implementations
+- [ ] Resource note blocks and other note-eligible contexts use consistent conditional logic across implementations
 - [ ] Examples demonstrate the same patterns for equivalent functionality
 
 ---
@@ -994,6 +996,11 @@ When documenting related Azure resources (like Linux and Windows VMSS), ensure c
 
 ### Note Block Standards
 All notes should follow the exact same format (`(->|~>|!>) **Note:**`) where level of importance is indicated through the different types of notes as documented below.
+
+Applicability reminder:
+- Resource docs may use field-level note blocks when the contract requires or permits them.
+- Data source arguments, attributes, and nested fields must stay concise and limited to explaining what the field is; do not add field-level note blocks.
+- Example-adjacent notes remain allowed when required by the contract.
 
 Breaking changes should not be included in resource documentation notes:
 - Breaking changes in a minor version should be added to the top of the changelog
@@ -1037,6 +1044,7 @@ Use caution note blocks when providing critical information on potential irrever
 - **Clear messaging**: Provide actionable information that helps users avoid problems
 - **Avoid overuse**: Use notes for important information, not obvious functionality
 - **Reference linking**: Include links to external documentation when helpful
+- **Data source guardrail**: Do not add note blocks under data source arguments, attributes, or nested fields; keep the field text short and focused on what the field is
 
 ## 📚 Related Implementation Guidance (On-Demand)
 
