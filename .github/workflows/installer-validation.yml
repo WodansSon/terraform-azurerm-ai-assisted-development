@@ -40,7 +40,20 @@ jobs:
       - name: PSScriptAnalyzer - Install
         shell: pwsh
         run: |
-          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
+            if (-not (Get-PSResourceRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+              Register-PSResourceRepository -PSGallery
+            }
+            Set-PSResourceRepository -Name PSGallery -Trusted
+            Install-PSResource PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -TrustRepository -Quiet
+          }
+          else {
+            if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+              Register-PSRepository -Default
+            }
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          }
 
       - name: PSScriptAnalyzer - Run
         shell: pwsh

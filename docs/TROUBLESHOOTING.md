@@ -160,6 +160,38 @@ The installer payload (`aii/`) and manifest are out of sync (stale or modified i
 - **Recommended**: re-extract the latest release bundle into your user profile directory.
 - **Contributor/dev**: re-run `-Bootstrap` / `-bootstrap` from a git clone to refresh the user-profile installer.
 
+**Important**:
+- `aii.checksum` verifies extracted bundle integrity.
+- It does not prove that the downloaded release asset came from the official repository release workflow.
+
+---
+
+### How Do I Verify That I Downloaded an Official Release Asset?
+
+Use GitHub artifact attestations for the downloaded release asset before extraction:
+
+```bash
+gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+   --repo WodansSon/terraform-azurerm-ai-assisted-development \
+   --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+   --source-ref refs/tags/v1.0.1
+```
+
+What each layer means:
+- GitHub attestation verification: proves the release asset was produced by the canonical release workflow for this repository and tag.
+- `checksums.txt`: verifies the downloaded release asset bytes match the published digest.
+- `aii.checksum`: verifies the extracted installer bundle contents are internally consistent.
+
+**Trust model limits**:
+- Attestation verification is only meaningful if you verify against the canonical signer identity: `WodansSon/terraform-azurerm-ai-assisted-development` and `.github/workflows/release.yml`.
+- A spoofed or cloned repository can publish its own docs, checksums, and attestations for its own identity.
+- That means end users still need to know they started from the canonical repository before trusting the verification command.
+
+If attestation verification fails:
+- Do not extract or run the installer.
+- Re-download the pinned asset from the canonical release page.
+- Confirm that the repository owner, workflow path, and tag match the expected release.
+
 
 ### Verify Shows Missing Files After Clean
 
@@ -355,6 +387,64 @@ This applies instructions only to Go files in the `internal/` directory.
    - Contributors: re-run `-Bootstrap` from a git clone to refresh the user-profile installer
 3. **Reinstall into the target repo** (from your user profile installer directory), then rerun `/code-review-docs`.
 4. **Restart VS Code** to ensure updated prompts/skills are loaded.
+
+---
+
+### `/code-review-committed-changes` Reports That No Valid PR Could Be Determined
+
+**Symptoms**:
+- You run `/code-review-committed-changes` and the linter subsection reports `Not run`
+- The summary says no valid PR could be determined for the branch changes
+
+**Cause**:
+- The committed review prompt now prefers PR-scoped linter execution.
+- Copilot did not have explicit PR context for the current branch, and no PR number was supplied in the command invocation.
+
+**Fixes**:
+- **Create or open a draft PR** for the branch, then rerun `/code-review-committed-changes`.
+- **Pass the PR number explicitly** when you run the committed review prompt:
+
+```text
+/code-review-committed-changes PR 12345
+```
+
+- **Confirm the linter is installed locally** if the section still reports `Not run` for availability reasons:
+
+```bash
+go install github.com/qixialu/azurerm-linter@latest
+```
+
+**Notes**:
+- `/code-review-local-changes` does not require PR context and continues to use local-diff linting.
+- The committed review prompt does not guess PR numbers from branch names or git history.
+
+---
+
+### Review Prompts Still Ask Approval for `git rev-parse --show-toplevel`
+
+**Symptoms**:
+- `/code-review-local-changes` or `/code-review-committed-changes` still prompts for approval before running the repo-root lookup command
+- The command shown is `git rev-parse --show-toplevel`
+
+**Cause**:
+- Terminal approval is controlled by VS Code/Copilot security settings.
+- Prompt text can reduce agent narration, but it cannot override terminal approval by itself.
+
+**Optional fix**:
+Add a narrow allowlist entry to your VS Code user `settings.json`:
+
+```jsonc
+"chat.tools.terminal.autoApprove": {
+   "/^git rev-parse --show-toplevel$/": true
+}
+```
+
+This auto-approves only the read-only repo-root command used by the review prompts.
+
+**Notes**:
+- This does not broadly approve `git` commands.
+- Organization policy or other approval settings can still override local settings.
+- If you want to approve more commands, add them deliberately and narrowly.
 
 ---
 

@@ -54,6 +54,25 @@ This project originated from [PR #29907](https://github.com/hashicorp/terraform-
 > [!IMPORTANT]
 > **The installer MUST be extracted to your user profile directory** (`$env:USERPROFILE\.terraform-azurerm-ai-installer\` on `Windows` or `~/.terraform-azurerm-ai-installer/` on `macOS`/`Linux`). Running from other locations (like Downloads or Desktop) will cause directory traversal errors. See [Troubleshooting](docs/TROUBLESHOOTING.md#positional-parameter-error-windows) for details.
 
+### Security And Trust
+
+Before downloading or running the installer, understand the trust boundary:
+
+- The canonical repository identity is `WodansSon/terraform-azurerm-ai-assisted-development`.
+- Official release provenance should be verified against `.github/workflows/release.yml` in that repository.
+- `checksums.txt` and `aii.checksum` are integrity checks only. They do not, by themselves, prove publisher authenticity.
+- A spoofed or cloned repository can publish its own docs, checksums, and attestations for its own identity.
+- That means users still need to start from the real canonical repository and verify against that exact pinned repo and workflow.
+
+For pinned release assets, verify provenance before extraction:
+
+```bash
+gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+    --repo WodansSon/terraform-azurerm-ai-assisted-development \
+    --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+    --source-ref refs/tags/v1.0.1
+```
+
 **Choose your platform:**
 
 #### Windows (PowerShell)
@@ -90,10 +109,21 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 > [!NOTE]
 > **Offline-only operations**: install, verify, and clean use the bundled payload (`aii/`) and local manifest. No network downloads occur during these operations.
 > Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap`.
+> This bundle self-check verifies extracted bundle integrity only. It does not prove that the downloaded release asset came from the official release workflow.
 <!-- -->
 > [!NOTE]
 > Target installs require a `terraform-provider-azurerm` clone with an origin remote configured.
 > The AI development repository is a source-only workspace and is not a valid install target.
+<!-- -->
+> [!NOTE]
+> **Verify official release provenance**: for pinned release assets, prefer verifying the GitHub artifact attestation before extraction:
+> ```bash
+> gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+>   --repo WodansSon/terraform-azurerm-ai-assisted-development \
+>   --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+>   --source-ref refs/tags/v1.0.1
+> ```
+> `checksums.txt` and `aii.checksum` are still useful, but they are integrity checks, not publisher-authenticity checks.
 <!-- -->
 > [!NOTE]
 > **Install a specific version (pinning)**: replace `latest/download` with a tagged release URL (`download/vX.Y.Z`).
@@ -190,6 +220,27 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-local-changes
 ```
 
+### Review Committed Branch Changes
+```
+/code-review-committed-changes
+```
+
+If Copilot does not already have PR context for your branch, pass the PR number explicitly:
+
+```
+/code-review-committed-changes PR 12345
+```
+
+If you want to reduce approval prompts for the harmless repo-root lookup used by the review prompts, you can allow just that command in your VS Code user settings:
+
+```jsonc
+"chat.tools.terminal.autoApprove": {
+    "/^git rev-parse --show-toplevel$/": true
+}
+```
+
+This only auto-approves the read-only repo-root command. It does not broadly allow other `git` commands.
+
 ### Generate Tests
 ```
 AI Chat: "Create comprehensive acceptance tests for azurerm_cdn_frontdoor_profile"
@@ -273,6 +324,11 @@ Copilot: Analyzing your changes...
 ⚠️  Consider adding validation for 'sku' field
 ⚠️  CustomizeDiff may be needed for 'tags'
 ```
+
+Review modes:
+- `/code-review-local-changes` reviews local workspace changes and uses local-diff linting.
+- `/code-review-committed-changes` reviews branch changes against `origin/main` and prefers PR-scoped linting.
+- If committed review cannot determine a valid PR, it reports `Not run` for the linter section and tells you to create a draft PR or rerun with an explicit PR number such as `/code-review-committed-changes PR 12345`.
 
 ### Test Generation Made Easy
 

@@ -332,6 +332,8 @@ Before committing, get AI feedback:
 You: /code-review-local-changes
 ```
 
+This review uses local workspace changes and local-diff linting.
+
 **Copilot Review**:
 ```
 Reviewing your changes to internal/services/cdn/cdn_frontdoor_profile_resource.go
@@ -362,7 +364,17 @@ Review your PR before pushing:
 You: /code-review-committed-changes
 ```
 
-Gets feedback on all commits in your current branch.
+Gets feedback on the committed branch diff against `origin/main`.
+
+If Copilot already has PR context for the branch, the committed review can use PR-scoped linter checks automatically.
+
+If PR context is not available, pass the PR number explicitly:
+
+```
+You: /code-review-committed-changes PR 12345
+```
+
+If no valid PR can be determined, the committed review reports the linter section as `Not run` and tells you to create a draft PR or rerun with an explicit PR number.
 
 ---
 

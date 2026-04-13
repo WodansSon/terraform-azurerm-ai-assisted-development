@@ -1,220 +1,223 @@
 ---
-description: "Code Review Prompt for Terraform AzureRM Provider Committed Changes"
+description: "Code review for committed changes using the shared review contract and a dedicated azurerm-linter section."
 ---
 
-# 🚀 **EXECUTE IMMEDIATELY** - Code Review Task
+# 📋 Code Review - Committed Changes
 
-**PRIMARY TASK**: Perform code review of committed changes for Terraform AzureRM provider
+# 🚫 EXECUTION GUARDRAILS (READ FIRST)
 
-## ⚡ **START HERE - MANDATORY EXECUTION STEPS**
+## Audit-only mode
+This prompt is audit-only. Do not modify files. Do not propose or apply patches unless the user explicitly asks for fixes.
 
-**1. GET THE DIFF - Run these git commands immediately:**
-```powershell
-# Get branch and overview
+## Recursion prevention
+If the committed change-set includes `.github/prompts/code-review-committed-changes.prompt.md`, skip only that file and disclose the skip in the review output.
+
+## Minimal user input policy
+Assume the user may invoke this prompt with minimal instructions. Run the full procedure below even if the request is short.
+
+## Command authorization
+The required git and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
+Execute the required review commands immediately when their step applies.
+Do not stop to ask the user for confirmation before running them.
+Do not emit a preamble that asks permission or waits for approval before running them.
+
+## Determinism policy
+- Follow the shared review contract, not stale prompt memory.
+- Do not guess when evidence is missing.
+- Do not present multiple alternative fixes unless the user explicitly asks for options.
+- Do not output progress narration, plans, or TODO lists.
+- The first character of the normal review output must be `#`.
+
+## Mandatory procedure
+
+### 0) Load the shared review contract
+- Read and apply `.github/instructions/code-review-compliance-contract.instructions.md` to EOF.
+- EOF marker verification is mandatory: the last non-empty line must be `<!-- REVIEW-CONTRACT-EOF -->`.
+- If the contract is not fully loaded, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: code review contract not fully loaded. Load .github/instructions/code-review-compliance-contract.instructions.md to EOF and re-run this prompt.`
+
+### 1) Gather the committed change-set
+Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` for each command.
+Execute these required commands directly when this step begins; do not pause for confirmation.
+
+Run these commands in order and do not repeat them:
+
+```text
 git branch --show-current
 git --no-pager diff --stat --no-prefix origin/main...HEAD
-
-# Get the focused diff for review (exclude generated/vendor files)
-git --no-pager diff --no-prefix origin/main...HEAD -- ":(exclude)vendor/**" ":(exclude)go.sum" ":(exclude)go.mod"
-
-# Get commit context
-git log --oneline origin/main..HEAD
-git status
+git --no-pager diff --no-prefix --unified=3 origin/main...HEAD
 ```
 
-**⚠️ IMPORTANT**: If the commands do not show any changes, abandon the code review and display:
-**"☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️"**
+Rules:
+- Review the committed diff against `origin/main...HEAD`.
+- If the committed diff is empty, hard-stop and output exactly:
+  - `☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️`
+- If the diff is large, inspect the changed files individually rather than rerunning the branch-wide commands.
+- If additional commit-by-commit context is genuinely needed after reviewing the diff, inspect the relevant commit(s) individually instead of making commit history a mandatory first step.
 
-**2. REVIEW THE CHANGES** - Apply expertise as principal Terraform provider engineer
+### 2) Classify files accurately
+- Parse the diff stat carefully so added, modified, and deleted files are counted correctly.
+- Do not silently skip files that belong to the committed review scope.
 
-**3. PROVIDE STRUCTURED FEEDBACK** - Use the review format below
+### 3) Load applicable workspace standards
+- Read the current workspace `CONTRIBUTING.md`.
+- Read `.github/pull_request_template.md` when present.
+- Read any file-scoped instructions or skills that directly govern the changed files.
+- If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
+- If provider contributor guidance exists in the current workspace or is explicitly fetched as evidence, apply it only where relevant.
+- Use the precedence rules from the shared review contract.
 
----
+### 4) Run azurerm-linter when applicable
+- If the committed change-set includes files under `internal/**/*.go` or `internal/**/*_test.go`, attempt azurerm-linter and report it in its own section.
+- When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
+- Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a longer timeout for the linter command than for the quick git inspection commands.
+- Wait for the linter command to finish before classifying the linter section.
+- Do not report `Not run` merely because the initial wait window elapsed while the linter command was still running.
+- Committed review prefers exact committed-scope linting:
+  - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
+  - Run the linter from that repo root
+  - Determine a valid pull request number deterministically from explicit review context only
+  - Allowed PR number sources are:
+    - the active pull request context, when available
+    - the currently open or viewed pull request context, when available
+    - an explicit PR number supplied by the user or prompt invocation text
+  - If a valid PR number is available, run `azurerm-linter --pr=<number>`
+  - Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals
+- If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
+- If no valid pull request number can be determined for the committed branch changes, mark the linter section as `Not run` and instruct the user to create a draft PR and run the review again.
+- If the local binary is missing or the tool cannot be run or scoped correctly, mark the section as `Not run` and state the reason.
+- If the tool reports `Found 0 changed files` or otherwise has no changed packages to analyze and prints `Error: no packages to analyze`, treat that result as `Not applicable`, not `Not run`.
+- If the tool reports a flag or usage parse error such as `flag provided but not defined` and prints usage help, treat that result as `Not run` due to invocation error, not as an install problem.
+- When the local binary is missing or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
+- Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
+- Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
+- Structure the linter section from the actual tool output:
+  - Use the tool footer such as `Found X issue(s)` as the issue count when present
+  - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not `Must Fix`
+  - Put only actual violation lines into `Must Fix`
+  - If there are no violations, set `Must Fix` to `None`
+  - If there are multiple violations, list them as newline-separated entries, one normalized `CHECKID path:line: message` per line
+  - Normalize temporary worktree paths to repo-relative paths when deterministic; otherwise keep the raw path
+  - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
+  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep `Must Fix: None`, and do not show an install hint unless the binary is actually missing
+  - Do not invent broader-scope fallback reporting fields in the normal review flow
+  - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
+  - Limit the normal linter subsection to `Status`, `Run Scope`, `Issue Count`, `Summary`, and `Must Fix`
+  - Use the completed linter output, not partial early output, when determining `Status`, `Issue Count`, `Summary`, and `Must Fix`
+  - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
+  - If no valid PR number can be determined, use `Status: Not run`, `Run Scope: PR scope`, `Issue Count: n/a`, and a summary that tells the user to create a draft PR and run the review again
+  - If the PR number was not supplied explicitly in the committed review invocation, include an example such as `/code-review-committed-changes PR 12345` in that summary
+  - Do not ask the user to approve `git rev-parse --show-toplevel` or `azurerm-linter` execution during the normal review flow
+  - Do not create temporary scripts or persisted temp log files to run or parse the linter in the normal review flow
+  - If a direct linter run cannot be interpreted deterministically, report `Not run` with a concise reason instead of adding execution scaffolding
 
-## 🎯 **CORE REVIEW MISSION**
+### 5) Produce the review output
+- Review the full committed change-set.
+- Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
+- Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
+- Keep the review concise but complete.
 
-As a principal Terraform provider engineer with expertise in Go development, Azure APIs, and HashiCorp Plugin SDK, deliver actionable code review feedback.
+## Output format (use this exact structure)
 
-**Critical Issues**:
-- Security vulnerabilities in Azure authentication and API calls
-- Resource lifecycle bugs (create, read, update, delete operations)
-- State management and drift detection issues
-- Azure API error handling and retry logic
-- Resource import functionality correctness
-- Terraform Plugin SDK usage violations
-- Implementation approach consistency (Typed vs Untyped Resource Implementation)
-- CustomizeDiff import pattern correctness (conditional import requirements)
-- Resource schema validation and type safety
+Output must be rendered Markdown.
 
-**Code Quality**:
-- Go language conventions and idiomatic patterns
-- Terraform resource implementation best practices
-- Azure SDK for Go usage patterns
-- Plugin SDK schema definitions and validation
-- Schema standards: flag `TypeString` fields that are effectively boolean toggles (e.g. allowed values `Enabled`/`Disabled`, `Enable`/`Disable`, or `On`/`Off`) and prefer a boolean `*_enabled` instead
-  - Tri-state nuance: if the API includes a third value like `None` (e.g. `Enabled`/`Disabled`/`None` or `On`/`Off`/`None`), confirm whether `None` is equivalent to omitted/default (still prefer optional `*_enabled`) vs a distinct user-settable state (string enum may be justified but must be explicitly justified)
-  - Scope note: treat this as a standard for new fields; for already-shipped schemas, prefer deprecation/migration patterns over breaking renames
-- Schema standards: flag `TypeString` fields whose `ValidateFunc` is only `validation.StringIsNotEmpty`/"string not empty" as an **Issue** unless there is explicit justification why stronger validation is not feasible
-  - This is a last-resort validator and should not be used when an enum, regex, length bound, or other deterministic validation is possible
-  - Legitimate exceptions exist (for example: Azure accepts unconstrained user strings, or the service has undocumented rules), but the PR should state the reason
-- CustomizeDiff function validation logic and patterns
-- Implementation approach appropriateness (Typed for new, Untyped maintenance only)
-- Error handling and context propagation
-- Resource timeout configurations
-- Acceptance test coverage and quality
-- **Tests use ONLY ExistsInAzure() check with ImportStep() - NO redundant field validation**
-- **CRITICAL: Code comments policy enforcement - Comments only for Azure API quirks, complex business logic, or SDK workarounds that cannot be expressed through code structure**
+- Do not wrap the review in triple-backtick fences.
+- Do not output text before the review headings.
+- Emit each heading exactly once and in this order.
 
-**Azure-Specific Concerns**:
-- Azure API version compatibility
-- Resource naming and tagging conventions
-- Location/region handling
-- Azure resource dependency management
-- Subscription and resource group scoping
-- Azure service-specific implementation patterns
-- Resource ID parsing and validation
+1. `# 📋 **Code Review**: ${change_description}`
+2. `## 📊 **CHANGE SUMMARY**`
+3. `## 📁 **FILES CHANGED**`
+4. `## 🎯 **PRIMARY CHANGES ANALYSIS**`
+5. `## 📋 **DETAILED TECHNICAL REVIEW**`
+6. `## ✅ **RECOMMENDATIONS**`
+7. `## 🏆 **OVERALL ASSESSMENT**`
 
-**Terraform Provider Patterns**:
-- CRUD operation implementation correctness
-- Schema design and nested resource handling
-- ForceNew vs in-place update decisions
-- CustomizeDiff function usage
-- State refresh and conflict resolution
-- Resource import state handling
-- Documentation and example completeness
-
----
-
-##  **REVIEW OUTPUT FORMAT**
+Use this template:
 
 ```markdown
 # 📋 **Code Review**: ${change_description}
 
 ## 📊 **CHANGE SUMMARY**
-- **Files Changed**: [number] files ([additions], [modifications], [deletions])
+- **Files Changed**: [number] files ([tracked_additions] new, [modifications] modified, [deletions] deleted)
 - **Scale**: [insertions] insertions, [deletions] deletions
-- **Branch**: [current_branch_from_git_command] vs origin/main
-- **Scope**: [Brief description of overall scope]
+- **Branch**: [current_branch] vs origin/main
+- **Scope**: [brief summary of what changed]
+
+## 📁 **FILES CHANGED**
+
+**Modified Files:**
+- `path/to/file`
+
+**Added Files:**
+- `path/to/file`
+
+**Deleted Files:**
+- `path/to/file`
 
 ## 🎯 **PRIMARY CHANGES ANALYSIS**
-[Overview of the code changes and purpose]
+[Brief explanation of the branch changes and their purpose.]
 
 ## 📋 **DETAILED TECHNICAL REVIEW**
 
+### 🔄 **RECURSION PREVENTION**
+- **File Skipped**: `.github/prompts/code-review-committed-changes.prompt.md` - Cannot review code review prompt itself to prevent infinite loops
+
+### 🔍 **STANDARDS CHECK**
+- **Contract**: [shared review contract rules applied]
+- **Repo Guidance**: [contributor docs / instructions / skills actually used]
+- **Scope Rules**: [which `REVIEW-SCOPE-*` rules were relevant]
+- **Docs Contract**: [whether `DOCS-*` rules were loaded for `website/docs/**/*.html.markdown` files in scope]
+- **Notes**: [scope-specific guidance that affected severity or classification]
+
+### 🧰 **AZURERM LINTER**
+- **Status**: [Issues found/No issues/Not applicable/Not run]
+- **Run Scope**: [PR scope via `--pr=<number>` or `n/a`]
+- **Issue Count**: [number from tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
+- **Summary**: [result summary or failure reason]
+- **Must Fix**: [use `None` when there are no violations; otherwise list one normalized `CHECKID path:line: message` entry per line]
+
 ### 🟢 **STRENGTHS**
-[List positive aspects and well-implemented features]
+- [Concrete positive findings only]
 
 ### 🟡 **OBSERVATIONS**
-[List areas for consideration or minor improvements]
+- [Non-blocking concerns, uncertainty, or follow-up ideas]
 
-### 🔴 **ISSUES** (if any)
-[List ONLY actual problems that need to be fixed - bugs, errors, violations, missing requirements, typos, misspellings, improper pointer handling, incorrect SDK usage, using deprecated utilities, etc. Do NOT include observations about what was done correctly or opinions about changes that are already implemented properly]
+### 🔴 **ISSUES** (only actual problems)
+- [Evidence-backed defects, regressions, or policy violations]
+- [Include azurerm-linter findings from the filtered run]
 
 ## ✅ **RECOMMENDATIONS**
 
 ### 🎯 **IMMEDIATE**
-[Critical actions needed before merge]
+- [Blocking or high-value next actions]
 
 ### 🔄 **FUTURE CONSIDERATIONS**
-[Improvements for future iterations]
+- [Non-blocking follow-up work]
 
 ## 🏆 **OVERALL ASSESSMENT**
-[Final recommendation with confidence level]
+[Overall assessment and merge-readiness recommendation.]
+```
 
----
+Individual findings should use this structure when expanded:
 
-## Individual Suggestions Format:
-
+```markdown
 ## ${🔧/❓/⛏️/♻️/🤔/🚀/ℹ️/📌} ${Review Type}: ${Summary}
 * **Priority**: ${🔥/🔴/🟡/🔵/⭐/✅}
 * **File**: ${relative/path/to/file}
-* **Details**: Clear explanation
-* **Azure Context** (if applicable): Service behavior reference
-* **Terraform Impact** (if applicable): Configuration/state effects
-* **Suggested Change** (if applicable): Code snippet
-
-# Summary
-Concise assessment and any follow-up items.
+* **Evidence**: [what the diff, file, instruction, or tool output shows]
+* **Impact**: [why it matters]
+* **Suggested Change**: [single deterministic fix when applicable]
 ```
 
-**Priority System:** 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
+Priority system: 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
 
-**Review Type Emojis:**
-* 🔧 Change request - Functional issues requiring fixes
-* ❓ Question - Clarification needed about design decisions
-* ⛏️ Nitpick - Minor style/consistency issues (typos, formatting, naming)
-* ♻️ Refactor suggestion - Structural code improvements
-* 🤔 Thought/concern - Design or approach concerns requiring discussion
-* 🚀 Positive feedback - Excellent implementations worth highlighting
-* ℹ️ Explanatory note - Technical context or background information
-* 📌 Future consideration - Larger scope items for follow-up
-
----
-
-# 📚 **APPENDIX: EDGE CASE HANDLING** *(Secondary Guidelines)*
-
-## Console Line Wrapping Detection *(If Needed)*
-
-**⚠️ ONLY IF git diff content appears corrupted:**
-- Use `read_file filename` to verify actual content
-- Note: `*(Verified: console wrapping - content clean)*`
-- Continue with technical review
-
-**Console artifacts are normal** - Focus on delivering valuable code review feedback.
-
-## Git Requirements
-
-**Git Commands to Execute:**
-```powershell
-git branch --show-current
-git --no-pager diff --stat --no-prefix origin/main...HEAD
-git --no-pager diff --no-prefix origin/main...HEAD
-git log --oneline origin/main..HEAD
-git status
-```
-
-**If no changes found:**
-**"☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️"**
-
-## Verification Protocol *(Edge Cases Only)*
-
-**When to verify:**
-- Text breaks mid-word without logical reason
-- Missing quotes/brackets that don't make contextual sense
-- Emojis appear as `??`
-- JSON/YAML looks syntactically broken
-
-**Verification format:**
-```markdown
-*(Verified: console wrapping - actual content clean)*
-```
-
-## Review Scope Expansion
-
-**Beyond diff changes, also check:**
-- Spelling and grammar in visible text
-- Command examples accuracy
-- Naming consistency
-- Professional language standards
-
-## Comprehensive Quality Guidelines
-
-- **Code Comments Policy**: Comments only for Azure API quirks, complex business logic, or SDK workarounds that cannot be expressed through code structure
-- **Comment Quality**: All comments must have clear justification and add genuine value beyond code structure
-- **Refactoring Preference**: Consider if code restructuring could eliminate need for comments
-- **Documentation Standards**:
-  - Spelling accuracy in all text content
-  - Grammar and syntax correctness
-  - Consistent terminology and naming
-  - Professional language standards
-
-## Provider-Specific Excellence
-
-- **Testing Standards**: ExistsInAzure() + ImportStep() only, no redundant field validation
-- **CustomizeDiff Patterns**: Correct imports based on implementation type
-- **Azure Patterns**: PATCH operations, "None" value handling, SDK integration
-- **Implementation Approach**: Typed for new resources, Untyped for maintenance only
-
----
-
-**REMEMBER: PRIMARY MISSION is to deliver actionable technical feedback. All appendix items are secondary safeguards.**
+Review type emojis:
+- 🔧 Change request
+- ❓ Question
+- ⛏️ Nitpick
+- ♻️ Refactor suggestion
+- 🤔 Thought or concern
+- 🚀 Positive feedback
+- ℹ️ Explanatory note
+- 📌 Future consideration
