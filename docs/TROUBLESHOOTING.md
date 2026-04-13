@@ -417,6 +417,7 @@ go install github.com/qixialu/azurerm-linter@latest
 **Notes**:
 - `/code-review-local-changes` does not require PR context and continues to use local-diff linting.
 - The committed review prompt does not guess PR numbers from branch names or git history.
+- The prompt-side linter flow assumes a recent local `azurerm-linter` build. If the corresponding upstream `azurerm-linter` changes are not merged and installed locally yet, the linter subsection can still behave like the older tool version until you update your local binary. The current upstream dependency is [QixiaLu/azurerm-linter#50](https://github.com/QixiaLu/azurerm-linter/pull/50).
 
 ---
 
