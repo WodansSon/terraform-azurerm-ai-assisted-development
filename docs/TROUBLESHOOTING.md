@@ -401,14 +401,14 @@ This applies instructions only to Go files in the `internal/` directory.
 - Copilot did not have explicit PR context for the current branch, and no PR number was supplied in the command invocation.
 
 **Fixes**:
-1. **Create or open a draft PR** for the branch, then rerun `/code-review-committed-changes`.
-2. **Pass the PR number explicitly** when you run the committed review prompt:
+- **Create or open a draft PR** for the branch, then rerun `/code-review-committed-changes`.
+- **Pass the PR number explicitly** when you run the committed review prompt:
 
 ```text
 /code-review-committed-changes PR 12345
 ```
 
-3. **Confirm the linter is installed locally** if the section still reports `Not run` for availability reasons:
+- **Confirm the linter is installed locally** if the section still reports `Not run` for availability reasons:
 
 ```bash
 go install github.com/qixialu/azurerm-linter@latest

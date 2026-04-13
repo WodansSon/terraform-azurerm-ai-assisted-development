@@ -256,7 +256,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the linter could not be executed or could not be scoped correctly, report Not run with the concrete reason.
 - Rule: Do not silently omit the tool or imply that it passed when it was not run.
 - Rule: When the local binary is missing or the section is reported as Not run for tool-availability reasons, include an install hint of the form:
-  - Repo: https://github.com/QixiaLu/azurerm-linter
+  - Repo: [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter)
   - Install: go install github.com/qixialu/azurerm-linter@latest
 - Rule: The linter section should describe the filtered run that powers the normal review flow.
 - Rule: The normal linter subsection should be limited to these reviewer-facing fields only:
