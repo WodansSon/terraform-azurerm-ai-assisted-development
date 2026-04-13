@@ -170,17 +170,38 @@ The installer payload (`aii/`) and manifest are out of sync (stale or modified i
 
 Use GitHub artifact attestations for the downloaded release asset before extraction:
 
+PowerShell:
+
+```powershell
+gh attestation verify "$env:TEMP\terraform-azurerm-ai-installer.zip" --repo WodansSon/terraform-azurerm-ai-assisted-development --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml --source-ref refs/tags/vX.Y.Z
+```
+
+Bash:
+
 ```bash
-gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+gh attestation verify /tmp/terraform-azurerm-ai-installer.tar.gz \
    --repo WodansSon/terraform-azurerm-ai-assisted-development \
    --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
-   --source-ref refs/tags/v1.0.1
+   --source-ref refs/tags/vX.Y.Z
 ```
 
 What each layer means:
 - GitHub attestation verification: proves the release asset was produced by the canonical release workflow for this repository and tag.
 - `checksums.txt`: verifies the downloaded release asset bytes match the published digest.
 - `aii.checksum`: verifies the extracted installer bundle contents are internally consistent.
+
+How to run it correctly:
+- Run `gh attestation verify` against the downloaded archive file, not the extracted installer directory.
+- Ensure GitHub CLI is authenticated to `github.com` before verifying.
+- On Windows PowerShell, verify the same stable-name `.zip` file you passed to `Expand-Archive`.
+- On Bash, verify the same archive file you downloaded with `curl`.
+
+What success looks like:
+- The digest for the local archive loads successfully.
+- GitHub loads one or more attestations from the API.
+- The command ends with `Verification succeeded!`.
+- The matching attestations show `.github/workflows/release.yml@refs/tags/vX.Y.Z` as the build and signer workflow.
+- Multiple matching attestations can be expected when the stable-name and versioned release assets have the same digest.
 
 **Trust model limits**:
 - Attestation verification is only meaningful if you verify against the canonical signer identity: `WodansSon/terraform-azurerm-ai-assisted-development` and `.github/workflows/release.yml`.
@@ -191,6 +212,40 @@ If attestation verification fails:
 - Do not extract or run the installer.
 - Re-download the pinned asset from the canonical release page.
 - Confirm that the repository owner, workflow path, and tag match the expected release.
+
+---
+
+### `gh attestation verify` Returns `HTTP 401: Bad credentials`
+
+**Symptoms**:
+- The release archive path is correct and the digest loads successfully
+- `gh attestation verify` fails while loading attestations from the GitHub API with `HTTP 401: Bad credentials`
+
+**Cause**:
+- GitHub CLI is not authenticated correctly to `github.com`, or
+- a stale `GH_TOKEN` / `GITHUB_TOKEN` environment variable is overriding your normal `gh` login
+
+**Fixes**:
+- Check your current GitHub CLI authentication state:
+
+```bash
+gh auth status
+```
+
+- In PowerShell, clear any overriding auth environment variables for the current shell:
+
+```powershell
+Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+```
+
+- Reauthenticate GitHub CLI to `github.com`:
+
+```bash
+gh auth login -h github.com -w
+```
+
+- Rerun `gh attestation verify` against the downloaded archive file.
 
 
 ### Verify Shows Missing Files After Clean

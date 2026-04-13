@@ -66,12 +66,36 @@ Before downloading or running the installer, understand the trust boundary:
 
 For pinned release assets, verify provenance before extraction:
 
+PowerShell:
+
+```powershell
+gh attestation verify "$env:TEMP\terraform-azurerm-ai-installer.zip" --repo WodansSon/terraform-azurerm-ai-assisted-development --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml --source-ref refs/tags/vX.Y.Z
+```
+
+Bash:
+
 ```bash
-gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+gh attestation verify /tmp/terraform-azurerm-ai-installer.tar.gz \
     --repo WodansSon/terraform-azurerm-ai-assisted-development \
     --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
-    --source-ref refs/tags/v1.0.1
+    --source-ref refs/tags/vX.Y.Z
 ```
+
+Verification prerequisites:
+
+- Verify the downloaded archive file itself, not the extracted installer directory.
+- Use GitHub CLI authenticated to `github.com` before running `gh attestation verify`.
+- If `gh attestation verify` returns `HTTP 401: Bad credentials`, run `gh auth status`, clear stale `GH_TOKEN` / `GITHUB_TOKEN` environment variables if they are overriding your login, and reauthenticate with `gh auth login -h github.com -w`.
+- In PowerShell, verify the same stable-name ZIP you downloaded with `Invoke-WebRequest`.
+- In Bash, verify the same archive file you downloaded with `curl`.
+
+Successful verification pattern:
+
+- The local archive digest loads successfully.
+- GitHub loads one or more attestations from the API.
+- The command ends with `Verification succeeded!`.
+- Matching attestations reference `.github/workflows/release.yml@refs/tags/vX.Y.Z`.
+- Multiple matches can be expected when the stable-name and versioned release assets share the same digest.
 
 **Choose your platform:**
 
@@ -123,6 +147,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 >   --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
 >   --source-ref refs/tags/v1.0.1
 > ```
+> This requires GitHub CLI authentication to `github.com` and should be run against the downloaded archive file, not the extracted installer directory.
 > `checksums.txt` and `aii.checksum` are still useful, but they are integrity checks, not publisher-authenticity checks.
 <!-- -->
 > [!NOTE]

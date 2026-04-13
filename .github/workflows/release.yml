@@ -254,12 +254,21 @@ jobs:
 
             Use GitHub artifact attestations to verify that a downloaded release asset was produced by the canonical release workflow for this repository:
 
+            **PowerShell:**
+            ```powershell
+            gh attestation verify "$env:TEMP\terraform-azurerm-ai-installer.zip" --repo WodansSon/terraform-azurerm-ai-assisted-development --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml --source-ref refs/tags/v${{ steps.get_version.outputs.VERSION }}
+            ```
+
+            **Bash:**
             ```bash
-            gh attestation verify terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip \
+            gh attestation verify /tmp/terraform-azurerm-ai-installer.tar.gz \
               --repo WodansSon/terraform-azurerm-ai-assisted-development \
               --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
               --source-ref refs/tags/v${{ steps.get_version.outputs.VERSION }}
             ```
+
+            Verify the downloaded archive file itself, not the extracted installer directory. GitHub CLI must already be authenticated to `github.com`. If you receive `HTTP 401: Bad credentials`, run `gh auth status`, clear stale `GH_TOKEN` / `GITHUB_TOKEN` environment variables if they are overriding your login, then reauthenticate with `gh auth login -h github.com -w`.
+            A successful verification loads the local artifact digest, loads one or more attestations from the GitHub API, and ends with `Verification succeeded!`. Multiple matching attestations are expected when the stable-name and versioned release assets share the same digest.
 
             `checksums.txt` and `aii.checksum` help detect corruption or tampering after download or extraction, but the GitHub attestation is the trust check that the asset came from the official release workflow.
 

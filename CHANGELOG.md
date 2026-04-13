@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added deterministic committed-review PR-number discovery rules and explicit rerun guidance such as `/code-review-committed-changes PR 12345` when the linter cannot determine PR context automatically.
 - Added release-note/documentation caveats that the prompt-side `azurerm-linter` flow assumes a recent upstream `azurerm-linter` binary, with the current dependency called out explicitly as [QixiaLu/azurerm-linter#50](https://github.com/QixiaLu/azurerm-linter/pull/50), so behavior may differ until the corresponding upstream changes are merged and installed locally.
 - Added GitHub artifact attestations to the installer release workflow and documented how users should verify official pinned release assets with `gh attestation verify`, introducing a provenance-based release trust model alongside the existing checksum-based integrity checks.
+- Added explicit documentation for the expected successful attestation verification pattern, including the normal case where multiple matching attestations appear because the stable-name and versioned release assets share the same digest.
+- Added explicit PowerShell and Bash `gh attestation verify` examples that show the correct stable-name archive path to verify for each shell.
+- Added explicit end-user guidance that `gh attestation verify` must be run against the downloaded release archive with GitHub CLI authenticated to `github.com`, including recovery steps for the common `HTTP 401: Bad credentials` failure mode.
 
 ### Changed
 

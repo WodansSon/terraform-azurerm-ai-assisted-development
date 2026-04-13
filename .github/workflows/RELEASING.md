@@ -78,14 +78,29 @@ Check that:
 
 For a pinned asset, verify the attestation against the canonical repository and release workflow:
 
+PowerShell:
+
+```powershell
+gh attestation verify "$env:TEMP\terraform-azurerm-ai-installer.zip" --repo WodansSon/terraform-azurerm-ai-assisted-development --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml --source-ref refs/tags/vX.Y.Z
+```
+
+Bash:
+
 ```bash
-gh attestation verify terraform-azurerm-ai-installer-v1.0.0.tar.gz \
+gh attestation verify /tmp/terraform-azurerm-ai-installer.tar.gz \
   --repo WodansSon/terraform-azurerm-ai-assisted-development \
   --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
-  --source-ref refs/tags/v1.0.0
+  --source-ref refs/tags/vX.Y.Z
 ```
 
 Use this as the publisher-authenticity check.
+
+Expected success pattern:
+- The local archive digest loads successfully.
+- GitHub loads one or more attestations for that digest.
+- The command ends with `Verification succeeded!`.
+- Matching attestations reference `.github/workflows/release.yml@refs/tags/vX.Y.Z`.
+- Multiple matches can be expected when the stable-name and versioned assets share the same digest.
 
 `checksums.txt` and `aii.checksum` remain useful integrity checks, but they are not substitutes for provenance verification.
 
