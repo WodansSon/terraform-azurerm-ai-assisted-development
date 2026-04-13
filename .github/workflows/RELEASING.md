@@ -52,8 +52,9 @@ The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically
 5. ✅ Create TAR.GZ archive for Linux/macOS users
 6. ✅ Create full source archive
 7. ✅ Generate SHA256 checksums
-8. ✅ Create GitHub Release with all artifacts
-9. ✅ Include installation instructions in release notes
+8. ✅ Generate GitHub artifact attestations for the release assets and checksum manifest
+9. ✅ Create GitHub Release with all artifacts
+10. ✅ Include installation and provenance verification instructions in release notes
 
 ### 5. Verify the Release
 
@@ -68,8 +69,25 @@ Check that:
   - `terraform-azurerm-ai-installer-v*.*.*.tar.gz` (Linux/macOS, versioned)
   - `terraform-azurerm-ai-assisted-development-v*.*.*.tar.gz` (Full source)
   - `checksums.txt`
+- [ ] Artifact attestations exist for the release assets and `checksums.txt`
 - [ ] Release notes include installation instructions
+- [ ] Release notes include `gh attestation verify` examples
 - [ ] Changelog is properly extracted
+
+### 6. Verify Release Provenance
+
+For a pinned asset, verify the attestation against the canonical repository and release workflow:
+
+```bash
+gh attestation verify terraform-azurerm-ai-installer-v1.0.0.tar.gz \
+  --repo WodansSon/terraform-azurerm-ai-assisted-development \
+  --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+  --source-ref refs/tags/v1.0.0
+```
+
+Use this as the publisher-authenticity check.
+
+`checksums.txt` and `aii.checksum` remain useful integrity checks, but they are not substitutes for provenance verification.
 
 ## Release Assets Explained
 

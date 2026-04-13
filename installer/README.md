@@ -477,6 +477,21 @@ Simply use slash commands to invoke the prompts directly:
 > Install, verify, and clean use the bundled payload (`aii/`) and local manifest only.
 > No network downloads occur during these operations.
 > Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap` (contributors only).
+> This installer self-check validates extracted bundle integrity only. It does not prove that the original release asset came from the official release workflow.
+<!-- -->
+> [!NOTE]
+> **Verify official release provenance for pinned assets**
+> Before extraction, verify the downloaded release asset with GitHub artifact attestations:
+> ```bash
+> gh attestation verify terraform-azurerm-ai-installer-v1.0.1.tar.gz \
+>   --repo WodansSon/terraform-azurerm-ai-assisted-development \
+>   --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+>   --source-ref refs/tags/v1.0.1
+> ```
+> The attestation check proves the artifact was produced by the canonical release workflow. `checksums.txt` and `aii.checksum` remain integrity checks only.
+<!-- -->
+> [!NOTE]
+> **Trust model**: attestation verification only works when you verify against the canonical repository identity and workflow path. A cloned or spoofed repository can generate matching checksums and attestations for its **own** identity. The security boundary is the exact pinned signer identity you trust, not the presence of a checksum or attestation by itself.
 <!-- -->
 > [!NOTE]
 > **Contributors: verify a staged bundle checksum**

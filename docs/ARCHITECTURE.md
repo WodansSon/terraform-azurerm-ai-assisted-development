@@ -361,7 +361,8 @@ Docs components (quick links):
 - Auditor prompt: `.github/prompts/code-review-docs.prompt.md`
 - Writer skill: `.github/skills/docs-writer/SKILL.md`
 
-- `/code-review-local-changes` and `/code-review-committed-changes`: code review loops for Go/Terraform changes.
+- `/code-review-local-changes`: reviews local workspace changes and uses local-diff linting.
+- `/code-review-committed-changes`: reviews committed branch changes against `origin/main` and prefers PR-scoped linting. When PR context is not already available, users can pass a PR number explicitly, for example `/code-review-committed-changes PR 12345`.
 - `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, page-self-contained examples with no undefined references, import example ID shape validation, and human-readable timeout defaults).
 
 ### Docs governance (contract, prompt, skill)

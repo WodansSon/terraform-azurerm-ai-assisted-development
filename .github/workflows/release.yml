@@ -10,7 +10,10 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     permissions:
+      attestations: write
+      artifact-metadata: write
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -169,6 +172,16 @@ jobs:
           cd release
           sha256sum *.tar.gz *.zip > checksums.txt
 
+      - name: Attest release artifacts provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/checksums.txt
+
+      - name: Attest checksum manifest provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -236,6 +249,19 @@ jobs:
             - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Linux/macOS installer bundle (recommended)
             - **`terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Full source archive
             - **`checksums.txt`** - SHA256 checksums for all artifacts
+
+            ### Verify Official Release Provenance
+
+            Use GitHub artifact attestations to verify that a downloaded release asset was produced by the canonical release workflow for this repository:
+
+            ```bash
+            gh attestation verify terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip \
+              --repo WodansSon/terraform-azurerm-ai-assisted-development \
+              --signer-workflow WodansSon/terraform-azurerm-ai-assisted-development/.github/workflows/release.yml \
+              --source-ref refs/tags/v${{ steps.get_version.outputs.VERSION }}
+            ```
+
+            `checksums.txt` and `aii.checksum` help detect corruption or tampering after download or extraction, but the GitHub attestation is the trust check that the asset came from the official release workflow.
 
             ### What's Included
 
