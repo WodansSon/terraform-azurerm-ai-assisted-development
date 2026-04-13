@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardened this installer repository's release trust model by adding GitHub artifact attestations to the release workflow and documenting how users should verify official pinned release assets with `gh attestation verify`, separate from the existing checksum-based bundle integrity checks.
 - Clarified the installer trust model in the docs: attestations and checksums protect artifact provenance and integrity only when users verify against the canonical pinned repository/workflow identity, and they do not remove the need for users to trust the real canonical repo as their starting point.
 - Promoted the installer trust-model guidance into a visible README installation section so users see the canonical repo/workflow trust boundary before the download and extraction commands.
+- Hardened the PowerShell validation workflows so they bootstrap the NuGet provider and `PSGallery` repository before installing `PSScriptAnalyzer`, avoiding CI failures on runners where no module repository is registered yet.
 - Tightened committed-review PR-number discovery so only explicit PR context sources are allowed, and the `Not run` guidance now includes an example of passing a PR number to the committed review command, such as `/code-review-committed-changes PR 12345`.
 
 ### Fixed

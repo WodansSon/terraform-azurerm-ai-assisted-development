@@ -40,6 +40,11 @@ jobs:
       - name: PSScriptAnalyzer - Install
         shell: pwsh
         run: |
+          Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
 
       - name: PSScriptAnalyzer - Run
