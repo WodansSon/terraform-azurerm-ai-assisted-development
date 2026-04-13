@@ -207,9 +207,9 @@ Internal multi-pass audit (mandatory):
     - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
     - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
     - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
-  - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
-  - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
-  - Note format (mandatory): when a resource field note is required, the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
+    - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
+    - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
+    - Note format (mandatory): when a resource field note is required, the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
 - **Examples pass**: enforce `DOCS-EX-*` (fences, self-containedness, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
 - **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
