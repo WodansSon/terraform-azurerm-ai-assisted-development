@@ -23,7 +23,7 @@ This contract defines the review rules, evidence hierarchy, finding classificati
 Use these sources with the following roles:
 
 - Workspace contributor guidance
-  - CONTRIBUTING.md
+  - Repo-level contributor documentation in common workspace locations such as `CONTRIBUTING.md` and `contributing/README.md`
   - .github/pull_request_template.md
   - README or subsystem documentation when directly relevant to touched files
 - Workspace file-scoped instructions and skills
@@ -88,6 +88,11 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-EVID-003: Attribute policies to real sources
 - Rule: Do not claim that a style or implementation rule is mandatory unless it is supported by a current contributor document, instruction file, skill, implementation pattern, or this contract.
 - Reviewer behavior: avoid invented policy language such as "must" or "required" when the source only supports a preference.
+
+### REVIEW-EVID-004: Discover contributor-guidance paths before claiming absence
+- Rule: Do not assume repo-level contributor guidance always lives at `CONTRIBUTING.md`.
+- Rule: Check common workspace locations such as `CONTRIBUTING.md` and `contributing/README.md` before claiming contributor guidance is absent.
+- Rule: When reviewing a `terraform-provider-azurerm` style workspace, treat `contributing/README.md` as repo-level contributor guidance when present.
 
 ## Finding classification
 
@@ -234,12 +239,12 @@ If evidence is missing for a claim that would change severity or requested actio
 
 ### REVIEW-LINT-003A: Treat "no packages to analyze" as Not applicable when caused by zero changed files
 - Rule: If azurerm-linter output shows that it found zero changed files or zero changed packages for the selected scope and then prints `Error: no packages to analyze`, classify the linter section as `Not applicable` rather than `Not run`.
-- Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep `Must Fix` as `None`.
+- Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep the `🎯 Must Fix:` block as `None`.
 - Rule: Do not treat this specific output shape as a tool failure requiring an install hint.
 
 ### REVIEW-LINT-003B: Treat flag and usage parse errors as Not run due to invocation error
 - Rule: If azurerm-linter exits with a flag parsing or usage error such as `flag provided but not defined` and prints its usage help, classify the linter section as `Not run`.
-- Rule: In this case, record the command error in `Summary`, keep `Must Fix` as `None`, and do not emit an install hint unless there is separate evidence that the binary is missing.
+- Rule: In this case, record the command error in `Summary`, keep the `🎯 Must Fix:` block as `None`, and do not emit an install hint unless there is separate evidence that the binary is missing.
 - Rule: When the corrected command form is deterministic from the prompt context, include that correction in `Summary`.
 
 ### REVIEW-LINT-004: azurerm-linter findings are reported as issues
@@ -248,7 +253,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the executed linter scope is broader or narrower than the reviewed diff, disclose that scope mismatch, but still report the linter findings found in the executed scope.
 - Rule: azurerm-linter findings must not remain only inside the linter subsection; they must also be surfaced in the review's main `ISSUES` section.
 - Rule: The linter subsection is the execution report. The main `ISSUES` section is where the actionable findings are enumerated.
-- Rule: Inside the linter subsection, actionable violation lines should be labeled as `Must Fix`.
+- Rule: Inside the linter subsection, actionable violation lines should appear under a standalone `🎯 Must Fix:` label.
 
 ### REVIEW-LINT-005: Report scope and failure reasons explicitly
 - Rule: The linter section must state the scope it covered.
@@ -264,19 +269,19 @@ If evidence is missing for a claim that would change severity or requested actio
   - Run Scope
   - Issue Count
   - Summary
-  - Must Fix
+  - `🎯 Must Fix:`
 - Rule: If a direct linter invocation cannot be interpreted deterministically, prefer `Not run` with a concise reason over creating extra execution scaffolding.
 
 ### REVIEW-LINT-005A: Structure the linter section from actual tool output
 - Rule: Capture the tool's issue footer (`Found X issue(s)`) as the issue count when present.
 - Rule: Treat preamble and cleanup logs (for example auto-detected remote, worktree creation, changed package detection, loading packages, cleanup) as execution notes or summary material, not as findings.
-- Rule: Treat only the violation lines as `Must Fix` entries.
-- Rule: If there are no linter violations, `Must Fix` must be exactly `None`.
-- Rule: If there are one or more linter violations, `Must Fix` must contain one normalized violation per line and must not collapse multiple violations into a single sentence.
-- Rule: Each `Must Fix` line must keep the form `CHECKID path:line: message`.
+- Rule: Treat only the violation lines as `🎯 Must Fix:` entries.
+- Rule: If there are no linter violations, the `🎯 Must Fix:` block must contain exactly `None`.
+- Rule: If there are one or more linter violations, the `🎯 Must Fix:` block must be introduced by a standalone `🎯 Must Fix:` label followed by one normalized violation per bullet and must not collapse multiple violations into a single sentence.
+- Rule: Each `🎯 Must Fix:` bullet must keep the form `CHECKID path:line: message`.
 - Rule: When filtered mode reports changed files but zero changed lines, preserve that fact in `Summary` as tool behavior, not as a trigger for a workaround pass.
 - Rule: Omit low-value execution chatter such as current branch, upstream branch, merge-base, and raw loader mode from normal successful output unless it materially explains the result.
-- Rule: On successful runs, prefer a concise summary and `Must Fix` list over field-by-field diagnostics.
+- Rule: On successful runs, prefer a concise summary and `🎯 Must Fix:` block over field-by-field diagnostics.
 - Rule: Build the normal linter subsection from the direct command output returned by the linter run.
 
 ### REVIEW-LINT-005C: Persist and inspect full linter output deterministically

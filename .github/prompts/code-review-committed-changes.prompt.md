@@ -60,7 +60,9 @@ Rules:
 - Do not silently skip files that belong to the committed review scope.
 
 ### 3) Load applicable workspace standards
-- Read the current workspace `CONTRIBUTING.md`.
+- Discover repo-level contributor guidance in the current workspace before reading it.
+- Check `CONTRIBUTING.md` and `contributing/README.md`, then read the applicable file(s) that exist.
+- When reviewing a `terraform-provider-azurerm` style workspace, treat `contributing/README.md` as the repo-level contributor guide when present.
 - Read `.github/pull_request_template.md` when present.
 - Read any file-scoped instructions or skills that directly govern the changed files.
 - If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
@@ -93,17 +95,17 @@ Rules:
 - Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
 - Structure the linter section from the actual tool output:
   - Use the tool footer such as `Found X issue(s)` as the issue count when present
-  - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not `Must Fix`
-  - Put only actual violation lines into `Must Fix`
-  - If there are no violations, set `Must Fix` to `None`
-  - If there are multiple violations, list them as newline-separated entries, one normalized `CHECKID path:line: message` per line
+  - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not the `🎯 Must Fix:` block
+  - Put only actual violation lines into the `🎯 Must Fix:` block
+  - If there are no violations, set the `🎯 Must Fix:` block to `None`
+  - If there are multiple violations, introduce a standalone `🎯 Must Fix:` label and render one normalized `CHECKID path:line: message` entry per bullet below it
   - Normalize temporary worktree paths to repo-relative paths when deterministic; otherwise keep the raw path
   - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
-  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep `Must Fix: None`, and do not show an install hint unless the binary is actually missing
+  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `🎯 Must Fix:` block as `None`, and do not show an install hint unless the binary is actually missing
   - Do not invent broader-scope fallback reporting fields in the normal review flow
   - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
-  - Limit the normal linter subsection to `Status`, `Run Scope`, `Issue Count`, `Summary`, and `Must Fix`
-  - Use the completed linter output, not partial early output, when determining `Status`, `Issue Count`, `Summary`, and `Must Fix`
+  - Limit the normal linter subsection to `Status`, `Run Scope`, `Issue Count`, `Summary`, and the `🎯 Must Fix:` block
+  - Use the completed linter output, not partial early output, when determining `Status`, `Issue Count`, `Summary`, and the `🎯 Must Fix:` block
   - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
   - If no valid PR number can be determined, use `Status: Not run`, `Run Scope: PR scope`, `Issue Count: n/a`, and a summary that tells the user to create a draft PR and run the review again
   - If the PR number was not supplied explicitly in the committed review invocation, include an example such as `/code-review-committed-changes PR 12345` in that summary
@@ -175,7 +177,8 @@ Use this template:
 - **Run Scope**: [PR scope via `--pr=<number>` or `n/a`]
 - **Issue Count**: [number from tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
 - **Summary**: [result summary or failure reason]
-- **Must Fix**: [use `None` when there are no violations; otherwise list one normalized `CHECKID path:line: message` entry per line]
+**🎯 Must Fix:** `None`
+- [when violations exist, replace `None` with one normalized `CHECKID path:line: message` entry per bullet]
 
 ### 🟢 **STRENGTHS**
 - [Concrete positive findings only]
