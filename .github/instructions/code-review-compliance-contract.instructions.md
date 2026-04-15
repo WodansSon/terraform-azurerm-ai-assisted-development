@@ -94,6 +94,18 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Check common workspace locations such as `CONTRIBUTING.md` and `contributing/README.md` before claiming contributor guidance is absent.
 - Rule: When reviewing a `terraform-provider-azurerm` style workspace, treat `contributing/README.md` as repo-level contributor guidance when present.
 
+### REVIEW-EVID-005: Perform post-tool verification silently
+- Rule: When tool output needs confirmation against current file content, diff context, or surrounding code, perform that verification silently.
+- Rule: Do not narrate intermediate verification steps such as reading files, checking lines, confirming linter findings, or comparing tool output against workspace content.
+- Rule: Reviews should present only the final evidence-backed conclusions, not the internal process used to reach them.
+
+### REVIEW-EVID-006: Every invocation is a fresh audit run
+- Rule: Every invocation of a code review prompt is a new audit run.
+- Rule: Do not reuse prior git output, linter output, file classifications, or review conclusions from earlier turns in the conversation.
+- Rule: A previous review in the conversation is not evidence for the current run.
+- Rule: All review findings must be based on commands and file reads executed during the current invocation.
+- Rule: If the required commands for the selected review type were not rerun in the current invocation, do not emit a normal review output.
+
 ## Finding classification
 
 ### REVIEW-CLASS-001: Issues are for actual problems only
@@ -198,7 +210,8 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-LINT-002A: Local installation is required for linter execution
 - Rule: Review prompts should rely on a locally installed `azurerm-linter` binary.
 - Rule: Do not fetch or execute `azurerm-linter` via `go run` from a remote module path during review.
-- Rule: If the local binary is missing or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
+- Rule: The minimum supported `azurerm-linter` version for review is `v0.1.8`.
+- Rule: If the local binary is missing, older than `v0.1.8`, or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
 
 ### REVIEW-LINT-002B: Execute azurerm-linter from the git repo root
 - Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
@@ -210,7 +223,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Do not classify the linter section as `Not run` merely because the initial wait window elapsed while the linter process was still executing.
 
 ### REVIEW-LINT-002C: Default to filtered mode first
-- Rule: The preferred review-time lint pass is normal filtered mode: `azurerm-linter`.
+- Rule: The preferred review-time lint pass is normal filtered JSON mode: `azurerm-linter -output json`.
 - Rule: Do not default to `--no-filter`.
 - Rule: Treat filtered mode as the primary run because it is faster and scoped to the current diff shape detected by the tool.
 
@@ -220,8 +233,8 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the user explicitly asks for broader package debt or manual no-filter validation, disclose that this is broader than the standard review scope.
 
 ### REVIEW-LINT-002E: Match linter invocation to the review type deterministically
-- Rule: Local review should use a direct filtered `azurerm-linter` invocation without `--pr`.
-- Rule: Committed review should use `azurerm-linter --pr=<number>` when a valid pull request number can be determined deterministically from explicit review context.
+- Rule: Local review should use a direct filtered `azurerm-linter -output json` invocation without `--pr`.
+- Rule: Committed review should use `azurerm-linter --pr=<number> -output json` when a valid pull request number can be determined deterministically from explicit review context.
 - Rule: Allowed PR number sources are:
   - the active pull request context, when available
   - the currently open or viewed pull request context, when available
@@ -239,13 +252,20 @@ If evidence is missing for a claim that would change severity or requested actio
 
 ### REVIEW-LINT-003A: Treat "no packages to analyze" as Not applicable when caused by zero changed files
 - Rule: If azurerm-linter output shows that it found zero changed files or zero changed packages for the selected scope and then prints `Error: no packages to analyze`, classify the linter section as `Not applicable` rather than `Not run`.
-- Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep the `🎯 Must Fix:` block as `None`.
+- Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep the `### 🎯 **MUST FIX**` section as `- None`.
 - Rule: Do not treat this specific output shape as a tool failure requiring an install hint.
 
 ### REVIEW-LINT-003B: Treat flag and usage parse errors as Not run due to invocation error
 - Rule: If azurerm-linter exits with a flag parsing or usage error such as `flag provided but not defined` and prints its usage help, classify the linter section as `Not run`.
-- Rule: In this case, record the command error in `Summary`, keep the `🎯 Must Fix:` block as `None`, and do not emit an install hint unless there is separate evidence that the binary is missing.
+- Rule: In this case, record the command error in `Summary`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not emit an install hint unless there is separate evidence that the binary is missing.
 - Rule: When the corrected command form is deterministic from the prompt context, include that correction in `Summary`.
+
+### REVIEW-LINT-003C: Prefer JSON payloads when available
+- Rule: When azurerm-linter emits a valid JSON payload, treat that payload as the authoritative source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content.
+- Rule: Ignore human-readable preamble logs when a valid JSON payload is present, except when they are needed to explain a non-JSON failure.
+- Rule: Extract the JSON object from the linter output even if log lines precede it.
+- Rule: If `-output json` is unsupported by the installed binary and the tool reports a flag or usage parse error, classify the section as `Not run` rather than falling back to text scraping.
+- Rule: If a valid JSON payload is present but its `version` field is missing, unparsable, or lower than `v0.1.8`, classify the section as `Not run` and state that JSON review mode requires `azurerm-linter v0.1.8` or newer.
 
 ### REVIEW-LINT-004: azurerm-linter findings are reported as issues
 - Rule: When azurerm-linter reports findings for the executed linter scope, report them as issues.
@@ -253,7 +273,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the executed linter scope is broader or narrower than the reviewed diff, disclose that scope mismatch, but still report the linter findings found in the executed scope.
 - Rule: azurerm-linter findings must not remain only inside the linter subsection; they must also be surfaced in the review's main `ISSUES` section.
 - Rule: The linter subsection is the execution report. The main `ISSUES` section is where the actionable findings are enumerated.
-- Rule: Inside the linter subsection, actionable violation lines should appear under a standalone `🎯 Must Fix:` label.
+- Rule: Actionable violation lines should appear in a separate `### 🎯 **MUST FIX**` section immediately after the `### 🧰 **AZURERM LINTER**` execution report.
 
 ### REVIEW-LINT-005: Report scope and failure reasons explicitly
 - Rule: The linter section must state the scope it covered.
@@ -263,25 +283,31 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: When the local binary is missing or the section is reported as Not run for tool-availability reasons, include an install hint of the form:
   - Repo: [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter)
   - Install: go install github.com/qixialu/azurerm-linter@latest
+- Rule: When the section is `Not run` because the installed binary is older than `v0.1.8` or does not support `-output json`, the summary should explicitly say that review requires `azurerm-linter v0.1.8` or newer.
 - Rule: The linter section should describe the filtered run that powers the normal review flow.
-- Rule: The normal linter subsection should be limited to these reviewer-facing fields only:
+- Rule: The `### 🧰 **AZURERM LINTER**` execution report should be limited to these reviewer-facing fields only:
+  - Version
   - Status
   - Run Scope
   - Issue Count
   - Summary
-  - `🎯 Must Fix:`
+- Rule: The normal review output should then include a separate `### 🎯 **MUST FIX**` section with the actionable lines.
 - Rule: If a direct linter invocation cannot be interpreted deterministically, prefer `Not run` with a concise reason over creating extra execution scaffolding.
 
 ### REVIEW-LINT-005A: Structure the linter section from actual tool output
-- Rule: Capture the tool's issue footer (`Found X issue(s)`) as the issue count when present.
+- Rule: When a valid JSON payload is present, capture `version` as the linter version and `summary.issue_count` as the issue count.
+- Rule: When a valid JSON payload is absent, the tool's issue footer (`Found X issue(s)`) may be used as the issue count when present.
 - Rule: Treat preamble and cleanup logs (for example auto-detected remote, worktree creation, changed package detection, loading packages, cleanup) as execution notes or summary material, not as findings.
-- Rule: Treat only the violation lines as `🎯 Must Fix:` entries.
-- Rule: If there are no linter violations, the `🎯 Must Fix:` block must contain exactly `None`.
-- Rule: If there are one or more linter violations, the `🎯 Must Fix:` block must be introduced by a standalone `🎯 Must Fix:` label followed by one normalized violation per bullet and must not collapse multiple violations into a single sentence.
-- Rule: Each `🎯 Must Fix:` bullet must keep the form `CHECKID path:line: message`.
+- Rule: Treat only the violation lines as `### 🎯 **MUST FIX**` entries.
+- Rule: If there are no linter violations, the `### 🎯 **MUST FIX**` section must contain exactly one bullet: `- None`.
+- Rule: If there are one or more linter violations, the `### 🎯 **MUST FIX**` section must be introduced by that exact heading and then list one normalized violation per bullet, and must not collapse multiple violations into a single sentence.
+- Rule: Each `### 🎯 **MUST FIX**` bullet must keep the form `CHECKID path:line: message`.
+- Rule: When a valid JSON payload is present, derive findings from `findings[]` rather than scraping text lines.
+- Rule: When a JSON finding message repeats the check ID as a leading prefix (for example `AZBP010: ...`), remove that duplicate prefix when constructing the final `CHECKID path:line: message` bullet.
+- Rule: When a valid JSON payload is present, derive reviewer-facing summary facts from JSON fields such as `version`, `summary.changed_files`, `summary.changed_lines`, `summary.issue_count`, `scope.mode`, and `scope.patterns` rather than from log lines.
 - Rule: When filtered mode reports changed files but zero changed lines, preserve that fact in `Summary` as tool behavior, not as a trigger for a workaround pass.
 - Rule: Omit low-value execution chatter such as current branch, upstream branch, merge-base, and raw loader mode from normal successful output unless it materially explains the result.
-- Rule: On successful runs, prefer a concise summary and `🎯 Must Fix:` block over field-by-field diagnostics.
+- Rule: On successful runs, prefer a concise execution report plus a separate `### 🎯 **MUST FIX**` section over field-by-field diagnostics.
 - Rule: Build the normal linter subsection from the direct command output returned by the linter run.
 
 ### REVIEW-LINT-005C: Persist and inspect full linter output deterministically

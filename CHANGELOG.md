@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated the generic local and committed review prompts plus the shared review contract to prefer `azurerm-linter` JSON output, report the linter version in the review output, and require `azurerm-linter v0.1.8` or newer for JSON-mode review.
+
 ### Fixed
+
+- Fixed installed review behavior in `terraform-provider-azurerm` workspaces by discovering repo-level contributor guidance from common target-repo paths, forcing fresh review reruns instead of reusing prior review state, suppressing narrated post-linter verification steps, and rendering azurerm-linter findings in a dedicated `### 🎯 **MUST FIX**` section instead of malformed inline list output.
 
 ## [3.0.0] - 2026-04-13
 

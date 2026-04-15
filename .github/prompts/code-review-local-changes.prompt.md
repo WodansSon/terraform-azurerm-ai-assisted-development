@@ -15,6 +15,16 @@ If the local change-set includes `.github/prompts/code-review-local-changes.prom
 ## Minimal user input policy
 Assume the user may invoke this prompt with minimal instructions. Run the full procedure below even if the request is short.
 
+## Fresh-run requirement
+Every invocation of this prompt is a new audit run.
+Do not reuse prior git output, linter output, file classifications, or review conclusions from earlier turns.
+If the user asks to run the prompt again, rerun the full mandatory procedure from step 0 using the current workspace state.
+
+## No cached review state
+A previous review in the conversation is not evidence for the current run.
+All review findings must be based on commands and file reads executed during the current invocation of this prompt.
+If the required commands were not rerun in this invocation, do not emit a normal review output.
+
 ## Command authorization
 The required git and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
 Execute the required review commands immediately when their step applies.
@@ -26,6 +36,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Do not guess when evidence is missing.
 - Do not present multiple alternative fixes unless the user explicitly asks for options.
 - Do not output progress narration, plans, or TODO lists.
+- Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
 - The first character of the normal review output must be `#`.
 
 ## Mandatory procedure
@@ -39,6 +50,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 ### 1) Gather the local change-set
 Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` for each command.
 Execute these required commands directly when this step begins; do not pause for confirmation.
+The commands in steps 1 and 4 must be executed again for each invocation of this prompt, even if they were executed earlier in the conversation.
 
 Run these commands in order and do not repeat them:
 
@@ -82,29 +94,35 @@ Rules:
 - Local review prefers exact local-scope linting from the repo root:
   - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
   - Run the linter from that repo root
-  - Run filtered mode first using a direct `azurerm-linter` invocation without `--pr`
+  - Run filtered mode first using a direct `azurerm-linter -output json` invocation without `--pr`
   - Treat filtered mode as the baseline review behavior for this feature
   - Do not add a `--no-filter` workaround pass during ordinary review runs
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
 - If the local binary is missing or the tool cannot be run, mark the section as `Not run` and state the reason.
 - If the tool reports no changed files or no changed packages to analyze and prints `Error: no packages to analyze`, treat that result as `Not applicable`, not `Not run`.
 - If the tool reports a flag or usage parse error such as `flag provided but not defined` and prints usage help, treat that result as `Not run` due to invocation error, not as an install problem.
-- When the local binary is missing or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
+- Require `azurerm-linter v0.1.8` or newer for review-time JSON mode.
+- When the local binary is missing, older than `v0.1.8`, or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
 - Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
 - Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
 - Structure the linter section from the actual tool output:
-  - Use the tool footer such as `Found X issue(s)` as the issue count when present
-  - Put branch/package-detection/loading/cleanup logs into `Summary`, not the `🎯 Must Fix:` block
-  - Put only actual violation lines into the `🎯 Must Fix:` block
-  - If there are no violations, set the `🎯 Must Fix:` block to `None`
-  - If there are multiple violations, introduce a standalone `🎯 Must Fix:` label and render one normalized `CHECKID path:line: message` entry per bullet below it
+  - When a valid JSON payload is present, use `version` as the linter version, use `summary.issue_count` as the issue count, and ignore human-readable preamble logs for structured fields
+  - When a valid JSON payload is absent, the tool footer such as `Found X issue(s)` may be used as the issue count when present
+  - Put branch/package-detection/loading/cleanup logs into `Summary`, not the `### 🎯 **MUST FIX**` section
+  - Put only actual violation lines into the `### 🎯 **MUST FIX**` section
+  - If there are no violations, set the `### 🎯 **MUST FIX**` section to a single bullet: `- None`
+  - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID path:line: message` entry per bullet
+  - When a valid JSON payload is present, derive findings from `findings[]`, derive the reviewer-facing summary from JSON `summary` and `scope` fields, and trim any duplicated leading check ID from `message`
+  - If a valid JSON payload is present but `version` is lower than `v0.1.8`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.1.8` or newer
   - Normalize temporary or absolute paths to repo-relative paths when deterministic; otherwise keep the raw path
   - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
-  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `🎯 Must Fix:` block as `None`, and do not show an install hint unless the binary is actually missing
+  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not show an install hint unless the binary is actually missing
+  - If `-output json` is unsupported and the tool reports a flag or usage parse error, report that as `Not run`, state that review requires `azurerm-linter v0.1.8` or newer, and do not fall back to text scraping
   - Do not invent broader-scope fallback reporting fields in the normal review flow
   - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
-  - Limit the normal linter subsection to `Status`, `Run Scope`, `Issue Count`, `Summary`, and the `🎯 Must Fix:` block
-  - Use the completed linter output, not partial early output, when determining `Status`, `Issue Count`, `Summary`, and the `🎯 Must Fix:` block
+  - Limit the `### 🧰 **AZURERM LINTER**` execution report to `Version`, `Status`, `Run Scope`, `Issue Count`, and `Summary`
+  - Follow it with a separate `### 🎯 **MUST FIX**` section
+  - Use the completed linter output, not partial early output, when determining `Version`, `Status`, `Issue Count`, `Summary`, and the `### 🎯 **MUST FIX**` section
   - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
   - Do not ask the user to approve `git rev-parse --show-toplevel` or `azurerm-linter` execution during the normal review flow
   - Do not create temporary scripts or persisted temp log files to run or parse the linter in the normal review flow
@@ -174,11 +192,14 @@ Use this template:
 - **Notes**: [scope-specific guidance that affected severity or classification]
 
 ### 🧰 **AZURERM LINTER**
+- **Version**: [JSON `version`, `n/a`, or `unknown` when the tool could not be interrogated reliably]
 - **Status**: [Issues found/No issues/Not applicable/Not run]
 - **Run Scope**: [filtered local-diff scope or `n/a`]
-- **Issue Count**: [number from tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
+- **Issue Count**: [JSON `summary.issue_count`, tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
 - **Summary**: [result summary or failure reason]
-**🎯 Must Fix:** `None`
+
+### 🎯 **MUST FIX**
+- `None`
 - [when violations exist, replace `None` with one normalized `CHECKID path:line: message` entry per bullet]
 
 ### 🟢 **STRENGTHS**
