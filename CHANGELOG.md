@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed installed review behavior in `terraform-provider-azurerm` workspaces by discovering repo-level contributor guidance from common target-repo paths, forcing fresh review reruns instead of reusing prior review state, suppressing narrated post-linter verification steps, and rendering azurerm-linter findings in a dedicated `### 🎯 **MUST FIX**` section instead of malformed inline list output.
+- Fixed installed review behavior in `terraform-provider-azurerm` workspaces by discovering repo-level contributor guidance from common target-repo paths, forcing fresh review reruns instead of reusing prior review state, hard-stopping with deterministic fresh-run failure messages, suppressing narrated post-linter verification steps, and rendering azurerm-linter findings in a dedicated `### 🎯 **MUST FIX**` section instead of malformed inline list output.
 
 ## [3.0.0] - 2026-04-13
 

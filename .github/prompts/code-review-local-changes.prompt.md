@@ -24,6 +24,8 @@ If the user asks to run the prompt again, rerun the full mandatory procedure fro
 A previous review in the conversation is not evidence for the current run.
 All review findings must be based on commands and file reads executed during the current invocation of this prompt.
 If the required commands were not rerun in this invocation, do not emit a normal review output.
+If the fresh-run requirements are not satisfied, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: fresh-run requirements not satisfied. Re-run the mandatory procedure from step 0 in this invocation.`
 
 ## Command authorization
 The required git and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
