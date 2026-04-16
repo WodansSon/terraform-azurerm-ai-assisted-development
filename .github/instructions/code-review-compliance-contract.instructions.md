@@ -106,6 +106,15 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: All review findings must be based on commands and file reads executed during the current invocation.
 - Rule: If the required commands for the selected review type were not rerun in the current invocation, do not emit a normal review output.
 
+### REVIEW-EVID-007: Describe only current-run facts
+- Rule: Do not compare the current review invocation to earlier invocations in user-visible output.
+- Rule: Do not use comparative carry-over wording such as `still`, `again`, `reloaded`, `same as before`, `remains`, or `continues` when describing current-run evidence unless directly quoting user input or tool output.
+- Rule: State current-run facts directly from the evidence gathered in the current invocation.
+
+### REVIEW-EVID-008: Do not reuse prior review body text
+- Rule: Do not reuse, quote, paraphrase, or summarize a prior review body as the current review output, even when the reviewed change-set and findings are unchanged.
+- Rule: Reconstruct the review body from current-run evidence and the current prompt/template requirements for every invocation.
+
 ## Finding classification
 
 ### REVIEW-CLASS-001: Issues are for actual problems only
@@ -306,9 +315,13 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Treat only the violation lines as `### 🎯 **MUST FIX**` entries.
 - Rule: If there are no linter violations, the `### 🎯 **MUST FIX**` section must contain exactly one bullet: `- None`.
 - Rule: If there are one or more linter violations, the `### 🎯 **MUST FIX**` section must be introduced by that exact heading and then list one normalized violation per bullet, and must not collapse multiple violations into a single sentence.
-- Rule: Each `### 🎯 **MUST FIX**` bullet must keep the form `CHECKID path:line: message`.
+- Rule: When a deterministic repo-relative file path and line number are available, each `### 🎯 **MUST FIX**` bullet should prefer the form `CHECKID [file:line](repo/relative/path#Lline): message`.
+- Rule: In the linked form, the `file:line` token should be a single Markdown link so the visible shape matches other clickable file references in the review.
+- Rule: When the basename is unambiguous within the current `### 🎯 **MUST FIX**` section, use `basename:line` as the link label.
+- Rule: When the basename would be ambiguous within the current `### 🎯 **MUST FIX**` section, use `repo/relative/path:line` as both the link label and the link target label.
+- Rule: If deterministic repo-relative path normalization is not possible, keep the fallback form `CHECKID path:line: message` rather than guessing.
 - Rule: When a valid JSON payload is present, derive findings from `findings[]` rather than scraping text lines.
-- Rule: When a JSON finding message repeats the check ID as a leading prefix (for example `AZBP010: ...`), remove that duplicate prefix when constructing the final `CHECKID path:line: message` bullet.
+- Rule: When a JSON finding message repeats the check ID as a leading prefix (for example `AZBP010: ...`), remove that duplicate prefix when constructing the final `### 🎯 **MUST FIX**` bullet.
 - Rule: When a valid JSON payload is present, derive reviewer-facing summary facts from JSON fields such as `version`, `summary.changed_files`, `summary.changed_lines`, `summary.issue_count`, `scope.mode`, and `scope.patterns` rather than from log lines.
 - Rule: When filtered mode reports changed files but zero changed lines, preserve that fact in `Summary` as tool behavior, not as a trigger for a workaround pass.
 - Rule: Omit low-value execution chatter such as current branch, upstream branch, merge-base, and raw loader mode from normal successful output unless it materially explains the result.
@@ -344,5 +357,16 @@ If evidence is missing for a claim that would change severity or requested actio
 
 ### REVIEW-OUT-003: Missing evidence must be disclosed plainly
 - Rule: When a conclusion cannot be proven, say so directly in the review rather than compensating with invented certainty.
+
+### REVIEW-OUT-004: Normal review output must not include execution narration
+- Rule: The normal review output must not include preambles, execution commentary, progress narration, or step-by-step status updates.
+- Rule: Do not emit text such as `re-running the local audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, or similar execution-process narration in user-visible review output.
+- Rule: The normal review output should contain only the prompt-defined review headings and their content.
+
+### REVIEW-OUT-005: Successful fresh runs must emit the full current template
+- Rule: If the mandatory procedure succeeds for the selected review type, emit the full current prompt-defined review template.
+- Rule: Do not short-circuit to a previous review, a delta-only summary, or wording such as `same findings as before` or `no change from the last review`.
+- Rule: This applies even when the reviewed code, linter findings, or conclusions are unchanged from an earlier invocation.
+- Rule: Current prompt/template/layout requirements are part of the output contract and must be honored on every successful fresh run.
 
 <!-- REVIEW-CONTRACT-EOF -->

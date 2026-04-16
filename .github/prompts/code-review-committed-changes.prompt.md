@@ -24,6 +24,8 @@ If the user asks to run the prompt again, rerun the full mandatory procedure fro
 A previous review in the conversation is not evidence for the current run.
 All review findings must be based on commands and file reads executed during the current invocation of this prompt.
 If the required commands were not rerun in this invocation, do not emit a normal review output.
+Do not reuse, paraphrase, or summarize a previous review body, even if the reviewed diff and findings are unchanged.
+If this invocation completes the mandatory procedure successfully, emit the full current review template defined by this prompt.
 If the fresh-run requirements are not satisfied, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-committed-changes: fresh-run requirements not satisfied. Re-run the mandatory procedure from step 0 in this invocation.`
 
@@ -40,6 +42,13 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Do not output progress narration, plans, or TODO lists.
 - Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
 - The first character of the normal review output must be `#`.
+
+## No preamble / no progress narration
+- Do not output any sentences before the review headings.
+- The only allowed normal output is the review template defined in this prompt.
+- Do not output progress narration such as `re-running the committed audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, `next I will`, `now I will`, or similar.
+- Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
+- Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
 
 ## Mandatory procedure
 
@@ -117,7 +126,8 @@ Rules:
   - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not the `### 🎯 **MUST FIX**` section
   - Put only actual violation lines into the `### 🎯 **MUST FIX**` section
   - If there are no violations, set the `### 🎯 **MUST FIX**` section to a single bullet: `- None`
-  - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID path:line: message` entry per bullet
+  - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise keep the raw `CHECKID path:line: message` form
+  - In the linked form, keep `file:line` together inside the same Markdown link so it matches the clickable file-reference style used elsewhere in the review
   - When a valid JSON payload is present, derive findings from `findings[]`, derive the reviewer-facing summary from JSON `summary` and `scope` fields, and trim any duplicated leading check ID from `message`
   - If a valid JSON payload is present but `version` is lower than `v0.2.0`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.2.0` or newer
   - Normalize temporary worktree paths to repo-relative paths when deterministic; otherwise keep the raw path
@@ -204,7 +214,7 @@ Use this template:
 
 ### 🎯 **MUST FIX**
 - `None`
-- [when violations exist, replace `None` with one normalized `CHECKID path:line: message` entry per bullet]
+- [when violations exist, replace `None` with one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise use `CHECKID path:line: message`]
 
 ### 🟢 **STRENGTHS**
 - [Concrete positive findings only]
