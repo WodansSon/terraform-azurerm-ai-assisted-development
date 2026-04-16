@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [3.0.1] - 2026-04-16
+
+### Changed
+
 - Updated the generic local and committed review prompts plus the shared review contract to prefer [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) JSON output, report the linter version in the review output, and require [`azurerm-linter v0.2.0`](https://github.com/QixiaLu/azurerm-linter/releases/tag/v0.2.0) or newer for JSON-mode review.
 - Clarified the workspace terminal guidance so [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) is treated as a standalone local CLI instead of a Go toolchain command, and hardened the review prompts/contract to require native local linter execution from the repo root instead of WSL-prefixed or cross-shell-wrapped invocations.
 - Updated the review prompt output guidance so normalized `### 🎯 **MUST FIX**` linter findings prefer compact Markdown file links like `CHECKID [file:line](repo/relative/path#Lline): message` when deterministic repo-relative paths are available, matching the clickable file-reference style used elsewhere in the review.
@@ -323,7 +329,9 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.1
+[3.0.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.0
 [1.0.5]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.3
