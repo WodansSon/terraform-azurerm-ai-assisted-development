@@ -82,8 +82,9 @@ When you give specific commands, I'll act directly:
 ## 🖥️ **TERMINAL COMMAND EXECUTION**
 
 **Windows/WSL Environment Considerations:**
-- For Go commands (`go mod tidy`, `go mod vendor`, `go test`, etc.), **always use WSL terminal** in this repository
-- PowerShell is suitable for: git operations, file operations, simple directory navigation
+- For actual Go toolchain commands (`go mod tidy`, `go mod vendor`, `go test`, etc.), **always use WSL terminal** in this repository
+- Do not treat standalone locally installed CLIs such as `azurerm-linter`, `git`, or the installer scripts as Go commands solely because they operate on Go files or review Go changes
+- PowerShell is suitable for: git operations, file operations, simple directory navigation, and native local CLI execution such as `azurerm-linter`
 - When in doubt about environment compatibility, prefer WSL for build/test operations
 
 ## 📝 **COMMIT MESSAGE STANDARDS**

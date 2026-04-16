@@ -11,7 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated the generic local and committed review prompts plus the shared review contract to prefer [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) JSON output, report the linter version in the review output, and require [`azurerm-linter v0.2.0`](https://github.com/QixiaLu/azurerm-linter/releases/tag/v0.2.0) or newer for JSON-mode review.
+- Clarified the workspace terminal guidance so [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) is treated as a standalone local CLI instead of a Go toolchain command, and hardened the review prompts/contract to require native local linter execution from the repo root instead of WSL-prefixed or cross-shell-wrapped invocations.
+- Updated the review prompt output guidance so normalized `### 🎯 **MUST FIX**` linter findings prefer compact Markdown file links like `CHECKID [file:line](repo/relative/path#Lline): message` when deterministic repo-relative paths are available, matching the clickable file-reference style used elsewhere in the review.
+- Tightened the fresh-run review rules so repeated code-review invocations must describe only current-run evidence, with no carry-over wording or execution-progress narration before the final review headings.
+- Tightened the fresh-run review rules so successful reruns must emit the full current review template even when the reviewed diff and findings are unchanged, instead of short-circuiting to prior review text or delta-only summaries.
+
 ### Fixed
+
+- Fixed installed review behavior in `terraform-provider-azurerm` workspaces by discovering repo-level contributor guidance from common target-repo paths, forcing fresh review reruns instead of reusing prior review state, hard-stopping with deterministic fresh-run failure messages, suppressing narrated post-linter verification steps, and rendering azurerm-linter findings in a dedicated `### 🎯 **MUST FIX**` section instead of malformed inline list output.
 
 ## [3.0.0] - 2026-04-13
 
