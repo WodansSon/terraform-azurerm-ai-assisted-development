@@ -209,6 +209,7 @@ If evidence is missing for a claim that would change severity or requested actio
 
 ### REVIEW-LINT-002A: Local installation is required for linter execution
 - Rule: Review prompts should rely on a locally installed `azurerm-linter` binary.
+- Rule: Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command.
 - Rule: Do not fetch or execute `azurerm-linter` via `go run` from a remote module path during review.
 - Rule: The minimum supported `azurerm-linter` version for review is `v0.2.0`.
 - Rule: If the local binary is missing, older than `v0.2.0`, or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
@@ -216,6 +217,9 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-LINT-002B: Execute azurerm-linter from the git repo root
 - Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
 - Rule: Execute azurerm-linter from that repo root, not from an arbitrary subdirectory.
+- Rule: Run the linter in the current platform's native shell environment using the plain local CLI invocation.
+- Rule: Do not rewrite the command through another runtime environment or wrapper such as `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`.
+- Rule: On Windows, the expected review-time linter command is plain `azurerm-linter ...` from the resolved repo root, not a WSL-prefixed equivalent.
 - Rule: Record the resolved working directory only when it is needed to explain `Not run`, scope ambiguity, or debugging details.
 - Rule: In the normal review path, run azurerm-linter directly rather than through generated shell scripts or PowerShell wrapper scripts.
 - Rule: Use a longer sync timeout for azurerm-linter than for the quick git inspection commands.
@@ -233,8 +237,8 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the user explicitly asks for broader package debt or manual no-filter validation, disclose that this is broader than the standard review scope.
 
 ### REVIEW-LINT-002E: Match linter invocation to the review type deterministically
-- Rule: Local review should use a direct filtered `azurerm-linter -output json` invocation without `--pr`.
-- Rule: Committed review should use `azurerm-linter --pr=<number> -output json` when a valid pull request number can be determined deterministically from explicit review context.
+- Rule: Local review should use a direct native filtered `azurerm-linter -output json` invocation without `--pr`.
+- Rule: Committed review should use the direct native invocation `azurerm-linter --pr=<number> -output json` when a valid pull request number can be determined deterministically from explicit review context.
 - Rule: Allowed PR number sources are:
   - the active pull request context, when available
   - the currently open or viewed pull request context, when available
@@ -284,6 +288,7 @@ If evidence is missing for a claim that would change severity or requested actio
   - Repo: [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter)
   - Install: go install github.com/qixialu/azurerm-linter@latest
 - Rule: When the section is `Not run` because the installed binary is older than `v0.2.0` or does not support `-output json`, the summary should explicitly say that review requires `azurerm-linter v0.2.0` or newer.
+- Rule: Do not describe a WSL-prefixed or cross-shell-wrapped linter invocation as compliant review execution on Windows when the local binary is available natively.
 - Rule: The linter section should describe the filtered run that powers the normal review flow.
 - Rule: The `### 🧰 **AZURERM LINTER**` execution report should be limited to these reviewer-facing fields only:
   - Version

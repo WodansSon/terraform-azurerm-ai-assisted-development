@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Updated the generic local and committed review prompts plus the shared review contract to prefer `azurerm-linter` JSON output, report the linter version in the review output, and require `azurerm-linter v0.2.0` or newer for JSON-mode review.
+- Updated the generic local and committed review prompts plus the shared review contract to prefer [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) JSON output, report the linter version in the review output, and require [`azurerm-linter v0.2.0`](https://github.com/QixiaLu/azurerm-linter/releases/tag/v0.2.0) or newer for JSON-mode review.
+- Clarified the workspace terminal guidance so [`azurerm-linter`](https://github.com/QixiaLu/azurerm-linter) is treated as a standalone local CLI instead of a Go toolchain command, and hardened the review prompts/contract to require native local linter execution from the repo root instead of WSL-prefixed or cross-shell-wrapped invocations.
 
 ### Fixed
 

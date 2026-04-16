@@ -257,7 +257,7 @@ If Copilot does not already have PR context for your branch, pass the PR number 
 ```
 
 > [!NOTE]
-> The generic review prompts require `azurerm-linter v0.2.0` or newer for JSON-mode review and assume a recent local `azurerm-linter` binary. If you are testing these prompt-side linter behaviors before the corresponding upstream `azurerm-linter` changes are merged and installed locally, the linter subsection may not yet behave exactly as documented. The current upstream dependency is [QixiaLu/azurerm-linter#50](https://github.com/QixiaLu/azurerm-linter/pull/50). After those upstream changes land, reinstall or update your local `azurerm-linter` binary and rerun the review.
+> The generic review prompts require a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The linter is expected to run as the plain local CLI from the repo root on every platform, including Windows; it should not be rewritten through WSL or another shell wrapper.
 
 If you want to reduce approval prompts for the harmless repo-root lookup used by the review prompts, you can allow just that command in your VS Code user settings:
 

@@ -92,6 +92,9 @@ Rules:
 - Committed review prefers exact committed-scope linting:
   - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
   - Run the linter from that repo root
+  - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
+  - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
+  - On Windows, use plain `azurerm-linter --pr=<number> -output json` from the resolved repo root rather than a WSL-prefixed equivalent
   - Determine a valid pull request number deterministically from explicit review context only
   - Allowed PR number sources are:
     - the active pull request context, when available

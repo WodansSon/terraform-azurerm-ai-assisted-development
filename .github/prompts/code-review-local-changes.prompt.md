@@ -96,6 +96,9 @@ Rules:
 - Local review prefers exact local-scope linting from the repo root:
   - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
   - Run the linter from that repo root
+  - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
+  - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
+  - On Windows, use plain `azurerm-linter -output json` from the resolved repo root rather than a WSL-prefixed equivalent
   - Run filtered mode first using a direct `azurerm-linter -output json` invocation without `--pr`
   - Treat filtered mode as the baseline review behavior for this feature
   - Do not add a `--no-filter` workaround pass during ordinary review runs
