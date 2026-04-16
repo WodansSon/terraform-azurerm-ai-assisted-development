@@ -210,8 +210,8 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-LINT-002A: Local installation is required for linter execution
 - Rule: Review prompts should rely on a locally installed `azurerm-linter` binary.
 - Rule: Do not fetch or execute `azurerm-linter` via `go run` from a remote module path during review.
-- Rule: The minimum supported `azurerm-linter` version for review is `v0.1.8`.
-- Rule: If the local binary is missing, older than `v0.1.8`, or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
+- Rule: The minimum supported `azurerm-linter` version for review is `v0.2.0`.
+- Rule: If the local binary is missing, older than `v0.2.0`, or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
 
 ### REVIEW-LINT-002B: Execute azurerm-linter from the git repo root
 - Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
@@ -265,7 +265,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Ignore human-readable preamble logs when a valid JSON payload is present, except when they are needed to explain a non-JSON failure.
 - Rule: Extract the JSON object from the linter output even if log lines precede it.
 - Rule: If `-output json` is unsupported by the installed binary and the tool reports a flag or usage parse error, classify the section as `Not run` rather than falling back to text scraping.
-- Rule: If a valid JSON payload is present but its `version` field is missing, unparsable, or lower than `v0.1.8`, classify the section as `Not run` and state that JSON review mode requires `azurerm-linter v0.1.8` or newer.
+- Rule: If a valid JSON payload is present but its `version` field is missing, unparsable, or lower than `v0.2.0`, classify the section as `Not run` and state that JSON review mode requires `azurerm-linter v0.2.0` or newer.
 
 ### REVIEW-LINT-004: azurerm-linter findings are reported as issues
 - Rule: When azurerm-linter reports findings for the executed linter scope, report them as issues.
@@ -283,7 +283,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: When the local binary is missing or the section is reported as Not run for tool-availability reasons, include an install hint of the form:
   - Repo: [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter)
   - Install: go install github.com/qixialu/azurerm-linter@latest
-- Rule: When the section is `Not run` because the installed binary is older than `v0.1.8` or does not support `-output json`, the summary should explicitly say that review requires `azurerm-linter v0.1.8` or newer.
+- Rule: When the section is `Not run` because the installed binary is older than `v0.2.0` or does not support `-output json`, the summary should explicitly say that review requires `azurerm-linter v0.2.0` or newer.
 - Rule: The linter section should describe the filtered run that powers the normal review flow.
 - Rule: The `### 🧰 **AZURERM LINTER**` execution report should be limited to these reviewer-facing fields only:
   - Version

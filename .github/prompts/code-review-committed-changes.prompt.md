@@ -104,8 +104,8 @@ Rules:
 - If the local binary is missing or the tool cannot be run or scoped correctly, mark the section as `Not run` and state the reason.
 - If the tool reports `Found 0 changed files` or otherwise has no changed packages to analyze and prints `Error: no packages to analyze`, treat that result as `Not applicable`, not `Not run`.
 - If the tool reports a flag or usage parse error such as `flag provided but not defined` and prints usage help, treat that result as `Not run` due to invocation error, not as an install problem.
-- Require `azurerm-linter v0.1.8` or newer for review-time JSON mode.
-- When the local binary is missing, older than `v0.1.8`, or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
+- Require `azurerm-linter v0.2.0` or newer for review-time JSON mode.
+- When the local binary is missing, older than `v0.2.0`, or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
 - Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
 - Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
 - Structure the linter section from the actual tool output:
@@ -116,11 +116,11 @@ Rules:
   - If there are no violations, set the `### 🎯 **MUST FIX**` section to a single bullet: `- None`
   - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID path:line: message` entry per bullet
   - When a valid JSON payload is present, derive findings from `findings[]`, derive the reviewer-facing summary from JSON `summary` and `scope` fields, and trim any duplicated leading check ID from `message`
-  - If a valid JSON payload is present but `version` is lower than `v0.1.8`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.1.8` or newer
+  - If a valid JSON payload is present but `version` is lower than `v0.2.0`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.2.0` or newer
   - Normalize temporary worktree paths to repo-relative paths when deterministic; otherwise keep the raw path
   - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
   - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not show an install hint unless the binary is actually missing
-  - If `-output json` is unsupported and the tool reports a flag or usage parse error, report that as `Not run`, state that review requires `azurerm-linter v0.1.8` or newer, and do not fall back to text scraping
+  - If `-output json` is unsupported and the tool reports a flag or usage parse error, report that as `Not run`, state that review requires `azurerm-linter v0.2.0` or newer, and do not fall back to text scraping
   - Do not invent broader-scope fallback reporting fields in the normal review flow
   - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
   - Limit the `### 🧰 **AZURERM LINTER**` execution report to `Version`, `Status`, `Run Scope`, `Issue Count`, and `Summary`
