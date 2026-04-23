@@ -9,7 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added [Code Review Rule Reference](docs/CODE_REVIEW_RULES.md) so end users can decode `REVIEW-*` and `DOCS-*` citations used by the review prompts and contracts.
+### Changed
+
+### Fixed
+
+## [3.0.2] - 2026-04-23
+
+### Added
+
+- Added [Code Review Rule Reference](docs/CODE_REVIEW_RULES.md) so end users can decode `REVIEW-*`, `DOCS-*`, `IMPL-*`, and `TEST-*` citations used by the review prompts, skills, and contracts.
 - Added a cross-platform PowerShell contract validator plus a dedicated GitHub Actions workflow that discovers contract instruction files, validates their structure and provenance metadata, and reports prompt/skill/companion consumers from the repository itself.
 - Added an initial implementation compliance contract for `internal/**/*.go` so Go implementation work can use a real contract layer instead of relying on the `resource-implementation` skill as the sole authority.
 - Added a dedicated testing compliance contract for `internal/**/*_test.go` so acceptance-test work can use a real contract layer instead of relying on the `acceptance-testing` skill as the sole authority.
@@ -29,9 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored the remaining implementation companion guides so they explicitly point back to the implementation compliance contract as the authoritative layer.
 - Updated the `acceptance-testing` skill, test routing instruction, and testing guide so they now consume the new testing compliance contract as the authoritative testing layer.
 - Removed the testing guide from the implementation companion set so test authority is no longer split between the implementation and testing contract models.
-- Updated the code review rule reference so it documents the new `IMPL-*` and `TEST-*` contract families alongside the existing `REVIEW-*` and `DOCS-*` families.
-
-### Fixed
 
 ## [3.0.1] - 2026-04-16
 
@@ -74,13 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Promoted the installer trust-model guidance into a visible README installation section so users see the canonical repo/workflow trust boundary before the download and extraction commands.
 - Hardened the PowerShell validation workflows so they install `PSScriptAnalyzer` through a cross-platform repository bootstrap path that prefers `Install-PSResource`/`PSGallery` and falls back to `Install-Module`, avoiding runner-specific failures when the legacy NuGet package-provider bootstrap is unavailable.
 
-### Fixed
-
 ## [2.0.8] - 2026-03-26
-
-### Added
-
-### Changed
 
 ### Fixed
 
@@ -88,17 +87,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.7] - 2026-03-18
 
-### Added
-
 ### Changed
 
 - Tightened the shared docs compliance contract so it is the authoritative compliance layer for docs work, added explicit rules to cover the upstream contributor documentation standards (including frontmatter placement/content, doc path naming, summary sentence placement, and `hcl` code-fence requirements), and refactored `.github/instructions/documentation-guidelines.instructions.md` into companion guidance that points back to the contract instead of duplicating normative rules.
 
-### Fixed
-
 ## [2.0.6] - 2026-03-16
-
-### Added
 
 ### Changed
 
