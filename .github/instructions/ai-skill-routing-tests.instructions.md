@@ -9,7 +9,11 @@ When editing or generating acceptance tests under `internal/**/*_test.go`, you m
 
 - `.github/skills/acceptance-testing/SKILL.md`
 
-This is required even if the user does not explicitly ask to “use the skill”. Treat the skill as the authoritative checklist for acceptance test patterns (`BuildTestData`, `ExistsInAzure`, `ImportStep`, `RequiresImportErrorStep`) and safe test execution guidance.
+You must also consult and follow the shared testing contract:
+
+- `.github/instructions/testing-compliance-contract.instructions.md`
+
+This is required even if the user does not explicitly ask to “use the skill”. Treat the testing contract as the authoritative compliance layer, and treat the skill as the workflow layer that applies that contract plus companion testing guidance.
 
 ## Verification marker (assistant response only)
 

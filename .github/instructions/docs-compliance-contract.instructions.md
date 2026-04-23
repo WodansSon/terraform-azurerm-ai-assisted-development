@@ -11,11 +11,17 @@ This file is the **single source of truth** for documentation compliance rules i
 
 Two independent workflows MUST follow this contract:
 
-- **Writer**: `.github/skills/docs-writer/SKILL.md` (docs-writer)
+- Consumer: `.github/skills/docs-writer/SKILL.md`
+  - Role: Writer
+  - Command: `/docs-writer`
+  - Requires EOF Load: yes
   - Goal: produce docs that satisfy all applicable rules in this contract.
   - Output format is not prescribed by this contract.
 
-- **Auditor**: `.github/prompts/code-review-docs.prompt.md` (`/code-review-docs`)
+- Consumer: `.github/prompts/code-review-docs.prompt.md`
+  - Role: Auditor
+  - Command: `/code-review-docs`
+  - Requires EOF Load: yes
   - Goal: detect and report violations of rules in this contract.
   - Output structure is defined by the prompt, but the rules enforced MUST come from this contract.
 
@@ -69,6 +75,18 @@ Areas:
 - `SEC` = secret/material exposure
 - `DEPR` = next-major (vNext) deprecations
 - `EVID` = evidence/verification guardrails
+
+## Rule provenance
+
+Some rules in this contract come from published upstream standards, while others are inferred from repeated maintainer review behavior or added locally to reduce audit drift.
+
+Use the following provenance labels when a rule needs extra source clarity:
+
+- `Published upstream standard`: explicitly documented by upstream contributor or provider documentation standards.
+- `Inferred maintainer convention`: not clearly codified upstream, but supported by repeated maintainer review guidance, accepted maintainer rewrites, or other factual review evidence.
+- `Local safeguard`: a repository-local rule added to reduce drift, ambiguity, or run-to-run inconsistency even when upstream documentation is silent or less explicit.
+
+Provenance rollout is incremental. New rules and touched ambiguous rules should include provenance notes first; older rules may be backfilled over time.
 
 ## Evidence hierarchy
 
@@ -251,12 +269,20 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Scope**: block references inside block subsections (for example nested bullets that describe another documented block subsection in the same page section).
 - **Rule**: When directional wording is used for a referenced block subsection in the same section, `as defined above` MUST be used when the referenced block subsection appears earlier in that section, and `as defined below` MUST be used when the referenced block subsection appears later in that section.
 - **Rule**: This does not change the canonical top-level block bullet pattern under `## Arguments Reference` or `## Attributes Reference`, which continues to use `as defined below`.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to make subsection cross-references deterministic after block reordering
+  - Enforced by this repository's docs contract rather than a clearly codified upstream wording rule
 
 ### DOCS-SHAPE-008: Block subsection separators
 - **Scope**: `## Arguments Reference` and `## Attributes Reference`.
 - **Rule**: Insert `---` immediately before the first block subsection heading that follows the top-level bullet list.
 - **Rule**: Insert `---` between adjacent block subsections.
 - **Rule**: Do not insert `---` between ordinary top-level argument or attribute bullets.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to keep nested block sections visually stable and patch-ready during audits
+  - Companion guidance and audits in this repository rely on this separator pattern for consistent rewrites
 
 ---
 
@@ -278,6 +304,10 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Every Terraform reference used in an Example configuration (`resource`, `data`, `module`, expressions like `azurerm_*.*`, `data.*.*`, `module.*`) MUST be declared somewhere on the same doc page.
 - **Allowed pattern**: define shared resources in `## Example Usage`, reference them from other examples on the same page.
 - **Remediation rule**: if an Example is not self-contained, fix it by adding the missing `resource`/`data`/`module` declarations to the page (typically in `## Example Usage`), not by deleting the Example section/block.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to stop audits from resolving broken examples by deleting Example content or leaving undeclared references behind
+  - Reflected in this repository's docs review workflow for copy/pasteable examples
 
 ### DOCS-EX-020: Example self-containedness must be transitive
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -287,6 +317,10 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Repeat until there are no undeclared references (transitive closure).
 - **Rule**: Do not stop after fixing only the first-level missing reference if doing so leaves the Example non-functional.
 - **Guardrail**: if you cannot complete transitive self-containedness without guessing due to missing workspace evidence, record an Observation and cite `DOCS-EVID-001`.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to prevent partial self-containedness fixes that still leave Example blocks unrunnable
+  - Enforced for deterministic docs audits in this repository
 
 ### DOCS-EX-021: Preserve reference semantics in examples
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -295,6 +329,10 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Examples of problematic "convenience" rewrites: replacing a reference with a plausible-looking hostname/domain string, or removing a reference entirely.
 - **Default behavior**: preserve the original reference intent and make the Example self-contained by declaring the referenced object(s) per `DOCS-EX-003`/`DOCS-EX-020`.
 - **Guardrail**: if evidence is insufficient to justify a reference↔literal change, do not guess; record an Observation per `DOCS-EVID-001`.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to stop Example repairs from inventing plausible-looking literal values that drift from real provider behavior
+  - Works with `DOCS-EVID-001` to keep example rewrites evidence-based
 
 ### DOCS-EX-019: Do not replace Terraform references with invented literals
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -302,6 +340,10 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Required remediation**: declare the missing referenced `resource`/`data`/`module` blocks on the same doc page (see `DOCS-EX-003`).
 - **Exception**: you may replace a reference with a literal only when schema/implementation evidence proves the literal value form and constraints deterministically and the Example is explicitly teaching a literal value scenario (see `DOCS-EX-010`/`DOCS-EX-016`). Otherwise record an Observation per `DOCS-EVID-001`.
 - **Independence**: this rule is independent of `DOCS-EX-004`/`DOCS-EX-018`; preserving existing required `depends_on` and example-adjacent notes remains mandatory.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added after repeated docs-audit failure modes where undeclared references were replaced with invented strings instead of real declarations
+  - Reinforces `DOCS-EX-003` and `DOCS-EX-021` with a concrete prohibited shortcut
 
 ### DOCS-EX-004: Preserve required `depends_on` verbatim when rewriting examples
 - **Rule**: If an existing example contains `depends_on = [...]`, it MUST be preserved with the same referenced objects when rewriting that example.
@@ -309,15 +351,27 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **How to fix self-containedness**: add missing referenced resources; do not delete/simplify `depends_on`.
 - **Hard rule**: if `depends_on` references objects not declared on the page, you MUST add the missing declarations rather than removing those entries.
 - **Non-negotiable**: do not remove or shorten an existing `depends_on` to make an example "simpler".
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to preserve sequencing semantics already present in existing examples and notes
+  - Prevents audits or rewrites from simplifying examples in ways that silently remove required ordering
 
 ### DOCS-EX-017: Do not introduce net-new `depends_on` without evidence
 - **Rule**: Do not introduce `depends_on` in examples unless schema/implementation evidence proves ordering is required, or the docs are explicitly teaching an ordering constraint.
 - **Guardrail**: If ordering requirements cannot be proven from schema/implementation evidence, do not add `depends_on` (see DOCS-EVID-001).
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to prevent speculative example fixes that add `depends_on` without proof
+  - Works with `DOCS-EVID-001` to keep ordering guidance evidence-based
 
 ### DOCS-EX-018: Preserve example-adjacent notes when rewriting examples
 - **Scope**: notes immediately above or directly associated with a Terraform configuration block under headings that start with `Example`.
 - **Rule**: If an `Example*` section contains a note that describes required sequencing/validation (for example, it claims a specific `depends_on` is required), you MUST preserve that note when rewriting the example.
 - **Rule**: If you change the example in a way that would make the note inaccurate, rewrite the note so it remains correct and evidence-based (do not delete it to avoid the obligation).
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to stop rewrites from dropping neighboring notes that explain why the Example is structured a certain way
+  - Keeps Example code and surrounding explanatory notes aligned during audits
 
 ### DOCS-EX-005: Examples must not hard-code secrets
 - **Rule**: Examples must not contain passwords/tokens/keys/client secrets/private keys/SAS tokens.
@@ -353,6 +407,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 ### DOCS-EX-012: Example sections must remain copy/pasteable Terraform
 - **Rule**: Do not delete or convert "Example …" Terraform configuration blocks into prose. An `Example*` section must contain copy/pasteable Terraform configuration.
 - **Rule**: Do not remove an `Example*` section (or its fenced Terraform configuration block) as a remediation for self-containedness or other example failures.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to prevent audits from resolving broken examples by collapsing them into prose
+  - Keeps `Example*` sections aligned with the repository's copy/pasteable-example expectation
 
 ### DOCS-EX-013: Example instance name convention (style)
 - **Rule**: Generally, the resource/data source instance name in examples should be `example`.
@@ -387,6 +445,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
     - If a minimum length is proven and the derived value is shorter, pad deterministically using only characters proven valid by evidence (prefer `1` if digits are allowed; otherwise `a` if letters are allowed).
   - Guardrail: if you cannot determine the allowed character set/separators/length bounds from schema/implementation evidence, or cannot satisfy constraints deterministically (for example a complex regex requirement), do not guess a renamed value (see DOCS-EVID-001).
 - **Severity**: this is a nit-level compliance rule and must not, by itself, make a page invalid.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to make example-name fixes deterministic across `/code-review-docs` and `/docs-writer`
+  - Helps avoid ad hoc renames that vary from run to run when multiple valid-looking names are possible
 
 ### DOCS-EX-016: Example values must respect ValidateFunc constraints
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -434,6 +496,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Rule**: Data source documentation for arguments, attributes, and nested fields MUST stay concise and limited to explaining what the field is.
 - **Rule**: Data source docs MUST NOT use field-level note blocks for additional caveats, setup guidance, conditional requirements, or extended explanations.
 - **Auditor behavior**: any field-level `-> **Note:**`, `~> **Note:**`, or `!> **Note:**` in a data source doc is an Issue.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` prefers short, field-definitional data source bullets
+  - Added to keep `/code-review-docs` and `/docs-writer` deterministic and prevent drift toward over-explained data source fields
 
 ---
 
@@ -463,6 +529,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Rule**: In resource docs, if more detail is needed, use a note block under the argument.
 - **Rule**: In data source docs, keep the bullet short and limited to explaining what the field is; do not add field-level note blocks or extended caveats.
 - **Rule**: Core argument semantics should remain in the bullet when they read cleanly, including the field definition, `Possible values are ...`, and `Defaults to ...` when applicable.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md`
+  - Contract rule `DOCS-NOTE-009` for data source field-level note prohibition
 
 ### DOCS-ARG-011: Argument bullet length cap
 - **Rule**: Each argument bullet description MUST be a crisp definition of the field (prefer 1 sentence; 2 sentences maximum).
@@ -478,6 +548,10 @@ Example (rewrite long bullet to bullet + note):
 - After (compliant):
   - ``* `foo_id` - (Optional) The ID of the related resource.``
   - `-> **Note:** If you are using a managed DNS service, you may need to delegate your DNS zone; otherwise validate by creating the required DNS records manually.`
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to keep argument bullets short and deterministic across `/code-review-docs` and `/docs-writer`
+  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` keeps core semantics in the bullet and moves only excess caveats into notes
 
 ### DOCS-ARG-009: ForceNew sentence placement
 - **Scope**: resources only.
@@ -559,6 +633,22 @@ Example (rewrite long bullet to bullet + note):
 - **Examples**:
   - Prefer `The ID of the Orchestrated Virtual Machine Scale Set.` over `The ID of the Virtual Machine Scale Set.`
   - Prefer `Used when creating the Orchestrated Virtual Machine Scale Set.` over `Used when creating the Virtual Machine Scale Set.`
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to prevent generic service-object wording drift in `Attributes Reference`, `Timeouts`, and `Import`
+  - Enforced through this repository's docs contract rather than a clearly codified upstream wording rule
+
+### DOCS-WORD-007: Use Azure proper-name capitalization in field prose
+- **Rule**: When documentation prose refers to the Azure object `Resource Group`, capitalize it as `Resource Group` rather than `resource group`.
+- **Rule**: This applies to common field descriptions such as `resource_group_name` bullets in both resource and data source docs.
+- **Scope**: Use this capitalization when referring to the Azure object name, not when writing generic prose about grouping resources conceptually.
+- **Examples**:
+  - Prefer `The name of the Resource Group.` over `The name of the resource group.`
+  - Prefer `The name of the Resource Group where the Resource exists.` over `The name of the resource group where the Resource exists.`
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Reviewer suggestion in hashicorp/terraform-provider-azurerm PR `#31957`, discussion `r3116933429`
+  - Existing companion guidance examples in `.github/instructions/documentation-guidelines.instructions.md`
 
 ---
 

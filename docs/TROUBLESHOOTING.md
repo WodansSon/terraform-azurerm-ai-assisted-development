@@ -473,6 +473,8 @@ go install github.com/qixialu/azurerm-linter@latest
 - `/code-review-local-changes` does not require PR context and continues to use local-diff linting.
 - The committed review prompt does not guess PR numbers from branch names or git history.
 - The prompt-side linter flow requires a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The expected review-time command is the plain local CLI from the repo root on every platform, including Windows, and it should not be rewritten through WSL or another shell wrapper.
+- Review-time JSON parsing uses stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`.
+- If the stderr-suppressed run does not produce valid stdout JSON, the prompts rerun azurerm-linter once without stderr suppression so diagnostic output can still be used to classify `Not applicable` and `Not run` cases.
 
 ---
 

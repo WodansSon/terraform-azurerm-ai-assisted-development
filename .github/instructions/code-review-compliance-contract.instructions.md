@@ -10,9 +10,13 @@ This file is the single source of truth for code review compliance in this repos
 
 Two independent review workflows MUST follow this contract:
 
-- Auditor: .github/prompts/code-review-local-changes.prompt.md
+- Consumer: `.github/prompts/code-review-local-changes.prompt.md`
+  - Role: Auditor
+  - Requires EOF Load: yes
   - Goal: review local workspace changes deterministically.
-- Auditor: .github/prompts/code-review-committed-changes.prompt.md
+- Consumer: `.github/prompts/code-review-committed-changes.prompt.md`
+  - Role: Auditor
+  - Requires EOF Load: yes
   - Goal: review committed branch changes deterministically.
 
 The prompts define the execution flow and output template.
@@ -196,6 +200,14 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Evaluate requires-import tests against the active contributor guidance and the resource's actual behavior.
 - Rule: Do not report a requires-import pattern as wrong solely because it differs from an older prompt preference.
 
+### REVIEW-TEST-003: Embedded Terraform in acceptance tests follows terrafmt
+- Rule: When reviewing files under `internal/**/*_test.go`, inspect embedded Terraform configuration strings, including raw string literals used to define acceptance-test configuration.
+- Rule: For embedded Terraform blocks, treat `terrafmt` output as the canonical formatting standard.
+- Rule: Flag obvious formatting drift that would likely fail `terrafmt` or `make tflint`.
+- Rule: Within embedded Terraform blocks, tabs used for indentation are not acceptable; follow normal `terrafmt` indentation, which is typically two spaces per nesting level.
+- Rule: Scope this rule only to embedded Terraform blocks inside Go acceptance-test strings; do not treat tabs in normal Go source as a formatting issue.
+- Rule: Do not assume `azurerm-linter` will catch formatting problems inside embedded Terraform strings.
+
 ## Observation-only design guidance
 
 ### REVIEW-OBS-001: Boolean toggle schema preference is observation-only by default
@@ -227,6 +239,8 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
 - Rule: Execute azurerm-linter from that repo root, not from an arbitrary subdirectory.
 - Rule: Run the linter in the current platform's native shell environment using the plain local CLI invocation.
+- Rule: For the primary JSON-mode run, keep stdout clean by redirecting stderr to the active shell's null device using native syntax.
+- Rule: Examples of native stderr suppression include PowerShell `2>$null`, POSIX shells `2>/dev/null`, and cmd.exe `2>nul`.
 - Rule: Do not rewrite the command through another runtime environment or wrapper such as `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`.
 - Rule: On Windows, the expected review-time linter command is plain `azurerm-linter ...` from the resolved repo root, not a WSL-prefixed equivalent.
 - Rule: Record the resolved working directory only when it is needed to explain `Not run`, scope ambiguity, or debugging details.
@@ -234,11 +248,14 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Use a longer sync timeout for azurerm-linter than for the quick git inspection commands.
 - Rule: Wait for the linter command to finish before classifying the linter section result.
 - Rule: Do not classify the linter section as `Not run` merely because the initial wait window elapsed while the linter process was still executing.
+- Rule: If the stderr-suppressed JSON-mode run does not produce valid stdout JSON or otherwise cannot be classified deterministically, rerun azurerm-linter once without stderr suppression to capture diagnostic text for classification.
 
 ### REVIEW-LINT-002C: Default to filtered mode first
-- Rule: The preferred review-time lint pass is normal filtered JSON mode: `azurerm-linter -output json`.
+- Rule: The preferred review-time lint pass is normal filtered JSON mode with shell-native stderr suppression: `azurerm-linter -output json` plus the active shell's null-device redirection for stderr.
 - Rule: Do not default to `--no-filter`.
 - Rule: Treat filtered mode as the primary run because it is faster and scoped to the current diff shape detected by the tool.
+- Rule: Use stdout JSON as the authoritative structured source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content whenever a valid JSON payload is present.
+- Rule: Treat stderr as diagnostics only, and consult it only when the primary stdout-only JSON run must be rerun to classify `Not applicable` or `Not run` outcomes.
 
 ### REVIEW-LINT-002D: Treat filtered mode as the normal review baseline
 - Rule: Normal review runs should rely on filtered azurerm-linter mode as the authoritative baseline.

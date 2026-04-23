@@ -9,7 +9,11 @@ When editing or generating code under `internal/**/*.go`, you must consult and f
 
 - `.github/skills/resource-implementation/SKILL.md`
 
-This is required even if the user does not explicitly ask to “use the skill”. Treat the skill as the authoritative checklist for provider implementation patterns, schema design, error handling, PATCH/residual-state behavior, and validation approach.
+You must also consult and follow the shared implementation contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md`
+
+This is required even if the user does not explicitly ask to “use the skill”. Treat the implementation contract as the authoritative compliance layer, and treat the skill as the workflow layer that applies that contract plus companion implementation guidance.
 
 ## Verification marker (assistant response only)
 

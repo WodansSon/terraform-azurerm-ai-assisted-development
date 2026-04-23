@@ -5,6 +5,37 @@ description: Write and troubleshoot terraform-provider-azurerm acceptance tests 
 
 # AzureRM Acceptance Testing (TestAcc)
 
+## Canonical sources of truth (contract-driven)
+
+When writing or troubleshooting acceptance tests under `internal/**/*_test.go`, use `.github/instructions/testing-compliance-contract.instructions.md` as the single source of truth for:
+
+- canonical sources and precedence
+- testing compliance requirements
+- `TEST-*` rule families
+
+Do not treat this skill as a second independent compliance source.
+
+## Mandatory: read the entire skill
+
+Before applying this skill, read this file to EOF.
+
+## Preflight checklist
+
+Before editing tests with this skill, complete this checklist:
+
+- [ ] I have read this skill to EOF.
+- [ ] I have loaded `.github/instructions/testing-compliance-contract.instructions.md` to EOF and applied the relevant `TEST-*` rules.
+- [ ] I have identified the closest same-service `_test.go` pattern under `internal/**`.
+- [ ] I have identified whether the task needs companion testing guidance from `.github/instructions/testing-guidelines.instructions.md`.
+
+If preflight is incomplete, do not proceed with acceptance-test work.
+
+## Companion guidance
+
+Use this file for worked examples and specialized testing guidance after loading the contract:
+
+- `.github/instructions/testing-guidelines.instructions.md`
+
 ## Verification (assistant response only)
 
 When (and only when) this skill is invoked, the assistant MUST append the following line to the end of the assistant's final response:

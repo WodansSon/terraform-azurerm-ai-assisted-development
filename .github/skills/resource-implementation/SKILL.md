@@ -5,6 +5,44 @@ description: Implement or modify Terraform AzureRM provider resources/data sourc
 
 # AzureRM Resource Implementation (Provider Patterns)
 
+## Canonical sources of truth (contract-driven)
+
+When implementing or modifying provider code under `internal/**`, use `.github/instructions/implementation-compliance-contract.instructions.md` as the single source of truth for:
+
+- canonical sources and precedence
+- implementation compliance requirements
+- `IMPL-*` rule families
+
+Do not treat this skill as a second independent compliance source.
+
+## Mandatory: read the entire skill
+
+Before applying this skill, read this file to EOF.
+
+## Preflight checklist
+
+Before editing code with this skill, complete this checklist:
+
+- [ ] I have read this skill to EOF.
+- [ ] I have loaded `.github/instructions/implementation-compliance-contract.instructions.md` to EOF and applied the relevant `IMPL-*` rules.
+- [ ] I have identified the closest same-service implementation pattern under `internal/**`.
+- [ ] I have identified which companion guidance files I need for this task (schema, PATCH behavior, error handling, testing, or provider guidance).
+
+If preflight is incomplete, do not proceed with implementation work.
+
+## Companion guidance
+
+Use these files for worked examples and specialized implementation guidance after loading the contract:
+
+- `.github/instructions/implementation-guide.instructions.md`
+- `.github/instructions/azure-patterns.instructions.md`
+- `.github/instructions/schema-patterns.instructions.md`
+- `.github/instructions/error-patterns.instructions.md`
+- `.github/instructions/provider-guidelines.instructions.md`
+- `.github/instructions/code-clarity-enforcement.instructions.md`
+
+For acceptance-test-specific work under `internal/**/*_test.go`, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the test authority.
+
 ## Scope
 
 Intended for use with the HashiCorp `terraform-provider-azurerm` repository (Go code under `internal/`).

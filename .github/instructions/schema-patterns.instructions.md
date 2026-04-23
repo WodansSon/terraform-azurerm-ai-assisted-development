@@ -7,7 +7,12 @@ description: Schema design patterns and validation standards for the Terraform A
 
 <a id="schema-design-patterns"></a>
 
-Schema design patterns and validation standards for the Terraform AzureRM provider including field types, validation patterns, and Azure-specific schema considerations.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for schema design patterns, validation heuristics, and Azure-specific schema considerations.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 **Quick navigation:** <a href="#📋-schema-type-patterns">📋 Schema Types</a> | <a href="#✅-validation-patterns">✅ Validation</a> | <a href="#⚙️-azure-specific-schema-patterns">⚙️ Azure Specific</a> | <a href="#🚀-fivepointoh-feature-flag-patterns">🚀 Breaking Changes</a> | <a href="#🏗️-complex-schema-patterns">🏗️ Complex Schemas</a> | <a href="#🔍-field-naming-standards">🔍 Field Naming</a> | <a href="#🧪-testing-schema-patterns">🧪 Testing</a> | <a href="#🔧-test-configuration-helpers">🔧 Test Helpers</a>
 

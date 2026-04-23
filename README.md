@@ -257,7 +257,7 @@ If Copilot does not already have PR context for your branch, pass the PR number 
 ```
 
 > [!NOTE]
-> The generic review prompts require a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The linter is expected to run as the plain local CLI from the repo root on every platform, including Windows; it should not be rewritten through WSL or another shell wrapper.
+> The generic review prompts require a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The linter is expected to run as the plain local CLI from the repo root on every platform, including Windows; it should not be rewritten through WSL or another shell wrapper. Review-time JSON parsing treats stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`. If that primary run does not yield valid stdout JSON, the prompts rerun once without stderr suppression to inspect diagnostic output for classification.
 
 If you want to reduce approval prompts for the harmless repo-root lookup used by the review prompts, you can allow just that command in your VS Code user settings:
 
@@ -357,6 +357,7 @@ Review modes:
 - `/code-review-local-changes` reviews local workspace changes and uses local-diff linting.
 - `/code-review-committed-changes` reviews branch changes against `origin/main` and prefers PR-scoped linting.
 - If committed review cannot determine a valid PR, it reports `Not run` for the linter section and tells you to create a draft PR or rerun with an explicit PR number such as `/code-review-committed-changes PR 12345`.
+- If you want to decode rule citations such as `REVIEW-SCOPE-005` or `DOCS-ARG-001`, see [Code Review Rule Reference](docs/CODE_REVIEW_RULES.md).
 
 ### Test Generation Made Easy
 
@@ -465,6 +466,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 - **[Installation Guide](installer/README.md)** - Detailed setup instructions
 - **[Usage Examples](docs/EXAMPLES.md)** - Real-world usage scenarios
+- **[Code Review Rule Reference](docs/CODE_REVIEW_RULES.md)** - Explains `REVIEW-*` and `DOCS-*` citations used in review output
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
 
