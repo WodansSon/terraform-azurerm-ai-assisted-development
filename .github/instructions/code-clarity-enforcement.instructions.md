@@ -7,7 +7,12 @@ description: Code clarity and policy enforcement guidelines for Terraform AzureR
 
 <a id="code-clarity-and-policy-enforcement-guidelines"></a>
 
-This document provides detailed enforcement guidelines for maintaining code clarity and quality standards in the Terraform AzureRM provider.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for comment discipline, code-clarity heuristics, and worked implementation-quality patterns.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 **Quick Navigation:** <a href="#🚫-zero-tolerance-for-unnecessary-comments-policy">🚫 Comment Policy</a> | <a href="#🎯-strategic-decision-making-guidance">🎯 Strategic Decision-Making</a> | <a href="#customizediff-import-requirements">🔄 CustomizeDiff</a> | <a href="#resource-implementation-standards">🏗️ Resource Standards</a> | <a href="#azure-api-integration-standards">☁️ Azure Integration</a> | <a href="#state-management-requirements">🔄 State Management</a> | <a href="#testing-standards">🧪 Testing Standards</a> | <a href="#documentation-quality">📝 Documentation</a> | <a href="#enforcement-priority">🎯 Enforcement Priority</a> | <a href="#⚡-quick-decision-trees">⚡ Decision Trees</a> | <a href="#📊-performance-metrics--success-indicators">📊 Performance Metrics</a> | <a href="#🎯-context-aware-ai-optimization">🎯 AI Optimization</a>
 

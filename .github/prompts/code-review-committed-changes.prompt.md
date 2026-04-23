@@ -103,14 +103,16 @@ Rules:
   - Run the linter from that repo root
   - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
   - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
-  - On Windows, use plain `azurerm-linter --pr=<number> -output json` from the resolved repo root rather than a WSL-prefixed equivalent
+  - Keep stdout clean for JSON parsing by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`
+  - On Windows PowerShell, use plain `azurerm-linter --pr=<number> -output json 2>$null` from the resolved repo root rather than a WSL-prefixed equivalent
   - Determine a valid pull request number deterministically from explicit review context only
   - Allowed PR number sources are:
     - the active pull request context, when available
     - the currently open or viewed pull request context, when available
     - an explicit PR number supplied by the user or prompt invocation text
-  - If a valid PR number is available, run `azurerm-linter --pr=<number> -output json`
+  - If a valid PR number is available, run `azurerm-linter --pr=<number> -output json` with shell-native stderr suppression
   - Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals
+  - If the stderr-suppressed run does not yield valid stdout JSON or otherwise cannot be classified deterministically, rerun once without stderr suppression to inspect diagnostics
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
 - If no valid pull request number can be determined for the committed branch changes, mark the linter section as `Not run` and instruct the user to create a draft PR and run the review again.
 - If the local binary is missing or the tool cannot be run or scoped correctly, mark the section as `Not run` and state the reason.
@@ -121,7 +123,8 @@ Rules:
 - Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
 - Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
 - Structure the linter section from the actual tool output:
-  - When a valid JSON payload is present, use `version` as the linter version, use `summary.issue_count` as the issue count, and ignore human-readable preamble logs for structured fields
+  - When a valid JSON payload is present on stdout, use `version` as the linter version, use `summary.issue_count` as the issue count, and ignore human-readable preamble logs for structured fields
+  - Treat stdout JSON as the authoritative structured source; use stderr diagnostics only when a rerun without suppression is needed to classify a non-JSON result
   - When a valid JSON payload is absent, the tool footer such as `Found X issue(s)` may be used as the issue count when present
   - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not the `### 🎯 **MUST FIX**` section
   - Put only actual violation lines into the `### 🎯 **MUST FIX**` section
@@ -150,6 +153,7 @@ Rules:
 - Review the full committed change-set.
 - Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
 - Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
+- When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
 
 ## Output format (use this exact structure)

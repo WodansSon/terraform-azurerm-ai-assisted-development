@@ -1,0 +1,34 @@
+name: Validate Contracts
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/instructions/**'
+      - '.github/prompts/**'
+      - '.github/skills/**'
+      - 'tools/validate-contracts.ps1'
+      - '.github/workflows/contracts-validation.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/instructions/**'
+      - '.github/prompts/**'
+      - '.github/skills/**'
+      - 'tools/validate-contracts.ps1'
+      - '.github/workflows/contracts-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-contracts:
+    name: Validate Contract Model
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run contract validator
+        shell: pwsh
+        run: |
+          ./tools/validate-contracts.ps1

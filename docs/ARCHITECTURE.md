@@ -360,10 +360,12 @@ Docs components (quick links):
 - Contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Auditor prompt: `.github/prompts/code-review-docs.prompt.md`
 - Writer skill: `.github/skills/docs-writer/SKILL.md`
+- Rule reference: `docs/CODE_REVIEW_RULES.md`
 
 - `/code-review-local-changes`: reviews local workspace changes and uses local-diff linting.
 - `/code-review-committed-changes`: reviews committed branch changes against `origin/main` and prefers PR-scoped linting. When PR context is not already available, users can pass a PR number explicitly, for example `/code-review-committed-changes PR 12345`.
 - `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, page-self-contained examples with no undefined references, import example ID shape validation, and human-readable timeout defaults).
+- Rule citations such as `REVIEW-SCOPE-005` and `DOCS-EX-003` are explained in `docs/CODE_REVIEW_RULES.md`.
 
 ### Docs governance (contract, prompt, skill)
 

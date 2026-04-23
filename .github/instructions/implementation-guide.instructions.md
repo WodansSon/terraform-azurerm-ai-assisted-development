@@ -7,7 +7,27 @@ description: Complete implementation guide for Go files in the Terraform AzureRM
 
 <a id="terraform-azurerm-provider-implementation-guide"></a>
 
-This comprehensive guide covers all implementation requirements for the Terraform AzureRM provider.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Rules:
+- Treat the implementation contract as the authoritative compliance layer for `internal/**/*.go` work.
+- Use this guide for worked examples, implementation patterns, templates, and AzureRM-specific heuristics.
+- Do not treat this file as a second independent compliance source.
+- If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
+
+Practical split:
+- Contract: defines what is compliant.
+- This file: explains how to implement compliant provider code efficiently.
+- Skill/routing: define workflow behavior while consuming the contract and companion guides.
+
+For exact compliance behavior, use the implementation contract as the source of truth for:
+
+- precedence and conflict resolution
+- evidence requirements
+- implementation workflow rules
+- schema, PATCH, error, testing, and code-clarity rule families
 
 **Quick navigation:** <a href="#🏗️-implementation-patterns">🏗️ Implementation Patterns</a> | <a href="#📏-coding-standards">📏 Coding Standards</a> | <a href="#🎨-coding-style">🎨 Coding Style</a> | <a href="#🔧-azure-sdk-integration">🔧 Azure SDK Integration</a> | <a href="#💡-ai-coding-guidance">💡 AI Coding Guidance</a> | <a href="#📚-specialized-guidance-on-demand">📚 Specialized Guidance</a>
 

@@ -7,7 +7,12 @@ description: Azure-specific guidelines for Go files in the Terraform Azure Provi
 
 <a id="🏢-provider-guidelines"></a>
 
-Azure-specific guidelines for Go files in the Terraform Azure Provider repository. It includes best practices for Azure Resource Manager integration, Terraform provider patterns, and resource implementation.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for provider-wide AzureRM implementation heuristics and ARM integration patterns.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 **Quick navigation:** <a href="#☁️-azure-resource-manager-arm-integration">☁️ ARM Integration</a> | <a href="#⚙️-customizediff-implementation-for-azure-resources">⚙️ CustomizeDiff</a> | <a href="#📐-azure-schema-design-and-flattening-guidelines">📐 Schema Design</a> | <a href="#✅-azure-api-value-validation">✅ API Validation</a>
 

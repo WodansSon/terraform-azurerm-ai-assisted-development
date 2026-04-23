@@ -790,6 +790,9 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 * `resource_group_name` - (Required) The name of the Resource Group where the Resource exists.
 ```
 
+- Treat `Resource Group` as the canonical Azure object name in field prose; do not downcase it to `resource group` when referring to the Azure object.
+- See `DOCS-WORD-007` in `.github/instructions/docs-compliance-contract.instructions.md`.
+
 ### Tags Documentation
 ```markdown
 # For Resources

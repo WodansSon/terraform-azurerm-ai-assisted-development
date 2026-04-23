@@ -7,7 +7,12 @@ description: Azure-specific implementation patterns for the Terraform AzureRM pr
 
 <a id="azure-specific-implementation-patterns"></a>
 
-Azure-specific implementation patterns for the Terraform AzureRM provider including PATCH operations, CustomizeDiff patterns, and Azure SDK integration patterns.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for Azure-specific implementation patterns such as PATCH behavior, CustomizeDiff patterns, and Azure SDK integration heuristics.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 **Quick navigation:** <a href="#🔄-patch-operations">🔄 PATCH Operations</a> | <a href="#✅-customizediff-validation">✅ CustomizeDiff</a> | <a href="#🎯-schema-flattening">🎯 Schema Flattening</a> | <a href="#🚫-none-value-pattern">🚫 "None" Value Pattern</a> | <a href="#🔐-security-patterns">🔐 Security</a> | <a href="#🔄-state-management-with-dgetrawconfig">🔄 State Management</a> | <a href="#🏗️-progressive-code-simplification">🏗️ Progressive Code Simplification</a>
 

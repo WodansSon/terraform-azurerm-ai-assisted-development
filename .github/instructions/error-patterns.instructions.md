@@ -7,7 +7,12 @@ description: Error handling patterns and standards for the Terraform AzureRM pro
 
 <a id="error-handling-patterns"></a>
 
-Error handling patterns and standards for the Terraform AzureRM provider including message formatting, error types, and debugging guidelines.
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
+
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for provider-standard error wording, error handling patterns, and debugging heuristics.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 **Quick navigation:** <a href="#🚨-critical-console-line-wrapping-detection-policy-🚨">🚨 Console Line Wrapping Policy</a> | <a href="#💬-error-message-standards">💬 Error Message Standards</a> | <a href="#🔍-error-patterns-for-typed-resources">🔍 Error Patterns for Typed Resources</a> | <a href="#🔍-error-patterns-for-untyped-resources">🔍 Error Patterns for UnTyped Resources</a> | <a href="#🐛-debugging-patterns">🐛 Debugging Patterns</a> | <a href="#🔄-state-management-errors">🔄 State Management Errors</a>
 

@@ -9,7 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added [Code Review Rule Reference](docs/CODE_REVIEW_RULES.md) so end users can decode `REVIEW-*` and `DOCS-*` citations used by the review prompts and contracts.
+- Added a cross-platform PowerShell contract validator plus a dedicated GitHub Actions workflow that discovers contract instruction files, validates their structure and provenance metadata, and reports prompt/skill/companion consumers from the repository itself.
+- Added an initial implementation compliance contract for `internal/**/*.go` so Go implementation work can use a real contract layer instead of relying on the `resource-implementation` skill as the sole authority.
+- Added a dedicated testing compliance contract for `internal/**/*_test.go` so acceptance-test work can use a real contract layer instead of relying on the `acceptance-testing` skill as the sole authority.
+
 ### Changed
+
+- Tightened acceptance-test review guidance so embedded Terraform inside `internal/**/*_test.go` raw strings must be checked against `terrafmt`-style formatting, including flagging tab-indented Terraform blocks instead of assuming `azurerm-linter` will catch those issues.
+- Updated the `azurerm-linter` review flow and related documentation so JSON parsing is treated as stdout-only, stderr is suppressed using the native null-device syntax for the active shell on each OS, and the prompts rerun once without suppression when diagnostic output is needed to classify non-JSON results.
+- Added an explicit docs wording rule that treats `Resource Group` as canonical Azure object capitalization in field prose, with provenance recorded as an inferred maintainer convention backed by PR review evidence.
+- Introduced an incremental provenance model in the docs contract so ambiguous rules can be labeled as published upstream standards, inferred maintainer conventions, or local safeguards, and backfilled that metadata onto an initial set of docs rules.
+- Continued the docs-contract provenance backfill across example and block-structure rules that exist primarily as repository safeguards for deterministic docs audits and rewrites.
+- Tightened the contract validator so it now verifies declared consumer paths from each contract's `## Consumers` section and requires a terminal contract EOF marker comment as the last non-empty line.
+- Standardized contract `## Consumers` sections on an explicit `Consumer:` bullet format and tightened the validator so contract-listed companion instruction files must point back to their contract.
+- Added explicit per-consumer `Requires EOF Load: yes` metadata to the current contracts and tightened the validator so declared prompt and skill consumers marked that way must mention loading the contract to EOF.
+- Updated the `resource-implementation` skill and Go routing instruction so they now consume the new implementation compliance contract as the authoritative implementation layer.
+- Refactored the main implementation guide into explicit companion guidance for the implementation contract and taught the contract validator to discover companion instruction files from the implementation contract's dedicated companion-guidance section.
+- Refactored the remaining implementation companion guides so they explicitly point back to the implementation compliance contract as the authoritative layer.
+- Updated the `acceptance-testing` skill, test routing instruction, and testing guide so they now consume the new testing compliance contract as the authoritative testing layer.
+- Removed the testing guide from the implementation companion set so test authority is no longer split between the implementation and testing contract models.
+- Updated the code review rule reference so it documents the new `IMPL-*` and `TEST-*` contract families alongside the existing `REVIEW-*` and `DOCS-*` families.
 
 ### Fixed
 

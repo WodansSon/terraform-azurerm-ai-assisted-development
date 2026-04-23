@@ -82,6 +82,7 @@ Use this to avoid missing common compliance breakpoints. The authoritative detai
 - Bullet split trigger (mandatory; prevents misses): in resource docs, if an argument bullet mixes the definition with validation-style constraints (length/charset/regex/start/end rules) or includes the ForceNew sentence plus constraints, split constraints into an inline note per `DOCS-ARG-011` + `DOCS-NOTE-003`; in data source docs, keep the bullet short and field-definitional instead of adding a field-level note.
 - Nested block field ordering: `DOCS-SHAPE-006`, `DOCS-ATTR-005`
 - ForceNew + wording hygiene: `DOCS-WORD-*` (including enum phrasing + Oxford comma) and `DOCS-ARG-003/006/009`
+- Azure object-name wording: keep canonical Azure proper-name capitalization such as `Resource Group` in field prose per `DOCS-WORD-007`
 - Notes required/marker correctness + de-dup: `DOCS-NOTE-*`
 - Examples (no deletions, self-contained, depends_on rules, ValidateFunc-safe values): `DOCS-EX-*` + `DOCS-EVID-001`
 - Example invariants: `DOCS-EX-004`, `DOCS-EX-018`, `DOCS-EX-019`

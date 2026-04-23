@@ -1,5 +1,5 @@
 ---
-applyTo: "internal/**/*.go"
+applyTo: "internal/**/*_test.go"
 description: Testing guidelines for Terraform AzureRM provider Go files - test execution protocols, patterns, and Azure-specific considerations.
 ---
 
@@ -7,7 +7,12 @@ description: Testing guidelines for Terraform AzureRM provider Go files - test e
 
 <a id="🧪-testing-guidelines"></a>
 
-Testing guidelines for Terraform AzureRM provider Go files - test execution protocols, patterns, and Azure-specific considerations.
+This file is a companion guide. Testing compliance rules are defined by the testing compliance contract:
+
+- `.github/instructions/testing-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
+
+Use this guide for test execution protocols, testing patterns, and Azure-specific testing heuristics.
+If this guide conflicts with the testing contract, follow the testing contract and update this guide to re-align.
 
 **Quick navigation:** <a href="#🚨-test-execution-awareness">🚨 Test Execution Awareness</a> | <a href="#🧪-efficient-testing-with-importstep">🧪 Efficient Testing</a> | <a href="#🧪-test-types">🧪 Test Types</a> | <a href="#⚡-essential-test-patterns">⚡ Essential Patterns</a> | <a href="#✅-customizediff-testing">✅ CustomizeDiff Testing</a> | <a href="#📊-data-source-testing-patterns">📊 Data Source Testing</a> | <a href="#🏗️-test-organization-and-structure">🏗️ Test Organization</a> | <a href="#☁️-azure-specific-testing-guidelines">☁️ Azure-Specific Testing</a> | <a href="#🔧-environment-setup">🔧 Environment Setup</a>
 
@@ -51,7 +56,7 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
         {
             Config: r.basic(data),
             Check: acceptance.ComposeTestCheckFunc(
-                check.That(data.ResourceName).ExistsInAzure(r), // Primary check - verifies resource exists
+                check.That(data.ResourceName).ExistsInAzure(r),
                 // Additional checks only when ImportStep cannot verify specific behavior
             ),
         },
