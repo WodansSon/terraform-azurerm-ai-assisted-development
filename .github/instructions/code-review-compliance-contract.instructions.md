@@ -245,9 +245,11 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: On Windows, the expected review-time linter command is plain `azurerm-linter ...` from the resolved repo root, not a WSL-prefixed equivalent.
 - Rule: Record the resolved working directory only when it is needed to explain `Not run`, scope ambiguity, or debugging details.
 - Rule: In the normal review path, run azurerm-linter directly rather than through generated shell scripts or PowerShell wrapper scripts.
-- Rule: Use a longer sync timeout for azurerm-linter than for the quick git inspection commands.
+- Rule: Use an explicit review-time timeout budget for azurerm-linter that is materially longer than the quick git inspection commands because package loading can be slow.
+- Rule: The preferred initial `run_in_terminal` timeout for azurerm-linter is at least `300000` ms.
 - Rule: Wait for the linter command to finish before classifying the linter section result.
 - Rule: Do not classify the linter section as `Not run` merely because the initial wait window elapsed while the linter process was still executing.
+- Rule: If the initial sync wait expires and the linter is still running, continue following that same terminal session to completion rather than starting a second linter run just because the first wait window elapsed.
 - Rule: If the stderr-suppressed JSON-mode run does not produce valid stdout JSON or otherwise cannot be classified deterministically, rerun azurerm-linter once without stderr suppression to capture diagnostic text for classification.
 
 ### REVIEW-LINT-002C: Default to filtered mode first
