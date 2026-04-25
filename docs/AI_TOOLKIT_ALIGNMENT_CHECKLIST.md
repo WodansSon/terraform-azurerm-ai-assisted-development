@@ -136,6 +136,12 @@ Use JSON output if you want the machine-readable report:
 pwsh -NoProfile -File ./tools/validate-contracts.ps1 -OutputFormat Json
 ```
 
+If the current file contents and workspace validators are clean but the VS Code Problems tab still shows old YAML errors, treat them as potentially stale editor diagnostics before assuming the workflow is still broken.
+
+Practical recovery step:
+
+- reload the VS Code window so the YAML language service rebuilds diagnostics from the current on-disk files
+
 ### 8. Bootstrap payload matches expectations
 
 When the runtime payload changes, confirm bootstrap/install copies the expected runtime files from the manifest and does not accidentally include maintenance tooling.

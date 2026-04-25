@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tightened the AI toolkit alignment checklist so it now prescribes the standard authoring pattern for skills, prompts, and instructions: titled subsections plus bullets, with `MD029` history documented as the reason to avoid fragile ordered-list structures.
 - Clarified the error-patterns guide so static errors use `errors.New(...)`, while wrapped provider-facing errors explicitly prefer `%+v` over `%v`, `%s`, and `%w`.
 - Extended the AI toolkit alignment checklist with explicit usage guidance for the repo-only `ai-toolkit-maintenance` skill so maintainers can invoke the alignment workflow directly.
+- Added a maintainer note to the AI toolkit alignment checklist that stale VS Code YAML diagnostics can persist after a fix, with a reload-window recovery step when file contents and workspace validators are already clean.
 - Tightened implementation-side error guidance so static errors use `errors.New(...)`, while `fmt.Errorf(...)` with `%+v` remains reserved for formatted messages and wrapped underlying errors.
 - Replaced the remaining ordered-list sequences in the error-patterns guide with the standard title-plus-bullets pattern so the changed AI-toolkit guidance is structurally consistent.
 
