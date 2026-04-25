@@ -82,31 +82,32 @@ Rules:
 
 ## Workflow (recommended)
 
-1. Find similar existing implementations
+- Find similar existing implementations:
    - Locate the closest resource(s) by service and complexity.
    - Mirror patterns for schema layout, expand/flatten, timeouts, and tests.
 
-2. Confirm API model structure before mapping fields
+- Confirm API model structure before mapping fields:
    - Do not guess types or required properties.
    - When needed, inspect the Azure SDK model structs or the provider’s generated clients.
 
-3. Schema design
+- Schema design:
    - Required vs Optional must reflect real API requirements and provider conventions.
    - Treat `tags` consistently and keep it last.
    - Use consistent validation and error message formats.
 
-4. PATCH/residual state rules
+- PATCH/residual state rules:
    - Omitted fields in PATCH often preserve prior values.
    - If disabling a feature, set explicit `enabled=false` (do not rely on omission).
 
-5. Error handling
+- Error handling:
    - Use lowercase, descriptive error messages.
    - Wrap field names and important values in backticks.
-   - Use `%+v` for underlying errors.
+   - Use `errors.New(...)` for static errors that do not need formatting or wrapping.
+   - Use `fmt.Errorf(...)` when formatting values or wrapping an underlying error, and use `%+v` for the wrapped underlying error.
 
-6. Tests
-   - Add/adjust acceptance tests where appropriate.
-   - Prefer `ImportStep()` for validation plus `ExistsInAzure` for existence.
+- Tests:
+   - Add or adjust tests when implementation behavior changes materially.
+   - For acceptance-test-specific guidance, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the source of detailed acctest patterns.
 
 ## Output expectation
 

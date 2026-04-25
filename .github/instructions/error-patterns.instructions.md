@@ -25,9 +25,9 @@ If this guide conflicts with the implementation contract, follow the contract an
 **VERIFICATION PROTOCOL FOR SUSPECTED ISSUES**:
 
 🔍 **MANDATORY VERIFICATION STEPS:**
-1. **STOP** - If text appears broken/fragmented, this is likely console wrapping
-2. **VERIFY** - Use `Get-Content filename` (PowerShell) or `cat filename` (bash) to check actual file content
-3. **VALIDATE** - For JSON/structured files: `Get-Content file.json | ConvertFrom-Json` (PowerShell) or `jq "." file.json` (bash)
+- **STOP**: If text appears broken/fragmented, this is likely console wrapping.
+- **VERIFY**: Use `Get-Content filename` (PowerShell) or `cat filename` (bash) to check actual file content.
+- **VALIDATE**: For JSON/structured files, use `Get-Content file.json | ConvertFrom-Json` (PowerShell) or `jq "." file.json` (bash).
 
 ### 🚨 **Console Wrapping Red Flags:**
 - ❌ Text breaks mid-sentence or mid-word without logical reason
@@ -77,19 +77,42 @@ return fmt.Errorf("error updating virtual network: %s", err.Error())
 
 ### Verbose Error Formatting
 
-**Always use `%+v` for comprehensive error context:**
+**When reporting an underlying error in Terraform provider code, use `%+v` to preserve the full provider-standard error context.**
 
 ```go
 // GOOD - Verbose error formatting provides full context
 return fmt.Errorf("creating CDN Front Door Profile `%s`: %+v", name, err)
 return fmt.Errorf("updating Network Security Group rules: %+v", err)
 return fmt.Errorf("polling for completion of operation: %+v", err)
+```
 
-// BAD - Simple formatting loses error context
+**Do not use `%v`, `%s`, or `%w` in these provider-facing wrapped-error cases, because they lose the expected verbose context or shift the example away from the provider convention this guide is prescribing.**
+
+```go
+// BAD - Wrapped provider errors should not use %v, %s, or %w here
 return fmt.Errorf("creating CDN Front Door Profile `%s`: %v", name, err)
 return fmt.Errorf("updating Network Security Group rules: %s", err.Error())
 return fmt.Errorf("polling for completion of operation: %w", err)
 ```
+
+### Static Errors vs Wrapped Errors
+
+**Use `errors.New(...)` for static errors and `fmt.Errorf(...)` when formatting or wrapping context:**
+
+```go
+// GOOD - Static errors use errors.New
+return errors.New("field `name` cannot be empty")
+return errors.New("property `zones` cannot be used with `availability_set_id`")
+
+// GOOD - Formatted or wrapped errors use fmt.Errorf
+return fmt.Errorf("creating CDN Front Door Profile `%s`: %+v", name, err)
+return fmt.Errorf("property `sku_name` must be one of `%s`, `%s`, or `%s`", standard, premium, classic)
+
+// BAD - Static error routed through fmt.Errorf without any formatting need
+return fmt.Errorf("field `name` cannot be empty")
+```
+
+Use `errors.New(...)` for purely static messages that do not need formatting.
 
 ### Clear Context and Actionable Information
 
@@ -239,41 +262,41 @@ if err != nil {
 
 **Root Cause Analysis Framework:**
 
-1. **Identify the HTTP Method**: Check if the Azure service uses PATCH vs PUT operations
-   ```powershell
-   # Look for PatchThenPoll vs CreateOrUpdateThenPoll in Azure SDK calls
-   grep -r "PatchThenPoll|CreateOrUpdateThenPoll" internal/services/servicename/
-   ```
+- **Identify the HTTP Method**: Check if the Azure service uses PATCH vs PUT operations.
+  ```powershell
+  # Look for PatchThenPoll vs CreateOrUpdateThenPoll in Azure SDK calls
+  grep -r "PatchThenPoll|CreateOrUpdateThenPoll" internal/services/servicename/
+  ```
 
-2. **Trace Azure SDK Filtering**: Verify if nil values are being filtered out
-   ```go
-   // Look for patterns like this that cause issues:
-   if len(input) == 0 {
-       return nil // SDK filters this out, Azure never gets disable command
-   }
-   ```
+- **Trace Azure SDK Filtering**: Verify if nil values are being filtered out.
+  ```go
+  // Look for patterns like this that cause issues:
+  if len(input) == 0 {
+      return nil // SDK filters this out, Azure never gets disable command
+  }
+  ```
 
-3. **Check "None" Pattern Implementation**: Ensure disabled features are explicit
-   ```go
-   // WRONG - Causes residual state
-   func ExpandFeature(input []interface{}) *azuretype.Feature {
-       if len(input) == 0 {
-           return nil
-       }
-       // Configure only enabled features
-   }
+- **Check "None" Pattern Implementation**: Ensure disabled features are explicit.
+  ```go
+  // WRONG - Causes residual state
+  func ExpandFeature(input []interface{}) *azuretype.Feature {
+      if len(input) == 0 {
+          return nil
+      }
+      // Configure only enabled features
+  }
 
-   // RIGHT - Prevents residual state
-   func ExpandFeature(input []interface{}) *azuretype.Feature {
-       result := &azuretype.Feature{
-           Enabled: pointer.To(false), // Explicit disable
-       }
-       if len(input) > 0 {
-           result.Enabled = pointer.To(true)
-       }
-       return result
-   }
-   ```
+  // RIGHT - Prevents residual state
+  func ExpandFeature(input []interface{}) *azuretype.Feature {
+      result := &azuretype.Feature{
+          Enabled: pointer.To(false), // Explicit disable
+      }
+      if len(input) > 0 {
+          result.Enabled = pointer.To(true)
+      }
+      return result
+  }
+  ```
 ---
 <a href="#error-handling-patterns">⬆️ Back to top</a>
 

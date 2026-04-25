@@ -61,6 +61,18 @@ Areas:
 - `RUN` = safe test execution guidance
 - `PATTERN` = acceptance test patterns and assertions
 
+## Rule provenance
+
+Some rules in this contract come from published upstream standards, while others are inferred from repeated provider testing patterns or added locally to reduce drift.
+
+Use the following provenance labels when a rule needs extra source clarity:
+
+- `Published upstream standard`: explicitly documented by upstream contributor or provider testing guidance.
+- `Inferred maintainer convention`: not clearly codified upstream, but supported by repeated provider test patterns or accepted maintainer guidance.
+- `Local safeguard`: a repository-local rule added to reduce ambiguity, drift, or under-specified test coverage.
+
+Provenance rollout is incremental. New rules and touched ambiguous rules should include provenance notes first; older rules may be backfilled over time.
+
 ## Evidence hierarchy
 
 When a testing claim affects required test shape, execution safety, or assertion strategy, use this evidence order:
@@ -88,6 +100,14 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Add only the smallest set of acceptance-test scenarios needed to validate the changed behavior.
 - Rule: Do not add broad or redundant test coverage when existing `basic`, `requiresImport`, `update`, or import patterns already cover the behavior acceptably.
 
+### TEST-WF-002: Resource acceptance tests should cover the core lifecycle by default
+- Rule: For resource acceptance tests, the default expected success-scenario set is `basic`, `update`, `complete`, and import validation.
+- Rule: Only omit one of those scenarios when the resource behavior or provider pattern gives a concrete reason that the scenario is not applicable.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `HashiCorp Standard - Essential Tests`
+  - Existing provider-oriented expectation in `.github/skills/acceptance-testing/SKILL.md` output guidance
+
 ## Execution safety
 
 ### TEST-RUN-001: Treat acceptance tests as real Azure activity
@@ -103,8 +123,36 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Prefer `data.ImportStep()` for broad post-create validation when import is supported.
 - Rule: Add extra assertions only when import cannot validate the behavior you need to prove.
 
-### TEST-PATTERN-003: Add requiresImport coverage only when it adds value
+### TEST-PATTERN-003: Complete tests should cover the full supported shape when needed
+- Rule: Include a `complete` acceptance test for resource scenarios so the broader supported configuration surface is exercised alongside `basic` and `update` coverage.
+- Rule: Only omit `complete` coverage when there is concrete evidence that the resource shape does not warrant a distinct complete scenario.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` listing `Complete Test` in the essential resource-test set
+  - Existing provider test organization guidance in `.github/instructions/testing-guidelines.instructions.md` that orders success scenarios around `basic`, `update`, and related lifecycle coverage
+
+### TEST-PATTERN-004: Add requiresImport coverage only when it adds value
 - Rule: Add `requiresImport` coverage when the resource pattern and provider conventions make it relevant.
 - Rule: Do not add `requiresImport` mechanically when it does not improve confidence in the changed behavior.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` describing `RequiresImport Test` as relevant when it adds confidence rather than as a universal mandatory scenario
+  - Existing workflow guidance in `.github/skills/acceptance-testing/SKILL.md` that keeps `requiresImport` conditional on the resource pattern
+
+### TEST-PATTERN-005: Do not add acctests for simple property validation when unit tests already cover it
+- Rule: Do not add an acceptance test only to prove simple property validation behavior when that validation is already covered adequately by a unit test.
+- Rule: Prefer unit tests for property-validator coverage unless there is concrete evidence that an acceptance test is needed to prove behavior not exercised at the unit-test level.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3116940446`: `we don't normally add acctests for property validation and this is covered in the unit test already`
+  - Existing testing guidance in `.github/instructions/testing-guidelines.instructions.md` already distinguishes targeted validation/error scenarios from broader lifecycle acceptance coverage
+
+### TEST-PATTERN-006: Add acctests for CustomizeDiff logic so validation behavior is not left untested
+- Rule: Add acceptance-test coverage for CustomizeDiff logic that enforces invalid field combinations, Azure-specific cross-field constraints, or other provider validation behavior that would otherwise be untested.
+- Rule: Use targeted `ExpectError` acceptance scenarios for invalid CustomizeDiff paths, while relying on the broader `basic`, `update`, `complete`, and import scenarios for the corresponding success paths unless extra assertions are needed.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `CustomizeDiff Testing` says invalid field combinations should be covered with acceptance tests and notes that success scenarios are usually covered by the broader lifecycle test set
+  - Existing local testing guidance explains that CustomizeDiff prevents invalid Azure API calls and is therefore regression-prone if left unexercised
 
 <!-- TESTING-CONTRACT-EOF -->

@@ -123,6 +123,7 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Error messages should be lowercase, descriptive, and free of contractions.
 - Rule: Wrap field names and important user-visible values in backticks.
 - Rule: Use `%+v` for underlying errors when wrapping provider or SDK failures.
+- Rule: Use `errors.New(...)` for static errors that do not wrap an underlying error and do not require formatting.
 
 ## Testing
 

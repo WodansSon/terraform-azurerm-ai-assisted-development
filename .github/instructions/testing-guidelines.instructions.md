@@ -279,6 +279,10 @@ CustomizeDiff validations are essential for enforcing Azure API constraints and 
 
 ### CustomizeDiff Testing Best Practices
 
+**Property Validation Boundary:**
+- Do not add acceptance tests purely to prove simple property validation when that validator is already covered by a unit test.
+- Reserve acceptance validation tests for cases where provider behavior needs to be proven beyond unit-test coverage, such as broader lifecycle behavior, Azure-specific cross-field constraints, or runtime interactions that unit tests do not exercise.
+
 **Comprehensive Test Coverage:**
 ```go
 func TestAccServiceName_customizeDiffValidation(t *testing.T) {
@@ -470,9 +474,10 @@ check.That(data.ResourceName).Key("log_scrubbing_rule.0.match_variable").HasValu
 
 **HashiCorp Standard - Essential Tests:**
 - **Basic Test**: Core functionality with minimal configuration
-- **Update Test**: Resource update scenarios (only if resource supports updates)
-- **RequiresImport Test**: Import conflict detection
-- **Complete Test**: Full feature demonstration (optional, for complex resources)
+- **Update Test**: Resource update scenarios
+- **Complete Test**: Full supported configuration coverage
+- **Import Validation**: Use `ImportStep()` to validate the configured state when import is supported
+- **RequiresImport Test**: Import conflict detection when the resource pattern makes it relevant
 
 **Avoid Excessive Test Cases:**
 - Multiple basic tests with minor variations

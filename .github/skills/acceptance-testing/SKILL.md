@@ -71,34 +71,46 @@ Before running tests:
 
 ## Core patterns to follow
 
-1. Use the acceptance test framework conventions
+- Acceptance test framework conventions:
    - `data := acceptance.BuildTestData(t, "azurerm_x", "test")`
    - `r := SomeResource{}`
 
-2. Basic test should validate existence
+- Default resource test matrix should cover the core lifecycle:
+   - At a minimum, plan for `basic`, `update`, `complete`, and import validation for resource acceptance tests.
+   - Only omit one of those when the resource behavior or provider pattern makes it genuinely not applicable.
+
+- Basic tests should validate existence:
    - Primary check should be `check.That(data.ResourceName).ExistsInAzure(r)`.
 
-3. Prefer ImportStep
+- Prefer ImportStep:
    - `data.ImportStep()` typically provides broad field validation.
    - Add extra checks only for computed/edge behavior that import cannot verify.
 
-4. RequiresImport test
+- RequiresImport tests:
    - Add `requiresImport` coverage when appropriate using `data.RequiresImportErrorStep`.
+
+- Do not add acctests for simple property validation by default:
+   - If a property validator is already covered adequately by a unit test, do not add an acceptance test only to re-prove that validation.
+   - Add an acceptance validation test only when it proves behavior that unit coverage does not, such as broader lifecycle behavior or Azure-specific runtime constraints.
+
+- Add acctests for CustomizeDiff logic:
+   - Add targeted acceptance-test coverage for CustomizeDiff validation paths so invalid field combinations and Azure-specific cross-field constraints are not left untested.
+   - Prefer `ExpectError` scenarios for the invalid paths, while letting the broader `basic`, `update`, `complete`, and import flows cover the corresponding success paths unless extra assertions are needed.
 
 ## Troubleshooting workflow
 
 When a test fails:
 
-1. Read the error carefully and identify if it is:
+- Read the error carefully and identify if it is:
    - auth/environment related
    - eventual consistency / polling
    - schema mismatch
    - cleanup/destroy
 
-2. Re-run only the failing test
+- Re-run only the failing test:
    - Use the smallest `-run` scope possible.
 
-3. If the failure is a state mismatch
+- If the failure is a state mismatch:
    - Check expand/flatten symmetry.
    - Confirm ForceNew vs Update behavior.
    - Confirm PATCH behavior (omitted vs explicitly disabled fields).
@@ -107,6 +119,8 @@ When a test fails:
 
 When asked to write tests, produce:
 
-- A minimal `basic` TestAcc
+- A `basic` TestAcc
+- An `update` TestAcc
+- A `complete` TestAcc
 - Import validation via `ImportStep()`
-- Any required negative cases (`requiresImport`, update scenarios) only when they add value
+- `requiresImport` coverage when the resource pattern makes it relevant

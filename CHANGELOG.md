@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added [AI Toolkit Alignment Checklist](docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md) as a repo-maintainer reference for checking contract, consumer, manifest, documentation, and release alignment.
+- Added a repo-only `ai-toolkit-maintenance` skill for maintainers working on contract, manifest, checklist, changelog, and validation alignment in this repository.
+
 ### Changed
+
+- Added selective provenance and evidence notes to the stricter lifecycle-coverage rules in the testing compliance contract so the most debatable `TEST-*` expectations are easier to justify and maintain.
+- Added a testing-contract rule, with inferred-maintainer-convention provenance, that simple property validation should usually stay in unit tests rather than being re-proven with acceptance tests.
+- Added a testing-contract rule, with provenance, that CustomizeDiff validation logic should receive targeted acceptance-test coverage so cross-field validation behavior is not left untested.
+- Replaced ordered lists in the `acceptance-testing` skill with flat bullets and clarified the maintainer checklist that CI/CD validation is sensitive to numbered-list formatting in AI-toolkit files.
+- Tightened the AI toolkit alignment checklist so it now prescribes the standard authoring pattern for skills, prompts, and instructions: titled subsections plus bullets, with `MD029` history documented as the reason to avoid fragile ordered-list structures.
+- Clarified the error-patterns guide so static errors use `errors.New(...)`, while wrapped provider-facing errors explicitly prefer `%+v` over `%v`, `%s`, and `%w`.
+- Extended the AI toolkit alignment checklist with explicit usage guidance for the repo-only `ai-toolkit-maintenance` skill so maintainers can invoke the alignment workflow directly.
+- Tightened implementation-side error guidance so static errors use `errors.New(...)`, while `fmt.Errorf(...)` with `%+v` remains reserved for formatted messages and wrapped underlying errors.
+- Replaced the remaining ordered-list sequences in the error-patterns guide with the standard title-plus-bullets pattern so the changed AI-toolkit guidance is structurally consistent.
 
 ### Fixed
 
