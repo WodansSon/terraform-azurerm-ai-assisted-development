@@ -68,7 +68,7 @@ Those provenance notes matter because not every useful rule is currently written
 These IDs come from `.github/instructions/code-review-compliance-contract.instructions.md` and are used by the generic code review prompts.
 
 | Prefix | Meaning | What it usually tells the user |
-|------|---------|----------------------------------|
+| ------ | ------- | ------------------------------ |
 | `REVIEW-EVID-*` | Evidence and verification | The review had to prove the claim from the diff, code, docs, or tool output instead of guessing |
 | `REVIEW-CLASS-*` | Finding classification | Why something was reported as an Issue, Observation, or Strength |
 | `REVIEW-FILE-*` | File handling and scope coverage | Which changed files had to be considered and how they were classified |
@@ -123,7 +123,7 @@ These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW
 These IDs come from `.github/instructions/docs-compliance-contract.instructions.md` and are primarily used by `/code-review-docs` and `/docs-writer` for `website/docs/**/*.html.markdown` pages.
 
 | Prefix | Meaning | What it usually tells the user |
-|------|---------|----------------------------------|
+| ------ | ------- | ------------------------------ |
 | `DOCS-EVID-*` | Evidence guardrails | The docs audit refused to guess values, imports, or constraints without code evidence |
 | `DOCS-OBS-*` | Observation-only guidance | Non-blocking docs or schema-design suggestions |
 | `DOCS-FM-*` | Frontmatter | YAML frontmatter requirements such as `page_title`, `layout`, and `subcategory` |
@@ -146,7 +146,7 @@ These IDs come from `.github/instructions/docs-compliance-contract.instructions.
 These IDs come from `.github/instructions/implementation-compliance-contract.instructions.md` and are primarily used by the implementation contract, Go routing, and the `resource-implementation` skill for `internal/**/*.go` work.
 
 | Prefix | Meaning | What it usually tells the user |
-|------|---------|----------------------------------|
+| ------ | ------- | ------------------------------ |
 | `IMPL-EVID-*` | Evidence and verification | The implementation guidance had to be grounded in provider code, SDK/client models, or nearby implementations instead of guessing |
 | `IMPL-WF-*` | Workflow | Which high-level implementation approach should be preferred, such as typed resources for new work |
 | `IMPL-SCHEMA-*` | Schema and mapping | How schema shape, field ordering, and field requirements should align with real provider behavior |
@@ -160,7 +160,7 @@ These IDs come from `.github/instructions/implementation-compliance-contract.ins
 These IDs come from `.github/instructions/testing-compliance-contract.instructions.md` and are primarily used by the testing contract, test routing, and the `acceptance-testing` skill for `internal/**/*_test.go` work.
 
 | Prefix | Meaning | What it usually tells the user |
-|------|---------|----------------------------------|
+| ------ | ------- | ------------------------------ |
 | `TEST-EVID-*` | Evidence and verification | The testing guidance had to follow existing provider test patterns instead of inventing new structures |
 | `TEST-WF-*` | Workflow | How much test coverage should be added and how focused the scenario should be |
 | `TEST-RUN-*` | Execution safety | Acceptance tests create real Azure resources and should be run narrowly and intentionally |

@@ -290,11 +290,19 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 
 ### DOCS-EX-000: Examples must be functional
 - **Rule**: Examples MUST be functional; a user should be able to copy/paste and run `terraform plan` without errors.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
+  - That guidance says examples MUST be functional and should not error when a user runs `terraform plan`
 
 ### DOCS-EX-001: Example Terraform config fences must be `hcl`
 - **Scope**: fenced Terraform configuration blocks under headings that start with `Example` (e.g. `## Example Usage`, `## Example ...`).
 - **Rule**: Terraform configuration examples MUST use fenced blocks labeled `hcl`.
 - **Out of scope**: code blocks outside `Example*` headings.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`
+  - That guidance says Terraform configuration should use `hcl` code fences and not `terraform`
 
 ### DOCS-EX-002: Example Terraform CLI fences must be `shell` or `shell-session`
 - **Scope**: fenced CLI blocks under headings that start with `Example`.
@@ -392,6 +400,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 
 ### DOCS-EX-008: Examples must not include `terraform` or `provider` blocks
 - **Rule**: Example Terraform configuration blocks must not include a `terraform { ... }` block or a `provider { ... }` block.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
+  - That guidance says resource and data source examples should not define a `terraform` or `provider` block
 
 ### DOCS-EX-009: Example HCL must be syntactically valid
 - **Rule**: Example Terraform configuration blocks must be valid HCL (balanced braces, correct block structure, no obvious truncation).
@@ -476,6 +488,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 
 ### DOCS-NOTE-003: Note formatting
 - **Rule**: Notes must use the exact format: `(->|~>|!>) **Note:** <text>`.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Notes`
+  - That guidance says note blocks should follow the exact format `(->|~>|!>) **Note:**`
 
 ### DOCS-NOTE-004: Note correctness
 - **Rule**: Note content must not contradict schema/implementation behavior.
@@ -515,6 +531,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
   2) `location` (if present)
   3) remaining required arguments (alphabetical)
   4) optional arguments (alphabetical), with `tags` always last
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Ordering`
+  - That guidance defines ID-segment ordering, `location`, required arguments, then optional arguments with `tags` last
 
 ### DOCS-ARG-003: ForceNew behavior must be documented
 - **Rule**: For `ForceNew: true` arguments, include the standard ForceNew sentence (see DOCS-WORD-001).
@@ -611,6 +631,10 @@ Example (rewrite long bullet to bullet + note):
 
 ### DOCS-WORD-001: ForceNew sentence
 - **Rule**: The ForceNew sentence MUST be exactly: `Changing this forces a new resource to be created.`
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`
+  - That guidance says ForceNew argument descriptions must end with `Changing this forces a new resource to be created.`
 
 ### DOCS-WORD-002: Enum wording
 - **Rule**: Use `Possible values are ...`.
@@ -620,6 +644,10 @@ Example (rewrite long bullet to bullet + note):
   - Replace `Valid options are` with `Possible values are`.
   - Replace `Valid values are` with `Possible values are`.
   - Replace `Possible values include` with `Possible values are`.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`
+  - That guidance defines the canonical wording for enums, single-value constraints, and numeric ranges
 
 ### DOCS-WORD-005: Oxford comma for lists
 - **Rule**: For lists of 3+ items in prose (including enum lists), use the Oxford comma.

@@ -358,6 +358,14 @@ func ValidateSQLResourceName(v interface{}, k string) (warnings []string, errors
 
 ### Common Azure Schema Helpers
 
+### SCHEMA-PATTERN-001: Preview fields should not be surfaced until they are GA
+
+- Rule: Do not expose preview-only Azure fields in provider schema until they reach General Availability unless there is explicit, evidence-backed approval to do otherwise.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Preview Fields`
+    - That guidance says preview fields should not be supported until they reach GA status
+
 ```go
 // Use common Azure schema helpers
 "location": commonschema.Location(),
@@ -371,6 +379,14 @@ func ValidateSQLResourceName(v interface{}, k string) (warnings []string, errors
 ```
 
 ### The "None" Value Pattern
+
+### SCHEMA-PATTERN-002: Represent Azure `None`-style defaults as omission/null in schema design
+
+- Rule: When the Azure API uses `None`, `Off`, or `Default` to express the default state, design the Terraform schema so omission/null expresses that default and convert during expand/flatten.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
+    - That guidance says omission should map to the API default rather than exposing `None`-style values directly
 
 **Modern Approach (Preferred) - Exclude "None" from validation:**
 
@@ -894,9 +910,25 @@ resource "azurerm_resource" "test" {
 - **Documentation**: Always document the migration path in breaking change guides
 
 **📚 Official Breaking Change Reference:**
-For authoritative breaking change procedures, see: [Contributing Guide - Breaking Changes](../../../contributing/topics/guide-breaking-changes.md)
+For authoritative breaking change procedures, see: `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-breaking-changes.md`
 
 ### Advanced Schema Validation Patterns
+
+### SCHEMA-PATTERN-003: Array schema should use `MinItems` and `MaxItems` when API constraints are known
+
+- Rule: When API constraints define list cardinality, set `MinItems` and `MaxItems` in the Terraform schema instead of leaving cardinality implicit.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Array fields with MinItems and MaxItems`
+    - That guidance says array fields should use `MinItems` and `MaxItems` to provide clear validation feedback
+
+### SCHEMA-PATTERN-004: Optional `TypeList` blocks with no required nested fields need explicit non-empty validation
+
+- Rule: When a `pluginsdk.TypeList` block has no required nested fields, add conditional validation such as `AtLeastOneOf` or `ExactlyOneOf` so the block cannot be empty.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation for TypeList fields with no Required fields`
+    - That guidance shows `AtLeastOneOf`-style validation as the pattern for optional list blocks that would otherwise accept empty configuration
 
 **Multi-Field Dependency Validation:**
 ```go
@@ -1034,6 +1066,22 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
     Sensitive: true,
 },
 ```
+
+### Inline Versus Separate Resource Decision
+
+- Inline simple properties when the new functionality is just configuration on the parent resource.
+- Inline child blocks when the functionality has a strict `1:1` relationship with the parent, no independent lifecycle, no unique resource ID, no separate API endpoint, and no extra security or team boundary implications.
+- Prefer a separate resource when the functionality has its own lifecycle or unique ID, its own create or update or delete endpoint, crosses control-plane or data-plane boundaries, requires broader permissions, or naturally belongs to another team boundary.
+- Support both inline and separate forms only with caution. Inline logic must not overwrite externally managed settings when those settings are absent from configuration.
+
+### Resource Identity and Write-Only Attribute Patterns
+
+- Typed resources that support resource identity should implement `sdk.ResourceWithIdentity`, set identity data immediately after `metadata.SetID(id)` in create, and set it again during read before encoding state.
+- Untyped resources should pair `pluginsdk.GenerateIdentitySchema(...)` with `pluginsdk.ImporterValidatingIdentity(...)` and `pluginsdk.SetResourceIdentityData(...)` in create and read.
+- Resource identity generation currently does not support composite resource IDs or custom IDs outside `commonids` and `go-azure-sdk`, and numeric ID segment names can produce incorrect snake_case field names.
+- Write-only attributes are appropriate only for sensitive scalar resource attributes that are not `ForceNew`, not `Computed`, and not nested in unsupported collection shapes.
+- Pair each write-only field with a non-write-only trigger field such as `<name>_wo_version`, wire `ConflictsWith` and `RequiredWith` both ways, use `pluginsdk.GetWriteOnly(...)` in create and update, and persist the trigger field in state during read to avoid permanent diffs.
+- Gate write-only tests on Terraform `1.11+` and prefer the shared `acceptance.WriteOnlyKeyVaultSecretTemplate` test helper for secret-backed values.
 ---
 <a href="#schema-design-patterns">⬆️ Back to top</a>
 
@@ -1127,6 +1175,22 @@ func (r ServiceResource) Arguments() map[string]*pluginsdk.Schema {
     }
 }
 ```
+
+### Upstream Property Naming Rules
+
+- Prefer the marketed Azure name over raw API names when they differ.
+- Use full words instead of abbreviations unless a schema or service constraint forces a shorter value.
+- Suffix resource references as `{resource_name}_id` using the full resource name without the `azurerm_` prefix.
+- Use `_enabled` for booleans by default, but prefer more accurate stateful names such as `mtls_required` or `terms_of_service_accepted` when `_enabled` would be awkward or misleading.
+- Flip negative API booleans into affirmative provider names and avoid `is_` or `no_` prefixes in public schema.
+- Add explicit format or unit suffixes when the value requires one, such as `_base64`, `_in_seconds`, `_in_utc`, `_in_gb`, or `_percentage`.
+
+Official upstream references:
+
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-resource-vs-inline.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-write-only-attribute.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/reference-naming.md`
 
 ---
 <a href="#schema-design-patterns">⬆️ Back to top</a>

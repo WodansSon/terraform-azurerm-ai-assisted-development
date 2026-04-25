@@ -100,6 +100,10 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-WF-001: Prefer typed implementations for new work
 - Rule: Prefer the typed `internal/sdk` implementation style for new resources and data sources.
 - Rule: Use untyped patterns primarily for maintenance of existing untyped implementations unless there is a strong evidence-backed reason to do otherwise.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
+  - Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations
 
 ## Schema and mapping
 
@@ -110,6 +114,10 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-SCHEMA-002: Common field ordering should follow provider conventions
 - Rule: When common fields are present, prefer provider ordering patterns such as `name`, `resource_group_name`, and `location` first, with `tags` last.
 - Rule: Keep changes consistent with nearby same-service implementations.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says schema fields should place ID fields first, then `location`, with `tags` last
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-data-source.md` applies the same ordering pattern to typed data sources
 
 ## PATCH and residual state
 
@@ -124,6 +132,10 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Wrap field names and important user-visible values in backticks.
 - Rule: Use `%+v` for underlying errors when wrapping provider or SDK failures.
 - Rule: Use `errors.New(...)` for static errors that do not wrap an underlying error and do not require formatting.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-errors.md` for lowercase wrapped errors, `%+v`, and `errors.New(...)`
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` requiring argument names in error messages to be wrapped in backticks
 
 ## Testing
 

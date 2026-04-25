@@ -101,12 +101,12 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Do not add broad or redundant test coverage when existing `basic`, `requiresImport`, `update`, or import patterns already cover the behavior acceptably.
 
 ### TEST-WF-002: Resource acceptance tests should cover the core lifecycle by default
-- Rule: For resource acceptance tests, the default expected success-scenario set is `basic`, `update`, `complete`, and import validation.
+- Rule: For resource acceptance tests, the default expected matrix is `basic`, `requiresImport`, `complete`, and `update`, plus import validation when import is supported.
 - Rule: Only omit one of those scenarios when the resource behavior or provider pattern gives a concrete reason that the scenario is not applicable.
-- **Provenance**: Local safeguard.
+- **Provenance**: Published upstream standard.
 - **Evidence**:
-  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `HashiCorp Standard - Essential Tests`
-  - Existing provider-oriented expectation in `.github/skills/acceptance-testing/SKILL.md` output guidance
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 6 and Step 7 examples
 
 ## Execution safety
 
@@ -131,13 +131,13 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` listing `Complete Test` in the essential resource-test set
   - Existing provider test organization guidance in `.github/instructions/testing-guidelines.instructions.md` that orders success scenarios around `basic`, `update`, and related lifecycle coverage
 
-### TEST-PATTERN-004: Add requiresImport coverage only when it adds value
-- Rule: Add `requiresImport` coverage when the resource pattern and provider conventions make it relevant.
-- Rule: Do not add `requiresImport` mechanically when it does not improve confidence in the changed behavior.
-- **Provenance**: Local safeguard.
+### TEST-PATTERN-004: RequiresImport coverage is part of the default resource test matrix
+- Rule: Include `requiresImport` coverage for resources by default, typically using `data.RequiresImportErrorStep` and a dedicated `requiresImport` config builder.
+- Rule: Only omit `requiresImport` coverage when there is concrete evidence that the resource pattern makes it not applicable.
+- **Provenance**: Published upstream standard.
 - **Evidence**:
-  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` describing `RequiresImport Test` as relevant when it adds confidence rather than as a universal mandatory scenario
-  - Existing workflow guidance in `.github/skills/acceptance-testing/SKILL.md` that keeps `requiresImport` conditional on the resource pattern
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Example - Resource - Requires Import`
 
 ### TEST-PATTERN-005: Do not add acctests for simple property validation when unit tests already cover it
 - Rule: Do not add an acceptance test only to prove simple property validation behavior when that validation is already covered adequately by a unit test.

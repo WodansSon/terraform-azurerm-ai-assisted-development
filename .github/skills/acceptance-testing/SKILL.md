@@ -76,7 +76,7 @@ Before running tests:
    - `r := SomeResource{}`
 
 - Default resource test matrix should cover the core lifecycle:
-   - At a minimum, plan for `basic`, `update`, `complete`, and import validation for resource acceptance tests.
+   - At a minimum, plan for `basic`, `requiresImport`, `complete`, `update`, and import validation when import is supported.
    - Only omit one of those when the resource behavior or provider pattern makes it genuinely not applicable.
 
 - Basic tests should validate existence:
@@ -87,7 +87,8 @@ Before running tests:
    - Add extra checks only for computed/edge behavior that import cannot verify.
 
 - RequiresImport tests:
-   - Add `requiresImport` coverage when appropriate using `data.RequiresImportErrorStep`.
+   - For resources, plan for `requiresImport` coverage by default using `data.RequiresImportErrorStep`.
+   - Only omit it when the resource pattern gives a concrete reason that it is not applicable.
 
 - Do not add acctests for simple property validation by default:
    - If a property validator is already covered adequately by a unit test, do not add an acceptance test only to re-prove that validation.
@@ -120,7 +121,8 @@ When a test fails:
 When asked to write tests, produce:
 
 - A `basic` TestAcc
+- A `requiresImport` TestAcc
 - An `update` TestAcc
 - A `complete` TestAcc
 - Import validation via `ImportStep()`
-- `requiresImport` coverage when the resource pattern makes it relevant
+- Only omit `requiresImport` coverage when the resource pattern gives a concrete reason that it is not applicable

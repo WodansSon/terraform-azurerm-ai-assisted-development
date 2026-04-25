@@ -477,7 +477,7 @@ check.That(data.ResourceName).Key("log_scrubbing_rule.0.match_variable").HasValu
 - **Update Test**: Resource update scenarios
 - **Complete Test**: Full supported configuration coverage
 - **Import Validation**: Use `ImportStep()` to validate the configured state when import is supported
-- **RequiresImport Test**: Import conflict detection when the resource pattern makes it relevant
+- **RequiresImport Test**: Import conflict detection for resources by default; only omit it when the resource pattern gives a concrete reason it is not applicable
 
 **Avoid Excessive Test Cases:**
 - Multiple basic tests with minor variations

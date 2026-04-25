@@ -29,7 +29,20 @@ Example invocations:
 Notes:
 
 - This skill is repo-only and should not be added to `installer/file-manifest.config`.
+- If the request is "is the AI toolkit up to date?" and upstream contributor alignment is relevant, the skill should run `tools/check-upstream-contributor-drift.ps1` as part of the workflow and report the result.
 - If the slash command does not appear immediately in VS Code, reload the window and try again.
+
+## Upstream Contributor Sources
+
+When local AI guidance is meant to align with the upstream HashiCorp contributor docs, use the repo-only source map at:
+
+- `tools/config/upstream-contributor.json`
+
+That file stores tracked upstream contributor source baselines under `hashicorp/terraform-provider-azurerm/contributing/topics/`.
+
+Tracked-source baselines live in that file, but local topic-to-file and topic-to-rule relationships should be derived dynamically by the drift checker from exact upstream topic references already present in repo files and rule evidence blocks.
+
+Use `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing` as the canonical remote contributor-doc root when comparing local installer-repo references to upstream docs.
 
 ## Current Contract Families
 
@@ -110,7 +123,9 @@ Typical runtime payload files:
 
 Typical maintenance-only files that should stay out of the installed payload:
 
+- `tools/config/upstream-contributor.json`
 - `tools/validate-contracts.ps1`
+- `tools/check-upstream-contributor-drift.ps1`
 - `.github/workflows/contracts-validation.yml`
 - `.github/skills/ai-toolkit-maintenance/SKILL.md`
 - repo-only maintenance checklists like this file
@@ -130,11 +145,31 @@ Run:
 pwsh -NoProfile -File ./tools/validate-contracts.ps1
 ```
 
+When local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs, also run:
+
+```powershell
+pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1
+```
+
 Use JSON output if you want the machine-readable report:
 
 ```powershell
 pwsh -NoProfile -File ./tools/validate-contracts.ps1 -OutputFormat Json
 ```
+
+```powershell
+pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1 -OutputFormat Json
+```
+
+The JSON report now groups dynamically discovered rule coverage by local file as well as by upstream source, so you can review provenance and evidence gaps contract-by-contract instead of only source-by-source.
+
+The drift checker is intentionally deterministic. It detects upstream source changes plus local provenance/evidence gaps using pure logic only, and it derives local mappings only from exact upstream topic references already present in repo files and rule evidence blocks. It does not use heuristics and it does not decide whether an upstream wording change is semantically meaningful. Exact-reference aggregation only proves links that already exist explicitly in repo content; it is not the semantic mapping step. When the report shows changed sources, uncovered upstream topics, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, stale local topic references, or rule issues, follow it with an AI-assisted semantic maintainer review before changing local guidance.
+
+The same applies to topic-catalog drift: if the report shows uncovered upstream topics, dynamically mapped untracked topics, stale tracked topics, or stale local topic references, treat that as a maintainer review event and decide whether the manifest or local guidance needs to change.
+
+If the drift check reports upstream changes, review the mapped local consumers in `tools/config/upstream-contributor.json` and update any conflicting local rules while preserving verified local tribal knowledge that still does not conflict with upstream guidance.
+
+When rule-level mappings exist, use the drift report to review the current provenance label and evidence bullets for each mapped rule ID before changing the rule text.
 
 If the current file contents and workspace validators are clean but the VS Code Problems tab still shows old YAML errors, treat them as potentially stale editor diagnostics before assuming the workflow is still broken.
 
@@ -200,6 +235,7 @@ npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.mark
 When asked whether the AI toolkit is up to date, check these in order:
 
 - `pwsh -NoProfile -File ./tools/validate-contracts.ps1` passes.
+- `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` reports no unresolved upstream-doc drift for the tracked sources you rely on.
 - `installer/file-manifest.config` includes all required runtime payload files.
 - `docs/CODE_REVIEW_RULES.md` still matches the current contract families and rule areas.
 - `CHANGELOG.md` reflects the current release state.

@@ -770,6 +770,36 @@ if err != nil {
 d.SetId(id.ID())
 ```
 
+### Resource ID Parser Precedence
+
+- Prefer resource-specific parsers and validators from `hashicorp/go-azure-sdk` when the SDK package already exposes them for the target resource.
+- Use `hashicorp/go-azure-helpers/resourcemanager/commonids` for shared cross-service IDs and composite IDs joined with `|`.
+- Use provider-generated legacy parse and validate helpers only when neither `go-azure-sdk` nor `commonids` currently support the ID shape.
+- Keep import validation, state parsing, and resource identity generation aligned to the same underlying ID type.
+
+### Extending Existing Resources and Data Sources
+
+- When adding a new resource field, update schema or model ordering first, then wire the property through create, update, and read logic, keeping pointer handling nil-safe in state.
+- Treat default-value changes and property renames as breaking-change-sensitive work. Review the breaking-change guidance before changing defaults, Optional/Computed behavior, or public property names.
+- For data sources, add new computed attributes in canonical order, set them explicitly in read, extend the basic data source test with direct checks, and update docs last.
+- For resources, new optional properties usually belong in an existing non-basic or complete test; new required properties must be reflected across existing configs.
+
+### Service Packages, Features Block Changes, and List Resources
+
+- New service packages require `internal/services/<service>/client/client.go`, `registration.go`, provider service registration, client registration, and a `make generate` pass before feature work starts.
+- New provider feature flags must be wired through `internal/features`, `internal/provider`, `internal/provider/framework`, their respective tests, and the target resource behavior.
+- List resources are specialized framework resources, not ordinary resources. Implement resource identity first, extract a reusable flatten helper from the parent resource read path, wrap the base resource with `sdk.FrameworkListWrappedResource`, register it in `registration.go`, and add Terraform 1.14 list query tests plus list-resource docs.
+- If a list resource iterator needs extra API reads during flattening, recreate a context with the original deadline because the iterator runs after the original list context has been cancelled.
+
+Official upstream references:
+
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-feature.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-fields-to-resource.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-fields-to-data-source.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-service-package.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-ids.md`
+
 ---
 <a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
