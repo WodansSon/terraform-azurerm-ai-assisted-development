@@ -302,6 +302,12 @@ Before suggesting any empty/exists checks or validation logic for fields, the AI
 - For `name`-like fields, prefer concrete length and character-set validation. For resource references, prefer `commonids` or resource-specific SDK validators. For URLs, IPs, durations, percentages, and sizes, prefer the corresponding format-specific validators.
 - If all available evidence only proves non-empty or minimum-only semantics, document that as the fallback rationale rather than implying the generic validator is ideal.
 
+### SDK Enum Helpers Should Be Preferred When They Match Reality
+
+- If the SDK exposes `PossibleValuesFor...` for the field and those values match the real accepted set for the resource, use that helper in `validation.StringInSlice(...)` rather than copying the values by hand.
+- If the SDK helper is broader than what the specific resource or API path actually accepts, narrow the validation list to the evidence-backed subset instead of importing the whole helper uncritically.
+- Do not pull enum values from unrelated services or discriminator branches into a field's validator just because they happen to exist in the same SDK namespace.
+
 ### Custom Validation Functions
 
 ```go

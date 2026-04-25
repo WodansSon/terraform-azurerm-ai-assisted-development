@@ -129,6 +129,15 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance there also says numeric arguments should specify a valid range
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says `validation.StringIsNotEmpty` is the minimum only when a stronger validation pattern cannot be determined
 
+### IMPL-SCHEMA-004: Prefer SDK PossibleValues helpers for enum validation unless the real accepted subset is narrower
+- Rule: When the SDK package exposes a `PossibleValuesFor...` helper that matches the real accepted enum values for the field, prefer that helper inside `validation.StringInSlice(...)` instead of hardcoding the values manually.
+- Rule: If the SDK helper returns values that are broader than what the specific resource, API path, or service behavior actually accepts, define the narrowed validation set from evidence instead of blindly using the full SDK helper output.
+- Rule: Do not mix enum values from unrelated services or discriminator types into a field's validation list simply because they appear in the same SDK or provider tree.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows
