@@ -295,6 +295,13 @@ Before suggesting any empty/exists checks or validation logic for fields, the AI
 },
 ```
 
+### Fallback Validators Should Stay Exceptional
+
+- Treat `validation.StringIsNotEmpty` as the floor, not the goal. Use it only when no stronger evidence-backed pattern, enum, length rule, resource ID validator, or format validator can be established.
+- Treat `validation.IntAtLeast(...)` the same way for numeric fields. If the API or existing provider behavior defines a bounded range or explicit set of valid values, encode that real constraint instead of a one-sided minimum check.
+- For `name`-like fields, prefer concrete length and character-set validation. For resource references, prefer `commonids` or resource-specific SDK validators. For URLs, IPs, durations, percentages, and sizes, prefer the corresponding format-specific validators.
+- If all available evidence only proves non-empty or minimum-only semantics, document that as the fallback rationale rather than implying the generic validator is ideal.
+
 ### Custom Validation Functions
 
 ```go

@@ -119,6 +119,16 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says schema fields should place ID fields first, then `location`, with `tags` last
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-data-source.md` applies the same ordering pattern to typed data sources
 
+### IMPL-SCHEMA-003: Generic fallback validators are last-resort, not the target state
+- Rule: Treat generic validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as fallback choices only when stronger evidence-backed validation cannot be determined.
+- Rule: When evidence establishes real enums, ranges, naming constraints, ID formats, URI formats, or other concrete limits, encode that real validation instead of stopping at non-empty or minimum-only checks.
+- Rule: Numeric arguments should define a real valid range when one is known, and string arguments should use pattern, enum, length, ID, or format validation when that behavior is knowable.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says string arguments must be validated, `StringNotEmpty` is only a minimum, and validation should ideally be more strict
+  - Upstream contributor guidance there also says numeric arguments should specify a valid range
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says `validation.StringIsNotEmpty` is the minimum only when a stronger validation pattern cannot be determined
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows

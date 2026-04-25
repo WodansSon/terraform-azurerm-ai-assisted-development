@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added provenance-backed rule anchors to the Azure-patterns guide, schema-patterns guide, and repo-only maintainer skill so upstream source links now reach companion guidance and maintainer workflow rules as well as contracts.
 - Extended the drift checker JSON output to group mapped rules and rule issues by local file, making provenance review easier contract-by-contract and guide-by-guide.
 - Tightened implementation-side error guidance so static errors use `errors.New(...)`, while `fmt.Errorf(...)` with `%+v` remains reserved for formatted messages and wrapped underlying errors.
+- Added an implementation-side validation rule that treats generic fallback validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as last-resort choices when stronger evidence-backed validation is available.
 - Aligned the local acceptance-testing guidance with upstream HashiCorp contributor docs by restoring `requiresImport` as part of the default resource test matrix instead of treating it as merely conditional.
 - Replaced the remaining ordered-list sequences in the error-patterns guide with the standard title-plus-bullets pattern so the changed AI-toolkit guidance is structurally consistent.
 
