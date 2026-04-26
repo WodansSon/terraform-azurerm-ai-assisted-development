@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.1.0] - 2026-04-26
+
+### Added
+
 - Added [AI Toolkit Alignment Checklist](docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md) as a repo-maintainer reference for checking contract, consumer, manifest, documentation, and release alignment.
 - Added a repo-only `ai-toolkit-maintenance` skill for maintainers working on contract, manifest, checklist, changelog, and validation alignment in this repository.
 - Added a repo-only upstream contributor source map and drift-check script so local AI guidance can be reviewed against tracked HashiCorp contributor docs under `contributing/topics/` without shipping that maintenance tooling in the installer bundle.
