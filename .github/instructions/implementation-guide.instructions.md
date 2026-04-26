@@ -763,7 +763,7 @@ func flattenServiceConfiguration(input *serviceapi.Configuration) []interface{} 
 // Parse resource IDs consistently
 id, err := parse.ResourceID(d.Id())
 if err != nil {
-    return fmt.Errorf("parsing Resource ID `%s`: %+v", d.Id(), err)
+    return err
 }
 
 // Set resource ID after creation

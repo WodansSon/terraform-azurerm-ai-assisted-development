@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added provenance-backed rule anchors to the Azure-patterns guide, schema-patterns guide, and repo-only maintainer skill so upstream source links now reach companion guidance and maintainer workflow rules as well as contracts.
 - Extended the drift checker JSON output to group mapped rules and rule issues by local file, making provenance review easier contract-by-contract and guide-by-guide.
 - Tightened implementation-side error guidance so static errors use `errors.New(...)`, while `fmt.Errorf(...)` with `%+v` remains reserved for formatted messages and wrapped underlying errors.
+- Added an implementation-side parser-error rule that says comprehensive resource ID parser errors should usually be returned directly instead of being wrapped with redundant parsing or flattening context.
 - Added an implementation-side validation rule that treats generic fallback validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as last-resort choices when stronger evidence-backed validation is available.
 - Added an implementation-side enum-validation rule that prefers SDK `PossibleValuesFor...` helpers when they match the real accepted values, while allowing evidence-backed narrowing when a resource accepts only a subset.
 - Increased the review-time azurerm-linter timeout guidance to `300000` ms and clarified that review runs should keep following a timed-out-but-still-running linter session to completion instead of classifying it as `Not run` too early.

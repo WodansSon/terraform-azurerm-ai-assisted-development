@@ -232,18 +232,28 @@ if response.WasNotFound(resp.HttpResponse) {
 ### Parsing Error Context
 
 ```go
-// GOOD - Clear parsing error context
+// GOOD - Return parser errors directly when the parser already produces a comprehensive message
 id, err := parse.VirtualMachineID(d.Id())
 if err != nil {
-    return fmt.Errorf("parsing Virtual Machine ID `%s`: %+v", d.Id(), err)
+    return err
 }
 
 // Typed resource approach
 id, err := parse.ServiceNameID(metadata.ResourceData.Id())
 if err != nil {
-    return fmt.Errorf("parsing Service ID `%s`: %+v", metadata.ResourceData.Id(), err)
+    return err
+}
+
+// Wrap only when you are adding material context the parser does not already provide
+scopeId, err := commonids.ParseCompositeResourceID(d.Id(), &service.ParentId{}, &service.ChildId{})
+if err != nil {
+    return fmt.Errorf("reading association payload for `%s`: %+v", d.Id(), err)
 }
 ```
+
+- Prefer returning parser errors directly when the parser already explains the invalid ID shape fully.
+- Avoid redundant wrappers such as `parsing ...`, `flattening ...`, or field-name prefixes when they only repeat that an ID parse failed.
+- Add wrapping context only when it contributes genuinely new information about the higher-level operation.
 
 ---
 <a href="#error-handling-patterns">⬆️ Back to top</a>

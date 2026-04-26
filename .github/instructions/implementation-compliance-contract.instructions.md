@@ -156,6 +156,14 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-errors.md` for lowercase wrapped errors, `%+v`, and `errors.New(...)`
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` requiring argument names in error messages to be wrapped in backticks
 
+### IMPL-ERR-002: Do not wrap comprehensive ID parser errors with redundant context
+- Rule: When a resource ID parser or validator already returns a comprehensive, user-facing error message, prefer returning that error directly instead of wrapping it with extra `parsing`, `flattening`, or field-name context.
+- Rule: Add wrapping context only when it contributes materially new information that the parser error does not already provide.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3137015087`: `since the id parser gives us a comprehensive error message, we don't need any other message with this`
+  - The suggested maintainer change there replaces ``return results, fmt.Errorf("flattening `cdn_frontdoor_firewall_policy_id`: %+v", err)`` with `return results, err`
+
 ## Testing
 
 ### IMPL-TEST-001: Update tests when implementation behavior changes
