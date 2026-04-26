@@ -95,9 +95,10 @@ Rules:
 ### 4) Run azurerm-linter when applicable
 - If the committed change-set includes files under `internal/**/*.go` or `internal/**/*_test.go`, attempt azurerm-linter and report it in its own section.
 - When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
-- Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a longer timeout for the linter command than for the quick git inspection commands.
+- Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and an explicit timeout of at least `300000` ms for the linter command.
 - Wait for the linter command to finish before classifying the linter section.
 - Do not report `Not run` merely because the initial wait window elapsed while the linter command was still running.
+- If the initial sync call times out but the linter process continues running, keep following that same terminal session until completion before classifying the result.
 - Committed review prefers exact committed-scope linting:
   - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
   - Run the linter from that repo root
@@ -142,6 +143,7 @@ Rules:
   - Limit the `### 🧰 **AZURERM LINTER**` execution report to `Version`, `Status`, `Run Scope`, `Issue Count`, and `Summary`
   - Follow it with a separate `### 🎯 **MUST FIX**` section
   - Use the completed linter output, not partial early output, when determining `Version`, `Status`, `Issue Count`, `Summary`, and the `### 🎯 **MUST FIX**` section
+  - If the first sync wait returns while the linter is still executing, continue reading from that same terminal session until the process exits instead of treating the timeout itself as the final linter result
   - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
   - If no valid PR number can be determined, use `Status: Not run`, `Run Scope: PR scope`, `Issue Count: n/a`, and a summary that tells the user to create a draft PR and run the review again
   - If the PR number was not supplied explicitly in the committed review invocation, include an example such as `/code-review-committed-changes PR 12345` in that summary

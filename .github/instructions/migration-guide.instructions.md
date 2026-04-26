@@ -18,7 +18,7 @@ Migration patterns and upgrade procedures for the Terraform AzureRM provider inc
 ### Migration Decision Matrix
 
 | Scenario | Action | Approach |
-|----------|--------|----------|
+| -------- | ------ | -------- |
 | New source | Always use Typed Resource Implementation | Start with typed from day one |
 | Bug Fix (< 5 lines) | Maintain Untyped Implementation | Quick fix in existing pattern |
 | Feature Addition (< 50 lines) | Consider migration if touching >30% of resource | Evaluate cost/benefit |
@@ -410,7 +410,7 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 ### Terraform Plugin SDK Compatibility
 
 | Feature | Plugin SDK v2.0+ | Plugin SDK v2.10+ | Plugin SDK v2.20+ | Notes |
-|---------|------------------|-------------------|-------------------|--------|
+| ------- | ---------------- | ----------------- | ----------------- | ----- |
 | Basic Typed Resources | ❌ | ✅ | ✅ | Minimum version for typed resource framework |
 | `metadata.Decode()` | ❌ | ✅ | ✅ | State decoding for typed resources |
 | `metadata.Encode()` | ❌ | ✅ | ✅ | State encoding for typed resources |
@@ -423,7 +423,7 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 ### AzureRM Provider Framework Evolution
 
 | AzureRM Version | Typed Resources | Migration Support | Dual Registration | Recommendation |
-|-----------------|----------------|-------------------|-------------------|----------------|
+| -------------- | --------------- | ----------------- | ----------------- | -------------- |
 | v3.0 - v3.50 | ❌ | ❌ | ❌ | Use untyped resources only |
 | v3.51 - v3.80 | ⚠️ | ⚠️ | ❌ | Early typed resource support (experimental) |
 | v3.81+ | ✅ | ✅ | ✅ | Full typed resource support with migration capabilities |
@@ -432,7 +432,7 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 ### Azure SDK for Go Compatibility
 
 | Azure SDK Version | Pointer Helpers | Response Helpers | Polling Support | Migration Impact |
-|-------------------|----------------|------------------|-----------------|------------------|
+| ----------------- | --------------- | ---------------- | --------------- | ---------------- |
 | HashiCorp Go Azure SDK v0.20+ | ✅ | ✅ | ✅ | Full migration support |
 | Azure SDK for Go v68+ | ⚠️ | ✅ | ✅ | Limited pointer helper support |
 | Legacy Azure SDK | ❌ | ⚠️ | ⚠️ | Migration not recommended |
@@ -548,6 +548,26 @@ func resourceServiceNameStateUpgradeV0ToV1(ctx context.Context, rawState map[str
     return rawState, nil
 }
 ```
+
+### State Migration Workflow Guardrails
+
+- Put service-specific migrations under `internal/services/<service>/migration/` using the `<resource>_v<from>_to_v<to>.go` naming pattern.
+- Treat `Schema()` as a point-in-time schema copy used only for Terraform state serialization. Keep `Type`, `Required`, `Optional`, `Computed`, and `Elem`, but strip `Default`, `ValidateFunc`, `ForceNew`, `MaxItems`, `MinItems`, `AtLeastOneOf`, `ConflictsWith`, `ExactlyOneOf`, `RequiredWith`, and feature-flag branching.
+- Keep `UpgradeFunc()` focused on transforming raw state. Common cases include case-insensitive parsing of old IDs and rewriting the canonical `id` value.
+- Wire migrations into typed resources through `sdk.ResourceWithStateMigration` and increment `SchemaVersion` to the destination version.
+- State migrations are one-way and currently require manual validation: create with an older provider, use a local build with development overrides, run plan or apply, and confirm no unexpected diffs remain.
+
+### Breaking Change Guardrails
+
+- Treat property renames, stricter validation, default changes, type changes, Optional-to-Required shifts, or removal of `Computed` behavior as breaking changes unless proven otherwise.
+- For provider minor releases, avoid silent breaking behavior. Use major-release feature flags to preserve current behavior until the next major release when needed.
+- When removing resources or data sources, add a deprecation message, conditionally register them behind the major-release feature flag, skip tests only while the API can still provision the object, and remove tests entirely once the API no longer supports creation.
+- Update the upgrade guide for all breaking changes and keep entries alphabetical. Resource documentation should reflect soft deprecations, but should not contain future-behavior notes for changes that only become active in the next major release.
+
+Official upstream references:
+
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-state-migrations.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-breaking-changes.md`
 
 ### Breaking Change Communication
 

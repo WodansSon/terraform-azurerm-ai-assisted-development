@@ -9,7 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added [AI Toolkit Alignment Checklist](docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md) as a repo-maintainer reference for checking contract, consumer, manifest, documentation, and release alignment.
+- Added a repo-only `ai-toolkit-maintenance` skill for maintainers working on contract, manifest, checklist, changelog, and validation alignment in this repository.
+- Added a repo-only upstream contributor source map and drift-check script so local AI guidance can be reviewed against tracked HashiCorp contributor docs under `contributing/topics/` without shipping that maintenance tooling in the installer bundle.
+
 ### Changed
+
+- Added selective provenance and evidence notes to the stricter lifecycle-coverage rules in the testing compliance contract so the most debatable `TEST-*` expectations are easier to justify and maintain.
+- Added a testing-contract rule, with inferred-maintainer-convention provenance, that simple property validation should usually stay in unit tests rather than being re-proven with acceptance tests.
+- Added a testing-contract rule, with provenance, that CustomizeDiff validation logic should receive targeted acceptance-test coverage so cross-field validation behavior is not left untested.
+- Replaced ordered lists in the `acceptance-testing` skill with flat bullets and clarified the maintainer checklist that CI/CD validation is sensitive to numbered-list formatting in AI-toolkit files.
+- Tightened the AI toolkit alignment checklist so it now prescribes the standard authoring pattern for skills, prompts, and instructions: titled subsections plus bullets, with `MD029` history documented as the reason to avoid fragile ordered-list structures.
+- Clarified the error-patterns guide so static errors use `errors.New(...)`, while wrapped provider-facing errors explicitly prefer `%+v` over `%v`, `%s`, and `%w`.
+- Extended the AI toolkit alignment checklist with explicit usage guidance for the repo-only `ai-toolkit-maintenance` skill so maintainers can invoke the alignment workflow directly.
+- Added a maintainer note to the AI toolkit alignment checklist that stale VS Code YAML diagnostics can persist after a fix, with a reload-window recovery step when file contents and workspace validators are already clean.
+- Updated the repo-only AI maintenance workflow so it tracks selected upstream HashiCorp contributor docs as review sources and checks for upstream drift before local rules are treated as current.
+- Extended the upstream contributor drift checker so it can report mapped local rule IDs, current provenance labels, and evidence blocks for provenance-backed rules instead of only reporting file-level drift.
+- Clarified that the upstream contributor drift checker is a deterministic detector rather than an AI semantic comparer, and updated the maintainer workflow to require AI-assisted semantic review after drift is detected.
+- Fixed a catalog-coverage blind spot by teaching the upstream drift checker to compare the live upstream contributor topic index against the manifest, so added, removed, renamed, merged, or newly untracked topic docs are reported explicitly.
+- Replaced the remaining hard-coded topic-policy and local rule-mapping model with dynamic explicit-reference discovery, so tracked-source baselines stay in the manifest while local topic-to-file and topic-to-rule relationships are derived only from exact upstream topic references already present in repo content.
+- Tightened that dynamic model further so the drift checker now treats heuristics as forbidden and only derives mappings from exact upstream-topic references and exact rule-evidence references already present in repository content.
+- Clarified the two-phase workflow so exact-reference aggregation only proves already-explicit local links, while uncovered, changed, renamed, or merged upstream docs still require AI semantic matching review after the deterministic drift pass.
+- Canonicalized local contributor-doc references against the remote HashiCorp contributor tree at `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing`, so the installer repo compares local guidance to the target repo's remote contributor-doc structure rather than to a fake local mirror.
+- Expanded the tracked upstream contributor source set to include API versioning, breaking changes, list resources, feature-block changes, resource and data source extensions, service packages, write-only attributes, resource identity, resource IDs, state migrations, and property naming guidance.
+- Expanded the local companion guidance to cover preview API exceptions, feature-block updates, list resources, service package scaffolding, resource ID precedence, inline-versus-resource decisions, resource identity, write-only attributes, state migration workflow, and upstream naming rules.
+- Clarified the repo-only `ai-toolkit-maintenance` skill so upstream drift checking is a first-class required step whenever upstream contributor alignment is in scope or the user asks whether the AI toolkit is up to date.
+- Moved the repo-only upstream contributor baseline file from `.github/upstream-contributor-alignment.json` to `tools/config/upstream-contributor.json` so the configuration lives with maintenance tooling support files rather than under `.github/`.
+- Backfilled additional rule-level provenance coverage so the upstream drift checker now reaches selected docs and implementation contract rules, not just the testing contract.
+- Added provenance-backed rule anchors to the Azure-patterns guide, schema-patterns guide, and repo-only maintainer skill so upstream source links now reach companion guidance and maintainer workflow rules as well as contracts.
+- Extended the drift checker JSON output to group mapped rules and rule issues by local file, making provenance review easier contract-by-contract and guide-by-guide.
+- Tightened implementation-side error guidance so static errors use `errors.New(...)`, while `fmt.Errorf(...)` with `%+v` remains reserved for formatted messages and wrapped underlying errors.
+- Added an implementation-side parser-error rule that says comprehensive resource ID parser errors should usually be returned directly instead of being wrapped with redundant parsing or flattening context.
+- Added an implementation-side validation rule that treats generic fallback validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as last-resort choices when stronger evidence-backed validation is available.
+- Added an implementation-side enum-validation rule that prefers SDK `PossibleValuesFor...` helpers when they match the real accepted values, while allowing evidence-backed narrowing when a resource accepts only a subset.
+- Increased the review-time azurerm-linter timeout guidance to `300000` ms and clarified that review runs should keep following a timed-out-but-still-running linter session to completion instead of classifying it as `Not run` too early.
+- Aligned the local acceptance-testing guidance with upstream HashiCorp contributor docs by restoring `requiresImport` as part of the default resource test matrix instead of treating it as merely conditional.
+- Replaced the remaining ordered-list sequences in the error-patterns guide with the standard title-plus-bullets pattern so the changed AI-toolkit guidance is structurally consistent.
 
 ### Fixed
 

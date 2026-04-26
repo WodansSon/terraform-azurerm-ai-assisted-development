@@ -100,6 +100,10 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-WF-001: Prefer typed implementations for new work
 - Rule: Prefer the typed `internal/sdk` implementation style for new resources and data sources.
 - Rule: Use untyped patterns primarily for maintenance of existing untyped implementations unless there is a strong evidence-backed reason to do otherwise.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
+  - Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations
 
 ## Schema and mapping
 
@@ -110,6 +114,29 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-SCHEMA-002: Common field ordering should follow provider conventions
 - Rule: When common fields are present, prefer provider ordering patterns such as `name`, `resource_group_name`, and `location` first, with `tags` last.
 - Rule: Keep changes consistent with nearby same-service implementations.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says schema fields should place ID fields first, then `location`, with `tags` last
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-data-source.md` applies the same ordering pattern to typed data sources
+
+### IMPL-SCHEMA-003: Generic fallback validators are last-resort, not the target state
+- Rule: Treat generic validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as fallback choices only when stronger evidence-backed validation cannot be determined.
+- Rule: When evidence establishes real enums, ranges, naming constraints, ID formats, URI formats, or other concrete limits, encode that real validation instead of stopping at non-empty or minimum-only checks.
+- Rule: Numeric arguments should define a real valid range when one is known, and string arguments should use pattern, enum, length, ID, or format validation when that behavior is knowable.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says string arguments must be validated, `StringNotEmpty` is only a minimum, and validation should ideally be more strict
+  - Upstream contributor guidance there also says numeric arguments should specify a valid range
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says `validation.StringIsNotEmpty` is the minimum only when a stronger validation pattern cannot be determined
+
+### IMPL-SCHEMA-004: Prefer SDK PossibleValues helpers for enum validation unless the real accepted subset is narrower
+- Rule: When the SDK package exposes a `PossibleValuesFor...` helper that matches the real accepted enum values for the field, prefer that helper inside `validation.StringInSlice(...)` instead of hardcoding the values manually.
+- Rule: If the SDK helper returns values that are broader than what the specific resource, API path, or service behavior actually accepts, define the narrowed validation set from evidence instead of blindly using the full SDK helper output.
+- Rule: Do not mix enum values from unrelated services or discriminator types into a field's validation list simply because they appear in the same SDK or provider tree.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined
 
 ## PATCH and residual state
 
@@ -123,6 +150,19 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Error messages should be lowercase, descriptive, and free of contractions.
 - Rule: Wrap field names and important user-visible values in backticks.
 - Rule: Use `%+v` for underlying errors when wrapping provider or SDK failures.
+- Rule: Use `errors.New(...)` for static errors that do not wrap an underlying error and do not require formatting.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-errors.md` for lowercase wrapped errors, `%+v`, and `errors.New(...)`
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` requiring argument names in error messages to be wrapped in backticks
+
+### IMPL-ERR-002: Do not wrap comprehensive ID parser errors with redundant context
+- Rule: When a resource ID parser or validator already returns a comprehensive, user-facing error message, prefer returning that error directly instead of wrapping it with extra `parsing`, `flattening`, or field-name context.
+- Rule: Add wrapping context only when it contributes materially new information that the parser error does not already provide.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3137015087`: `since the id parser gives us a comprehensive error message, we don't need any other message with this`
+  - The suggested maintainer change there replaces ``return results, fmt.Errorf("flattening `cdn_frontdoor_firewall_policy_id`: %+v", err)`` with `return results, err`
 
 ## Testing
 

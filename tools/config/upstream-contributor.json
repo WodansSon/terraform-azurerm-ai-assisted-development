@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 2,
+  "description": "Repo-only list of tracked upstream contributor sources. Local mapping is derived dynamically from explicit upstream-topic references and rule evidence in this repository; it is not hard-coded in this manifest.",
+  "catalog": {
+    "contributorTreeUrl": "https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing",
+    "readmeRawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/README.md",
+    "topicBaseRawUrlPrefix": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/"
+  },
+  "sources": [
+    {
+      "id": "contributing-readme",
+      "domain": "shared-contributor-guidance",
+      "title": "AzureRM Provider Contributor Guides",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/README.md",
+      "baselineSha256": "5147b3b9918a82dd4cb0ddd9d01701675af649491208410d242a96ebe7423a7e",
+      "reviewNotes": [
+        "Use as the root index for contributor topic coverage.",
+        "Review when upstream contributor topic membership or contributor workflow framing changes."
+      ]
+    },
+    {
+      "id": "guide-opening-a-pr",
+      "domain": "pr-process",
+      "title": "Opening a PR",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-opening-a-pr.md",
+      "baselineSha256": "23a9e68705b012c7010db298810eb1c9e3c05a9ad54d494a639b6670bc84dc88",
+      "reviewNotes": [
+        "Review PR-process expectations, testing expectations, and contributor-facing submission guidance."
+      ]
+    },
+    {
+      "id": "best-practices",
+      "domain": "implementation",
+      "title": "Best Practices",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/best-practices.md",
+      "baselineSha256": "0ef125f52ff74ab1c4531531269f9191ec671cacc388c631fa27198ddf424a8d",
+      "reviewNotes": [
+        "Covers typed-vs-untyped guidance, Optional+Computed conventions, GetRawConfig guidance, and pointer helpers."
+      ]
+    },
+    {
+      "id": "schema-design-considerations",
+      "domain": "implementation",
+      "title": "Schema Design Considerations",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/schema-design-considerations.md",
+      "baselineSha256": "538ad215efef7eb8a9de8e29e16d353f73508d3a3e4107a85f319f97fd59019c",
+      "reviewNotes": [
+        "Covers schema-shape choices, Enabled/None patterns, validation expectations, and preview-field rules."
+      ]
+    },
+    {
+      "id": "reference-errors",
+      "domain": "implementation",
+      "title": "Working with Errors",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-errors.md",
+      "baselineSha256": "380567682e3e3e197a0e509ec1b67c442bb4d01e65546c2af0740d3e4bf21c38",
+      "reviewNotes": [
+        "Covers wrapped-error context, internal-error guidance, and errors.New versus fmt.Errorf guidance."
+      ]
+    },
+    {
+      "id": "reference-acceptance-testing",
+      "domain": "testing",
+      "title": "Acceptance Testing",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-acceptance-testing.md",
+      "baselineSha256": "73cba22032c73d9704b7f037a557533eb917477b86112fa4ba6434a464561e6c",
+      "reviewNotes": [
+        "Primary upstream source for required test matrix, ImportStep guidance, PreCheck patterns, and helper struct conventions."
+      ]
+    },
+    {
+      "id": "reference-documentation-standards",
+      "domain": "documentation",
+      "title": "Provider Documentation Standards",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-documentation-standards.md",
+      "baselineSha256": "32ff2e25698e68e19cc2eebf757f96d0044b99bfe31f5edc4bfca08059a14296",
+      "reviewNotes": [
+        "Primary upstream source for examples, code fences, argument ordering, attribute ordering, and note formatting."
+      ]
+    },
+    {
+      "id": "guide-new-resource",
+      "domain": "implementation-and-testing",
+      "title": "Guide: New Resource",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
+      "baselineSha256": "d2911e87107ab0ba5fcf3e6f5c424eab575f68050ec5ccdd16d8c878160245b8",
+      "reviewNotes": [
+        "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
+      ]
+    },
+    {
+      "id": "guide-new-data-source",
+      "domain": "implementation-and-testing",
+      "title": "Guide: New Data Source",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-data-source.md",
+      "baselineSha256": "654620707ffc7cd05a31483e5a4cecec88b9272e599f4ee4436da8399f2eb6af",
+      "reviewNotes": [
+        "Useful when upstream changes the staged workflow for new data sources, including testing, docs, and PR expectations."
+      ]
+    },
+    {
+      "id": "maintainer-merging",
+      "domain": "maintainer-process",
+      "title": "Maintainer Specific: Merging Pull Requests",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/maintainer-merging.md",
+      "baselineSha256": "452abd4676c0f03c2f58aca2e34e79f59c43ac8df7775de925b776c3be6b77dc",
+      "reviewNotes": [
+        "Review when upstream changes maintainer-only changelog or merge expectations that affect local maintainer tooling."
+      ]
+    },
+    {
+      "id": "guide-api-version",
+      "domain": "api-versioning",
+      "title": "Guide: ARM API Versions",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-api-version.md",
+      "baselineSha256": "ee707bc3142b2d5b5313299c1c46f4995326f990eb947422a8c1dd224627ef99",
+      "reviewNotes": [
+        "Primary upstream source for stable-versus-preview ARM API selection, preview-api exception criteria, and preview linter expectations."
+      ]
+    },
+    {
+      "id": "guide-breaking-changes",
+      "domain": "breaking-changes-and-deprecations",
+      "title": "Guide: Breaking Changes and Deprecations",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md",
+      "baselineSha256": "d675b26c6b443fe17c38a6a177aac18b085e22d78babbf4079ad9e54c719682a",
+      "reviewNotes": [
+        "Primary upstream source for breaking-change handling, FivePointOh feature-flag staging, upgrade-guide expectations, and deprecation cleanup."
+      ]
+    },
+    {
+      "id": "guide-list-resource",
+      "domain": "implementation-and-framework-list",
+      "title": "Guide: List Resource",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-list-resource.md",
+      "baselineSha256": "22b9dea8777e1deee75c82f4be01a18d595a6aa048b07aa9199d2673c27a6dee",
+      "reviewNotes": [
+        "Primary upstream source for framework list resources, identity prerequisites, flatten reuse, TF 1.14 query tests, and list-resource docs."
+      ]
+    },
+    {
+      "id": "guide-new-feature",
+      "domain": "provider-features",
+      "title": "Guide: Adding a new Feature to the Features Block",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-feature.md",
+      "baselineSha256": "8f1ea7cc20780fd4c833751c5658400c76c65777b6d997edc3cdb2fa0c5d5fde",
+      "reviewNotes": [
+        "Primary upstream source for feature-block changes across internal/features, provider schema, framework config, tests, and resource behavior."
+      ]
+    },
+    {
+      "id": "guide-new-fields-to-data-source",
+      "domain": "implementation",
+      "title": "Guide: Extending a Data Source",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-data-source.md",
+      "baselineSha256": "186d266c93edb3901ff23c01f7974414d0f65cb18bba6cc979562687f78875eb",
+      "reviewNotes": [
+        "Primary upstream source for extending existing data sources with new computed fields, read-state updates, tests, and docs."
+      ]
+    },
+    {
+      "id": "guide-new-fields-to-resource",
+      "domain": "implementation",
+      "title": "Guide: Extending a Resource",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-resource.md",
+      "baselineSha256": "baec8843477acdaf81e0146d537da06cdb7e1692599c43bcd980b271a71b1434",
+      "reviewNotes": [
+        "Primary upstream source for extending existing resources with schema, CRUD, tests, docs, and default-value breaking-change review."
+      ]
+    },
+    {
+      "id": "guide-new-resource-vs-inline",
+      "domain": "schema-design",
+      "title": "Guide: When to inline new functionality versus a new resource",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource-vs-inline.md",
+      "baselineSha256": "a64ec7b19806622dc59657c67d66f5e6d41e57d10776064783f543842d2bdca7",
+      "reviewNotes": [
+        "Primary upstream source for deciding when new functionality belongs inline, as a separate resource, or in both forms."
+      ]
+    },
+    {
+      "id": "guide-new-service-package",
+      "domain": "implementation",
+      "title": "Guide: New Service Package",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-service-package.md",
+      "baselineSha256": "b9c72ffe1d9f4c29f3a3f9012f12dd636ac2a29d051025d3e861652ae2658af0",
+      "reviewNotes": [
+        "Primary upstream source for service package scaffolding, registration, client wiring, and generation steps."
+      ]
+    },
+    {
+      "id": "guide-new-write-only-attribute",
+      "domain": "schema-design",
+      "title": "Guide: Adding a new Write-Only Attribute",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-write-only-attribute.md",
+      "baselineSha256": "f6bdedf9aa739beef92c3d676028b0e35f8eeacb9dd14d731ef9d1ccd084e94e",
+      "reviewNotes": [
+        "Primary upstream source for write-only attribute schema, trigger fields, CRUD helpers, Terraform version gating, tests, and docs."
+      ]
+    },
+    {
+      "id": "guide-resource-identity",
+      "domain": "schema-design",
+      "title": "Guide: Resource Identity",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
+      "baselineSha256": "97f1df5310cc6612dc6b9c3e7fce23ccfa6961fadda313f6f05487b258e9dc2d",
+      "reviewNotes": [
+        "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
+      ]
+    },
+    {
+      "id": "guide-resource-ids",
+      "domain": "implementation",
+      "title": "Guide: Resource IDs",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-ids.md",
+      "baselineSha256": "f70f49b5e368ca1b1bce9bf6fc208fd53ba5174d6331f8d8c130a506d02eec32",
+      "reviewNotes": [
+        "Primary upstream source for resource ID parser and validator precedence across go-azure-sdk, commonids, and legacy generated helpers."
+      ]
+    },
+    {
+      "id": "guide-state-migrations",
+      "domain": "migration",
+      "title": "Guide: State Migrations",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-state-migrations.md",
+      "baselineSha256": "ea11aa133905df4b595bf0758c2d9651a52f6c1fbdc0566076a7392ce3dce602",
+      "reviewNotes": [
+        "Primary upstream source for migration file conventions, stripped schema copies, ResourceWithStateMigration wiring, and manual migration testing."
+      ]
+    },
+    {
+      "id": "reference-naming",
+      "domain": "schema-design",
+      "title": "Property Naming",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-naming.md",
+      "baselineSha256": "8659b903a5d2de36af5dbaa4bebcc4cc34d22959313047176ceef856793e0649",
+      "reviewNotes": [
+        "Primary upstream source for property naming conventions including resource ID suffixes, boolean naming, unit suffixes, and marketed names."
+      ]
+    }
+  ]
+}

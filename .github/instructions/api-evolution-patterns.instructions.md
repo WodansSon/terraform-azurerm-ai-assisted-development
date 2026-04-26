@@ -90,6 +90,19 @@ func testAPIVersion(ctx context.Context, client *azuretype.Client, apiVersion st
 }
 ```
 
+### Stable ARM API Selection and Preview Exceptions
+
+- Prefer stable ARM API and SDK versions by default. A preview API exception is a last resort, not a normal implementation choice.
+- A feature being in preview is not enough on its own to justify a preview ARM API version. Keep feature preview status and ARM API stability decoupled where possible.
+- Before using a preview API version, require a compelling reason, service-team commitment against breaking changes, a target date for a stable version, a clearly named responsible individual, and explicit Microsoft/HashiCorp agreement.
+- Add preview exceptions to `internal/tools/preview-api-version-linter/exceptions.yml` sorted by `module`, `service`, and `version`, then rerun `go run internal/tools/preview-api-version-linter/main.go`.
+- When an API version change alters defaults or behavior for existing resources, treat that as a breaking-change review item and coordinate with the major-release feature-flag and migration guidance instead of silently changing minor-release behavior.
+
+Official upstream references:
+
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-api-version.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-breaking-changes.md`
+
 ### Feature Flag Management
 
 ```go

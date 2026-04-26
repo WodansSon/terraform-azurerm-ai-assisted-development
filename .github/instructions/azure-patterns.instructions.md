@@ -131,6 +131,15 @@ Azure resources have unique validation requirements that CustomizeDiff functions
 
 **For comprehensive multi-function CustomizeDiff patterns and complex validation examples, see:** [Implementation Guide - CustomizeDiff Import Requirements](./implementation-guide.instructions.md#customizediff-import-requirements)
 
+### AZURE-PATTERN-001: Prefer `GetRawConfig()` when `CustomizeDiff` must distinguish configured values from known-after-apply or zero values
+
+- Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `d.Get()` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
+- Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
+    - That guidance uses `GetRawConfig()` as the preferred pattern when `d.Get()` or decoded values would make unknowns look unset
+
 ### Zero Value Validation Pattern
 
 **Critical Pattern for Optional Fields with Go Zero Values:**
@@ -420,6 +429,15 @@ func flattenCdnFrontDoorProfileLogScrubbing(input *profiles.ProfileLogScrubbing)
 ## 🚫 "None" Value Pattern
 
 ### The "None" Value Pattern
+
+### AZURE-PATTERN-002: Convert Azure `None`-style defaults through omission rather than exposing them as first-class user values
+
+- Rule: When an Azure API uses `None`, `Off`, or `Default` to express the default state, prefer omission/null in Terraform and convert that omission to the Azure value during expand/flatten.
+- Rule: Do not require practitioners to configure `None`-style values explicitly when omission already expresses the default behavior.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
+    - That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly
 
 Many Azure APIs accept values like None, Off, or Default as default values. The provider is moving away from exposing these values directly to users, instead leveraging Terraform's native null handling by allowing fields to be omitted.
 
