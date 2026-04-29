@@ -1,0 +1,42 @@
+{
+  "id": "skill-acceptance-testing-importstep",
+  "title": "Acceptance-testing guidance applies requiresImport and ImportStep expectations consistently",
+  "task": "acceptance-testing",
+  "caseStatus": "planned",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "An acceptance-test guidance request should use the testing contract, preserve requiresImport expectations, and avoid replacing existence checks with weaker substitutes.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource_test.go"
+    ],
+    "notes": "Future fixture should include a resource acctest that changed lifecycle coverage."
+  },
+  "expectedRules": [
+    "TEST-PATTERN-004",
+    "TEST-WF-*",
+    "TEST-RUN-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "requiresimport-regression",
+      "severity": "high",
+      "description": "The guidance should preserve default requiresImport expectations when they apply."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "redundant-importstep-assertions",
+      "description": "The guidance should not require redundant assertions already covered by ImportStep unless a case-specific exception exists."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: acceptance-testing"
+    ]
+  }
+}

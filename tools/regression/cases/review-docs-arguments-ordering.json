@@ -1,0 +1,48 @@
+{
+  "id": "review-docs-arguments-ordering",
+  "title": "Docs review enforces arguments, attributes, and notes structure from the docs contract",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where a page drifts on argument wording and note structure, and the correct review should apply docs-contract rules without inventing unsupported schema claims.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-arguments-ordering/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/r/example_gateway.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a real docs review scenario without retaining live PR identity."
+  },
+  "expectedRules": [
+    "DOCS-ARG-*",
+    "DOCS-ATTR-*",
+    "DOCS-NOTE-*",
+    "DOCS-WORD-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "docs-ordering-or-wording-regression",
+      "severity": "high",
+      "file": "website/docs/r/example_gateway.html.markdown",
+      "description": "The review should catch contract-backed docs structure or wording regressions."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "guessed-schema-claim",
+      "description": "The review must not invent schema or enum claims that are not supported by the available code evidence."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ]
+  },
+  "notes": "Pair this case with the sample docs-review markdown output to benchmark both review content and score artifact shape."
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/tools/regression/schema/review-result.schema.json",
+  "title": "AI Regression Review Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "caseId",
+    "runId",
+    "timestampUtc",
+    "task",
+    "pass",
+    "overallScore",
+    "scores",
+    "findings",
+    "severityChecks",
+    "scopeChecks",
+    "toolExecution",
+    "outputChecks",
+    "determinismChecks"
+  ],
+  "properties": {
+    "caseId": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "timestampUtc": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "pass": {
+      "type": "boolean"
+    },
+    "overallScore": {
+      "type": "number"
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mustCatchRecall",
+        "falsePositiveControl",
+        "severityCorrectness",
+        "scopeAndToolCorrectness",
+        "outputCompliance",
+        "determinism"
+      ],
+      "properties": {
+        "mustCatchRecall": {
+          "type": "number"
+        },
+        "falsePositiveControl": {
+          "type": "number"
+        },
+        "severityCorrectness": {
+          "type": "number"
+        },
+        "scopeAndToolCorrectness": {
+          "type": "number"
+        },
+        "outputCompliance": {
+          "type": "number"
+        },
+        "determinism": {
+          "type": "number"
+        }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caught",
+        "missed",
+        "falsePositives"
+      ],
+      "properties": {
+        "caught": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "falsePositives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "severityChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matched",
+        "total"
+      ],
+      "properties": {
+        "matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scopeChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleFamiliesAppliedCorrectly",
+        "toolingBehaviorCorrect"
+      ],
+      "properties": {
+        "ruleFamiliesAppliedCorrectly": {
+          "type": "boolean"
+        },
+        "toolingBehaviorCorrect": {
+          "type": "boolean"
+        }
+      }
+    },
+    "toolExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "azurermLinter": {
+          "type": "string"
+        },
+        "upstreamDrift": {
+          "type": "string"
+        }
+      }
+    },
+    "outputChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredSectionsPresent",
+        "requiredMarkersPresent"
+      ],
+      "properties": {
+        "requiredSectionsPresent": {
+          "type": "boolean"
+        },
+        "requiredMarkersPresent": {
+          "type": "boolean"
+        }
+      }
+    },
+    "determinismChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "materiallyEquivalentAcrossRuns"
+      ],
+      "properties": {
+        "materiallyEquivalentAcrossRuns": {
+          "type": "boolean"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

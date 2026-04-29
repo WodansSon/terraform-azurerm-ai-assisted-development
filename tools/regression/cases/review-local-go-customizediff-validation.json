@@ -1,0 +1,52 @@
+{
+  "id": "review-local-go-customizediff-validation",
+  "title": "Local code review catches Go validation and test-coverage regressions",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where a Go implementation change introduces validation behavior but does not add matching acceptance-test coverage.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-go-customizediff-validation/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/network/example_gateway_resource.go",
+      "internal/services/network/example_gateway_resource_test.go"
+    ],
+    "notes": "Sanitized fixture models a real local review scenario without retaining live PR identity."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "IMPL-SCHEMA-*",
+    "IMPL-TEST-*",
+    "TEST-PATTERN-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "missing-validation-coverage",
+      "severity": "high",
+      "file": "internal/services/network/example_gateway_resource_test.go",
+      "description": "Validation or CustomizeDiff changes should not ship without appropriate test coverage."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "stringisnotempty-alone-without-context",
+      "description": "Do not escalate generic StringIsNotEmpty usage unless stronger validation is clearly required by the fixture evidence."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES"
+    ]
+  },
+  "notes": "Pair this case with the example review markdown output to benchmark both scoring and output-shape expectations."
+}

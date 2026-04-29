@@ -1,0 +1,46 @@
+{
+  "id": "review-committed-pr-scope-linter",
+  "title": "Committed review handles PR-scoped azurerm-linter execution correctly",
+  "task": "code-review-committed-changes",
+  "caseStatus": "planned",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed review should run azurerm-linter with deterministic PR scope when explicit PR context exists and report the result with the required section structure.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Attach explicit PR context when implementing the runner case."
+  },
+  "expectedRules": [
+    "REVIEW-LINT-*",
+    "REVIEW-SCOPE-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "linter-scope-reporting",
+      "severity": "medium",
+      "description": "The review should correctly report linter status, run scope, and findings from the executed committed-review scope."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "invented-pr-number",
+      "description": "The review must not invent a pull request number from branch metadata or diff text."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "MUST FIX"
+    ]
+  }
+}

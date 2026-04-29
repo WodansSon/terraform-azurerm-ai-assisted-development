@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "weights": {
+    "mustCatchRecall": 40,
+    "falsePositiveControl": 25,
+    "severityCorrectness": 15,
+    "scopeAndToolCorrectness": 10,
+    "outputCompliance": 5,
+    "determinism": 5
+  },
+  "passGuidance": {
+    "minimumOverallScore": 85,
+    "minimumMustCatchRecall": 90,
+    "allowFalsePositives": false
+  }
+}
