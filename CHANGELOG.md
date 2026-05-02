@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.2.0] - 2026-05-02
+
+### Added
+
 - Added a repo-only regression-harness foundation under `tools/regression/` plus supporting docs, JSON schemas, scoring weights, and a starter five-case corpus plan so prompt, instruction, and skill behavior can move toward objective, repeatable evaluation instead of ad hoc subjective checks.
 - Added initial regression-harness utility scripts to scaffold result templates and score case results against weighted benchmark criteria, along with a synthetic adjudicated smoke case and sample result fixture.
 - Added the first sanitized adjudicated real-world regression case for resource-implementation guidance, including a neutral fixture summary and a scored example result.
