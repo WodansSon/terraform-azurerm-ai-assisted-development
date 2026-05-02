@@ -233,6 +233,14 @@ The starter corpus is intentionally small and covers the main current review and
 - Implementation guidance
 - Acceptance-testing guidance
 
+The direct skill surface currently in scope for this harness is narrower:
+
+- `docs-writer`
+- `resource-implementation`
+- `acceptance-testing`
+
+The repo-only `ai-toolkit-maintenance` skill is intentionally excluded from the regression benchmark surface because it exists to keep repository guidance aligned before commit rather than to benchmark the end-user AI workflow itself.
+
 These starter cases are planning manifests first. They define the shape and expectations of the future corpus even before a full runner exists.
 
 The first non-synthetic adjudicated case should be treated as the reference pattern for future case authoring:
@@ -255,18 +263,20 @@ Recommended states:
 
 The future runner should:
 
-- prepare a clean fixture workspace
-- invoke the exact prompt or skill under test
-- capture the output and tool behavior
-- score the run against the adjudicated case expectations
-- emit a machine-readable result object that matches `review-result.schema.json`
+- Prepare a clean fixture workspace
+- Invoke the exact prompt or skill under test
+- Capture the output and tool behavior
+- Score the run against the adjudicated case expectations
+- Emit a machine-readable result object that matches `review-result.schema.json`
 
 The current starter scripts do not execute prompts or skills yet. They solve the next smaller problem first:
 
 - Scaffold a result document from a case definition
+- Validate case and result artifacts against the benchmark schemas before scoring
 - Score a completed result document against a case and the weighted rubric
+- Score the adjudicated example corpus as a suite and report direct target-skill coverage gaps
 - Present the case fixture, sample review output, and score summary together for easier inspection
-- Create a repeatable single-case run directory with a manifest and placeholder artifacts so a real run can be captured consistently
+- Create a repeatable single-case run directory with snapshotted inputs, repository metadata, and placeholder artifacts so a real run can be captured consistently
 - Hydrate a scaffolded run from adjudicated example artifacts so the full run layout can be inspected end to end
 - Clean generated run directories as routine housekeeping
 
@@ -292,11 +302,55 @@ The initial benchmark workflow is:
 
 - Choose a case from `tools/regression/cases/`.
 - Scaffold a single run with `tools/regression/run-regression-case.ps1`.
+- Treat the generated `run-manifest.json`, `input/case.json`, and `input/score-weights.json` as the stable execution envelope for that run.
 - Optionally hydrate the scaffold from adjudicated example artifacts with `tools/regression/hydrate-regression-run.ps1`.
 - Fill in or replace the generated review artifact from a real prompt or skill run.
+- Fill in `capture/execution-metadata.json` with the exact executor and invocation details used to produce the run.
 - Update the generated result file for the adjudicated outcome.
 - Score it with `tools/regression/score-regression-case.ps1`.
 - Review the weighted score and pass or fail guidance.
+
+The current suite-level benchmark workflow is:
+
+- Run `tools/regression/validate-regression-artifacts.ps1` so schema or fixture-shape drift fails fast.
+- Run `tools/regression/run-regression-suite.ps1` to score every adjudicated example result in the corpus.
+- Use the target-skill coverage summary to see which direct skills are covered, planned-only, or still missing a direct case.
+- Add or adjudicate direct skill cases before treating that skill as benchmarked.
+
+The harness now exposes a normalized machine-readable output parameter for local and CI reporting:
+
+- `tools/regression/validate-regression-artifacts.ps1 -Output json`
+- `tools/regression/score-regression-case.ps1 -Output json`
+- `tools/regression/run-regression-suite.ps1 -Output json`
+
+The repository also now supports a report-only CI path for the harness corpus:
+
+- `.github/workflows/regression-harness-validation.yml` now shells through `tools/validate-ai-toolkit.ps1 -SkipUpstreamDrift`, which keeps the regression CI path aligned with the same maintainer validator used locally while still publishing regression outputs.
+- The workflow publishes text and JSON suite output plus a suite-history snapshot artifact so maintainers can inspect the current corpus health without turning the benchmark into a merge gate.
+
+The harness also now supports a lightweight history layer on top of stable suite output:
+
+- `tools/regression/write-regression-history-snapshot.ps1` persists timestamped suite snapshots under `tools/regression/results/history/`.
+- `tools/regression/summarize-regression-history.ps1` compares the latest snapshot against prior saved snapshots and reports trend deltas.
+- This history layer stays fixture-driven and repo-local; it does not depend on live prompt execution against arbitrary repository state.
+
+The contributor-facing authoring model is now moving toward a Terraform-style test abstraction layer:
+
+- `tools/regression/new-regression-test.ps1` scaffolds a contributor-facing HCL test template under `tools/regression/test/`.
+- Contributors author one HCL test spec instead of assembling the internal artifact graph by hand.
+- `tools/regression/build-regression-test.ps1 -SpecPath ...` materializes the internal harness artifacts from that HCL test spec.
+- `tools/regression/publish-regression-test.ps1` is the maintainer promotion step that turns a reviewed draft into the adjudicated examples corpus.
+
+For routine human use, the preferred entry point is now `tools/regression/run-regression-harness.ps1`.
+
+That top-level runner executes the stable harness flow in order:
+
+- Artifact validation
+- Suite scoring
+- History snapshot capture
+- History summary generation
+
+This keeps the day-to-day harness UX to one command while preserving the lower-level scripts for debugging, CI composition, and targeted troubleshooting.
 
 ## Single-Case Orchestrator
 
@@ -305,9 +359,15 @@ The first-pass orchestrator intentionally keeps execution simple:
 - It accepts one case at a time
 - It resolves a case alias to a case manifest under `tools/regression/cases/`
 - It creates a timestamped run directory under `tools/regression/runs/`
+- It snapshots the case and weights inputs used for the run
+- It records repository snapshot metadata and a capture file for the eventual invocation details
 - It generates a run manifest plus placeholder review and result artifacts
 
 This keeps the single-case lifecycle stable before any batch or suite features are introduced.
+
+The suite runner stays intentionally narrow in v1.
+
+It does not invoke Copilot or simulate live skill execution. It evaluates the adjudicated example corpus that already exists in the repository and reports coverage gaps so the next case-authoring work is obvious.
 
 ## Run Hydration
 
@@ -339,5 +399,7 @@ The repository now also includes a docs-review adjudicated case so the benchmark
 - Docs review
 
 The repository also now includes a review-side adjudicated example with a sample Markdown review body so maintainers can see the intended human-readable output shape alongside the machine-readable scoring artifact.
+
+The repository now also includes a committed-review adjudicated example so the corpus covers linter-scope reporting for explicit PR review context in addition to local-review and docs-review output styles.
 
 Use the real-world case as the authoring pattern when converting future historical incidents into benchmark fixtures.

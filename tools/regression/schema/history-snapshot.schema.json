@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/tools/regression/schema/history-snapshot.schema.json",
+  "title": "AI Regression History Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "snapshotId",
+    "createdUtc",
+    "repositorySnapshot",
+    "filters",
+    "metrics",
+    "suite"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdUtc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositorySnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headBranch",
+        "headCommit",
+        "worktreeHasChanges",
+        "worktreeHasUntrackedChanges"
+      ],
+      "properties": {
+        "headBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headCommit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "worktreeHasChanges": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "worktreeHasUntrackedChanges": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task",
+        "caseStatus"
+      ],
+      "properties": {
+        "task": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "caseStatus": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedCaseCount",
+        "scoredCaseCount",
+        "passCount",
+        "failCount",
+        "skippedCaseCount",
+        "passRate",
+        "averageOverallScore",
+        "minimumOverallScore",
+        "maximumOverallScore",
+        "coveredSkillCount"
+      ],
+      "properties": {
+        "selectedCaseCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scoredCaseCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedCaseCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passRate": {
+          "type": "number"
+        },
+        "averageOverallScore": {
+          "type": "number"
+        },
+        "minimumOverallScore": {
+          "type": "number"
+        },
+        "maximumOverallScore": {
+          "type": "number"
+        },
+        "coveredSkillCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "selectedCaseCount",
+        "scoredCaseCount",
+        "skippedCaseCount",
+        "targetSkillCoverage",
+        "caseResults"
+      ],
+      "properties": {
+        "selectedCaseCount": {
+          "type": "integer"
+        },
+        "scoredCaseCount": {
+          "type": "integer"
+        },
+        "skippedCaseCount": {
+          "type": "integer"
+        },
+        "targetSkillCoverage": {
+          "type": "array"
+        },
+        "caseResults": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}

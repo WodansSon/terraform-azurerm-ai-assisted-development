@@ -777,6 +777,12 @@ d.SetId(id.ID())
 - Use provider-generated legacy parse and validate helpers only when neither `go-azure-sdk` nor `commonids` currently support the ID shape.
 - Keep import validation, state parsing, and resource identity generation aligned to the same underlying ID type.
 
+### Codebase Orientation and Build Context
+
+- When explaining provider directory layout, service-package boundaries, or typed-versus-untyped implementation choices, align the explanation to the upstream high-level overview rather than inventing local package terminology.
+- When explaining terms such as `Service Package`, `Typed Resource`, `Typed Plugin SDK`, `Resource ID Parser`, or `Terraform Managed Resource ID`, use the upstream glossary definitions consistently.
+- When a contributor asks how to build the provider locally, treat the upstream building guide as the canonical entry point for the current build flow rather than inventing repo-specific build commands.
+
 ### Extending Existing Resources and Data Sources
 
 - When adding a new resource field, update schema or model ordering first, then wire the property through create, update, and read logic, keeping pointer handling nil-safe in state.
@@ -793,11 +799,14 @@ d.SetId(id.ID())
 
 Official upstream references:
 
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/building-the-provider.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-feature.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-fields-to-resource.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-fields-to-data-source.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-service-package.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/high-level-overview.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/reference-glossary.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-ids.md`
 
 ---

@@ -2,21 +2,23 @@
   "id": "skill-acceptance-testing-importstep",
   "title": "Acceptance-testing guidance applies requiresImport and ImportStep expectations consistently",
   "task": "acceptance-testing",
-  "caseStatus": "planned",
+  "caseStatus": "adjudicated",
   "sourceKind": "real-pr",
   "sanitized": true,
-  "description": "An acceptance-test guidance request should use the testing contract, preserve requiresImport expectations, and avoid replacing existence checks with weaker substitutes.",
+  "description": "A sanitized historical acceptance-test guidance scenario where the correct output should restore requiresImport coverage, keep ExistsInAzure as the primary basic assertion, and avoid redundant ImportStep assertions.",
   "fixture": {
-    "mode": "none"
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-acceptance-testing-importstep/README.md"
   },
   "scope": {
     "changedFiles": [
       "internal/services/example/example_resource_test.go"
     ],
-    "notes": "Future fixture should include a resource acctest that changed lifecycle coverage."
+    "notes": "Sanitized fixture models a real acceptance-test guidance incident without retaining live PR identity."
   },
   "expectedRules": [
     "TEST-PATTERN-004",
+    "TEST-PATTERN-*",
     "TEST-WF-*",
     "TEST-RUN-*"
   ],
@@ -25,6 +27,11 @@
       "key": "requiresimport-regression",
       "severity": "high",
       "description": "The guidance should preserve default requiresImport expectations when they apply."
+    },
+    {
+      "key": "weakened-basic-existence-check",
+      "severity": "medium",
+      "description": "The guidance should restore ExistsInAzure as the primary basic existence check instead of using a weaker substitute."
     }
   ],
   "mustNotFlag": [
@@ -38,5 +45,6 @@
     "mustIncludeMarkers": [
       "Skill used: acceptance-testing"
     ]
-  }
+  },
+  "notes": "Use this as the first direct acceptance-testing skill benchmark for lifecycle-coverage guidance."
 }

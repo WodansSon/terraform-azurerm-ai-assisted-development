@@ -7,10 +7,19 @@ param(
 
     [string] $WeightsPath = (Join-Path $PSScriptRoot "config/score-weights.json"),
 
+    [ValidateSet("text", "json")]
+    [string] $Output = "text",
+
     [switch] $AsJson
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($AsJson) {
+    $Output = "json"
+}
+
+& pwsh -NoProfile -File (Join-Path $PSScriptRoot "validate-regression-artifacts.ps1") -CasePath $CasePath -ResultPath $ResultPath | Out-Null
 
 function Get-JsonFile {
     param([string] $Path)
@@ -145,7 +154,7 @@ $summary = [ordered]@{
     }
 }
 
-if ($AsJson) {
+if ($Output -eq "json") {
     $summary | ConvertTo-Json -Depth 10
     return
 }

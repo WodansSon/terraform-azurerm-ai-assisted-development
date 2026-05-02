@@ -4,12 +4,14 @@ This fixture is derived from a real docs-review pattern, but the final artifact 
 
 ## Scenario
 
-A docs page under `website/docs/r/` is updated after a schema change.
+A docs page modeled as `website/docs/r/example_gateway.html.markdown` is updated after a schema change.
 
-The page introduces two review-relevant problems:
+The fixture content for this benchmark lives under `tools/regression/fixtures/`; the `website/docs/...` path is the modeled changed-file path used to preserve realistic review scope and docs-rule activation.
 
-- argument wording drifts away from the contract's canonical phrasing
-- note content that should remain inline in the argument bullet is pushed into a note block instead
+The modeled page introduces two review-relevant problems:
+
+- Argument wording drifts away from the contract's canonical phrasing
+- Note content that should remain inline in the argument bullet is pushed into a note block instead
 
 ## Simplified Docs Shape
 
@@ -23,10 +25,10 @@ The page introduces two review-relevant problems:
 
 A correct docs review should:
 
-- load and apply the docs contract
-- flag the wording drift from `Valid values are` to the canonical `Possible values are`
-- flag that the default belongs in the field bullet rather than in a detached note block for this scenario
-- avoid inventing schema or enum claims that are not supported by the available evidence
+- Load and apply the docs contract
+- Flag the wording drift from `Valid values are` to the canonical `Possible values are`
+- Flag that the default belongs in the field bullet rather than in a detached note block for this scenario
+- Avoid inventing schema or enum claims that are not supported by the available evidence
 
 ## Expected Must-Catch Outcomes
 

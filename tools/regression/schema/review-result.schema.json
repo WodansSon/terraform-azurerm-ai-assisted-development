@@ -142,9 +142,6 @@
       "properties": {
         "azurermLinter": {
           "type": "string"
-        },
-        "upstreamDrift": {
-          "type": "string"
         }
       }
     },

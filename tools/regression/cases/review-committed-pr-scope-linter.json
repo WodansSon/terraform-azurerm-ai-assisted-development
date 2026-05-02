@@ -2,18 +2,19 @@
   "id": "review-committed-pr-scope-linter",
   "title": "Committed review handles PR-scoped azurerm-linter execution correctly",
   "task": "code-review-committed-changes",
-  "caseStatus": "planned",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "sanitized": true,
   "description": "A committed review should run azurerm-linter with deterministic PR scope when explicit PR context exists and report the result with the required section structure.",
   "fixture": {
-    "mode": "none"
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-pr-scope-linter/README.md"
   },
   "scope": {
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Attach explicit PR context when implementing the runner case."
+    "notes": "Sanitized fixture models an explicit committed-review PR context without retaining live PR identity."
   },
   "expectedRules": [
     "REVIEW-LINT-*",
@@ -42,5 +43,6 @@
       "AZURERM LINTER",
       "MUST FIX"
     ]
-  }
+  },
+  "notes": "Pair this case with the sample review Markdown output and scored result to benchmark committed-review linter-scope reporting."
 }

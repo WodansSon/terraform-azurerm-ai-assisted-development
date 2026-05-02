@@ -3,7 +3,9 @@ param(
     [string] $CasePath,
 
     [Parameter(Mandatory)]
-    [string] $OutputPath
+    [string] $OutputPath,
+
+    [string] $RunId
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +29,7 @@ foreach ($property in $case.expectedTools.PSObject.Properties) {
 
 $result = [ordered]@{
     caseId = $case.id
-    runId = [guid]::NewGuid().Guid
+    runId = if ([string]::IsNullOrWhiteSpace($RunId)) { [guid]::NewGuid().Guid } else { $RunId }
     timestampUtc = [DateTime]::UtcNow.ToString("o")
     task = $case.task
     model = ""

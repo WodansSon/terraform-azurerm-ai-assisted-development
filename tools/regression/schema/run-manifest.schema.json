@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/tools/regression/schema/run-manifest.schema.json",
+  "title": "AI Regression Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "runId",
+    "createdUtc",
+    "case",
+    "fixture",
+    "repositorySnapshot",
+    "inputs",
+    "capture",
+    "executionEnvelope",
+    "artifacts",
+    "commands",
+    "nextSteps"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 2
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdUtc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "task",
+        "status",
+        "casePath"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "casePath": {
+          "type": "string"
+        }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "sourcePath",
+        "materializedPath"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "sourcePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "materializedPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "repositorySnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headBranch",
+        "headCommit",
+        "worktreeHasChanges",
+        "worktreeHasUntrackedChanges"
+      ],
+      "properties": {
+        "headBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headCommit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "worktreeHasChanges": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "worktreeHasUntrackedChanges": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseSnapshotPath",
+        "caseSnapshotSha256",
+        "weightsSnapshotPath",
+        "weightsSnapshotSha256"
+      ],
+      "properties": {
+        "caseSnapshotPath": {
+          "type": "string"
+        },
+        "caseSnapshotSha256": {
+          "type": "string"
+        },
+        "weightsSnapshotPath": {
+          "type": "string"
+        },
+        "weightsSnapshotSha256": {
+          "type": "string"
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionMetadataPath"
+      ],
+      "properties": {
+        "executionMetadataPath": {
+          "type": "string"
+        }
+      }
+    },
+    "executionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "liveRepoStateRequired",
+        "captureStatus",
+        "modeledChangedFiles",
+        "modeledScopeNotes"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "liveRepoStateRequired": {
+          "type": "boolean"
+        },
+        "captureStatus": {
+          "type": "string"
+        },
+        "modeledChangedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modeledScopeNotes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewOutputPath",
+        "resultOutputPath",
+        "manifestPath"
+      ],
+      "properties": {
+        "reviewOutputPath": {
+          "type": "string"
+        },
+        "resultOutputPath": {
+          "type": "string"
+        },
+        "manifestPath": {
+          "type": "string"
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hydrateExample",
+        "validate",
+        "score",
+        "previewExample"
+      ],
+      "properties": {
+        "hydrateExample": {
+          "type": "string"
+        },
+        "validate": {
+          "type": "string"
+        },
+        "score": {
+          "type": "string"
+        },
+        "previewExample": {
+          "type": "string"
+        }
+      }
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

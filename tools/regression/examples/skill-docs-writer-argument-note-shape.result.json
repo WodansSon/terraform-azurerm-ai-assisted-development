@@ -1,0 +1,42 @@
+{
+  "caseId": "skill-docs-writer-argument-note-shape",
+  "runId": "sample-docswriter-001",
+  "timestampUtc": "2026-05-02T00:00:00Z",
+  "task": "docs-writer",
+  "model": "sample",
+  "pass": true,
+  "overallScore": 100,
+  "scores": {
+    "mustCatchRecall": 100,
+    "falsePositiveControl": 100,
+    "severityCorrectness": 100,
+    "scopeAndToolCorrectness": 100,
+    "outputCompliance": 100,
+    "determinism": 100
+  },
+  "findings": {
+    "caught": [
+      "canonical-enum-phrasing",
+      "inline-default-placement"
+    ],
+    "missed": [],
+    "falsePositives": []
+  },
+  "severityChecks": {
+    "matched": 2,
+    "total": 2
+  },
+  "scopeChecks": {
+    "ruleFamiliesAppliedCorrectly": true,
+    "toolingBehaviorCorrect": true
+  },
+  "toolExecution": {},
+  "outputChecks": {
+    "requiredSectionsPresent": true,
+    "requiredMarkersPresent": true
+  },
+  "determinismChecks": {
+    "materiallyEquivalentAcrossRuns": true
+  },
+  "notes": "Example adjudicated result for the first direct docs-writer skill regression case."
+}

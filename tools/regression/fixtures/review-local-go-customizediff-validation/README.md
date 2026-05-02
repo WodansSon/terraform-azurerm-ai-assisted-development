@@ -40,11 +40,11 @@ func TestAccExampleGateway_basic(t *testing.T) {
 
 A correct local code review should:
 
-- activate the Go and test review scope rules
-- recognize that implementation-side validation behavior changed
-- flag the missing targeted acceptance-test coverage as the primary issue
-- avoid turning generic `StringIsNotEmpty` usage into a separate issue unless the fixture evidence proves stronger validation is required for that field
-- report azurerm-linter execution in its dedicated section
+- Activate the Go and test review scope rules
+- Recognize that implementation-side validation behavior changed
+- Flag the missing targeted acceptance-test coverage as the primary issue
+- Avoid turning generic `StringIsNotEmpty` usage into a separate issue unless the fixture evidence proves stronger validation is required for that field
+- Report azurerm-linter execution in its dedicated section
 
 ## Expected Must-Catch Outcomes
 

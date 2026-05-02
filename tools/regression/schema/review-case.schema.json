@@ -34,9 +34,9 @@
         "code-review-local-changes",
         "code-review-committed-changes",
         "code-review-docs",
+        "docs-writer",
         "resource-implementation",
-        "acceptance-testing",
-        "ai-toolkit-maintenance"
+        "acceptance-testing"
       ]
     },
     "caseStatus": {
@@ -168,13 +168,6 @@
             "run",
             "not-applicable",
             "not-run"
-          ]
-        },
-        "upstreamDrift": {
-          "type": "string",
-          "enum": [
-            "run",
-            "not-applicable"
           ]
         }
       }

@@ -1,4 +1,4 @@
-name: Validate Contracts
+name: Validate AI Toolkit
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
       - '.github/instructions/**'
       - '.github/prompts/**'
       - '.github/skills/**'
+      - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
+      - 'tools/config/upstream-contributor.json'
+      - 'tools/check-upstream-contributor-drift.ps1'
+      - 'tools/validate-ai-toolkit.ps1'
       - 'tools/validate-contracts.ps1'
       - '.github/workflows/contracts-validation.yml'
   pull_request:
@@ -15,19 +19,23 @@ on:
       - '.github/instructions/**'
       - '.github/prompts/**'
       - '.github/skills/**'
+      - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
+      - 'tools/config/upstream-contributor.json'
+      - 'tools/check-upstream-contributor-drift.ps1'
+      - 'tools/validate-ai-toolkit.ps1'
       - 'tools/validate-contracts.ps1'
       - '.github/workflows/contracts-validation.yml'
   workflow_dispatch:
 
 jobs:
   validate-contracts:
-    name: Validate Contract Model
+    name: Validate AI Toolkit
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Run contract validator
+      - name: Run AI toolkit validator
         shell: pwsh
         run: |
-          ./tools/validate-contracts.ps1
+          ./tools/validate-ai-toolkit.ps1 -SkipRegressionHarness -AllowCatalogIssues
