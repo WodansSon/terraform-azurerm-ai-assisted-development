@@ -171,7 +171,7 @@ The `weights` section controls how the overall score is calculated.
 
 ## The `passGuidance` Section
 
-The `passGuidance` section does not change how the score is calculated. It changes how the harness interprets the score after calculation, this is effectivly the policy gate.
+The `passGuidance` section does not change how the score is calculated. It changes how the harness interprets the score after calculation, this is effectively the policy gate.
 
 ### What higher and lower values mean in `passGuidance`:
 
