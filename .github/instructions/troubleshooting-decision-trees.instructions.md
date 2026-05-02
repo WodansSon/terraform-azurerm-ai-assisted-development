@@ -155,6 +155,13 @@ terraform plan -target=azurerm_resource.example
 az rest --method GET --url "https://management.azure.com/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/Microsoft.Service/resources/{name}?api-version=2023-01-01"
 ```
 
+**4. Escalate When Logs Are Not Enough**
+```text
+- Prefer logging parsed resource ID structs rather than raw ID strings when tracing provider behavior.
+- If TF_LOG output is insufficient, inspect traffic through an HTTPS debugging proxy.
+- If request-level inspection still is not enough, attach a debugger such as delve rather than adding long-lived ad-hoc debug code.
+```
+
 ### Network and Connectivity Issues
 
 **Debugging Pattern:**
@@ -262,6 +269,11 @@ data := acceptance.BuildTestData(t, "azurerm_resource", "test")
 // Verify resource group cleanup
 // Review parallel test execution
 ```
+
+**Official upstream debugging references:**
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/building-the-provider.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/debugging-the-provider.md`
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/running-the-tests.md`
 
 ### CustomizeDiff Debugging
 

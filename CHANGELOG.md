@@ -9,9 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a repo-only regression-harness foundation under `tools/regression/` plus supporting docs, JSON schemas, scoring weights, and a starter five-case corpus plan so prompt, instruction, and skill behavior can move toward objective, repeatable evaluation instead of ad hoc subjective checks.
+- Added initial regression-harness utility scripts to scaffold result templates and score case results against weighted benchmark criteria, along with a synthetic adjudicated smoke case and sample result fixture.
+- Added the first sanitized adjudicated real-world regression case for resource-implementation guidance, including a neutral fixture summary and a scored example result.
+- Added the first adjudicated review-side regression case for local Go review behavior, including a sanitized fixture, a sample human-readable review output, and a scored example result.
+- Added an adjudicated docs-review regression case plus a thin example runner script so benchmark cases can be previewed and scored together from a single command.
+- Added a single-case regression run orchestrator that resolves case aliases, creates per-run directories, generates a run manifest, and scaffolds result and review artifacts under `tools/regression/runs/`.
+- Added a regression run hydrator that copies adjudicated example artifacts into a scaffolded run, plus a cleanup script for generated `tools/regression/runs/` directories.
+- Added `-Case` alias support to the example runner and expanded the regression-harness docs so the scoring weights and pass-threshold knobs are explained explicitly.
+- Added contributor-facing HCL regression test authoring under `tools/regression/test/`, including the canonical `AccTest`/`test_case`/`rules` DSL, `new-regression-test.ps1`, `build-regression-test.ps1`, and `publish-regression-test.ps1`.
+- Added regression-harness schema validation, suite scoring, history snapshotting, history summarization, and committed-review/docs-writer/acceptance-testing adjudicated example coverage.
+- Added a one-shot repo-only maintainer validator at `tools/validate-ai-toolkit.ps1` so contract validation, markdown lint, regression-harness validation, and upstream contributor drift can run through a single entry point.
+- Added tracked upstream contributor baselines for building, debugging, FAQ, high-level overview, glossary, and running-the-tests guidance so the drift checker can validate those local reference points explicitly.
+
 ### Changed
 
+- Tightened the one-shot AI toolkit validator so changelog handling is now an explicit maintainer decision instead of a path-based heuristic: update `CHANGELOG.md`, or pass an explicit `-ChangelogNotRequired -ChangelogReason "..."` waiver when no release-note entry is warranted.
+- Tightened the regression harness around deterministic run envelopes by snapshotting per-run case and weights inputs, recording repository snapshot and capture metadata, validating run manifests against schema, and validating result artifacts before scoring.
+- Renamed the regression test implementation surface to the public `new-regression-test.ps1`, `build-regression-test.ps1`, and `publish-regression-test.ps1` entry points, removing the old `acctest`-named implementation files and documenting the stricter unreleased HCL standard directly.
+- Updated the AI toolkit alignment checklist, maintainer skill, and CI workflows to use the shared one-shot maintainer validator, including CI-specific catalog-issue tolerance via `-AllowCatalogIssues`.
+- Expanded local AI guidance to incorporate the reviewed upstream contributor topics for provider build entry points, codebase overview and terminology, provider debugging escalation, acceptance-test invocation, and contributor merge-conflict guidance.
+
 ### Fixed
+
+- Fixed the upstream contributor drift coverage gap so all tracked and explicitly referenced upstream contributor topics now resolve cleanly with `Changed Sources: 0`, `Catalog Issues: 0`, and `Rule Issues: 0`.
+
 
 ## [3.1.0] - 2026-04-26
 

@@ -1,0 +1,57 @@
+{
+  "id": "skill-docs-writer-argument-note-shape",
+  "title": "Docs-writer guidance fixes canonical argument wording and note placement",
+  "task": "docs-writer",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized direct docs-writer scenario where an existing resource page drifts on canonical enum wording and default placement, and the correct output should edit the page in place without inventing unsupported schema claims.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-docs-writer-argument-note-shape/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/r/example_gateway.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a real docs-writer request against an existing docs page without retaining live PR identity. The modeled changed path stays under `website/docs/` for realistic skill routing, while the fixture content lives under `tools/regression/fixtures/`."
+  },
+  "expectedRules": [
+    "DOCS-ARG-*",
+    "DOCS-NOTE-*",
+    "DOCS-WORD-*",
+    "DOCS-EVID-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "canonical-enum-phrasing",
+      "severity": "high",
+      "file": "website/docs/r/example_gateway.html.markdown",
+      "description": "The docs-writer response should restore canonical `Possible values are` phrasing for the argument bullet."
+    },
+    {
+      "key": "inline-default-placement",
+      "severity": "medium",
+      "file": "website/docs/r/example_gateway.html.markdown",
+      "description": "The docs-writer response should keep the default value inline in the argument bullet rather than moving it into a detached note."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "guessed-schema-claim",
+      "description": "The response must not invent schema, enum, or import-ID claims that are not supported by implementation evidence."
+    },
+    {
+      "key": "scaffold-existing-page",
+      "description": "The response must not treat scaffolding as the default remediation for an existing docs page."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: docs-writer"
+    ]
+  },
+  "notes": "Use this as the direct docs-writer skill benchmark for existing-page remediation without scaffold drift."
+}

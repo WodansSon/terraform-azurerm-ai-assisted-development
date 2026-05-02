@@ -1,0 +1,56 @@
+name: Validate Regression Harness
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/regression/**'
+      - 'tools/validate-ai-toolkit.ps1'
+      - 'docs/AI_REGRESSION_HARNESS.md'
+      - '.github/workflows/regression-harness-validation.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/regression/**'
+      - 'tools/validate-ai-toolkit.ps1'
+      - 'docs/AI_REGRESSION_HARNESS.md'
+      - '.github/workflows/regression-harness-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-regression-harness:
+    name: Validate Regression Harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run AI toolkit validator for regression scope
+        shell: pwsh
+        run: |
+          ./tools/validate-ai-toolkit.ps1 -SkipUpstreamDrift
+
+      - name: Publish workflow summary
+        shell: pwsh
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Regression Harness"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '```text'
+          Get-Content -LiteralPath ./tools/regression/results/latest/regression-history-summary.txt | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '```'
+
+      - name: Upload regression harness reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-harness-reports
+          path: |
+            tools/regression/results/latest/validation.json
+            tools/regression/results/latest/regression-suite.txt
+            tools/regression/results/latest/regression-suite.json
+            tools/regression/results/latest/regression-history-snapshot.json
+            tools/regression/results/latest/regression-history-summary.txt
+            tools/regression/results/latest/regression-history-summary.json
+            tools/regression/results/latest/regression-harness-summary.json

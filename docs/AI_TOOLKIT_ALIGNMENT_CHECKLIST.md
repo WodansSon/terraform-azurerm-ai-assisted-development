@@ -4,10 +4,10 @@ This checklist is for maintainers of this repository.
 
 Use it when you want to answer questions like:
 
-- is the AI toolkit up to date?
-- did we wire a new contract family completely?
-- does bootstrap/install include the right runtime payload?
-- did we update the docs that explain the current rule model?
+- Is the AI toolkit up to date?
+- Did we wire a new contract family completely?
+- Does bootstrap/install include the right runtime payload?
+- Did we update the docs that explain the current rule model?
 
 This is a maintenance checklist for this repository only. It is not part of the runtime toolkit that gets installed into target repositories.
 
@@ -59,13 +59,13 @@ The current contract-driven domains are:
 
 For each changed or new `*-contract.instructions.md` file, confirm it still has:
 
-- frontmatter
+- Frontmatter
 - `## Consumers`
 - `## Canonical sources of truth (precedence)`
 - `Conflict resolution:`
 - `## Rule IDs`
 - `## Evidence hierarchy`
-- a contract EOF marker comment as the last non-empty line
+- A contract EOF marker comment as the last non-empty line
 
 If the contract uses provenance, only use supported labels:
 
@@ -77,30 +77,30 @@ If the contract uses provenance, only use supported labels:
 
 For every declared consumer in a contract:
 
-- the file exists
-- the file references the contract path
-- any consumer marked `Requires EOF Load: yes` explicitly mentions loading the contract to EOF
+- The file exists
+- The file references the contract path
+- Any consumer marked `Requires EOF Load: yes` explicitly mentions loading the contract to EOF
 
 Typical consumers include:
 
-- prompts in `.github/prompts/`
-- skills in `.github/skills/`
-- routing instructions in `.github/instructions/ai-skill-routing-*.instructions.md`
+- Prompts in `.github/prompts/`
+- Skills in `.github/skills/`
+- Routing instructions in `.github/instructions/ai-skill-routing-*.instructions.md`
 
 ### 3. Companion guidance points back to the contract
 
 If a contract declares companion guidance, each companion file should:
 
-- explicitly state that it is companion guidance
-- point back to the contract path
-- defer compliance authority to the contract instead of acting as a second authority source
+- Explicitly state that it is companion guidance
+- Point back to the contract path
+- Defer compliance authority to the contract instead of acting as a second authority source
 
 ### 4. Rule-reference documentation is still accurate
 
 Update `docs/CODE_REVIEW_RULES.md` when either of these happens:
 
-- a new contract family is added
-- a new rule area is introduced that is useful for end users to understand
+- A new contract family is added
+- A new rule area is introduced that is useful for end users to understand
 
 You do not need to update it for every new individual rule inside an already-documented area.
 
@@ -108,8 +108,8 @@ You do not need to update it for every new individual rule inside an already-doc
 
 When a new file is added, decide whether it is:
 
-- runtime toolkit payload
-- repo-maintenance-only tooling
+- Runtime toolkit payload
+- Repo-maintenance-only tooling
 
 Runtime toolkit payload belongs in `installer/file-manifest.config` if it must be copied into target repositories.
 
@@ -124,20 +124,61 @@ Typical runtime payload files:
 Typical maintenance-only files that should stay out of the installed payload:
 
 - `tools/config/upstream-contributor.json`
+- `tools/validate-ai-toolkit.ps1`
 - `tools/validate-contracts.ps1`
 - `tools/check-upstream-contributor-drift.ps1`
 - `.github/workflows/contracts-validation.yml`
 - `.github/skills/ai-toolkit-maintenance/SKILL.md`
-- repo-only maintenance checklists like this file
+- Repo-only maintenance checklists like this file
 
 ### 6. Changelog and release docs are aligned
 
 When the runtime toolkit changes in a user-visible way:
 
-- update `CHANGELOG.md`
-- if the change affects release or maintenance expectations, update `.github/workflows/RELEASING.md` when needed
+- Update `CHANGELOG.md`
+- If the change affects release or maintenance expectations, update `.github/workflows/RELEASING.md` when needed
 
 ### 7. Validation passes
+
+Preferred one-shot maintainer validation:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
+```
+
+That command runs the current repo-level maintainer validation flow in one pass:
+
+- Explicit changelog-decision validation for current branch changes
+- Contract validation
+- Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
+- Regression harness validation and suite scoring
+- Upstream contributor drift detection
+
+If the current branch intentionally does not need a changelog entry, make that explicit instead of relying on path-based inference:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -ChangelogNotRequired -ChangelogReason "Repo-only maintenance change with no release-note impact"
+```
+
+When you need the machine-readable summary:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -OutputFormat Json
+```
+
+If you intentionally want the summary without failing on unresolved upstream drift:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowDrift
+```
+
+If you want CI-style behavior that still fails on changed tracked sources or rule issues but tolerates the currently known uncovered topic catalog gaps:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues
+```
+
+The lower-level commands remain available for debugging and targeted re-runs.
 
 Run:
 
@@ -175,7 +216,7 @@ If the current file contents and workspace validators are clean but the VS Code 
 
 Practical recovery step:
 
-- reload the VS Code window so the YAML language service rebuilds diagnostics from the current on-disk files
+- Reload the VS Code window so the YAML language service rebuilds diagnostics from the current on-disk files
 
 ### 8. Bootstrap payload matches expectations
 
@@ -183,38 +224,38 @@ When the runtime payload changes, confirm bootstrap/install copies the expected 
 
 At a minimum, verify that:
 
-- new runtime contracts are copied
-- new or updated routing instructions are copied
-- updated skills are copied
-- maintenance-only scripts are not copied into target repositories
+- New runtime contracts are copied
+- New or updated routing instructions are copied
+- Updated skills are copied
+- Maintenance-only scripts are not copied into target repositories
 
 ### 9. Avoid known formatting and validation traps
 
 When maintaining AI-toolkit support docs and checklists in this repository:
 
-- prefer flat bullet lists over numbered lists when the exact sequence is not important
-- avoid adding ordered lists just for presentation symmetry
-- if a document is intended to be machine-read, copied into prompts, or reused in validation-sensitive contexts, favor simpler Markdown structures
+- Prefer flat bullet lists over numbered lists when the exact sequence is not important
+- Avoid adding ordered lists just for presentation symmetry
+- If a document is intended to be machine-read, copied into prompts, or reused in validation-sensitive contexts, favor simpler Markdown structures
 
 Standard authoring pattern for AI-toolkit files:
 
-- use titled subsections to express the major stages or categories
-- use flat or nested bullets under each title to express the concrete guidance
-- let heading order and bullet indentation convey sequence instead of explicit numbering
-- treat this as the default pattern for `.github/skills/`, `.github/prompts/`, and `.github/instructions/`
+- Use titled subsections to express the major stages or categories
+- Use flat or nested bullets under each title to express the concrete guidance
+- Let heading order and bullet indentation convey sequence instead of explicit numbering
+- Treat this as the default pattern for `.github/skills/`, `.github/prompts/`, and `.github/instructions/`
 
 This is a practical safeguard. The CI/CD pipeline validates Markdown with `DavidAnson/markdownlint-cli2-action@v18`, and we have previously hit `MD029` failures in AI-toolkit files.
 
 Known failure pattern:
 
-- multiple top-level ordered lists under the same section that each restart at `1.`
-- mixed ordered-list numbering styles that make markdownlint treat the numbering as inconsistent
+- Multiple top-level ordered lists under the same section that each restart at `1.`
+- Mixed ordered-list numbering styles that make markdownlint treat the numbering as inconsistent
 
 Practical rule:
 
-- if the content is just a set of guidance bullets, use unordered lists
-- if you truly need an ordered list, keep one consistent ordered-list sequence instead of creating multiple sibling ordered lists that each restart at `1.`
-- prefer titled subsections plus bullets for procedural guidance, letting heading order and bullet indentation convey sequence without explicit numbering
+- If the content is just a set of guidance bullets, use unordered lists
+- If you truly need an ordered list, keep one consistent ordered-list sequence instead of creating multiple sibling ordered lists that each restart at `1.`
+- Prefer titled subsections plus bullets for procedural guidance, letting heading order and bullet indentation convey sequence without explicit numbering
 
 Pay extra attention to files under:
 
@@ -234,8 +275,7 @@ npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.mark
 
 When asked whether the AI toolkit is up to date, check these in order:
 
-- `pwsh -NoProfile -File ./tools/validate-contracts.ps1` passes.
-- `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` reports no unresolved upstream-doc drift for the tracked sources you rely on.
+- `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` passes.
 - `installer/file-manifest.config` includes all required runtime payload files.
 - `docs/CODE_REVIEW_RULES.md` still matches the current contract families and rule areas.
 - `CHANGELOG.md` reflects the current release state.

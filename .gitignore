@@ -14,3 +14,8 @@ Thumbs.db
 
 # Installer artifacts
 installer/aii.checksum
+
+# Regression harness generated run artifacts
+tools/regression/runs/
+tools/regression/results/latest/
+tools/regression/results/history/

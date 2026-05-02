@@ -1091,6 +1091,7 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
 
 - Typed resources that support resource identity should implement `sdk.ResourceWithIdentity`, set identity data immediately after `metadata.SetID(id)` in create, and set it again during read before encoding state.
 - Untyped resources should pair `pluginsdk.GenerateIdentitySchema(...)` with `pluginsdk.ImporterValidatingIdentity(...)` and `pluginsdk.SetResourceIdentityData(...)` in create and read.
+- Resource identity tests are generator-driven. Add the `go:generate` resource-identity test comment near the imports and map every ID segment through either `-properties` or `-compare-values`; if the resource ID omits `subscription_id`, use `-no-subscription-id`.
 - Resource identity generation currently does not support composite resource IDs or custom IDs outside `commonids` and `go-azure-sdk`, and numeric ID segment names can produce incorrect snake_case field names.
 - Write-only attributes are appropriate only for sensitive scalar resource attributes that are not `ForceNew`, not `Computed`, and not nested in unsupported collection shapes.
 - Pair each write-only field with a non-write-only trigger field such as `<name>_wo_version`, wire `ConflictsWith` and `RequiredWith` both ways, use `pluginsdk.GetWriteOnly(...)` in create and update, and persist the trigger field in state during read to avoid permanent diffs.

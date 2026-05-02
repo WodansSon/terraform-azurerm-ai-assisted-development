@@ -223,7 +223,7 @@ If attestation verification fails:
 
 **Cause**:
 - GitHub CLI is not authenticated correctly to `github.com`, or
-- a stale `GH_TOKEN` / `GITHUB_TOKEN` environment variable is overriding your normal `gh` login
+- A stale `GH_TOKEN` / `GITHUB_TOKEN` environment variable is overriding your normal `gh` login
 
 **Fixes**:
 - Check your current GitHub CLI authentication state:
@@ -352,7 +352,7 @@ You have existing Copilot instructions. The installer creates backups automatica
 
 **To Review Backups**:
 - Windows: `%USERPROFILE%\.vscode\copilot\backups\`
-- macOS/Linux: `~/.vscode/copilot/backups/`
+- On macOS/Linux: `~/.vscode/copilot/backups/`
 
 ---
 

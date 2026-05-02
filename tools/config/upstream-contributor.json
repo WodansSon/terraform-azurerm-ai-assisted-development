@@ -19,6 +19,67 @@
       ]
     },
     {
+      "id": "building-the-provider",
+      "domain": "build-and-development",
+      "title": "Building the Provider",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/building-the-provider.md",
+      "baselineSha256": "57f7750ff5d93b3285a81895809e8bfae96968498c2b8c80c0d05009f9ec65dd",
+      "reviewNotes": [
+        "Current upstream entry point for canonical provider build guidance.",
+        "Review when upstream build prerequisites or the canonical build handoff move to a different document."
+      ]
+    },
+    {
+      "id": "debugging-the-provider",
+      "domain": "debugging",
+      "title": "Debugging the Provider",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/debugging-the-provider.md",
+      "baselineSha256": "defe5a8e1033e686e0adc1a927f7cc1a6931fc27a3407a1237385d87b4cf3533",
+      "reviewNotes": [
+        "Primary upstream source for logging, proxy, and debugger-based provider debugging guidance."
+      ]
+    },
+    {
+      "id": "frequently-asked-questions",
+      "domain": "contributor-faq",
+      "title": "Frequently Asked Questions",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/frequently-asked-questions.md",
+      "baselineSha256": "872030e9203527835ca3f05e762265eaf11fde45d70750d5f32197e9fb7cad5c",
+      "reviewNotes": [
+        "Review contributor-facing workflow expectations such as merge-conflict handling, release cadence, label meanings, and issue-routing norms."
+      ]
+    },
+    {
+      "id": "high-level-overview",
+      "domain": "codebase-overview",
+      "title": "High Level Overview",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/high-level-overview.md",
+      "baselineSha256": "6aae0eb200c3822eaaa99216f75a1a0859def7dbe7778fcdbb7924a2a1534b97",
+      "reviewNotes": [
+        "Primary upstream source for provider package layout, service package anatomy, and typed-versus-untyped implementation taxonomy."
+      ]
+    },
+    {
+      "id": "reference-glossary",
+      "domain": "terminology",
+      "title": "Glossary",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-glossary.md",
+      "baselineSha256": "6aaef642055293e02a801f3dbb39c2847021b1bcf037cf9847475b2897b18077",
+      "reviewNotes": [
+        "Primary upstream source for provider terminology such as service packages, resource ID parser or validator types, and typed-versus-untyped concepts."
+      ]
+    },
+    {
+      "id": "running-the-tests",
+      "domain": "testing",
+      "title": "Running the Tests",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/running-the-tests.md",
+      "baselineSha256": "a99ecdb28904eb41dbfa4cfd847e64be3910d46bb2c5279f163b641c6a17cd6e",
+      "reviewNotes": [
+        "Primary upstream source for acceptance-test entry points, required ARM_* environment variables, and targeted test filtering."
+      ]
+    },
+    {
       "id": "guide-opening-a-pr",
       "domain": "pr-process",
       "title": "Opening a PR",
@@ -203,7 +264,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "97f1df5310cc6612dc6b9c3e7fce23ccfa6961fadda313f6f05487b258e9dc2d",
+      "baselineSha256": "b322422a6f68661766c4ad867429fec20d686fdc5992fbfd7aaf67477e68f787",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]

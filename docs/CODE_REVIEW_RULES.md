@@ -84,11 +84,11 @@ These IDs come from `.github/instructions/code-review-compliance-contract.instru
 
 This means the review checked user-visible text quality. It commonly applies to:
 
-- comments
+- Comments
 - README changes
-- prompt text
-- installer help text
-- end-user error messages
+- Prompt text
+- Installer help text
+- End-user error messages
 
 ### `REVIEW-SCOPE-004`
 
@@ -113,10 +113,10 @@ It is the rule that tells the auditor to load the scoped Go instructions and ski
 
 These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:
 
-- whether the linter was applicable
-- how it was invoked
-- why the linter section is `Issues found`, `No issues`, `Not applicable`, or `Not run`
-- how linter findings were turned into review Issues
+- Whether the linter was applicable
+- How it was invoked
+- Why the linter section is `Issues found`, `No issues`, `Not applicable`, or `Not run`
+- How linter findings were turned into review Issues
 
 ## `DOCS-*` Rule Areas
 
@@ -180,10 +180,10 @@ If the review feels unclear, look up the exact rule in the contract file and rea
 
 This reference is most useful when:
 
-- a review says a specific rule was directly relevant
-- you want to understand why a prompt checked something that was not obvious from the diff alone
-- you want to challenge a finding and verify whether the cited contract rule really applies
-- you are updating the prompts or contracts and want the output to stay understandable to end users
+- A review says a specific rule was directly relevant
+- You want to understand why a prompt checked something that was not obvious from the diff alone
+- You want to challenge a finding and verify whether the cited contract rule really applies
+- You are updating the prompts or contracts and want the output to stay understandable to end users
 
 ## Short Version
 

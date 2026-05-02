@@ -1,0 +1,48 @@
+{
+  "id": "harness-smoke-resource-implementation",
+  "title": "Synthetic smoke case for scoring resource-implementation guidance",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic adjudicated case used to verify that the regression harness can score a resource-implementation result deterministically.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Smoke-test case only. Not a substitute for a real sanitized PR-derived fixture."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-003",
+    "IMPL-SCHEMA-004",
+    "IMPL-ERR-002"
+  ],
+  "mustCatch": [
+    {
+      "key": "prefer-stronger-validation",
+      "severity": "medium",
+      "description": "The guidance should prefer stronger validation when the accepted values or formats are knowable."
+    },
+    {
+      "key": "avoid-redundant-parser-wrapper",
+      "severity": "medium",
+      "description": "The guidance should return comprehensive parser errors directly rather than wrapping them redundantly."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "blind-sdk-enum-usage",
+      "description": "The guidance should not require SDK enum helpers when the accepted subset is known to be narrower."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this case as a runner smoke test while real PR-derived fixtures are being authored."
+}

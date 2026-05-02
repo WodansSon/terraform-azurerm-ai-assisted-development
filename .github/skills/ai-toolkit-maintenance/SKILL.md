@@ -92,6 +92,14 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Added because pure logic can prove exact references and exact drift states, but cannot prove semantic equivalence or meaning-preserving upstream rewrites
   - The repo-only maintainer workflow needs an explicit handoff from deterministic detection to AI-assisted semantic review rather than heuristic auto-mapping
 
+### MAINT-UPSTREAM-004: Keep contributor merge-conflict guidance aligned with upstream FAQ expectations
+
+- Rule: Do not broadly tell contributors to rebase or merge from `main` just because a pull request is stale or conflicted; prefer that only after a maintainer has reviewed the PR and explicitly requested it.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/frequently-asked-questions.md` says contributors should generally rebase or merge from `main` only once a maintainer has taken a look through the PR and explicitly requested it
+  - That guidance is relevant when local maintainer workflow or AI suggestions discuss how contributors should resolve merge conflicts on open PRs
+
 - Classify the change first:
   - Decide whether the file belongs in shipped runtime payload or repo-only maintenance tooling.
   - Leave repo-only files out of `installer/file-manifest.config`.
@@ -117,6 +125,9 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - When a tracked upstream doc changes, review the dynamically discovered local references and remove any conflicting local rules while preserving verified tribal knowledge that still does not conflict.
 
 - Run the repo maintenance checks:
+  - Prefer `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` for the one-shot maintainer validation flow.
+  - Use `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues` when CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
+  - Treat the one-shot validator as including an explicit branch-local changelog decision: update `CHANGELOG.md`, or rerun with `-ChangelogNotRequired -ChangelogReason "..."` when no release-note entry is warranted.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.
   - Run `pwsh -NoProfile -File ./tools/validate-contracts.ps1` after contract or consumer changes.
   - Run `npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.markdownlint.json` after Markdown-based AI-toolkit changes.

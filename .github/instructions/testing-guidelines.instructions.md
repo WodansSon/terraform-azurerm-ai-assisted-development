@@ -27,6 +27,7 @@ If this guide conflicts with the testing contract, follow the testing contract a
 - Tests may incur Azure costs depending on resources created
 - Ensure proper cleanup after test execution
 - Unit tests are safe and don't require Azure credentials
+- The upstream acceptance-test entry point is `make acctests SERVICE='<service>' TESTARGS='-run=<nameOfTheTest>' TESTTIMEOUT='60m'` with the required `ARM_*` and `ARM_TEST_LOCATION*` environment variables present in the shell.
 
 **Example Command Format:**
 ```bash
@@ -595,8 +596,9 @@ make testacc TEST=./internal/services/cdn TESTARGS='-run=TestAccCdnFrontDoorProf
 - Scale-down operations blocked due to health monitoring requirements
 - Soft-delete conflicts preventing immediate recreation
 
-**📚 Official Acceptance Testing Reference:**
-For comprehensive acceptance testing guidelines, see: [Acceptance Testing Reference](../../../contributing/topics/reference-acceptance-testing.md)
+**📚 Official Acceptance Testing References:**
+- [Acceptance Testing Reference](../../../contributing/topics/reference-acceptance-testing.md)
+- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/running-the-tests.md`
 
 ## 📚 Specialized Testing Guidance (On-Demand)
 

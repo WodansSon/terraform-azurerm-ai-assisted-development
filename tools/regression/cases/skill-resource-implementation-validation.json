@@ -1,0 +1,63 @@
+{
+  "id": "skill-resource-implementation-validation",
+  "title": "Resource implementation guidance applies contract-backed schema and error rules",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized historical implementation-guidance scenario where the correct output should prefer stronger evidence-backed validation, avoid blind SDK-enum expansion, and return comprehensive parser errors directly.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-validation/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/example_frontdoor_resource.go",
+      "internal/services/cdn/parse.go"
+    ],
+    "notes": "Sanitized fixture models a real implementation-review incident without retaining live PR identity."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-003",
+    "IMPL-SCHEMA-004",
+    "IMPL-ERR-001",
+    "IMPL-ERR-002"
+  ],
+  "mustCatch": [
+    {
+      "key": "fallback-validator-overuse",
+      "severity": "medium",
+      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "description": "The guidance should prefer stronger validation when the real constraints are knowable."
+    },
+    {
+      "key": "redundant-parser-wrapper",
+      "severity": "medium",
+      "file": "internal/services/cdn/parse.go",
+      "description": "The guidance should avoid wrapping comprehensive parser errors with redundant context."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "blind-sdk-enum-usage",
+      "description": "The guidance must not require SDK PossibleValues helpers when the accepted subset is demonstrably narrower."
+    },
+    {
+      "key": "parser-error-needs-more-context",
+      "description": "The guidance must not insist on adding flattening or field-name context when the parser error already gives the user the meaningful failure details."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this as the first adjudicated real-world case pattern for future sanitized implementation-guidance fixtures."
+}
