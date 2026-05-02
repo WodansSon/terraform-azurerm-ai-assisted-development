@@ -25,7 +25,6 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
-$changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 
 $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
 if ($null -eq $npxCommand) {
@@ -104,6 +103,37 @@ function Get-TextMatchValue {
     return $match.Groups[1].Value
 }
 
+function Invoke-GitCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+
+        [switch]$AllowFailure
+    )
+
+    if ($null -eq $gitCommand) {
+        return $null
+    }
+
+    $global:LASTEXITCODE = 0
+    $output = @(& $gitCommand.Source -C $RepoRoot @Arguments 2>$null)
+    $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $global:LASTEXITCODE = 0
+
+    if ($exitCode -ne 0) {
+        if ($AllowFailure) {
+            return $null
+        }
+
+        throw ("git command failed ({0}): git -C {1} {2}" -f $exitCode, $RepoRoot, ($Arguments -join ' '))
+    }
+
+    return $output
+}
+
 function Get-ChangedRepositoryPaths {
     param([string]$RepoRoot)
 
@@ -113,24 +143,20 @@ function Get-ChangedRepositoryPaths {
 
     $paths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 
-    try {
-        $statusLines = @(& $gitCommand.Source -C $RepoRoot status --porcelain)
-        foreach ($statusLine in $statusLines) {
-            if ([string]::IsNullOrWhiteSpace($statusLine) -or $statusLine.Length -lt 4) {
-                continue
-            }
-
-            $pathValue = $statusLine.Substring(3).Trim()
-            if ($pathValue -match ' -> ') {
-                $pathValue = ($pathValue -split ' -> ')[-1]
-            }
-
-            if (-not [string]::IsNullOrWhiteSpace($pathValue)) {
-                [void]$paths.Add($pathValue.Replace('\', '/'))
-            }
+    $statusLines = @(Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('status', '--porcelain') -AllowFailure)
+    foreach ($statusLine in $statusLines) {
+        if ([string]::IsNullOrWhiteSpace($statusLine) -or $statusLine.Length -lt 4) {
+            continue
         }
-    }
-    catch {
+
+        $pathValue = $statusLine.Substring(3).Trim()
+        if ($pathValue -match ' -> ') {
+            $pathValue = ($pathValue -split ' -> ')[-1]
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($pathValue)) {
+            [void]$paths.Add($pathValue.Replace('\', '/'))
+        }
     }
 
     $candidateRefs = @()
@@ -141,36 +167,26 @@ function Get-ChangedRepositoryPaths {
     $candidateRefs = @($candidateRefs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 
     foreach ($candidateRef in $candidateRefs) {
-        try {
-            & $gitCommand.Source -C $RepoRoot rev-parse --verify $candidateRef *> $null
-            $diffPaths = @(& $gitCommand.Source -C $RepoRoot diff --name-only "$candidateRef...HEAD")
-            foreach ($diffPath in $diffPaths) {
-                if (-not [string]::IsNullOrWhiteSpace($diffPath)) {
-                    [void]$paths.Add($diffPath.Replace('\', '/'))
-                }
+        $verifiedRef = Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('rev-parse', '--verify', $candidateRef) -AllowFailure
+        if ($null -eq $verifiedRef) {
+            continue
+        }
+
+        $diffPaths = @(Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('diff', '--name-only', "$candidateRef...HEAD") -AllowFailure)
+        if ($null -eq $diffPaths) {
+            continue
+        }
+
+        foreach ($diffPath in $diffPaths) {
+            if (-not [string]::IsNullOrWhiteSpace($diffPath)) {
+                [void]$paths.Add($diffPath.Replace('\', '/'))
             }
-            break
         }
-        catch {
-        }
+
+        break
     }
 
     return @($paths | Sort-Object)
-}
-
-function Test-PathMatchesAnyPattern {
-    param(
-        [string]$Path,
-        [string[]]$Patterns
-    )
-
-    foreach ($pattern in $Patterns) {
-        if ($Path -like $pattern) {
-            return $true
-        }
-    }
-
-    return $false
 }
 
 Push-Location $repoRoot
@@ -282,11 +298,11 @@ try {
         $summary | ConvertTo-Json -Depth 10
     }
     else {
-        Write-Output "AI toolkit validation summary"
+        Write-Output 'AI toolkit validation summary'
         Write-Output "  Overall Status   : $($summary.overallStatus)"
         Write-Output "  Repository Root  : $repoRoot"
-        Write-Output ""
-        Write-Output "Validation steps"
+        Write-Output ''
+        Write-Output 'Validation steps'
         foreach ($step in $steps) {
             Write-Output "  $($step.name): $($step.status) ($($step.durationSeconds)s)"
             if (-not [string]::IsNullOrWhiteSpace($step.detail)) {
@@ -294,8 +310,8 @@ try {
             }
         }
 
-        Write-Output ""
-        Write-Output "Highlights"
+        Write-Output ''
+        Write-Output 'Highlights'
         if ($null -ne $summary.highlights.changelogStatus) {
             Write-Output "  Changelog Status         : $($summary.highlights.changelogStatus)"
         }
@@ -316,8 +332,8 @@ try {
         }
 
         if (-not $overallSuccess) {
-            Write-Output ""
-            Write-Output "Failures"
+            Write-Output ''
+            Write-Output 'Failures'
             foreach ($failedStep in @($steps | Where-Object { -not $_.success })) {
                 Write-Output "  [$($failedStep.name)] exit=$($failedStep.exitCode)"
                 if (-not [string]::IsNullOrWhiteSpace($failedStep.output)) {
