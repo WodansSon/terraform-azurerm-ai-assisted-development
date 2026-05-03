@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.2.1] - 2026-05-03
+
+### Added
+
 - Added an adjudicated committed-review regression case that covers PR-authoritative scope selection, so branch-only commits are not treated as PR findings when explicit pull request context exists.
 - Added an adjudicated committed-review regression case that covers `DOCS-DEPR-*` handling for mixed Go-plus-reference-doc PRs, so legacy non-vNext fields are not incorrectly required in live docs when migration belongs in the upgrade guide.
 - Added an adjudicated docs-review regression case that covers the resource-versus-data-source example split, so data source examples are not incorrectly forced to declare backing resources when they are demonstrating existing-object lookups.
