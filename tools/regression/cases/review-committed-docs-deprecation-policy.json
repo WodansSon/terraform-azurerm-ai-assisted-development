@@ -1,0 +1,61 @@
+{
+  "id": "review-committed-docs-deprecation-policy",
+  "title": "Committed review honors docs deprecation policy in mixed PR scope",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where a mixed Go-plus-reference-doc PR removes a legacy non-vNext field from live docs while the provider still accepts that field on a transitional non-5.0 path. The correct review must apply `DOCS-DEPR-*` and keep migration guidance in the upgrade guide rather than raising a docs-parity issue.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-docs-deprecation-policy/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/cdn_frontdoor_custom_domain_resource.go",
+      "website/docs/r/cdn_frontdoor_custom_domain.html.markdown",
+      "website/docs/guides/5.0-upgrade-guide.html.markdown"
+    ],
+    "notes": "The modeled PR updates implementation and docs together. The live resource doc intentionally removes the legacy `minimum_tls_version` field, while the versioned upgrade guide carries the migration note."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-004A",
+    "DOCS-DEPR-001",
+    "DOCS-DEPR-002",
+    "DOCS-EVID-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "docs-deprecation-policy-applied",
+      "severity": "high",
+      "description": "The committed review should apply the docs contract's next-major deprecation rules and recognize that the legacy non-vNext field should stay out of current reference docs."
+    },
+    {
+      "key": "exact-docs-rule-citation",
+      "severity": "medium",
+      "description": "The committed review should cite the exact supporting docs rule IDs when justifying why the legacy field stays out of the live reference docs."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "legacy-field-doc-parity-issue",
+      "description": "The review must not raise an Issue claiming the live reference docs need to restore the legacy `minimum_tls_version` field when migration belongs in the 5.0 upgrade guide."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "MUST FIX"
+    ],
+    "mustIncludeMarkers": [
+      "DOCS-DEPR-001",
+      "DOCS-DEPR-002"
+    ]
+  },
+  "notes": "Pair this case with the sample review Markdown output and scored result to benchmark mixed committed-review docs deprecation policy handling."
+}

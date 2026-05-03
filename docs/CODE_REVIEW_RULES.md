@@ -131,7 +131,7 @@ These IDs come from `.github/instructions/docs-compliance-contract.instructions.
 | `DOCS-FMT-*` | Formatting | Backticks, intro lines, and code-fence conventions |
 | `DOCS-IMP-*` | Import docs | Import wording and example correctness |
 | `DOCS-SHAPE-*` | Schema shape parity | Whether docs reflect blocks, maps, lists, and nested structures correctly |
-| `DOCS-EX-*` | Example code | Example correctness, self-containedness, naming, and Terraform syntax |
+| `DOCS-EX-*` | Example code | Example correctness, resource self-containedness, data source lookup behavior, naming, and Terraform syntax |
 | `DOCS-NOTE-*` | Notes | Required note blocks, note severity, formatting, and de-duplication |
 | `DOCS-ARG-*` | Arguments Reference | Field coverage, ordering, defaults, and validation wording |
 | `DOCS-ATTR-*` | Attributes Reference | Computed field coverage and ordering |

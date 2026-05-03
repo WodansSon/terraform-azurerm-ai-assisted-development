@@ -155,6 +155,18 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the active review prompt file itself is part of the reviewed change-set, skip only that specific file.
 - Rule: The skip must be disclosed explicitly in the review output.
 
+### REVIEW-FILE-004: Committed review scope must prefer authoritative PR context
+- Rule: When authoritative pull request metadata exists, committed review must use the pull request changed-file set and diff as the authoritative review scope.
+- Rule: Do not treat unrelated branch-only commits as committed-review findings when active or viewed pull request context exists.
+- Rule: Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
+- Rule: When authoritative pull request metadata exists, retrieve the authoritative PR changed-file set from GitHub-backed pull request metadata.
+- Rule: Acceptable authoritative PR file sources include environment-provided PR metadata and the GitHub pull request files API for the resolved PR number.
+- Rule: An explicit PR number supplied by the user is an acceptable deterministic input for resolving the authoritative PR changed-file set.
+- Rule: Do not assume the GitHub CLI is installed, and do not require `gh` as the only compliant path for PR file retrieval.
+- Rule: Do not reconstruct PR scope by scraping local Copilot session files, `workspaceStorage`, `chat-session-resources`, or ad hoc cached JSON artifacts from the local machine.
+- Rule: If explicit user-supplied PR context and environment PR context both exist and conflict, committed review must fail closed instead of silently choosing one.
+- Rule: The only allowed exception is an explicit user override that says the supplied PR should override the active or viewed PR context.
+
 ## File-type-specific review coverage
 
 ### REVIEW-SCOPE-001: Always review user-visible content quality
@@ -181,6 +193,10 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: The generic code review contract continues to govern overall review flow, evidence handling, classification, and output shape.
 - Rule: The docs-writer verification footer and docs-only prompt output contract do not apply to `/code-review-local-changes` or `/code-review-committed-changes`.
 - Rule: Do not extend `DOCS-*` rules to non-reference docs such as `README.md`, `docs/*.md`, or other markdown files unless a future contract explicitly does so.
+- Rule: For reference docs in committed or local review scope, `DOCS-DEPR-*` remains authoritative for next-major deprecations even when implementation evidence shows a legacy non-vNext field still exists on a transitional code path.
+- Rule: Do not raise a docs-parity Issue solely because a legacy field is still accepted on a non-vNext path when the docs contract and docs guidance require that field to stay out of current reference docs and place migration guidance in an upgrade guide.
+- Rule: Any docs Issue raised for files under `website/docs/**/*.html.markdown` must cite at least one exact supporting `DOCS-*` rule ID.
+- Rule: If no exact `DOCS-*` rule supports a proposed docs claim, do not raise it as an Issue in generic review; demote it to an Observation or omit it.
 
 ### REVIEW-SCOPE-005: Go implementation and acceptance-test files defer to scoped guidance
 - Rule: When the review scope includes `internal/**/*.go` or `internal/**/*_test.go`, load and apply the applicable file-scoped instructions and skills.
@@ -272,6 +288,7 @@ If evidence is missing for a claim that would change severity or requested actio
   - the currently open or viewed pull request context, when available
   - an explicit PR number provided by the user or prompt invocation text
 - Rule: Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals.
+- Rule: If explicit user-supplied PR context conflicts with environment PR context and there is no explicit user override, do not run the linter.
 - Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to create a draft PR and run the review again.
 - Rule: When the PR number was not provided explicitly in the committed review invocation, that summary should include an example of how to pass one, such as `/code-review-committed-changes PR 12345`.
 

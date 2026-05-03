@@ -1,0 +1,51 @@
+{
+  "id": "review-docs-datasource-example-lookup",
+  "title": "Docs review accepts existing-object lookup examples for data sources",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where a data source page uses a minimal existing-object lookup example. The correct review should apply the resource-versus-data-source example split and must not require backing-resource scaffolding on the page.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-datasource-example-lookup/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/d/example_subnet.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a data source docs review after the upstream example-standard clarification."
+  },
+  "expectedRules": [
+    "DOCS-EX-000",
+    "DOCS-EX-022",
+    "DOCS-EX-010"
+  ],
+  "mustCatch": [
+    {
+      "key": "datasource-lookup-standard-applied",
+      "severity": "high",
+      "file": "website/docs/d/example_subnet.html.markdown",
+      "description": "The review should apply the data source existing-object lookup standard and accept the example without demanding backing-resource scaffolding."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "resource-scaffolding-required",
+      "description": "The review must not require adding the looked-up resource to the page just to make the data source example look self-contained."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "DOCS-EX-022",
+      "existing-object lookup"
+    ]
+  },
+  "notes": "Pair this case with the sample docs-review markdown output to benchmark the clarified data source example standard."
+}

@@ -285,7 +285,7 @@ AI Chat: "Create documentation following provider standards for azurerm_cdn_fron
 > 2) apply the patch-ready fixes
 > 3) rerun the audit and expect no repeated Issues
 >
-> `/code-review-docs` also enforces deterministic doc-quality checks such as `hcl` fences in examples, page-self-contained examples (no undefined references), import example ID shape validation, and human-readable timeout defaults.
+> `/code-review-docs` also enforces deterministic doc-quality checks such as `hcl` fences in examples, self-contained resource examples, existing-object lookup data source examples, import example ID shape validation, and human-readable timeout defaults.
 
 
 ## 🎬 See It In Action

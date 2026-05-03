@@ -1,0 +1,48 @@
+{
+  "id": "review-committed-pr-context-conflict",
+  "title": "Committed review fails closed on conflicting PR context",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where active PR context identifies one PR, but the user supplies a different PR number by mistake. The correct review must fail closed instead of silently choosing one scope.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-pr-context-conflict/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "The active or viewed PR context resolves to PR 30997, while the invocation text mistakenly supplies PR 30998. No review or linter run should continue until the conflict is resolved or explicitly overridden."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-LINT-002E"
+  ],
+  "mustCatch": [
+    {
+      "key": "pr-context-conflict-hard-stop",
+      "severity": "high",
+      "description": "The committed review should stop immediately when explicit and environment PR targets conflict and no explicit user override exists."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "silent-pr-selection",
+      "description": "The review must not silently choose either the environment PR or the user-supplied PR when they conflict."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-run"
+  },
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "☠️ Argh! Cannot run code-review-committed-changes:",
+      "Environment PR be 30997",
+      "but ye supplied 30998",
+      "takin’ command o’er the current course"
+    ]
+  },
+  "notes": "Pair this case with the sample review output and scored result to benchmark committed-review PR conflict fail-closed behavior."
+}
