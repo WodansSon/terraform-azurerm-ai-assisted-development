@@ -635,15 +635,39 @@ A `configuration` block supports the following:
 
 ## 💡 Example Configuration Guidelines
 
+### General shared rules
+
+Rules:
+- Each resource/data source page should include an example HCL configuration block that shows the end user how to use the resource/data source correctly.
+- Generally the Terraform instance name should simply be `example`.
+- Avoid multiple examples unless a specific configuration is difficult to demonstrate briefly.
+- Do not include `terraform` or `provider` blocks in docs examples.
+- All example values must satisfy schema validation and naming restrictions proven by workspace evidence.
+
+### Resource examples
+
+Rules:
+- Resource examples must be functional and self-contained.
+- If a user copies a resource example and runs `terraform plan`, it should not fail because of undeclared backing infrastructure.
+- Resource examples do not need to include every argument; the basic acceptance-test shape is usually enough, including any required dependencies.
+- Resource name-like values should start with `example-` where feasible.
+
+### Data source examples
+
+Rules:
+- Data source examples should demonstrate an existing-object lookup scenario.
+- Data source examples may assume the looked-up object already exists and do not need to declare the backing resource in the same example.
+- Data source examples should include only the arguments needed to identify the looked-up object.
+- Do not add resource scaffolding solely to create the lookup target for a data source example.
+- Data source identifier-like values should start with `existing-` where feasible.
+
 ### Example naming conventions (provider style)
 
 Rules:
-- Resources: user-supplied name-like argument values (for example `name = "..."`) should start with the prefix `example-` where feasible.
-- Data sources: required identifier-like argument values should start with the prefix `existing-` where feasible.
 - Derive example values from the Terraform **block type being named**, not from the doc topic.
-- Prefer deriving the suffix from the full Terraform resource type so examples are predictable.
-  - Default: kebab-case (underscores replaced with hyphens), for example `azurerm_resource_group` -> `example-resource-group`.
-  - ValidateFunc-safe fallback: if the schema `ValidateFunc` evidence indicates hyphens are not allowed, do not use kebab-case. Use a lowercase no-separator form instead (for example `azurerm_cdn_frontdoor_firewall_policy` -> `examplecdnfrontdoorfirewallpolicy`).
+- Prefer deriving the suffix from the full Terraform resource or data source type so examples are predictable.
+  - Default: kebab-case (underscores replaced with hyphens), for example `azurerm_resource_group` -> `example-resource-group` and `data.azurerm_subnet` -> `existing-subnet`.
+  - ValidateFunc-safe fallback: if the schema `ValidateFunc` evidence indicates hyphens are not allowed, do not use kebab-case. Use a lowercase no-separator form instead (for example `azurerm_storage_account` -> `examplestorageaccount` when that is the simplest valid value).
 - Honor naming constraints from the schema field `ValidateFunc` when present; abbreviate only as much as required to satisfy validation.
 
 Naming constraints (mandatory; use schema evidence):
@@ -652,7 +676,7 @@ Naming constraints (mandatory; use schema evidence):
 ### Example `depends_on` guidance (deterministic)
 
 Rules:
-- Existing docs: do not remove or weaken `depends_on` entries in examples purely to make a snippet “self-contained”. If `depends_on` references resources not declared on the page, fix self-containedness by adding the missing referenced resources (prefer the primary `## Example Usage` block).
+- Existing resource docs: do not remove or weaken `depends_on` entries in examples purely to make a snippet “self-contained”. If `depends_on` references resources not declared on the page, fix self-containedness by adding the missing referenced resources (prefer the primary `## Example Usage` block).
 - Net-new docs: do not introduce `depends_on` unless you have concrete schema/implementation evidence that ordering is required (or the example is explicitly teaching an ordering constraint).
 - If a note says `depends_on` must reference multiple resources (for example both a route and a security policy), preserve all required references.
 - If you cannot reliably determine whether a page is net-new vs existing, default to preserving `depends_on` intent.

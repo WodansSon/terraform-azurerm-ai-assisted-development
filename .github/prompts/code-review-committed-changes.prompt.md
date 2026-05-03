@@ -63,20 +63,50 @@ Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeo
 Execute these required commands directly when this step begins; do not pause for confirmation.
 The commands in steps 1 and 4 must be executed again for each invocation of this prompt, even if they were executed earlier in the conversation.
 
-Run these commands in order and do not repeat them:
+Run this command first and do not repeat it:
 
 ```text
 git branch --show-current
+```
+
+Determine committed review scope in this order:
+
+- If authoritative pull request context is available, use the pull request changed-file set and diff as the committed review scope.
+- Authoritative pull request context means one of the following explicit sources:
+  - the active pull request context, when available
+  - the currently open or viewed pull request context, when available
+- When pull request context is available, obtain the authoritative PR changed-file set from GitHub-backed pull request metadata.
+- Acceptable authoritative PR file sources are:
+  - environment-provided pull request metadata that includes the PR changed-file set
+  - the GitHub pull request files API for the resolved PR number
+- If the user supplies an explicit PR number in the invocation text, that PR number is an acceptable deterministic input for resolving the authoritative PR changed-file set.
+- Do not assume the GitHub CLI is installed.
+- Do not require `gh` as the only way to resolve PR files.
+- Do not reconstruct PR scope by scraping local Copilot session artifacts, `workspaceStorage`, `chat-session-resources`, or ad hoc `content.json` files from the local machine.
+- Do not build PR scope through generated local shell scripts that deserialize PR metadata from user-profile caches.
+- If explicit user-supplied PR context and environment PR context both exist, resolve them before continuing:
+  - If they match, use that PR.
+  - If they conflict, hard-stop and output exactly this one line and nothing else:
+    - `☠️ Argh! Cannot sail the code-review-committed-changes sea, yer PR bearings be crossed. Environment PR be <environment_pr>, but ye supplied <supplied_pr>. Set a proper course and set sail with true bearings, or declare the supplied PR be takin’ command o’er the current course. ☠️`
+  - Only if the user explicitly states that the supplied PR should override the active PR context may the supplied PR number win.
+- Only if no authoritative pull request context exists, or when the user explicitly asks for a branch-wide committed review, run these commands in order and do not repeat them:
+
+```text
 git --no-pager diff --stat --no-prefix origin/main...HEAD
 git --no-pager diff --no-prefix --unified=3 origin/main...HEAD
 ```
 
 Rules:
-- Review the committed diff against `origin/main...HEAD`.
-- If the committed diff is empty, hard-stop and output exactly:
+- When authoritative pull request context exists, treat the pull request changed-file set and diff as the committed review scope.
+- When an explicit PR number is available, the review may use that PR number to resolve the authoritative changed-file set from GitHub without relying on local branch-diff inference.
+- Do not silently choose between conflicting explicit and environment PR targets.
+- Conflict between explicit and environment PR context must fail closed unless the user explicitly requests an override.
+- Do not expand committed-review findings to unrelated branch-only commits when authoritative pull request context exists.
+- Fall back to `origin/main...HEAD` only when no authoritative pull request context exists or when the user explicitly asks for a branch-wide committed review.
+- If the authoritative committed review scope is empty, hard-stop and output exactly:
   - `☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️`
-- If the diff is large, inspect the changed files individually rather than rerunning the branch-wide commands.
-- If additional commit-by-commit context is genuinely needed after reviewing the diff, inspect the relevant commit(s) individually instead of making commit history a mandatory first step.
+- If the committed review scope is large, inspect the changed files individually rather than rerunning broader scope commands.
+- If additional commit-by-commit context is genuinely needed after reviewing the committed review scope, inspect the relevant commit(s) individually instead of making commit history a mandatory first step.
 
 ### 2) Classify files accurately
 - Parse the diff stat carefully so added, modified, and deleted files are counted correctly.
@@ -89,6 +119,11 @@ Rules:
 - Read `.github/pull_request_template.md` when present.
 - Read any file-scoped instructions or skills that directly govern the changed files.
 - If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
+- When `website/docs/**/*.html.markdown` files are in scope, audit those docs files using the docs contract instead of generic schema-parity assumptions.
+- For docs files in committed review scope, treat `DOCS-DEPR-*` as authoritative for next-major deprecations: legacy non-vNext fields may be intentionally removed from live reference docs and moved to versioned upgrade guides.
+- Do not raise an Issue solely because a legacy field still exists on a non-vNext implementation path when the docs contract and docs guidance classify that field as legacy-only and require it to stay out of current reference docs.
+- For docs files in committed review scope, every docs Issue must cite at least one exact `DOCS-*` rule ID that supports the claim.
+- If no exact `DOCS-*` rule supports a proposed docs Issue, demote it to an Observation or omit it.
 - If provider contributor guidance exists in the current workspace or is explicitly fetched as evidence, apply it only where relevant.
 - Use the precedence rules from the shared review contract.
 
@@ -111,6 +146,7 @@ Rules:
     - the active pull request context, when available
     - the currently open or viewed pull request context, when available
     - an explicit PR number supplied by the user or prompt invocation text
+  - If explicit and environment PR sources conflict, do not run the linter until the PR target is resolved by matching values or an explicit user override
   - If a valid PR number is available, run `azurerm-linter --pr=<number> -output json` with shell-native stderr suppression
   - Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals
   - If the stderr-suppressed run does not yield valid stdout JSON or otherwise cannot be classified deterministically, rerun once without stderr suppression to inspect diagnostics
@@ -155,6 +191,9 @@ Rules:
 - Review the full committed change-set.
 - Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
 - Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
+- When `website/docs/**/*.html.markdown` files are in scope, explicitly apply the docs contract's deprecation and upgrade-guide rules before raising docs Issues about removed legacy fields.
+- When `website/docs/**/*.html.markdown` files are in scope, any docs Issue in the review body must include the exact supporting `DOCS-*` rule ID or IDs.
+- Do not emit generic docs-parity Issues for `website/docs/**/*.html.markdown` files without exact `DOCS-*` rule support and evidence.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
 
@@ -230,6 +269,7 @@ Use this template:
 
 ### 🔴 **ISSUES** (only actual problems)
 - [Evidence-backed defects, regressions, or policy violations]
+- [For `website/docs/**/*.html.markdown` Issues, include the exact supporting `DOCS-*` rule ID or IDs]
 - [Include azurerm-linter findings from the filtered run]
 
 ## ✅ **RECOMMENDATIONS**

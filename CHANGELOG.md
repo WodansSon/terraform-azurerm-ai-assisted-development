@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added an adjudicated committed-review regression case that covers PR-authoritative scope selection, so branch-only commits are not treated as PR findings when explicit pull request context exists.
+- Added an adjudicated committed-review regression case that covers `DOCS-DEPR-*` handling for mixed Go-plus-reference-doc PRs, so legacy non-vNext fields are not incorrectly required in live docs when migration belongs in the upgrade guide.
+- Added an adjudicated docs-review regression case that covers the resource-versus-data-source example split, so data source examples are not incorrectly forced to declare backing resources when they are demonstrating existing-object lookups.
+- Added an adjudicated committed-review regression case that covers conflicting PR context, so mismatched environment and user-supplied PR numbers fail closed unless the user explicitly requests an override.
+
 ### Changed
+
+- Tightened the committed-review prompt and shared review contract so committed review now prefers authoritative pull request scope when PR context exists, falling back to `origin/main...HEAD` only when no PR context is available or the user explicitly asks for a branch-wide committed review.
+- Tightened committed-review docs handling so PR-scoped mixed reviews must use GitHub PR tools for authoritative PR scope and must honor `DOCS-DEPR-*` next-major deprecation policy for `website/docs/**/*.html.markdown` files instead of treating legacy non-vNext fields as required live-doc parity.
+- Tightened committed-review docs handling further so docs Issues for `website/docs/**/*.html.markdown` files now require exact supporting `DOCS-*` rule IDs; unsupported generic docs-parity claims must be demoted or omitted.
+- Updated the docs contract, docs-review prompt, docs-writer skill, and user-facing docs to follow the clarified upstream example standard: resource examples must be self-contained, while data source examples may assume existing objects and should not add unnecessary backing-resource scaffolding.
+- Clarified committed-review PR scope retrieval so explicit PR numbers may resolve the authoritative changed-file set through GitHub metadata or the GitHub pull request files API without assuming `gh` is installed.
+- Tightened committed-review PR resolution so conflicting environment and user-supplied PR numbers now hard-stop by default instead of silently choosing a scope.
+- Updated the conflicting-PR-context hard-stop text in committed review to use the same pirate-style voice as the other prompt-owned hard-stop messages.
 
 ### Fixed
 

@@ -84,9 +84,10 @@ Use this to avoid missing common compliance breakpoints. The authoritative detai
 - ForceNew + wording hygiene: `DOCS-WORD-*` (including enum phrasing + Oxford comma) and `DOCS-ARG-003/006/009`
 - Azure object-name wording: keep canonical Azure proper-name capitalization such as `Resource Group` in field prose per `DOCS-WORD-007`
 - Notes required/marker correctness + de-dup: `DOCS-NOTE-*`
-- Examples (no deletions, self-contained, depends_on rules, ValidateFunc-safe values): `DOCS-EX-*` + `DOCS-EVID-001`
+- Examples (no deletions, resource self-containedness, data source lookup behavior, depends_on rules, ValidateFunc-safe values): `DOCS-EX-*` + `DOCS-EVID-001`
 - Example invariants: `DOCS-EX-004`, `DOCS-EX-018`, `DOCS-EX-019`
-- Example self-containedness closure: `DOCS-EX-003`, `DOCS-EX-011`, `DOCS-EX-020`
+- Resource example self-containedness closure: `DOCS-EX-003`, `DOCS-EX-011`, `DOCS-EX-020`
+- Data source lookup examples: `DOCS-EX-022`
 - Example reference semantics: `DOCS-EX-021`
 - Example `name` values (including scaffolding): `DOCS-EX-015`, `DOCS-EX-016`
 - Example `name` values (type-derived): `DOCS-EX-015`, `DOCS-EX-016`
@@ -121,7 +122,8 @@ When auditing or writing the Import section:
 
 ### Examples remediation (mandatory; no deletions)
 When fixing Example sections:
-- If an Example is not self-contained, fix it by adding the missing `resource`/`data`/`module` declarations to the page (prefer adding shared objects to `## Example Usage`).
+- If a resource Example is not self-contained, fix it by adding the missing `resource`/`data`/`module` declarations to the page (prefer adding shared objects to `## Example Usage`).
+- If a data source Example is intended to look up an existing object, do not add resource scaffolding solely to create the lookup target.
 - Do not delete an `Example*` section or remove a fenced Terraform configuration block as a remediation (see `DOCS-EX-012`).
 - If an existing example contains `depends_on = [...]`, preserve it verbatim and add any missing referenced declarations rather than weakening/removing `depends_on` entries (see `DOCS-EX-004`).
 - Preserve any example-adjacent notes that describe sequencing/validation requirements; if the example changes, update the note to remain accurate and evidence-based rather than deleting it (see `DOCS-EX-018`).

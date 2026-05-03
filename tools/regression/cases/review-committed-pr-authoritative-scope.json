@@ -1,0 +1,58 @@
+{
+  "id": "review-committed-pr-authoritative-scope",
+  "title": "Committed review uses authoritative PR scope instead of branch-only commits",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where explicit PR context exists, but the local branch also contains unrelated branch-only commits. The correct review must treat the PR changed-file set as authoritative and must not report findings from branch-only files.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-pr-authoritative-scope/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "The authoritative PR scope contains one provider Go file. The local branch also contains an unrelated docs-only commit that is intentionally outside PR scope and must not leak into committed-review findings."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-LINT-*",
+    "REVIEW-SCOPE-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "pr-scope-authoritative",
+      "severity": "high",
+      "description": "The committed review should treat explicit PR metadata as the authoritative review scope instead of reviewing the whole branch diff."
+    },
+    {
+      "key": "scope-reporting-consistency",
+      "severity": "medium",
+      "description": "The review should describe the committed review as PR-scoped and keep the files-changed and analysis sections consistent with that scope."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "branch-only-doc-finding",
+      "description": "The review must not raise findings against branch-only files such as `docs/TROUBLESHOOTING.md` when that file is outside the authoritative pull request scope."
+    },
+    {
+      "key": "branch-wide-diff-framing",
+      "description": "The review must not describe the committed review scope as a generic `origin/main...HEAD` branch diff when explicit PR context is available."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "MUST FIX"
+    ]
+  },
+  "notes": "Pair this case with the sample review Markdown output and scored result to benchmark PR-authoritative committed-review scope selection."
+}

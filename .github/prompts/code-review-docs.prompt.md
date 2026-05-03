@@ -143,7 +143,7 @@ Vendored constants allowance (mandatory):
 - If the schema/validation logic references SDK constants/enums (e.g. cipher suite constants), use `vendor/**` as supporting evidence for the allowed values.
 
 **Mandatory: deterministic example naming + ValidateFunc evidence (no invented names):**
-- If you must introduce new Terraform blocks into an example to satisfy self-containedness (`DOCS-EX-003`), any name-like string values you add or rename MUST follow `DOCS-EX-015` (derive from the Terraform type suffix; do not make up values like `example-route`).
+- If you must introduce new Terraform blocks into a resource example to satisfy self-containedness (`DOCS-EX-003`), any name-like string values you add or rename MUST follow `DOCS-EX-015` (derive from the Terraform type suffix; do not make up values like `example-route`).
 - If the value is constrained by `ValidateFunc`/validation logic, you MUST derive a compliant deterministic value from workspace evidence.
   - Primary: `internal/**` validation logic.
   - Supporting (when referenced): `vendor/**` SDK constants/enums.
@@ -152,7 +152,7 @@ Vendored constants allowance (mandatory):
 **Mandatory: apply `DOCS-EX-015` only when a rename is required (contract-accurate):**
 - `DOCS-EX-015` is a deterministic *derivation rule* for replacement values when you must propose/apply a rename.
 - Do NOT treat `DOCS-EX-015` as a blanket requirement that every Example `name = "..."` literal must equal the type-derived value.
-- When you do need to rename a name-like value (for example to satisfy `DOCS-EX-007`, or to replace an invalid value per `DOCS-EX-016`, or when adding/updating scaffolding blocks for self-containedness), derive the new value per `DOCS-EX-015` and ensure it is ValidateFunc-safe per `DOCS-EX-016`.
+- When you do need to rename a name-like value (for example to satisfy `DOCS-EX-007`, or to replace an invalid value per `DOCS-EX-016`, or when adding/updating resource-example scaffolding blocks for self-containedness), derive the new value per `DOCS-EX-015` and ensure it is ValidateFunc-safe per `DOCS-EX-016`.
 
 Generalized deterministic-name preference (nit-level; evidence-gated):
 - For any Terraform `resource`/`data` block in `Example*` sections, when a `name = "..."` **string literal** is present:
@@ -210,7 +210,7 @@ Internal multi-pass audit (mandatory):
     - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
     - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
     - Note format (mandatory): when a resource field note is required, the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
-- **Examples pass**: enforce `DOCS-EX-*` (fences, self-containedness, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
+- **Examples pass**: enforce `DOCS-EX-*` (fences, resource self-containedness, data source lookup behavior, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
 - **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
 If you cannot confidently verify a section due to missing workspace evidence, do not guess; record an Observation and cite `DOCS-EVID-001`.
@@ -321,8 +321,8 @@ Skill footer rule (mandatory; prevents duplicate sections):
 - **Import Text**: Pass/Fail (resources only, resource-specific sentence per `DOCS-IMP-002`)
 - **Import Example**: Pass/Fail (resources only, ID shape matches importer/parser)
 - **Link Locales**: Pass/Fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: Pass/Fail (functional/self-contained, no hard-coded secrets; naming conventions are low-priority nit issues with fix steps, but do not make the page `Invalid` by themselves)
-- **Example Invariants**: Pass/Fail (preserve example-adjacent notes per `DOCS-EX-018`, preserve existing `depends_on` per `DOCS-EX-004`, do not replace references with invented literals per `DOCS-EX-019`, ensure transitive self-containedness per `DOCS-EX-020`, preserve reference semantics per `DOCS-EX-021`)
+- **Examples**: Pass/Fail (resource docs: examples are functional and self-contained; data source docs: examples demonstrate existing-object lookup behavior without unnecessary backing-resource scaffolding; no hard-coded secrets)
+- **Example Invariants**: Pass/Fail (resource docs: preserve example-adjacent notes per `DOCS-EX-018`, preserve existing `depends_on` per `DOCS-EX-004`, do not replace references with invented literals per `DOCS-EX-019`, ensure transitive self-containedness per `DOCS-EX-020`, preserve reference semantics per `DOCS-EX-021`; data source docs: follow `DOCS-EX-022` lookup-example rules)
 - **Example `name` Values**: Pass/Fail (nit-level; Example `name` values follow `DOCS-EX-007` where feasible and satisfy `DOCS-EX-016` constraints; when a rename is required, the replacement value is derived deterministically per `DOCS-EX-015`)
 
 ## 🟢 **STRENGTHS**

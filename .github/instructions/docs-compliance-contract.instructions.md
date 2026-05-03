@@ -289,11 +289,14 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 ## Examples
 
 ### DOCS-EX-000: Examples must be functional
-- **Rule**: Examples MUST be functional; a user should be able to copy/paste and run `terraform plan` without errors.
+- **Rule**: Examples MUST be functional for their intended scenario.
+- **Rule**: Resource examples must be functional and self-contained enough that a user can copy/paste them and run `terraform plan` without errors.
+- **Rule**: Data source examples must be functional for an existing-object lookup scenario and do not need to declare the looked-up object in the same example.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
   - That guidance says examples MUST be functional and should not error when a user runs `terraform plan`
+  - Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` separates resource examples from data source lookup examples and explains that data source examples may assume the looked-up object already exists
 
 ### DOCS-EX-001: Example Terraform config fences must be `hcl`
 - **Scope**: fenced Terraform configuration blocks under headings that start with `Example` (e.g. `## Example Usage`, `## Example ...`).
@@ -308,17 +311,19 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Scope**: fenced CLI blocks under headings that start with `Example`.
 - **Rule**: CLI examples MUST use `shell` (single command) or `shell-session` (prompt/output transcript).
 
-### DOCS-EX-003: Examples must be self-contained
-- **Rule**: Every Terraform reference used in an Example configuration (`resource`, `data`, `module`, expressions like `azurerm_*.*`, `data.*.*`, `module.*`) MUST be declared somewhere on the same doc page.
+### DOCS-EX-003: Resource examples must be self-contained
+- **Scope**: resource docs under `website/docs/r/**`.
+- **Rule**: Every Terraform reference used in a resource Example configuration (`resource`, `data`, `module`, expressions like `azurerm_*.*`, `data.*.*`, `module.*`) MUST be declared somewhere on the same doc page.
 - **Allowed pattern**: define shared resources in `## Example Usage`, reference them from other examples on the same page.
 - **Remediation rule**: if an Example is not self-contained, fix it by adding the missing `resource`/`data`/`module` declarations to the page (typically in `## Example Usage`), not by deleting the Example section/block.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Added to stop audits from resolving broken examples by deleting Example content or leaving undeclared references behind
   - Reflected in this repository's docs review workflow for copy/pasteable examples
+  - Scoped to resource docs because the upstream clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` distinguishes resource examples from data source lookup examples
 
 ### DOCS-EX-020: Example self-containedness must be transitive
-- **Scope**: Example Terraform configuration blocks (`## Example*`).
+- **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
 - **Rule**: When you add missing `resource`/`data`/`module` declarations to satisfy `DOCS-EX-003`, you MUST ensure the resulting Example is fully runnable:
   - Newly added declarations MUST include all schema-required arguments/blocks for those objects (see `DOCS-EX-011`).
   - Any Terraform references introduced by the newly added declarations MUST also be declared on the same doc page.
@@ -331,7 +336,7 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Enforced for deterministic docs audits in this repository
 
 ### DOCS-EX-021: Preserve reference semantics in examples
-- **Scope**: Example Terraform configuration blocks (`## Example*`).
+- **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
 - **Rule**: Do not change an argument value from a Terraform reference to a literal (or from a literal to a reference) as a convenience workaround unless schema/implementation evidence proves the replacement is correct and intended.
   - Examples of Terraform references: `azurerm_*.example.*`, `data.*.*`, `module.*`.
   - Examples of problematic "convenience" rewrites: replacing a reference with a plausible-looking hostname/domain string, or removing a reference entirely.
@@ -343,7 +348,7 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Works with `DOCS-EVID-001` to keep example rewrites evidence-based
 
 ### DOCS-EX-019: Do not replace Terraform references with invented literals
-- **Scope**: Example Terraform configuration blocks (`## Example*`).
+- **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
 - **Rule**: When fixing Example self-containedness or undeclared references, you MUST NOT replace Terraform references (for example `azurerm_*.example.*`, `data.*.*`, `module.*`) with invented literal string values (for example `"example.foo.azure.com"`) as a shortcut.
 - **Required remediation**: declare the missing referenced `resource`/`data`/`module` blocks on the same doc page (see `DOCS-EX-003`).
 - **Exception**: you may replace a reference with a literal only when schema/implementation evidence proves the literal value form and constraints deterministically and the Example is explicitly teaching a literal value scenario (see `DOCS-EX-010`/`DOCS-EX-016`). Otherwise record an Observation per `DOCS-EVID-001`.
@@ -431,6 +436,17 @@ Additional auditor behavior (deterministic suffix; nit-level):
 ### DOCS-EX-014: Avoid multiple examples when possible
 - **Rule**: Avoid multiple examples unless a specific configuration is particularly difficult to configure.
 - **Rule**: If many complex examples are needed, prefer using the repository `examples/` folder instead of expanding the docs page.
+
+### DOCS-EX-022: Data source examples should demonstrate existing-object lookups
+- **Scope**: data source docs under `website/docs/d/**`.
+- **Rule**: Data source examples MUST demonstrate the intended lookup scenario for an existing object.
+- **Rule**: Data source examples may assume the looked-up object already exists and do not need to declare the backing resource in the same example.
+- **Rule**: Data source examples should include only the arguments needed to identify the looked-up object.
+- **Rule**: Do not add resource scaffolding solely to create the lookup target in a data source example.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
+  - Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` adds an explicit resource-example versus data-source-example split and says data source examples may assume the looked-up object already exists
 
 ### DOCS-EX-015: Deterministic example name value derivation (nit-level)
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
