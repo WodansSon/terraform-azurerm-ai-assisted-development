@@ -138,6 +138,7 @@ When you give specific commands, I'll act directly:
 - [ ] Examine ALL `model_*.go` files for the resource
 - [ ] Verify service-specific patterns (SKU, identity types)
 - [ ] Document required/optional/computed fields
+- [ ] Plan Resource Identity and the corresponding List Resource for new resources unless there is a concrete upstream-supported exception
 - [ ] Make NO assumptions without API structure verification
 
 ## 🎯 **CLEAN CODE EXPERTISE** (HashiCorp PR Standards)

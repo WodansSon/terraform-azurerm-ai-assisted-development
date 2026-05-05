@@ -1,0 +1,57 @@
+{
+  "id": "review-local-new-resource-companions",
+  "title": "Local review catches missing new-resource companion artifacts",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where a contributor adds a brand-new resource implementation but omits one or more mandatory companion artifacts. The correct review should flag the missing list-resource docs and the rest of the required new-resource workflow companions.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-new-resource-companions/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go",
+      "internal/services/example/registration.go"
+    ],
+    "notes": "Sanitized fixture models a new-resource PR where the base resource lands without the corresponding list-resource docs or other mandatory companions."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-SCOPE-005A",
+    "IMPL-WF-002",
+    "IMPL-WF-003",
+    "TEST-WF-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "missing-new-resource-companions",
+      "severity": "high",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The review should flag that the new resource is missing mandatory companion artifacts such as the list resource, list query tests, and list-resource docs."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "list-resource-docs-optional",
+      "description": "The review must not treat the list-resource docs as optional for a new resource when no explicit upstream exception path is present."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "list-resource docs",
+      "website/docs/list-resources/"
+    ]
+  },
+  "notes": "Pair this case with the example review markdown output to benchmark new-resource companion-artifact review behavior."
+}

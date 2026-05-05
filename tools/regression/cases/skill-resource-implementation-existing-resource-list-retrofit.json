@@ -1,0 +1,53 @@
+{
+  "id": "skill-resource-implementation-existing-resource-list-retrofit",
+  "title": "Resource implementation guidance requires the full companion set when retrofitting list support",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario based on upstream PR #32192 where an existing resource is gaining Resource Identity and list support. The correct guidance should require the full companion workflow rather than treating registration, tests, or list-resource docs as optional follow-up work.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-existing-resource-list-retrofit/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/signalr/example_existing_resource.go",
+      "internal/services/signalr/registration.go"
+    ],
+    "notes": "Sanitized fixture models a real upstream PR pattern where an existing resource was retrofitted with Resource Identity and a list resource, along with the required list tests and list-resource docs."
+  },
+  "expectedRules": [
+    "IMPL-WF-002A",
+    "TEST-WF-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "existing-resource-list-retrofit-companions",
+      "severity": "high",
+      "file": "internal/services/signalr/example_existing_resource.go",
+      "description": "The guidance should require identity, list implementation, registration, list-query tests, and list-resource docs together when the task is to retrofit list support onto an existing resource."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "retrofit-follow-up-optional",
+      "description": "The guidance must not treat list registration, list tests, or list-resource docs as optional follow-up work once the list-support retrofit is in scope."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "list-resource docs",
+      "Resource Identity",
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this adjudicated case to keep implementation guidance aligned with the real upstream pattern for retrofitting list support onto an existing resource, based on PR #32192."
+}

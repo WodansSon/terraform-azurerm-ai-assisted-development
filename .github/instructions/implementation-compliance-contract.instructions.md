@@ -105,6 +105,58 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
   - Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations
 
+### IMPL-WF-002: New resources must include resource identity and list-resource planning
+- Rule: For new resources, plan and implement Resource Identity support as a prerequisite for the list resource.
+- Rule: For new resources, plan and implement a corresponding list resource by default.
+- Rule: If a new resource genuinely cannot support listing because no list API exists or the upstream provider workflow allows an exception, do not silently omit the list resource; explain the reason and use the maintainer-reviewed exception path instead.
+- Rule: Treat the upstream `allow-without-list` and `list-not-supported` labels as exception handling, not as the default workflow.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 5 and Step 6 says Resource Identity and List Resource implementations are mandatory for all new resources
+  - Upstream contributor guidance there says pull requests adding new resources without these will not pass CI checks unless a maintainer applies the `allow-without-list` or `list-not-supported` label
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resource implementations are mandatory for all new resources and are verified by the `enforce-list-resources` CI check
+
+### IMPL-WF-002A: Existing resources retrofitting list support should add the full companion set together
+- Rule: When adding list support to an existing resource, plan Resource Identity, the `*_resource_list.go` implementation, service registration, list-query acceptance coverage, and list-resource docs as one workflow.
+- Rule: Do not treat list registration, list tests, or list-resource docs as optional follow-up work when the change is explicitly adding list support to an existing resource.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` describes the full list-resource workflow: identity prerequisite, implementation, tests, and docs
+  - Upstream provider PR `hashicorp/terraform-provider-azurerm#32192` (`List and identity implementation - azurerm_web_pubsub_custom_certificate`) is a concrete example of retrofitting an existing resource with Resource Identity, list implementation, list tests, and list-resource docs together
+
+### IMPL-WF-003: New resources must include the required documentation companions
+- Rule: For new resources, plan and implement the primary resource documentation and the corresponding list-resource documentation when a list resource is required.
+- Rule: Place list-resource docs under `website/docs/list-resources/` and treat them as part of the default new-resource workflow, not as an optional follow-up.
+- Rule: If a new resource is using the maintainer-reviewed exception path that omits the list resource, explicitly document that exception in the PR rather than silently skipping the list-resource docs.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 10 says new resources must add documentation for the resource
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` Step 7 says list resources require manual documentation under `website/docs/list-resources/`
+  - The same upstream workflow now makes list resources mandatory for all new resources unless a maintainer applies the documented exception path
+
+### IMPL-WF-004: Ephemeral resources must follow the framework ephemeral pattern
+- Rule: Implement provider ephemeral resources under the owning service package as `*_ephemeral.go` using the `sdk.EphemeralResource` pattern.
+- Rule: Ephemeral resources should use `Metadata`, `Configure`, `Schema`, and `Open` rather than CRUD lifecycle methods.
+- Rule: Register new ephemeral resources through the service `Registration.EphemeralResources()` hook.
+- Rule: Treat `website/docs/ephemeral-resources/` docs and `*_ephemeral_test.go` coverage as the required companions for a new ephemeral resource.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/sdk/ephemeral_resource.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/registration.go`
+  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`
+
+### IMPL-WF-005: Provider-defined functions must follow the internal provider-function pattern
+- Rule: Implement provider-defined functions under `internal/provider/function/` using the `terraform-plugin-framework/function.Function` pattern.
+- Rule: Provider-defined functions should implement `Metadata`, `Definition`, and `Run`, and should expose their name, arguments, and return shape through `Definition`.
+- Rule: Treat `website/docs/functions/` docs and `internal/provider/function/*_test.go` coverage as the required companions for a new provider-defined function.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`
+  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
+  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
+
 ## Schema and mapping
 
 ### IMPL-SCHEMA-001: Schema requirements must match real behavior

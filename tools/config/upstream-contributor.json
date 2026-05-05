@@ -144,7 +144,7 @@
       "domain": "implementation-and-testing",
       "title": "Guide: New Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
-      "baselineSha256": "d2911e87107ab0ba5fcf3e6f5c424eab575f68050ec5ccdd16d8c878160245b8",
+      "baselineSha256": "2de79de35ec45b66fb70a7ee3f2c3cfad584e4f8818bd134160f65566969f1e9",
       "reviewNotes": [
         "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
       ]
@@ -194,7 +194,7 @@
       "domain": "implementation-and-framework-list",
       "title": "Guide: List Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-list-resource.md",
-      "baselineSha256": "22b9dea8777e1deee75c82f4be01a18d595a6aa048b07aa9199d2673c27a6dee",
+      "baselineSha256": "38068aec9b25abb1d579b669653bb444ea5b48555fc3d865c24d7aff0e191e8f",
       "reviewNotes": [
         "Primary upstream source for framework list resources, identity prerequisites, flatten reuse, TF 1.14 query tests, and list-resource docs."
       ]
@@ -264,7 +264,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "b322422a6f68661766c4ad867429fec20d686fdc5992fbfd7aaf67477e68f787",
+      "baselineSha256": "25734f6fc429691896ba0446a02844b5b7b9cbd314b3a98957a77946919ac228",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]

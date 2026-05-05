@@ -128,7 +128,7 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Minimum** (as enforced today): `subcategory`, `layout`, `page_title`, `description`.
 
 ### DOCS-FM-007: Frontmatter must appear at the beginning of the file
-- **Rule**: Resource and data source reference docs MUST include YAML frontmatter at the beginning of the documentation file.
+- **Rule**: Resource, data source, list-resource, ephemeral-resource, and function reference docs MUST include YAML frontmatter at the beginning of the documentation file.
 
 ### DOCS-FM-003: Resource `page_title` canonical format
 - **Scope**: resource docs under `website/docs/r/**`.
@@ -139,19 +139,35 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: You must include `Data Source:` in the YAML `page_title`.
 - **Rule**: Use the canonical format: `page_title: "Azure Resource Manager: Data Source: azurerm_<name>"`.
 
+### DOCS-FM-008: List resource `page_title` canonical format
+- **Scope**: list-resource docs under `website/docs/list-resources/**`.
+- **Rule**: List-resource docs MUST use the canonical YAML `page_title` format: `page_title: "Azure Resource Manager: azurerm_<name>"`.
+
+### DOCS-FM-009: Ephemeral resource `page_title` canonical format
+- **Scope**: ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
+- **Rule**: Ephemeral-resource docs MUST use the canonical YAML `page_title` format: `page_title: "Azure Resource Manager: azurerm_<name>"`.
+
+### DOCS-FM-010: Function `page_title` canonical format
+- **Scope**: function docs under `website/docs/functions/**`.
+- **Rule**: Function docs MUST use the canonical YAML `page_title` format: `page_title: "Azure Resource Manager: <name>"`.
+
 ### DOCS-FM-004: Frontmatter `description` must match the doc type summary style
 - **Rule**: The YAML `description` MUST be a short summary sentence matching the doc type.
 - **Rule**: Resource docs MUST use the canonical resource summary style defined by `DOCS-WORD-003` (for example `Manages ...`).
 - **Rule**: Data source docs MUST use the canonical data source summary style defined by `DOCS-WORD-003` (for example `Gets information about an existing ...`).
+- **Rule**: List-resource docs MUST use the canonical list-resource summary style defined by `DOCS-WORD-003` (for example `Lists ... resources.`).
+- **Rule**: Ephemeral-resource docs MUST use the canonical ephemeral-resource summary style defined by `DOCS-WORD-003` (for example `Use this to access information about an existing ...`).
+- **Rule**: Function docs MUST use the canonical function summary style defined by `DOCS-WORD-003` (for example `Takes ...` or another implementation-backed function behavior sentence).
 
 ### DOCS-FM-005: `subcategory` must match the service website category
 - **Rule**: The YAML `subcategory` value MUST match the website category used for that service in the target provider repo.
 - **Rule**: When the target repo exposes an allowed-category list or existing service docs, use that evidence instead of guessing.
 - **Rule**: If multiple valid website categories exist for the same service, match the existing documentation for that service.
+- **Rule**: Function docs may use an empty-string `subcategory` when that matches the existing function docs in the target provider repo.
 - **Guardrail**: if the correct category cannot be proven from workspace evidence or the target repo standards, do not guess (see `DOCS-EVID-001`).
 
 ### DOCS-FM-006: `layout` must be `azurerm`
-- **Rule**: The YAML `layout` value for resource and data source reference docs MUST be `azurerm`.
+- **Rule**: The YAML `layout` value for resource, data source, list-resource, ephemeral-resource, and function reference docs MUST be `azurerm`.
 
 ---
 
@@ -160,15 +176,28 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 ### DOCS-STRUCT-006: Reference doc path and filename must match the Terraform name
 - **Rule**: Resource documentation for `azurerm_<name>` MUST live at `website/docs/r/<name>.html.markdown`.
 - **Rule**: Data source documentation for `azurerm_<name>` MUST live at `website/docs/d/<name>.html.markdown`.
+- **Rule**: List-resource documentation for `azurerm_<name>` MUST live at `website/docs/list-resources/<name>.html.markdown`.
+- **Rule**: Ephemeral-resource documentation for `azurerm_<name>` MUST live at `website/docs/ephemeral-resources/<name>.html.markdown`.
+- **Rule**: Function documentation for `<name>` MUST live at `website/docs/functions/<name>.html.markdown`.
 - **Rule**: The documentation filename MUST match the Terraform type suffix exactly.
 
 ### DOCS-STRUCT-001: Required sections by doc type
 - **Resource docs** (`website/docs/r/**`) MUST include: `Example Usage`, `Arguments Reference`, `Attributes Reference`, `Import`.
 - **Data source docs** (`website/docs/d/**`) MUST include: `Example Usage`, `Arguments Reference`, `Attributes Reference`.
 - **Data source docs** MUST NOT include: `Import`.
+- **List-resource docs** (`website/docs/list-resources/**`) MUST include: `Example Usage`, `Argument Reference`.
+- **List-resource docs** MUST NOT include: `Import`.
+- **Ephemeral-resource docs** (`website/docs/ephemeral-resources/**`) MUST include: `Example Usage`, `Argument Reference`, `Attributes Reference`.
+- **Ephemeral-resource docs** MUST NOT include: `Import`.
+- **Function docs** (`website/docs/functions/**`) MUST include: `Example Usage`, `Signature`, `Arguments`.
+- **Function docs** MUST NOT include: `Import` as a top-level reference-doc section.
 
 ### DOCS-STRUCT-002: Section order
-- **Rule**: Section order must follow repo standards (for example: Examples before Arguments, then Attributes, then Timeouts (if present), then Import (resources)).
+- **Rule**: Section order must follow repo standards by doc type.
+- **Rule**: Resource and data source docs use: Examples before Arguments, then Attributes, then Timeouts (if present), then Import (resources).
+- **Rule**: List-resource docs use: `Example Usage` before `Argument Reference`, followed by any optional follow-on sections that are evidence-backed for the list resource.
+- **Rule**: Ephemeral-resource docs use: required runtime-support note, summary sentence, `Example Usage`, `Argument Reference`, then `Attributes Reference`.
+- **Rule**: Function docs use: required runtime-support note, summary sentence, `Example Usage`, then any additional `Example ...` sections, then `Signature`, then `Arguments`.
 
 ### DOCS-STRUCT-003: Timeouts section presence
 - **Rule**: Include a `Timeouts` section only when the schema defines timeouts for the object.
@@ -176,11 +205,25 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 ### DOCS-STRUCT-004: Document title heading by doc type
 - **Resources** (`website/docs/r/**`): the top-level heading must be `# azurerm_<name>`.
 - **Data sources** (`website/docs/d/**`): the top-level heading must be `# Data Source: azurerm_<name>`.
+- **List resources** (`website/docs/list-resources/**`): the top-level heading must be `# List resource: azurerm_<name>`.
+- **Ephemeral resources** (`website/docs/ephemeral-resources/**`): the top-level heading must be `# Ephemeral: azurerm_<name>`.
+- **Functions** (`website/docs/functions/**`): the top-level heading must be `# Function: <name>`.
 
 ### DOCS-STRUCT-005: Summary sentence must appear directly below the title
-- **Rule**: Immediately below the top-level heading, the page MUST include a short summary sentence.
+- **Rule**: Immediately below the top-level heading, or immediately after any required doc-type runtime-support note, the page MUST include a short summary sentence.
 - **Rule**: Resource docs MUST use the canonical resource summary style defined by `DOCS-WORD-003` (for example `Manages ...`).
 - **Rule**: Data source docs MUST use the canonical data source summary style defined by `DOCS-WORD-003` (for example `Gets information about ...`).
+- **Rule**: List-resource docs MUST use the canonical list-resource summary style defined by `DOCS-WORD-003` (for example `Lists ... resources.`).
+- **Rule**: Ephemeral-resource docs MUST use the canonical ephemeral-resource summary style defined by `DOCS-WORD-003` (for example `Use this to access information about an existing ...`).
+- **Rule**: Function docs MUST use the canonical function summary style defined by `DOCS-WORD-003` (for example `Takes ...` or another implementation-backed function behavior sentence).
+
+### DOCS-STRUCT-007: Ephemeral-resource runtime support note
+- **Scope**: ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
+- **Rule**: Ephemeral-resource docs MUST include the exact runtime-support note `~> **Note:** Ephemeral Resources are supported in Terraform 1.10 and later.` immediately below the title and before the summary sentence.
+
+### DOCS-STRUCT-008: Function runtime support note
+- **Scope**: function docs under `website/docs/functions/**`.
+- **Rule**: Function docs MUST include the exact runtime-support note `~> **Note:** Provider-defined functions are supported in Terraform 1.8 and later, and are available from version 4.0 of the provider.` immediately below the title and before the summary sentence.
 
 ---
 
@@ -189,6 +232,9 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 ### DOCS-FMT-001: Canonical section intro lines
 - Under `## Arguments Reference`: `The following arguments are supported:`
 - Under `## Attributes Reference`: `In addition to the Arguments listed above - the following Attributes are exported:`
+- Under `## Argument Reference` for list-resource docs: `This list resource supports the following arguments:`
+- Under `## Argument Reference` for ephemeral-resource docs: `The following arguments are supported:`
+- Under `## Attributes Reference` for ephemeral-resource docs: `The following attributes are exported:`
 
 ### DOCS-FMT-002: Backticks for arguments and values
 - **Rule**: Always use backticks around argument/attribute names (for example `resource_group_name`).
@@ -292,6 +338,9 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Examples MUST be functional for their intended scenario.
 - **Rule**: Resource examples must be functional and self-contained enough that a user can copy/paste them and run `terraform plan` without errors.
 - **Rule**: Data source examples must be functional for an existing-object lookup scenario and do not need to declare the looked-up object in the same example.
+- **Rule**: List-resource examples must be functional for a list query scenario and use Terraform `list` blocks rather than `resource` or `data` blocks for the primary example.
+- **Rule**: Ephemeral-resource examples must be functional for an ephemeral read scenario and use Terraform `ephemeral` blocks rather than `resource` or `data` blocks for the primary documented object.
+- **Rule**: Function examples must be functional for a provider-defined function scenario and call the documented function through `provider::azurerm::<name>(...)`.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
@@ -404,7 +453,9 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - If that validity cannot be proven from workspace evidence, do not guess; record an Observation per `DOCS-EVID-001`.
 
 ### DOCS-EX-008: Examples must not include `terraform` or `provider` blocks
-- **Rule**: Example Terraform configuration blocks must not include a `terraform { ... }` block or a `provider { ... }` block.
+- **Scope**: resource docs under `website/docs/r/**`, data source docs under `website/docs/d/**`, list-resource docs under `website/docs/list-resources/**`, and ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
+- **Rule**: Example Terraform configuration blocks for those doc types must not include a `terraform { ... }` block or a `provider { ... }` block.
+- **Rule**: Function docs under `website/docs/functions/**` may include a `provider "azurerm"` block when needed to make the provider-defined function example runnable.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
@@ -430,12 +481,13 @@ Additional auditor behavior (deterministic suffix; nit-level):
   - Keeps `Example*` sections aligned with the repository's copy/pasteable-example expectation
 
 ### DOCS-EX-013: Example instance name convention (style)
-- **Rule**: Generally, the resource/data source instance name in examples should be `example`.
+- **Rule**: Generally, the resource/data source/list-resource/ephemeral-resource instance name in examples should be `example`.
 - **Severity**: deviations are typically style-level and should not, by themselves, make a page invalid.
 
 ### DOCS-EX-014: Avoid multiple examples when possible
 - **Rule**: Avoid multiple examples unless a specific configuration is particularly difficult to configure.
 - **Rule**: If many complex examples are needed, prefer using the repository `examples/` folder instead of expanding the docs page.
+- **Rule**: List-resource docs may use multiple examples when they are showing distinct query scopes such as subscription-wide and narrowed query configurations.
 
 ### DOCS-EX-022: Data source examples should demonstrate existing-object lookups
 - **Scope**: data source docs under `website/docs/d/**`.
@@ -447,6 +499,36 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
   - Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` adds an explicit resource-example versus data-source-example split and says data source examples may assume the looked-up object already exists
+
+### DOCS-EX-023: List-resource examples must demonstrate list queries
+- **Scope**: list-resource docs under `website/docs/list-resources/**`.
+- **Rule**: The primary example blocks in list-resource docs MUST use Terraform `list "azurerm_<name>" "example"` syntax for the documented list resource.
+- **Rule**: List-resource examples should demonstrate the intended query scopes of the list resource, such as the default subscription-wide query and any supported narrowed query configuration.
+- **Rule**: Do not model the primary example as a `resource` or `data` block when the page is documenting a list resource.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add documentation for this List Resource`
+  - The upstream example there uses `list "azurerm_network_profile" "example"` blocks and shows multiple query-scope examples for the list resource
+
+### DOCS-EX-024: Ephemeral-resource examples must demonstrate ephemeral reads
+- **Scope**: ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
+- **Rule**: The primary example blocks in ephemeral-resource docs MUST use Terraform `ephemeral "azurerm_<name>" "example"` syntax for the documented ephemeral resource.
+- **Rule**: Ephemeral-resource examples may include resource and data source blocks needed to source the ephemeral query inputs, but the primary documented object must remain an `ephemeral` block.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for ephemeral-resource reference pages
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_certificate.html.markdown`
+
+### DOCS-EX-025: Function examples must call provider-defined functions
+- **Scope**: function docs under `website/docs/functions/**`.
+- **Rule**: Function examples MUST call the documented function using `provider::azurerm::<name>(...)` syntax.
+- **Rule**: Function docs may include additional example sections such as import-oriented examples when the function is specifically useful there.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
 
 ### DOCS-EX-015: Deterministic example name value derivation (nit-level)
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -523,15 +605,18 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Example combined note pattern** (adjust wording to match the extracted constraint evidence):
   - `~> **Note:** The `X` block is required when `Y` is set to `A` and must not be specified when `Y` is not set to `A`.`
 
-### DOCS-NOTE-009: Data source field notes are prohibited
-- **Scope**: data source docs under `website/docs/d/**`.
-- **Rule**: Data source documentation for arguments, attributes, and nested fields MUST stay concise and limited to explaining what the field is.
-- **Rule**: Data source docs MUST NOT use field-level note blocks for additional caveats, setup guidance, conditional requirements, or extended explanations.
-- **Auditor behavior**: any field-level `-> **Note:**`, `~> **Note:**`, or `!> **Note:**` in a data source doc is an Issue.
+### DOCS-NOTE-009: Data source, list-resource, ephemeral-resource, and function field notes are prohibited
+- **Scope**: data source docs under `website/docs/d/**`, list-resource docs under `website/docs/list-resources/**`, ephemeral-resource docs under `website/docs/ephemeral-resources/**`, and function docs under `website/docs/functions/**`.
+- **Rule**: Data source, list-resource, ephemeral-resource, and function documentation for arguments, attributes, and nested fields MUST stay concise and limited to explaining what the field is.
+- **Rule**: Those doc types MUST NOT use field-level note blocks for additional caveats, setup guidance, conditional requirements, or extended explanations.
+- **Auditor behavior**: any field-level `-> **Note:**`, `~> **Note:**`, or `!> **Note:**` in a data source, list-resource, ephemeral-resource, or function doc is an Issue.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` prefers short, field-definitional data source bullets
-  - Added to keep `/code-review-docs` and `/docs-writer` deterministic and prevent drift toward over-explained data source fields
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows concise query-argument bullets for list-resource docs
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/*.html.markdown` show concise ephemeral argument bullets plus only the top-level runtime-support note
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/*.html.markdown` show concise argument lists plus only the top-level runtime-support note
+  - Added to keep `/code-review-docs` and `/docs-writer` deterministic and prevent drift toward over-explained non-resource docs
 
 ---
 
@@ -551,6 +636,27 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Ordering`
   - That guidance defines ID-segment ordering, `location`, required arguments, then optional arguments with `tags` last
+
+### DOCS-ARG-012: List-resource query arguments should be ordered alphabetically
+- **Scope**: list-resource docs under `website/docs/list-resources/**`.
+- **Rule**: Query arguments in list-resource docs should be ordered alphabetically.
+- **Rule**: If the list-resource config schema marks an argument as required, keep required arguments first and then order within required and optional groups alphabetically.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows `resource_group_name` before `subscription_id` in the list-resource `Argument Reference`
+  - List-resource query config documents filters rather than resource identity fields, so the resource/data-source ID ordering pattern does not apply directly
+
+### DOCS-ARG-013: Function argument lists must follow function signature order
+- **Scope**: function docs under `website/docs/functions/**`.
+- **Rule**: The `## Arguments` section for function docs MUST list parameters in the same order as the implementation signature.
+- **Rule**: Function arguments should be documented as ordered list items rather than resource-style argument bullets.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
+  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
 
 ### DOCS-ARG-003: ForceNew behavior must be documented
 - **Rule**: For `ForceNew: true` arguments, include the standard ForceNew sentence (see DOCS-WORD-001).
@@ -596,6 +702,9 @@ Example (rewrite long bullet to bullet + note):
 ### DOCS-ARG-006: ForceNew sentence scope (resources vs data sources)
 - **Rule**: Resource docs must use the ForceNew sentence for `ForceNew: true` fields.
 - **Rule**: Data source docs must not use ForceNew wording (data sources do not create resources).
+- **Rule**: List-resource docs must not use ForceNew wording (list resources do not create resources).
+- **Rule**: Ephemeral-resource docs must not use ForceNew wording (ephemeral resources do not create managed resources).
+- **Rule**: Function docs must not use ForceNew wording (functions do not create managed resources).
 
 ### DOCS-ARG-007: Required arguments must be documented
 - **Rule**: All schema required arguments/blocks must be documented in Arguments Reference.
@@ -637,7 +746,13 @@ Example (rewrite long bullet to bullet + note):
 ### DOCS-WORD-003: Resource vs data source summary sentence
 - **Rule**: Resource docs should start with an action verb (prefer `Manages ...`).
 - **Rule**: Data source docs should start with a retrieval verb (prefer `Gets information about ...`).
+- **Rule**: List-resource docs should start with a list verb (prefer `Lists ... resources.`).
+- **Rule**: Ephemeral-resource docs should start with `Use this to access information about an existing ...`.
+- **Rule**: Function docs should start with an implementation-backed behavior sentence (prefer `Takes ...` for input-transforming functions).
 - **Rule**: Data source summary sentences must not use resource-only wording (for example `Manages`, `Creates`, or ForceNew wording).
+- **Rule**: List-resource summary sentences must not use resource-only or data-source-only wording (for example `Manages`, `Creates`, or `Gets information about ...`).
+- **Rule**: Ephemeral-resource summary sentences must not use managed-resource wording such as `Manages` or `Creates`.
+- **Rule**: Function summary sentences must not use resource/data source wording such as `Manages`, `Creates`, or `Gets information about an existing ...`.
 
 ### DOCS-WORD-004: `*_enabled` field phrasing
 - **Rule**: In resource docs, for boolean fields ending in `_enabled`, prefer: `Whether <thing> is enabled.`

@@ -9,7 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added an adjudicated resource-implementation regression case that covers the new-resource list-resource requirement, so new resource guidance does not omit mandatory Resource Identity, list-resource planning, and the maintainer-reviewed exception path.
+- Added an adjudicated local-review regression case that covers missing new-resource companion artifacts, so code review catches missing list-resource docs and other required companion files for new resources.
+- Added adjudicated docs-review and docs-writer regression cases for list-resource pages, so the docs workflow now enforces list-resource page structure and list query examples directly instead of treating those pages like ordinary resource docs.
+- Added adjudicated docs-review and implementation-guidance regression cases for Ephemeral Resources and provider-defined Functions, so the toolkit now treats those workflows as first-class doc and implementation types instead of letting them fall through resource-only guidance.
+- Added an adjudicated implementation-guidance regression case based on a real upstream list-support retrofit PR, so the toolkit now also tests the “existing resource gains list support” workflow instead of only the brand-new resource path.
+
 ### Changed
+
+- Updated the implementation contract, implementation skill, acceptance-testing skill, implementation guide, and user-facing examples to reflect the new upstream workflow that all new resources must plan Resource Identity and a corresponding list resource unless the maintainer exception path is explicitly used.
+- Updated the implementation contract and the local/committed code-review prompts so new-resource reviews also validate the required documentation companion for the list resource under `website/docs/list-resources/`.
+- Updated the docs contract, docs-writer skill, docs-review prompt, and user-facing docs so `website/docs/list-resources/*.html.markdown` pages are treated as a first-class docs type with their own title, summary, section, and example rules.
+- Updated the docs contract, docs-writer skill, docs-review prompt, implementation/testing contracts, and generic code-review prompts so `website/docs/ephemeral-resources/*.html.markdown`, `website/docs/functions/*.html.markdown`, `*_ephemeral.go`, and `internal/provider/function/*.go` all have explicit toolkit standards.
+- Updated the implementation guidance so retrofitting list support onto an existing resource explicitly requires the same companion set: identity, registration, list-query tests, and list-resource docs.
 
 ### Fixed
 

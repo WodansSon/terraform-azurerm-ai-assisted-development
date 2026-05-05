@@ -194,6 +194,9 @@ Rules:
 - When `website/docs/**/*.html.markdown` files are in scope, explicitly apply the docs contract's deprecation and upgrade-guide rules before raising docs Issues about removed legacy fields.
 - When `website/docs/**/*.html.markdown` files are in scope, any docs Issue in the review body must include the exact supporting `DOCS-*` rule ID or IDs.
 - Do not emit generic docs-parity Issues for `website/docs/**/*.html.markdown` files without exact `DOCS-*` rule support and evidence.
+- When `internal/**/*.go` scope adds a brand-new resource, explicitly inspect whether the required companion artifacts from the implementation and testing guidance are present: Resource Identity, list resource, list-resource query tests, and list-resource docs.
+- When the change adds a new `*_ephemeral.go` implementation, explicitly inspect whether the required companion artifacts are present: `EphemeralResources()` registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
+- When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
 

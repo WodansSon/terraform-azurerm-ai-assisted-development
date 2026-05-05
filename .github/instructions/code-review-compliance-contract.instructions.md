@@ -202,6 +202,17 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: When the review scope includes `internal/**/*.go` or `internal/**/*_test.go`, load and apply the applicable file-scoped instructions and skills.
 - Rule: Use those sources as the primary checklist for provider implementation and acceptance-test concerns rather than relying on stale prompt summaries.
 
+### REVIEW-SCOPE-005A: New resources must include required companion artifacts
+- Rule: When the review scope adds a brand-new resource under `internal/**/*.go`, review whether the required companion artifacts are present or explicitly justified.
+- Rule: For new resources, treat missing Resource Identity support, missing list resources, missing list-resource query tests, and missing list-resource docs as reviewable issues unless the change explicitly uses the maintainer-reviewed upstream exception path.
+- Rule: For the documentation companion, expect the corresponding list-resource doc page under `website/docs/list-resources/` when the new resource requires a list resource.
+- Rule: Do not treat upstream exception labels such as `allow-without-list` or `list-not-supported` as implicit; the review should only accept the omission when the exception is explicitly justified in the change context.
+
+### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
+- Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
+- Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
+- Rule: Treat missing companion docs or tests for new ephemeral resources and provider-defined functions as reviewable issues.
+
 ### REVIEW-SCOPE-006: Manifest and bundle changes must match shipped content expectations
 - Rule: When file manifests, release-bundle lists, or installer packaging inputs change, review whether the changed entries remain consistent with the repository structure and the expected shipped assets.
 - Rule: Treat missing or mismatched prompt, instruction, skill, or installer entries as reviewable issues when the manifest is intended to distribute them.

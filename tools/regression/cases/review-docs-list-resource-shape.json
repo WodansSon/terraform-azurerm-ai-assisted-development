@@ -1,0 +1,52 @@
+{
+  "id": "review-docs-list-resource-shape",
+  "title": "Docs review enforces list-resource page structure and examples",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where a list-resource page drifts toward ordinary resource-doc structure. The correct review should apply the list-resource-specific doc rules instead of resource or data source rules.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-list-resource-shape/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/list-resources/example_network_profile.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a list-resource docs review after the local docs workflow was extended to treat list-resource pages as a first-class doc type."
+  },
+  "expectedRules": [
+    "DOCS-STRUCT-*",
+    "DOCS-FMT-*",
+    "DOCS-EX-023",
+    "DOCS-WORD-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "list-resource-doc-type-regression",
+      "severity": "high",
+      "file": "website/docs/list-resources/example_network_profile.html.markdown",
+      "description": "The review should catch when a list-resource page is written like an ordinary resource page instead of using the list-resource title, summary, sections, and list query examples."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "resource-self-containedness-required",
+      "description": "The review must not apply resource-example self-containedness remediation to a list-resource page that should be teaching list query usage."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "List resource",
+      "DOCS-EX-023"
+    ]
+  },
+  "notes": "Pair this case with the sample docs-review markdown output to benchmark list-resource docs review behavior."
+}

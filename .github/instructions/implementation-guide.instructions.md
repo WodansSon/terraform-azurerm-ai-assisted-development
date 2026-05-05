@@ -794,8 +794,13 @@ d.SetId(id.ID())
 
 - New service packages require `internal/services/<service>/client/client.go`, `registration.go`, provider service registration, client registration, and a `make generate` pass before feature work starts.
 - New provider feature flags must be wired through `internal/features`, `internal/provider`, `internal/provider/framework`, their respective tests, and the target resource behavior.
+- List resources are mandatory for all new resources unless the upstream maintainer exception path is explicitly used because no list API exists.
 - List resources are specialized framework resources, not ordinary resources. Implement resource identity first, extract a reusable flatten helper from the parent resource read path, wrap the base resource with `sdk.FrameworkListWrappedResource`, register it in `registration.go`, and add Terraform 1.14 list query tests plus list-resource docs.
+- If a new resource cannot support a list resource, do not silently proceed without one; document the reason and use the maintainer-reviewed `allow-without-list` or `list-not-supported` label path.
 - If a list resource iterator needs extra API reads during flattening, recreate a context with the original deadline because the iterator runs after the original list context has been cancelled.
+- When retrofitting list support onto an existing resource, ship the identity, list implementation, service registration, list-query tests, and list-resource docs together rather than treating the docs or registration as optional follow-up cleanup.
+- Ephemeral resources are framework read patterns, not managed resources. Implement them as `*_ephemeral.go` using `sdk.EphemeralResource`, wire `Metadata`, `Configure`, `Schema`, and `Open`, register them through `EphemeralResources()`, add docs under `website/docs/ephemeral-resources/`, and add Terraform 1.10-gated `*_ephemeral_test.go` coverage.
+- Provider-defined functions live under `internal/provider/function/`. Implement `Metadata`, `Definition`, and `Run`, keep the docs under `website/docs/functions/` aligned to the function signature and behavior, and add Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
 
 Official upstream references:
 
@@ -834,10 +839,12 @@ New Resource Request
 │
 └─ Implementation Order
    ├─ 1. Define model structs (Typed) or schema (Untyped)
-   ├─ 2. Implement CRUD operations
-   ├─ 3. Add validation and error handling
-   ├─ 4. Create acceptance tests
-   └─ 5. Write documentation
+    ├─ 2. Implement Resource Identity
+    ├─ 3. Implement CRUD operations
+    ├─ 4. Implement the corresponding List Resource
+    ├─ 5. Add validation and error handling
+    ├─ 6. Create acceptance tests, including list query tests
+    └─ 7. Write resource and list-resource documentation
 ```
 
 #### Cross-Implementation Consistency Validation

@@ -1,0 +1,52 @@
+{
+  "id": "review-docs-ephemeral-resource-shape",
+  "title": "Docs review enforces ephemeral-resource page structure and examples",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where an ephemeral-resource page drifts toward ordinary resource-doc structure. The correct review should apply the ephemeral-resource-specific doc rules instead of resource or data source rules.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-ephemeral-resource-shape/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/ephemeral-resources/example_secret.html.markdown"
+    ],
+    "notes": "Sanitized fixture models an ephemeral-resource docs review after the local docs workflow was extended to treat ephemeral-resource pages as a first-class doc type."
+  },
+  "expectedRules": [
+    "DOCS-STRUCT-*",
+    "DOCS-FMT-*",
+    "DOCS-EX-024",
+    "DOCS-WORD-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "ephemeral-doc-type-regression",
+      "severity": "high",
+      "file": "website/docs/ephemeral-resources/example_secret.html.markdown",
+      "description": "The review should catch when an ephemeral-resource page is written like an ordinary resource page instead of using the ephemeral-resource title, support note, sections, and `ephemeral` examples."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "managed-resource-import-required",
+      "description": "The review must not require a managed-resource Import section for an ephemeral-resource page."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "Ephemeral",
+      "DOCS-EX-024"
+    ]
+  },
+  "notes": "Pair this case with the sample docs-review markdown output to benchmark ephemeral-resource docs review behavior."
+}

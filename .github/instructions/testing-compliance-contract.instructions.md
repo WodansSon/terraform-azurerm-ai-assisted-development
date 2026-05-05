@@ -108,6 +108,32 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 6 and Step 7 examples
 
+### TEST-WF-003: New resources with list resources should include list query coverage
+- Rule: When adding a new resource that includes a list resource, add list-resource acceptance coverage using Terraform 1.14 query tests.
+- Rule: The list-resource test should provision multiple resources, exercise the base list query, and cover at least one narrowed query path when the list configuration supports it.
+- Rule: Only omit list-resource acceptance coverage when the list resource itself is legitimately omitted under the maintainer-reviewed exception path.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add Acceptance Tests for this List Resource`
+  - Upstream contributor guidance there shows Terraform 1.14 query-based tests as the expected validation path for list resources added alongside new resources
+
+### TEST-WF-004: Ephemeral resource tests should use the framework ephemeral test pattern
+- Rule: Acceptance tests for provider ephemeral resources should use the service-local `*_ephemeral_test.go` pattern with `acceptance.BuildTestData(t, "ephemeral.azurerm_<name>", ...)`.
+- Rule: Ephemeral-resource acceptance tests should gate on Terraform 1.10 support and use the framework provider factories required by the upstream ephemeral pattern.
+- Rule: When the test needs to assert the ephemeral result payload, prefer the `echo` provider pattern with config-state checks rather than inventing a custom assertion mechanism.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral_test.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_certificate_ephemeral_test.go`
+
+### TEST-WF-005: Provider-defined functions should use focused framework unit tests
+- Rule: Provider-defined function tests should live under `internal/provider/function/*_test.go` and use `resource.UnitTest` with framework provider factories.
+- Rule: Provider-defined function tests should gate on Terraform 1.8 support and prove outputs from `provider::azurerm::<name>(...)` calls rather than inventing a resource-style lifecycle harness.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id_test.go`
+  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id_test.go`
+
 ## Execution safety
 
 ### TEST-RUN-001: Treat acceptance tests as real Azure activity
