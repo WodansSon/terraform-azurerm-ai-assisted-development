@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.2.2] - 2026-05-06
+
+### Added
+
 - Added an adjudicated resource-implementation regression case that covers the new-resource list-resource requirement, so new resource guidance does not omit mandatory Resource Identity, list-resource planning, and the maintainer-reviewed exception path.
 - Added an adjudicated local-review regression case that covers missing new-resource companion artifacts, so code review catches missing list-resource docs and other required companion files for new resources.
 - Added adjudicated docs-review and docs-writer regression cases for list-resource pages, so the docs workflow now enforces list-resource page structure and list query examples directly instead of treating those pages like ordinary resource docs.
