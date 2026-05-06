@@ -167,6 +167,13 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If explicit user-supplied PR context and environment PR context both exist and conflict, committed review must fail closed instead of silently choosing one.
 - Rule: The only allowed exception is an explicit user override that says the supplied PR should override the active or viewed PR context.
 
+### REVIEW-FILE-005: Vendored third-party files are non-actionable review scope
+- Rule: Files under `vendor/**` are non-actionable for normal code review because contributors are not expected to hand-edit or directly remediate vendored third-party content in this workflow.
+- Rule: Vendor files must still be identified when they appear in the selected diff scope, but they should be excluded from actionable findings unless a current workspace instruction explicitly says otherwise.
+- Rule: Do not raise Issues that tell contributors to edit vendored files directly.
+- Rule: When a correctness concern appears to originate from vendored content, review the first actionable non-vendored source that controls or introduces that vendored change instead, such as dependency/version updates, generation inputs, or service client wiring.
+- Reviewer behavior: disclose vendored files as skipped non-actionable files rather than silently omitting them.
+
 ## File-type-specific review coverage
 
 ### REVIEW-SCOPE-001: Always review user-visible content quality

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the docs contract, docs-writer skill, docs-review prompt, and user-facing docs so `website/docs/list-resources/*.html.markdown` pages are treated as a first-class docs type with their own title, summary, section, and example rules.
 - Updated the docs contract, docs-writer skill, docs-review prompt, implementation/testing contracts, and generic code-review prompts so `website/docs/ephemeral-resources/*.html.markdown`, `website/docs/functions/*.html.markdown`, `*_ephemeral.go`, and `internal/provider/function/*.go` all have explicit toolkit standards.
 - Updated the implementation guidance so retrofitting list support onto an existing resource explicitly requires the same companion set: identity, registration, list-query tests, and list-resource docs.
+- Updated the local and committed review workflow so files under `vendor/**` are disclosed but treated as skipped non-actionable review scope instead of generating findings that ask contributors to edit vendored third-party content directly.
 
 ### Fixed
 
