@@ -1,0 +1,58 @@
+{
+  "id": "review-committed-vendored-scope",
+  "title": "Committed review treats vendored-heavy diffs as limited actionable scope",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where a pull request is dominated by vendored SDK churn plus a small non-vendored control-surface change. The correct review should report only the skipped vendored-file count, explicitly call out the vendored-heavy scope, and avoid telling contributors to edit vendored files directly.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-vendored-scope/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "go.mod",
+      "go.sum",
+      "internal/services/example/client/client.go",
+      "vendor/github.com/hashicorp/go-azure-sdk/resource-manager/example/2026-01-01/widgets/client.go",
+      "vendor/github.com/hashicorp/go-azure-sdk/resource-manager/example/2026-01-01/widgets/model_widget.go",
+      "vendor/modules.txt"
+    ],
+    "notes": "Sanitized fixture models a committed-review PR where the actionable surface is limited because most changed files are vendored SDK updates."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-005",
+    "REVIEW-SCOPE-005",
+    "REVIEW-LINT-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "vendored-heavy-scope-callout",
+      "severity": "medium",
+      "description": "The review should explicitly call out that the committed diff is vendored-heavy and report only the skipped vendored-file count."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "edit-vendored-files-directly",
+      "description": "The review must not raise findings that tell the contributor to modify files under vendor/** directly."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "AZURERM LINTER"
+    ],
+    "mustIncludeMarkers": [
+      "Skipped Vendored Files:",
+      "vendored-heavy"
+    ]
+  },
+  "notes": "Use this case to benchmark count-only vendored-file reporting and the explicit vendored-heavy scope callout in committed review output."
+}

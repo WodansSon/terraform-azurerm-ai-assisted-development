@@ -109,6 +109,17 @@ This means the review applied Go/provider-specific guidance because the change t
 
 It is the rule that tells the auditor to load the scoped Go instructions and skills instead of relying only on the generic review contract.
 
+### `REVIEW-FILE-005`
+
+This means the review recognized vendored third-party files under `vendor/**` as non-actionable scope.
+
+In practice, the review should:
+
+- disclose the count of vendored files skipped in the diff rather than listing each vendored path
+- avoid raising Issues that tell a contributor to edit vendored files directly
+- focus findings on the first actionable non-vendored source, such as dependency bumps, generation inputs, or service wiring
+- say explicitly when a change-set is vendored-only or vendored-heavy so sparse actionable findings are easy to interpret
+
 ### `REVIEW-LINT-*`
 
 These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:

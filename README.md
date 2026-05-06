@@ -250,6 +250,8 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-committed-changes
 ```
 
+Both generic review prompts now report the count of vendored files under `vendor/**` when they are in scope, but treat them as skipped non-actionable files rather than asking contributors to edit vendored third-party content directly.
+
 If Copilot does not already have PR context for your branch, pass the PR number explicitly:
 
 ```

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added adjudicated docs-review and docs-writer regression cases for list-resource pages, so the docs workflow now enforces list-resource page structure and list query examples directly instead of treating those pages like ordinary resource docs.
 - Added adjudicated docs-review and implementation-guidance regression cases for Ephemeral Resources and provider-defined Functions, so the toolkit now treats those workflows as first-class doc and implementation types instead of letting them fall through resource-only guidance.
 - Added an adjudicated implementation-guidance regression case based on a real upstream list-support retrofit PR, so the toolkit now also tests the “existing resource gains list support” workflow instead of only the brand-new resource path.
+- Added an adjudicated committed-review regression case for vendored-heavy diffs, so generic review now benchmarks count-only vendor reporting plus the explicit vendored-heavy scope callout instead of letting vendored-file handling drift.
 
 ### Changed
 
@@ -22,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the docs contract, docs-writer skill, docs-review prompt, and user-facing docs so `website/docs/list-resources/*.html.markdown` pages are treated as a first-class docs type with their own title, summary, section, and example rules.
 - Updated the docs contract, docs-writer skill, docs-review prompt, implementation/testing contracts, and generic code-review prompts so `website/docs/ephemeral-resources/*.html.markdown`, `website/docs/functions/*.html.markdown`, `*_ephemeral.go`, and `internal/provider/function/*.go` all have explicit toolkit standards.
 - Updated the implementation guidance so retrofitting list support onto an existing resource explicitly requires the same companion set: identity, registration, list-query tests, and list-resource docs.
-- Updated the local and committed review workflow so files under `vendor/**` are disclosed but treated as skipped non-actionable review scope instead of generating findings that ask contributors to edit vendored third-party content directly.
+- Updated the local and committed review workflow so files under `vendor/**` are reported as a skipped vendored-file count, not a path-by-path list, and vendored-only or vendored-heavy change-sets are called out explicitly while still being treated as non-actionable review scope instead of generating findings that ask contributors to edit vendored third-party content directly.
 
 ### Fixed
 

@@ -111,7 +111,7 @@ Rules:
 ### 2) Classify files accurately
 - Parse the diff stat carefully so added, modified, and deleted files are counted correctly.
 - Do not silently skip files that belong to the committed review scope.
-- Identify files under `vendor/**` and mark them as skipped non-actionable files per `REVIEW-FILE-005` rather than treating them as ordinary review targets.
+- Identify files under `vendor/**`, exclude them from actionable review targets, and report only the skipped vendored-file count per `REVIEW-FILE-005`.
 
 ### 3) Load applicable workspace standards
 - Discover repo-level contributor guidance in the current workspace before reading it.
@@ -192,7 +192,8 @@ Rules:
 - Review the full committed change-set.
 - Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
 - Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
-- Treat vendored files under `vendor/**` as skipped non-actionable files: disclose them, but do not raise Issues that require directly editing vendored content.
+- Treat vendored files under `vendor/**` as skipped non-actionable files: report only the skipped vendored-file count, and do not raise Issues that require directly editing vendored content.
+- When the selected committed diff is vendored-only or vendored-heavy, say so explicitly in the summary or notes so sparse actionable findings are easy to interpret.
 - When `website/docs/**/*.html.markdown` files are in scope, explicitly apply the docs contract's deprecation and upgrade-guide rules before raising docs Issues about removed legacy fields.
 - When `website/docs/**/*.html.markdown` files are in scope, any docs Issue in the review body must include the exact supporting `DOCS-*` rule ID or IDs.
 - Do not emit generic docs-parity Issues for `website/docs/**/*.html.markdown` files without exact `DOCS-*` rule support and evidence.
@@ -240,8 +241,7 @@ Use this template:
 **Deleted Files:**
 - `path/to/file`
 
-**Skipped Vendored Files:**
-- `vendor/path/to/file`
+**Skipped Vendored Files:** [count]
 
 ## 🎯 **PRIMARY CHANGES ANALYSIS**
 [Brief explanation of the branch changes and their purpose.]
@@ -256,7 +256,7 @@ Use this template:
 - **Repo Guidance**: [contributor docs / instructions / skills actually used]
 - **Scope Rules**: [which `REVIEW-SCOPE-*` rules were relevant]
 - **Docs Contract**: [whether `DOCS-*` rules were loaded for `website/docs/**/*.html.markdown` files in scope]
-- **Notes**: [scope-specific guidance that affected severity or classification, including any vendored files skipped as non-actionable]
+- **Notes**: [scope-specific guidance that affected severity or classification, including whether the change-set is vendored-only or vendored-heavy]
 
 ### 🧰 **AZURERM LINTER**
 - **Version**: [JSON `version`, `n/a`, or `unknown` when the tool could not be interrogated reliably]

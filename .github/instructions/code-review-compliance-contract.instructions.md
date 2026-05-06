@@ -172,7 +172,9 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Vendor files must still be identified when they appear in the selected diff scope, but they should be excluded from actionable findings unless a current workspace instruction explicitly says otherwise.
 - Rule: Do not raise Issues that tell contributors to edit vendored files directly.
 - Rule: When a correctness concern appears to originate from vendored content, review the first actionable non-vendored source that controls or introduces that vendored change instead, such as dependency/version updates, generation inputs, or service client wiring.
-- Reviewer behavior: disclose vendored files as skipped non-actionable files rather than silently omitting them.
+- Reviewer behavior: disclose the count of vendored files skipped as non-actionable scope rather than silently omitting them or enumerating each vendored path in the review body.
+- Reviewer behavior: when the selected diff scope is entirely vendored files, say so explicitly in the review output so the reader understands the actionable review surface is limited.
+- Reviewer behavior: when vendored files make up the majority of the selected diff scope, say so explicitly in the review output so sparse actionable findings are not ambiguous.
 
 ## File-type-specific review coverage
 
