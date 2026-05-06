@@ -250,6 +250,8 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-committed-changes
 ```
 
+Both generic review prompts now report the count of vendored files under `vendor/**` when they are in scope, but treat them as skipped non-actionable files rather than asking contributors to edit vendored third-party content directly.
+
 If Copilot does not already have PR context for your branch, pass the PR number explicitly:
 
 ```
@@ -285,7 +287,7 @@ AI Chat: "Create documentation following provider standards for azurerm_cdn_fron
 > 2) apply the patch-ready fixes
 > 3) rerun the audit and expect no repeated Issues
 >
-> `/code-review-docs` also enforces deterministic doc-quality checks such as `hcl` fences in examples, self-contained resource examples, existing-object lookup data source examples, import example ID shape validation, and human-readable timeout defaults.
+> `/code-review-docs` also enforces deterministic doc-quality checks such as `hcl` fences in examples, self-contained resource examples, existing-object lookup data source examples, list-resource query examples, ephemeral-resource example shape, provider-defined function example shape, import example ID shape validation, and human-readable timeout defaults.
 
 
 ## 🎬 See It In Action

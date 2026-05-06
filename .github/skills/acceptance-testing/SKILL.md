@@ -79,6 +79,20 @@ Before running tests:
    - At a minimum, plan for `basic`, `requiresImport`, `complete`, `update`, and import validation when import is supported.
    - Only omit one of those when the resource behavior or provider pattern makes it genuinely not applicable.
 
+- New-resource list coverage:
+   - When a new resource includes a list resource, also plan a dedicated `*_resource_list_test.go` file.
+   - Use Terraform 1.14 query tests for the list resource and provision multiple resources so the list query path is meaningfully exercised.
+   - Only omit list-resource acceptance coverage when the resource is using a maintainer-reviewed upstream exception path such as `allow-without-list` or `list-not-supported`.
+
+- Ephemeral-resource coverage:
+   - Use the service-local `*_ephemeral_test.go` pattern with `acceptance.BuildTestData(t, "ephemeral.azurerm_<name>", ...)`.
+   - Gate the test on Terraform 1.10 support and use the framework provider factories required by the upstream ephemeral-resource test pattern.
+   - When validating ephemeral output payloads, prefer the `echo` provider plus config-state checks rather than inventing a one-off assertion pattern.
+
+- Provider-defined function coverage:
+   - Use focused unit tests under `internal/provider/function/*_test.go`.
+   - Gate the tests on Terraform 1.8 support, use framework provider factories, and assert outputs from `provider::azurerm::<name>(...)` calls.
+
 - Basic tests should validate existence:
    - Primary check should be `check.That(data.ResourceName).ExistsInAzure(r)`.
 

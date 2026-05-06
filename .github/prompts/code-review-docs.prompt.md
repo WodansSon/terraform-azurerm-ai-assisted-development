@@ -108,14 +108,23 @@ Rules (mandatory):
 ### 1) Identify the Terraform object from the doc path
 - Resource docs: `website/docs/r/<name>.html.markdown` → `azurerm_<name>`
 - Data source docs: `website/docs/d/<name>.html.markdown` → `azurerm_<name>`
+- List-resource docs: `website/docs/list-resources/<name>.html.markdown` → `azurerm_<name>`
+- Ephemeral-resource docs: `website/docs/ephemeral-resources/<name>.html.markdown` → `azurerm_<name>`
+- Function docs: `website/docs/functions/<name>.html.markdown` → `<name>`
 
 Also record the **doc type** from the path:
 - `website/docs/r/**` => **Resource** documentation rules
 - `website/docs/d/**` => **Data Source** documentation rules
+- `website/docs/list-resources/**` => **List Resource** documentation rules
+- `website/docs/ephemeral-resources/**` => **Ephemeral Resource** documentation rules
+- `website/docs/functions/**` => **Function** documentation rules
 
 ### 2) Locate the schema in `internal/**`
 - Search under `internal/**` for the Terraform name (e.g. `azurerm_<name>`).
 - Open the relevant registration/implementation files until you find the Terraform schema definition.
+- For list-resource docs, locate both the base resource implementation and the corresponding `*_resource_list.go` implementation so you can verify the list query config schema and the list-resource-specific example behavior.
+- For ephemeral-resource docs, locate the corresponding `*_ephemeral.go` implementation and the service `registration.go` entry so you can verify the ephemeral schema and the registration pattern.
+- For function docs, locate the corresponding implementation under `internal/provider/function/<name>.go` and its test file under `internal/provider/function/`.
 - Record the schema file path(s) used.
 
 If you cannot find the schema, say so explicitly and continue with a docs-only standards review.
@@ -128,11 +137,24 @@ From the schema, extract:
 - ForceNew fields (`ForceNew: true`)
 - constraints that affect docs (e.g. `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, validations), if clearly visible
 
+List-resource specialization (mandatory):
+- For list-resource docs, treat the list resource config schema as the authoritative source for `Argument Reference`.
+- For list-resource docs, validate the `list "azurerm_<name>" ...` examples against the list resource config schema and any list-resource-specific behavior proven by the `*_resource_list.go` implementation.
+
+Ephemeral-resource specialization (mandatory):
+- For ephemeral-resource docs, treat the `*_ephemeral.go` schema as the authoritative source for `Argument Reference` and `Attributes Reference`.
+- For ephemeral-resource docs, validate the `ephemeral "azurerm_<name>" ...` examples against the ephemeral resource schema and any implementation-backed behavior proven by `Open(...)`.
+
+Function specialization (mandatory):
+- For function docs, treat the implementation under `internal/provider/function/<name>.go` as the authoritative source for the function name, summary, signature, arguments, and return shape.
+- For function docs, validate `provider::azurerm::<name>(...)` usage against the function `Definition(...)` and `Run(...)` implementations rather than ordinary resource schema rules.
+
 **Mandatory: validate all example-used fields against schema evidence (not just `name`)**
 - Enumerate every argument assignment used in any Terraform configuration block under headings starting with `Example` (for example: `name = ...`, `sku_name = ...`, `ttl = ...`, nested blocks, and meta-arguments like `depends_on`).
 - Mandatory scope expansion (prevents skipped auxiliary blocks):
-  - This validation applies to **every** Terraform `resource` and `data` block that appears in any `Example*` section, not only the primary object being documented.
-  - For each such block type (for example `azurerm_resource_group`, `azurerm_dns_zone`, etc.), you MUST locate its schema under `internal/**` and validate the example-used fields against that schema/implementation evidence.
+  - This validation applies to **every** Terraform `resource`, `data`, and `ephemeral` block that appears in any `Example*` section, not only the primary object being documented.
+  - For each such block type (for example `azurerm_resource_group`, `azurerm_dns_zone`, or `azurerm_key_vault_secret` in an `ephemeral` block), you MUST locate its schema under `internal/**` and validate the example-used fields against that schema/implementation evidence.
+  - For function docs, also validate every `provider::azurerm::<name>(...)` call in `Example*` sections against the implementation under `internal/provider/function/<name>.go`.
 - For each referenced field, locate and record the relevant schema/implementation evidence that constrains it, including (when present):
   - `ValidateFunc` (regex/length/charset/enums)
   - `ConflictsWith`, `ExactlyOneOf`, `AtLeastOneOf`, `RequiredWith`
@@ -185,6 +207,9 @@ Evidence requirements:
 Doc requirements (contract-driven):
 - In resource docs, any constraint that affects valid config must be documented as notes per `DOCS-NOTE-*`.
 - In data source docs, enforce the contract rule that field documentation stays concise and limited to explaining what the field is, with no field-level note blocks.
+- In list-resource docs, enforce the contract rule that query-argument documentation stays concise and limited to explaining what the field is, with no field-level note blocks.
+- In ephemeral-resource docs, enforce the contract rule that query arguments and exported attributes stay concise and limited to what the field is, with only the top-level runtime-support note.
+- In function docs, enforce the contract rule that the `Arguments` section stays concise and parameter-focused, with only the top-level runtime-support note.
 - If evidence cannot be proven, do not guess; record an Observation per `DOCS-EVID-001`.
 
 ### 4) Audit the documentation (contract-driven)
@@ -201,7 +226,9 @@ Internal multi-pass audit (mandatory):
 - **Index pass (internal only)**: build a mental index of major headings and block subsections.
 - **Structure pass**: enforce `DOCS-FM-*` and `DOCS-STRUCT-*` (frontmatter, required sections, section order).
     - Mandatory exact-intro checks (contract-driven; prevents tiny drift):
-      - Under `## Attributes Reference`, the intro line MUST be exactly: `In addition to the Arguments listed above - the following Attributes are exported:` (hyphen form, not a comma).
+    - Under `## Attributes Reference` for resource and data source docs, the intro line MUST be exactly: `In addition to the Arguments listed above - the following Attributes are exported:` (hyphen form, not a comma).
+      - Under `## Argument Reference` for list-resource docs, the intro line MUST be exactly: `This list resource supports the following arguments:`.
+    - Under `## Attributes Reference` for ephemeral-resource docs, the intro line MUST be exactly: `The following attributes are exported:`.
 - **Arguments/Attributes pass**:
     - Top-level ordering and coverage (`DOCS-ARG-*`, `DOCS-ATTR-*`)
     - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
@@ -209,8 +236,11 @@ Internal multi-pass audit (mandatory):
     - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
     - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
     - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
+    - List-resource rule (mandatory): in list-resource docs, if a query-argument bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
+    - Ephemeral-resource rule (mandatory): in ephemeral-resource docs, if an argument or attribute bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
+    - Function rule (mandatory): in function docs, if an argument item contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the parameter is.
     - Note format (mandatory): when a resource field note is required, the inline note MUST use `(->|~>|!>) **Note:**` per `DOCS-NOTE-003`.
-- **Examples pass**: enforce `DOCS-EX-*` (fences, resource self-containedness, data source lookup behavior, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
+    - **Examples pass**: enforce `DOCS-EX-*` (fences, resource self-containedness, data source lookup behavior, list-resource query examples, ephemeral-resource examples, function call examples, required `depends_on` preservation, ValidateFunc-safe values, no secrets).
 - **Import/Timeouts/Wording pass**: enforce `DOCS-IMP-*` (resources), `DOCS-TIMEOUT-*` (if present), and `DOCS-WORD-*`.
 
 If you cannot confidently verify a section due to missing workspace evidence, do not guess; record an Observation and cite `DOCS-EVID-001`.
@@ -292,7 +322,7 @@ Skill footer rule (mandatory; prevents duplicate sections):
 ## 📌 **COMPLIANCE RESULT**
 - **Status**: Valid / Invalid
 - **Doc File**: ${docs_file_path}
-- **Doc Type**: Resource / Data Source
+- **Doc Type**: Resource / Data Source / List Resource / Ephemeral Resource / Function
 
 ## 🧾 **SCHEMA SNAPSHOT**
 - **Schema File(s)**: ${schema_file_paths}
@@ -308,21 +338,21 @@ Skill footer rule (mandatory; prevents duplicate sections):
 ## 📊 **DOC STANDARDS CHECK**
 - **Frontmatter**: Pass/Fail + missing keys (if any)
 - **Section Order**: Pass/Fail + missing sections (if any)
-- **Argument Ordering**: Pass/Fail (ID segments first per contract ordering, `location` next when present, remaining required alphabetical, then optional alphabetical, `tags` last)
-- **Argument Bullet Conciseness**: Pass/Fail (resource docs: long bullets split into inline notes per `DOCS-ARG-011`; data source docs: bullets stay short and field-definitional)
+- **Argument Ordering**: Pass/Fail (resource/data source/ephemeral docs: ID segments first per contract ordering, `location` next when present, remaining required alphabetical, then optional alphabetical, `tags` last; list-resource docs: query arguments alphabetical; function docs: arguments follow signature order)
+- **Argument Bullet Conciseness**: Pass/Fail (resource docs: long bullets split into inline notes per `DOCS-ARG-011`; data source, list-resource, ephemeral-resource, and function docs: entries stay short and field-definitional)
 - **Nested Block Field Ordering**: Pass/Fail (nested args: required alpha then optional alpha, `tags` last via `DOCS-SHAPE-006`; nested attrs: `id` first then alpha via `DOCS-ATTR-005`)
 - **Schema Shape**: Pass/Fail (docs describe blocks vs inline fields consistently with schema)
 - **Attributes Coverage**: Pass/Fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)
 - **ForceNew Wording**: Pass/Fail (resources only, missing “Changing this forces…” sentence)
-- **Conditional Notes**: Pass/Fail (resource docs: cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`; data source docs: field-level note blocks are absent and field text stays concise)
+- **Conditional Notes**: Pass/Fail (resource docs: cross-field/conditional requirements from schema constraints and `CustomizeDiff` are documented using `~> **Note:**`; data source, list-resource, ephemeral-resource, and function docs: field-level note blocks are absent and field text stays concise)
 - **Note Notation**: Pass/Fail (->/~>/!> exact format + marker meaning matches note content)
 - **Note Accuracy**: Pass/Fail (note content matches schema/diff-time/implicit behavior; no contradictory or incomplete constraints)
 - **Timeouts Readability**: Pass/Fail (convert defaults >60 minutes to hours)
-- **Import Text**: Pass/Fail (resources only, resource-specific sentence per `DOCS-IMP-002`)
+- **Import Text**: Pass/Fail (resources only, resource-specific sentence per `DOCS-IMP-002`; list-resource, ephemeral-resource, and function docs should omit a top-level Import section)
 - **Import Example**: Pass/Fail (resources only, ID shape matches importer/parser)
 - **Link Locales**: Pass/Fail (no locale segments like `/en-us/` in URLs)
-- **Examples**: Pass/Fail (resource docs: examples are functional and self-contained; data source docs: examples demonstrate existing-object lookup behavior without unnecessary backing-resource scaffolding; no hard-coded secrets)
-- **Example Invariants**: Pass/Fail (resource docs: preserve example-adjacent notes per `DOCS-EX-018`, preserve existing `depends_on` per `DOCS-EX-004`, do not replace references with invented literals per `DOCS-EX-019`, ensure transitive self-containedness per `DOCS-EX-020`, preserve reference semantics per `DOCS-EX-021`; data source docs: follow `DOCS-EX-022` lookup-example rules)
+- **Examples**: Pass/Fail (resource docs: examples are functional and self-contained; data source docs: examples demonstrate existing-object lookup behavior without unnecessary backing-resource scaffolding; list-resource docs: examples demonstrate Terraform `list` query usage; ephemeral-resource docs: examples demonstrate Terraform `ephemeral` usage; function docs: examples demonstrate `provider::azurerm::<name>(...)` usage; no hard-coded secrets)
+- **Example Invariants**: Pass/Fail (resource docs: preserve example-adjacent notes per `DOCS-EX-018`, preserve existing `depends_on` per `DOCS-EX-004`, do not replace references with invented literals per `DOCS-EX-019`, ensure transitive self-containedness per `DOCS-EX-020`, preserve reference semantics per `DOCS-EX-021`; data source docs: follow `DOCS-EX-022` lookup-example rules; list-resource docs: follow `DOCS-EX-023` list-query rules; ephemeral-resource docs: follow `DOCS-EX-024`; function docs: follow `DOCS-EX-025`)
 - **Example `name` Values**: Pass/Fail (nit-level; Example `name` values follow `DOCS-EX-007` where feasible and satisfy `DOCS-EX-016` constraints; when a rename is required, the replacement value is derived deterministically per `DOCS-EX-015`)
 
 ## 🟢 **STRENGTHS**

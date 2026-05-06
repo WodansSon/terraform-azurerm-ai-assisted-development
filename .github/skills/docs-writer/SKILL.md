@@ -42,6 +42,9 @@ Use this skill when working on Terraform AzureRM provider documentation pages un
 
 - `website/docs/r/*.html.markdown` (resources)
 - `website/docs/d/*.html.markdown` (data sources)
+- `website/docs/list-resources/*.html.markdown` (list resources)
+- `website/docs/ephemeral-resources/*.html.markdown` (ephemeral resources)
+- `website/docs/functions/*.html.markdown` (provider-defined functions)
 
 Your goal is to produce docs that match provider conventions and stay consistent with the actual Terraform schema.
 
@@ -52,6 +55,9 @@ When this skill is invoked, you must still:
 - verify schema parity and enforce ordering
 - enforce the standard generic ForceNew sentence
 - add missing required notes where the contract permits them (for example resource field notes and example-adjacent notes), and enforce the data source no-field-notes rule
+- enforce the list-resource doc-type rules when the page lives under `website/docs/list-resources/`, including the list-resource title/summary shape, `Argument Reference` heading, list query examples, and no-import behavior
+- enforce the ephemeral-resource doc-type rules when the page lives under `website/docs/ephemeral-resources/`, including the `Ephemeral:` title, Terraform 1.10 support note, `Argument Reference` heading, `ephemeral` examples, and no-import behavior
+- enforce the function doc-type rules when the page lives under `website/docs/functions/`, including the `Function:` title, Terraform 1.8/provider 4.0 support note, `Signature` and `Arguments` sections, and `provider::azurerm::<name>(...)` examples
 
 Do not require the user to explicitly ask for these checks.
 
@@ -78,13 +84,21 @@ Auditor independence:
 Use this to avoid missing common compliance breakpoints. The authoritative details live in `.github/instructions/docs-compliance-contract.instructions.md`.
 
 - Structure + frontmatter: `DOCS-FM-*`, `DOCS-STRUCT-*`
+- List-resource doc type rules: list-resource title/summary/sections/intro lines via `DOCS-FM-*`, `DOCS-STRUCT-*`, and `DOCS-FMT-*`
+- Ephemeral-resource doc type rules: ephemeral title/summary/support-note/sections via `DOCS-FM-*`, `DOCS-STRUCT-*`, and `DOCS-FMT-*`
+- Function doc type rules: function title/summary/support-note/sections via `DOCS-FM-*`, `DOCS-STRUCT-*`, and `DOCS-FMT-*`
 - Arguments parity + ordering + shape: `DOCS-ARG-*`, `DOCS-SHAPE-*` (including bullet split via `DOCS-ARG-011`)
 - Bullet split trigger (mandatory; prevents misses): in resource docs, if an argument bullet mixes the definition with validation-style constraints (length/charset/regex/start/end rules) or includes the ForceNew sentence plus constraints, split constraints into an inline note per `DOCS-ARG-011` + `DOCS-NOTE-003`; in data source docs, keep the bullet short and field-definitional instead of adding a field-level note.
+- List-resource query arguments follow the same concise, field-definitional rule as data source query fields; do not add field-level note blocks.
+- Ephemeral-resource and function argument docs follow the same concise, field-definitional rule as data source query fields; do not add field-level note blocks below individual fields.
 - Nested block field ordering: `DOCS-SHAPE-006`, `DOCS-ATTR-005`
 - ForceNew + wording hygiene: `DOCS-WORD-*` (including enum phrasing + Oxford comma) and `DOCS-ARG-003/006/009`
 - Azure object-name wording: keep canonical Azure proper-name capitalization such as `Resource Group` in field prose per `DOCS-WORD-007`
 - Notes required/marker correctness + de-dup: `DOCS-NOTE-*`
 - Examples (no deletions, resource self-containedness, data source lookup behavior, depends_on rules, ValidateFunc-safe values): `DOCS-EX-*` + `DOCS-EVID-001`
+- List-resource query examples: `DOCS-EX-023`
+- Ephemeral-resource examples: `DOCS-EX-024`
+- Function examples: `DOCS-EX-025`
 - Example invariants: `DOCS-EX-004`, `DOCS-EX-018`, `DOCS-EX-019`
 - Resource example self-containedness closure: `DOCS-EX-003`, `DOCS-EX-011`, `DOCS-EX-020`
 - Data source lookup examples: `DOCS-EX-022`
@@ -136,6 +150,7 @@ Mandatory policy:
 - **Default behavior:** when updating/fixing an existing docs page, edit the existing file in place. Do NOT run scaffolding.
 - **Use scaffolding only when creating a brand-new docs page from scratch**, meaning the target docs file does not already exist under `website/docs/r/**` or `website/docs/d/**`.
 - Also allow scaffolding when (and only when) the user explicitly asks for a scaffold/dry-run baseline to compare (see Testing mode).
+- **List-resource, ephemeral-resource, and function docs are manual:** do not treat the standard website scaffold tool as the default path for `website/docs/list-resources/**`, `website/docs/ephemeral-resources/**`, or `website/docs/functions/**` pages.
 
 Guardrails:
 - Never use scaffolding as part of an audit-only workflow. Audits should be static, evidence-based reviews.

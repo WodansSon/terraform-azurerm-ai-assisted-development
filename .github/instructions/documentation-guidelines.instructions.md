@@ -7,7 +7,7 @@ description: This document outlines the standards and guidelines for writing doc
 
 <a id="documentation-guidelines"></a>
 
-This document outlines the standards and guidelines for writing documentation for Terraform resources and data sources in the AzureRM provider.
+This document outlines the standards and guidelines for writing documentation for Terraform resources, data sources, list resources, ephemeral resources, and provider-defined functions in the AzureRM provider.
 
 <a id="quick-navigation"></a>
 
@@ -17,7 +17,7 @@ Core: <a href="#canonical-sources">Canonical sources</a> | <a href="#optional-ai
 
 AI checks: <a href="#ai-docs-style-enforcement">Style enforcement</a> | <a href="#ai-docs-forcenew-subset">ForceNew subset switching</a> | <a href="#ai-docs-enabled-fields">`*_enabled` wording</a> | <a href="#ai-docs-block-placement">Block placement</a> | <a href="#ai-docs-secrets">Secrets</a> | <a href="#ai-docs-audit">Schema parity</a> | <a href="#ai-docs-quick-audit">Quick audit</a> | <a href="#ai-docs-post-edit">Post-edit</a>
 
-Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources vs data sources</a> | <a href="#🏗️-documentation-structure">Doc structure</a> | <a href="#📄-resource-documentation-template">Resource template</a> | <a href="#📊-data-source-documentation-template">Data source template</a> | <a href="#✍️-writing-guidelines">Writing guidelines</a> | <a href="#💡-example-configuration-guidelines">Examples</a> | <a href="#📁-import-documentation">Import</a> | <a href="#⏱️-timeout-documentation">Timeouts</a> | <a href="#☁️-azure-specific-documentation-patterns">Azure patterns</a> | <a href="#📋-attributes-reference-differences">Attributes</a> | <a href="#📝-field-documentation-rules">Field rules</a>
+Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources vs data sources</a> | <a href="#🧾-list-resource-documentation-guidance">List resources</a> | <a href="#⚡-ephemeral-resource-documentation-guidance">Ephemeral resources</a> | <a href="#🔧-function-documentation-guidance">Functions</a> | <a href="#🏗️-documentation-structure">Doc structure</a> | <a href="#📄-resource-documentation-template">Resource template</a> | <a href="#📊-data-source-documentation-template">Data source template</a> | <a href="#✍️-writing-guidelines">Writing guidelines</a> | <a href="#💡-example-configuration-guidelines">Examples</a> | <a href="#📁-import-documentation">Import</a> | <a href="#⏱️-timeout-documentation">Timeouts</a> | <a href="#☁️-azure-specific-documentation-patterns">Azure patterns</a> | <a href="#📋-attributes-reference-differences">Attributes</a> | <a href="#📝-field-documentation-rules">Field rules</a>
 
 <a id="canonical-sources"></a>
 
@@ -71,12 +71,60 @@ Use this file for companion guidance:
 - illustrative templates and snippets
 
 Practical authoring reminders:
-- Preserve the resource vs data source distinction in tone and examples.
+- Preserve the resource vs data source vs list-resource vs ephemeral-resource vs function distinction in tone and examples.
 - Repeat the short summary sentence immediately below the top-level heading; for the exact requirement, see `DOCS-STRUCT-005` and `DOCS-WORD-003` in the contract.
 - In resource docs, keep argument descriptions short, then move caveats or conditions into notes.
 - In data source docs, keep field descriptions short and limited to explaining what the field is; do not use field-level note blocks.
+- In list-resource docs, keep query-argument descriptions short and limited to explaining what the field is; do not use field-level note blocks.
+- In ephemeral-resource docs, keep query arguments and exported attributes short and field-definitional; use only the top-level Terraform-version support note, not field-level note blocks.
+- In function docs, keep the `Arguments` section short and parameter-focused; use only the top-level runtime-support note, not field-level note blocks.
 - Prefer shared example dependencies in the primary `## Example Usage` block.
+- For list-resource pages, prefer query examples that use Terraform `list` blocks and show the supported query scopes instead of resource or data examples.
+- For ephemeral-resource pages, prefer primary examples that use Terraform `ephemeral` blocks and source any needed IDs from nearby resource/data examples.
+- For function pages, prefer examples that call `provider::azurerm::<name>(...)` directly and add provider/output/import scaffolding only when needed to make the example runnable.
 - When a rule needs exact wording or ordering, look up the contract instead of relying on memory.
+
+## 🧾 List Resource Documentation Guidance
+
+List-resource documentation is written manually under `website/docs/list-resources/`.
+
+Companion guidance:
+- Use the title shape `# List resource: azurerm_<name>`.
+- Use a short summary sentence that starts with `Lists ... resources.`.
+- Use `## Example Usage` followed by `## Argument Reference` for the default structure.
+- Use the intro line `This list resource supports the following arguments:`.
+- Model primary examples with Terraform `list "azurerm_<name>" "example"` blocks.
+- Query arguments such as `resource_group_name` and `subscription_id` should be concise and field-definitional, similar to data source query inputs.
+- Do not add an `Import` section for list-resource docs.
+- List-resource docs are manual and should not rely on the standard website scaffold flow.
+
+## ⚡ Ephemeral Resource Documentation Guidance
+
+Ephemeral-resource documentation is written manually under `website/docs/ephemeral-resources/`.
+
+Companion guidance:
+- Use the title shape `# Ephemeral: azurerm_<name>`.
+- Add the exact Terraform-version support note for Ephemeral Resources immediately below the title.
+- Use a short summary sentence that starts with `Use this to access information about an existing ...`.
+- Use `## Example Usage`, `## Argument Reference`, and `## Attributes Reference` as the default structure.
+- Model primary examples with Terraform `ephemeral "azurerm_<name>" "example"` blocks.
+- Use the intro line `The following attributes are exported:` for the attributes section.
+- Do not add an `Import` section for ephemeral-resource docs.
+- Ephemeral-resource docs are manual and should not rely on the standard website scaffold flow.
+
+## 🔧 Function Documentation Guidance
+
+Function documentation is written manually under `website/docs/functions/`.
+
+Companion guidance:
+- Use the title shape `# Function: <name>`.
+- Add the exact provider-defined function runtime-support note immediately below the title.
+- Use a short summary sentence that describes the function behavior, typically starting with `Takes ...` when the function transforms an input value.
+- Use `## Example Usage`, any additional `## Example ...` sections, then `## Signature`, then `## Arguments`.
+- Use `provider::azurerm::<name>(...)` syntax in the function examples.
+- A `provider "azurerm"` block is acceptable in function examples when it makes the example runnable.
+- Do not add a top-level `Import` section for function docs, though import-oriented example sections are acceptable when they are the point of the function.
+- Function docs are manual and should not rely on the standard website scaffold flow.
 
 ### Mandatory HashiCorp docs style enforcement
 

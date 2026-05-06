@@ -1,0 +1,51 @@
+{
+  "id": "review-docs-function-shape",
+  "title": "Docs review enforces function page structure and examples",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where a function page drifts toward ordinary resource-doc structure. The correct review should apply the function-specific doc rules instead of resource or data source rules.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-function-shape/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/functions/example_parse_resource_id.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a function docs review after the local docs workflow was extended to treat function pages as a first-class doc type."
+  },
+  "expectedRules": [
+    "DOCS-STRUCT-*",
+    "DOCS-EX-025",
+    "DOCS-WORD-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "function-doc-type-regression",
+      "severity": "high",
+      "file": "website/docs/functions/example_parse_resource_id.html.markdown",
+      "description": "The review should catch when a function page is written like an ordinary resource page instead of using the function title, support note, signature, arguments, and provider-function examples."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "provider-block-prohibited",
+      "description": "The review must not treat a provider block in a function example as automatically invalid when it is there to make the function example runnable."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "Function",
+      "DOCS-EX-025"
+    ]
+  },
+  "notes": "Pair this case with the sample docs-review markdown output to benchmark function docs review behavior."
+}

@@ -167,6 +167,15 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If explicit user-supplied PR context and environment PR context both exist and conflict, committed review must fail closed instead of silently choosing one.
 - Rule: The only allowed exception is an explicit user override that says the supplied PR should override the active or viewed PR context.
 
+### REVIEW-FILE-005: Vendored third-party files are non-actionable review scope
+- Rule: Files under `vendor/**` are non-actionable for normal code review because contributors are not expected to hand-edit or directly remediate vendored third-party content in this workflow.
+- Rule: Vendor files must still be identified when they appear in the selected diff scope, but they should be excluded from actionable findings unless a current workspace instruction explicitly says otherwise.
+- Rule: Do not raise Issues that tell contributors to edit vendored files directly.
+- Rule: When a correctness concern appears to originate from vendored content, review the first actionable non-vendored source that controls or introduces that vendored change instead, such as dependency/version updates, generation inputs, or service client wiring.
+- Reviewer behavior: disclose the count of vendored files skipped as non-actionable scope rather than silently omitting them or enumerating each vendored path in the review body.
+- Reviewer behavior: when the selected diff scope is entirely vendored files, say so explicitly in the review output so the reader understands the actionable review surface is limited.
+- Reviewer behavior: when vendored files make up the majority of the selected diff scope, say so explicitly in the review output so sparse actionable findings are not ambiguous.
+
 ## File-type-specific review coverage
 
 ### REVIEW-SCOPE-001: Always review user-visible content quality
@@ -201,6 +210,17 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-SCOPE-005: Go implementation and acceptance-test files defer to scoped guidance
 - Rule: When the review scope includes `internal/**/*.go` or `internal/**/*_test.go`, load and apply the applicable file-scoped instructions and skills.
 - Rule: Use those sources as the primary checklist for provider implementation and acceptance-test concerns rather than relying on stale prompt summaries.
+
+### REVIEW-SCOPE-005A: New resources must include required companion artifacts
+- Rule: When the review scope adds a brand-new resource under `internal/**/*.go`, review whether the required companion artifacts are present or explicitly justified.
+- Rule: For new resources, treat missing Resource Identity support, missing list resources, missing list-resource query tests, and missing list-resource docs as reviewable issues unless the change explicitly uses the maintainer-reviewed upstream exception path.
+- Rule: For the documentation companion, expect the corresponding list-resource doc page under `website/docs/list-resources/` when the new resource requires a list resource.
+- Rule: Do not treat upstream exception labels such as `allow-without-list` or `list-not-supported` as implicit; the review should only accept the omission when the exception is explicitly justified in the change context.
+
+### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
+- Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
+- Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
+- Rule: Treat missing companion docs or tests for new ephemeral resources and provider-defined functions as reviewable issues.
 
 ### REVIEW-SCOPE-006: Manifest and bundle changes must match shipped content expectations
 - Rule: When file manifests, release-bundle lists, or installer packaging inputs change, review whether the changed entries remain consistent with the repository structure and the expected shipped assets.

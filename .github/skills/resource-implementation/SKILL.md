@@ -78,6 +78,9 @@ Rules:
 ## Default approach
 
 - Prefer the **typed resource** implementation style (internal SDK framework) for new resources.
+- For new resources, plan Resource Identity first and a corresponding list resource immediately after it unless there is a concrete upstream-supported exception.
+- For ephemeral resources, use the service-local `*_ephemeral.go` pattern with `sdk.EphemeralResource`, `Open(...)`, and registration through `EphemeralResources()`.
+- For provider-defined functions, use the `internal/provider/function/` pattern with `Metadata`, `Definition`, and `Run`.
 - Make changes consistent with existing resources in the same service.
 
 ## Workflow (recommended)
@@ -89,6 +92,26 @@ Rules:
 - Confirm API model structure before mapping fields:
    - Do not guess types or required properties.
    - When needed, inspect the Azure SDK model structs or the provider’s generated clients.
+
+- New-resource workflow expectations:
+   - Treat Resource Identity as mandatory for new resources.
+   - Treat the list resource as mandatory for new resources by default.
+   - Treat the primary resource docs and the list-resource docs as mandatory companions for new resources.
+   - If no list API exists, do not silently omit the list resource; call out the exception path and the need for maintainer-reviewed `allow-without-list` or `list-not-supported` labeling.
+
+- Existing-resource list-retrofit expectations:
+   - When the task is to add list support to an existing resource, plan Resource Identity, the `*_resource_list.go` implementation, service registration, list-query tests, and list-resource docs together.
+   - Do not treat registration, tests, or list-resource docs as optional follow-up work once the list-support retrofit is in scope.
+
+- Ephemeral-resource workflow expectations:
+   - Implement the object as `*_ephemeral.go` under the owning service package.
+   - Register it through the service `EphemeralResources()` slice.
+   - Plan the companion docs under `website/docs/ephemeral-resources/` and acceptance coverage in `*_ephemeral_test.go`.
+
+- Provider-defined function workflow expectations:
+   - Implement the function under `internal/provider/function/<name>.go`.
+   - Expose its contract through `Definition(...)` and keep docs/tests aligned to that contract.
+   - Plan the companion docs under `website/docs/functions/` and unit coverage under `internal/provider/function/*_test.go`.
 
 - Schema design:
    - Required vs Optional must reflect real API requirements and provider conventions.
@@ -107,7 +130,12 @@ Rules:
 
 - Tests:
    - Add or adjust tests when implementation behavior changes materially.
+   - For new resources that add a list resource, plan a dedicated `*_resource_list_test.go` query-test path in addition to the resource lifecycle tests.
    - For acceptance-test-specific guidance, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the source of detailed acctest patterns.
+
+- Documentation companions:
+   - For new resources, plan the primary resource docs plus the corresponding list-resource docs under `website/docs/list-resources/`.
+   - Do not treat list-resource docs as optional when the list resource itself is required.
 
 ## Output expectation
 

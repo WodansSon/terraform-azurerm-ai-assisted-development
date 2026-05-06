@@ -423,9 +423,9 @@ Simply use slash commands to invoke the prompts directly:
 
 | Slash Command | Prompt File | Description |
 |---------------|-------------|-------------|
-| `/code-review-local-changes` | `code-review-local-changes.prompt.md` | Review your uncommitted changes |
-| `/code-review-committed-changes` | `code-review-committed-changes.prompt.md` | Review committed changes |
-| `/code-review-docs` | `code-review-docs.prompt.md` | Review a `website/docs/**` page for docs standards + schema parity (includes deterministic checks like `hcl` example fences, self-contained resource examples, existing-object lookup data source examples, import ID shape, and timeout readability) |
+| `/code-review-local-changes` | `code-review-local-changes.prompt.md` | Review your uncommitted changes, while reporting the count of skipped non-actionable vendored files under `vendor/**` |
+| `/code-review-committed-changes` | `code-review-committed-changes.prompt.md` | Review committed changes, while reporting the count of skipped non-actionable vendored files under `vendor/**` |
+| `/code-review-docs` | `code-review-docs.prompt.md` | Review a `website/docs/**` page for docs standards + schema parity (includes deterministic checks like `hcl` example fences, self-contained resource examples, existing-object lookup data source examples, list-resource query examples, ephemeral-resource docs shape, function docs shape, import ID shape, and timeout readability) |
 
 **Example Usage:**
 ```
@@ -438,9 +438,9 @@ Simply use slash commands to invoke the prompts directly:
 
 | Prompt File | Purpose | Usage |
 |-------------|---------|-------|
-| `code-review-local-changes.prompt.md` | **Review uncommitted changes** with Terraform provider best practices | Use before committing to get expert feedback on your local changes |
-| `code-review-committed-changes.prompt.md` | **Review committed changes** for pull request feedback | Use to review git commits with detailed technical analysis |
-| `code-review-docs.prompt.md` | **Review a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes (examples must use `hcl`, resource examples must be self-contained, data source examples must reflect existing-object lookups, include correct import IDs, and document readable timeouts) |
+| `code-review-local-changes.prompt.md` | **Review uncommitted changes** with Terraform provider best practices | Use before committing to get expert feedback on your local changes; vendored files under `vendor/**` are counted and treated as non-actionable review scope |
+| `code-review-committed-changes.prompt.md` | **Review committed changes** for pull request feedback | Use to review git commits with detailed technical analysis; vendored files under `vendor/**` are counted and treated as non-actionable review scope |
+| `code-review-docs.prompt.md` | **Review a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes (examples must use `hcl`, resource examples must be self-contained, data source examples must reflect existing-object lookups, list-resource pages must use list query examples and the correct list-resource doc shape, ephemeral-resource pages must use the `Ephemeral:` workflow, function pages must use the `Function:` workflow, include correct import IDs, and document readable timeouts) |
 
 ## 🎛️ Command Reference
 

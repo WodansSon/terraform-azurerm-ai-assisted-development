@@ -50,10 +50,11 @@ You: Create a new resource for Azure CDN Front Door Profile.
 
 **What Copilot Does**:
 1. ✅ Creates the resource file in the correct directory
-2. ✅ Implements all CRUD operations
-3. ✅ Adds proper schema with validations
-4. ✅ Includes error handling with formatted errors
-5. ✅ Adds metadata for state tracking
+2. ✅ Plans Resource Identity and the corresponding list resource
+3. ✅ Implements all CRUD operations
+4. ✅ Adds proper schema with validations
+5. ✅ Includes error handling with formatted errors
+6. ✅ Adds metadata for state tracking
 
 **Step 2**: Review and refine
 
@@ -140,7 +141,7 @@ func resourceCdnFrontDoorProfileUpdate(d *pluginsdk.ResourceData, meta interface
 
 ```
 You: Generate acceptance tests for azurerm_cdn_frontdoor_profile
-     including basic, complete, and update scenarios
+    including basic, complete, update, and list query scenarios
 ```
 
 **What Copilot Generates**:
@@ -167,6 +168,10 @@ func TestAccCdnFrontDoorProfile_complete(t *testing.T) {
 
 func TestAccCdnFrontDoorProfile_update(t *testing.T) {
     // Update scenarios
+}
+
+func TestAccCdnFrontDoorProfile_list_basic(t *testing.T) {
+    // Terraform 1.14 query tests for the list resource
 }
 ```
 

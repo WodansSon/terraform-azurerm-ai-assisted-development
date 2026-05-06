@@ -1,0 +1,57 @@
+{
+  "id": "skill-resource-implementation-ephemeral-resource",
+  "title": "Resource implementation guidance applies the framework ephemeral-resource pattern",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario where a contributor starts a provider ephemeral resource but drifts toward ordinary CRUD resource patterns. The correct guidance should require the framework ephemeral pattern and its companion artifacts.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-ephemeral-resource/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/keyvault/example_secret_ephemeral.go",
+      "internal/services/keyvault/registration.go"
+    ],
+    "notes": "Sanitized fixture models a real implementation-guidance pattern without retaining live PR identity."
+  },
+  "expectedRules": [
+    "IMPL-WF-004",
+    "TEST-WF-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "ephemeral-open-pattern-required",
+      "severity": "high",
+      "file": "internal/services/keyvault/example_secret_ephemeral.go",
+      "description": "The guidance should require the framework ephemeral pattern with `sdk.EphemeralResource` and `Open(...)` rather than CRUD resource methods."
+    },
+    {
+      "key": "ephemeral-companion-artifacts",
+      "severity": "medium",
+      "file": "internal/services/keyvault/registration.go",
+      "description": "The guidance should require `EphemeralResources()` registration plus companion docs and Terraform 1.10-gated tests for the ephemeral resource."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "crud-resource-pattern",
+      "description": "The guidance must not steer the contributor toward ordinary CRUD resource lifecycle methods for an ephemeral resource."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this as the adjudicated implementation-guidance case for the framework ephemeral-resource workflow."
+}

@@ -1,0 +1,56 @@
+{
+  "id": "skill-resource-implementation-provider-function",
+  "title": "Resource implementation guidance applies the provider-defined function pattern",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario where a contributor starts a provider-defined function but drifts toward service-resource patterns. The correct guidance should require the internal provider-function workflow and its companion artifacts.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-provider-function/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/provider/function/example_resource_id.go"
+    ],
+    "notes": "Sanitized fixture models a real provider-function implementation-guidance pattern without retaining live PR identity."
+  },
+  "expectedRules": [
+    "IMPL-WF-005",
+    "TEST-WF-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "provider-function-pattern-required",
+      "severity": "high",
+      "file": "internal/provider/function/example_resource_id.go",
+      "description": "The guidance should require the provider-defined function pattern with `Metadata`, `Definition`, and `Run`."
+    },
+    {
+      "key": "provider-function-companion-artifacts",
+      "severity": "medium",
+      "file": "internal/provider/function/example_resource_id.go",
+      "description": "The guidance should require the companion docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "service-resource-pattern",
+      "description": "The guidance must not steer the contributor toward service-local CRUD resource patterns for a provider-defined function."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this as the adjudicated implementation-guidance case for the provider-defined function workflow."
+}

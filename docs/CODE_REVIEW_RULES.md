@@ -109,6 +109,17 @@ This means the review applied Go/provider-specific guidance because the change t
 
 It is the rule that tells the auditor to load the scoped Go instructions and skills instead of relying only on the generic review contract.
 
+### `REVIEW-FILE-005`
+
+This means the review recognized vendored third-party files under `vendor/**` as non-actionable scope.
+
+In practice, the review should:
+
+- disclose the count of vendored files skipped in the diff rather than listing each vendored path
+- avoid raising Issues that tell a contributor to edit vendored files directly
+- focus findings on the first actionable non-vendored source, such as dependency bumps, generation inputs, or service wiring
+- say explicitly when a change-set is vendored-only or vendored-heavy so sparse actionable findings are easy to interpret
+
 ### `REVIEW-LINT-*`
 
 These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:
@@ -127,11 +138,11 @@ These IDs come from `.github/instructions/docs-compliance-contract.instructions.
 | `DOCS-EVID-*` | Evidence guardrails | The docs audit refused to guess values, imports, or constraints without code evidence |
 | `DOCS-OBS-*` | Observation-only guidance | Non-blocking docs or schema-design suggestions |
 | `DOCS-FM-*` | Frontmatter | YAML frontmatter requirements such as `page_title`, `layout`, and `subcategory` |
-| `DOCS-STRUCT-*` | Document structure | Required sections and section ordering |
+| `DOCS-STRUCT-*` | Document structure | Required sections, section ordering, and doc-type structure for resource, data source, list-resource, ephemeral-resource, and function pages |
 | `DOCS-FMT-*` | Formatting | Backticks, intro lines, and code-fence conventions |
 | `DOCS-IMP-*` | Import docs | Import wording and example correctness |
 | `DOCS-SHAPE-*` | Schema shape parity | Whether docs reflect blocks, maps, lists, and nested structures correctly |
-| `DOCS-EX-*` | Example code | Example correctness, resource self-containedness, data source lookup behavior, naming, and Terraform syntax |
+| `DOCS-EX-*` | Example code | Example correctness, resource self-containedness, data source lookup behavior, list-resource query behavior, ephemeral-resource usage, function-call usage, naming, and Terraform syntax |
 | `DOCS-NOTE-*` | Notes | Required note blocks, note severity, formatting, and de-duplication |
 | `DOCS-ARG-*` | Arguments Reference | Field coverage, ordering, defaults, and validation wording |
 | `DOCS-ATTR-*` | Attributes Reference | Computed field coverage and ordering |
@@ -148,7 +159,7 @@ These IDs come from `.github/instructions/implementation-compliance-contract.ins
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
 | `IMPL-EVID-*` | Evidence and verification | The implementation guidance had to be grounded in provider code, SDK/client models, or nearby implementations instead of guessing |
-| `IMPL-WF-*` | Workflow | Which high-level implementation approach should be preferred, such as typed resources for new work |
+| `IMPL-WF-*` | Workflow | Which high-level implementation approach should be preferred, such as typed resources for new work, framework ephemeral resources, and provider-defined functions |
 | `IMPL-SCHEMA-*` | Schema and mapping | How schema shape, field ordering, and field requirements should align with real provider behavior |
 | `IMPL-PATCH-*` | PATCH and residual state | How Azure PATCH behavior should be handled so omitted fields do not leave stale state behind |
 | `IMPL-ERR-*` | Error handling | How provider-standard error wording and wrapping should be applied |
@@ -162,7 +173,7 @@ These IDs come from `.github/instructions/testing-compliance-contract.instructio
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
 | `TEST-EVID-*` | Evidence and verification | The testing guidance had to follow existing provider test patterns instead of inventing new structures |
-| `TEST-WF-*` | Workflow | How much test coverage should be added and how focused the scenario should be |
+| `TEST-WF-*` | Workflow | How much test coverage should be added and how focused the scenario should be, including list-resource, ephemeral-resource, and provider-function patterns |
 | `TEST-RUN-*` | Execution safety | Acceptance tests create real Azure resources and should be run narrowly and intentionally |
 | `TEST-PATTERN-*` | Acceptance test patterns | How `ExistsInAzure`, `ImportStep()`, and `requiresImport`-style coverage should be used |
 

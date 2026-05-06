@@ -1,0 +1,54 @@
+{
+  "id": "skill-docs-writer-list-resource-shape",
+  "title": "Docs-writer guidance applies list-resource doc-type rules",
+  "task": "docs-writer",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized direct docs-writer scenario where an existing list-resource page drifts on the list-resource title, summary, and example form, and the correct output should edit the page in place using the list-resource-specific rules rather than resource-doc defaults.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-docs-writer-list-resource-shape/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/list-resources/example_network_profile.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a docs-writer request against an existing list-resource page without retaining live PR identity."
+  },
+  "expectedRules": [
+    "DOCS-STRUCT-*",
+    "DOCS-FMT-*",
+    "DOCS-WORD-003",
+    "DOCS-EX-023",
+    "DOCS-EVID-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "list-resource-title-summary",
+      "severity": "high",
+      "file": "website/docs/list-resources/example_network_profile.html.markdown",
+      "description": "The docs-writer response should restore the list-resource title and summary shape for the page."
+    },
+    {
+      "key": "list-query-example-form",
+      "severity": "high",
+      "file": "website/docs/list-resources/example_network_profile.html.markdown",
+      "description": "The docs-writer response should use Terraform `list` query examples instead of resource examples for the list-resource page."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "scaffold-existing-page",
+      "description": "The response must not treat scaffolding as the default remediation for an existing list-resource docs page."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: docs-writer"
+    ]
+  },
+  "notes": "Use this as the direct docs-writer benchmark for list-resource page remediation without scaffold drift."
+}
