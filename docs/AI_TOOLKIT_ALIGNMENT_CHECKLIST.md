@@ -11,13 +11,14 @@ Use it when you want to answer questions like:
 
 This is a maintenance checklist for this repository only. It is not part of the runtime toolkit that gets installed into target repositories.
 
-## Repo-Only Maintenance Skill
+## Repo-Only Maintenance Skills
 
-This repository also includes a repo-only maintainer skill:
+This repository also includes repo-only maintainer skills:
 
 - `.github/skills/ai-toolkit-maintenance/SKILL.md`
+- `.github/skills/changelog-maintenance/SKILL.md`
 
-Use it when you want the agent to run this checklist-oriented maintenance workflow for you.
+Use them when you want the agent to run repository-maintainer workflows for you.
 
 Example invocations:
 
@@ -25,10 +26,13 @@ Example invocations:
 - `/ai-toolkit-maintenance run the alignment checklist for the current branch`
 - `/ai-toolkit-maintenance validate that the changed files complete the alignment checklist`
 - `/ai-toolkit-maintenance check whether this file should be runtime payload or repo-only`
+- `/changelog-maintenance update the changelog for the current branch`
+- `/changelog-maintenance prepare the next release section from Unreleased`
+- `/changelog-maintenance normalize the Unreleased entries to the approved taxonomy`
 
 Notes:
 
-- This skill is repo-only and should not be added to `installer/file-manifest.config`.
+- These skills are repo-only and should not be added to `installer/file-manifest.config`.
 - If the request is "is the AI toolkit up to date?" and upstream contributor alignment is relevant, the skill should run `tools/check-upstream-contributor-drift.ps1` as part of the workflow and report the result.
 - If the slash command does not appear immediately in VS Code, reload the window and try again.
 
@@ -125,10 +129,12 @@ Typical maintenance-only files that should stay out of the installed payload:
 
 - `tools/config/upstream-contributor.json`
 - `tools/validate-ai-toolkit.ps1`
+- `tools/validate-changelog-taxonomy.ps1`
 - `tools/validate-contracts.ps1`
 - `tools/check-upstream-contributor-drift.ps1`
 - `.github/workflows/contracts-validation.yml`
 - `.github/skills/ai-toolkit-maintenance/SKILL.md`
+- `.github/skills/changelog-maintenance/SKILL.md`
 - Repo-only maintenance checklists like this file
 
 ### 6. Changelog and release docs are aligned
@@ -137,6 +143,23 @@ When the runtime toolkit changes in a user-visible way:
 
 - Update `CHANGELOG.md`
 - If the change affects release or maintenance expectations, update `.github/workflows/RELEASING.md` when needed
+
+For new `CHANGELOG.md` entries under `## [Unreleased]`:
+
+- Use grouped top-level bullets when a subsection has entries:
+	- `- **User-Priority:**`
+	- `- **Maintainer/Workflow:**`
+- Put actual changelog entries under those groups as nested bullets in the form `  - **[Taxonomy]** - entry`
+- Approved taxonomy tags are `[Review]`, `[Docs]`, `[Implementation]`, `[Testing]`, `[Installer]`, `[Skill Routing]`, and `[Internal]`
+- Use the fixed display order inside each subsection: `[Review]`, `[Docs]`, `[Installer]`, then `[Implementation]`, `[Testing]`, `[Skill Routing]`, `[Internal]`
+- Treat `[Review]`, `[Docs]`, and `[Installer]` as the user-priority group
+- Treat `[Implementation]`, `[Testing]`, `[Skill Routing]`, and `[Internal]` as the maintainer/workflow group
+- If both groups appear in the same `Added`, `Changed`, or `Fixed` subsection, insert exactly one blank line between the two top-level group bullets
+- If only one group appears in a subsection, do not emit the empty group and do not add a separator blank line just for formatting
+- Prefer the user-facing capability tag over `[Internal]` when the change materially affects end-user behavior
+- Use `[Internal]` for repo-only harness, validation, scaffolding, or maintainer workflow changes
+- Do not churn older release sections just to retrofit taxonomy unless that is the explicit task
+- Preserve the repo's current changelog shape: `Unreleased` plus empty `Added`, `Changed`, and `Fixed` headings when those sections have no entries
 
 ### 7. Validation passes
 
@@ -149,6 +172,7 @@ pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
 That command runs the current repo-level maintainer validation flow in one pass:
 
 - Explicit changelog-decision validation for current branch changes
+- Changelog taxonomy validation for `Unreleased` entries
 - Contract validation
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - Regression harness validation and suite scoring
@@ -181,6 +205,10 @@ pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues
 The lower-level commands remain available for debugging and targeted re-runs.
 
 Run:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-changelog-taxonomy.ps1
+```
 
 ```powershell
 pwsh -NoProfile -File ./tools/validate-contracts.ps1
@@ -281,4 +309,4 @@ When asked whether the AI toolkit is up to date, check these in order:
 - `CHANGELOG.md` reflects the current release state.
 - No new contract, skill, prompt, or companion file was added without corresponding alignment updates.
 
-If all five are true, the toolkit is usually aligned enough to answer “yes” with confidence.
+If all six are true, the toolkit is usually aligned enough to answer “yes” with confidence.

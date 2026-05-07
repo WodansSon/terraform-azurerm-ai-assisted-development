@@ -9,6 +9,10 @@ When editing or generating code under `internal/**/*.go`, you must consult and f
 
 - `.github/skills/resource-implementation/SKILL.md`
 
+When the task specifically involves migrating or replacing legacy polling logic such as `pluginsdk.Retry()`, `pluginsdk.StateChangeConf`, or `WaitForStateContext()`, you must also consult and follow:
+
+- `.github/skills/custom-poller-migration/SKILL.md`
+
 You must also consult and follow the shared implementation contract:
 
 - `.github/instructions/implementation-compliance-contract.instructions.md`
@@ -20,6 +24,10 @@ This is required even if the user does not explicitly ask to “use the skill”
 Because use of this skill is mandatory for `internal/**/*.go`, the assistant's final response must include this line:
 
 Skill used: resource-implementation
+
+If `.github/skills/custom-poller-migration/SKILL.md` was also used for a polling-migration task, the assistant's final response must also include:
+
+Skill used: custom-poller-migration
 
 Rules:
 - Do not write this marker into repository files.

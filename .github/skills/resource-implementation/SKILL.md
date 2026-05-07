@@ -41,6 +41,10 @@ Use these files for worked examples and specialized implementation guidance afte
 - `.github/instructions/provider-guidelines.instructions.md`
 - `.github/instructions/code-clarity-enforcement.instructions.md`
 
+For legacy polling migrations under `internal/**/*.go`, also use:
+
+- `.github/skills/custom-poller-migration/SKILL.md`
+
 For acceptance-test-specific work under `internal/**/*_test.go`, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the test authority.
 
 ## Scope
@@ -127,6 +131,10 @@ Rules:
    - Wrap field names and important values in backticks.
    - Use `errors.New(...)` for static errors that do not need formatting or wrapping.
    - Use `fmt.Errorf(...)` when formatting values or wrapping an underlying error, and use `%+v` for the wrapped underlying error.
+
+- Polling migrations:
+   - When the task involves replacing `pluginsdk.Retry()`, `pluginsdk.StateChangeConf`, or `WaitForStateContext()`, consult `custom-poller-migration` instead of inventing a one-off migration structure.
+   - Preserve polling parity unless the user explicitly approves a behavior change.
 
 - Tests:
    - Add or adjust tests when implementation behavior changes materially.

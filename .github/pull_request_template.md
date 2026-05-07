@@ -8,10 +8,6 @@ When opening a PR, please follow these PR title prefix examples (use when applic
 - [CRASH:] <short description>
 -->
 
-# Summary
-
-<!-- What does this change do? Keep it short and concrete. -->
-
 ## Community Note
 
 <!-- Please leave this section as-is. -->
@@ -23,6 +19,10 @@ When opening a PR, please follow these PR title prefix examples (use when applic
 <!-- Please include a description below with the reason for the PR, what it is doing, what it is trying to accomplish, and anything relevant for a reviewer to know.
 
 If this is a breaking change, explain the user impact, why it is necessary, and provide explicit upgrade steps (include upgrade notes / changelog entry where appropriate). -->
+
+## Summary
+
+<!-- What does this change do? Keep it short and concrete. -->
 
 ## Type of Change
 

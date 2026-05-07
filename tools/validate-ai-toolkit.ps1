@@ -22,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$changelogTaxonomyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-taxonomy.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
@@ -222,6 +223,10 @@ try {
         throw 'CHANGELOG.md is not updated for the current branch. Update CHANGELOG.md or rerun with -ChangelogNotRequired -ChangelogReason "<reason>".'
     }
 
+    $steps += Invoke-ValidationStep -Name 'changelog-taxonomy' -Detail 'Validate approved taxonomy prefixes for bullets under the Unreleased changelog section.' -Skipped:$SkipChangelog -Command {
+        & pwsh -NoProfile -File $changelogTaxonomyScriptPath
+    }
+
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {
         & pwsh -NoProfile -File $contractsScriptPath
     }
@@ -314,6 +319,10 @@ try {
         Write-Output 'Highlights'
         if ($null -ne $summary.highlights.changelogStatus) {
             Write-Output "  Changelog Status         : $($summary.highlights.changelogStatus)"
+        }
+        $changelogTaxonomyStep = @($steps | Where-Object { $_.name -eq 'changelog-taxonomy' })[0]
+        if ($null -ne $changelogTaxonomyStep) {
+            Write-Output "  Changelog Taxonomy       : $($changelogTaxonomyStep.status)"
         }
         if ($null -ne $summary.highlights.regressionCasesSelected) {
             Write-Output "  Regression Cases Selected : $($summary.highlights.regressionCasesSelected)"
