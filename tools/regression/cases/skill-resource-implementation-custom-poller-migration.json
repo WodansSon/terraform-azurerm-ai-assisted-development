@@ -1,0 +1,57 @@
+{
+  "id": "skill-resource-implementation-custom-poller-migration",
+  "title": "Resource implementation guidance routes legacy polling migrations through the custom poller skill",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic implementation-guidance scenario where a contributor needs to replace legacy `pluginsdk.StateChangeConf.WaitForStateContext()` polling with a custom poller. The correct guidance should preserve polling parity, require a `pollers.PollerType` migration path, and include both the primary implementation skill marker and the custom-poller companion skill marker.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-custom-poller-migration/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic fixture models a narrow polling-migration request after the custom-poller skill was wired into the shipped Go implementation workflow."
+  },
+  "expectedRules": [
+    "IMPL-EVID-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "custom-poller-pattern-required",
+      "severity": "high",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should replace the legacy `StateChangeConf` flow with a `pollers.PollerType`-based custom poller rather than leaving the legacy polling structure in place."
+    },
+    {
+      "key": "preserve-polling-parity",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should explicitly preserve the legacy polling interval, pending/target semantics, and terminal error behavior unless the user approves a behavior change."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "crud-only-guidance",
+      "description": "The guidance must not treat the task as ordinary CRUD/schema work only and ignore the specialist polling-migration workflow."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "pollers.PollerType",
+      "Skill used: resource-implementation",
+      "Skill used: custom-poller-migration"
+    ]
+  },
+  "notes": "Use this as the adjudicated implementation-guidance benchmark for routing legacy polling migrations through the shipped custom-poller companion skill."
+}

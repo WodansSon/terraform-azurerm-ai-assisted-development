@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the `custom-poller-migration` runtime skill and shipped it in the installer payload so legacy polling migrations can be handled as a first-class implementation workflow instead of remaining an unwired repo-local file.
+- Added an adjudicated implementation-guidance regression case for custom poller migration routing, so legacy polling migration prompts now benchmark whether both `resource-implementation` and `custom-poller-migration` are invoked together.
+
 ### Changed
+
+- Updated the Go implementation routing and the primary `resource-implementation` skill so legacy `pluginsdk.Retry()` and `pluginsdk.StateChangeConf` migrations now consult the dedicated `custom-poller-migration` guidance alongside the shared implementation contract.
 
 ### Fixed
 
