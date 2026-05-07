@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Maintainer/Workflow:**
   - **[Skill Routing]** - Updated the Go implementation routing and the primary `resource-implementation` skill so legacy `pluginsdk.Retry()` and `pluginsdk.StateChangeConf` migrations now consult the dedicated `custom-poller-migration` guidance alongside the shared implementation contract.
+  - **[Internal]** - Updated the pull request template so `Community Note` appears first, `Description` appears before `Summary`, and `Summary` now uses a level-two heading for consistency with the rest of the template.
   - **[Internal]** - Updated the maintainer checklist and the one-shot validator so changelog taxonomy guidance is documented and `Unreleased` entries are checked for approved prefixes.
 
 ### Fixed
