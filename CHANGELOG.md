@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.3.0] - 2026-05-07
+
+### Added
+
 - **Maintainer/Workflow:**
   - **[Implementation]** - Added the `custom-poller-migration` runtime skill and shipped it in the installer payload so legacy polling migrations can be handled as a first-class implementation workflow instead of remaining an unwired repo-local file.
   - **[Internal]** - Added an adjudicated implementation-guidance regression case for custom poller migration routing, so legacy polling migration prompts now benchmark whether both `resource-implementation` and `custom-poller-migration` are invoked together.
@@ -553,7 +561,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.0.1...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.3.0
 [3.0.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.1
 [3.0.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.0
 [1.0.5]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.5
