@@ -19,3 +19,6 @@ installer/aii.checksum
 tools/regression/runs/
 tools/regression/results/latest/
 tools/regression/results/history/
+
+# Generated plugin adapter payload
+plugins/terraform-azurerm-ai-toolkit/export/staged/

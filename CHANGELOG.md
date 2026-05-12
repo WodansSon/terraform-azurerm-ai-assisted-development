@@ -9,9 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added Playground local-review, committed-review, and docs-review agents so the new plugin and CLI adapter can run those audits through explicit repository, PR, diff-scope, and docs-path inputs while preserving the existing review output shape.
+  - **[Installer]** - Added a versioned Playground plugin publication package to the release workflow so tagged releases now emit a manual-import artifact that can be applied to a personal `agency-microsoft/playground` user branch.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added a side-by-side Playground plugin and CLI adapter planning document that defines shared-core boundaries, prompt-to-agent migration, and a future repository layout for keeping the plugin frontend aligned with the existing VS Code installer frontend.
+  - **[Internal]** - Added the first Playground plugin adapter scaffold under `plugins/terraform-azurerm-ai-toolkit/`, including plugin metadata, review agents, a committed-review scope normalizer, and local validation/export/smoke-test helpers so the side-by-side frontend can start iterating without forking the shared contracts and skills.
+
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - Changed the committed-review workflow so the VS Code prompt and the Playground CLI committed-review agent now share a single committed-review workflow spec instead of maintaining two drifting copies of the procedure.
+  - **[Review]** - Changed the local-review and docs-review workflows so their VS Code prompts and Playground CLI agents now each share a dedicated workflow instruction file instead of maintaining separate prompt and agent procedure copies.
+  - **[Review]** - Changed the CLI review agents so they now fail fast when the target repo is missing the installed AI toolkit instruction files, deriving the required review surface from the installer manifest instead of maintaining hard-coded agent file lists.
+  - **[Installer]** - Changed the installer payload so target repositories now receive the shared local-review, committed-review, and docs-review workflow instruction files alongside the existing review contracts and guidance.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added a repo-side plugin export helper that stages a clean standalone plugin tree and optional zip under `plugins/terraform-azurerm-ai-toolkit/export/staged/` so plugin-install smoke tests can run against an exported package shape instead of the live working copy.
+  - **[Internal]** - Changed the plugin export helper so it now also writes a local marketplace manifest into the staged export root, allowing contributor smoke tests to use `plugin@marketplace` installation syntax instead of deprecated direct local plugin installs.
+  - **[Internal]** - Added a one-command staged-plugin smoke-test helper that exports the staged plugin, refreshes the local marketplace registration, removes any existing local install when present, and reinstalls the plugin through the staged local marketplace automatically.
+  - **[Internal]** - Changed the plugin release guidance so contributors are expected to run the staged marketplace smoke-test helper and perform a real CLI smoke test before pushing plugin updates to the Agency Playground repository or updating the Playground PR.
+  - **[Internal]** - Tightened the CLI committed-review agent and contributor smoke-test guidance so an explicit `pr_number` now requires authoritative GitHub-backed PR scope, and any attempt to infer PR scope from out-of-workspace local state is treated as a fail-closed CLI error instead of a review fallback.
+  - **[Internal]** - Clarified the shared committed-review workflow and VS Code prompt entrypoint so PR-scoped review should prefer GitHub-native PR metadata sources silently, avoiding raw diff/API fetch fallbacks and user-facing source-switch narration when native PR tools are available.
+  - **[Internal]** - Relaxed the shared committed-review bookkeeping rules so PR-scoped review no longer runs extra repo-local shell commands or ad hoc scripts just to fill summary fields when authoritative PR metadata already exists; non-essential summary fields may now render as `PR scope` or `n/a` instead.
+  - **[Internal]** - Tightened the shared committed-review workflow and VS Code prompt entrypoint further so they now reject ad hoc shell probing of external PR payloads for metadata enumeration or bookkeeping, preferring GitHub-native PR context silently and failing closed when that context is not usable as-is.
+  - **[Internal]** - Added a CLI-only committed-review scope helper and debug mode so the staged plugin can normalize review scope before analysis and emit a scope-only summary for parity debugging when the CLI and VS Code prompt disagree.
+  - **[Internal]** - Removed the remaining CLI committed-review branch fallback path so the staged plugin now requires explicit authoritative PR scope for committed review and fails fast when `pr_number`, changed files, or repo context are not correct.
+  - **[Internal]** - Added an explicit CLI committed-review `pr_repo` input so fork-based local clones can review upstream PRs against the correct authoritative GitHub repository instead of accidentally targeting the local fork owner.
+  - **[Internal]** - Tightened the CLI committed-review path so PR changed files must come directly from the authoritative GitHub PR result instead of being shell-parsed back out of temporary Copilot tool-output files under the local user temp directory.
+  - **[Internal]** - Changed the CLI committed-review path again so it now resolves authoritative PR scope live on each run and keeps the changed-file set in memory instead of relying on a repo-local prepared manifest under the target worktree.
+  - **[Internal]** - Simplified the Playground plugin architecture so review agents now rely on Copilot CLI's native repository and path-specific instruction loading from the target repo instead of a separate instruction-catalog and parity-resolver layer.
+  - **[Internal]** - Changed the release workflow so it now stamps the Playground plugin manifest version from the release tag and stamps the plugin author metadata from repository release variables, while the checked-in plugin manifest remains a development-oriented `0.0.0-dev` scaffold.
+  - **[Internal]** - Changed the release documentation so it now includes a manual post-release Playground publication checklist and clearly separates release-time package generation from the later PR-based Playground submission flow.
+
 ### Fixed
+
+- **User-Priority:**
+  - **[Review]** - Fixed the Playground plugin adapter scaffold so the translated review workflows now use Copilot CLI-compatible `*.agent.md` filenames, allowing local CLI plugin loading and smoke testing to discover the review agents correctly.
+  - **[Review]** - Fixed the Playground local and committed review agents so provider Go and Go test scope now explicitly loads the implementation and testing guidance, making CLI review behavior less likely to miss implementation-side rules such as the required Go file header.
+
 
 ## [3.3.0] - 2026-05-07
 

@@ -9,6 +9,10 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    env:
+      PLAYGROUND_PLUGIN_MANIFEST: plugins/terraform-azurerm-ai-toolkit/.claude-plugin/plugin.json
+      PLAYGROUND_PLUGIN_AUTHOR_NAME: ${{ vars.PLAYGROUND_PLUGIN_AUTHOR_NAME }}
+      PLAYGROUND_PLUGIN_AUTHOR_EMAIL: ${{ vars.PLAYGROUND_PLUGIN_AUTHOR_EMAIL }}
     permissions:
       attestations: write
       artifact-metadata: write
@@ -24,6 +28,51 @@ jobs:
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Validate Playground plugin release metadata
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "${PLAYGROUND_PLUGIN_MANIFEST}" ]; then
+            echo "Missing Playground plugin manifest at ${PLAYGROUND_PLUGIN_MANIFEST}" >&2
+            exit 1
+          fi
+
+          if [ -z "${PLAYGROUND_PLUGIN_AUTHOR_NAME}" ]; then
+            echo "Repository variable PLAYGROUND_PLUGIN_AUTHOR_NAME is required for release stamping." >&2
+            exit 1
+          fi
+
+          if [ -z "${PLAYGROUND_PLUGIN_AUTHOR_EMAIL}" ]; then
+            echo "Repository variable PLAYGROUND_PLUGIN_AUTHOR_EMAIL is required for release stamping." >&2
+            exit 1
+          fi
+
+      - name: Stamp Playground plugin manifest for release artifacts
+        run: |
+          set -euo pipefail
+
+          tmp_file="$(mktemp)"
+          jq \
+            --arg version "${{ steps.get_version.outputs.VERSION }}" \
+            --arg author_name "${PLAYGROUND_PLUGIN_AUTHOR_NAME}" \
+            --arg author_email "${PLAYGROUND_PLUGIN_AUTHOR_EMAIL}" \
+            '.version = $version | .author.name = $author_name | .author.email = $author_email' \
+            "${PLAYGROUND_PLUGIN_MANIFEST}" > "${tmp_file}"
+
+          mv "${tmp_file}" "${PLAYGROUND_PLUGIN_MANIFEST}"
+
+      - name: Verify stamped Playground plugin manifest metadata
+        run: |
+          set -euo pipefail
+
+          stamped_version="$(jq -r '.version' "${PLAYGROUND_PLUGIN_MANIFEST}")"
+          stamped_author_name="$(jq -r '.author.name' "${PLAYGROUND_PLUGIN_MANIFEST}")"
+          stamped_author_email="$(jq -r '.author.email' "${PLAYGROUND_PLUGIN_MANIFEST}")"
+
+          test "${stamped_version}" = "${{ steps.get_version.outputs.VERSION }}"
+          test "${stamped_author_name}" = "${PLAYGROUND_PLUGIN_AUTHOR_NAME}"
+          test "${stamped_author_email}" = "${PLAYGROUND_PLUGIN_AUTHOR_EMAIL}"
 
       - name: Extract changelog
         id: changelog
@@ -167,6 +216,16 @@ jobs:
             --exclude='release' \
             .
 
+      - name: Create Playground plugin package
+        run: |
+          set -euo pipefail
+
+          mkdir -p release/playground-package/plugins
+          cp -R plugins/terraform-azurerm-ai-toolkit release/playground-package/plugins/
+
+          cd release/playground-package
+          zip -r ../terraform-azurerm-ai-toolkit-playground-v${{ steps.get_version.outputs.VERSION }}.zip plugins/
+
       - name: Generate checksums
         run: |
           cd release
@@ -241,12 +300,28 @@ jobs:
 
             **Note:** The `-Bootstrap` flag is only needed for contributors working on this project itself, not for end users.
 
+            ### Playground Plugin Package
+
+            This release also includes a Playground plugin publication package:
+
+            - **`terraform-azurerm-ai-toolkit-playground-v${{ steps.get_version.outputs.VERSION }}.zip`**
+
+            This package is intended for manual publication into your personal user branch in `agency-microsoft/playground`.
+
+            High-level manual flow:
+            1. Download the plugin package from this release.
+            2. Check out your Playground user branch (`users/<alias>/<feature-name>`).
+            3. Extract the package from the Playground repository root so it restores `plugins/terraform-azurerm-ai-toolkit/`.
+            4. Run Playground validation and security checks.
+            5. Commit, push, and open a PR from your user branch to `main`.
+
             ### Release Assets
 
             - **`terraform-azurerm-ai-installer.zip`** - Windows installer bundle (stable name for `releases/latest/download/`)
             - **`terraform-azurerm-ai-installer.tar.gz`** - Linux/macOS installer bundle (stable name for `releases/latest/download/`)
             - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip`** - Windows installer bundle (recommended)
             - **`terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Linux/macOS installer bundle (recommended)
+            - **`terraform-azurerm-ai-toolkit-playground-v${{ steps.get_version.outputs.VERSION }}.zip`** - Playground publication package for manual import into your personal Playground user branch
             - **`terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz`** - Full source archive
             - **`checksums.txt`** - SHA256 checksums for all artifacts
 
@@ -289,6 +364,7 @@ jobs:
             release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.zip
             release/terraform-azurerm-ai-installer.tar.gz
             release/terraform-azurerm-ai-installer-v${{ steps.get_version.outputs.VERSION }}.tar.gz
+            release/terraform-azurerm-ai-toolkit-playground-v${{ steps.get_version.outputs.VERSION }}.zip
             release/terraform-azurerm-ai-assisted-development-v${{ steps.get_version.outputs.VERSION }}.tar.gz
             release/checksums.txt
           draft: false
