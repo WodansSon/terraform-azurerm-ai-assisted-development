@@ -104,6 +104,12 @@ Cannot run review-committed: committed review workflow not fully loaded. Load .g
 
 - Before running the workflow, validate that the target repository already contains the installed AI toolkit surface required for CLI review.
 - Run the bundled plugin helper `tools/validate-target-repo-preflight.ps1` against `repo_path` using the `CliReview` profile.
+- Resolve that helper from the installed plugin package layout, not from `repo_path` and not by searching broader filesystem locations.
+- In the installed plugin package, resolve the helper as a sibling of the `agents/` directory under the plugin root: `<plugin-root>/tools/validate-target-repo-preflight.ps1`.
+- For local source-plugin validation only, the same relative layout applies under `plugins/terraform-azurerm-ai-toolkit/`.
+- If the bundled helper cannot be resolved from the plugin package layout, fail closed instead of searching `%LOCALAPPDATA%`, `%ProgramFiles%`, `%USERPROFILE%`, or other unrelated system paths.
+- Do not manually reimplement the preflight in inline shell code. Do not parse `file-manifest.config` in ad hoc PowerShell or Bash loops as a fallback.
+- If shell execution approval is required, request approval only for invoking the bundled helper itself. Do not substitute a synthesized manifest-check script.
 - The helper must validate the target repo against the installer manifest as the single source of truth, using the CLI review filter over these manifest sections:
   - `MAIN_FILES`
   - `INSTRUCTION_FILES`
@@ -154,40 +160,12 @@ Cannot run review-committed: target repo is missing required Terraform AzureRM A
 - Rely on Copilot CLI's native repository-wide and path-specific instruction loading from the target repo, including `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, and `AGENTS.md` when present.
 - If the review would otherwise need out-of-workspace local state to infer PR scope, stop and emit the workflow's fail-closed PR-scope hard-stop instead of continuing.
 
-- Review the full committed change-set.
-- Apply the shared review contract rules, including file-scope, evidence, classification, and linter handling.
-- Keep vendored files non-actionable and report only the skipped vendored-file count.
-- Keep the normal output in the same high-level structure as the prompt-based committed review workflow.
-
-## Output Contract
-
-Use this heading order for successful review output:
-
-```text
-# 📋 **Code Review**: ${change_description}
-## 📊 **CHANGE SUMMARY**
-## 📁 **FILES CHANGED**
-## 🎯 **PRIMARY CHANGES ANALYSIS**
-## 📋 **DETAILED TECHNICAL REVIEW**
-## ✅ **RECOMMENDATIONS**
-## 🏆 **OVERALL ASSESSMENT**
-```
-
-The detailed technical review should still include the same kinds of subsections used by the prompt workflow when applicable:
-
-- recursion prevention
-- standards check
-- azurerm linter
-- must fix
-- strengths
-- observations
-- issues
-
 ## Translation Notes
 
 - Replace prompt-era PR-resolution assumptions with explicit agent inputs.
 - Replace manifest-based CLI PR scope handling with live authoritative PR context resolved on each run.
 - Preserve the current review contract precedence and output structure.
+- Do not restate shared review-policy rules or the shared output contract in this adapter; inherit them from the shared workflow and review compliance contract.
 - Treat this file as the plugin and CLI adapter for committed review, not as a new independent rules source.
 
 ## Current Status

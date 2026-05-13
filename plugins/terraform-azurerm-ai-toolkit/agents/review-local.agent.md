@@ -43,6 +43,12 @@ Cannot run review-local: local review workflow not fully loaded. Load .github/in
 
 - Before running the workflow, validate that the target repository already contains the installed AI toolkit surface required for CLI review.
 - Run the bundled plugin helper `tools/validate-target-repo-preflight.ps1` against `repo_path` using the `CliReview` profile.
+- Resolve that helper from the installed plugin package layout, not from `repo_path` and not by searching broader filesystem locations.
+- In the installed plugin package, resolve the helper as a sibling of the `agents/` directory under the plugin root: `<plugin-root>/tools/validate-target-repo-preflight.ps1`.
+- For local source-plugin validation only, the same relative layout applies under `plugins/terraform-azurerm-ai-toolkit/`.
+- If the bundled helper cannot be resolved from the plugin package layout, fail closed instead of searching `%LOCALAPPDATA%`, `%ProgramFiles%`, `%USERPROFILE%`, or other unrelated system paths.
+- Do not manually reimplement the preflight in inline shell code. Do not parse `file-manifest.config` in ad hoc PowerShell or Bash loops as a fallback.
+- If shell execution approval is required, request approval only for invoking the bundled helper itself. Do not substitute a synthesized manifest-check script.
 - The helper must validate the target repo against the installer manifest as the single source of truth, using the CLI review filter over these manifest sections:
   - `MAIN_FILES`
   - `INSTRUCTION_FILES`

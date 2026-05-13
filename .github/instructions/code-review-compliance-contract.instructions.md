@@ -176,6 +176,12 @@ If evidence is missing for a claim that would change severity or requested actio
 - Reviewer behavior: when the selected diff scope is entirely vendored files, say so explicitly in the review output so the reader understands the actionable review surface is limited.
 - Reviewer behavior: when vendored files make up the majority of the selected diff scope, say so explicitly in the review output so sparse actionable findings are not ambiguous.
 
+### REVIEW-FILE-006: Untouched files are out of scope unless an explicit rule brings them in
+- Rule: Do not raise an Issue on a file that is outside the selected review scope merely because the file independently violates a repository rule.
+- Rule: An untouched file may become actionable only when a current workspace instruction, contributor guide, or scoped review rule explicitly requires a cross-file companion-artifact, registration, or parity check.
+- Rule: When an Issue depends on an untouched file being in scope, the review must cite the exact rule or requirement that brought that file into scope.
+- Rule: If no explicit cross-file rule exists, omit the finding or demote it to a non-blocking Observation rather than reporting it as an Issue.
+
 ## File-type-specific review coverage
 
 ### REVIEW-SCOPE-001: Always review user-visible content quality

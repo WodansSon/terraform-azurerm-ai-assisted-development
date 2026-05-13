@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Renamed the plugin planning and contributor docs under `docs/` to use a consistent `CLI_PLUGIN_` prefix and clarified the split between the shipped plugin README and repo-only maintainer guidance.
+  - **[Internal]** - Tightened the shared review contract so untouched files are now out of scope by default unless an explicit companion-artifact or cross-file rule brings them into review scope, reducing false-positive Issues from the CLI review surface.
+  - **[Internal]** - Trimmed duplicated review-policy and output-contract text from the committed-review CLI agent so prompts and agents now rely more cleanly on the shared review workflow and compliance contract as the single source of truth.
   - **[Internal]** - Added a repo-side plugin export helper that stages a clean standalone plugin tree and optional zip under `plugins/terraform-azurerm-ai-toolkit/export/staged/` so plugin-install smoke tests can run against an exported package shape instead of the live working copy.
   - **[Internal]** - Changed the plugin export helper so it now also writes a local marketplace manifest into the staged export root, allowing contributor smoke tests to use `plugin@marketplace` installation syntax instead of deprecated direct local plugin installs.
   - **[Internal]** - Added a one-command staged-plugin smoke-test helper that exports the staged plugin, refreshes the local marketplace registration, removes any existing local install when present, and reinstalls the plugin through the staged local marketplace automatically.
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User-Priority:**
   - **[Review]** - Fixed the Playground plugin adapter scaffold so the translated review workflows now use Copilot CLI-compatible `*.agent.md` filenames, allowing local CLI plugin loading and smoke testing to discover the review agents correctly.
   - **[Review]** - Fixed the Playground local and committed review agents so provider Go and Go test scope now explicitly loads the implementation and testing guidance, making CLI review behavior less likely to miss implementation-side rules such as the required Go file header.
+  - **[Review]** - Fixed the CLI review agents so the bundled target-repo preflight helper now resolves from the installed plugin package layout and must not fall back to broader filesystem searches or synthesized inline manifest-parsing shell commands.
 
 
 ## [3.3.0] - 2026-05-07
