@@ -1,4 +1,4 @@
-# Playground Plugin Adapter Plan
+# CLI Plugin Adapter Plan
 
 This document defines the side-by-side design for adding an Agency Playground plugin and CLI-friendly adapter to this repository without forking the existing VS Code and GitHub Copilot workflow model.
 

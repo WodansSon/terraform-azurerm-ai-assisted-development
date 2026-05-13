@@ -51,7 +51,7 @@ Cannot run review-docs: docs review workflow not fully loaded. Load .github/inst
 - If any required baseline file is missing, hard-stop with exactly:
 
 ```text
-Cannot run review-docs: target repo is missing required AI toolkit instruction files for docs review. Install the AI toolkit into the target repo and re-run this agent.
+Cannot run review-docs: target repo is missing required Terraform AzureRM AI Toolkit instruction files for docs review. Install the Terraform AzureRM AI Toolkit into the target repo and re-run this agent. Example: `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "<path-to-target-repo>"` for PowerShell, or `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "<path-to-target-repo>"` for Bash. If the installer is not already present under your user profile, download it from the latest release of `WodansSon/terraform-azurerm-ai-assisted-development` first.
 ```
 
 - Do not hard-code a separate required-file list in this agent.

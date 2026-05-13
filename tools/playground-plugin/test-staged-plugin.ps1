@@ -93,7 +93,7 @@ if (Test-OutputContains -Lines $marketplaceListOutput -Needle $MarketplaceName) 
 & copilot plugin marketplace add $marketplaceRoot | Out-Null
 & copilot plugin install $marketplaceInstallSpec | Out-Null
 
-Write-Output 'Playground staged plugin smoke-test summary'
+Write-Output 'Playground staged plugin validation summary'
 Write-Output ("  Plugin Root        : {0}" -f $resolvedPluginRoot)
 Write-Output ("  Staged Plugin      : {0}" -f $stagedPluginRoot)
 Write-Output ("  Marketplace Root   : {0}" -f $marketplaceRoot)
@@ -102,9 +102,11 @@ Write-Output ("  Installed Plugin   : {0}" -f $marketplaceInstallSpec)
 Write-Output ''
 Write-Output 'Next step'
 if ($StartCli) {
-    Write-Output '  Starting GitHub Copilot CLI with no additional arguments.'
+    Write-Output '  Starting GitHub Copilot CLI in the current working directory.'
+    Write-Output '  Use this only for a quick `/agent` verification.'
+    Write-Output '  For target-repo review validation, exit and relaunch `copilot` from the target repo root.'
     & copilot
 }
 else {
-    Write-Output '  Start a fresh Copilot CLI session and verify the installed plugin agents with `/agent`.'
+    Write-Output '  Start a fresh Copilot CLI session from the target repo root and verify the installed plugin agents with `/agent`.'
 }
