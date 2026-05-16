@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Clarified the implementation and CustomizeDiff guidance so `pointer.ToEnum[...]` and `pointer.FromEnum(...)` are now explicitly limited to SDK/API enum-pointer boundaries and are not suggested for `diff.Get(...)`, `GetRawConfig()`, or decoded schema maps.
+  - **[Implementation]** - Aligned the troubleshooting guide's rate-limiting guidance with the current upstream contributor docs by replacing the generic `retryWithBackoff` example with custom-poller-oriented provider guidance.
+  - **[Implementation]** - Clarified implementation-model selection so the AI identifies untyped maintenance surfaces, typed `internal/sdk` resources, and framework-specialized models such as list resources, ephemeral resources, and provider-defined functions before suggesting code.
+
 ### Fixed
 
 ## [3.3.0] - 2026-05-07

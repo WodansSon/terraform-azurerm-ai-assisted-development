@@ -83,6 +83,49 @@ This provider supports two implementation approaches:
 - Features traditional error handling and state management
 - **Maintained for existing resources but not recommended for new development**
 
+### Implementation Model Identification
+
+Before suggesting code, identify which implementation model the target actually uses.
+
+Use these categories:
+
+- **Untyped Plugin SDK maintenance surface**
+    - Existing `*pluginsdk.Resource` or `*pluginsdk.ResourceDiff` function-based resources and data sources
+    - Typical signals: `func resourceServiceName() *pluginsdk.Resource`, `Create: resourceServiceNameCreate`, direct `d.Get()` or `d.Set()` usage
+
+- **Typed `internal/sdk` managed resource or data source surface**
+    - Receiver-based resources and data sources using `sdk.Resource`, `sdk.ResourceWithUpdate`, and `sdk.ResourceFunc`
+    - Typical signals: `type ServiceNameResource struct{}`, `func (r ServiceNameResource) Create() sdk.ResourceFunc`, `metadata.Decode()`
+
+- **Framework-specialized surface**
+    - Patterns that are not ordinary managed typed CRUD resources even though they live alongside typed code
+    - Current first-class specialized surfaces in this repo:
+        - list resources
+        - ephemeral resources
+        - provider-defined functions
+    - Typical signals:
+        - list resources: `*_resource_list.go`, `sdk.FrameworkListWrappedResource`, list query tests, list-resource docs
+        - ephemeral resources: `*_ephemeral.go`, `sdk.EphemeralResource`, `Open`, `EphemeralResources()`
+        - provider-defined functions: `internal/provider/function/`, `terraform-plugin-framework/function.Function`, `Definition`, `Run`
+
+Identification rules:
+
+- Match the model of the file or workflow already in use unless the task is an explicit migration.
+- Do not suggest an ordinary typed CRUD template for list resources, ephemeral resources, or provider-defined functions.
+- Do not suggest a new untyped resource or data source just because sibling legacy files are untyped.
+- For brand-new ordinary resources and data sources, default to the typed `internal/sdk` model.
+- For maintenance of an existing untyped file, stay untyped unless the task explicitly asks for migration.
+- For legacy polling migrations, consult the custom poller migration guidance instead of inventing one-off retry loops.
+
+Quick identification checklist:
+
+- Is the target under `internal/provider/function/`? -> Use the provider-defined function model
+- Is the file `*_ephemeral.go` or registered via `EphemeralResources()`? -> Use the ephemeral resource model
+- Is the work for a list resource or `*_resource_list.go`? -> Use the framework list-resource model
+- Is the existing implementation receiver-based with `sdk.ResourceFunc`? -> Use the typed managed resource model
+- Is the existing implementation `*pluginsdk.Resource` with function-based CRUD? -> Use the untyped maintenance model
+- Otherwise, for a new ordinary resource or data source -> Use the typed `internal/sdk` model
+
 ### Typed Resource Structure Pattern
 
 ```go
@@ -597,6 +640,30 @@ if props.Name != nil {
 }
 ```
 
+**Enum pointer boundary rules:**
+
+- Use `pointer.FromEnum(...)` only when dereferencing an SDK/API enum pointer such as `*EnumType` from an Azure model.
+- Use `pointer.ToEnum[...]` only when assigning a Terraform/config string into an SDK/API field that expects `*EnumType`.
+- Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values because those values are not enum pointers.
+- In `CustomizeDiff`, continue using `diff.Get(...)` for required values and `GetRawConfig()` when the logic must distinguish unset values from known-after-apply or zero values.
+
+```go
+// GOOD - Flatten an SDK enum pointer into Terraform state
+state.CertificateType = pointer.FromEnum(props.TlsSettings.CertificateType)
+
+// GOOD - Convert a Terraform/config string into an SDK enum pointer
+properties.CertificateType = pointer.ToEnum[cdn.CertificateType](model.CertificateType)
+
+// FORBIDDEN - Terraform diff/schema values are not enum pointers
+certificateType := diff.Get("certificate_type").(string)
+_ = pointer.FromEnum(certificateType)
+
+// FORBIDDEN - Decoded schema maps are Terraform values, not SDK enum pointers
+tls := raw["tls"].(map[string]interface{})
+certificateTypeFromSchema := tls["certificate_type"].(string)
+_ = pointer.ToEnum[cdn.CertificateType](certificateTypeFromSchema)
+```
+
 ### Pointer Dereferencing Best Practices
 
 **PREFERRED - Use `pointer.From()` for consistent dereferencing:**
@@ -825,26 +892,22 @@ Official upstream references:
 
 #### Resource Implementation Decision Tree
 ```text
-New Resource Request
-├─ Implementation Approach
-│  ├─ NEW resource/data source → Use Typed Resource Implementation
-│  ├─ EXISTING resource maintenance → Continue Untyped Resource Implementation
-│  └─ MAJOR refactor → Consider migration to Typed Resource Implementation
-│
-├─ File Structure Creation
-│  ├─ Resource: internal/services/[service]/[resource]_resource.go
-│  ├─ Data Source: internal/services/[service]/[resource]_data_source.go
-│  ├─ Tests: same directory with _test.go suffix
-│  └─ Utilities: parse.go, validate.go, expand.go, flatten.go
-│
-└─ Implementation Order
-   ├─ 1. Define model structs (Typed) or schema (Untyped)
-    ├─ 2. Implement Resource Identity
-    ├─ 3. Implement CRUD operations
-    ├─ 4. Implement the corresponding List Resource
-    ├─ 5. Add validation and error handling
-    ├─ 6. Create acceptance tests, including list query tests
-    └─ 7. Write resource and list-resource documentation
+Rule: evaluate in order and stop at the first matching condition.
+
+- If the target is under `internal/provider/function/` -> Use the provider-defined function model
+- Else if the target is an ephemeral resource (`*_ephemeral.go` or `EphemeralResources()`) -> Use the ephemeral resource model
+- Else if the target is a list resource (`*_resource_list.go` or `sdk.FrameworkListWrappedResource`) -> Use the framework list-resource model
+- Else if this is maintenance of an existing `*pluginsdk.Resource` implementation -> Continue the untyped maintenance model
+- Else if this is a new ordinary resource or data source -> Use the typed resource implementation model
+- Else if this is an explicit major refactor of an existing untyped implementation -> Consider migration to the typed resource implementation model
+- Else -> Match the model already used by the target file or workflow
+
+After choosing the model:
+
+- For ordinary managed resources and data sources -> Define model structs (typed) or schema (untyped), implement identity, CRUD, validation, tests, and docs
+- For list resources -> Implement resource identity first, then the list wrapper, list tests, and list-resource docs
+- For ephemeral resources -> Implement `Metadata`, `Configure`, `Schema`, and `Open`, then add docs and Terraform 1.10-gated tests
+- For provider-defined functions -> Implement `Metadata`, `Definition`, and `Run`, then add docs and Terraform 1.8-gated tests
 ```
 
 #### Cross-Implementation Consistency Validation
@@ -1114,6 +1177,7 @@ func resourceServiceName() *pluginsdk.Resource {
 - **Required fields**: AI should suggest direct access (`diff.Get()`, `metadata.Decode()`)
 - **Optional fields**: AI should suggest `GetRawConfig().IsNull()` to check explicit configuration
 - **Optional+Computed fields**: AI should suggest distinguishing user-configured vs Azure-computed values
+- **Enum pointer helpers**: AI should reserve `pointer.FromEnum(...)` and `pointer.ToEnum[...]` for the SDK/API boundary only, never for `diff.Get(...)`, `GetRawConfig()`, or decoded schema maps
 
 **For comprehensive AI schema verification guidance, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#🚨-schema-definition-verification-before-field-validation)
 

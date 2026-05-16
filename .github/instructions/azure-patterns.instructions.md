@@ -135,6 +135,7 @@ Azure resources have unique validation requirements that CustomizeDiff functions
 
 - Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `d.Get()` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
 - Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
+- Rule: Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values in `CustomizeDiff`; those helpers are only for the SDK/API enum-pointer boundary.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
     - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
@@ -179,6 +180,18 @@ When validating optional fields in CustomizeDiff functions, Go's zero value beha
    // Untyped Resource Implementation
    value := diff.Get("field_name").(string)
    // Use value directly - Required fields guaranteed to have values
+   ```
+
+   **Enum fields in CustomizeDiff** → AI keeps enum helpers at the SDK/API boundary only:
+   ```go
+   // GOOD - Terraform values stay as Terraform strings inside CustomizeDiff
+   certificateType := diff.Get("certificate_type").(string)
+   if certificateType == "ManagedCertificate" && !hasDnsZone {
+       return fmt.Errorf("managed certificates require a DNS zone")
+   }
+
+   // FORBIDDEN - diff.Get(...) is not an SDK enum pointer
+   _ = pointer.FromEnum(diff.Get("certificate_type").(string))
    ```
 
    **Optional Fields** → AI suggests checking explicit configuration:

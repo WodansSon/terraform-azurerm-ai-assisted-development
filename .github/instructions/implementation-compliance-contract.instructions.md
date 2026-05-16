@@ -105,6 +105,19 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
   - Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations
 
+### IMPL-WF-001A: Identify the implementation model before suggesting code
+- Rule: Before suggesting implementation code under `internal/**`, identify whether the target is an untyped Plugin SDK resource or data source, a typed `internal/sdk` resource or data source, or a framework-specialized surface.
+- Rule: Treat framework-specialized surfaces as a separate model from ordinary typed resources. In this repository, that includes list resources, ephemeral resources, and provider-defined functions.
+- Rule: Do not suggest ordinary typed CRUD/resource templates for framework-specialized surfaces.
+- Rule: Do not suggest new untyped resource or data source implementations merely because the service package also contains older untyped resources.
+- Rule: When the task is maintenance of an existing file, match the model already used by that file unless the task is an explicit migration.
+- Rule: When the task is a migration away from `pluginsdk.Retry()`, `pluginsdk.StateChangeConf`, or `WaitForStateContext()`, consult the `custom-poller-migration` skill rather than inventing an ad hoc polling model.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resources use the framework list-resource pattern rather than the ordinary managed resource pattern
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says `pluginsdk.StateChangeConf` has been deprecated in favor of custom pollers for the relevant LRO scenarios
+
 ### IMPL-WF-002: New resources must include resource identity and list-resource planning
 - Rule: For new resources, plan and implement Resource Identity support as a prerequisite for the list resource.
 - Rule: For new resources, plan and implement a corresponding list resource by default.

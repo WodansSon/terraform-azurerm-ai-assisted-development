@@ -46,9 +46,9 @@ Code must be self-documenting. Comments are the exception, not the rule.
 - Error handling or nil checks
 
 **3-SECOND RULE: Before ANY comment:**
-1. Can I refactor instead? → **YES: Refactor, don't comment**
-2. Is this an Azure API quirk? → **MAYBE: Comment acceptable**
-3. Is this self-explanatory? → **YES: NO COMMENT**
+1. Can I refactor instead? -> **YES: Refactor, don't comment**
+2. Is this an Azure API quirk? -> **MAYBE: Comment acceptable**
+3. Is this self-explanatory? -> **YES: NO COMMENT**
 
 **🔍 MANDATORY JUSTIFICATION:**
 Every comment requires explicit justification:
@@ -84,9 +84,9 @@ Every comment requires explicit justification:
 ### Comment Validation Questions
 
 Before allowing any comment, ask:
-1. "Is this code unclear without a comment?" → Refactor the code instead
-2. "Would a developer be confused by this logic?" → Only then consider a comment
-3. "Is this documenting an Azure API quirk?" → Comment may be acceptable
+1. "Is this code unclear without a comment?" -> Refactor the code instead
+2. "Would a developer be confused by this logic?" -> Only then consider a comment
+3. "Is this documenting an Azure API quirk?" -> Comment may be acceptable
 
 ---
 <a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
@@ -227,63 +227,79 @@ Before allowing any comment, ask:
 
 ### **Comment Decision Tree (30-second evaluation)**
 ```text
-Is this code being written/reviewed?
-├─ YES → Apply comment evaluation
-│  ├─ Azure API quirk that's non-obvious? → Comment MAY be acceptable
-│  ├─ Complex business logic? → Can it be refactored instead? → Refactor FIRST
-│  ├─ SDK workaround/limitation? → Comment MAY be acceptable
-│  └─ Everything else → NO COMMENT (refactor instead)
-└─ NO → Skip comment evaluation
+Rule: evaluate in order and stop at the first matching condition.
+
+- If the code is not being written or reviewed -> Skip comment evaluation
+- Else if the code documents a non-obvious Azure API quirk -> Comment MAY be acceptable
+- Else if the code contains complex business logic -> Refactor first; comment only if the logic still cannot be made self-explanatory
+- Else if the code documents an SDK workaround or limitation -> Comment MAY be acceptable
+- Else -> Do not add a comment; refactor instead
 ```
 
 ### **Cross-Pattern Consistency Check (15-second scan)**
 ```text
-Working on resource with variants (Linux/Windows VMSS, etc.)?
-├─ YES → Quick consistency validation required
-│  ├─ Check sibling implementation for identical patterns
-│  ├─ Ensure validation logic matches
-│  └─ Verify error messages use same format
-└─ NO → Standard implementation check
+Rule: evaluate in order and stop at the first matching condition.
+
+- If working on a resource with variants such as Linux/Windows VMSS -> Perform a quick consistency validation
+- Else -> Use the standard implementation check
+
+When quick consistency validation applies:
+- Check sibling implementations for identical patterns
+- Ensure validation logic matches
+- Verify error messages use the same format
 ```
 
 ### **Azure API Integration Priority (10-second assessment)**
 ```text
-Azure API behavior involved?
-├─ YES → High priority validation
-│  ├─ PATCH operation? → Check residual state handling
-│  ├─ Long-running operation? → Verify polling implementation
-│  └─ Error handling? → Ensure 404 detection patterns
-└─ NO → Standard coding patterns apply
+Rule: evaluate in order and stop at the first matching condition.
+
+- If Azure API behavior is not involved -> Use standard coding patterns
+- Else if the change involves a PATCH operation -> Check residual state handling
+- Else if the change involves a long-running operation -> Verify polling implementation
+- Else if the change involves Azure API error handling -> Ensure 404 detection patterns
+- Else -> Apply high-priority Azure API validation
 ```
 
 ### **Implementation Approach Decision Tree (15-second assessment)**
 ```text
-New resource or data source request?
-├─ NEW resource/data source → Use Typed Resource Implementation
-├─ EXISTING resource maintenance → Continue Untyped Resource Implementation
-├─ Major refactor → Consider migration to Typed Resource Implementation
-└─ Bug fix → Maintain existing implementation approach
+Rule: evaluate in order and stop at the first matching condition.
+
+- If the target is under `internal/provider/function/` -> Use the provider-defined function model
+- Else if the target is an ephemeral resource or uses `EphemeralResources()` -> Use the ephemeral resource model
+- Else if the target is a list resource or uses `sdk.FrameworkListWrappedResource` -> Use the framework list-resource model
+- Else if this is a new ordinary resource or data source request -> Use the typed resource implementation model
+- Else if this is maintenance of an existing untyped implementation -> Continue the current untyped implementation model
+- Else if this is a major refactor of an existing untyped implementation -> Consider migration to the typed resource implementation model
+- Else if this is a bug fix -> Maintain the existing implementation approach
+- Else -> Match the model already used by the target file or workflow unless there is a clear migration reason
 ```
 
 ### **Pointer Package Decision Tree (5-second check)**
 ```text
-Working with Azure API parameters?
-├─ Creating pointers → Use pointer.To()
-├─ Reading pointer values → Use pointer.From() or pointer.FromType()
-├─ Need defaults? → Use pointer.FromTypeWithDefault()
-└─ Manual pointer ops? → Replace with pointer package functions
+Rule: evaluate in order and stop at the first matching condition.
+
+- If creating pointers -> Use pointer.To()
+- Else if reading pointer values -> Use pointer.From() or pointer.FromType()
+- Else if handling an SDK/API enum pointer field -> Use pointer.ToEnum[...] or pointer.FromEnum(...) only at the SDK boundary
+- Else if handling a Terraform diff/schema value -> Do not use enum pointer helpers
+- Else if defaults are needed -> Use pointer.FromTypeWithDefault()
+- Else -> Replace manual pointer operations with pointer package functions
 ```
 
 ### **CustomizeDiff Validation Decision Tree (20-second evaluation)**
 ```text
-Adding field validation logic?
-├─ Azure service constraint? → Use CustomizeDiff
-│  ├─ SKU dependency? → Add validation logic
-│  ├─ Region limitation? → Add constraint check
-│  ├─ Field combination rule? → Add conditional validation
-│  └─ Must test with ExpectError patterns
-├─ Simple field validation? → Use schema ValidateFunc
-└─ Complex state transition? → Use programmatic ForceNew in CustomizeDiff
+Rule: evaluate in order and stop at the first matching condition.
+
+- If the validation is for an Azure service constraint -> Use CustomizeDiff
+- Else if the validation is simple field validation -> Use schema ValidateFunc
+- Else if the validation is for a complex state transition -> Use programmatic ForceNew in CustomizeDiff
+- Else -> Choose the lightest validation mechanism that still matches the real Azure constraint
+
+When CustomizeDiff applies:
+- If the constraint is a SKU dependency -> Add validation logic
+- If the constraint is a region limitation -> Add a constraint check
+- If the constraint is a field combination rule -> Add conditional validation
+- If CustomizeDiff validation is added -> Add ExpectError coverage where appropriate
 ```
 
 ---
@@ -319,10 +335,10 @@ Adding field validation logic?
 ## 🎯 Context-Aware AI Optimization
 
 ### **Session Context Indicators**
-- **Active Development**: User actively coding → Apply real-time decision trees
-- **Code Review**: User reviewing code → Focus on consistency validation
-- **Architecture Discussion**: User planning → Emphasize strategic decision framework
-- **Problem Solving**: User debugging → Prioritize Azure API integration patterns
+- **Active Development**: User actively coding -> Apply real-time decision trees
+- **Code Review**: User reviewing code -> Focus on consistency validation
+- **Architecture Discussion**: User planning -> Emphasize strategic decision framework
+- **Problem Solving**: User debugging -> Prioritize Azure API integration patterns
 
 ### **Smart Pattern Recognition**
 - **Resource Type Context**: Automatically apply VMSS/Storage/Network specific patterns
