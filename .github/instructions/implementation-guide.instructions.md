@@ -29,38 +29,14 @@ For exact compliance behavior, use the implementation contract as the source of 
 - implementation workflow rules
 - schema, PATCH, error, testing, and code-clarity rule families
 
+Use the `resource-implementation` skill for procedural workflow behavior such as implementation-session checklists, quick implementation anchors, and end-to-end implementation sequencing.
+
 **Quick navigation:** <a href="#🏗️-implementation-patterns">🏗️ Implementation Patterns</a> | <a href="#📏-coding-standards">📏 Coding Standards</a> | <a href="#🎨-coding-style">🎨 Coding Style</a> | <a href="#🔧-azure-sdk-integration">🔧 Azure SDK Integration</a> | <a href="#💡-ai-coding-guidance">💡 AI Coding Guidance</a> | <a href="#📚-specialized-guidance-on-demand">📚 Specialized Guidance</a>
 
-**🧠 SMART MEMORY MANAGEMENT:**
-- **Pattern Cache**: Keep these templates in active memory during implementation sessions
-- **Context Stack**: Maintain decision tree paths for rapid access
-- **Quick Templates**: Ready-to-use code patterns for immediate application
+Workflow note:
 
-**⚡ HOT PATTERNS (Keep in Working Memory):**
-```go
-// Typed Resource Quick Template
-type ServiceNameResourceModel struct {
-    Name              string            `tfschema:"name"`
-    ResourceGroup     string            `tfschema:"resource_group_name"`
-    Location          string            `tfschema:"location"`
-    Tags              map[string]string `tfschema:"tags"`
-    Id                string            `tfschema:"id"`
-}
-
-// PATCH Operation Pattern
-func ExpandFeature(input []interface{}) *azuretype.Feature {
-    result := &azuretype.Feature{
-        Enabled: pointer.To(false), // Explicit disable for PATCH
-    }
-    if len(input) > 0 && input[0] != nil {
-        result.Enabled = pointer.To(true)
-    }
-    return result
-}
-
-// Error Pattern
-return fmt.Errorf("creating %s: %+v", id, err)
-```
+- `resource-implementation` owns the implementation-session playbook and quick implementation anchors
+- this guide stays focused on companion patterns, worked examples, and implementation heuristics
 
 <a id="🏗️-implementation-patterns"></a>
 
@@ -964,41 +940,13 @@ func resourceServiceName() *pluginsdk.Resource {
 ### Efficient Development Workflow
 
 #### Step-by-Step Implementation Checklist
-```text
-□ 1. ANALYZE REQUEST
-  □ Identify Azure service and resource type
-  □ Check if resource already exists (grep search)
-  □ Determine implementation approach (Typed vs Untyped)
+The `resource-implementation` skill owns the step-by-step implementation workflow.
 
-□ 2. SETUP STRUCTURE
-  □ Create/locate service directory: internal/services/[service]/
-  □ Identify required files: resource, tests, utilities
-  □ Check client registration in internal/clients/
+Use this guide for the surrounding patterns and examples, and use the skill for:
 
-□ 3. IMPLEMENT CORE LOGIC
-  □ Define model/schema with ALL required Azure properties
-  □ Implement Create() with proper validation and error handling
-  □ Implement Read() with nil checks and state management
-  □ Implement Update() if supported (check Azure API capabilities)
-  □ Implement Delete() with proper cleanup
-
-□ 4. ADD VALIDATION & ERROR HANDLING
-  □ Implement IDValidationFunc() for resource ID parsing
-  □ Add CustomizeDiff for complex Azure API constraints
-  □ Use proper error formatting with field names in backticks
-  □ Add timeout configurations appropriate for Azure operations
-
-□ 5. CREATE TESTS
-  □ Basic test with minimal configuration
-  □ RequiresImport test for import conflict detection
-  □ Update test if resource supports updates
-  □ CustomizeDiff validation tests if applicable
-
-□ 6. WRITE DOCUMENTATION
-  □ Resource documentation with examples
-  □ Data source documentation if applicable
-  □ Import documentation with example resource ID
-```
+- implementation-session sequencing
+- quick implementation anchors
+- end-to-end implementation checklist behavior
 
 ### Common Implementation Patterns
 

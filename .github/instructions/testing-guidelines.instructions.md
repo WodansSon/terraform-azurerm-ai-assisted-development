@@ -11,35 +11,11 @@ This file is a companion guide. Testing compliance rules are defined by the test
 
 - `.github/instructions/testing-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
 
-Use this guide for test execution protocols, testing patterns, and Azure-specific testing heuristics.
+Use this guide for testing patterns and Azure-specific testing heuristics.
+Use the `acceptance-testing` skill for acceptance-test execution workflow, environment prerequisites, and failure triage.
 If this guide conflicts with the testing contract, follow the testing contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🚨-test-execution-awareness">🚨 Test Execution Awareness</a> | <a href="#🧪-efficient-testing-with-importstep">🧪 Efficient Testing</a> | <a href="#🧪-test-types">🧪 Test Types</a> | <a href="#⚡-essential-test-patterns">⚡ Essential Patterns</a> | <a href="#✅-customizediff-testing">✅ CustomizeDiff Testing</a> | <a href="#📊-data-source-testing-patterns">📊 Data Source Testing</a> | <a href="#🏗️-test-organization-and-structure">🏗️ Test Organization</a> | <a href="#☁️-azure-specific-testing-guidelines">☁️ Azure-Specific Testing</a> | <a href="#🔧-environment-setup">🔧 Environment Setup</a>
-
-<a id="🚨-test-execution-awareness"></a>
-
-## 🚨 Test Execution Awareness
-
-**⚠️ Azure Testing Considerations**
-
-**Important Notes:**
-- Acceptance tests create **real Azure resources** and require **valid credentials**
-- Tests may incur Azure costs depending on resources created
-- Ensure proper cleanup after test execution
-- Unit tests are safe and don't require Azure credentials
-- The upstream acceptance-test entry point is `make acctests SERVICE='<service>' TESTARGS='-run=<nameOfTheTest>' TESTTIMEOUT='60m'` with the required `ARM_*` and `ARM_TEST_LOCATION*` environment variables present in the shell.
-
-**Example Command Format:**
-```bash
-# Purpose: Test VMSS resiliency policy backward compatibility
-# Duration: 5-10 minutes, creates test VMSS resources in Azure
-# Requires: ARM_SUBSCRIPTION_ID, ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID
-
-make testacc TEST=./internal/services/compute TESTARGS='-run=TestAccLinuxVirtualMachineScaleSet_fieldsNotSetInState'
-```
-
----
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
+**Quick navigation:** <a href="#🧪-efficient-testing-with-importstep">🧪 Efficient Testing</a> | <a href="#🧪-test-types">🧪 Test Types</a> | <a href="#⚡-essential-test-patterns">⚡ Essential Patterns</a> | <a href="#✅-customizediff-testing">✅ CustomizeDiff Testing</a> | <a href="#📊-data-source-testing-patterns">📊 Data Source Testing</a> | <a href="#🏗️-test-organization-and-structure">🏗️ Test Organization</a> | <a href="#☁️-azure-specific-testing-guidelines">☁️ Azure-Specific Testing</a>
 
 <a id="🧪-efficient-testing-with-importstep"></a>
 
@@ -568,39 +544,15 @@ provider "azurerm" {
 ---
 <a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
-<a id="🔧-environment-setup"></a>
+## 📚 Related Specialized Guidance
 
-## 🔧 Environment Setup
+Use the `acceptance-testing` skill for:
 
-**Required Environment Variables:**
-```bash
-export ARM_SUBSCRIPTION_ID="your-azure-subscription-id"
-export ARM_CLIENT_ID="your-service-principal-client-id"
-export ARM_CLIENT_SECRET="your-service-principal-client-secret"
-export ARM_TENANT_ID="your-azure-tenant-id"
-export ARM_TEST_LOCATION=WestEurope
-export ARM_TEST_LOCATION_ALT=EastUS2
-```
+- acceptance-test execution workflow
+- environment prerequisites and narrow rerun commands
+- failure triage and cleanup-oriented troubleshooting
 
-**Running Tests:**
-```bash
-# Unit tests
-go test ./internal/services/cdn/...
-
-# Acceptance tests (Manual execution recommended)
-make testacc TEST=./internal/services/cdn TESTARGS='-run=TestAccCdnFrontDoorProfile_basic'
-```
-
-**Common Azure Test Cleanup Issues:**
-- `ResourceGroupBeingDeleted: Cannot perform operation while resource group is being deleted`
-- Scale-down operations blocked due to health monitoring requirements
-- Soft-delete conflicts preventing immediate recreation
-
-**📚 Official Acceptance Testing References:**
-- [Acceptance Testing Reference](../../../contributing/topics/reference-acceptance-testing.md)
-- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/running-the-tests.md`
-
-## 📚 Specialized Testing Guidance (On-Demand)
+Other specialized references:
 
 ### **Advanced Testing Patterns**
 - 🔧 **Troubleshooting**: [troubleshooting-decision-trees.instructions.md](./troubleshooting-decision-trees.instructions.md) - Debugging test failures, common issues

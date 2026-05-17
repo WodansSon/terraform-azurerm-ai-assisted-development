@@ -116,6 +116,9 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 - Keep the first clause understandable without requiring repository-internal knowledge.
 - Mention file paths only when they materially help the reader understand the scope.
 - Avoid changelog bullets that are accurate but only meaningful to repository maintainers unless the entry is intentionally tagged `[Internal]`.
+- Prefer final outcome language over patch-history language. If several edits all contribute to the same user-visible or maintainer-visible result, collapse them into one stronger bullet instead of preserving each intermediate hardening step as a separate entry.
+- When pruning overlapping bullets, keep the final behavior change and remove the incremental "clarified", "tightened", or "refined" entries that only describe how the repo got there.
+- Use multiple bullets only when the outcomes are genuinely distinct to a reader; do not split one behavioral outcome across several bullets just because multiple files or rule families changed.
 
 ## Structure rules
 
@@ -128,6 +131,7 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 - Inside each `Added`, `Changed`, or `Fixed` subsection, render entries under `**User-Priority:**` and `**Maintainer/Workflow:**` top-level bullets when those groups are present.
 - Nested entries must use the form `  - **[Taxonomy]** - entry`.
 - Keep the fixed taxonomy order above so readers learn one predictable scan pattern.
+- Before concluding an `Unreleased` edit, scan each group for near-duplicate bullets and merge them when they describe one final outcome with several intermediate edits behind it.
 
 ## Validation
 

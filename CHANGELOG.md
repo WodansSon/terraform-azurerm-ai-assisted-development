@@ -11,10 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - Committed review now resolves PR scope from GitHub-backed review tools by default, forbids local cache or spill-file recovery, and keeps GitHub CLI fallback opt-in only instead of turning a PR number into automatic `gh` prompts.
+  - **[Review]** - Committed review now stays audit-only by default: it no longer invents prerequisite scripts, runs surprise tests, or uses helper calculations for trivial deterministic checks.
+  - **[Review]** - Committed review now uses GitHub-backed fetches only for PR scope resolution and relies on normal repo-local inspection for in-scope files, including targeted read-only `git diff` and `git show` commands when needed.
+  - **[Review]** - Committed review now handles singleton or get-only child resources through the maintainer-reviewed no-list exception path instead of raising plain missing-list-resource findings.
+  - **[Docs]** - Moved the docs-writing pre-edit and post-edit workflow into the `docs-writer` skill so `documentation-guidelines` can stay focused on companion heuristics, templates, and note-formatting reference while the existing docs review prompt remains the explicit deterministic auditor.
+
 - **Maintainer/Workflow:**
-  - **[Implementation]** - Clarified the implementation and CustomizeDiff guidance so `pointer.ToEnum[...]` and `pointer.FromEnum(...)` are now explicitly limited to SDK/API enum-pointer boundaries and are not suggested for `diff.Get(...)`, `GetRawConfig()`, or decoded schema maps.
-  - **[Implementation]** - Aligned the troubleshooting guide's rate-limiting guidance with the current upstream contributor docs by replacing the generic `retryWithBackoff` example with custom-poller-oriented provider guidance.
-  - **[Implementation]** - Clarified implementation-model selection so the AI identifies untyped maintenance surfaces, typed `internal/sdk` resources, and framework-specialized models such as list resources, ephemeral resources, and provider-defined functions before suggesting code.
+  - **[Implementation]** - Moved the implementation-session workflow into the `resource-implementation` skill and expanded it so it now guides implementation-model selection, framework-specific companion targets, and brand-new service wiring more explicitly.
+  - **[Implementation]** - Tightened implementation guidance around provider-specific edge cases, including error-format anchors, enum-pointer boundaries, and current troubleshooting patterns.
+  - **[Testing]** - Moved acceptance-test execution workflow, environment prerequisites, and failure-triage guidance into the `acceptance-testing` skill so `testing-guidelines` can stay focused on test patterns while preserving the existing routed workflow.
+  - **[Internal]** - Updated the `changelog-maintenance` skill so it now explicitly tells maintainers to collapse patch-history bullets into outcome-level release notes and prune overlapping `Unreleased` entries before validating the changelog.
+  - **[Internal]** - Added committed-review regression cases and sanitized fixtures for the exact failures found during prompt hardening: singleton no-list false positives, local-cache PR scope misuse, non-opt-in CLI fallback, forbidden test execution, and forbidden helper-script checks.
 
 ### Fixed
 

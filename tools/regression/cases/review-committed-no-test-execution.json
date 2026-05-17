@@ -1,0 +1,48 @@
+{
+  "id": "review-committed-no-test-execution",
+  "title": "Committed review remains audit-only and does not run tests",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where changed Go validation code and tests might tempt the reviewer to run a narrow go test for confidence. The correct review must stay audit-only unless the user explicitly asks for test execution.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-no-test-execution/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/validate/hostname.go",
+      "internal/services/example/validate/hostname_test.go"
+    ],
+    "notes": "Sanitized fixture models the regression where the reviewer tried to run a narrow unit test just to tighten residual-risk language."
+  },
+  "expectedRules": [
+    "REVIEW-TEST-000",
+    "REVIEW-EVID-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "audit-only-no-tests",
+      "severity": "high",
+      "description": "The review should remain audit-only and avoid go test or other test execution when the user did not explicitly request test execution."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "review-runs-go-test-for-confidence",
+      "description": "The review must not run unit tests or acceptance tests merely to improve confidence or residual-risk wording."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER"
+    ]
+  },
+  "notes": "Use this case to benchmark the audit-only no-test-execution boundary in committed review."
+}

@@ -1,0 +1,47 @@
+{
+  "id": "review-committed-no-local-spill-file-scope",
+  "title": "Committed review refuses local spill files for PR scope",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where a PR-metadata tool mentions a local temporary or cache-backed JSON file under the user profile. The correct review must not read that path to recover PR scope.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-no-local-spill-file-scope/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Sanitized fixture models a committed-review run where a PR tool references a local spill file under AppData/workspaceStorage instead of returning the authoritative PR file set directly."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-EVID-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "no-local-spill-file-scope-recovery",
+      "severity": "high",
+      "description": "The committed review should refuse to recover authoritative PR scope by reading a local spill file or cache path under the user profile."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "read-appdata-content-json",
+      "description": "The review must not read or shell against AppData, workspaceStorage, chat-session-resources, or content.json paths to reconstruct PR scope."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-run"
+  },
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Cannot run code-review-committed-changes:",
+      "local cache",
+      "spill file"
+    ]
+  },
+  "notes": "Use this case to benchmark the fail-closed behavior for local spill-file PR scope recovery."
+}

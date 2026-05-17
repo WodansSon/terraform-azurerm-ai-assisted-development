@@ -8,6 +8,9 @@ description: "Code review for local changes using the shared review contract and
 
 ## Audit-only mode
 This prompt is audit-only. Do not modify files. Do not propose or apply patches unless the user explicitly asks for fixes.
+Do not run unit tests, acceptance tests, `go test`, `runTests`, or other test commands as part of the normal review flow unless the user explicitly asks for test execution.
+Do not run helper scripts, ad hoc shell snippets, or terminal calculations for trivial deterministic checks such as string length, simple literal comparisons, or obvious regex-shape questions during normal review flow.
+Do not invent or execute repo-local prerequisite scripts, validation wrappers, or guessed helper entrypoints unless they are explicitly named in this prompt, the shared contract, current workspace guidance, or the user's request.
 
 ## Recursion prevention
 If the local change-set includes `.github/prompts/code-review-local-changes.prompt.md`, skip only that file and disclose the skip in the review output.
@@ -156,6 +159,7 @@ Rules:
 - Treat vendored files under `vendor/**` as skipped non-actionable files: report only the skipped vendored-file count, and do not raise Issues that require directly editing vendored content.
 - When the selected local diff is vendored-only or vendored-heavy, say so explicitly in the summary or notes so sparse actionable findings are easy to interpret.
 - When `internal/**/*.go` scope adds a brand-new resource, explicitly inspect whether the required companion artifacts from the implementation and testing guidance are present: Resource Identity, list resource, list-resource query tests, and list-resource docs.
+- For singleton or get-only new resources, including singleton child resources whose SDK package may still expose list methods, apply the shared contract's exception-aware list-review rule instead of emitting a generic missing-list-resource finding.
 - When the change adds a new `*_ephemeral.go` implementation, explicitly inspect whether the required companion artifacts are present: `EphemeralResources()` registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.

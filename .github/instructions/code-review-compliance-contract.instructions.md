@@ -119,6 +119,17 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Do not reuse, quote, paraphrase, or summarize a prior review body as the current review output, even when the reviewed change-set and findings are unchanged.
 - Rule: Reconstruct the review body from current-run evidence and the current prompt/template requirements for every invocation.
 
+### REVIEW-EVID-009: Do not use helper scripts for trivial deterministic checks
+- Rule: For trivial deterministic facts that can be derived directly from the diff or file content, do not run ad hoc scripts, helper commands, or terminal calculations merely to prove them.
+- Rule: Examples include string length checks, substring presence, obvious regex-shape checks, simple line counts, literal value comparisons, and other facts that can be reasoned from the reviewed content without external execution.
+- Rule: Use direct file evidence and reviewer reasoning for those facts unless the user explicitly asks for executable validation.
+- Reviewer behavior: do not create or run focused shell snippets, PowerShell expressions, WSL commands, or one-off scripts just to verify a trivial literal property during normal review flow.
+
+### REVIEW-EVID-010: Do not invent prerequisite or validation scripts
+- Rule: Do not invent, assume, or execute repo-local prerequisite scripts, validation wrappers, or helper entrypoints unless they are explicitly named by the active prompt, the shared contract, current workspace guidance, or the user.
+- Rule: In review flow, a nonexistent or unstated script name such as a made-up `validate-*.ps1` helper is not valid evidence gathering.
+- Reviewer behavior: if a needed validation path is not explicitly provided by the prompt or workspace guidance, use the approved direct evidence paths instead of creating or invoking a guessed script.
+
 ## Finding classification
 
 ### REVIEW-CLASS-001: Issues are for actual problems only
@@ -160,10 +171,27 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Do not treat unrelated branch-only commits as committed-review findings when active or viewed pull request context exists.
 - Rule: Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
 - Rule: When authoritative pull request metadata exists, retrieve the authoritative PR changed-file set from GitHub-backed pull request metadata.
-- Rule: Acceptable authoritative PR file sources include environment-provided PR metadata and the GitHub pull request files API for the resolved PR number.
+- Rule: Acceptable authoritative PR file sources include environment-provided PR metadata, GitHub-backed pull request tools, the GitHub pull request files API for the resolved PR number, and `gh api` or equivalent GitHub CLI commands when they retrieve that same GitHub-backed pull request files payload directly.
+- Rule: Prefer GitHub-backed pull request tools over terminal-based `gh api` calls when those tools can provide the authoritative PR changed-file set, because that avoids unnecessary terminal-approval prompts for read-only metadata retrieval.
 - Rule: An explicit PR number supplied by the user is an acceptable deterministic input for resolving the authoritative PR changed-file set.
 - Rule: Do not assume the GitHub CLI is installed, and do not require `gh` as the only compliant path for PR file retrieval.
+- Rule: Do not treat GitHub CLI availability as part of the normal committed-review prerequisite flow.
+- Rule: Terminal `gh api` PR-file retrieval is an opt-in fallback only. Use it only when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
+- Rule: When CLI fallback is explicitly requested and a PR number is available, the preferred `gh` path is a direct pull request files query against `repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed.
 - Rule: Do not reconstruct PR scope by scraping local Copilot session files, `workspaceStorage`, `chat-session-resources`, or ad hoc cached JSON artifacts from the local machine.
+- Rule: Do not read, parse, or shell against user-profile paths or local spill files to recover PR metadata, including paths under `C:/Users/.../AppData/...`, `workspaceStorage`, `chat-session-resources`, or `content.json` files emitted by local tools.
+- Rule: A temporary file path returned directly by a GitHub-backed pull request tool during the current invocation may be read as a transport artifact of that tool result.
+- Rule: Do not discover, construct, glob, or infer those transport paths manually; only use the exact path returned by the GitHub-backed tool in the current invocation.
+- Rule: Tool-emitted spill files stored under the user profile or editor cache are not acceptable authoritative PR evidence unless the exact path was returned by a GitHub-backed pull request tool in the current invocation as a transport artifact of that tool result.
+- Rule: If one GitHub-backed pull request tool path is unavailable, try another GitHub-backed non-terminal PR metadata path before failing closed.
+- Rule: Do not automatically escalate from GitHub-backed pull request tools to terminal `gh api` unless the user explicitly requested CLI fallback.
+- Rule: Only after direct GitHub-backed PR retrieval paths are exhausted may committed review fail closed for lack of authoritative PR file scope.
+- Rule: If a tool only makes PR metadata available through a local spill file or cache path, committed review must fail closed rather than reading that local file.
+- Rule: In normal committed review flow, GitHub-backed PR retrieval is for authoritative scope resolution, not for repeated per-file content reads.
+- Rule: After the authoritative PR changed-file set is resolved, inspect committed file content using repo-local evidence such as the committed diff, `git show`, or workspace file reads cross-checked against the committed diff, rather than repeated terminal `gh api` content fetches.
+- Rule: After the authoritative PR changed-file set is resolved, prefer direct file reads and targeted search over extra shell-based helper passes when inspecting already identified in-scope files.
+- Rule: Targeted read-only git inspection commands scoped to already identified in-scope files, such as `git diff -- <paths>`, `git show <rev>:<path>`, or similar repo-local committed-content reads, are valid normal review evidence and are not prerequisite scripts or ad hoc validation wrappers.
+- Rule: A dirty local workspace is not, by itself, justification to switch normal per-file review inspection to repeated remote `gh api` content reads.
 - Rule: If explicit user-supplied PR context and environment PR context both exist and conflict, committed review must fail closed instead of silently choosing one.
 - Rule: The only allowed exception is an explicit user override that says the supplied PR should override the active or viewed PR context.
 
@@ -217,6 +245,14 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: For the documentation companion, expect the corresponding list-resource doc page under `website/docs/list-resources/` when the new resource requires a list resource.
 - Rule: Do not treat upstream exception labels such as `allow-without-list` or `list-not-supported` as implicit; the review should only accept the omission when the exception is explicitly justified in the change context.
 
+### REVIEW-SCOPE-005C: Singleton or get-only resources need exception-aware list review
+- Rule: When a brand-new resource appears to be singleton or backed only by a get/read API with no meaningful list API, do not raise a generic missing-list-resource Issue without considering the maintainer-reviewed exception path.
+- Rule: Treat singleton-child implementation evidence as valid justification input even when the PR text is brief. Examples include a fixed child-resource name or path segment, a synthetic ID type representing a singleton child endpoint, CRUD methods that operate on a parent ID plus a fixed child path, or provider semantics that model only one instance per parent.
+- Rule: The existence of a generated SDK list method alone is not sufficient evidence that a meaningful list resource is required when stronger implementation evidence shows the Terraform resource represents a singleton child configuration object.
+- Rule: If the change context or implementation evidence shows that no meaningful list API exists, that the resource is singleton, or that the omission is using the maintainer-reviewed exception path, do not raise a normal missing-list-resource Issue; record the situation as an Observation or concise note instead.
+- Rule: In that Observation or note, mention that the omission should be covered by the documented maintainer-reviewed exception path such as `allow-without-list` or `list-not-supported`.
+- Rule: If the available implementation evidence suggests singleton or get-only behavior but the change context does not explicitly justify omitting the list resource, keep the finding as an Issue, but use exception-aware wording that tells the contributor to document the reason in the PR and use the maintainer-reviewed exception path instead of silently omitting the list resource.
+
 ### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
 - Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
@@ -227,6 +263,11 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Treat missing or mismatched prompt, instruction, skill, or installer entries as reviewable issues when the manifest is intended to distribute them.
 
 ## Acceptance-test review guidance
+
+### REVIEW-TEST-000: Code review is not a test-execution workflow
+- Rule: Normal code review is audit-only and does not execute unit tests, acceptance tests, `go test`, `runTests`, `TF_ACC` runs, or other test commands unless the user explicitly asks for test execution as part of the review.
+- Rule: Review may inspect changed test files, test structure, test naming, and embedded Terraform, but should not run tests merely to improve confidence, reduce residual risk language, or validate a suspected issue during ordinary review flow.
+- Rule: If a reviewer believes running tests would help, that belongs in a follow-up suggestion or a separate user-approved validation step, not the default review procedure.
 
 ### REVIEW-TEST-001: ImportStep guidance is evidence-based, not absolute
 - Rule: Treat ImportStep as strong evidence that configured state is validated, but not as a blanket prohibition on all additional checks.

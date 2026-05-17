@@ -8,6 +8,9 @@ description: "Code review for committed changes using the shared review contract
 
 ## Audit-only mode
 This prompt is audit-only. Do not modify files. Do not propose or apply patches unless the user explicitly asks for fixes.
+Do not run unit tests, acceptance tests, `go test`, `runTests`, or other test commands as part of the normal review flow unless the user explicitly asks for test execution.
+Do not run helper scripts, ad hoc shell snippets, or terminal calculations for trivial deterministic checks such as string length, simple literal comparisons, or obvious regex-shape questions during normal review flow.
+Do not invent or execute repo-local prerequisite scripts, validation wrappers, or guessed helper entrypoints unless they are explicitly named in this prompt, the shared contract, current workspace guidance, or the user's request.
 
 ## Recursion prevention
 If the committed change-set includes `.github/prompts/code-review-committed-changes.prompt.md`, skip only that file and disclose the skip in the review output.
@@ -30,7 +33,9 @@ If the fresh-run requirements are not satisfied, hard-stop and output exactly th
   - `Cannot run code-review-committed-changes: fresh-run requirements not satisfied. Re-run the mandatory procedure from step 0 in this invocation.`
 
 ## Command authorization
-The required git and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
+The required read-only git commands and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
+That authorization includes the mandatory branch and diff commands plus targeted follow-on read-only git inspection commands scoped to already identified in-scope files, such as `git diff -- <paths>` and `git show <rev>:<path>`.
+Read-only `gh api` pull-request metadata commands are authorized only when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
 Execute the required review commands immediately when their step applies.
 Do not stop to ask the user for confirmation before running them.
 Do not emit a preamble that asks permission or waits for approval before running them.
@@ -59,8 +64,8 @@ Do not emit a preamble that asks permission or waits for approval before running
   - `Cannot run code-review-committed-changes: code review contract not fully loaded. Load .github/instructions/code-review-compliance-contract.instructions.md to EOF and re-run this prompt.`
 
 ### 1) Gather the committed change-set
-Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` for each command.
-Execute these required commands directly when this step begins; do not pause for confirmation.
+Use GitHub-backed pull request tools for PR metadata and changed-file scope resolution whenever they can provide the authoritative PR payload.
+Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` only for the required git commands in this step, targeted follow-on read-only git inspection commands on already identified in-scope files, and for a direct `gh api` fallback when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
 The commands in steps 1 and 4 must be executed again for each invocation of this prompt, even if they were executed earlier in the conversation.
 
 Run this command first and do not repeat it:
@@ -77,13 +82,28 @@ Determine committed review scope in this order:
   - the currently open or viewed pull request context, when available
 - When pull request context is available, obtain the authoritative PR changed-file set from GitHub-backed pull request metadata.
 - Acceptable authoritative PR file sources are:
+  - GitHub-backed pull request tools
   - environment-provided pull request metadata that includes the PR changed-file set
   - the GitHub pull request files API for the resolved PR number
+  - `gh api` or equivalent GitHub CLI commands when they retrieve that same GitHub-backed PR files payload directly
 - If the user supplies an explicit PR number in the invocation text, that PR number is an acceptable deterministic input for resolving the authoritative PR changed-file set.
+- Prefer GitHub-backed pull request tools before terminal `gh api` when those tools can provide the authoritative PR changed-file set.
+- If a GitHub-backed pull request tool returns its payload via a temporary file path, you may read only the exact path returned by that tool in the current invocation as a transport artifact of the GitHub-backed result.
+- Do not discover, construct, glob, or infer local cache paths manually.
 - Do not assume the GitHub CLI is installed.
 - Do not require `gh` as the only way to resolve PR files.
+- Do not check `gh` availability or invoke `gh api` in the normal committed-review flow.
+- Only when the user explicitly requests CLI fallback or explicitly asks to use `gh`, you may check `gh` availability and then run a direct GitHub-backed PR files query using `gh api repos/<owner>/<repo>/pulls/<number>/files --paginate`.
 - Do not reconstruct PR scope by scraping local Copilot session artifacts, `workspaceStorage`, `chat-session-resources`, or ad hoc `content.json` files from the local machine.
 - Do not build PR scope through generated local shell scripts that deserialize PR metadata from user-profile caches.
+- Do not read tool-emitted spill files or cached JSON under user-profile paths such as `C:/Users/.../AppData/...`, `workspaceStorage`, or `chat-session-resources` unless the exact path was returned by a GitHub-backed pull request tool in the current invocation as a transport artifact of that tool result.
+- If a PR-metadata tool only exposes the changed-file set through a local spill file or cache path, try another GitHub-backed non-terminal path if available.
+- If direct GitHub-backed non-terminal PR retrieval paths are exhausted and the changed-file set is still only available through a local spill file or cache path, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: authoritative PR scope is not available from GitHub-backed review tools without using local cache artifacts. Re-run with a branch-wide committed review, or explicitly request CLI fallback if you want to allow a direct gh api PR-files query.`
+- After the authoritative PR changed-file set is resolved, do not switch into repeated remote `gh api` file-content fetches for normal review inspection.
+- Use the committed diff and repo-local file reads validated against the diff as the default per-file analysis path unless the user explicitly requests remote-source verification.
+- Prefer direct file reads and targeted search over extra shell-based helper passes when inspecting already identified in-scope files.
+- Targeted read-only git inspection commands limited to already identified in-scope files are part of the normal review path when they clarify committed content or diff shape.
 - If explicit user-supplied PR context and environment PR context both exist, resolve them before continuing:
   - If they match, use that PR.
   - If they conflict, hard-stop and output exactly this one line and nothing else:
@@ -99,6 +119,13 @@ git --no-pager diff --no-prefix --unified=3 origin/main...HEAD
 Rules:
 - When authoritative pull request context exists, treat the pull request changed-file set and diff as the committed review scope.
 - When an explicit PR number is available, the review may use that PR number to resolve the authoritative changed-file set from GitHub without relying on local branch-diff inference.
+- Prefer GitHub-backed pull request tools for PR metadata retrieval, and use terminal `gh api` only when the user explicitly requests CLI fallback.
+- Do not reject an authoritative GitHub-backed pull request tool result solely because the tool transports that result through an exact temporary file path returned in the current invocation.
+- Do not automatically turn an explicit PR number into a terminal `gh api` prerequisite.
+- Only if the user explicitly requests CLI fallback may the review attempt the direct `gh api repos/<owner>/<repo>/pulls/<number>/files --paginate` path.
+- Never access PR metadata through local user-profile caches or tool spill files.
+- When CLI fallback is explicitly allowed, prefer a direct `gh api` GitHub-backed PR-files request over any local cache-backed recovery attempt.
+- Do not use repeated terminal `gh api` calls as a general substitute for reading committed file contents during normal review.
 - Do not silently choose between conflicting explicit and environment PR targets.
 - Conflict between explicit and environment PR context must fail closed unless the user explicitly requests an override.
 - Do not expand committed-review findings to unrelated branch-only commits when authoritative pull request context exists.
@@ -198,6 +225,7 @@ Rules:
 - When `website/docs/**/*.html.markdown` files are in scope, any docs Issue in the review body must include the exact supporting `DOCS-*` rule ID or IDs.
 - Do not emit generic docs-parity Issues for `website/docs/**/*.html.markdown` files without exact `DOCS-*` rule support and evidence.
 - When `internal/**/*.go` scope adds a brand-new resource, explicitly inspect whether the required companion artifacts from the implementation and testing guidance are present: Resource Identity, list resource, list-resource query tests, and list-resource docs.
+- For singleton or get-only new resources, including singleton child resources whose SDK package may still expose list methods, apply the shared contract's exception-aware list-review rule instead of emitting a generic missing-list-resource finding.
 - When the change adds a new `*_ephemeral.go` implementation, explicitly inspect whether the required companion artifacts are present: `EphemeralResources()` registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.

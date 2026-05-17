@@ -1,0 +1,45 @@
+{
+  "id": "review-committed-no-automatic-cli-fallback",
+  "title": "Committed review does not auto-fallback to gh without explicit request",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where an explicit PR number is supplied, GitHub-backed review tools are insufficient, and the user did not ask for CLI fallback. The correct review must not auto-check gh or auto-run gh api.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-no-automatic-cli-fallback/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Sanitized fixture models the exact regression where the prompt treated an explicit PR number as permission to auto-run gh api even though the user never requested CLI fallback."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "cli-fallback-opt-in-only",
+      "severity": "high",
+      "description": "The committed review should keep gh api fallback opt-in only and must not auto-check gh availability or auto-run gh api just because a PR number is available."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "auto-gh-check",
+      "description": "The review must not turn an explicit PR number into an automatic gh prerequisite or automatic gh api fetch."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-run"
+  },
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Cannot run code-review-committed-changes:",
+      "explicitly request CLI fallback"
+    ]
+  },
+  "notes": "Use this case to benchmark that normal committed review prefers GitHub-backed review tools and never auto-prompts into gh fallback."
+}

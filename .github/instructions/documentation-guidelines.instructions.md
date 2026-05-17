@@ -47,6 +47,11 @@ To run a complete standards + schema parity audit for the currently-open docs pa
 
 This audit is optional and user-invoked (no CI enforcement).
 
+Workflow note:
+
+- the `docs-writer` skill owns the normal docs-writing workflow
+- the docs review prompt remains the explicit deterministic auditor when formal audit-style output is needed
+
 ## AI docs checks (migrated from docs-writer skill)
 
 <a id="ai-docs-checks"></a>
@@ -69,6 +74,8 @@ Use this file for companion guidance:
 - how to choose or structure examples
 - AzureRM-specific documentation heuristics
 - illustrative templates and snippets
+
+Use the `docs-writer` skill for workflow behavior such as preflight, note-categorization discipline, and post-edit validation.
 
 Practical authoring reminders:
 - Preserve the resource vs data source vs list-resource vs ephemeral-resource vs function distinction in tone and examples.
@@ -299,6 +306,8 @@ After writing or updating a page, run a standards + schema parity pass.
 - For a deterministic audit procedure + output format, use `.github/prompts/code-review-docs.prompt.md`.
 - If you cannot locate the schema under `internal/**` in the target repo, state that explicitly and perform a docs-standards-only review.
 
+The `docs-writer` skill owns the normal post-edit workflow; this section is the pointer to the dedicated auditor, not a second workflow authority.
+
 ### Quick audit checklist (high-signal)
 
 <a id="ai-docs-quick-audit"></a>
@@ -318,13 +327,16 @@ Companion reminders:
 
 <a id="ai-docs-post-edit"></a>
 
-After modifying a docs page under `website/docs/**`:
-- Re-check ordering rules (Arguments/Attributes + nested blocks)
-- Re-check note markers + placement
-- Re-check examples (fences, secrets, self-contained references)
-- Re-run the deterministic audit (`/code-review-docs`) and fix Issues before considering the page done
+The `docs-writer` skill owns the mandatory post-edit workflow for ordinary docs-writing tasks.
 
-Ensure Markdown formatting passes linting.
+Use this section as a companion reminder for the high-signal re-check areas:
+
+- ordering rules for arguments, attributes, and nested blocks
+- note markers and placement
+- examples, including fences, secrets, self-contained references, and implementation-backed values
+- import ID shape from implementation evidence when applicable
+
+When a deterministic audit is explicitly needed, use `.github/prompts/code-review-docs.prompt.md`.
 
 The contract remains the source of truth for what constitutes an Issue.
 
@@ -366,37 +378,19 @@ When the wording is not already obvious from the page:
 
 ## 🚨 **CRITICAL: PRE-IMPLEMENTATION REQUIREMENTS** 🚨
 
-**⚠️ MANDATORY BEFORE ANY DOCUMENTATION CHANGES ⚠️**
+The `docs-writer` skill owns the pre-edit documentation workflow.
 
-**BEFORE making ANY documentation changes, you MUST:**
+Before documentation changes:
 
-1. **📋 READ NOTE FORMATTING GUIDELINES FIRST**
-    - Scroll to <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
-    - Review the three note types: Informational (`->`), Warning (`~>`), Caution (`!>`)
-    - Understand the categorization criteria for each type
+- read the note-formatting guidance at <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
+- categorize note content as informational, warning, or caution before adding or changing note blocks
+- use the skill and the docs contract as the workflow authority; use this file as the note-formatting and heuristics reference
 
-2. **🎯 CATEGORIZE YOUR CONTENT**
-   - **Informational (`-> **Note:**`)**: Additional useful information, recommendations, tips, external links
-   - **Warning (`~> **Note:**`)**: Information to avoid errors that won't cause irreversible changes (ForceNew behavior, conditional requirements)
-   - **Caution (`!> **Note:**`)**: Critical information about irreversible changes, data loss, permanent effects
+High-signal mistakes to avoid:
 
-3. **✅ VALIDATE BEFORE IMPLEMENTATION**
-   - Ask yourself: "What type of information am I documenting?"
-   - Choose the appropriate note format based on the categorization criteria
-   - ForceNew behavior = Warning note (`~> **Note:**`) - users need to avoid configuration errors
-   - Azure service limitations = Often caution notes (`!> **Note:**`) if irreversible
-   - Additional information/tips = Informational notes (`-> **Note:**`)
-
-**🚫 COMMON MISTAKES TO AVOID:**
-- Using informational notes (`->`) for ForceNew behavior warnings
-- Using warning notes (`~>`) for simple tips or external links
-- Using caution notes (`!>`) for reversible configuration changes
-
-**📋 ENFORCEMENT CHECKLIST:**
-- [ ] Read the note formatting guidelines section first
-- [ ] Categorized the information type according to the criteria
-- [ ] Chosen the appropriate note format based on impact and reversibility
-- [ ] Verified the format matches the content type (warning for ForceNew, etc.)
+- using informational notes (`->`) for ForceNew or conditional-requirement warnings
+- using warning notes (`~>`) for simple tips or external links
+- using caution notes (`!>`) for reversible configuration changes
 
 ---
 <a href="#documentation-guidelines">⬆️ Back to top</a>

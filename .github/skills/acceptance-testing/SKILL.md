@@ -69,6 +69,33 @@ Before running tests:
 - Prefer narrow test runs (single test) over running the full suite.
 - Ensure cleanup/destroy behavior is covered.
 
+## Execution workflow
+
+Use the upstream acceptance-test entry point as the default command shape:
+
+- `make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run={{TEST_NAME}}' TESTTIMEOUT='60m'`
+
+Expected shell environment for acceptance-test runs includes:
+
+- `ARM_SUBSCRIPTION_ID`
+- `ARM_CLIENT_ID`
+- `ARM_CLIENT_SECRET`
+- `ARM_TENANT_ID`
+- `ARM_TEST_LOCATION`
+- `ARM_TEST_LOCATION_ALT`
+
+Execution rules:
+
+- Prefer the smallest `-run` scope that proves the change.
+- Prefer rerunning one failing test over broad service-wide or suite-wide retries.
+- Treat unit-test runs and acceptance-test runs as different workflows; do not present `go test ./...` as a substitute for a targeted acceptance run.
+
+Example narrow run:
+
+```text
+make acctests SERVICE='cdn' TESTARGS='-run=TestAccCdnFrontDoorProfile_basic' TESTTIMEOUT='60m'
+```
+
 ## Core patterns to follow
 
 - Acceptance test framework conventions:
@@ -129,6 +156,14 @@ When a test fails:
    - Check expand/flatten symmetry.
    - Confirm ForceNew vs Update behavior.
    - Confirm PATCH behavior (omitted vs explicitly disabled fields).
+
+Common cleanup blockers to consider during troubleshooting:
+
+- `ResourceGroupBeingDeleted`
+- soft-delete or purge-protection conflicts
+- protection or health-monitoring features that block normal destroy timing
+
+When provider feature flags are the accepted cleanup path for the resource family, use the existing provider-pattern cleanup flags instead of inventing one-off destroy workarounds.
 
 ## Output expectation
 

@@ -9,6 +9,10 @@ Use it when you want to answer questions like:
 - Does bootstrap/install include the right runtime payload?
 - Did we update the docs that explain the current rule model?
 
+For repo-level customization layering, migration sequencing, and regression-safe modernization of prompts, instructions, skills, and agents, also consult:
+
+- `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md`
+
 This is a maintenance checklist for this repository only. It is not part of the runtime toolkit that gets installed into target repositories.
 
 ## Repo-Only Maintenance Skills
