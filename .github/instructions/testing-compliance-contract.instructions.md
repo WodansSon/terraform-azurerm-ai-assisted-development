@@ -181,4 +181,13 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `CustomizeDiff Testing` says invalid field combinations should be covered with acceptance tests and notes that success scenarios are usually covered by the broader lifecycle test set
   - Existing local testing guidance explains that CustomizeDiff prevents invalid Azure API calls and is therefore regression-prone if left unexercised
 
+### TEST-PATTERN-007: Inline one-use helper arguments in fmt.Sprintf-based config builders
+- Rule: In acceptance-test helper functions that return `fmt.Sprintf(...)` configuration strings, do not assign one-use helper results such as `template := r.template(data)` or `config := r.basic(data)` to a local variable only to pass them immediately into `fmt.Sprintf(...)`.
+- Rule: Pass those one-use helper calls directly as `fmt.Sprintf(...)` arguments instead, for example `r.template(data)` or `r.basic(data)` inline.
+- Rule: Only introduce a local variable for a nested helper result when it is reused, materially improves readability, or is needed for additional transformation before formatting.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#28834` comment on `internal/services/cdn/cdn_frontdoor_firewall_policy_resource_test.go`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
+  - That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals
+
 <!-- TESTING-CONTRACT-EOF -->

@@ -87,6 +87,11 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 - **Test function names**: Use underscores for logical separation (`_featureGroup_scenario`)
 - **Helper function names**: Use camelCase following Go naming conventions for unexported functions
 
+### Config Helper Composition
+
+- In helper functions that return `fmt.Sprintf(...)` acceptance-test configuration, pass one-use nested helper calls directly into `fmt.Sprintf(...)` rather than assigning locals like `template := r.template(data)` or `config := r.basic(data)` only to forward them once.
+- Keep a local variable only when the nested helper result is reused, transformed, or clearly improves readability.
+
 ### Go Testing Patterns
 
 **Table-Driven Tests:**

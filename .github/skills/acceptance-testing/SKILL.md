@@ -139,6 +139,10 @@ make acctests SERVICE='cdn' TESTARGS='-run=TestAccCdnFrontDoorProfile_basic' TES
    - Add targeted acceptance-test coverage for CustomizeDiff validation paths so invalid field combinations and Azure-specific cross-field constraints are not left untested.
    - Prefer `ExpectError` scenarios for the invalid paths, while letting the broader `basic`, `update`, `complete`, and import flows cover the corresponding success paths unless extra assertions are needed.
 
+- Keep fmt.Sprintf-based config helpers concise:
+   - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
+   - Keep a local only when the value is reused, transformed, or materially improves readability.
+
 ## Troubleshooting workflow
 
 When a test fails:
