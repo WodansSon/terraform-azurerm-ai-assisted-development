@@ -92,6 +92,15 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 - In helper functions that return `fmt.Sprintf(...)` acceptance-test configuration, pass one-use nested helper calls directly into `fmt.Sprintf(...)` rather than assigning locals like `template := r.template(data)` or `config := r.basic(data)` only to forward them once.
 - Keep a local variable only when the nested helper result is reused, transformed, or clearly improves readability.
 
+### Helper Struct Naming
+
+- In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
+- If the surface already has an established canonical helper type, keep using that same type across all related acceptance tests and generated identity tests.
+- For new surfaces without an established helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+- Keep that same helper type across all acceptance test variants for the same Terraform surface, not just the main file: resource tests, list tests, identity-related tests, and any other helper-instantiating tests should all use the same canonical type.
+- Generated identity tests under `*_identity_gen_test.go` should use that same helper type directly rather than introducing a separate `SomethingIdentityResource` helper, alias, or wrapper.
+- Durable Task is the concrete example for why this matters: the canonical helper types such as `DurableTaskHubResource` and `DurableTaskRetentionPolicyResource` must remain the single source of truth, and generated identity tests must use those same types directly so generated files do not churn.
+
 ### Go Testing Patterns
 
 **Table-Driven Tests:**

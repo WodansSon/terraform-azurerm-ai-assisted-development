@@ -1,0 +1,64 @@
+{
+  "id": "skill-acceptance-testing-helper-struct-naming",
+  "title": "Acceptance-testing guidance preserves the canonical helper type across all test variants",
+  "task": "acceptance-testing",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized historical acceptance-test guidance scenario where helper struct names drifted away from the established canonical helper type across test variants and generated identity tests started instantiating different helper types. The correct guidance should restore one canonical helper type per Terraform surface so go generate produces no diff and Generation Check stays green.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-acceptance-testing-helper-struct-naming/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource_test.go",
+      "internal/services/example/example_data_source_test.go",
+      "internal/services/example/example_resource_identity_gen_test.go"
+    ],
+    "notes": "Sanitized fixture models helper-type naming drift without retaining live upstream file contents. The canonical helper type drifted across resource or data source test variants while the generated identity test continued to instantiate a separate IdentityResource helper."
+  },
+  "expectedRules": [
+    "TEST-PATTERN-008",
+    "TEST-EVID-001",
+    "TEST-PATTERN-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "helper-struct-name-generator-drift",
+      "severity": "high",
+      "description": "The guidance should restore the established canonical helper type for the Terraform surface and keep it stable across all acceptance test variants for that surface."
+    },
+    {
+      "key": "canonical-helper-drift-across-variants",
+      "severity": "high",
+      "description": "The guidance should catch drift where different test variants for the same Terraform surface use different helper types instead of one established canonical helper type."
+    },
+    {
+      "key": "generated-identity-helper-type-drift",
+      "severity": "high",
+      "description": "The guidance should call out that generated identity tests must instantiate the canonical helper type directly instead of a separate IdentityResource helper."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "adapter-bridge-acceptable",
+      "description": "The guidance must not treat alias types, adapter methods, wrapper structs, or alternate helper names for different test variants as an acceptable fix for helper-type drift."
+    },
+    {
+      "key": "independent-identity-helper-name",
+      "description": "The guidance must not accept a separate SomethingIdentityResource helper name or any other variant-specific helper type just to satisfy a particular test file."
+    },
+    {
+      "key": "forced-rename-established-helper-to-goal-pattern",
+      "description": "The guidance must not insist on renaming an already-established canonical helper type solely to satisfy the preferred `(x)Resource` or `(x)DataSource` naming goal when the existing type is already used consistently across the surface."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: acceptance-testing"
+    ]
+  },
+  "notes": "Use this case to benchmark the canonical helper-struct stability rule after the Durable Task identity-generation drift surfaced in upstream PR #32194."
+}

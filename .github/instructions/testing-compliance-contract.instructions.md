@@ -190,4 +190,20 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#28834` comment on `internal/services/cdn/cdn_frontdoor_firewall_policy_resource_test.go`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
   - That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals
 
+### TEST-PATTERN-008: Acctest helper struct names must stay canonical across all test variants
+- Rule: In acceptance test files under `internal/services/**`, helper struct names for a given Terraform resource or data source must use the canonical generated pattern based on the Terraform name.
+- Rule: For each Terraform resource or data source surface, use one canonical helper type and keep it stable across all related acceptance test files.
+- Rule: If the surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
+- Rule: For new surfaces that do not yet have an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+- Rule: That canonical helper type should stay the same across all acceptance test variants for the same Terraform surface, including the main resource test file, list-test files, identity-related tests, and any other acceptance test file that instantiates the helper.
+- Rule: Generated identity tests under `*_identity_gen_test.go` must use that same canonical helper type directly.
+- Rule: Do not introduce variant-specific helper types such as `SomethingIdentityResource` or other alternate names merely because the test lives in a different file or generated identity file.
+- Rule: Do not rely on adapter methods, alias types, or wrapper structs to bridge helper-type drift to generated identity tests.
+- Rule: Keep helper-type naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
+  - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
+  - Durable Task drift in upstream PR `#32194` showed the failure mode: canonical helper types such as `DurableTaskHubResource` and `DurableTaskRetentionPolicyResource` diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
+
 <!-- TESTING-CONTRACT-EOF -->

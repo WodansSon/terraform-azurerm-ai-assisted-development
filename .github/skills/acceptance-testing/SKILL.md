@@ -143,6 +143,15 @@ make acctests SERVICE='cdn' TESTARGS='-run=TestAccCdnFrontDoorProfile_basic' TES
    - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
    - Keep a local only when the value is reused, transformed, or materially improves readability.
 
+- Keep helper struct names canonical across all acceptance test variants:
+   - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
+   - If a surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
+   - For new surfaces without an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+   - Keep that same helper type across all acceptance test variants for the same Terraform surface, including the main resource tests, list tests, identity-related tests, and any other helper-instantiating acceptance tests.
+   - Generated identity tests under `*_identity_gen_test.go` should instantiate that same helper type directly.
+   - Do not introduce separate `SomethingIdentityResource` helpers, alternate helper names, alias types, or wrapper structs just to satisfy a specific test variant.
+   - Keep the naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
+
 ## Troubleshooting workflow
 
 When a test fails:
