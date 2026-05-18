@@ -784,21 +784,21 @@ If the Azure SDK package offers a `PossibleValuesForFieldName` function, use tha
 },
 
 // PREFERRED - Reuse an established shared validator inline
-"subnet_id": {
+"{{REFERENCE_FIELD_NAME}}": {
     Type:         pluginsdk.TypeString,
     Required:     true,
-    ValidateFunc: commonids.ValidateSubnetID,
+    ValidateFunc: commonids.Validate{{REFERENCE_TYPE}}ID,
 },
 
 // PREFERRED - Bespoke logic moves to a named validator under validate/
-"routing_rule_name": {
+"{{FIELD_NAME}}": {
     Type:         pluginsdk.TypeString,
     Required:     true,
-    ValidateFunc: validateFrontDoorRoutingRuleName,
+    ValidateFunc: validate{{VALIDATOR_NAME}},
 },
 
 // AVOID - Long anonymous closures hide the schema shape and do not reuse well
-"routing_rule_name": {
+"{{FIELD_NAME}}": {
     Type:     pluginsdk.TypeString,
     Required: true,
     ValidateFunc: func(v interface{}, k string) (warnings []string, errors []error) {
@@ -814,7 +814,7 @@ If the Azure SDK package offers a `PossibleValuesForFieldName` function, use tha
 },
 ```
 
-Use a service-local `validate/<subject>.go` helper with a matching `_test.go` file when the validator is new or materially updated and:
+Use a service-local `validate/{{VALIDATOR_SUBJECT}}.go` helper with a matching `_test.go` file when the validator is new or materially updated and:
 
 - the same validation will be reused across more than one field or file
 - the validator needs bespoke control flow, loops, or several condition checks

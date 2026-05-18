@@ -187,7 +187,7 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Only introduce a local variable for a nested helper result when it is reused, materially improves readability, or is needed for additional transformation before formatting.
 - **Provenance**: Inferred maintainer convention.
 - **Evidence**:
-  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#28834` comment on `internal/services/cdn/cdn_frontdoor_firewall_policy_resource_test.go`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
+  - Maintainer review guidance in upstream PR `#28834`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
   - That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals
 
 ### TEST-PATTERN-008: Acctest helper struct names must stay canonical across all test variants
@@ -204,6 +204,6 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - **Evidence**:
   - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
   - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
-  - Durable Task drift in upstream PR `#32194` showed the failure mode: canonical helper types such as `DurableTaskHubResource` and `DurableTaskRetentionPolicyResource` diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
+  - Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
 
 <!-- TESTING-CONTRACT-EOF -->

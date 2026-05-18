@@ -207,7 +207,7 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Reuse shared validators such as `commonids.Validate...`, `validation.StringInSlice(...)`, `validation.All(...)`, or other established helpers when they already model the constraint.
 - Rule: Keep helper composition inline in the schema only when the validation remains short, field-local, and immediately readable at the schema call site.
 - Rule: When introducing a new bespoke validator, or materially updating an existing bespoke validator, extract the validation into that service's `validate/` folder instead of embedding that logic in an anonymous inline `ValidateFunc` closure.
-- Rule: Name validator files for the validated subject where practical, for example `validate/front_door_custom_domain_id.go`, and add the matching unit test file such as `validate/front_door_custom_domain_id_test.go`.
+- Rule: Name validator files for the validated subject where practical, for example `validate/{{VALIDATOR_SUBJECT}}.go`, and add the matching unit test file such as `validate/{{VALIDATOR_SUBJECT}}_test.go`.
 - Rule: Anonymous inline `ValidateFunc` closures are acceptable only for narrow one-off checks whose full logic is still trivially readable where they are declared. If the closure is reused, materially longer than a short helper composition, or obscures the schema shape, move it into a named validator file under `validate/` when that validator is new or materially updated.
 - Rule: Existing legacy validator placement or legacy inline validation outside the changed scope is not, by itself, a migration issue that requires churn-only refactoring.
 - **Provenance**: Local safeguard.
@@ -239,7 +239,7 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - **Provenance**: Inferred maintainer convention.
 - **Evidence**:
   - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3137015087`: `since the id parser gives us a comprehensive error message, we don't need any other message with this`
-  - The suggested maintainer change there replaces ``return results, fmt.Errorf("flattening `cdn_frontdoor_firewall_policy_id`: %+v", err)`` with `return results, err`
+  - The suggested maintainer change there replaces a redundant wrapped parser error with `return results, err`
 
 ## Testing
 

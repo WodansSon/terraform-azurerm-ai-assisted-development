@@ -103,6 +103,14 @@ If a contract declares companion guidance, each companion file should:
 - Point back to the contract path
 - Defer compliance authority to the contract instead of acting as a second authority source
 
+### 3A. Runtime guidance examples stay generic
+
+For runtime guidance under `.github/copilot-instructions.md`, `.github/instructions/`, and `.github/skills/`:
+
+- Prefer generic placeholders such as `{{RESOURCE_NAME}}`, `{{FIELD_NAME}}`, and `{{SERVICE_NAME}}` for broad rules and worked patterns
+- Avoid concrete resource-specific examples when the rule is meant to generalize across the provider
+- Keep concrete resource names only when they are part of intentional evidence, a regression fixture, or a dedicated examples document
+
 ### 4. Rule-reference documentation is still accurate
 
 Update `docs/CODE_REVIEW_RULES.md` when either of these happens:

@@ -81,8 +81,8 @@ return fmt.Errorf("error updating virtual network: %s", err.Error())
 
 ```go
 // GOOD - Verbose error formatting provides full context
-return fmt.Errorf("creating CDN Front Door Profile `%s`: %+v", name, err)
-return fmt.Errorf("updating Network Security Group rules: %+v", err)
+return fmt.Errorf("creating {{RESOURCE_LABEL}} `%s`: %+v", name, err)
+return fmt.Errorf("updating {{RESOURCE_LABEL}} rules: %+v", err)
 return fmt.Errorf("polling for completion of operation: %+v", err)
 ```
 
@@ -90,8 +90,8 @@ return fmt.Errorf("polling for completion of operation: %+v", err)
 
 ```go
 // BAD - Wrapped provider errors should not use %v, %s, or %w here
-return fmt.Errorf("creating CDN Front Door Profile `%s`: %v", name, err)
-return fmt.Errorf("updating Network Security Group rules: %s", err.Error())
+return fmt.Errorf("creating {{RESOURCE_LABEL}} `%s`: %v", name, err)
+return fmt.Errorf("updating {{RESOURCE_LABEL}} rules: %s", err.Error())
 return fmt.Errorf("polling for completion of operation: %w", err)
 ```
 
@@ -105,7 +105,7 @@ return errors.New("field `name` cannot be empty")
 return errors.New("property `zones` cannot be used with `availability_set_id`")
 
 // GOOD - Formatted or wrapped errors use fmt.Errorf
-return fmt.Errorf("creating CDN Front Door Profile `%s`: %+v", name, err)
+return fmt.Errorf("creating {{RESOURCE_LABEL}} `%s`: %+v", name, err)
 return fmt.Errorf("property `sku_name` must be one of `%s`, `%s`, or `%s`", standard, premium, classic)
 
 // BAD - Static error routed through fmt.Errorf without any formatting need
@@ -225,7 +225,7 @@ if response.WasNotFound(resp.HttpResponse) {
 
 // Data source approach (should return error, not mark as gone)
 if response.WasNotFound(resp.HttpResponse) {
-    return fmt.Errorf("CDN Front Door Profile `%s` was not found in Resource Group `%s`", profileName, resourceGroupName)
+    return fmt.Errorf("{{RESOURCE_LABEL}} `%s` was not found in Resource Group `%s`", profileName, resourceGroupName)
 }
 ```
 

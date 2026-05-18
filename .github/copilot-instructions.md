@@ -324,7 +324,7 @@ return fmt.Errorf("account_tier can't be %s", tier)
 
 **Schema Validation Placement:**
 - Reuse shared validators inline when they already express the field constraint clearly
-- For new or materially updated bespoke schema validators, put them in the same service's `validate/` folder as a file-specific validator, for example `validate/front_door_custom_domain_id.go`, with a matching unit test such as `validate/front_door_custom_domain_id_test.go`
+- For new or materially updated bespoke schema validators, put them in the same service's `validate/` folder as a file-specific validator, for example `validate/{{VALIDATOR_SUBJECT}}.go`, with a matching unit test such as `validate/{{VALIDATOR_SUBJECT}}_test.go`
 - Reserve anonymous inline `ValidateFunc` closures for short one-off checks that stay immediately readable at the schema site
 
 **Resource Lifecycle:**

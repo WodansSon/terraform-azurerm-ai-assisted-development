@@ -376,7 +376,7 @@ Avoid embedding the same logic inline when it would hide the schema shape:
 
 ```go
 // AVOID - bespoke validation hidden inside the schema
-"routing_rule_name": {
+"{{FIELD_NAME}}": {
     Type:     pluginsdk.TypeString,
     Required: true,
     ValidateFunc: func(v interface{}, k string) (warnings []string, errors []error) {
@@ -392,10 +392,10 @@ Avoid embedding the same logic inline when it would hide the schema shape:
 }
 
 // PREFERRED - named helper keeps the schema readable and reusable
-"routing_rule_name": {
+"{{FIELD_NAME}}": {
     Type:         pluginsdk.TypeString,
     Required:     true,
-    ValidateFunc: validateFrontDoorRoutingRuleName,
+    ValidateFunc: validate{{VALIDATOR_NAME}},
 }
 ```
 

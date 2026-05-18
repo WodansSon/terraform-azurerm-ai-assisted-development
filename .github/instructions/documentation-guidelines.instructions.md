@@ -734,15 +734,15 @@ When documenting resources that implement the "None" value pattern (where users 
 
 **Good Example Pattern:**
 ```hcl
-output "log_scrubbing_match_variable" {
-  value = data.azurerm_cdn_frontdoor_profile.example.log_scrubbing_rule.0.match_variable
+output "{{OUTPUT_NAME}}" {
+  value = data.azurerm_{{DATA_SOURCE_SLUG}}.example.{{CONFIGURED_BLOCK_NAME}}.0.{{CONFIGURED_FIELD_NAME}}
 }
 ```
 
 **Pattern to Avoid:**
 ```hcl
-output "log_scrubbing_enabled" {
-  value = data.azurerm_cdn_frontdoor_profile.example.log_scrubbing_rule.0.enabled
+output "{{OUTPUT_NAME}}" {
+  value = data.azurerm_{{DATA_SOURCE_SLUG}}.example.{{OPTIONAL_OR_DERIVED_FIELD_NAME}}.0.{{OPTIONAL_OR_DERIVED_ATTRIBUTE}}
 }
 ```
 

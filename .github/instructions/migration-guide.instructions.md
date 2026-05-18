@@ -363,14 +363,14 @@ func (r Registration) SupportedResources() map[string]*pluginsdk.Resource {
 
 **Before Flattening (v3.x):**
 ```hcl
-resource "azurerm_cdn_frontdoor_profile" "example" {
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
   name = "example"
 
-  log_scrubbing {
+    {{WRAPPER_BLOCK_NAME}} {
     enabled = true
 
-    scrubbing_rule {
-      match_variable = "QueryStringArgNames"
+        {{LEGACY_NESTED_BLOCK_NAME}} {
+            {{FIELD_NAME}} = "{{ENUM_VALUE}}"
     }
   }
 }
@@ -378,11 +378,11 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 
 **After Flattening (v4.x):**
 ```hcl
-resource "azurerm_cdn_frontdoor_profile" "example" {
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
   name = "example"
 
-  scrubbing_rule {
-    match_variable = "QueryStringArgNames"
+    {{NEW_NESTED_BLOCK_NAME}} {
+        {{FIELD_NAME}} = "{{ENUM_VALUE}}"
   }
 }
 ```
@@ -577,9 +577,9 @@ Official upstream references:
 
 BREAKING CHANGES:
 
-* **Field Rename**: `azurerm_cdn_frontdoor_profile` - the `scrubbing_rule` field has been renamed to `log_scrubbing_rule` for better clarity ([#12345](https://github.com/hashicorp/terraform-provider-azurerm/pull/12345))
+* **Field Rename**: `azurerm_{{RESOURCE_SLUG}}` - the `{{OLD_FIELD_NAME}}` field has been renamed to `{{NEW_FIELD_NAME}}` for better clarity ([#12345](https://github.com/hashicorp/terraform-provider-azurerm/pull/12345))
 
-* **Schema Flattening**: `azurerm_cdn_frontdoor_profile` - the `log_scrubbing` wrapper block has been removed, `scrubbing_rule` blocks are now configured directly on the profile ([#12346](https://github.com/hashicorp/terraform-provider-azurerm/pull/12346))
+* **Schema Flattening**: `azurerm_{{RESOURCE_SLUG}}` - the `{{WRAPPER_BLOCK_NAME}}` wrapper block has been removed, `{{NEW_NESTED_BLOCK_NAME}}` blocks are now configured directly on the resource ([#12346](https://github.com/hashicorp/terraform-provider-azurerm/pull/12346))
 
 NOTES:
 
@@ -590,24 +590,24 @@ NOTES:
 ````markdown
 # Upgrading to 4.0
 
-## CDN Front Door Profile Changes
+## {{RESOURCE_LABEL}} Changes
 
-### Field Rename: `scrubbing_rule` → `log_scrubbing_rule`
+### Field Rename: `{{OLD_FIELD_NAME}}` → `{{NEW_FIELD_NAME}}`
 
 **Before (v3.x):**
 ```hcl
-resource "azurerm_cdn_frontdoor_profile" "example" {
-  scrubbing_rule {
-    match_variable = "QueryStringArgNames"
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
+    {{OLD_FIELD_NAME}} {
+        {{FIELD_NAME}} = "{{ENUM_VALUE}}"
   }
 }
 ```
 
 **After (v4.x):**
 ```hcl
-resource "azurerm_cdn_frontdoor_profile" "example" {
-  log_scrubbing_rule {
-    match_variable = "QueryStringArgNames"
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
+    {{NEW_FIELD_NAME}} {
+        {{FIELD_NAME}} = "{{ENUM_VALUE}}"
   }
 }
 ```

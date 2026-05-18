@@ -93,7 +93,7 @@ Execution rules:
 Example narrow run:
 
 ```text
-make acctests SERVICE='cdn' TESTARGS='-run=TestAccCdnFrontDoorProfile_basic' TESTTIMEOUT='60m'
+make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}_basic' TESTTIMEOUT='60m'
 ```
 
 ## Core patterns to follow

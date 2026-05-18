@@ -25,9 +25,9 @@ When using `data.ImportStep()` in acceptance tests, field validation checks are 
 
 **Recommended Pattern - ExistsInAzure Check:**
 ```go
-func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -70,17 +70,17 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 ### Naming Conventions
 
 **Unit Tests:** `TestFunctionName_Scenario_ExpectedOutcome`
-- Example: `TestParseFrontDoorProfileID_ValidID_ReturnsCorrectComponents`
+- Example: `TestParse{{RESOURCE_ID_TYPE}}_ValidID_ReturnsCorrectComponents`
 
 **Acceptance Tests:** `TestAccResourceName_scenario`
-- Example: `TestAccCdnFrontDoorProfile_basic`
-- Example: `TestAccCdnFrontDoorProfile_requiresImport`
+- Example: `TestAcc{{RESOURCE_NAME}}_basic`
+- Example: `TestAcc{{RESOURCE_NAME}}_requiresImport`
 - Use underscores to separate logical components: `TestAccResourceName_featureGroup_specificScenario`
-- Example: `TestAccWindowsVirtualMachineScaleSet_skuProfile_Prioritized`
+- Example: `TestAcc{{RESOURCE_NAME}}_{{FEATURE_GROUP}}_{{SCENARIO_NAME}}`
 
 **Test Helper Functions:** Use camelCase (Go convention for unexported functions)
-- Example: `skuProfilePrioritized(data acceptance.TestData) string`
-- Example: `withLogScrubbingRule(data acceptance.TestData) string`
+- Example: `{{featureGroup}}{{scenarioName}}(data acceptance.TestData) string`
+- Example: `with{{NestedBlockName}}(data acceptance.TestData) string`
 - Example: `basicConfiguration(data acceptance.TestData) string`
 
 **Key Distinction:**
@@ -99,7 +99,7 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 - For new surfaces without an established helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
 - Keep that same helper type across all acceptance test variants for the same Terraform surface, not just the main file: resource tests, list tests, identity-related tests, and any other helper-instantiating tests should all use the same canonical type.
 - Generated identity tests under `*_identity_gen_test.go` should use that same helper type directly rather than introducing a separate `SomethingIdentityResource` helper, alias, or wrapper.
-- Durable Task is the concrete example for why this matters: the canonical helper types such as `DurableTaskHubResource` and `DurableTaskRetentionPolicyResource` must remain the single source of truth, and generated identity tests must use those same types directly so generated files do not churn.
+- The rule matters because the canonical helper types for a Terraform surface must remain the single source of truth, and generated identity tests must use those same types directly so generated files do not churn.
 
 ### Go Testing Patterns
 
@@ -327,9 +327,9 @@ func TestAccServiceName_customizeDiffValidation(t *testing.T) {
 
 ### Basic Resource Test
 ```go
-func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -338,16 +338,16 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
                 check.That(data.ResourceName).ExistsInAzure(r),
             ),
         },
-        data.ImportStep(), // No sensitive fields to exclude for CDN profiles
+        data.ImportStep(), // Exclude sensitive fields only when the resource needs it
     })
 }
 ```
 
 ### Resource Update Test
 ```go
-func TestAccCdnFrontDoorProfile_update(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_update(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -370,9 +370,9 @@ func TestAccCdnFrontDoorProfile_update(t *testing.T) {
 
 ### Resource Requires Import Test
 ```go
-func TestAccCdnFrontDoorProfile_requiresImport(t *testing.T) {
-	data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-	r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_requiresImport(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 	data.ResourceTest(t, r, []acceptance.TestStep{
 		{
 			Config: r.basic(data),
@@ -395,18 +395,18 @@ Data sources have different testing requirements than resources since they retri
 
 **Basic Data Source Test:**
 ```go
-func TestAccCdnFrontDoorProfileDataSource_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileDataSource{}
+func TestAcc{{DATA_SOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{DATA_SOURCE_HELPER}}{}
 
     data.DataSourceTest(t, []acceptance.TestStep{
         {
             Config: r.basic(data),
             Check: acceptance.ComposeTestCheckFunc(
                 // Data sources don't have ExistsInAzure checks - they retrieve existing resources
-                check.That(data.ResourceName).Key("name").HasValue(fmt.Sprintf("acctestcdnfd-%d", data.RandomInteger)),
-                check.That(data.ResourceName).Key("resource_group_name").HasValue(fmt.Sprintf("acctestRG-cdn-%d", data.RandomInteger)),
-                check.That(data.ResourceName).Key("sku_name").HasValue("Standard_AzureFrontDoor"),
+                check.That(data.ResourceName).Key("name").HasValue(fmt.Sprintf("acctest-%d", data.RandomInteger)),
+                check.That(data.ResourceName).Key("resource_group_name").HasValue(fmt.Sprintf("acctestRG-%d", data.RandomInteger)),
+                check.That(data.ResourceName).Key("{{FIELD_NAME}}").HasValue("{{EXPECTED_VALUE}}"),
                 check.That(data.ResourceName).Key("id").Exists(),
             ),
         },
@@ -416,15 +416,15 @@ func TestAccCdnFrontDoorProfileDataSource_basic(t *testing.T) {
 
 **Data Source Test Configuration Pattern:**
 ```go
-func (CdnFrontDoorProfileDataSource) basic(data acceptance.TestData) string {
+func ({{DATA_SOURCE_HELPER}}) basic(data acceptance.TestData) string {
     return fmt.Sprintf(`
 %s
 
-data "azurerm_cdn_frontdoor_profile" "test" {
-  name                = azurerm_cdn_frontdoor_profile.test.name
-  resource_group_name = azurerm_cdn_frontdoor_profile.test.resource_group_name
+data "azurerm_{{RESOURCE_SLUG}}" "test" {
+    name                = azurerm_{{RESOURCE_SLUG}}.test.name
+    resource_group_name = azurerm_{{RESOURCE_SLUG}}.test.resource_group_name
 }
-`, CdnFrontDoorProfileResource{}.basic(data))
+`, {{RESOURCE_HELPER}}{}.basic(data))
 }
 ```
 
@@ -516,15 +516,15 @@ func (r ServiceNameResource) Exists(ctx context.Context, clients *clients.Client
 
 **UnTyped Resource Existence Check:**
 ```go
-func (CdnFrontDoorProfileResource) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
-    id, err := parse.FrontDoorProfileID(state.ID)
+func ({{RESOURCE_HELPER}}) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
+    id, err := parse.{{RESOURCE_ID_TYPE}}(state.ID)
     if err != nil {
         return nil, err
     }
 
-    resp, err := clients.Cdn.FrontDoorProfilesClient.Get(ctx, *id)
+    resp, err := clients.{{SERVICE_CLIENT_PATH}}.Get(ctx, *id)
     if err != nil {
-        return nil, fmt.Errorf("reading CDN Front Door Profile (%s): %+v", *id, err)
+        return nil, fmt.Errorf("reading {{RESOURCE_LABEL}} (%s): %+v", *id, err)
     }
 
     return utils.Bool(resp.Model != nil), nil
