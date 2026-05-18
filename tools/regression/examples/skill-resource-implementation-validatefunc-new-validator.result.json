@@ -1,0 +1,41 @@
+{
+  "caseId": "skill-resource-implementation-validatefunc-new-validator",
+  "runId": "sample-maintainercase-003",
+  "timestampUtc": "2026-05-18T00:00:00Z",
+  "task": "resource-implementation",
+  "model": "sample",
+  "pass": true,
+  "overallScore": 100,
+  "scores": {
+    "mustCatchRecall": 100,
+    "falsePositiveControl": 100,
+    "severityCorrectness": 100,
+    "scopeAndToolCorrectness": 100,
+    "outputCompliance": 100,
+    "determinism": 100
+  },
+  "findings": {
+    "caught": [
+      "new-bespoke-validator-needs-validate-file"
+    ],
+    "missed": [],
+    "falsePositives": []
+  },
+  "severityChecks": {
+    "matched": 1,
+    "total": 1
+  },
+  "scopeChecks": {
+    "ruleFamiliesAppliedCorrectly": true,
+    "toolingBehaviorCorrect": true
+  },
+  "toolExecution": {},
+  "outputChecks": {
+    "requiredSectionsPresent": true,
+    "requiredMarkersPresent": true
+  },
+  "determinismChecks": {
+    "materiallyEquivalentAcrossRuns": true
+  },
+  "notes": "Example adjudicated result for the new bespoke ValidateFunc placement scenario."
+}

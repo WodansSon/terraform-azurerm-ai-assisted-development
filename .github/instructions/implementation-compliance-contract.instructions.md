@@ -203,6 +203,18 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined
 
+### IMPL-SCHEMA-005: Keep custom schema validation service-local and readable
+- Rule: Reuse shared validators such as `commonids.Validate...`, `validation.StringInSlice(...)`, `validation.All(...)`, or other established helpers when they already model the constraint.
+- Rule: Keep helper composition inline in the schema only when the validation remains short, field-local, and immediately readable at the schema call site.
+- Rule: When introducing a new bespoke validator, or materially updating an existing bespoke validator, extract the validation into that service's `validate/` folder instead of embedding that logic in an anonymous inline `ValidateFunc` closure.
+- Rule: Name validator files for the validated subject where practical, for example `validate/front_door_custom_domain_id.go`, and add the matching unit test file such as `validate/front_door_custom_domain_id_test.go`.
+- Rule: Anonymous inline `ValidateFunc` closures are acceptable only for narrow one-off checks whose full logic is still trivially readable where they are declared. If the closure is reused, materially longer than a short helper composition, or obscures the schema shape, move it into a named validator file under `validate/` when that validator is new or materially updated.
+- Rule: Existing legacy validator placement or legacy inline validation outside the changed scope is not, by itself, a migration issue that requires churn-only refactoring.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Current workspace regression fixtures already model service-local validator files under `internal/services/<service>/validate/` with matching test files such as `validate/hostname.go` and `validate/hostname_test.go`
+  - Current workspace contributor guidance in `.github/copilot-instructions.md` documents service-local validation artifacts as part of the standard service layout
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows

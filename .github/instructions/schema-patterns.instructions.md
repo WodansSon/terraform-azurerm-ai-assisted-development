@@ -308,7 +308,17 @@ Before suggesting any empty/exists checks or validation logic for fields, the AI
 - If the SDK helper is broader than what the specific resource or API path actually accepts, narrow the validation list to the evidence-backed subset instead of importing the whole helper uncritically.
 - Do not pull enum values from unrelated services or discriminator branches into a field's validator just because they happen to exist in the same SDK namespace.
 
+### Validation Placement
+
+- Reuse existing validators inline when they already express the constraint clearly, for example `commonids.Validate...`, `validation.StringInSlice(...)`, or a short `validation.All(...)` composition.
+- When new or materially updated validation logic becomes bespoke, reused, or hard to scan inline, move it into the same service's `validate/` folder using a file named for the validated subject.
+- Add the matching unit test file under that same `validate/` folder when you introduce a new bespoke validator or materially update an existing one.
+- Treat anonymous inline `ValidateFunc` closures as a narrow exception for short one-off checks. If the closure needs several branches, loops, or regex/substring checks, it is usually clearer as a named helper under `validate/`.
+- Do not treat untouched legacy validator placement as a standalone cleanup requirement.
+
 ### Custom Validation Functions
+
+Prefer service-local named helpers under `validate/` for bespoke validation:
 
 ```go
 // Azure resource name validation
@@ -359,6 +369,33 @@ func ValidateSQLResourceName(v interface{}, k string) (warnings []string, errors
     }
 
     return warnings, errors
+}
+```
+
+Avoid embedding the same logic inline when it would hide the schema shape:
+
+```go
+// AVOID - bespoke validation hidden inside the schema
+"routing_rule_name": {
+    Type:     pluginsdk.TypeString,
+    Required: true,
+    ValidateFunc: func(v interface{}, k string) (warnings []string, errors []error) {
+        value := v.(string)
+        if len(value) < 1 || len(value) > 64 {
+            errors = append(errors, fmt.Errorf("property `%s` must be between 1 and 64 characters", k))
+        }
+        if strings.Contains(value, " ") {
+            errors = append(errors, fmt.Errorf("property `%s` cannot contain spaces", k))
+        }
+        return warnings, errors
+    },
+}
+
+// PREFERRED - named helper keeps the schema readable and reusable
+"routing_rule_name": {
+    Type:         pluginsdk.TypeString,
+    Required:     true,
+    ValidateFunc: validateFrontDoorRoutingRuleName,
 }
 ```
 

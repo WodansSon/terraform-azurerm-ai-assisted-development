@@ -1,0 +1,57 @@
+{
+  "id": "skill-resource-implementation-validatefunc-placement",
+  "title": "Resource implementation guidance distinguishes inline helper validators from bespoke anonymous ValidateFunc closures",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "maintainer-authored",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario where a changed field uses a long anonymous inline ValidateFunc closure and nearby fields use short helper-based validators. The correct guidance should extract the changed bespoke validator into a service-local validate/ file with matching unit coverage while leaving simple inline helper composition alone and without demanding unrelated legacy cleanup elsewhere.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-validatefunc-placement/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/example_frontdoor_resource.go"
+    ],
+    "notes": "Sanitized fixture models a schema-validation placement decision without relying on a live provider PR."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "inline-anonymous-validator-overuse",
+      "severity": "medium",
+      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "description": "The guidance should move the bespoke anonymous ValidateFunc closure into a file-specific validator under validate/, with matching unit coverage."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "simple-inline-helper-composition",
+      "description": "The guidance must not require simple helper-based validators such as validation.StringInSlice or commonids.Validate... to move out of the schema."
+    },
+    {
+      "key": "invent-validate-package",
+      "description": "The guidance must not leave the bespoke validator inline or place it in an unrelated helper file when the established pattern is a service-local validate/ file with matching tests."
+    },
+    {
+      "key": "untouched-legacy-validator-layout",
+      "description": "The guidance must not require repo-wide or unrelated cleanup of existing legacy validator placement outside the changed scope just to normalize the layout."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this to keep future implementation guidance from drifting back toward blanket inline-closure advice, while also avoiding churn-only demands for untouched legacy validator placement."
+}

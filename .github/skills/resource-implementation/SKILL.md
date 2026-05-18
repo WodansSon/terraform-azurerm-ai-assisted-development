@@ -153,6 +153,8 @@ return fmt.Errorf("creating %s: %+v", id, err)
    - Required vs Optional must reflect real API requirements and provider conventions.
    - Treat `tags` consistently and keep it last.
    - Use consistent validation and error message formats.
+   - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
+   - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
 
 - PATCH/residual state rules:
    - Omitted fields in PATCH often preserve prior values.

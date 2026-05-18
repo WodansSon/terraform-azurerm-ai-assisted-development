@@ -1,0 +1,53 @@
+{
+  "id": "skill-resource-implementation-validatefunc-legacy-no-churn",
+  "title": "Resource implementation guidance tolerates untouched legacy validator placement outside changed scope",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "maintainer-authored",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario where the active change does not modify a legacy bespoke validator. The correct guidance should not demand churn-only migration of untouched legacy validator placement while still allowing the changed simple helper-based validation to remain inline.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-validatefunc-legacy-no-churn/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/example_frontdoor_resource.go"
+    ],
+    "notes": "Sanitized fixture models a scope-aware no-churn decision for legacy validator placement."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "untouched-legacy-validator-layout-tolerated",
+      "severity": "low",
+      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "description": "The guidance should explicitly avoid demanding migration of untouched legacy validator placement outside the changed scope."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "simple-inline-helper-composition",
+      "description": "The guidance must not require simple helper-based validators such as validation.StringInSlice or commonids.Validate... to move out of the schema."
+    },
+    {
+      "key": "forced-legacy-validator-migration",
+      "description": "The guidance must not turn untouched legacy validator placement into a required refactor when the current task does not already modify that validator."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this to prevent the forward-consistency ValidateFunc rule from turning into a blanket churn-only migration demand for untouched legacy validator layouts."
+}

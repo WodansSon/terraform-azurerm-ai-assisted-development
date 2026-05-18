@@ -487,8 +487,16 @@ if response.WasNotFound(resp.HttpResponse) {
 - **Resource files**: `internal/services/[service]/[resource_type]_resource.go`
 - **Resource Test files**: Same directory and name as source with `_test.go` suffix
 - **Data source files**: `internal/services/[service]/[resource_type]_data_source.go`
-- **Utility files**: Group related functions (e.g., `validate.go`, `parse.go`, `flatten.go`, `expand.go`)
+- **Validation files**: Put bespoke schema validators under `internal/services/[service]/validate/` using file-specific names with matching `_test.go` coverage
+- **Utility files**: Group other related functions (e.g., `parse.go`, `flatten.go`, `expand.go`)
 - **Registration**: Each service has a `registration.go` file
+
+Validation placement note:
+
+- Keep direct helper composition inline in the schema when the validator is already readable as-is, for example `commonids.Validate...`, `validation.StringInSlice(...)`, or a short `validation.All(...)` composition.
+- For new or materially updated bespoke schema validation logic, put the validator under the same service's `validate/` folder in a file named for the validated subject, with a matching `_test.go` file, rather than leaving a long anonymous `ValidateFunc` closure inline.
+- Do not churn untouched legacy validator placement solely to normalize layout if the current task is not already changing that validator.
+- Treat anonymous inline `ValidateFunc` closures as the exception for narrow one-off checks only. If the closure hides the schema shape or would be clearer as a named helper, extract it.
 
 #### File Naming
 - Use snake_case for file names
@@ -761,6 +769,64 @@ If the Azure SDK package offers a `PossibleValuesForFieldName` function, use tha
     }, false),
 },
 ```
+
+#### ValidateFunc Placement Patterns
+
+```go
+// PREFERRED - Simple helper composition stays inline
+"certificate_type": {
+    Type:     pluginsdk.TypeString,
+    Optional: true,
+    ValidateFunc: validation.StringInSlice([]string{
+        "ManagedCertificate",
+        "CustomerCertificate",
+    }, false),
+},
+
+// PREFERRED - Reuse an established shared validator inline
+"subnet_id": {
+    Type:         pluginsdk.TypeString,
+    Required:     true,
+    ValidateFunc: commonids.ValidateSubnetID,
+},
+
+// PREFERRED - Bespoke logic moves to a named validator under validate/
+"routing_rule_name": {
+    Type:         pluginsdk.TypeString,
+    Required:     true,
+    ValidateFunc: validateFrontDoorRoutingRuleName,
+},
+
+// AVOID - Long anonymous closures hide the schema shape and do not reuse well
+"routing_rule_name": {
+    Type:     pluginsdk.TypeString,
+    Required: true,
+    ValidateFunc: func(v interface{}, k string) (warnings []string, errors []error) {
+        value := v.(string)
+        if len(value) < 1 || len(value) > 64 {
+            errors = append(errors, fmt.Errorf("property `%s` must be between 1 and 64 characters", k))
+        }
+        if strings.Contains(value, " ") {
+            errors = append(errors, fmt.Errorf("property `%s` cannot contain spaces", k))
+        }
+        return warnings, errors
+    },
+},
+```
+
+Use a service-local `validate/<subject>.go` helper with a matching `_test.go` file when the validator is new or materially updated and:
+
+- the same validation will be reused across more than one field or file
+- the validator needs bespoke control flow, loops, or several condition checks
+- the inline closure would materially distract from the schema shape
+
+Do not require unrelated cleanup of untouched legacy validator placement just to satisfy this rule.
+
+Keep the validator inline when:
+
+- the logic is already expressed entirely by existing helpers
+- the schema remains easy to scan without jumping to another file
+- extracting a named helper would add indirection without improving reuse or readability
 
 #### Expand/Flatten Function Patterns
 
