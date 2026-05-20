@@ -50,7 +50,7 @@ You: Create a new resource for Azure CDN Front Door Profile.
 
 **What Copilot Does**:
 1. ✅ Creates the resource file in the correct directory
-2. ✅ Plans Resource Identity and the corresponding list resource
+2. ✅ Implements mandatory Resource Identity and the corresponding list resource
 3. ✅ Implements all CRUD operations
 4. ✅ Adds proper schema with validations
 5. ✅ Includes error handling with formatted errors

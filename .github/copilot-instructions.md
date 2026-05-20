@@ -138,7 +138,7 @@ When you give specific commands, I'll act directly:
 - [ ] Examine ALL `model_*.go` files for the resource
 - [ ] Verify service-specific patterns (SKU, identity types)
 - [ ] Document required/optional/computed fields
-- [ ] Plan Resource Identity and the corresponding List Resource for new resources unless there is a concrete upstream-supported exception
+- [ ] Treat Resource Identity as mandatory for new resources, and treat the corresponding List Resource as mandatory unless the documented maintainer exception path is explicitly used
 - [ ] Make NO assumptions without API structure verification
 
 ## 🎯 **CLEAN CODE EXPERTISE** (HashiCorp PR Standards)

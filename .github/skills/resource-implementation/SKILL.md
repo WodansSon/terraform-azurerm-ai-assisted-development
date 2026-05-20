@@ -82,7 +82,7 @@ Rules:
 ## Default approach
 
 - Prefer the **typed resource** implementation style (internal SDK framework) for new resources.
-- For new resources, plan Resource Identity first and a corresponding list resource immediately after it unless there is a concrete upstream-supported exception.
+- For new resources, treat Resource Identity as mandatory and treat the corresponding list resource as mandatory unless the documented maintainer exception path is explicitly used.
 - For ephemeral resources, use the service-local `*_ephemeral.go` pattern with `sdk.EphemeralResource`, `Open(...)`, and registration through `EphemeralResources()`.
 - For provider-defined functions, use the `internal/provider/function/` pattern with `Metadata`, `Definition`, and `Run`.
 - Make changes consistent with existing resources in the same service.
@@ -131,6 +131,7 @@ return fmt.Errorf("creating %s: %+v", id, err)
 
 - New-resource workflow expectations:
    - Treat Resource Identity as mandatory for new resources.
+   - If current resource-identity generator caveats or unsupported identity shapes mean Resource Identity genuinely cannot be implemented, explain that in the PR instead of silently omitting it.
    - Treat the list resource as mandatory for new resources by default.
    - Treat the primary resource docs and the list-resource docs as mandatory companions for new resources.
    - If no list API exists, do not silently omit the list resource; call out the exception path and the need for maintainer-reviewed `allow-without-list` or `list-not-supported` labeling.

@@ -1126,6 +1126,8 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
 
 ### Resource Identity and Write-Only Attribute Patterns
 
+- Resource Identity is mandatory for all new resources.
+- If current resource-identity generator limitations or unsupported identity types mean Resource Identity genuinely cannot be implemented, explain that in the PR instead of silently omitting it.
 - Typed resources that support resource identity should implement `sdk.ResourceWithIdentity`, set identity data immediately after `metadata.SetID(id)` in create, and set it again during read before encoding state.
 - Untyped resources should pair `pluginsdk.GenerateIdentitySchema(...)` with `pluginsdk.ImporterValidatingIdentity(...)` and `pluginsdk.SetResourceIdentityData(...)` in create and read.
 - Resource identity tests are generator-driven. Add the `go:generate` resource-identity test comment near the imports and map every ID segment through either `-properties` or `-compare-values`; if the resource ID omits `subscription_id`, use `-no-subscription-id`.

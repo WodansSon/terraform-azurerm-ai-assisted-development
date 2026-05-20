@@ -106,7 +106,7 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 6 and Step 7 examples
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 8 and Step 9 examples
 
 ### TEST-WF-003: New resources with list resources should include list query coverage
 - Rule: When adding a new resource that includes a list resource, add list-resource acceptance coverage using Terraform 1.14 query tests.
@@ -205,5 +205,15 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
   - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
   - Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
+
+### TEST-PATTERN-009: Data source tests should prefer the associated resource complete config by default
+- Rule: When a data source acceptance test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.
+- Rule: Use `basic(data)` or another scenario-specific associated resource helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` would introduce unrelated setup, noise, or coupling.
+- Rule: Do not infer that every data source test must use `complete(data)`; the default preference does not remove author choice for scenario-specific setup.
+- Rule: Do not rewrite a data source test away from `complete(data)` or another broader helper when the scenario genuinely depends on the fuller associated resource shape.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream contributor-doc PR `#32406` narrows the `fmt.Sprintf(...)` helper guidance without turning data source setup into a single mandatory helper shape, leaving room for defaulting to the fuller associated resource config while preserving scenario-based exceptions.
+  - Data sources commonly assert computed fields exposed from the managed resource state, so preferring the associated resource `complete(data)` helper when it exists gives the AI a more deterministic default while still allowing narrower setup when the test intentionally targets a smaller shape.
 
 <!-- TESTING-CONTRACT-EOF -->

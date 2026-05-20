@@ -143,6 +143,11 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
    - Keep a local only when the value is reused, transformed, or materially improves readability.
 
+- Prefer associated resource `complete(data)` setup by default in data source tests:
+   - When a data source test composes its setup from an associated resource helper and a `complete(data)` helper exists, prefer that helper as the default setup shape.
+   - Reuse `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` adds unrelated setup or coupling.
+   - Keep a broader helper when the data source scenario genuinely depends on the fuller associated resource shape.
+
 - Keep helper struct names canonical across all acceptance test variants:
    - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
    - If a surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.

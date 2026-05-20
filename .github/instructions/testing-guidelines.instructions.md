@@ -393,6 +393,10 @@ func TestAcc{{RESOURCE_NAME}}_requiresImport(t *testing.T) {
 
 Data sources have different testing requirements than resources since they retrieve existing information rather than manage resource lifecycle.
 
+When a data source test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.
+This gives the test a stable baseline for computed-field coverage, which data sources commonly assert.
+Use `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` would add unrelated setup noise.
+
 **Basic Data Source Test:**
 ```go
 func TestAcc{{DATA_SOURCE_NAME}}_basic(t *testing.T) {
@@ -424,9 +428,11 @@ data "azurerm_{{RESOURCE_SLUG}}" "test" {
     name                = azurerm_{{RESOURCE_SLUG}}.test.name
     resource_group_name = azurerm_{{RESOURCE_SLUG}}.test.resource_group_name
 }
-`, {{RESOURCE_HELPER}}{}.basic(data))
+`, {{RESOURCE_HELPER}}{}.complete(data))
 }
 ```
+
+If the associated resource does not expose `complete(data)`, or the data source test is intentionally narrow, reuse `{{RESOURCE_HELPER}}{}.basic(data)` or another scenario-specific helper instead.
 
 **Data Source Key Validation Guidelines:**
 - **Field Verification**: Data sources should validate that expected fields are populated with correct values
