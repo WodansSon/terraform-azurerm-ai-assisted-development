@@ -466,4 +466,10 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: This applies even when the reviewed code, linter findings, or conclusions are unchanged from an earlier invocation.
 - Rule: Current prompt/template/layout requirements are part of the output contract and must be honored on every successful fresh run.
 
+### REVIEW-OUT-006: Freeze the review before emitting final output
+- Rule: Complete evidence gathering, silent verification, file coverage checks, linter classification, and finding classification before emitting the first character of the normal review output.
+- Rule: Treat the findings set as frozen before writing the review body. Do not continue investigating, reopen scope, or append newly discovered findings after the normal review output has started.
+- Rule: If additional verification or one more read becomes necessary while drafting, stop drafting silently, finish that verification, refreeze the findings set, and then emit one complete review body.
+- Rule: Do not use user-visible self-correction or second-pass wording inside the normal review output, such as `one more thing`, `actually`, `updating this review`, `adding another issue`, or similar mid-review amendments.
+
 <!-- REVIEW-CONTRACT-EOF -->

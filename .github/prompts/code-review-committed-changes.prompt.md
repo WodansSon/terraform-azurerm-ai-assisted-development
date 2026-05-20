@@ -46,6 +46,8 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Do not present multiple alternative fixes unless the user explicitly asks for options.
 - Do not output progress narration, plans, or TODO lists.
 - Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
+- Do not begin the normal review output until the audit is complete and the findings set is frozen.
+- If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
 - The first character of the normal review output must be `#`.
 
 ## No preamble / no progress narration
@@ -230,6 +232,8 @@ Rules:
 - When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
+- Before writing the first `#` of the review output, silently confirm that the findings set is final for this invocation.
+- After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
 
 ## Output format (use this exact structure)
 
