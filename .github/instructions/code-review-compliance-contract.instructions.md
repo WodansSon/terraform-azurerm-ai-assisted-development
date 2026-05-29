@@ -166,34 +166,37 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the active review prompt file itself is part of the reviewed change-set, skip only that specific file.
 - Rule: The skip must be disclosed explicitly in the review output.
 
+### REVIEW-FILE-003A: Local review scope should prefer the active local diff
+- Rule: Local review should use the unstaged tracked diff as the primary review scope when it is non-empty.
+- Rule: If the unstaged tracked diff is empty, local review should fall back to the staged tracked diff.
+- Rule: If `git status --porcelain=v1` shows untracked files, inspect each reviewed untracked file directly from the workspace rather than treating untracked presence as a reason to skip review.
+- Rule: If there are no tracked, staged, or untracked changes, local review must hard-stop instead of emitting an empty review body.
+
+Local review scope decision table:
+
+| Condition | Required action |
+| --- | --- |
+| Unstaged tracked diff is non-empty | Use the unstaged diff as the primary scope |
+| Unstaged tracked diff is empty and staged tracked diff is non-empty | Fall back to the staged diff |
+| Untracked files are present | Inspect each reviewed untracked file directly from the workspace |
+| No tracked, staged, or untracked changes exist | Hard-stop rather than emitting a normal review |
+
 ### REVIEW-FILE-004: Committed review scope must prefer authoritative PR context
-- Rule: When authoritative pull request metadata exists, committed review must use the pull request changed-file set and diff as the authoritative review scope.
-- Rule: Do not treat unrelated branch-only commits as committed-review findings when active or viewed pull request context exists.
-- Rule: Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
-- Rule: When authoritative pull request metadata exists, retrieve the authoritative PR changed-file set from GitHub-backed pull request metadata.
-- Rule: Acceptable authoritative PR file sources include environment-provided PR metadata, GitHub-backed pull request tools, the GitHub pull request files API for the resolved PR number, and `gh api` or equivalent GitHub CLI commands when they retrieve that same GitHub-backed pull request files payload directly.
-- Rule: Prefer GitHub-backed pull request tools over terminal-based `gh api` calls when those tools can provide the authoritative PR changed-file set, because that avoids unnecessary terminal-approval prompts for read-only metadata retrieval.
-- Rule: An explicit PR number supplied by the user is an acceptable deterministic input for resolving the authoritative PR changed-file set.
-- Rule: Do not assume the GitHub CLI is installed, and do not require `gh` as the only compliant path for PR file retrieval.
-- Rule: Do not treat GitHub CLI availability as part of the normal committed-review prerequisite flow.
-- Rule: Terminal `gh api` PR-file retrieval is an opt-in fallback only. Use it only when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
-- Rule: When CLI fallback is explicitly requested and a PR number is available, the preferred `gh` path is a direct pull request files query against `repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed.
-- Rule: Do not reconstruct PR scope by scraping local Copilot session files, `workspaceStorage`, `chat-session-resources`, or ad hoc cached JSON artifacts from the local machine.
-- Rule: Do not read, parse, or shell against user-profile paths or local spill files to recover PR metadata, including paths under `C:/Users/.../AppData/...`, `workspaceStorage`, `chat-session-resources`, or `content.json` files emitted by local tools.
-- Rule: A temporary file path returned directly by a GitHub-backed pull request tool during the current invocation may be read as a transport artifact of that tool result.
-- Rule: Do not discover, construct, glob, or infer those transport paths manually; only use the exact path returned by the GitHub-backed tool in the current invocation.
-- Rule: Tool-emitted spill files stored under the user profile or editor cache are not acceptable authoritative PR evidence unless the exact path was returned by a GitHub-backed pull request tool in the current invocation as a transport artifact of that tool result.
-- Rule: If one GitHub-backed pull request tool path is unavailable, try another GitHub-backed non-terminal PR metadata path before failing closed.
-- Rule: Do not automatically escalate from GitHub-backed pull request tools to terminal `gh api` unless the user explicitly requested CLI fallback.
-- Rule: Only after direct GitHub-backed PR retrieval paths are exhausted may committed review fail closed for lack of authoritative PR file scope.
-- Rule: If a tool only makes PR metadata available through a local spill file or cache path, committed review must fail closed rather than reading that local file.
-- Rule: In normal committed review flow, GitHub-backed PR retrieval is for authoritative scope resolution, not for repeated per-file content reads.
-- Rule: After the authoritative PR changed-file set is resolved, inspect committed file content using repo-local evidence such as the committed diff, `git show`, or workspace file reads cross-checked against the committed diff, rather than repeated terminal `gh api` content fetches.
-- Rule: After the authoritative PR changed-file set is resolved, prefer direct file reads and targeted search over extra shell-based helper passes when inspecting already identified in-scope files.
-- Rule: Targeted read-only git inspection commands scoped to already identified in-scope files, such as `git diff -- <paths>`, `git show <rev>:<path>`, or similar repo-local committed-content reads, are valid normal review evidence and are not prerequisite scripts or ad hoc validation wrappers.
-- Rule: A dirty local workspace is not, by itself, justification to switch normal per-file review inspection to repeated remote `gh api` content reads.
-- Rule: If explicit user-supplied PR context and environment PR context both exist and conflict, committed review must fail closed instead of silently choosing one.
-- Rule: The only allowed exception is an explicit user override that says the supplied PR should override the active or viewed PR context.
+- Rule: When authoritative pull request metadata exists, committed review must use that pull request changed-file set and diff as the authoritative review scope and must not drift into unrelated branch-only commits.
+- Rule: Deterministic pull request identifiers from user input or environment context are valid PR-scoped inputs. When an explicit PR number is available, the first choice is the direct non-CLI GitHub PR-files API request for that same PR number: `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed. Otherwise use active or viewed PR context first, then any remaining allowed non-CLI GitHub-backed PR-files path.
+- Rule: PR summaries, issue-style or status metadata, browser links such as `Open on GitHub.com`, forbidden spill-file transports, and local cache or user-profile paths are never authoritative PR file scope. Ignore them, continue with the next allowed GitHub-backed PR-files path, and never read or shell against local spill files.
+- Rule: If the allowed non-CLI PR-files paths are exhausted and a deterministic PR number remains available, use direct `gh api repos/<owner>/<repo>/pulls/<number>/files` retrieval as the automatic final fallback for that same PR number before failing closed for lack of authoritative PR scope. Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
+- Rule: If explicit user-supplied PR context and environment PR context conflict, committed review must fail closed unless the user explicitly says the supplied PR should override the active or viewed PR context. After the authoritative PR changed-file set is resolved, inspect committed content using repo-local evidence such as the committed diff, `git show`, and targeted file reads rather than repeated remote PR-content fetches.
+
+Committed review scope decision table:
+
+| Condition | Required action |
+| --- | --- |
+| Explicit PR number is supplied | Try the preferred direct non-CLI PR-files API path for that PR number first |
+| A GitHub-backed result is only summary metadata, a browser link, or a forbidden spill-file path | Ignore it and continue to the next allowed GitHub-backed PR-files path |
+| Non-CLI GitHub-backed PR-files paths are exhausted and a deterministic PR number is available | Use direct `gh api` PR-files fallback for that same PR number |
+| No authoritative PR context exists, or the user explicitly requests branch-wide committed review | Fall back to `origin/main...HEAD` branch diff scope |
+| Explicit user-supplied PR context conflicts with environment PR context and there is no explicit override | Fail closed |
 
 ### REVIEW-FILE-005: Vendored third-party files are non-actionable review scope
 - Rule: Files under `vendor/**` are non-actionable for normal code review because contributors are not expected to hand-edit or directly remediate vendored third-party content in this workflow.
@@ -237,6 +240,8 @@ If evidence is missing for a claim that would change severity or requested actio
 
 ### REVIEW-SCOPE-005: Go implementation and acceptance-test files defer to scoped guidance
 - Rule: When the review scope includes `internal/**/*.go` or `internal/**/*_test.go`, load and apply the applicable file-scoped instructions and skills.
+- Rule: For `internal/**/*.go` review scope, the minimum implementation guidance set is `.github/instructions/implementation-compliance-contract.instructions.md`, `.github/instructions/implementation-guide.instructions.md`, `.github/instructions/schema-patterns.instructions.md`, `.github/instructions/azure-patterns.instructions.md`, and `.github/instructions/code-clarity-enforcement.instructions.md`.
+- Rule: For `internal/**/*_test.go` review scope, also load `.github/instructions/testing-compliance-contract.instructions.md` and `.github/instructions/testing-guidelines.instructions.md`.
 - Rule: Use those sources as the primary checklist for provider implementation and acceptance-test concerns rather than relying on stale prompt summaries.
 
 ### REVIEW-SCOPE-005A: New resources must include required companion artifacts
@@ -252,6 +257,21 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: If the change context or implementation evidence shows that no meaningful list API exists, that the resource is singleton, or that the omission is using the maintainer-reviewed exception path, do not raise a normal missing-list-resource Issue; record the situation as an Observation or concise note instead.
 - Rule: In that Observation or note, mention that the omission should be covered by the documented maintainer-reviewed exception path such as `allow-without-list` or `list-not-supported`.
 - Rule: If the available implementation evidence suggests singleton or get-only behavior but the change context does not explicitly justify omitting the list resource, keep the finding as an Issue, but use exception-aware wording that tells the contributor to document the reason in the PR and use the maintainer-reviewed exception path instead of silently omitting the list resource.
+
+### REVIEW-SCOPE-005D: Generic lifecycle/provider logging is reviewable when it adds no unique value
+- Rule: When `internal/**/*.go` changes add generic resource lifecycle/provider logging such as `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting`, treat those additions as reviewable issues when they only duplicate Terraform core or provider-native logging.
+- Rule: Do not require removal of targeted not-found or removing-from-state diagnostics when they are part of established provider behavior and add distinct debugging value.
+- Rule: If a contributor wants broad lifecycle logging consistency, treat SDK/framework-level implementation as the preferred direction instead of ad hoc per-resource logging.
+
+### REVIEW-SCOPE-005E: New cross-resource ID fields must follow provider naming rules
+- Rule: When `internal/**/*.go` changes add a brand-new public schema field that stores another Terraform-managed resource ID, review whether that field uses the full referenced resource name without the `azurerm_` prefix, followed by `_id`.
+- Rule: For a brand-new public surface, treat shortened or ambiguous cross-resource ID field names as reviewable issues unless the change context includes a clear, evidence-backed naming exception.
+- Rule: Do not accept a day-one naming exception for a new cross-resource ID field merely because a shorter name feels convenient.
+
+### REVIEW-SCOPE-005F: Update paths must not silently skip concurrent field changes
+- Rule: When `internal/**/*.go` update logic handles one changed field through an early-return branch or a mutually exclusive update path, review whether other updatable fields can change in the same plan and be silently skipped.
+- Rule: Treat that as a reviewable issue when an update branch returns after handling one change while other changed fields remain unapplied, unless the branch is proven to perform a complete replacement that includes all dirty updatable fields.
+- Rule: Do not assume that a special-case PUT or PATCH branch is safe merely because it solves one field-specific API behavior; review whether it still preserves the full set of concurrent user changes.
 
 ### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
 - Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
@@ -322,19 +342,40 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: On Windows, the expected review-time linter command is plain `azurerm-linter ...` from the resolved repo root, not a WSL-prefixed equivalent.
 - Rule: Record the resolved working directory only when it is needed to explain `Not run`, scope ambiguity, or debugging details.
 - Rule: In the normal review path, run azurerm-linter directly rather than through generated shell scripts or PowerShell wrapper scripts.
-- Rule: Use an explicit review-time timeout budget for azurerm-linter that is materially longer than the quick git inspection commands because package loading can be slow.
-- Rule: The preferred initial `run_in_terminal` timeout for azurerm-linter is at least `300000` ms.
+- Rule: Resolve the git repo root and change to that working directory as separate steps when needed; do not create a composite wrapper line that chains repo-root lookup, `Set-Location`, and azurerm-linter execution together.
+- Rule: Do not use inline variable-assignment wrappers such as PowerShell `$repo = git rev-parse --show-toplevel; Set-Location $repo; azurerm-linter ...` or `$repoRoot = git rev-parse --show-toplevel; Set-Location $repoRoot; azurerm-linter ...` in the normal review path.
+- Rule: Use `run_in_terminal` in `mode: "sync"` for azurerm-linter without an explicit timeout so the tool can wait for natural completion in one blocking call.
 - Rule: Wait for the linter command to finish before classifying the linter section result.
-- Rule: Do not classify the linter section as `Not run` merely because the initial wait window elapsed while the linter process was still executing.
-- Rule: If the initial sync wait expires and the linter is still running, continue following that same terminal session to completion rather than starting a second linter run just because the first wait window elapsed.
-- Rule: If the stderr-suppressed JSON-mode run does not produce valid stdout JSON or otherwise cannot be classified deterministically, rerun azurerm-linter once without stderr suppression to capture diagnostic text for classification.
+- Rule: If that sync azurerm-linter call unexpectedly returns control with a live terminal ID or a runtime note that the command may still be running, treat that state as still blocked rather than as a usable intermediate result.
+- Rule: In that early-return state, do not call `get_terminal_output`, do not inspect partial terminal output, and do not resume any other review work; remain blocked until the runtime delivers the terminal completion notification or an actual completed linter result.
+- Rule: Do not layer user-visible terminal-output polling, model-managed wait choreography, or retry loops around azurerm-linter.
+- Rule: Do not continue broader review evidence gathering, finding classification, or user-visible review output while the linter process is still running.
+- Rule: Treat a still-running linter as an outstanding blocking review step, not as a background task that can be ignored while the review proceeds.
+- Rule: After launching azurerm-linter, do not perform unrelated file reads, searches, diffs, terminal commands, output-file inspection, or draft-building work until that same linter run has completed and the linter section can be classified.
+- Rule: After launching the linter, emit no user-visible commentary until the linter has completed and the linter section can be classified.
+- Rule: Do not kill, restart, or replace that linter run while it is still the active blocking review step.
+- Rule: Do not launch a second azurerm-linter pass during normal review merely because the primary run did not yield valid stdout JSON.
+- Rule: If the primary linter run does not produce a classifiable completed result, do not continue the review from file evidence alone; fail closed with `Not run` for the linter section or hard-stop the review as the active prompt requires.
+
+azurerm-linter execution-state decision table:
+
+| Condition | Required action |
+| --- | --- |
+| In-scope provider Go files exist | Run one blocking sync `azurerm-linter` call |
+| The sync linter call is still running | Stay blocked and do no unrelated review work |
+| The sync linter call returns early with a live terminal ID or runtime note that it may still be running | Treat it as still blocked; do not query partial output |
+| The completed run yields valid JSON findings | Classify from the completed JSON payload |
+| The completed run deterministically reports zero findings | Classify as `No issues` |
+| The completed run deterministically reports `no packages to analyze` for zero changed packages | Classify as `Not applicable` |
+| The completed run deterministically reports a tool-availability or invocation problem | Classify as `Not run` |
+| The completed run is still unclassifiable | Fail closed rather than continuing the review |
 
 ### REVIEW-LINT-002C: Default to filtered mode first
 - Rule: The preferred review-time lint pass is normal filtered JSON mode with shell-native stderr suppression: `azurerm-linter -output json` plus the active shell's null-device redirection for stderr.
 - Rule: Do not default to `--no-filter`.
 - Rule: Treat filtered mode as the primary run because it is faster and scoped to the current diff shape detected by the tool.
 - Rule: Use stdout JSON as the authoritative structured source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content whenever a valid JSON payload is present.
-- Rule: Treat stderr as diagnostics only, and consult it only when the primary stdout-only JSON run must be rerun to classify `Not applicable` or `Not run` outcomes.
+- Rule: Treat stderr as diagnostics only; do not trigger a second linter pass just to recover diagnostic text during normal review.
 
 ### REVIEW-LINT-002D: Treat filtered mode as the normal review baseline
 - Rule: Normal review runs should rely on filtered azurerm-linter mode as the authoritative baseline.
@@ -360,6 +401,11 @@ If evidence is missing for a claim that would change severity or requested actio
   - Not applicable
   - Not run
 
+### REVIEW-LINT-003E: Completed zero-issue runs are valid classifications
+- Rule: A completed azurerm-linter run that deterministically reports zero findings is a successful classifiable outcome, not a failure.
+- Rule: In that case, use `Status: No issues` and keep the `### 🎯 **MUST FIX**` section as `- None`.
+- Rule: Do not treat a completed zero-issue run as `Not run` merely because the tool found nothing to report.
+
 ### REVIEW-LINT-003A: Treat "no packages to analyze" as Not applicable when caused by zero changed files
 - Rule: If azurerm-linter output shows that it found zero changed files or zero changed packages for the selected scope and then prints `Error: no packages to analyze`, classify the linter section as `Not applicable` rather than `Not run`.
 - Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep the `### 🎯 **MUST FIX**` section as `- None`.
@@ -376,6 +422,12 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Extract the JSON object from the linter output even if log lines precede it.
 - Rule: If `-output json` is unsupported by the installed binary and the tool reports a flag or usage parse error, classify the section as `Not run` rather than falling back to text scraping.
 - Rule: If a valid JSON payload is present but its `version` field is missing, unparsable, or lower than `v0.2.0`, classify the section as `Not run` and state that JSON review mode requires `azurerm-linter v0.2.0` or newer.
+
+### REVIEW-LINT-003D: Only truly unclassifiable linter completion fails closed
+- Rule: If the primary azurerm-linter run completes and deterministically reports findings, zero findings, or a known `Not applicable`/`Not run` shape, classify that completed result normally.
+- Rule: Fail closed only when the primary azurerm-linter run completes but still does not produce a classifiable result for the required review flow.
+- Rule: In that case, either report the linter section as `Not run` with a concise reason from the completed run or hard-stop if the active prompt requires a classifiable linter result before review output.
+- Rule: Do not replace missing linter classification with broader ad hoc file auditing or first-person narration about continuing anyway.
 
 ### REVIEW-LINT-004: azurerm-linter findings are reported as issues
 - Rule: When azurerm-linter reports findings for the executed linter scope, report them as issues.
@@ -458,6 +510,9 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-OUT-004: Normal review output must not include execution narration
 - Rule: The normal review output must not include preambles, execution commentary, progress narration, or step-by-step status updates.
 - Rule: Do not emit text such as `re-running the local audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, or similar execution-process narration in user-visible review output.
+- Rule: Do not emit first-person drafting, planning, or self-talk text in user-visible review output, including phrases such as `I’m thinking`, `Maybe I could`, `I should`, `I’ll check`, `Alright`, `Investigating`, `Evaluating`, `Inspecting`, `Checked terminal output`, `Read ... lines ...`, or similar internal workflow narration.
+- Rule: Do not emit tool-by-tool activity summaries in user-visible review output outside the prompt-defined final review template or exact hard-stop messages.
+- Rule: If an internal draft would leak first-person planning or tool narration before the final review begins, suppress that draft and restart silently rather than continuing from the leaked text.
 - Rule: The normal review output should contain only the prompt-defined review headings and their content.
 
 ### REVIEW-OUT-005: Successful fresh runs must emit the full current template
@@ -471,5 +526,13 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Treat the findings set as frozen before writing the review body. Do not continue investigating, reopen scope, or append newly discovered findings after the normal review output has started.
 - Rule: If additional verification or one more read becomes necessary while drafting, stop drafting silently, finish that verification, refreeze the findings set, and then emit one complete review body.
 - Rule: Do not use user-visible self-correction or second-pass wording inside the normal review output, such as `one more thing`, `actually`, `updating this review`, `adding another issue`, or similar mid-review amendments.
+
+### REVIEW-OUT-007: Skill verification footer is allowed when skills were actually used
+- Rule: When a review actually loads and uses one or more routed skills, the final review output may append a verification footer after the prompt's last review section.
+- Rule: That verification footer is part of the normal successful output contract, not extra narration.
+- Rule: The verification footer must be omitted when no skill was actually used during the review.
+- Rule: The verification footer may contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
+- Rule: Do not infer skill use from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
+- Rule: If the review body states that a skill was loaded or used, the verification footer should include the matching `Skill used:` line.
 
 <!-- REVIEW-CONTRACT-EOF -->

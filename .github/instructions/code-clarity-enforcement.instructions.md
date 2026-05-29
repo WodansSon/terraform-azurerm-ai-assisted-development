@@ -5,7 +5,6 @@ description: Code clarity and policy enforcement guidelines for Terraform AzureR
 
 # Code Clarity and Policy Enforcement Guidelines
 
-<a id="code-clarity-and-policy-enforcement-guidelines"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,9 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for comment discipline, code-clarity heuristics, and worked implementation-quality patterns.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick Navigation:** <a href="#🚫-zero-tolerance-for-unnecessary-comments-policy">🚫 Comment Policy</a> | <a href="#🎯-strategic-decision-making-guidance">🎯 Strategic Decision-Making</a> | <a href="#customizediff-import-requirements">🔄 CustomizeDiff</a> | <a href="#resource-implementation-standards">🏗️ Resource Standards</a> | <a href="#azure-api-integration-standards">☁️ Azure Integration</a> | <a href="#state-management-requirements">🔄 State Management</a> | <a href="#testing-standards">🧪 Testing Standards</a> | <a href="#documentation-quality">📝 Documentation</a> | <a href="#enforcement-priority">🎯 Enforcement Priority</a> | <a href="#⚡-quick-decision-trees">⚡ Decision Trees</a> | <a href="#📊-performance-metrics--success-indicators">📊 Performance Metrics</a> | <a href="#🎯-context-aware-ai-optimization">🎯 AI Optimization</a>
+For authoritative code-clarity compliance, use the implementation contract as the source of truth for `IMPL-CODE-*` rules.
+This guide stays focused on review heuristics, worked examples, and quick decision aids.
+
 
 **Related Guidelines:**
 - 🏗️ **Core Implementation**: [implementation-guide.instructions.md](./implementation-guide.instructions.md) - Main coding standards and patterns
@@ -22,45 +23,43 @@ If this guide conflicts with the implementation contract, follow the contract an
 - 🧪 **Testing Standards**: [testing-guidelines.instructions.md](./testing-guidelines.instructions.md) - Comprehensive test requirements and patterns
 
 
-<a id="🚫-zero-tolerance-for-unnecessary-comments-policy"></a>
+## Comment Discipline Heuristics
 
-## 🚫 **ZERO TOLERANCE FOR UNNECESSARY COMMENTS POLICY**
-
-**ABSOLUTE RULE: NO UNNECESSARY COMMENTS**
+For the authoritative comment policy, see `IMPL-CODE-001` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 Code must be self-documenting. Comments are the exception, not the rule.
 
-**🚫 DEFAULT: Write code WITHOUT comments**
+**Default posture:** write code without comments.
 
-**Comments ONLY for these 4 cases:**
+**Comments are usually only worth keeping in these cases:**
 - Azure API-specific quirks not obvious from code
 - Complex business logic that cannot be simplified
 - Azure SDK workarounds for limitations/bugs
 - Non-obvious state patterns (PATCH operations, residual state)
 
-**🚫 NEVER comment these:**
+**Common comment red flags:**
 - Variable assignments or struct initialization
 - Standard Terraform/Go patterns
 - Self-explanatory function calls
 - Field mappings or obvious logic
 - Error handling or nil checks
 
-**3-SECOND RULE: Before ANY comment:**
+**Quick review check before keeping a comment:**
 1. Can I refactor instead? -> **YES: Refactor, don't comment**
 2. Is this an Azure API quirk? -> **MAYBE: Comment acceptable**
 3. Is this self-explanatory? -> **YES: NO COMMENT**
 
-**🔍 MANDATORY JUSTIFICATION:**
-Every comment requires explicit justification:
+**🔍 Useful review prompts:**
+When a comment seems necessary, the reviewer should still be able to explain:
 - Which of the 4 exception cases applies?
 - Why code cannot be self-explanatory?
 - What specific Azure behavior needs documentation?
 
 **FINAL CHECK:** "Can I eliminate this comment through better code?"
 
-### 🚫 **FORBIDDEN COMMENTS** - Flag These Immediately
+### 🚫 Common Comment Red Flags
 
-**NEVER COMMENT**:
+These are the first comment categories to challenge during review:
 - Variable assignments, struct initialization, basic operations
 - Standard Terraform patterns (CRUD operations, schema definitions)
 - Self-explanatory function calls or routine Azure API calls
@@ -70,7 +69,7 @@ Every comment requires explicit justification:
 
 ### Comment Review Process
 
-**JUSTIFICATION REQUIREMENT**: If ANY comment exists, the developer MUST provide explicit justification:
+If a comment remains, the author should be able to explain:
 - Which exception case this comment falls under
 - Why the code cannot be self-explanatory through better naming/structure
 - What specific Azure API behavior requires documentation (if applicable)
@@ -89,7 +88,6 @@ Before allowing any comment, ask:
 3. "Is this documenting an Azure API quirk?" -> Comment may be acceptable
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="🎯-strategic-decision-making-guidance"></a>
 
@@ -97,10 +95,9 @@ Before allowing any comment, ask:
 
 **Implementation Context Awareness**: When making coding decisions during pair programming, always consider:
 
-**1. Comment Policy Enforcement Priority**
-- **Zero tolerance for unnecessary comments** - This is the highest priority enforcement guideline
-- **Before ANY comment**: Ask whether code structure, naming, or extraction can eliminate the need
-- **Exception criteria**: Only Azure API quirks, complex business logic, SDK workarounds, or non-obvious state management patterns
+**1. Comment Policy Review Priority**
+- Start by asking whether code structure, naming, or extraction can eliminate the need for a comment.
+- Treat comments as a last resort for Azure quirks, complex business logic, SDK workarounds, or non-obvious state management patterns.
 
 **2. Implementation Pattern Context**
 - **Typed vs Untyped resources**: Apply same comment standards regardless of implementation approach
@@ -113,14 +110,11 @@ Before allowing any comment, ask:
 - **Maintainability impact**: Favor self-documenting code patterns that reduce long-term maintenance burden
 
 **4. Quality Gate Integration**
-- **Pre-submission validation**: Every comment must have explicit justification documented in review response
+- **Pre-submission validation**: Comments should be explainable in review without relying on vague "for clarity" reasoning
 - **Cross-file consistency**: Validate related implementations maintain identical comment policies
 - **Azure API alignment**: Comments must reflect actual Azure service behavior, not implementation assumptions
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
-
-<a id="customizediff-import-requirements"></a>
 
 ## CustomizeDiff Import Requirements
 
@@ -129,13 +123,14 @@ Before allowing any comment, ask:
 **For complete import patterns, examples, and decision criteria, see:** [Implementation Guide - CustomizeDiff Import Requirements](./implementation-guide.instructions.md#customizediff-import-requirements)
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="resource-implementation-standards"></a>
 
 ## Resource Implementation Standards
 
 **CRUD Operations**: Ensure Create, Read, Update, Delete functions handle all edge cases
+
+**Lifecycle Logging**: Do not add generic `Creating` / `Reading` / `Updating` / `Deleting` / `Import check` logs when they only repeat Terraform core or provider-native logging. Keep provider-side logging only when it adds unique diagnostic value, and prefer SDK/framework-level solutions if consistent lifecycle logging is wanted across resources.
 
 **Schema Validation**: Verify all required fields, validation functions, and type definitions
 
@@ -144,7 +139,6 @@ Before allowing any comment, ask:
 **Timeouts**: Ensure appropriate timeout values for Azure operations (often long-running)
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="azure-api-integration-standards"></a>
 
@@ -159,7 +153,6 @@ Before allowing any comment, ask:
 **Authentication**: Verify proper use of Azure client authentication patterns
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="state-management-requirements"></a>
 
@@ -174,7 +167,6 @@ Before allowing any comment, ask:
 **Resource IDs**: Ensure consistent Azure resource ID parsing and formatting
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="testing-standards"></a>
 
@@ -189,7 +181,6 @@ Before allowing any comment, ask:
 **Test Configuration**: Verify test fixtures use appropriate Azure resource configurations
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="documentation-quality"></a>
 
@@ -202,24 +193,20 @@ Before allowing any comment, ask:
 **Import Documentation**: Check that import syntax and requirements are clearly documented
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="enforcement-priority"></a>
 
-## Enforcement Priority
+## Review Focus Areas
 
-1. **Highest**: ZERO TOLERANCE FOR UNNECESSARY COMMENTS POLICY - Zero tolerance for unnecessary comments
-2. **High**: Strategic Decision-Making - Performance-critical choices during pair programming
-3. **High**: CustomizeDiff Import Requirements - Critical for compilation
-4. **High**: Azure API Integration - Essential for functionality
-5. **Medium**: Resource Implementation - Quality standards
-6. **Medium**: State Management - Reliability standards
-7. **Medium**: Testing and Documentation - Completeness standards
+1. **Highest**: Comment discipline and self-documenting code
+2. **High**: Strategic decision-making during implementation work
+3. **High**: CustomizeDiff import requirements and Azure API integration
+4. **Medium**: Resource implementation and state-management quality
+5. **Medium**: Testing and documentation completeness
 
 **Performance Decision Framework**: Use strategic guidance above to make rapid, correct decisions during active development work.
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="⚡-quick-decision-trees"></a>
 
@@ -228,6 +215,8 @@ Before allowing any comment, ask:
 ### **Comment Decision Tree (30-second evaluation)**
 ```text
 Rule: evaluate in order and stop at the first matching condition.
+
+Evaluate in order and stop at the first matching condition.
 
 - If the code is not being written or reviewed -> Skip comment evaluation
 - Else if the code documents a non-obvious Azure API quirk -> Comment MAY be acceptable
@@ -238,7 +227,7 @@ Rule: evaluate in order and stop at the first matching condition.
 
 ### **Cross-Pattern Consistency Check (15-second scan)**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If working on a resource with variants such as Linux/Windows VMSS -> Perform a quick consistency validation
 - Else -> Use the standard implementation check
@@ -251,7 +240,7 @@ When quick consistency validation applies:
 
 ### **Azure API Integration Priority (10-second assessment)**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If Azure API behavior is not involved -> Use standard coding patterns
 - Else if the change involves a PATCH operation -> Check residual state handling
@@ -262,7 +251,7 @@ Rule: evaluate in order and stop at the first matching condition.
 
 ### **Implementation Approach Decision Tree (15-second assessment)**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If the target is under `internal/provider/function/` -> Use the provider-defined function model
 - Else if the target is an ephemeral resource or uses `EphemeralResources()` -> Use the ephemeral resource model
@@ -276,7 +265,7 @@ Rule: evaluate in order and stop at the first matching condition.
 
 ### **Pointer Package Decision Tree (5-second check)**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If creating pointers -> Use pointer.To()
 - Else if reading pointer values -> Use pointer.From() or pointer.FromType()
@@ -303,7 +292,6 @@ When CustomizeDiff applies:
 ```
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="📊-performance-metrics--success-indicators"></a>
 
@@ -328,7 +316,6 @@ When CustomizeDiff applies:
 - **Refactoring Suggestions**: Increasing ratio of refactoring suggestions vs comment acceptance
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>
 
 <a id="🎯-context-aware-ai-optimization"></a>
 
@@ -352,4 +339,3 @@ When CustomizeDiff applies:
 - **Low Intensity**: Documentation updates, minor configuration changes
 
 ---
-<a href="#code-clarity-and-policy-enforcement-guidelines">⬆️ Back to top</a>

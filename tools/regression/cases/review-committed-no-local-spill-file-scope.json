@@ -5,7 +5,7 @@
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "sanitized": true,
-  "description": "A committed-review scenario where a PR-metadata tool mentions a local temporary or cache-backed JSON file under the user profile. The correct review must not read that path to recover PR scope.",
+  "description": "A committed-review scenario where a PR-metadata tool mentions a local temporary or cache-backed JSON file under the user profile and no other allowed GitHub-backed path can provide the authoritative changed-file set. The correct review must not read that path to recover PR scope.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-no-local-spill-file-scope/README.md"
@@ -14,7 +14,7 @@
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Sanitized fixture models a committed-review run where a PR tool references a local spill file under AppData/workspaceStorage instead of returning the authoritative PR file set directly."
+    "notes": "Sanitized fixture models a committed-review run where a PR tool references a local spill file under AppData/workspaceStorage and the remaining allowed GitHub-backed PR retrieval paths are exhausted."
   },
   "expectedRules": [
     "REVIEW-FILE-004",
@@ -24,7 +24,7 @@
     {
       "key": "no-local-spill-file-scope-recovery",
       "severity": "high",
-      "description": "The committed review should refuse to recover authoritative PR scope by reading a local spill file or cache path under the user profile."
+      "description": "The committed review should refuse to recover authoritative PR scope by reading a local spill file or cache path under the user profile once allowed GitHub-backed alternatives have been exhausted."
     }
   ],
   "mustNotFlag": [
@@ -43,5 +43,5 @@
       "spill file"
     ]
   },
-  "notes": "Use this case to benchmark the fail-closed behavior for local spill-file PR scope recovery."
+  "notes": "Use this case to benchmark the fail-closed behavior for local spill-file PR scope recovery only after allowed local-context and GitHub-backed PR retrieval paths are exhausted."
 }

@@ -5,7 +5,6 @@ description: Error handling patterns and standards for the Terraform AzureRM pro
 
 # Error Handling Patterns
 
-<a id="error-handling-patterns"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,6 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for provider-standard error wording, error handling patterns, and debugging heuristics.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🚨-critical-console-line-wrapping-detection-policy-🚨">🚨 Console Line Wrapping Policy</a> | <a href="#💬-error-message-standards">💬 Error Message Standards</a> | <a href="#🔍-error-patterns-for-typed-resources">🔍 Error Patterns for Typed Resources</a> | <a href="#🔍-error-patterns-for-untyped-resources">🔍 Error Patterns for UnTyped Resources</a> | <a href="#🐛-debugging-patterns">🐛 Debugging Patterns</a> | <a href="#🔄-state-management-errors">🔄 State Management Errors</a>
 
 <a id="🚨-critical-console-line-wrapping-detection-policy-🚨"></a>
 
@@ -39,7 +37,6 @@ If this guide conflicts with the implementation contract, follow the contract an
 ### ✅ **GOLDEN RULE**: If actual file content is valid → acknowledge console wrapping → do NOT flag as corruption
 
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 <a id="💬-error-message-standards"></a>
 
@@ -145,7 +142,6 @@ return fmt.Errorf("field `enabled` can't be disabled once set to true")
 ```
 
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 <a id="🔍-error-patterns-for-typed-resources"></a>
 
@@ -160,8 +156,8 @@ if err := metadata.Decode(&model); err != nil {
     return fmt.Errorf("decoding: %+v", err)
 }
 
-// Use metadata.Logger for structured logging
-metadata.Logger.Infof("Import check for %s", id)
+// Use metadata.Logger only for distinct diagnostics that add value beyond Terraform core/provider-native logging
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // Use metadata.ResourceRequiresImport for import conflicts
 if !response.WasNotFound(existing.HttpResponse) {
@@ -181,7 +177,6 @@ return metadata.Encode(&model)
 ```
 
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 <a id="🔍-error-patterns-for-untyped-resources"></a>
 
@@ -256,7 +251,6 @@ if err != nil {
 - Add wrapping context only when it contributes genuinely new information about the higher-level operation.
 
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 <a id="🐛-debugging-patterns"></a>
 
@@ -308,7 +302,6 @@ if err != nil {
   }
   ```
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 <a id="🔄-state-management-errors"></a>
 
@@ -358,7 +351,6 @@ if err := client.CreateOrUpdateThenPoll(ctx, id, properties); err != nil {
 }
 ```
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 ## 🚨 Common Error Scenarios
 
@@ -436,7 +428,6 @@ func ValidateResourceName(v interface{}, k string) (warnings []string, errors []
 }
 ```
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>
 
 ## 🏗️ Error Recovery Patterns
 
@@ -539,4 +530,3 @@ func isRetryableError(err error) bool {
 - 📋 **Code Clarity**: [code-clarity-enforcement.instructions.md](./code-clarity-enforcement.instructions.md) - Error message standards
 
 ---
-<a href="#error-handling-patterns">⬆️ Back to top</a>

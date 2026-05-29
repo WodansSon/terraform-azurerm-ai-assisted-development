@@ -59,7 +59,7 @@ AccTest "example-case" "basic" {
 
 ## Build Flow
 
-1. Create a template with `new-regression-test.ps1` or write the HCL test manually.
+1. Create a template with `scaffold-regression-spec.ps1` or write the HCL test manually.
 2. Materialize the internal harness artifacts with `build-regression-test.ps1 -SpecPath ...`.
 3. Review and refine the generated drafts.
 4. Promote the reviewed drafts with `publish-regression-test.ps1`.

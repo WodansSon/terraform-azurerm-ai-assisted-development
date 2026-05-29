@@ -5,7 +5,6 @@ description: Azure-specific implementation patterns for the Terraform AzureRM pr
 
 # Azure-Specific Implementation Patterns
 
-<a id="azure-specific-implementation-patterns"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,6 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for Azure-specific implementation patterns such as PATCH behavior, CustomizeDiff patterns, and Azure SDK integration heuristics.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🔄-patch-operations">🔄 PATCH Operations</a> | <a href="#✅-customizediff-validation">✅ CustomizeDiff</a> | <a href="#🎯-schema-flattening">🎯 Schema Flattening</a> | <a href="#🚫-none-value-pattern">🚫 "None" Value Pattern</a> | <a href="#🔐-security-patterns">🔐 Security</a> | <a href="#🔄-state-management-with-dgetrawconfig">🔄 State Management</a> | <a href="#🏗️-progressive-code-simplification">🏗️ Progressive Code Simplification</a>
 
 <a id="🔄-patch-operations"></a>
 
@@ -87,11 +85,8 @@ func ExpandPolicy(input []interface{}) *azuretype.Policy {
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
-<a id="✅-customizediff-validation"></a>
-
-## ✅ CustomizeDiff Validation
+## CustomizeDiff Validation
 
 ### Standard CustomizeDiff Pattern
 
@@ -131,15 +126,7 @@ Azure resources have unique validation requirements that CustomizeDiff functions
 
 **For comprehensive multi-function CustomizeDiff patterns and complex validation examples, see:** [Implementation Guide - CustomizeDiff Import Requirements](./implementation-guide.instructions.md#customizediff-import-requirements)
 
-### AZURE-PATTERN-001: Prefer `GetRawConfig()` when `CustomizeDiff` must distinguish configured values from known-after-apply or zero values
-
-- Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `d.Get()` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
-- Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
-- Rule: Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values in `CustomizeDiff`; those helpers are only for the SDK/API enum-pointer boundary.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
-    - That guidance uses `GetRawConfig()` as the preferred pattern when `d.Get()` or decoded values would make unknowns look unset
+For the authoritative `CustomizeDiff` requirement on `GetRawConfig()`, configured-versus-unknown values, and enum helper boundaries, see `IMPL-SCHEMA-013` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 ### Zero Value Validation Pattern
 
@@ -342,7 +329,6 @@ pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDi
 **For comprehensive `GetRawConfig()` usage guidance, see:** <a href="#🔄-state-management-with-dgetrawconfig">State Management with d.GetRawConfig()</a>
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🎯-schema-flattening"></a>
 
@@ -435,7 +421,6 @@ func flatten{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input *{{SDK_PACKAGE}}.{{WRAPPER_T
 }
 ```
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🚫-none-value-pattern"></a>
 
@@ -443,14 +428,7 @@ func flatten{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input *{{SDK_PACKAGE}}.{{WRAPPER_T
 
 ### The "None" Value Pattern
 
-### AZURE-PATTERN-002: Convert Azure `None`-style defaults through omission rather than exposing them as first-class user values
-
-- Rule: When an Azure API uses `None`, `Off`, or `Default` to express the default state, prefer omission/null in Terraform and convert that omission to the Azure value during expand/flatten.
-- Rule: Do not require practitioners to configure `None`-style values explicitly when omission already expresses the default behavior.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
-    - That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly
+For the authoritative omission-based `None`/`Off`/`Default` requirement, see `IMPL-SCHEMA-008` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 Many Azure APIs accept values like None, Off, or Default as default values. The provider is moving away from exposing these values directly to users, instead leveraging Terraform's native null handling by allowing fields to be omitted.
 
@@ -515,7 +493,6 @@ func (r ServiceResource) Read() sdk.ResourceFunc {
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🔐-security-patterns"></a>
 
@@ -526,8 +503,8 @@ func (r ServiceResource) Read() sdk.ResourceFunc {
 **Never Log Sensitive Information:**
 ```go
 // GOOD - No sensitive data in logs
-metadata.Logger.Infof("Creating Storage Account %s", id.StorageAccountName)
 log.Printf("[DEBUG] Configuring network rules for %s", id)
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // FORBIDDEN - Sensitive data in logs
 log.Printf("[DEBUG] Connection string: %s", connectionString) // Never log connection strings
@@ -587,7 +564,6 @@ func ValidateAzureResourceName(v interface{}, k string) (warnings []string, erro
 }
 ```
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🔄-state-management-with-dgetrawconfig"></a>
 
@@ -650,7 +626,6 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🏗️-progressive-code-simplification"></a>
 
@@ -716,4 +691,3 @@ func ExpandPolicy(input []interface{}) *azuretype.Policy {
 - 🔄 **Migration Guide**: [migration-guide.instructions.md](./migration-guide.instructions.md) - Azure API evolution patterns
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>

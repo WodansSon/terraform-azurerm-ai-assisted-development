@@ -108,6 +108,16 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 8 and Step 9 examples
 
+### TEST-WF-002A: Use resource-specific `preCheck` helpers for optional prerequisites
+- Rule: When an acceptance test has prerequisites beyond the global Azure auth and location requirements, add a receiver method named `preCheck(t *testing.T)` on the test helper struct and call it near the start of each affected `TestAcc...`.
+- Rule: Use `t.Skip(...)` or `t.Skipf(...)` for optional or environment-specific prerequisites that are not universally available, rather than failing the test with `t.Fatalf(...)`.
+- Rule: Keep `preCheck` close to the tests that call it, commonly after the `TestAcc...` functions and before the `Exists` or `Destroy` helpers.
+- Rule: Do not duplicate the framework's global Azure-auth pre-check inside resource-specific `preCheck` helpers.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `PreCheck Helpers`
+  - That guidance recommends receiver-based `preCheck(t *testing.T)` helpers, skipping when optional prerequisites are absent, and keeping the helper close to the tests that call it
+
 ### TEST-WF-003: New resources with list resources should include list query coverage
 - Rule: When adding a new resource that includes a list resource, add list-resource acceptance coverage using Terraform 1.14 query tests.
 - Rule: The list-resource test should provision multiple resources, exercise the base list query, and cover at least one narrowed query path when the list configuration supports it.

@@ -53,6 +53,7 @@
       "enum": [
         "real-pr",
         "local-diff",
+        "maintainer-authored",
         "synthetic"
       ]
     },
@@ -183,6 +184,12 @@
           }
         },
         "mustIncludeMarkers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mustNotIncludeMarkers": {
           "type": "array",
           "items": {
             "type": "string"

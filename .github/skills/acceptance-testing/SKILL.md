@@ -106,6 +106,11 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - At a minimum, plan for `basic`, `requiresImport`, `complete`, `update`, and import validation when import is supported.
    - Only omit one of those when the resource behavior or provider pattern makes it genuinely not applicable.
 
+- Use resource-specific `preCheck` helpers when tests need extra prerequisites:
+   - If a test depends on optional shared infrastructure or environment variables beyond the global Azure auth and location checks, add a receiver method named `preCheck(t *testing.T)` on the test helper struct and call it near the start of each affected `TestAcc...`.
+   - Prefer `t.Skip(...)` or `t.Skipf(...)` when those optional prerequisites are absent.
+   - Keep the helper near the tests that call it, commonly before the `Exists` or `Destroy` helpers.
+
 - New-resource list coverage:
    - When a new resource includes a list resource, also plan a dedicated `*_resource_list_test.go` file.
    - Use Terraform 1.14 query tests for the list resource and provision multiple resources so the list query path is meaningfully exercised.

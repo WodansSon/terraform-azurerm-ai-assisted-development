@@ -5,7 +5,6 @@ description: Complete implementation guide for Go files in the Terraform AzureRM
 
 # Terraform AzureRM Provider Implementation Guide
 
-<a id="terraform-azurerm-provider-implementation-guide"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -31,7 +30,6 @@ For exact compliance behavior, use the implementation contract as the source of 
 
 Use the `resource-implementation` skill for procedural workflow behavior such as implementation-session checklists, quick implementation anchors, and end-to-end implementation sequencing.
 
-**Quick navigation:** <a href="#🏗️-implementation-patterns">🏗️ Implementation Patterns</a> | <a href="#📏-coding-standards">📏 Coding Standards</a> | <a href="#🎨-coding-style">🎨 Coding Style</a> | <a href="#🔧-azure-sdk-integration">🔧 Azure SDK Integration</a> | <a href="#💡-ai-coding-guidance">💡 AI Coding Guidance</a> | <a href="#📚-specialized-guidance-on-demand">📚 Specialized Guidance</a>
 
 Workflow note:
 
@@ -190,7 +188,6 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
 
             id := parse.NewServiceNameID(subscriptionId, model.ResourceGroup, model.Name)
 
-            metadata.Logger.Infof("Import check for %s", id)
             existing, err := client.Get(ctx, id)
             if err != nil && !response.WasNotFound(existing.HttpResponse) {
                 return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
@@ -199,8 +196,6 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
             if !response.WasNotFound(existing.HttpResponse) {
                 return metadata.ResourceRequiresImport(r.ResourceType(), id)
             }
-
-            metadata.Logger.Infof("Creating %s", id)
 
             properties := servicenametype.Resource{
                 Location: model.Location,
@@ -231,10 +226,10 @@ func (r ServiceNameResource) Read() sdk.ResourceFunc {
                 return err
             }
 
-            metadata.Logger.Infof("Reading %s", id)
             resp, err := client.Get(ctx, *id)
             if err != nil {
                 if response.WasNotFound(resp.HttpResponse) {
+                    metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
                     return metadata.MarkAsGone(id)
                 }
                 return fmt.Errorf("retrieving %s: %+v", id, err)
@@ -399,7 +394,6 @@ CustomizeDiff: pluginsdk.CustomDiffWithAll(
 - **Check the function signature**: If you see `*pluginsdk.ResourceDiff` or `pluginsdk.CustomDiffWithAll`, single import is sufficient
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="📏-coding-standards"></a>
 
@@ -444,8 +438,8 @@ if err := metadata.Decode(&model); err != nil {
     return fmt.Errorf("decoding: %+v", err)
 }
 
-// Use metadata.Logger for structured logging
-metadata.Logger.Infof("Import check for %s", id)
+// Use metadata.Logger only for distinct diagnostics that add value beyond Terraform core/provider-native logging
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // Use metadata.ResourceRequiresImport for import conflicts
 if !response.WasNotFound(existing.HttpResponse) {
@@ -505,7 +499,6 @@ Validation placement note:
 - Separate complex logic into utility functions
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="🎨-coding-style"></a>
 
@@ -557,7 +550,7 @@ name := nameFromConfig
 
 **⚠️ CRITICAL: Follow ZERO TOLERANCE FOR UNNECESSARY COMMENTS POLICY**
 
-📋 **For complete policy details, enforcement guidelines, decision trees, and comprehensive examples, see:** [Code Clarity Enforcement Guidelines](./code-clarity-enforcement.instructions.md#🚫-zero-tolerance-for-unnecessary-comments-policy)
+📋 **For complete policy details, enforcement guidelines, decision trees, and comprehensive examples, see:** [Code Clarity Enforcement Guidelines](./code-clarity-enforcement.instructions.md#comment-discipline-heuristics)
 
 **Quick Reference - Comments ONLY for:**
 - Azure API-specific quirks not obvious from code
@@ -570,7 +563,6 @@ name := nameFromConfig
 **🔍 MANDATORY JUSTIFICATION:** Every comment requires explicit justification documented in review response explaining which exception case applies and why code cannot be self-explanatory through refactoring.
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="🔧-azure-sdk-integration"></a>
 
@@ -681,8 +673,8 @@ subscriptionId := metadata.Client.Account.SubscriptionId
 enabled := pointer.To(true)
 name := pointer.To("example")
 
-// Use structured logging with metadata.Logger
-metadata.Logger.Infof("Creating %s", id)
+// Use structured logging only for distinct diagnostics, not generic CRUD lifecycle narration
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // Use proper error context with typed resource
 if err := client.CreateOrUpdateThenPoll(ctx, id, properties); err != nil {
@@ -877,6 +869,20 @@ if err != nil {
 
 // Set resource ID after creation
 d.SetId(id.ID())
+
+// Normalize IDs returned by Azure before storing them in state
+projectId, err := devcenters.ParseProjectID(props.DevCenterProjectResourceId)
+if err != nil {
+    return err
+}
+state.DevCenterProjectId = projectId.ID()
+
+// Normalize scoped IDs before storing the scope in state
+storageAccountId, err := commonids.ParseStorageAccountID(id.Scope)
+if err != nil {
+    return err
+}
+state.StorageAccountId = storageAccountId.ID()
 ```
 
 ### Resource ID Parser Precedence
@@ -885,6 +891,28 @@ d.SetId(id.ID())
 - Use `hashicorp/go-azure-helpers/resourcemanager/commonids` for shared cross-service IDs and composite IDs joined with `|`.
 - Use provider-generated legacy parse and validate helpers only when neither `go-azure-sdk` nor `commonids` currently support the ID shape.
 - Keep import validation, state parsing, and resource identity generation aligned to the same underlying ID type.
+- Treat read-side ID handling as case-insensitive by parsing import input, state values, and Azure-returned IDs through that shared ID type instead of comparing raw strings.
+- Normalize IDs through their typed parser before setting them into state when the value came from API output or another external source that may vary in static-segment casing.
+- Apply that normalization rule to full resource IDs, scoped IDs, and resource ID properties returned from API responses so Terraform state uses the canonical `.ID()` form and avoids phantom diffs.
+- When the provider emits or rewrites a resource ID for state or other provider-managed outbound usage, use the canonical `.ID()` form from that shared ID type rather than preserving arbitrary external casing.
+
+Generalized example:
+
+```go
+resourceId, err := {{RESOURCE_ID_PARSER}}(input.ID)
+if err != nil {
+    return err
+}
+
+apiReturnedId, err := {{RESOURCE_ID_PARSER}}(response.Properties.{{RESOURCE_ID_FIELD}})
+if err != nil {
+    return err
+}
+
+state.{{RESOURCE_ID_FIELD}} = apiReturnedId.ID()
+```
+
+Use the same parser on import input, existing state values, and API-returned IDs. That keeps read-side handling case-insensitive while ensuring Terraform state uses the provider's canonical ID form even when the RP returns different static-segment casing.
 
 ### Codebase Orientation and Build Context
 
@@ -924,7 +952,6 @@ Official upstream references:
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-ids.md`
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="💡-ai-coding-guidance"></a>
 
@@ -1193,7 +1220,7 @@ func resourceServiceName() *pluginsdk.Resource {
 - **Optional+Computed fields**: AI should suggest distinguishing user-configured vs Azure-computed values
 - **Enum pointer helpers**: AI should reserve `pointer.FromEnum(...)` and `pointer.ToEnum[...]` for the SDK/API boundary only, never for `diff.Get(...)`, `GetRawConfig()`, or decoded schema maps
 
-**For comprehensive AI schema verification guidance, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#🚨-schema-definition-verification-before-field-validation)
+**For comprehensive AI schema verification guidance, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#schema-definition-verification-before-field-validation)
 
 **For Azure-specific CustomizeDiff validation techniques including zero value handling patterns, see:** [Azure Patterns - Zero Value Validation](./azure-patterns.instructions.md#zero-value-validation-pattern)
 
@@ -1223,4 +1250,3 @@ Use `diff.ForceNew()` within CustomizeDiffShim when:
 - 🔐 **Security**: [security-compliance.instructions.md](./security-compliance.instructions.md) - Input validation, compliance
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>

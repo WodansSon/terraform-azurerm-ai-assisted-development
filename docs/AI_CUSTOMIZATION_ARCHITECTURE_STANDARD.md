@@ -190,7 +190,7 @@ These remain the authoritative rule layers for their domains.
 
 ### Runtime routing files
 
-- `.github/instructions/ai-skill-routing-go.instructions.md`
+- `.github/instructions/ai-skill-routing-resource-implementation.instructions.md`
 - `.github/instructions/ai-skill-routing-docs.instructions.md`
 - `.github/instructions/ai-skill-routing-tests.instructions.md`
 

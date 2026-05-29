@@ -1,0 +1,62 @@
+{
+  "id": "review-committed-explicit-pr-survives-spill-path",
+  "title": "Committed review keeps using an explicit PR number after one tool yields a forbidden spill path",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where the invocation supplies an explicit PR number, one GitHub-backed PR metadata path yields only a forbidden AppData or workspaceStorage spill-file transport, and another allowed non-CLI GitHub-backed path remains available. The correct review must ignore the spill path and continue resolving authoritative PR scope for that same explicit PR number rather than failing closed early.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-explicit-pr-survives-spill-path/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic fixture models the explicit-PR happy path where one PR metadata tool is unusable because it exposes only a forbidden spill-file transport, but another allowed non-CLI GitHub-backed retrieval path can still resolve the changed-file set for that same PR."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-EVID-*",
+    "REVIEW-LINT-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "explicit-pr-number-remains-authoritative",
+      "severity": "high",
+      "description": "The committed review should keep the explicit PR number as authoritative deterministic input and continue with the next allowed non-CLI GitHub-backed PR metadata path instead of failing closed early."
+    },
+    {
+      "key": "spill-path-ignored-but-review-continues",
+      "severity": "high",
+      "description": "The committed review should ignore the forbidden spill-file transport path without treating it as proof that authoritative PR scope is unavailable."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "premature-fail-closed-on-explicit-pr",
+      "description": "The review must not emit the fail-closed PR-scope message while an explicit PR number and another allowed GitHub-backed retrieval path remain available."
+    },
+    {
+      "key": "read-appdata-content-json",
+      "description": "The review must not read or shell against AppData, workspaceStorage, chat-session-resources, or content.json paths to reconstruct PR scope."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "MUST FIX"
+    ],
+    "mustNotIncludeMarkers": [
+      "Cannot run code-review-committed-changes:",
+      "Local spill files remain forbidden"
+    ]
+  },
+  "notes": "Use this case to benchmark the positive committed-review path where an explicit PR number survives a forbidden spill-file transport from one GitHub-backed metadata tool and scope resolution continues correctly through another allowed non-CLI GitHub-backed path."
+}

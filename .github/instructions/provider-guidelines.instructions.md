@@ -5,7 +5,6 @@ description: Azure-specific guidelines for Go files in the Terraform Azure Provi
 
 # 🏢 Provider Guidelines
 
-<a id="🏢-provider-guidelines"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,6 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for provider-wide AzureRM implementation heuristics and ARM integration patterns.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#☁️-azure-resource-manager-arm-integration">☁️ ARM Integration</a> | <a href="#⚙️-customizediff-implementation-for-azure-resources">⚙️ CustomizeDiff</a> | <a href="#📐-azure-schema-design-and-flattening-guidelines">📐 Schema Design</a> | <a href="#✅-azure-api-value-validation">✅ API Validation</a>
 
 <a id="☁️-azure-resource-manager-arm-integration"></a>
 
@@ -53,7 +51,6 @@ If this guide conflicts with the implementation contract, follow the contract an
 - Handle nested Azure resource configurations properly using `TypeSet`, `TypeList`, and `TypeMap`
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="⚙️-customizediff-implementation-for-azure-resources"></a>
 
@@ -171,7 +168,7 @@ return fieldExists && old.(bool) == true && new.(bool) == false
 - **Optional fields**: AI should suggest `GetRawConfig().IsNull()` to check explicit configuration
 - **Optional+Computed fields**: AI should suggest distinguishing user-configured vs Azure-computed values
 
-**For comprehensive AI schema verification patterns, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#🚨-schema-definition-verification-before-field-validation)
+**For comprehensive AI schema verification patterns, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#schema-definition-verification-before-field-validation)
 
 - `CustomizeDiff` validations should be thoroughly tested with acceptance tests to ensure they work correctly:
 - Test invalid configurations that should trigger validation errors
@@ -183,7 +180,6 @@ return fieldExists && old.(bool) == true && new.(bool) == false
 For comprehensive `CustomizeDiff` testing examples, see [`testing-guidelines.instructions.md`](./testing-guidelines.instructions.md).
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="📐-azure-schema-design-and-flattening-guidelines"></a>
 
@@ -313,7 +309,6 @@ func flatten{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input *{{SDK_PACKAGE}}.{{WRAPPER_T
 - **Breaking change risk**: When existing users would be significantly impacted
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="✅-azure-api-value-validation"></a>
 
@@ -383,4 +378,3 @@ Example of proper Azure value validation:
 - ⚡ **Performance**: [performance-optimization.instructions.md](./performance-optimization.instructions.md) - Azure provider optimization
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>

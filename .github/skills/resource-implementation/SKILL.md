@@ -156,6 +156,9 @@ return fmt.Errorf("creating %s: %+v", id, err)
    - Use consistent validation and error message formats.
    - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
    - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
+   - Treat read-side ID handling as case-insensitive by parsing import input, stored IDs, and Azure-returned IDs through the shared typed parser instead of comparing raw strings.
+   - Parse resource IDs through their typed parser before writing them into Terraform state when the value came from Azure API output, a scoped ID, or an API response property, so casing is normalized and phantom diffs are avoided.
+   - When the provider emits or rewrites a resource ID for state or other provider-managed outbound usage, use the canonical parser or provider `.ID()` form rather than preserving arbitrary external casing.
 
 - PATCH/residual state rules:
    - Omitted fields in PATCH often preserve prior values.
@@ -166,6 +169,12 @@ return fmt.Errorf("creating %s: %+v", id, err)
    - Wrap field names and important values in backticks.
    - Use `errors.New(...)` for static errors that do not need formatting or wrapping.
    - Use `fmt.Errorf(...)` when formatting values or wrapping an underlying error, and use `%+v` for the wrapped underlying error.
+
+- Logging discipline:
+   - Do not add generic lifecycle/provider logging such as `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting` when it only duplicates Terraform core or provider-native logging.
+   - Keep provider-side logging only when it adds unique diagnostic value beyond the existing log stream.
+   - If a broad lifecycle logging pattern is desired, assume it belongs in the shared SDK/framework layer rather than as ad hoc per-resource log lines.
+   - The narrow exception is established not-found/removing-from-state diagnostics when they provide distinct debugging value.
 
 - Polling migrations:
    - When the task involves replacing `pluginsdk.Retry()`, `pluginsdk.StateChangeConf`, or `WaitForStateContext()`, consult `custom-poller-migration` instead of inventing a one-off migration structure.

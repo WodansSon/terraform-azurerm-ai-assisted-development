@@ -104,7 +104,7 @@
       "domain": "implementation",
       "title": "Schema Design Considerations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/schema-design-considerations.md",
-      "baselineSha256": "538ad215efef7eb8a9de8e29e16d353f73508d3a3e4107a85f319f97fd59019c",
+      "baselineSha256": "09bb1bb7813010c6143cb6515eef32d2f560ae10d6fc185c994885abf1cd8243",
       "reviewNotes": [
         "Covers schema-shape choices, Enabled/None patterns, validation expectations, and preview-field rules."
       ]
@@ -124,7 +124,7 @@
       "domain": "testing",
       "title": "Acceptance Testing",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-acceptance-testing.md",
-      "baselineSha256": "73cba22032c73d9704b7f037a557533eb917477b86112fa4ba6434a464561e6c",
+      "baselineSha256": "a452e1f67d91fe14d0d29cfb9a6dbf994727943925e7304e3583f884daba8572",
       "reviewNotes": [
         "Primary upstream source for required test matrix, ImportStep guidance, PreCheck patterns, and helper struct conventions."
       ]
@@ -144,7 +144,7 @@
       "domain": "implementation-and-testing",
       "title": "Guide: New Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
-      "baselineSha256": "2de79de35ec45b66fb70a7ee3f2c3cfad584e4f8818bd134160f65566969f1e9",
+      "baselineSha256": "379361ea714d11da12144fd31c0448d106548c2ef7a95df7f804ebdeb8de9c0e",
       "reviewNotes": [
         "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
       ]
@@ -264,7 +264,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "25734f6fc429691896ba0446a02844b5b7b9cbd314b3a98957a77946919ac228",
+      "baselineSha256": "84fbc3f16a14c173676df20dfb9d9aeae91b09e48ab9f91dd2ae0a33ffead81e",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]
@@ -274,9 +274,10 @@
       "domain": "implementation",
       "title": "Guide: Resource IDs",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-ids.md",
-      "baselineSha256": "f70f49b5e368ca1b1bce9bf6fc208fd53ba5174d6331f8d8c130a506d02eec32",
+      "baselineSha256": "48bbf9f35b636f57967bd6d2497f40d74fe131e7d8f8131fd61a78c71875e2e8",
       "reviewNotes": [
-        "Primary upstream source for resource ID parser and validator precedence across go-azure-sdk, commonids, and legacy generated helpers."
+        "Primary upstream source for resource ID parser and validator precedence across go-azure-sdk, commonids, and legacy generated helpers.",
+        "Also covers normalizing API-returned, scoped, and property-based resource IDs through typed parsers before setting them into Terraform state to avoid phantom diffs from casing drift."
       ]
     },
     {

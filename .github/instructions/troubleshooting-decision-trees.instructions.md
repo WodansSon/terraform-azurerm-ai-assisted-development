@@ -5,11 +5,12 @@ description: Troubleshooting decision trees and diagnostic patterns for the Terr
 
 # 🔧 Troubleshooting Decision Trees
 
-<a id="🔧-troubleshooting-decision-trees"></a>
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
-Troubleshooting decision trees and diagnostic patterns for the Terraform AzureRM provider including common issues, debugging workflows, and resolution strategies.
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
 
-**Quick navigation:** <a href="#🚨-common-issues">🚨 Common Issues</a> | <a href="#🔍-debugging-workflows">🔍 Debugging Workflows</a> | <a href="#⚡-quick-fixes">⚡ Quick Fixes</a> | <a href="#🏗️-development-troubleshooting">🏗️ Development Troubleshooting</a>
+Use this guide for troubleshooting workflows, diagnostic decision paths, and debugging heuristics.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 <a id="🚨-common-issues"></a>
 
@@ -24,7 +25,7 @@ Troubleshooting decision trees and diagnostic patterns for the Terraform AzureRM
 
 **Decision Tree:**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If subscription limits are the primary issue -> Review Azure portal quotas, verify service tier limits, and consider a subscription upgrade
 - Else if polling or backoff behavior is the primary issue -> Prefer a service-specific custom poller for long-running status checks, tune poll interval or backoff deliberately, and use explicit retry limits only where retry behavior is still required
@@ -33,7 +34,7 @@ Rule: evaluate in order and stop at the first matching condition.
 
 **Resolution Pattern:**
 ```text
-- For provider implementation under `internal/**`, do not introduce a new generic `retryWithBackoff` helper as the default fix for repeated Azure polling.
+- For provider implementation under `internal/**`, prefer not to introduce a new generic `retryWithBackoff` helper as the default fix for repeated Azure polling.
 - For long-running or repeated status-check behavior, prefer a service-specific custom poller instead of a manual retry loop or `StateChangeConf`-style polling helper.
 - For rate limiting caused by request volume, reduce or batch API calls first and tune the poll interval or existing retry behavior deliberately.
 ```
@@ -55,7 +56,7 @@ if err := pollers.PollUntilDone(ctx, poller); err != nil {
 
 **Decision Tree:**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If the next step is to identify the drift source -> Check for manual Azure portal changes, other automation tools, Azure service auto-scaling, and provider version differences
 - Else if the drift source is known and the next step is resolution -> Update Terraform configuration to match, import resources to sync state, apply changes to restore the desired state, or use a refresh-only plan to update state
@@ -71,7 +72,7 @@ Rule: evaluate in order and stop at the first matching condition.
 
 **Decision Tree:**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If credentials may be wrong or incomplete -> Check environment variables, validate the service principal, confirm tenant and subscription IDs, and test credential expiration
 - Else if credentials are valid but access still fails -> Review Azure RBAC assignments, verify resource-level permissions, check API permissions for the service principal, and validate subscription access
@@ -123,7 +124,7 @@ az rest --method GET --url "https://management.azure.com/subscriptions/{subscrip
 
 **Debugging Pattern:**
 ```text
-Rule: evaluate in order and stop at the first matching condition.
+Evaluate in order and stop at the first matching condition.
 
 - If basic connectivity is not yet confirmed -> Check the internet connection, verify DNS resolution, test Azure endpoints, and check proxy or firewall settings
 - Else if basic connectivity works but Azure-specific access still fails -> Test the authentication endpoint, verify Azure API endpoints, check service-specific endpoints, and test from different networks
@@ -281,5 +282,3 @@ if err != nil {
 }
 log.Printf("[DEBUG] Parsed ID: %+v", id)
 ```
----
-<a href="#🔧-troubleshooting-decision-trees">⬆️ Back to top</a>

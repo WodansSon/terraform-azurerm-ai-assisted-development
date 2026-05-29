@@ -5,11 +5,9 @@ description: Migration patterns and upgrade procedures for the Terraform AzureRM
 
 # Migration Guide
 
-<a id="migration-guide"></a>
 
 Migration patterns and upgrade procedures for the Terraform AzureRM provider including implementation approach transitions, breaking changes, and version compatibility.
 
-**Quick navigation:** <a href="#🔄-implementation-approach-migration">🔄 Implementation Migration</a> | <a href="#💔-breaking-change-patterns">💔 Breaking Changes</a> | <a href="#📦-version-compatibility">📦 Version Compatibility</a> | <a href="#🚧-upgrade-procedures">🚧 Upgrade Procedures</a>
 
 <a id="🔄-implementation-approach-migration"></a>
 
@@ -190,8 +188,6 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
             // 3. Resource ID creation (same as untyped)
             id := parse.NewServiceNameResourceID(subscriptionId, model.ResourceGroup, model.Name)
 
-            // 4. Import check (new pattern)
-            metadata.Logger.Infof("Import check for %s", id)
             existing, err := client.Get(ctx, id)
             if err != nil && !response.WasNotFound(existing.HttpResponse) {
                 return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
@@ -200,9 +196,6 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
             if !response.WasNotFound(existing.HttpResponse) {
                 return metadata.ResourceRequiresImport(r.ResourceType(), id)
             }
-
-            // 5. API call (similar to untyped but with model data)
-            metadata.Logger.Infof("Creating %s", id)
 
             properties := servicenametype.Resource{
                 Location: model.Location,
@@ -312,7 +305,6 @@ func (r Registration) SupportedResources() map[string]*pluginsdk.Resource {
 - [ ] Attribute descriptions remain accurate
 
 ---
-<a href="#migration-guide">⬆️ Back to top</a>
 
 <a id="💔-breaking-change-patterns"></a>
 
@@ -401,7 +393,6 @@ resource "azurerm_{{RESOURCE_SLUG}}" "example" {
 - **SDK Updates**: Migration to newer Azure SDK patterns
 
 ---
-<a href="#migration-guide">⬆️ Back to top</a>
 
 <a id="📦-version-compatibility"></a>
 
@@ -466,7 +457,6 @@ func planMigration(providerVersion string) MigrationStrategy {
 ```
 
 ---
-<a href="#migration-guide">⬆️ Back to top</a>
 
 <a id="🚧-upgrade-procedures"></a>
 
@@ -554,6 +544,7 @@ func resourceServiceNameStateUpgradeV0ToV1(ctx context.Context, rawState map[str
 - Put service-specific migrations under `internal/services/<service>/migration/` using the `<resource>_v<from>_to_v<to>.go` naming pattern.
 - Treat `Schema()` as a point-in-time schema copy used only for Terraform state serialization. Keep `Type`, `Required`, `Optional`, `Computed`, and `Elem`, but strip `Default`, `ValidateFunc`, `ForceNew`, `MaxItems`, `MinItems`, `AtLeastOneOf`, `ConflictsWith`, `ExactlyOneOf`, `RequiredWith`, and feature-flag branching.
 - Keep `UpgradeFunc()` focused on transforming raw state. Common cases include case-insensitive parsing of old IDs and rewriting the canonical `id` value.
+- Generalized example: if older state stored an `id` with Azure-returned casing on static segments, parse that raw value through the current typed ID parser inside `UpgradeFunc()` and write back the parser's canonical `.ID()` form so the upgraded state does not keep producing phantom diffs.
 - Wire migrations into typed resources through `sdk.ResourceWithStateMigration` and increment `SchemaVersion` to the destination version.
 - State migrations are one-way and currently require manual validation: create with an older provider, use a local build with development overrides, run plan or apply, and confirm no unexpected diffs remain.
 
@@ -672,4 +663,3 @@ return metadata.Encode(&state) // Correct pattern
 - Test rollback path before merging
 
 ---
-<a href="#migration-guide">⬆️ Back to top</a>

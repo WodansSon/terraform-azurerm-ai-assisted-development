@@ -61,6 +61,15 @@ The current contract-driven domains are:
 - `.github/instructions/implementation-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
+## Current High-Signal Implementation Rule
+
+The current implementation guidance explicitly treats Azure resource IDs as a case-insensitive read problem and a canonical-write problem:
+
+- read, import, refresh, and migration paths should parse resource IDs through the shared typed parser instead of relying on raw string equality against Azure-returned IDs
+- provider-managed IDs written back to state should use the parser's canonical `.ID()` form instead of preserving arbitrary casing returned by the RP
+
+This is meant to reduce Terraform phantom diffs and lookup failures caused by Azure static-segment casing drift.
+
 ## Alignment Checklist
 
 ### 1. Contract structure is valid

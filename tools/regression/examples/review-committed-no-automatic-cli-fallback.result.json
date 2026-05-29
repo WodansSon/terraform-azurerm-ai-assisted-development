@@ -16,7 +16,7 @@
   },
   "findings": {
     "caught": [
-      "cli-fallback-opt-in-only"
+      "direct-pr-files-api-first-choice"
     ],
     "missed": [],
     "falsePositives": []
@@ -39,5 +39,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for the committed-review no-automatic-cli-fallback regression case."
+  "notes": "Example adjudicated result for the committed-review explicit-PR direct-API-first regression case."
 }

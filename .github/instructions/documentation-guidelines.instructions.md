@@ -1,23 +1,17 @@
-﻿---
+---
 applyTo: "website/docs/**/*.html.markdown"
 description: This document outlines the standards and guidelines for writing documentation for Terraform resources and data sources in the AzureRM provider.
 ---
 
 # Documentation Guidelines
 
-<a id="documentation-guidelines"></a>
 
 This document outlines the standards and guidelines for writing documentation for Terraform resources, data sources, list resources, ephemeral resources, and provider-defined functions in the AzureRM provider.
 
-<a id="quick-navigation"></a>
 
-**Quick navigation:**
 
-Core: <a href="#canonical-sources">Canonical sources</a> | <a href="#optional-ai-docs-review">Optional AI docs review</a> | <a href="#ai-docs-checks">AI docs checks</a> | <a href="#🚨-critical-pre-implementation-requirements-🚨">Pre-Implementation</a> | <a href="#📋-provider-documentation-standards-note-formatting">Note formatting</a>
 
-AI checks: <a href="#ai-docs-style-enforcement">Style enforcement</a> | <a href="#ai-docs-forcenew-subset">ForceNew subset switching</a> | <a href="#ai-docs-enabled-fields">`*_enabled` wording</a> | <a href="#ai-docs-block-placement">Block placement</a> | <a href="#ai-docs-secrets">Secrets</a> | <a href="#ai-docs-audit">Schema parity</a> | <a href="#ai-docs-quick-audit">Quick audit</a> | <a href="#ai-docs-post-edit">Post-edit</a>
 
-Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources vs data sources</a> | <a href="#🧾-list-resource-documentation-guidance">List resources</a> | <a href="#⚡-ephemeral-resource-documentation-guidance">Ephemeral resources</a> | <a href="#🔧-function-documentation-guidance">Functions</a> | <a href="#🏗️-documentation-structure">Doc structure</a> | <a href="#📄-resource-documentation-template">Resource template</a> | <a href="#📊-data-source-documentation-template">Data source template</a> | <a href="#✍️-writing-guidelines">Writing guidelines</a> | <a href="#💡-example-configuration-guidelines">Examples</a> | <a href="#📁-import-documentation">Import</a> | <a href="#⏱️-timeout-documentation">Timeouts</a> | <a href="#☁️-azure-specific-documentation-patterns">Azure patterns</a> | <a href="#📋-attributes-reference-differences">Attributes</a> | <a href="#📝-field-documentation-rules">Field rules</a>
 
 <a id="canonical-sources"></a>
 
@@ -393,7 +387,6 @@ High-signal mistakes to avoid:
 - using caution notes (`!>`) for reversible configuration changes
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📚-key-differences-resources-vs-data-sources"></a>
 
@@ -431,7 +424,6 @@ description: |-
 - **Data Sources**: Omit import section (data sources don't support import)
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="🏗️-documentation-structure"></a>
 
@@ -454,7 +446,6 @@ website/docs/
 - Use lowercase with underscores, match Terraform resource name exactly
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📄-resource-documentation-template"></a>
 
@@ -563,7 +554,6 @@ terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0
 - Tag variations or simple property changes
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📊-data-source-documentation-template"></a>
 
@@ -627,7 +617,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ````
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="✍️-writing-guidelines"></a>
 
@@ -671,7 +660,6 @@ A `configuration` block supports the following:
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="💡-example-configuration-guidelines"></a>
 
@@ -768,7 +756,6 @@ When adding new fields to existing resources, follow this guidance for documenta
 - **New example needed**: Advanced `custom_domain` setup requiring certificates and DNS validation
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📁-import-documentation"></a>
 
@@ -798,7 +785,6 @@ Rules:
 Data sources do not support import operations, so this section should be omitted from data source documentation.
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="⏱️-timeout-documentation"></a>
 
@@ -831,7 +817,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="☁️-azure-specific-documentation-patterns"></a>
 
@@ -878,7 +863,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📋-attributes-reference-differences"></a>
 
@@ -930,7 +914,6 @@ In addition to the Arguments listed above - the following Attributes are exporte
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📝-field-documentation-rules"></a>
 
@@ -1033,7 +1016,7 @@ When fields are deprecated using the provider's "next major version" feature fla
 - **Major version docs**: Clean up all legacy references and focus on current API
 - **Upgrade guides**: Migration instructions belong in upgrade guides, not resource docs
 
-**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#🚀-fivepointoh-feature-flag-patterns)
+**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#fivepointoh-feature-flag-patterns)
 
 ### Cross-Implementation Documentation Consistency
 
@@ -1057,7 +1040,6 @@ When documenting related Azure resources (like Linux and Windows VMSS), ensure c
 - [ ] Examples demonstrate the same patterns for equivalent functionality
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📋-provider-documentation-standards-note-formatting"></a>
 
@@ -1124,4 +1106,3 @@ Use caution note blocks when providing critical information on potential irrever
 - 📋 **Code Clarity**: [code-clarity-enforcement.instructions.md](./code-clarity-enforcement.instructions.md) - Comment and code quality standards
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>

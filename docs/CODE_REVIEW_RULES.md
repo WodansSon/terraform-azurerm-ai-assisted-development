@@ -109,6 +109,16 @@ This means the review applied Go/provider-specific guidance because the change t
 
 It is the rule that tells the auditor to load the scoped Go instructions and skills instead of relying only on the generic review contract.
 
+### `REVIEW-SCOPE-005D`
+
+This means the review checked whether newly added provider-side lifecycle logging is actually justified.
+
+In practice, the review should:
+
+- flag generic `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting` logs when they only duplicate Terraform core or provider-native logging
+- allow narrow not-found or removing-from-state diagnostics when they add distinct debugging value
+- prefer SDK/framework-level solutions if consistent lifecycle logging is desired across many resources
+
 ### `REVIEW-FILE-005`
 
 This means the review recognized vendored third-party files under `vendor/**` as non-actionable scope.

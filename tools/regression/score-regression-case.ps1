@@ -105,10 +105,25 @@ $scopeAndToolCorrectness = [Math]::Round((
         $toolExpectationScore
     ) / 3.0, 2)
 
-$outputCompliance = [Math]::Round((
-        (Get-BoolScore -Value $result.outputChecks.requiredSectionsPresent) +
-        (Get-BoolScore -Value $result.outputChecks.requiredMarkersPresent)
-    ) / 2.0, 2)
+$outputCheckScores = @(
+    (Get-BoolScore -Value $result.outputChecks.requiredSectionsPresent),
+    (Get-BoolScore -Value $result.outputChecks.requiredMarkersPresent)
+)
+
+$caseRequiresForbiddenMarkerCheck = $case.outputChecks -and
+    ($case.outputChecks.PSObject.Properties.Name -contains 'mustNotIncludeMarkers') -and
+    (@($case.outputChecks.mustNotIncludeMarkers).Count -gt 0)
+
+if ($caseRequiresForbiddenMarkerCheck) {
+    $forbiddenMarkersAbsent = $false
+    if ($result.outputChecks.PSObject.Properties.Name -contains 'forbiddenMarkersAbsent') {
+        $forbiddenMarkersAbsent = [bool]$result.outputChecks.forbiddenMarkersAbsent
+    }
+
+    $outputCheckScores += (Get-BoolScore -Value $forbiddenMarkersAbsent)
+}
+
+$outputCompliance = [Math]::Round((($outputCheckScores | Measure-Object -Average).Average), 2)
 
 $determinism = Get-BoolScore -Value $result.determinismChecks.materiallyEquivalentAcrossRuns
 

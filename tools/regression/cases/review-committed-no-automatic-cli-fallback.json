@@ -1,11 +1,11 @@
 {
   "id": "review-committed-no-automatic-cli-fallback",
-  "title": "Committed review does not auto-fallback to gh without explicit request",
+  "title": "Committed review prefers the direct PR-files API first for explicit PR numbers",
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "sanitized": true,
-  "description": "A committed-review scenario where an explicit PR number is supplied, GitHub-backed review tools are insufficient, and the user did not ask for CLI fallback. The correct review must not auto-check gh or auto-run gh api.",
+  "description": "A committed-review scenario where an explicit PR number is supplied. The correct review should try the preferred direct non-CLI GitHub PR-files API path first, instead of starting with active or viewed PR metadata tools that may only yield summary output or forbidden spill-file transports.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-no-automatic-cli-fallback/README.md"
@@ -14,32 +14,32 @@
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Sanitized fixture models the exact regression where the prompt treated an explicit PR number as permission to auto-run gh api even though the user never requested CLI fallback."
+    "notes": "Sanitized fixture models the simpler explicit-PR path where the direct non-CLI PR-files API should be the first scope-resolution attempt, avoiding avoidable detours through summary-only or spill-path metadata tools."
   },
   "expectedRules": [
     "REVIEW-FILE-004"
   ],
   "mustCatch": [
     {
-      "key": "cli-fallback-opt-in-only",
+      "key": "direct-pr-files-api-first-choice",
       "severity": "high",
-      "description": "The committed review should keep gh api fallback opt-in only and must not auto-check gh availability or auto-run gh api just because a PR number is available."
+      "description": "The committed review should treat an explicit PR number as a prompt to try the preferred direct non-CLI GitHub PR-files API path first, before active/viewed PR metadata tools or any CLI fallback."
     }
   ],
   "mustNotFlag": [
     {
-      "key": "auto-gh-check",
-      "description": "The review must not turn an explicit PR number into an automatic gh prerequisite or automatic gh api fetch."
+      "key": "metadata-tools-before-direct-pr-files-api",
+      "description": "The review must not start explicit-PR scope resolution with active/viewed PR metadata tools while the preferred direct non-CLI PR-files API path for that same PR number remains available."
     }
   ],
   "expectedTools": {
     "azurermLinter": "not-run"
   },
   "outputChecks": {
-    "mustIncludeMarkers": [
+    "mustNotIncludeMarkers": [
       "Cannot run code-review-committed-changes:",
       "explicitly request CLI fallback"
     ]
   },
-  "notes": "Use this case to benchmark that normal committed review prefers GitHub-backed review tools and never auto-prompts into gh fallback."
+  "notes": "Use this case to benchmark that explicit PR-number committed review goes straight to the preferred direct non-CLI PR-files API path before trying other PR metadata tooling or any CLI fallback."
 }

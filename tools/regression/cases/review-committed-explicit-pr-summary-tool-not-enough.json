@@ -1,0 +1,58 @@
+{
+  "id": "review-committed-explicit-pr-summary-tool-not-enough",
+  "title": "Committed review does not treat PR-summary or browser-link results as authoritative scope",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where the invocation supplies an explicit PR number, one GitHub-backed path returns only PR-summary or issue-style metadata, another returns a browser-link result such as `Open on GitHub.com`, and the preferred non-CLI PR-files API path for that same PR number is still available for retrieving the actual changed-file set. The correct review must not mistake those earlier summary-only results for authoritative PR scope or for exhausted retrieval paths.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-explicit-pr-summary-tool-not-enough/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic fixture models the failure mode where summary-only GitHub-backed outputs are mistaken for PR-files retrieval and the review fails closed too early even though the preferred direct non-CLI PR-files API path remains available."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-EVID-*",
+    "REVIEW-LINT-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "summary-tool-not-authoritative-scope",
+      "severity": "high",
+      "description": "The committed review should treat PR-summary, issue-style, status, or browser-link results as insufficient for PR scope resolution and continue to the preferred direct non-CLI PR-files API path."
+    },
+    {
+      "key": "explicit-pr-continues-after-summary-results",
+      "severity": "high",
+      "description": "The committed review should keep the explicit PR number as authoritative input and continue trying the preferred direct non-CLI PR-files API path instead of failing closed after summary-only results."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "premature-fail-closed-on-summary-results",
+      "description": "The review must not emit the fail-closed PR-scope message while only summary-style or browser-link GitHub-backed outputs have been seen and another allowed non-CLI PR-files retrieval path remains available."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "MUST FIX"
+    ],
+    "mustNotIncludeMarkers": [
+      "Cannot run code-review-committed-changes:",
+      "Open on GitHub.com"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review distinguishes summary-only GitHub-backed results from the authoritative PR-files retrieval path and does not fail closed too early for explicit PR invocations."
+}

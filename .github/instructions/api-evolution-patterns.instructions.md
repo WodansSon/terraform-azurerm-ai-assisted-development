@@ -5,11 +5,9 @@ description: API evolution and versioning patterns for the Terraform AzureRM pro
 
 # API Evolution Patterns
 
-<a id="api-evolution-patterns"></a>
 
 API evolution and versioning patterns for the Terraform AzureRM provider including handling Azure API changes, backward compatibility, and migration strategies.
 
-**Quick navigation:** <a href="#azure-api-version-management">🔄 Version Management</a> | <a href="#backward-compatibility-patterns">⬆️ Backward Compatibility</a> | <a href="#migration-strategies">🚀 Migration Strategies</a> | <a href="#deprecation-management">📊 Deprecation</a>
 
 <a id="azure-api-version-management"></a>
 
@@ -480,4 +478,3 @@ type BreakingChange struct {
 ```
 
 ---
-<a href="#api-evolution-patterns">⬆️ Back to top</a>

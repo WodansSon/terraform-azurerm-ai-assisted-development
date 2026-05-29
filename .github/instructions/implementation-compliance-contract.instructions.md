@@ -17,7 +17,7 @@ Implementation consumers MUST follow this contract:
   - Requires EOF Load: yes
   - Goal: implement or modify Terraform AzureRM provider resources and data sources under `internal/**` while applying `IMPL-*` rules.
 
-- Consumer: `.github/instructions/ai-skill-routing-go.instructions.md`
+- Consumer: `.github/instructions/ai-skill-routing-resource-implementation.instructions.md`
   - Role: Router
   - Requires EOF Load: no
   - Goal: route `internal/**/*.go` work through the implementation contract and the resource-implementation skill.
@@ -215,6 +215,75 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Current workspace regression fixtures already model service-local validator files under `internal/services/<service>/validate/` with matching test files such as `validate/hostname.go` and `validate/hostname_test.go`
   - Current workspace contributor guidance in `.github/copilot-instructions.md` documents service-local validation artifacts as part of the standard service layout
 
+### IMPL-SCHEMA-006: Normalize resource IDs before setting them into state
+- Rule: Always parse resource IDs through their typed parser before persisting them into Terraform state when the value came from API output or other external input that may vary in static-segment casing.
+- Rule: This applies to full resource IDs, scoped IDs where the scope must be parsed separately, and IDs returned as nested properties in API responses.
+- Rule: Read, import, refresh, and migration paths must treat resource IDs case-insensitively by parsing them through the corresponding typed parser instead of relying on raw string equality against Azure-returned IDs.
+- Rule: Use the corresponding typed parser from `hashicorp/go-azure-sdk` or `commonids`, then persist the normalized `.ID()` value rather than the raw string from the API response.
+- Rule: When the provider constructs or rewrites a resource ID for state or outbound provider-managed usage, emit the parser or provider canonical `.ID()` form instead of preserving arbitrary casing from external input.
+- Rule: Do not set raw API-returned resource ID strings into state when a typed parser exists for that ID shape.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-ids.md` says Azure APIs can return resource IDs with inconsistent casing on static segments and that IDs should be parsed through their typed parser before setting into state to prevent phantom diffs
+  - The same upstream guidance explicitly calls out both scoped resource IDs and IDs returned as properties in API responses as in-scope for this normalization rule
+
+### IMPL-SCHEMA-007: Preview fields should not be surfaced until they are GA
+- Rule: Do not expose preview-only Azure fields in provider schema until they reach General Availability unless there is explicit, evidence-backed approval to do otherwise.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Preview Fields`
+  - That guidance says preview fields should not be supported until they reach GA status
+
+### IMPL-SCHEMA-008: Represent Azure `None`-style defaults as omission/null in schema design
+- Rule: When the Azure API uses `None`, `Off`, or `Default` to express the default state, design the Terraform schema so omission/null expresses that default and convert during expand/flatten.
+- Rule: Do not require practitioners to configure `None`-style values explicitly when omission already expresses the default behavior.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
+  - That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly
+
+### IMPL-SCHEMA-009: Array schema should use `MinItems` and `MaxItems` when API constraints are known
+- Rule: When API constraints define list cardinality, set `MinItems` and `MaxItems` in the Terraform schema instead of leaving cardinality implicit.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Array fields with MinItems and MaxItems`
+  - That guidance says array fields should use `MinItems` and `MaxItems` to provide clear validation feedback
+
+### IMPL-SCHEMA-010: Optional `TypeList` blocks with no required nested fields need explicit non-empty validation
+- Rule: When a `pluginsdk.TypeList` block has no required nested fields, add conditional validation such as `AtLeastOneOf` or `ExactlyOneOf` so the block cannot be empty.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation for TypeList fields with no Required fields`
+  - That guidance shows `AtLeastOneOf`-style validation as the pattern for optional list blocks that would otherwise accept empty configuration
+
+### IMPL-SCHEMA-011: Flatten single-property `MaxItems: 1` blocks unless there is evidence to keep the wrapper
+- Rule: When a `MaxItems: 1` nested block contains only a single user-meaningful property, prefer flattening it into the parent schema instead of preserving a wrapper block by default.
+- Rule: Keep the wrapper block only when there is evidence that additional sibling properties are imminent or that the wrapper carries meaningful user-facing semantics.
+- Rule: When deliberately preserving that single-property wrapper, add a short inline comment at the schema site explaining why the block remains unflattened.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Flattening nested properties`
+  - That guidance says single-property `MaxItems: 1` wrappers should usually be flattened unless the service team has confirmed more nested properties are imminent
+
+### IMPL-SCHEMA-012: Portal-required fields should normally be `Required` unless API evidence says otherwise
+- Rule: When Azure Portal UX marks a field as required, treat that as a strong signal that the Terraform schema should also make it `Required`.
+- Rule: Only downgrade such a field to `Optional` when there is concrete evidence that the API accepts omission and the resource still functions correctly without it.
+- Rule: Do not treat portal-required markers as infallible API proof, but do not ignore them without evidence-backed justification.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Required fields in Azure Portal vs API documentation`
+  - That guidance says fields marked as required in the Azure Portal should be `Required` in Terraform unless the API accepts omission and still functions
+
+### IMPL-SCHEMA-013: Use `GetRawConfig()` in `CustomizeDiff` when validation must distinguish configured values from unknown or zero values
+- Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `diff.Get(...)` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
+- Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
+- Rule: Prefer direct `diff.Get(...)` access for required values whose presence is guaranteed by schema and where no configured-versus-unknown distinction is needed.
+- Rule: Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values inside `CustomizeDiff`; reserve those helpers for the SDK or API enum-pointer boundary.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
+  - That guidance uses `GetRawConfig()` as the preferred pattern when `d.Get()` or decoded values would make unknowns look unset
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows
@@ -254,6 +323,19 @@ If evidence is missing for a behavior-changing claim, do not guess.
 
 ### IMPL-CODE-001: Avoid unnecessary comments
 - Rule: Prefer self-documenting code.
-- Rule: Add comments only when documenting non-obvious Azure quirks, SDK workarounds, or other behavior that cannot be made clear through code structure alone.
+- Rule: Add comments only when documenting non-obvious Azure quirks, Azure SDK workarounds or limitations, complex business logic that still cannot be made self-explanatory after refactoring, or non-obvious state-management patterns.
+- Rule: Do not add comments for variable assignments, struct initialization, standard Terraform or Go patterns, self-explanatory function calls, obvious field mappings, or routine error-handling and nil-check flow.
+- Rule: When a comment is added, prefer improving naming, extraction, or structure first and use the comment only for the irreducible context that remains.
+
+### IMPL-CODE-002: Avoid redundant lifecycle/provider logging by default
+- Rule: Do not add generic resource lifecycle logging such as `Import check for %s`, `Creating %s`, `Reading %s`, `Updating %s`, or `Deleting %s` when those messages only duplicate Terraform core or provider-native logging.
+- Rule: Add provider-side logging only when it contributes unique diagnostic value that is not already present in the existing Terraform/provider log stream.
+- Rule: If broad, consistent lifecycle logging is desired, prefer solving that at the shared SDK or framework layer rather than adding ad hoc per-resource log lines.
+- Rule: This does not prohibit targeted not-found or removing-from-state diagnostics when they are part of established provider behavior and add distinct debugging value.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review feedback in `hashicorp/terraform-provider-azurerm` PR `#32194` comment `discussion_r3256881651` says generic lifecycle logging is redundant with Terraform core native logging and should be removed
+  - Maintainer PR `hashicorp/terraform-provider-azurerm#32423` (`provider: remove antiquated lifecycle logging patterns`) states lifecycle logging was inconsistent, implemented only by a minority of resources, and should likely live in the SDK if desired consistently
+  - Maintainer follow-up discussion in PR `#32423` keeps the standardized not-found/removing-from-state diagnostic as the narrow acceptable exception
 
 <!-- IMPLEMENTATION-CONTRACT-EOF -->

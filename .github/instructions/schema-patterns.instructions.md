@@ -5,16 +5,13 @@ description: Schema design patterns and validation standards for the Terraform A
 
 # Schema Design Patterns
 
-<a id="schema-design-patterns"></a>
-
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
 - `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
 
 Use this guide for schema design patterns, validation heuristics, and Azure-specific schema considerations.
+Normative schema requirements live in the implementation contract under `IMPL-SCHEMA-*`.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
-
-**Quick navigation:** <a href="#📋-schema-type-patterns">📋 Schema Types</a> | <a href="#✅-validation-patterns">✅ Validation</a> | <a href="#⚙️-azure-specific-schema-patterns">⚙️ Azure Specific</a> | <a href="#🚀-fivepointoh-feature-flag-patterns">🚀 Breaking Changes</a> | <a href="#🏗️-complex-schema-patterns">🏗️ Complex Schemas</a> | <a href="#🔍-field-naming-standards">🔍 Field Naming</a> | <a href="#🧪-testing-schema-patterns">🧪 Testing</a> | <a href="#🔧-test-configuration-helpers">🔧 Test Helpers</a>
 
 <a id="📋-schema-type-patterns"></a>
 
@@ -133,14 +130,11 @@ If this guide conflicts with the implementation contract, follow the contract an
 },
 ```
 
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>
-
 <a id="✅-validation-patterns"></a>
 
 ## ✅ Validation Patterns
 
-### 🚨 Schema Definition Verification Before Field Validation
+### Schema Definition Verification Before Field Validation
 
 **CRITICAL RULE: AI Must Check Schema Definition Before Suggesting Field Validation Code**
 
@@ -399,22 +393,13 @@ Avoid embedding the same logic inline when it would hide the schema shape:
 }
 ```
 
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>
-
 <a id="⚙️-azure-specific-schema-patterns"></a>
 
 ## ⚙️ Azure-Specific Schema Patterns
 
 ### Common Azure Schema Helpers
 
-### SCHEMA-PATTERN-001: Preview fields should not be surfaced until they are GA
-
-- Rule: Do not expose preview-only Azure fields in provider schema until they reach General Availability unless there is explicit, evidence-backed approval to do otherwise.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Preview Fields`
-    - That guidance says preview fields should not be supported until they reach GA status
+For the authoritative preview-field requirement, see `IMPL-SCHEMA-007` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 ```go
 // Use common Azure schema helpers
@@ -430,13 +415,7 @@ Avoid embedding the same logic inline when it would hide the schema shape:
 
 ### The "None" Value Pattern
 
-### SCHEMA-PATTERN-002: Represent Azure `None`-style defaults as omission/null in schema design
-
-- Rule: When the Azure API uses `None`, `Off`, or `Default` to express the default state, design the Terraform schema so omission/null expresses that default and convert during expand/flatten.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
-    - That guidance says omission should map to the API default rather than exposing `None`-style values directly
+For the authoritative `None`/`Off`/`Default` requirement, see `IMPL-SCHEMA-008` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 **Modern Approach (Preferred) - Exclude "None" from validation:**
 
@@ -755,8 +734,6 @@ func ExpandMonitoringConfiguration(input []interface{}) *azureapi.MonitoringConf
 }
 ```
 
-<a id="🚀-fivepointoh-feature-flag-patterns"></a>
-
 ### FivePointOh Feature Flag Patterns
 
 **Breaking Changes and Deprecation Management:**
@@ -964,21 +941,7 @@ For authoritative breaking change procedures, see: `https://github.com/hashicorp
 
 ### Advanced Schema Validation Patterns
 
-### SCHEMA-PATTERN-003: Array schema should use `MinItems` and `MaxItems` when API constraints are known
-
-- Rule: When API constraints define list cardinality, set `MinItems` and `MaxItems` in the Terraform schema instead of leaving cardinality implicit.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Array fields with MinItems and MaxItems`
-    - That guidance says array fields should use `MinItems` and `MaxItems` to provide clear validation feedback
-
-### SCHEMA-PATTERN-004: Optional `TypeList` blocks with no required nested fields need explicit non-empty validation
-
-- Rule: When a `pluginsdk.TypeList` block has no required nested fields, add conditional validation such as `AtLeastOneOf` or `ExactlyOneOf` so the block cannot be empty.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation for TypeList fields with no Required fields`
-    - That guidance shows `AtLeastOneOf`-style validation as the pattern for optional list blocks that would otherwise accept empty configuration
+For the authoritative requirements on list cardinality, non-empty optional `TypeList` blocks, single-property wrapper flattening, and portal-required fields, see `IMPL-SCHEMA-009` through `IMPL-SCHEMA-012` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 **Multi-Field Dependency Validation:**
 ```go
@@ -1018,9 +981,6 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
     return nil
 }
 ```
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>
-
 <a id="🏗️-complex-schema-patterns"></a>
 
 ## 🏗️ Complex Schema Patterns
@@ -1135,9 +1095,6 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
 - Write-only attributes are appropriate only for sensitive scalar resource attributes that are not `ForceNew`, not `Computed`, and not nested in unsupported collection shapes.
 - Pair each write-only field with a non-write-only trigger field such as `<name>_wo_version`, wire `ConflictsWith` and `RequiredWith` both ways, use `pluginsdk.GetWriteOnly(...)` in create and update, and persist the trigger field in state during read to avoid permanent diffs.
 - Gate write-only tests on Terraform `1.11+` and prefer the shared `acceptance.WriteOnlyKeyVaultSecretTemplate` test helper for secret-backed values.
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>
-
 <a id="🔍-field-naming-standards"></a>
 
 ## 🔍 Field Naming Standards
@@ -1244,9 +1201,6 @@ Official upstream references:
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-write-only-attribute.md`
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/reference-naming.md`
-
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>
 
 <a id="🧪-testing-schema-patterns"></a>
 
@@ -1467,6 +1421,3 @@ resource "azurerm_resource" "test" {
 ### **Documentation & Standards**
 - 📝 **Documentation Guidelines**: [documentation-guidelines.instructions.md](./documentation-guidelines.instructions.md) - Documenting schema fields and validation
 - 🏢 **Provider Guidelines**: [provider-guidelines.instructions.md](./provider-guidelines.instructions.md) - Azure provider schema standards
-
----
-<a href="#schema-design-patterns">⬆️ Back to top</a>

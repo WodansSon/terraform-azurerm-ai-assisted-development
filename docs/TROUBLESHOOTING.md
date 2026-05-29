@@ -474,7 +474,7 @@ go install github.com/qixialu/azurerm-linter@latest
 - The committed review prompt does not guess PR numbers from branch names or git history.
 - The prompt-side linter flow requires a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The expected review-time command is the plain local CLI from the repo root on every platform, including Windows, and it should not be rewritten through WSL or another shell wrapper.
 - Review-time JSON parsing uses stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`.
-- If the stderr-suppressed run does not produce valid stdout JSON, the prompts rerun azurerm-linter once without stderr suppression so diagnostic output can still be used to classify `Not applicable` and `Not run` cases.
+- If the primary run completes without a classifiable result, the prompts classify from that same completed run only or fail closed as required by the review contract; they do not launch a second diagnostic linter pass.
 
 ---
 
@@ -503,6 +503,55 @@ This auto-approves only the read-only repo-root command used by the review promp
 - This does not broadly approve `git` commands.
 - Organization policy or other approval settings can still override local settings.
 - If you want to approve more commands, add them deliberately and narrowly.
+
+---
+
+### `/code-review-local-changes` or `/code-review-committed-changes` Resumes While `azurerm-linter` Is Still Running
+
+**Symptoms**:
+- The review prints tool/process chatter such as `Checked terminal output`, `Continuing the process`, or other first-person narration while `azurerm-linter` is still running.
+- The review starts reading files, drafting findings, or mutating the output before the linter result is complete.
+- The review kills the linter terminal or misclassifies an in-flight run.
+
+**Expected behavior**:
+- The review should launch `azurerm-linter` once.
+- The review should then block silently until that same linter run finishes.
+- The review should not read more files, draft findings, or emit inner-dialog text while the linter is still outstanding.
+
+**What this usually means**:
+- This is typically a Copilot runtime or model-orchestration problem, not a missing repo instruction.
+- The prompt and contract in this repository already tell the review to keep the linter as a blocking step and to avoid tool narration.
+- If you still see the behavior above, the runtime likely returned control early or surfaced intermediate tool-follow-up text anyway.
+
+**Recommended mitigations**:
+- Prefer `GPT-5.4 high` for review workflows in this repository.
+- Treat any review that emits pre-heading chatter, leaked first-person planning, or linter progress narration as suspect and rerun it.
+- If the linter is still running, do not trust findings that were drafted before the linter result was available.
+
+**Collect a runtime repro**:
+1. Open the Chat view ellipsis menu and enable the debugging surfaces for the failing run:
+   - `Show Agent Debug Logs`
+   - `Chat Debug View`
+2. Re-run the failing review prompt.
+3. Capture:
+   - the selected model
+   - the exact user prompt used
+   - the terminal command that launched `azurerm-linter`
+   - any user-visible chatter that appears before the final review body
+   - whether the linter process kept running after control returned to the model
+4. Save the relevant Agent Logs and Chat Debug output with the repro transcript.
+
+**What to report**:
+- Prompt name, for example `/code-review-committed-changes`
+- Model used, for example `GPT-5.4 high`
+- Whether the run was local review or committed review
+- The `azurerm-linter` command that was launched
+- The exact leaked narration or premature review text
+- Whether the runtime returned control while the linter process was still healthy and running
+
+**Important note**:
+- This repository can harden prompts, contracts, and regression cases.
+- It cannot fully enforce host runtime behavior when the runtime exposes tool-follow-up text or returns control early from a supposedly blocking terminal call.
 
 ---
 

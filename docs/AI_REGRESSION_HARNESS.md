@@ -4,6 +4,18 @@ This document defines the objective benchmark model for evaluating this reposito
 
 ## Goal
 
+## Model Baseline
+
+This toolkit is designed and regression-tested primarily against `GPT-5.4 high`.
+
+The harness should be interpreted with that baseline in mind:
+
+- prompt and contract behavior is tuned for `GPT-5.4 high`
+- adjudicated regression cases are meant to preserve behavior first observed and approved on `GPT-5.4 high`
+- weaker or differently aligned models may still run the same prompts, but they are not expected to deliver equivalent instruction adherence or output stability
+
+This does not make other models unusable. It does mean that regression outcomes and user-facing behavior guarantees in this repository are primarily scoped to `GPT-5.4 high` unless a document explicitly says otherwise.
+
 The current validation model is strong for structural correctness, but still weak for behavioral regressions.
 
 Today we can validate things like:
@@ -37,6 +49,13 @@ The benchmark becomes objective when all of the following are fixed:
 - The adjudicated must-catch and must-not-flag outcomes
 - The scoring rubric
 
+This also includes stable output-contract failures such as:
+
+- leaked first-person planning text
+- leaked tool or terminal narration
+- text emitted before the required first review heading
+- other output that violates the prompt-defined review-only contract
+
 **_Human judgment is still required when authoring and approving a case_**, but once a case is adjudicated the day-to-day scoring should be automatic.
 
 ## Repository Layout
@@ -47,7 +66,7 @@ The initial foundation lives under `tools/regression/`:
 - `tools/regression/schema/review-case.schema.json`
 - `tools/regression/schema/review-result.schema.json`
 - `tools/regression/cases/`
-- `tools/regression/new-regression-result-template.ps1`
+- `tools/regression/scaffold-regression-result.ps1`
 - `tools/regression/score-regression-case.ps1`
 - `tools/regression/run-regression-example.ps1`
 - `tools/regression/run-regression-case.ps1`
@@ -336,7 +355,7 @@ The harness also now supports a lightweight history layer on top of stable suite
 
 The contributor-facing authoring model is now moving toward a Terraform-style test abstraction layer:
 
-- `tools/regression/new-regression-test.ps1` scaffolds a contributor-facing HCL test template under `tools/regression/test/`.
+- `tools/regression/scaffold-regression-spec.ps1` scaffolds a contributor-facing HCL test template under `tools/regression/test/`.
 - Contributors author one HCL test spec instead of assembling the internal artifact graph by hand.
 - `tools/regression/build-regression-test.ps1 -SpecPath ...` materializes the internal harness artifacts from that HCL test spec.
 - `tools/regression/publish-regression-test.ps1` is the maintainer promotion step that turns a reviewed draft into the adjudicated examples corpus.

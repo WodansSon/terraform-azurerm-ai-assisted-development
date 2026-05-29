@@ -5,7 +5,6 @@ description: Testing guidelines for Terraform AzureRM provider Go files - test e
 
 # 🧪 Testing Guidelines
 
-<a id="🧪-testing-guidelines"></a>
 
 This file is a companion guide. Testing compliance rules are defined by the testing compliance contract:
 
@@ -15,7 +14,6 @@ Use this guide for testing patterns and Azure-specific testing heuristics.
 Use the `acceptance-testing` skill for acceptance-test execution workflow, environment prerequisites, and failure triage.
 If this guide conflicts with the testing contract, follow the testing contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🧪-efficient-testing-with-importstep">🧪 Efficient Testing</a> | <a href="#🧪-test-types">🧪 Test Types</a> | <a href="#⚡-essential-test-patterns">⚡ Essential Patterns</a> | <a href="#✅-customizediff-testing">✅ CustomizeDiff Testing</a> | <a href="#📊-data-source-testing-patterns">📊 Data Source Testing</a> | <a href="#🏗️-test-organization-and-structure">🏗️ Test Organization</a> | <a href="#☁️-azure-specific-testing-guidelines">☁️ Azure-Specific Testing</a>
 
 <a id="🧪-efficient-testing-with-importstep"></a>
 
@@ -49,7 +47,6 @@ func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
 - **Document rationale**: Explain when additional checks add value beyond ImportStep
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="🧪-test-types"></a>
 
@@ -169,7 +166,6 @@ func TestResourceValidation(t *testing.T) {
 ```
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="⚡-essential-test-patterns"></a>
 
@@ -219,7 +215,6 @@ func TestAccResourceName_requiresImport(t *testing.T) {
 **These practices help maintain awareness of Azure resource implications while enabling effective testing workflows.**
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="✅-customizediff-testing"></a>
 
@@ -321,7 +316,6 @@ func TestAccServiceName_customizeDiffValidation(t *testing.T) {
 **For Azure-specific CustomizeDiff behaviors and validation patterns, see:** [Azure Patterns - CustomizeDiff Validation](./azure-patterns.instructions.md#customizediff-validation)
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 ## Acceptance Testing Patterns
 
@@ -385,7 +379,6 @@ func TestAcc{{RESOURCE_NAME}}_requiresImport(t *testing.T) {
 }
 ```
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="📊-data-source-testing-patterns"></a>
 
@@ -455,7 +448,6 @@ check.That(data.ResourceName).Key("log_scrubbing_rule.#").HasValue("2"),
 check.That(data.ResourceName).Key("log_scrubbing_rule.0.match_variable").HasValue("QueryStringArgNames"),
 ```
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="🏗️-test-organization-and-structure"></a>
 
@@ -493,7 +485,6 @@ When working with related Azure resources that have both Linux and Windows varia
 - **Default behavior**: Ensure both implementations handle defaults and omitted fields consistently
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="☁️-azure-specific-testing-guidelines"></a>
 
@@ -562,7 +553,6 @@ provider "azurerm" {
 - Any resource blocking normal cleanup
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 ## 📚 Related Specialized Guidance
 
@@ -586,4 +576,3 @@ Other specialized references:
 - 🔄 **Migration Guide**: [migration-guide.instructions.md](./migration-guide.instructions.md) - Test migration patterns, breaking change testing
 - 🔄 **API Evolution**: [api-evolution-patterns.instructions.md](./api-evolution-patterns.instructions.md) - Testing API changes, version compatibility
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>

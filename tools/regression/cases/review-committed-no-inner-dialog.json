@@ -1,0 +1,66 @@
+{
+  "id": "review-committed-no-inner-dialog",
+  "title": "Committed review must not leak first-person planning or tool narration",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed review scenario where the reviewer is tempted to narrate blocking linter waits, internal drafting choices, or tool activity. The correct output must remain the prompt-defined review only, with no leaked inner dialog.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go",
+      "website/docs/r/example_resource.html.markdown"
+    ],
+    "notes": "Synthetic scope focused on output-shape discipline rather than a specific code defect. The review may load implementation, testing, and docs guidance, but must not leak that process as first-person commentary."
+  },
+  "expectedRules": [
+    "REVIEW-OUT-004",
+    "REVIEW-OUT-005",
+    "REVIEW-OUT-006",
+    "REVIEW-OUT-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "template-only-final-review",
+      "severity": "high",
+      "description": "The committed review should emit only the final prompt-defined review body plus the optional skill verification footer, without leaked planning or tool narration."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "leaked-first-person-planning",
+      "description": "The review must not emit first-person drafting or planning text such as I’m thinking, Maybe I could, I should, or I’ll check."
+    },
+    {
+      "key": "leaked-tool-narration",
+      "description": "The review must not emit tool activity narration such as Checked terminal output, Read file lines, Investigating, Evaluating terminal commands, or similar inner workflow text."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustNotIncludeMarkers": [
+      "I'm thinking",
+      "I’m thinking",
+      "Maybe I could",
+      "I should",
+      "I'll check",
+      "I’ll check",
+      "Checked terminal output",
+      "Investigating",
+      "Evaluating terminal commands",
+      "Read "
+    ]
+  },
+  "notes": "Use this case to benchmark whether committed review remains template-only when the model wants to narrate its internal work."
+}

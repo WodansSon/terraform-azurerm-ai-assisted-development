@@ -35,7 +35,7 @@ If the fresh-run requirements are not satisfied, hard-stop and output exactly th
 ## Command authorization
 The required read-only git commands and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
 That authorization includes the mandatory branch and diff commands plus targeted follow-on read-only git inspection commands scoped to already identified in-scope files, such as `git diff -- <paths>` and `git show <rev>:<path>`.
-Read-only `gh api` pull-request metadata commands are authorized only when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
+Read-only `gh api` pull-request metadata commands are authorized when step 1 requires the final direct PR-files fallback for a deterministic PR number, or when the user explicitly asks to use `gh`.
 Execute the required review commands immediately when their step applies.
 Do not stop to ask the user for confirmation before running them.
 Do not emit a preamble that asks permission or waits for approval before running them.
@@ -48,6 +48,8 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
 - Do not begin the normal review output until the audit is complete and the findings set is frozen.
 - If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
+- Perform at least one additional silent completeness pass over the fully drafted review before emitting any user-visible output.
+- Assemble the entire review in an internal buffer and emit it exactly once after that completeness pass succeeds.
 - The first character of the normal review output must be `#`.
 
 ## No preamble / no progress narration
@@ -67,7 +69,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 
 ### 1) Gather the committed change-set
 Use GitHub-backed pull request tools for PR metadata and changed-file scope resolution whenever they can provide the authoritative PR payload.
-Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` only for the required git commands in this step, targeted follow-on read-only git inspection commands on already identified in-scope files, and for a direct `gh api` fallback when the user explicitly requests CLI fallback or explicitly asks to use `gh`.
+Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` only for the required git commands in this step, targeted follow-on read-only git inspection commands on already identified in-scope files, and for the final direct `gh api` PR-files fallback when the contract requires it or when the user explicitly asks to use `gh`.
 The commands in steps 1 and 4 must be executed again for each invocation of this prompt, even if they were executed earlier in the conversation.
 
 Run this command first and do not repeat it:
@@ -78,34 +80,14 @@ git branch --show-current
 
 Determine committed review scope in this order:
 
-- If authoritative pull request context is available, use the pull request changed-file set and diff as the committed review scope.
-- Authoritative pull request context means one of the following explicit sources:
-  - the active pull request context, when available
-  - the currently open or viewed pull request context, when available
-- When pull request context is available, obtain the authoritative PR changed-file set from GitHub-backed pull request metadata.
-- Acceptable authoritative PR file sources are:
-  - GitHub-backed pull request tools
-  - environment-provided pull request metadata that includes the PR changed-file set
-  - the GitHub pull request files API for the resolved PR number
-  - `gh api` or equivalent GitHub CLI commands when they retrieve that same GitHub-backed PR files payload directly
-- If the user supplies an explicit PR number in the invocation text, that PR number is an acceptable deterministic input for resolving the authoritative PR changed-file set.
-- Prefer GitHub-backed pull request tools before terminal `gh api` when those tools can provide the authoritative PR changed-file set.
-- If a GitHub-backed pull request tool returns its payload via a temporary file path, you may read only the exact path returned by that tool in the current invocation as a transport artifact of the GitHub-backed result.
-- Do not discover, construct, glob, or infer local cache paths manually.
-- Do not assume the GitHub CLI is installed.
-- Do not require `gh` as the only way to resolve PR files.
-- Do not check `gh` availability or invoke `gh api` in the normal committed-review flow.
-- Only when the user explicitly requests CLI fallback or explicitly asks to use `gh`, you may check `gh` availability and then run a direct GitHub-backed PR files query using `gh api repos/<owner>/<repo>/pulls/<number>/files --paginate`.
-- Do not reconstruct PR scope by scraping local Copilot session artifacts, `workspaceStorage`, `chat-session-resources`, or ad hoc `content.json` files from the local machine.
-- Do not build PR scope through generated local shell scripts that deserialize PR metadata from user-profile caches.
-- Do not read tool-emitted spill files or cached JSON under user-profile paths such as `C:/Users/.../AppData/...`, `workspaceStorage`, or `chat-session-resources` unless the exact path was returned by a GitHub-backed pull request tool in the current invocation as a transport artifact of that tool result.
-- If a PR-metadata tool only exposes the changed-file set through a local spill file or cache path, try another GitHub-backed non-terminal path if available.
-- If direct GitHub-backed non-terminal PR retrieval paths are exhausted and the changed-file set is still only available through a local spill file or cache path, hard-stop and output exactly this one line and nothing else:
-  - `Cannot run code-review-committed-changes: authoritative PR scope is not available from GitHub-backed review tools without using local cache artifacts. Re-run with a branch-wide committed review, or explicitly request CLI fallback if you want to allow a direct gh api PR-files query.`
-- After the authoritative PR changed-file set is resolved, do not switch into repeated remote `gh api` file-content fetches for normal review inspection.
-- Use the committed diff and repo-local file reads validated against the diff as the default per-file analysis path unless the user explicitly requests remote-source verification.
-- Prefer direct file reads and targeted search over extra shell-based helper passes when inspecting already identified in-scope files.
-- Targeted read-only git inspection commands limited to already identified in-scope files are part of the normal review path when they clarify committed content or diff shape.
+- Apply `REVIEW-FILE-004` and `REVIEW-EVID-*` exactly when resolving PR scope, including the committed-review scope decision table in the shared contract.
+- Treat explicit PR numbers and environment PR identifiers as deterministic inputs for GitHub-backed PR scope resolution.
+- For an explicit PR number, try the preferred direct non-CLI PR-files API path first.
+- Treat summary-only results, browser links, and forbidden spill or cache paths as insufficient for PR scope resolution; ignore them and continue with the next allowed GitHub-backed PR-files path.
+- If the allowed non-CLI PR-files paths are exhausted and a deterministic PR number is still available, use the direct `gh api` PR-files fallback for that same PR before failing closed.
+- If authoritative PR scope still cannot be resolved after the contract-defined retrieval paths are exhausted, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: authoritative PR scope could not be resolved from allowed local context, GitHub-backed review tools, or direct gh api PR-files retrieval. Local spill files remain forbidden. Re-run with a branch-wide committed review if you want to skip PR-scoped resolution.`
+- After PR scope is resolved, use repo-local evidence for per-file inspection unless the user explicitly requests remote-source verification.
 - If explicit user-supplied PR context and environment PR context both exist, resolve them before continuing:
   - If they match, use that PR.
   - If they conflict, hard-stop and output exactly this one line and nothing else:
@@ -119,19 +101,7 @@ git --no-pager diff --no-prefix --unified=3 origin/main...HEAD
 ```
 
 Rules:
-- When authoritative pull request context exists, treat the pull request changed-file set and diff as the committed review scope.
-- When an explicit PR number is available, the review may use that PR number to resolve the authoritative changed-file set from GitHub without relying on local branch-diff inference.
-- Prefer GitHub-backed pull request tools for PR metadata retrieval, and use terminal `gh api` only when the user explicitly requests CLI fallback.
-- Do not reject an authoritative GitHub-backed pull request tool result solely because the tool transports that result through an exact temporary file path returned in the current invocation.
-- Do not automatically turn an explicit PR number into a terminal `gh api` prerequisite.
-- Only if the user explicitly requests CLI fallback may the review attempt the direct `gh api repos/<owner>/<repo>/pulls/<number>/files --paginate` path.
-- Never access PR metadata through local user-profile caches or tool spill files.
-- When CLI fallback is explicitly allowed, prefer a direct `gh api` GitHub-backed PR-files request over any local cache-backed recovery attempt.
-- Do not use repeated terminal `gh api` calls as a general substitute for reading committed file contents during normal review.
-- Do not silently choose between conflicting explicit and environment PR targets.
-- Conflict between explicit and environment PR context must fail closed unless the user explicitly requests an override.
-- Do not expand committed-review findings to unrelated branch-only commits when authoritative pull request context exists.
-- Fall back to `origin/main...HEAD` only when no authoritative pull request context exists or when the user explicitly asks for a branch-wide committed review.
+- Apply `REVIEW-FILE-001` through `REVIEW-FILE-005` and `REVIEW-EVID-*` exactly rather than restating those rules from memory.
 - If the authoritative committed review scope is empty, hard-stop and output exactly:
   - `☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️`
 - If the committed review scope is large, inspect the changed files individually rather than rerunning broader scope commands.
@@ -148,6 +118,7 @@ Rules:
 - When reviewing a `terraform-provider-azurerm` style workspace, treat `contributing/README.md` as the repo-level contributor guide when present.
 - Read `.github/pull_request_template.md` when present.
 - Read any file-scoped instructions or skills that directly govern the changed files.
+- When `internal/**/*.go` or `internal/**/*_test.go` files are in scope, load the implementation and testing instruction set required by `REVIEW-SCOPE-005` before classifying findings.
 - If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
 - When `website/docs/**/*.html.markdown` files are in scope, audit those docs files using the docs contract instead of generic schema-parity assumptions.
 - For docs files in committed review scope, treat `DOCS-DEPR-*` as authoritative for next-major deprecations: legacy non-vNext fields may be intentionally removed from live reference docs and moved to versioned upgrade guides.
@@ -160,62 +131,21 @@ Rules:
 ### 4) Run azurerm-linter when applicable
 - If the committed change-set includes files under `internal/**/*.go` or `internal/**/*_test.go`, attempt azurerm-linter and report it in its own section.
 - When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
-- Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and an explicit timeout of at least `300000` ms for the linter command.
-- Wait for the linter command to finish before classifying the linter section.
-- Do not report `Not run` merely because the initial wait window elapsed while the linter command was still running.
-- If the initial sync call times out but the linter process continues running, keep following that same terminal session until completion before classifying the result.
+- Apply `REVIEW-LINT-002*` through `REVIEW-LINT-005` exactly for linter execution, blocking behavior, and classification, including the azurerm-linter execution-state decision table in the shared contract.
+- Use one blocking sync linter run with no timeout, stay blocked until the completed result is classifiable, and do not do unrelated review work or user-visible narration while that run is outstanding.
 - Committed review prefers exact committed-scope linting:
   - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
-  - Run the linter from that repo root
+  - Change the terminal working directory to that resolved repo root in a separate command before invoking the linter
   - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
   - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
+  - Do not invent a composite wrapper line that chains repo-root lookup, `Set-Location`, and azurerm-linter execution together when the command can be run directly from the resolved working directory
+  - Do not use inline variable-assignment wrappers such as PowerShell `$repo = git rev-parse --show-toplevel; Set-Location $repo; azurerm-linter ...` or `$repoRoot = git rev-parse --show-toplevel; Set-Location $repoRoot; azurerm-linter ...`
   - Keep stdout clean for JSON parsing by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`
   - On Windows PowerShell, use plain `azurerm-linter --pr=<number> -output json 2>$null` from the resolved repo root rather than a WSL-prefixed equivalent
-  - Determine a valid pull request number deterministically from explicit review context only
-  - Allowed PR number sources are:
-    - the active pull request context, when available
-    - the currently open or viewed pull request context, when available
-    - an explicit PR number supplied by the user or prompt invocation text
-  - If explicit and environment PR sources conflict, do not run the linter until the PR target is resolved by matching values or an explicit user override
+  - Determine the PR number exactly as required by `REVIEW-LINT-002E`; do not guess or invent one
   - If a valid PR number is available, run `azurerm-linter --pr=<number> -output json` with shell-native stderr suppression
-  - Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals
-  - If the stderr-suppressed run does not yield valid stdout JSON or otherwise cannot be classified deterministically, rerun once without stderr suppression to inspect diagnostics
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
-- If no valid pull request number can be determined for the committed branch changes, mark the linter section as `Not run` and instruct the user to create a draft PR and run the review again.
-- If the local binary is missing or the tool cannot be run or scoped correctly, mark the section as `Not run` and state the reason.
-- If the tool reports `Found 0 changed files` or otherwise has no changed packages to analyze and prints `Error: no packages to analyze`, treat that result as `Not applicable`, not `Not run`.
-- If the tool reports a flag or usage parse error such as `flag provided but not defined` and prints usage help, treat that result as `Not run` due to invocation error, not as an install problem.
-- Require `azurerm-linter v0.2.0` or newer for review-time JSON mode.
-- When the local binary is missing, older than `v0.2.0`, or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
-- Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
-- Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
-- Structure the linter section from the actual tool output:
-  - When a valid JSON payload is present on stdout, use `version` as the linter version, use `summary.issue_count` as the issue count, and ignore human-readable preamble logs for structured fields
-  - Treat stdout JSON as the authoritative structured source; use stderr diagnostics only when a rerun without suppression is needed to classify a non-JSON result
-  - When a valid JSON payload is absent, the tool footer such as `Found X issue(s)` may be used as the issue count when present
-  - Put remote/worktree/package-detection/loading/cleanup logs into `Summary`, not the `### 🎯 **MUST FIX**` section
-  - Put only actual violation lines into the `### 🎯 **MUST FIX**` section
-  - If there are no violations, set the `### 🎯 **MUST FIX**` section to a single bullet: `- None`
-  - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise keep the raw `CHECKID path:line: message` form
-  - In the linked form, keep `file:line` together inside the same Markdown link so it matches the clickable file-reference style used elsewhere in the review
-  - When a valid JSON payload is present, derive findings from `findings[]`, derive the reviewer-facing summary from JSON `summary` and `scope` fields, and trim any duplicated leading check ID from `message`
-  - If a valid JSON payload is present but `version` is lower than `v0.2.0`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.2.0` or newer
-  - Normalize temporary worktree paths to repo-relative paths when deterministic; otherwise keep the raw path
-  - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
-  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not show an install hint unless the binary is actually missing
-  - If `-output json` is unsupported and the tool reports a flag or usage parse error, report that as `Not run`, state that review requires `azurerm-linter v0.2.0` or newer, and do not fall back to text scraping
-  - Do not invent broader-scope fallback reporting fields in the normal review flow
-  - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
-  - Limit the `### 🧰 **AZURERM LINTER**` execution report to `Version`, `Status`, `Run Scope`, `Issue Count`, and `Summary`
-  - Follow it with a separate `### 🎯 **MUST FIX**` section
-  - Use the completed linter output, not partial early output, when determining `Version`, `Status`, `Issue Count`, `Summary`, and the `### 🎯 **MUST FIX**` section
-  - If the first sync wait returns while the linter is still executing, continue reading from that same terminal session until the process exits instead of treating the timeout itself as the final linter result
-  - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
-  - If no valid PR number can be determined, use `Status: Not run`, `Run Scope: PR scope`, `Issue Count: n/a`, and a summary that tells the user to create a draft PR and run the review again
-  - If the PR number was not supplied explicitly in the committed review invocation, include an example such as `/code-review-committed-changes PR 12345` in that summary
-  - Do not ask the user to approve `git rev-parse --show-toplevel` or `azurerm-linter` execution during the normal review flow
-  - Do not create temporary scripts or persisted temp log files to run or parse the linter in the normal review flow
-  - If a direct linter run cannot be interpreted deterministically, report `Not run` with a concise reason instead of adding execution scaffolding
+- Classify applicability, failures, JSON requirements, and `AZURERM LINTER` output shape exactly as required by `REVIEW-LINT-003*`, `REVIEW-LINT-004`, and `REVIEW-LINT-005`.
 
 ### 5) Produce the review output
 - Review the full committed change-set.
@@ -232,7 +162,14 @@ Rules:
 - When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
-- Before writing the first `#` of the review output, silently confirm that the findings set is final for this invocation.
+- Before writing the first `#` of the review output, silently iterate on the drafted review until the findings set is final and no additional findings, evidence corrections, or template fixes are needed.
+- Buffer the full review body internally and emit it once only after that silent iteration completes.
+- If one or more routed skills were actually loaded and used during the review, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
+- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill, in first-use order.
+- Do not emit a verification footer when no skill was actually used during the review.
+- Do not infer a skill from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
+- If `Repo Guidance` states that a skill was loaded or used, the verification footer must include the matching `Skill used:` line.
+- Do not emit any text after the verification footer.
 - After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
 
 ## Output format (use this exact structure)
@@ -242,6 +179,7 @@ Output must be rendered Markdown.
 - Do not wrap the review in triple-backtick fences.
 - Do not output text before the review headings.
 - Emit each heading exactly once and in this order.
+- After `## 🏆 **OVERALL ASSESSMENT**`, append the optional verification footer only when one or more skills were actually used.
 
 1. `# 📋 **Code Review**: ${change_description}`
 2. `## 📊 **CHANGE SUMMARY**`
@@ -322,7 +260,17 @@ Use this template:
 
 ## 🏆 **OVERALL ASSESSMENT**
 [Overall assessment and merge-readiness recommendation.]
+
+Preflight complete: yes
+Skill used: [skill-name]
+Skill used: [skill-name]
 ```
+
+Footer rules:
+- Omit the `Preflight complete:` and `Skill used:` lines entirely when no skill was actually used.
+- When the footer is present, `Preflight complete: yes` must appear exactly once before the `Skill used:` lines.
+- Emit one `Skill used:` line per actually used skill, in first-use order.
+- Emit no other text after the footer.
 
 Individual findings should use this structure when expanded:
 
