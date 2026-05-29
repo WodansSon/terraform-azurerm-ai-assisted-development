@@ -379,6 +379,8 @@ If PR context is not available, pass the PR number explicitly:
 You: /code-review-committed-changes PR 12345
 ```
 
+An explicit PR number makes the committed review go straight to the authoritative PR-files path for that PR before trying fallback recovery.
+
 If no valid PR can be determined, the committed review reports the linter section as `Not run` and tells you to create a draft PR or rerun with an explicit PR number.
 
 ---

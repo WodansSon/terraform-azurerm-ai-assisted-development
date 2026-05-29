@@ -109,18 +109,9 @@ Rules:
 - When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
 - Apply `REVIEW-LINT-002*` through `REVIEW-LINT-005` exactly for linter execution, blocking behavior, and classification.
 - Use one blocking sync linter run with no timeout, stay blocked until the completed result is classifiable, and do not do unrelated review work or user-visible narration while that run is outstanding.
-- Local review prefers exact local-scope linting from the repo root:
-  - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
-  - Change the terminal working directory to that resolved repo root in a separate command before invoking the linter
-  - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
-  - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
-  - Do not invent a composite wrapper line that chains repo-root lookup, `Set-Location`, and azurerm-linter execution together when the command can be run directly from the resolved working directory
-  - Do not use inline variable-assignment wrappers such as PowerShell `$repoRoot = git rev-parse --show-toplevel; Set-Location $repoRoot; azurerm-linter ...`
-  - Keep stdout clean for JSON parsing by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`
-  - On Windows PowerShell, use plain `azurerm-linter -output json 2>$null` from the resolved repo root rather than a WSL-prefixed equivalent
-  - Run filtered mode first using a direct `azurerm-linter -output json` invocation with shell-native stderr suppression and without `--pr`
-  - Treat filtered mode as the baseline review behavior for this feature
-  - Do not add a `--no-filter` workaround pass during ordinary review runs
+- Resolve the git repo root with `git rev-parse --show-toplevel`, change to that working directory in a separate command, and run the plain local CLI invocation from there.
+- Run filtered mode using `azurerm-linter -output json` with shell-native stderr suppression and without `--pr`.
+- Do not add wrapper-shell rewrites, composite wrapper lines, inline variable wrappers, helper scripts, `--no-filter` workaround passes, or second linter runs in the normal review path.
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
 - Classify applicability, failures, JSON requirements, and `AZURERM LINTER` output shape exactly as required by `REVIEW-LINT-003*`, `REVIEW-LINT-004`, and `REVIEW-LINT-005`.
 

@@ -335,26 +335,11 @@ Committed review scope decision table:
 ### REVIEW-LINT-002B: Execute azurerm-linter from the git repo root
 - Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
 - Rule: Execute azurerm-linter from that repo root, not from an arbitrary subdirectory.
-- Rule: Run the linter in the current platform's native shell environment using the plain local CLI invocation.
-- Rule: For the primary JSON-mode run, keep stdout clean by redirecting stderr to the active shell's null device using native syntax.
-- Rule: Examples of native stderr suppression include PowerShell `2>$null`, POSIX shells `2>/dev/null`, and cmd.exe `2>nul`.
-- Rule: Do not rewrite the command through another runtime environment or wrapper such as `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`.
-- Rule: On Windows, the expected review-time linter command is plain `azurerm-linter ...` from the resolved repo root, not a WSL-prefixed equivalent.
-- Rule: Record the resolved working directory only when it is needed to explain `Not run`, scope ambiguity, or debugging details.
-- Rule: In the normal review path, run azurerm-linter directly rather than through generated shell scripts or PowerShell wrapper scripts.
-- Rule: Resolve the git repo root and change to that working directory as separate steps when needed; do not create a composite wrapper line that chains repo-root lookup, `Set-Location`, and azurerm-linter execution together.
-- Rule: Do not use inline variable-assignment wrappers such as PowerShell `$repo = git rev-parse --show-toplevel; Set-Location $repo; azurerm-linter ...` or `$repoRoot = git rev-parse --show-toplevel; Set-Location $repoRoot; azurerm-linter ...` in the normal review path.
+- Rule: Run the linter in the current platform's native shell environment using the plain local CLI invocation, and keep stdout clean for the primary JSON-mode run by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`.
+- Rule: Do not rewrite the command through another runtime environment or wrapper such as `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`, and do not replace the direct invocation with generated scripts, composite wrapper lines, or inline variable-assignment wrappers.
 - Rule: Use `run_in_terminal` in `mode: "sync"` for azurerm-linter without an explicit timeout so the tool can wait for natural completion in one blocking call.
-- Rule: Wait for the linter command to finish before classifying the linter section result.
-- Rule: If that sync azurerm-linter call unexpectedly returns control with a live terminal ID or a runtime note that the command may still be running, treat that state as still blocked rather than as a usable intermediate result.
-- Rule: In that early-return state, do not call `get_terminal_output`, do not inspect partial terminal output, and do not resume any other review work; remain blocked until the runtime delivers the terminal completion notification or an actual completed linter result.
-- Rule: Do not layer user-visible terminal-output polling, model-managed wait choreography, or retry loops around azurerm-linter.
-- Rule: Do not continue broader review evidence gathering, finding classification, or user-visible review output while the linter process is still running.
-- Rule: Treat a still-running linter as an outstanding blocking review step, not as a background task that can be ignored while the review proceeds.
-- Rule: After launching azurerm-linter, do not perform unrelated file reads, searches, diffs, terminal commands, output-file inspection, or draft-building work until that same linter run has completed and the linter section can be classified.
-- Rule: After launching the linter, emit no user-visible commentary until the linter has completed and the linter section can be classified.
-- Rule: Do not kill, restart, or replace that linter run while it is still the active blocking review step.
-- Rule: Do not launch a second azurerm-linter pass during normal review merely because the primary run did not yield valid stdout JSON.
+- Rule: If that sync azurerm-linter call unexpectedly returns control with a live terminal ID or a runtime note that the command may still be running, treat that state as still blocked. Do not inspect partial terminal output, do not resume other review work, and do not emit user-visible commentary until the same linter run has completed and the linter section can be classified.
+- Rule: Do not kill, restart, or replace the active linter run, and do not launch a second azurerm-linter pass during normal review merely because the primary run did not yield valid stdout JSON.
 - Rule: If the primary linter run does not produce a classifiable completed result, do not continue the review from file evidence alone; fail closed with `Not run` for the linter section or hard-stop the review as the active prompt requires.
 
 azurerm-linter execution-state decision table:
@@ -376,10 +361,7 @@ azurerm-linter execution-state decision table:
 - Rule: Treat filtered mode as the primary run because it is faster and scoped to the current diff shape detected by the tool.
 - Rule: Use stdout JSON as the authoritative structured source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content whenever a valid JSON payload is present.
 - Rule: Treat stderr as diagnostics only; do not trigger a second linter pass just to recover diagnostic text during normal review.
-
-### REVIEW-LINT-002D: Treat filtered mode as the normal review baseline
-- Rule: Normal review runs should rely on filtered azurerm-linter mode as the authoritative baseline.
-- Rule: Do not add a `--no-filter` workaround pass for deletion-only diffs or `0` changed lines during ordinary review runs.
+- Rule: Normal review runs should rely on filtered azurerm-linter mode as the authoritative baseline, and should not add a `--no-filter` workaround pass for deletion-only diffs or `0` changed lines during ordinary review runs.
 - Rule: If the user explicitly asks for broader package debt or manual no-filter validation, disclose that this is broader than the standard review scope.
 
 ### REVIEW-LINT-002E: Match linter invocation to the review type deterministically

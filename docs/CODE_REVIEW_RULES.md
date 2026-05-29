@@ -35,6 +35,16 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/resource-implementation`
 - `/acceptance-testing`
 
+The important architectural point is that these contract files are now the normative rule sources.
+
+Companion guides under `.github/instructions/` still matter, but they are primarily there to provide worked patterns, heuristics, and examples that support the contracts. If a review cites a stable rule ID such as `REVIEW-*`, `DOCS-*`, `IMPL-*`, or `TEST-*`, the authority for that citation lives in a contract file, not in a companion guide.
+
+In practice, that means:
+
+- contract files define the stable rule IDs and the governing requirements
+- prompts and skills consume those contracts during audits and authoring flows
+- companion guides help the model apply those rules correctly without acting as a second authority layer
+
 ## How To Read A Rule ID
 
 Rule IDs follow a stable format:
@@ -100,6 +110,17 @@ This means the review applied AI-customization-file checks because the change to
 
 It usually signals that the reviewer checked determinism, precedence, and alignment with shared contracts.
 
+### `REVIEW-FILE-004`
+
+This means the review applied the committed-review PR-scope rules.
+
+In practice, the review should:
+
+- use authoritative PR scope instead of drifting into unrelated branch-only commits
+- treat an explicit PR number as a prompt to try the direct PR-files path first
+- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope
+- use the single allowed `gh api` fallback only after the non-CLI PR-files paths are exhausted for that same PR number
+
 ### `REVIEW-SCOPE-005`
 
 This means the review applied Go/provider-specific guidance because the change touched:
@@ -135,9 +156,11 @@ In practice, the review should:
 These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:
 
 - Whether the linter was applicable
-- How it was invoked
+- The simplified baseline invocation model: one filtered JSON-mode run from the repo root
 - Why the linter section is `Issues found`, `No issues`, `Not applicable`, or `Not run`
 - How linter findings were turned into review Issues
+
+The contract-first model matters here too: the linter execution policy, status mapping, and output-shape requirements now live in the shared review contract, while troubleshooting and companion docs explain the runtime behavior and known failure modes around those rules.
 
 ## `DOCS-*` Rule Areas
 
@@ -212,5 +235,6 @@ This reference is most useful when:
 - `DOCS-*` IDs are documentation review contract rules.
 - `IMPL-*` IDs are Go implementation contract rules.
 - `TEST-*` IDs are acceptance-testing contract rules.
+- The stable authority for those IDs lives in the contract files, not in companion guides.
 - The area code tells you what kind of rule is being cited.
 - The IDs are there to make reviews traceable, not cryptic.

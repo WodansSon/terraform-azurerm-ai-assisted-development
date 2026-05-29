@@ -471,9 +471,10 @@ go install github.com/qixialu/azurerm-linter@latest
 
 **Notes**:
 - `/code-review-local-changes` does not require PR context and continues to use local-diff linting.
+- An explicit PR number now drives committed review scope directly through the authoritative PR-files path first, rather than starting with summary-style PR metadata tools.
 - The committed review prompt does not guess PR numbers from branch names or git history.
-- The prompt-side linter flow requires a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The expected review-time command is the plain local CLI from the repo root on every platform, including Windows, and it should not be rewritten through WSL or another shell wrapper.
-- Review-time JSON parsing uses stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`.
+- The review-time linter flow requires a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo.
+- Normal review runs use one filtered JSON-mode linter pass from the repo root, with stdout treated as the structured source of truth and stderr suppressed with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`.
 - If the primary run completes without a classifiable result, the prompts classify from that same completed run only or fail closed as required by the review contract; they do not launch a second diagnostic linter pass.
 
 ---
@@ -517,6 +518,7 @@ This auto-approves only the read-only repo-root command used by the review promp
 - The review should launch `azurerm-linter` once.
 - The review should then block silently until that same linter run finishes.
 - The review should not read more files, draft findings, or emit inner-dialog text while the linter is still outstanding.
+- The normal review baseline is one filtered JSON-mode run from the repo root, not a stack of recovery or workaround passes.
 
 **What this usually means**:
 - This is typically a Copilot runtime or model-orchestration problem, not a missing repo instruction.

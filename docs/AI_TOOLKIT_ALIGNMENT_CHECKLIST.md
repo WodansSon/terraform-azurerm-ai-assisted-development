@@ -120,7 +120,7 @@ For runtime guidance under `.github/copilot-instructions.md`, `.github/instructi
 - Avoid concrete resource-specific examples when the rule is meant to generalize across the provider
 - Keep concrete resource names only when they are part of intentional evidence, a regression fixture, or a dedicated examples document
 
-### 4. Rule-reference documentation is still accurate
+### 4. Rule-reference and architecture documentation is still accurate
 
 Update `docs/CODE_REVIEW_RULES.md` when either of these happens:
 
@@ -128,6 +128,12 @@ Update `docs/CODE_REVIEW_RULES.md` when either of these happens:
 - A new rule area is introduced that is useful for end users to understand
 
 You do not need to update it for every new individual rule inside an already-documented area.
+
+Update repo-only architecture and maintainer reference docs when the repository's customization layout or responsibilities materially change, for example:
+
+- `docs/ARCHITECTURE.md` when the repo structure, runtime payload, or repo-only maintenance tooling model changes
+- `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md` when the contract, routing, prompt, skill, or payload-boundary direction changes
+- `docs/AI_REGRESSION_HARNESS.md` when the harness entrypoints, scoring flow, or maintainer benchmark model changes materially
 
 ### 5. Runtime payload and maintenance tooling stay separated
 
@@ -327,6 +333,7 @@ When asked whether the AI toolkit is up to date, check these in order:
 - `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` passes.
 - `installer/file-manifest.config` includes all required runtime payload files.
 - `docs/CODE_REVIEW_RULES.md` still matches the current contract families and rule areas.
+- Repo-only architecture and benchmark docs still describe the current layout and maintainer workflow shape.
 - `CHANGELOG.md` reflects the current release state.
 - No new contract, skill, prompt, or companion file was added without corresponding alignment updates.
 

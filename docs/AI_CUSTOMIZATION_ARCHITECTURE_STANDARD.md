@@ -5,9 +5,11 @@ This document defines how this repository should structure GitHub Copilot and VS
 Purpose:
 
 - preserve current functionality and determinism while modernizing the customization system
+- reflect the repository's current contract-first runtime layout more accurately
 - align the repository to current first-party GitHub Copilot and VS Code customization guidance
 - reduce user friction from too many entrypoints without hiding important behavior in fragile instruction text
 - give maintainers a regression-safe migration path for existing instructions, prompts, skills, and review workflows
+- keep runtime payload boundaries, repo-only maintainer assets, and executable validation surfaces explicit
 
 This is a repo-only maintainer document. It is not runtime payload and must not be added to `installer/file-manifest.config`.
 
@@ -40,6 +42,20 @@ Key takeaways from that guidance:
 - No increase in required user steps for common workflows.
 - No silent movement of normative rules out of contract files.
 - No prompt removal until replacement behavior is validated.
+
+## Current Architectural Direction
+
+The repository is already operating in a contract-first architecture.
+
+The current direction is:
+
+- keep normative compliance rules in contract files with stable rule IDs
+- keep prompts as compatibility-sensitive user entrypoints, but make them thinner by pushing shared logic into contracts and skills
+- keep routing files short and deterministic so they point the model at the right contract and skill without becoming a second guide layer
+- keep companion guides focused on examples, heuristics, and pattern support rather than workflow orchestration or normative rules
+- treat `installer/file-manifest.config` as the source of truth for shipped runtime payload
+- treat validators, drift checks, and the regression harness as first-class parts of the architecture rather than optional maintenance extras
+- keep repo-only maintainer docs aligned with the runtime model so architectural guidance does not lag behind the contracts and prompts
 
 ## Layer Responsibilities
 
@@ -171,7 +187,15 @@ Use tooling for:
 
 Use prose only for the parts that cannot be enforced mechanically.
 
+In this repository, those validator and benchmark surfaces are part of the intended architecture. They are the safety rail that lets maintainers simplify prompts and companion guides without losing deterministic behavior.
+
 ## Current Repository Classification
+
+### Runtime payload boundary
+
+- `installer/file-manifest.config` is the authoritative shipped-runtime boundary.
+- Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
+- Repo-only docs, validators, regression fixtures, and maintainer-only skills must stay out of the installed payload unless the manifest is intentionally changed.
 
 ### Always-on runtime guidance
 
@@ -235,6 +259,7 @@ Near-term target state:
 
 - keep these prompts working
 - move reusable review logic behind them into contracts and skills where practical
+- keep shrinking duplicated execution prose when the contract already defines the behavior
 - avoid increasing the number of required user-invoked prompts
 
 ### Runtime skills
@@ -249,13 +274,25 @@ Current classification:
 - correct primitive for specialized workflows
 - preferred home for additional reusable workflow logic
 
+Current direction for runtime skills:
+
+- keep authoring and migration workflow detail in skills rather than in giant companion guides
+- use routing instructions to steer the model into the correct skill deterministically
+- preserve the distinction between shipped runtime skills and repo-only maintainer skills
+
 ### Repo-only maintainer assets
 
 - `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md`
+- `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md`
+- `docs/AI_CUSTOMIZATION_MIGRATION_INVENTORY.md`
+- `docs/AI_REGRESSION_HARNESS.md`
+- `docs/CODE_REVIEW_RULES.md`
+- `docs/ARCHITECTURE.md`
 - `tools/check-upstream-contributor-drift.ps1`
 - `tools/validate-ai-toolkit.ps1`
 - `tools/validate-contracts.ps1`
 - `tools/validate-changelog-taxonomy.ps1`
+- `tools/regression/**`
 - `tools/config/upstream-contributor.json`
 - repo-only maintainer skills and supporting docs
 
@@ -264,6 +301,13 @@ These remain outside the installed payload.
 ## Review Workflow Position
 
 Because review UX is already considered difficult by the team, prompt multiplication is a regression risk.
+
+Current review architecture direction:
+
+- keep the three review prompts as compatibility-sensitive front doors
+- keep exact hard-stop text and output contracts in the prompts where they are user-visible and regression-sensitive
+- keep PR-scope logic, linter status mapping, and review-rule authority in the contracts
+- keep troubleshooting and reference docs aligned with that contract-first review model
 
 Near-term rule:
 
@@ -378,3 +422,6 @@ For review workflow changes specifically:
 - Keep fixing obviously stale or incorrect guidance now.
 - Do not begin wide cosmetic rewrites until each affected runtime file has been classified under this standard.
 - Prefer skills plus routing over new user-facing prompts when adding specialized workflow behavior.
+- Prefer contract edits over companion-guide edits when the change is normative.
+- Update repo-only architecture and rule-reference docs whenever the contract-first model or payload boundaries materially change.
+- Keep the regression harness and one-shot validator in the loop for any customization-layer change that affects prompts, routing, contracts, or maintainer workflow.

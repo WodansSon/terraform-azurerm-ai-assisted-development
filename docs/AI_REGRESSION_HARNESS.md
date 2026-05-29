@@ -4,6 +4,8 @@ This document defines the objective benchmark model for evaluating this reposito
 
 ## Goal
 
+Keep prompt, contract, routing, and skill behavior benchmarkable as the repository continues moving workflow detail out of prompts and companion guides and into a contract-first, validator-backed architecture.
+
 ## Model Baseline
 
 This toolkit is designed and regression-tested primarily against `GPT-5.4 high`.
@@ -60,20 +62,28 @@ This also includes stable output-contract failures such as:
 
 ## Repository Layout
 
-The initial foundation lives under `tools/regression/`:
+The current maintainer harness surface lives under `tools/regression/`:
 - `tools/regression/README.md`
 - `tools/regression/config/score-weights.json`
 - `tools/regression/schema/review-case.schema.json`
 - `tools/regression/schema/review-result.schema.json`
 - `tools/regression/cases/`
+- `tools/regression/scaffold-regression-spec.ps1`
 - `tools/regression/scaffold-regression-result.ps1`
 - `tools/regression/score-regression-case.ps1`
 - `tools/regression/run-regression-example.ps1`
 - `tools/regression/run-regression-case.ps1`
+- `tools/regression/run-regression-harness.ps1`
+- `tools/regression/run-regression-suite.ps1`
 - `tools/regression/hydrate-regression-run.ps1`
 - `tools/regression/clean-regression-runs.ps1`
+- `tools/regression/validate-regression-artifacts.ps1`
+- `tools/regression/write-regression-history-snapshot.ps1`
+- `tools/regression/summarize-regression-history.ps1`
 
 This is repo-only maintenance tooling. It is not installer payload.
+
+The harness should be understood as part of the repository's intended maintenance architecture alongside the shared contracts and the one-shot validator, not as an isolated experimental sidecar.
 
 ## Case Model
 
@@ -257,6 +267,8 @@ The direct skill surface currently in scope for this harness is narrower:
 - `docs-writer`
 - `resource-implementation`
 - `acceptance-testing`
+
+This benchmark scope matters more now that stable rule authority lives in contract files and more reusable workflow logic is being pushed behind thinner prompts and slimmer companion guides.
 
 The repo-only `ai-toolkit-maintenance` skill is intentionally excluded from the regression benchmark surface because it exists to keep repository guidance aligned before commit rather than to benchmark the end-user AI workflow itself.
 
