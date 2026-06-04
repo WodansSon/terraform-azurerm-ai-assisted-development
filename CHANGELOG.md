@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [3.4.0] - 2026-06-04
+
+### Added
+
+### Changed
+
 - **User-Priority:**
   - **[Review]** - The toolkit now states more explicitly that the prompt, contract, and regression baseline are designed and primarily validated for `GPT-5.4 high`, rather than implying equivalent behavior across all selectable models.
   - **[Review]** - Local and committed review now buffer and complete the audit before emitting headings, forbid leaked inner-dialog or tool narration, and restore explicit end-of-review skill verification footers so findings are emitted once as a finished review.
