@@ -5,11 +5,9 @@ description: Security and compliance patterns for the Terraform AzureRM provider
 
 # Security & Compliance Patterns
 
-<a id="security--compliance-patterns"></a>
 
 Security and compliance patterns for the Terraform AzureRM provider including input validation, credential management, and security best practices.
 
-**Quick navigation:** <a href="#🔐-input-validation-and-sanitization">🔐 Input Validation</a> | <a href="#🔑-credential-management">🔑 Credential Management</a> | <a href="#🛡️-security-patterns">🛡️ Security Patterns</a> | <a href="#📋-compliance-requirements">📋 Compliance</a>
 
 <a id="🔐-input-validation-and-sanitization"></a>
 
@@ -411,4 +409,3 @@ func validateGDPRCompliance(resource interface{}) error {
 }
 ```
 ---
-<a href="#security--compliance-patterns">⬆️ Back to top</a>

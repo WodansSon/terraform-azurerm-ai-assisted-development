@@ -4,36 +4,68 @@ This document describes how to create a new release of the Terraform AzureRM AI-
 
 ## Release Process
 
-### 1. Update the CHANGELOG.md
+### 1. Finalize the `Unreleased` changelog entry on your branch
 
-Add a new section at the top of `CHANGELOG.md` with the version number and changes:
+Before opening the release PR, make sure the current `## [Unreleased]` section in `CHANGELOG.md` reads like final release notes rather than patch-history notes and still follows the current grouped taxonomy structure.
+
+When you are actually cutting the release, move those `Unreleased` notes into the new versioned section using the same grouped taxonomy shape:
 
 ```markdown
 ## [1.0.0] - 2025-10-21
 
 ### Added
-- Initial release of AI-assisted development tools
-- Installation scripts for Windows and Linux/macOS
-- Comprehensive instruction files for provider development
+
+- **User-Priority:**
+  - **[Docs]** - Initial release of AI-assisted development tools and maintainer documentation.
+  - **[Installer]** - Installation scripts and installer bundles for Windows and Linux/macOS.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Initial instruction, prompt, and skill surfaces for provider development.
 
 ### Changed
-- Updated installer to bundle all required modules
+
+- **User-Priority:**
+  - **[Installer]** - Updated the installer to bundle all required modules.
 
 ### Fixed
-- Fixed line endings in bash scripts
+
+- **User-Priority:**
+  - **[Installer]** - Fixed line endings in bash scripts.
 ```
 
-### 2. Commit the CHANGELOG
+### 2. Validate the branch before opening the PR
 
-```bash
-git add CHANGELOG.md
-git commit -m "Prepare release v1.0.0"
-git push origin main
+Before opening the release PR, run the normal maintainer validation flow from the branch:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
 ```
 
-### 3. Create and Push the Tag
+Recommended pre-PR maintainer smoke:
+
+- run a bootstrap install from the working tree so the user-profile installer is refreshed from the branch
+- confirm the branch still installs correctly through the bootstrap path
+
+This bootstrap check is the right pre-release install smoke because the release bundle does not exist yet.
+
+### 3. Open and merge the release PR to `main`
+
+The normal workflow is PR-based.
+
+- open a pull request with the finalized changelog and release-ready changes
+- review and merge that PR into `main`
+- do not tag the release from an unmerged feature branch
+
+Release tags should be created from the merged `main` state.
+
+### 4. Create and push the tag from `main`
+
+After the release PR is merged, update your local `main` and create the release tag from that merged state:
 
 ```bash
+git checkout main
+git pull --ff-only origin main
+
 # Create the tag (must follow v*.*.* pattern)
 git tag -a v1.0.0 -m "Release v1.0.0"
 
@@ -41,22 +73,31 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
 
-### 4. GitHub Actions Automatic Build
+### 5. GitHub Actions Automatic Build
 
 The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically:
 
 1. ✅ Extract changelog for this version
 2. ✅ Create installer bundle directory structure
-3. ✅ Copy all installer files and modules
-4. ✅ Create ZIP archive for Windows users
-5. ✅ Create TAR.GZ archive for Linux/macOS users
-6. ✅ Create full source archive
-7. ✅ Generate SHA256 checksums
-8. ✅ Generate GitHub artifact attestations for the release assets and checksum manifest
-9. ✅ Create GitHub Release with all artifacts
-10. ✅ Include installation and provenance verification instructions in release notes
+3. ✅ Stamp the bundled installer `VERSION` file from the release tag
+4. ✅ Copy all installer files and modules
+5. ✅ Create ZIP archive for Windows users
+6. ✅ Create TAR.GZ archive for Linux/macOS users
+7. ✅ Create full source archive
+8. ✅ Generate SHA256 checksums
+9. ✅ Generate GitHub artifact attestations for the release assets and checksum manifest
+10. ✅ Create GitHub Release with all artifacts
+11. ✅ Include installation and provenance verification instructions in release notes
 
-### 5. Verify the Release
+Important distinction:
+
+- the in-repo [installer/VERSION](../../installer/VERSION) file remains a placeholder during normal development
+- the release workflow derives the real release version from the pushed `v*.*.*` tag
+- that tag-derived version is written into the bundled installer `VERSION` file before the archives are created
+
+That means maintainers do not manually edit `installer/VERSION` as part of the release process. The published release bundle is what gets the stamped release version.
+
+### 6. Verify the Release
 
 Visit: `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases`
 
@@ -74,7 +115,7 @@ Check that:
 - [ ] Release notes include `gh attestation verify` examples
 - [ ] Changelog is properly extracted
 
-### 6. Verify Release Provenance
+### 7. Verify Release Provenance
 
 For a pinned asset, verify the attestation against the canonical repository and release workflow:
 
@@ -142,6 +183,8 @@ Follow [Semantic Versioning](https://semver.org/):
 - **MINOR**: New features, backward compatible (v1.0.0 → v1.1.0)
 - **PATCH**: Bug fixes, backward compatible (v1.0.0 → v1.0.1)
 
+The release tag is also the source of truth for installer bundle version stamping.
+
 ## Testing a Release
 
 Before creating an official release, you can test locally:
@@ -179,11 +222,17 @@ git tag -d v0.0.1-test
 
 After creating a release:
 
-1. ✅ Test installation on Windows
-2. ✅ Test installation on Linux/macOS
-3. ✅ Update README if needed
-4. ✅ Announce release (if applicable)
-5. ✅ Monitor for issues
+1. ✅ Download the real release bundle assets
+2. ✅ Run a release-bundle install smoke on Windows
+3. ✅ Run a release-bundle install smoke on Linux/macOS
+4. ✅ Update README if needed
+5. ✅ Announce release (if applicable)
+6. ✅ Monitor for issues
+
+Important distinction:
+
+- the bootstrap install is the pre-release maintainer smoke because it can be run from the branch before a release exists
+- the release-bundle install smoke is a post-release verification step because it depends on the published artifact
 
 ## Rollback Process
 

@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - The toolkit now states more explicitly that the prompt, contract, and regression baseline are designed and primarily validated for `GPT-5.4 high`, rather than implying equivalent behavior across all selectable models.
+  - **[Review]** - Local and committed review now buffer and complete the audit before emitting headings, forbid leaked inner-dialog or tool narration, and restore explicit end-of-review skill verification footers so findings are emitted once as a finished review.
+  - **[Review]** - Local and committed review now block cleanly on a single `azurerm-linter` run, remain silent until the runtime reports completion, classify only the completed primary result, treat zero-finding completed runs as `No issues`, and fail closed when the completed result is still unclassifiable.
+  - **[Review]** - Committed review now uses a simpler explicit-PR scope model: direct non-CLI GitHub PR-files retrieval first, ignore summary-only or spill-file results, use one automatic `gh api` fallback before failing closed, and avoid the older overgrown fallback ladder in the contract and prompt.
+  - **[Review]** - Shared review guidance now centralizes more PR-scope and linter execution-state logic in the review contract, keeps both review prompts thinner and less repetitive, and aligns the user-facing docs to the simpler review model.
+  - **[Review]** - Review guidance and regression coverage now better preserve full committed-review issue sets, including singleton or get-only child resources, shortened cross-resource ID field names, and update paths that skip concurrent field changes.
+  - **[Docs]** - Docs-writing workflow now lives in the `docs-writer` skill, leaving `documentation-guidelines` focused on contract-backed heuristics, templates, and note-formatting guidance instead of procedural authoring steps.
+  - **[Docs]** - The architecture, alignment, and maintenance docs now reflect the current repo layout and direction more accurately, including contract families, routing instructions, contract-first versus companion-guide responsibilities, runtime versus repo-only skills, installer payload boundaries, and the regression and validation toolchain under `tools/`.
+  - **[Docs]** - The code-review rule reference now explains the contract-first rule model more explicitly, including that stable `REVIEW-*`, `DOCS-*`, `IMPL-*`, and `TEST-*` citations are authoritative in the contract files while companion guides provide supporting patterns and examples, and now also gives end-user-facing examples for create-path detections such as overwrite-gated import checks and callback-based Resource Identity setup.
+  - **[Docs]** - The maintainer release guide now reflects the actual release flow more accurately: validate on the branch, open and merge a PR to `main`, tag from merged `main`, treat release-bundle install smoke as a post-release verification step rather than a prerelease requirement, and explain that the bundled installer `VERSION` file is stamped from the release tag during the release workflow.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now standardizes case-insensitive resource-ID reads with canonical parser writes, treats generic CRUD/provider lifecycle logging as redundant unless it adds distinct diagnostic value, and tightens the `resource-implementation` workflow around implementation-model selection, placeholders, pointer and enum edge cases, validator placement, and list-resource or resource-identity expectations.
+  - **[Implementation]** - The implementation compliance contract now owns the upstream-backed schema, `CustomizeDiff`, and comment-discipline rules, while companion guides were normalized toward examples and heuristics, stripped of decorative HTML or anchor shims, and simplified to plain heading-based deep links.
+  - **[Implementation]** - Implementation and review guidance now explicitly catch two more create-path regressions: missing `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` guards around import-as-exists checks, and callback-based Resource Identity creates that omit `sdk.SetIDAndIdentityCallback(...)`.
+  - **[Testing]** - Acceptance-testing workflow now lives in the `acceptance-testing` skill and more explicitly covers helper composition, helper naming, associated-resource setup helpers, and upstream `preCheck(t *testing.T)` patterns.
+  - **[Internal]** - Repo maintenance coverage was expanded across determinism hardening, lifecycle logging, parser-normalized IDs, blocking `azurerm-linter` waits, and committed or local review edge cases, while tracked upstream contributor baselines were refreshed after semantic drift review.
+  - **[Internal]** - Maintainer scaffolding was cleaned up by renaming the regression scaffold entrypoints, continuing the contract-first companion cleanup, and tightening `changelog-maintenance` so `Unreleased` entries are collapsed into outcome-level release notes before validation.
+
 ### Fixed
 
 ## [3.3.0] - 2026-05-07

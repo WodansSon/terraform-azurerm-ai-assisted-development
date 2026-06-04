@@ -1,0 +1,49 @@
+{
+  "id": "skill-acceptance-testing-fmt-sprintf-inline-helper",
+  "title": "Acceptance-testing guidance inlines one-use fmt.Sprintf helper arguments without flattening reused locals",
+  "task": "acceptance-testing",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized acceptance-testing guidance scenario where helper functions return fmt.Sprintf-based Terraform config strings. The correct guidance should inline one-use helper calls like r.template(data) or r.basic(data) directly into fmt.Sprintf, while leaving reused locals alone.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-acceptance-testing-fmt-sprintf-inline-helper/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource_test.go"
+    ],
+    "notes": "Sanitized fixture models an acceptance-test cleanup where single-use template/config locals are forwarded once into fmt.Sprintf, but one helper value is legitimately reused and should remain a local."
+  },
+  "expectedRules": [
+    "TEST-PATTERN-007",
+    "TEST-PATTERN-*",
+    "TEST-EVID-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "single-use-template-local-forwarded",
+      "severity": "medium",
+      "description": "The guidance should inline a one-use template local into fmt.Sprintf instead of keeping a temporary variable that is only forwarded once."
+    },
+    {
+      "key": "single-use-basic-local-forwarded",
+      "severity": "medium",
+      "description": "The guidance should inline a one-use config local such as r.basic(data) into fmt.Sprintf when the value is only forwarded once."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "reused-helper-local-must-inline",
+      "description": "The guidance must not insist on inlining a helper local when the value is reused or materially improves readability."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: acceptance-testing"
+    ]
+  },
+  "notes": "Use this case to benchmark the fmt.Sprintf helper-composition rule so one-use helper locals are inlined without creating false positives on reused locals."
+}

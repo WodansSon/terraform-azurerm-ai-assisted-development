@@ -1,0 +1,58 @@
+{
+  "id": "skill-resource-implementation-resource-id-casing-normalization",
+  "title": "Resource implementation guidance normalizes resource IDs through typed parsers instead of preserving Azure-returned casing",
+  "task": "resource-implementation",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic implementation-guidance scenario where a contributor compares raw resource ID strings and writes an Azure-returned nested resource ID directly into Terraform state. The correct guidance should treat read-side ID handling as case-insensitive through the shared typed parser and should persist the parser's canonical `.ID()` form instead of preserving arbitrary casing returned by the RP.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic implementation scenario focused on forward-looking resource ID normalization guidance rather than legacy provider drift."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-006"
+  ],
+  "mustCatch": [
+    {
+      "key": "case-insensitive-id-read-via-parser",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should say import, read, refresh, or migration paths must parse resource IDs through the shared typed parser instead of relying on raw string equality against Azure-returned IDs."
+    },
+    {
+      "key": "canonical-id-write-to-state",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should say provider-managed IDs written back to Terraform state must use the parser's canonical `.ID()` form rather than preserving arbitrary casing from API responses."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "preserve-azure-returned-id-casing",
+      "description": "The guidance must not treat the Azure-returned resource ID string as the value to preserve in state when a typed parser exists for that ID shape."
+    },
+    {
+      "key": "accept-raw-string-id-comparison",
+      "description": "The guidance must not approve raw string comparison as the normal read-side strategy for matching or normalizing resource IDs."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this case to keep the resource-implementation skill forward-looking on resource ID normalization, even when older provider code still contains mixed-case or raw-string patterns."
+}

@@ -20,7 +20,7 @@ The goal is to turn behavioral evaluation from subjective human agreement into r
   - Defines the structure of a persisted suite-history snapshot.
 - `validate-regression-artifacts.ps1`
   - Validates case and result artifacts against the harness schemas and core fixture-consistency checks.
-- `new-regression-test.ps1`
+- `scaffold-regression-spec.ps1`
   - Writes the contributor-facing HCL test template under `tools/regression/test/`.
 - `build-regression-test.ps1`
   - Builds the internal harness artifacts from a contributor-facing HCL test file.
@@ -36,7 +36,7 @@ The goal is to turn behavioral evaluation from subjective human agreement into r
   - Orchestrates the human-friendly end-to-end flow: validation, suite scoring, history snapshotting, and history summarization.
 - `cases/`
   - Stores individual case manifests.
-- `new-regression-result-template.ps1`
+- `scaffold-regression-result.ps1`
   - Generates a starter result document from a case.
 - `score-regression-case.ps1`
   - Scores a result document against a case and the configured weights.
@@ -57,6 +57,7 @@ The goal is to turn behavioral evaluation from subjective human agreement into r
 - Represent the source as a sanitized fixture.
 - Focus on expected behavior, not exact wording.
 - Record must-catch outcomes and must-not-flag outcomes explicitly.
+- When output-shape regressions matter, prefer `outputChecks.mustNotIncludeMarkers` for forbidden leaked narration markers instead of trying to encode those solely as prose notes.
 - Keep cases narrow enough that the expected rule activation is deterministic.
 
 ## Future Runner Responsibilities
@@ -110,13 +111,13 @@ The repo-only `ai-toolkit-maintenance` skill is intentionally excluded from this
 Contributor-facing authoring entry point:
 
 ```powershell
-pwsh -NoProfile -File ./tools/regression/new-regression-test.ps1 -Id my-new-case -Task resource-implementation
+pwsh -NoProfile -File ./tools/regression/scaffold-regression-spec.ps1 -Id my-new-case -Task resource-implementation
 ```
 
 Preferred HCL contributor flow:
 
 ```powershell
-pwsh -NoProfile -File ./tools/regression/new-regression-test.ps1 -Id my-new-case -Task resource-implementation
+pwsh -NoProfile -File ./tools/regression/scaffold-regression-spec.ps1 -Id my-new-case -Task resource-implementation
 pwsh -NoProfile -File ./tools/regression/build-regression-test.ps1 -SpecPath ./tools/regression/test/my-new-case.hcl
 ```
 
@@ -184,7 +185,7 @@ That command orchestrates the current stable harness flow in the correct order a
 Generate a result template:
 
 ```powershell
-pwsh -NoProfile -File ./tools/regression/new-regression-result-template.ps1 -CasePath ./tools/regression/cases/harness-smoke-resource-implementation.json -OutputPath ./tools/regression/results/harness-smoke-resource-implementation.result.json
+pwsh -NoProfile -File ./tools/regression/scaffold-regression-result.ps1 -CasePath ./tools/regression/cases/harness-smoke-resource-implementation.json -OutputPath ./tools/regression/results/harness-smoke-resource-implementation.result.json
 ```
 
 Score a completed result:

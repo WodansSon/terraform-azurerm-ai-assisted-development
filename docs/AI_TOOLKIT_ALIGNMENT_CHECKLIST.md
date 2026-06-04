@@ -9,6 +9,10 @@ Use it when you want to answer questions like:
 - Does bootstrap/install include the right runtime payload?
 - Did we update the docs that explain the current rule model?
 
+For repo-level customization layering, migration sequencing, and regression-safe modernization of prompts, instructions, skills, and agents, also consult:
+
+- `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md`
+
 This is a maintenance checklist for this repository only. It is not part of the runtime toolkit that gets installed into target repositories.
 
 ## Repo-Only Maintenance Skills
@@ -57,6 +61,15 @@ The current contract-driven domains are:
 - `.github/instructions/implementation-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
+## Current High-Signal Implementation Rule
+
+The current implementation guidance explicitly treats Azure resource IDs as a case-insensitive read problem and a canonical-write problem:
+
+- read, import, refresh, and migration paths should parse resource IDs through the shared typed parser instead of relying on raw string equality against Azure-returned IDs
+- provider-managed IDs written back to state should use the parser's canonical `.ID()` form instead of preserving arbitrary casing returned by the RP
+
+This is meant to reduce Terraform phantom diffs and lookup failures caused by Azure static-segment casing drift.
+
 ## Alignment Checklist
 
 ### 1. Contract structure is valid
@@ -99,7 +112,15 @@ If a contract declares companion guidance, each companion file should:
 - Point back to the contract path
 - Defer compliance authority to the contract instead of acting as a second authority source
 
-### 4. Rule-reference documentation is still accurate
+### 3A. Runtime guidance examples stay generic
+
+For runtime guidance under `.github/copilot-instructions.md`, `.github/instructions/`, and `.github/skills/`:
+
+- Prefer generic placeholders such as `{{RESOURCE_NAME}}`, `{{FIELD_NAME}}`, and `{{SERVICE_NAME}}` for broad rules and worked patterns
+- Avoid concrete resource-specific examples when the rule is meant to generalize across the provider
+- Keep concrete resource names only when they are part of intentional evidence, a regression fixture, or a dedicated examples document
+
+### 4. Rule-reference and architecture documentation is still accurate
 
 Update `docs/CODE_REVIEW_RULES.md` when either of these happens:
 
@@ -107,6 +128,12 @@ Update `docs/CODE_REVIEW_RULES.md` when either of these happens:
 - A new rule area is introduced that is useful for end users to understand
 
 You do not need to update it for every new individual rule inside an already-documented area.
+
+Update repo-only architecture and maintainer reference docs when the repository's customization layout or responsibilities materially change, for example:
+
+- `docs/ARCHITECTURE.md` when the repo structure, runtime payload, or repo-only maintenance tooling model changes
+- `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md` when the contract, routing, prompt, skill, or payload-boundary direction changes
+- `docs/AI_REGRESSION_HARNESS.md` when the harness entrypoints, scoring flow, or maintainer benchmark model changes materially
 
 ### 5. Runtime payload and maintenance tooling stay separated
 
@@ -306,6 +333,7 @@ When asked whether the AI toolkit is up to date, check these in order:
 - `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` passes.
 - `installer/file-manifest.config` includes all required runtime payload files.
 - `docs/CODE_REVIEW_RULES.md` still matches the current contract families and rule areas.
+- Repo-only architecture and benchmark docs still describe the current layout and maintainer workflow shape.
 - `CHANGELOG.md` reflects the current release state.
 - No new contract, skill, prompt, or companion file was added without corresponding alignment updates.
 

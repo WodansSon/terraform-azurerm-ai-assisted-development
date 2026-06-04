@@ -1,0 +1,57 @@
+{
+  "id": "review-local-create-import-guard-and-identity-callback",
+  "title": "Local review catches missing overwrite guard and callback identity setup",
+  "task": "code-review-local-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic local-review scenario where a Go create path unconditionally returns an import-as-exists error and uses a callback-based create helper without wiring `sdk.SetIDAndIdentityCallback(...)` for a resource that supports Resource Identity.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-create-import-guard-and-identity-callback/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/storage/example_account_resource.go"
+    ],
+    "notes": "Synthetic review case focused on create-time overwrite gating and callback-based Resource Identity handling."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-SCOPE-005G",
+    "IMPL-WF-002B",
+    "IMPL-WF-002C"
+  ],
+  "mustCatch": [
+    {
+      "key": "missing-overwrite-feature-guard",
+      "severity": "high",
+      "file": "internal/services/storage/example_account_resource.go",
+      "description": "The review should flag an unconditional import-as-exists branch when the create path does not honor `SkipImportCheckOnCreateAndAllowOverwritingExistingResources`."
+    },
+    {
+      "key": "missing-id-and-identity-callback",
+      "severity": "high",
+      "file": "internal/services/storage/example_account_resource.go",
+      "description": "The review should flag callback-based create flows that omit `sdk.SetIDAndIdentityCallback(...)` for resources that support Resource Identity."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "callback-helper-itself-is-wrong",
+      "description": "The review must not treat callback-based create helpers as invalid by themselves when the real defect is the missing ID-plus-identity callback wiring."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ]
+  },
+  "notes": "Use this case to benchmark whether local review now catches both the create-time import-check feature gate regression and the callback identity regression in the same Go create path."
+}

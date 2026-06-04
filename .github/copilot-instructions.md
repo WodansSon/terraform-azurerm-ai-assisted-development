@@ -138,7 +138,7 @@ When you give specific commands, I'll act directly:
 - [ ] Examine ALL `model_*.go` files for the resource
 - [ ] Verify service-specific patterns (SKU, identity types)
 - [ ] Document required/optional/computed fields
-- [ ] Plan Resource Identity and the corresponding List Resource for new resources unless there is a concrete upstream-supported exception
+- [ ] Treat Resource Identity as mandatory for new resources, and treat the corresponding List Resource as mandatory unless the documented maintainer exception path is explicitly used
 - [ ] Make NO assumptions without API structure verification
 
 ## 🎯 **CLEAN CODE EXPERTISE** (HashiCorp PR Standards)
@@ -308,8 +308,10 @@ return fmt.Errorf("account_tier can't be %s", tier)
 ├── [resource]_resource.go      # Resource implementation
 ├── [resource]_resource_test.go # Acceptance tests
 ├── [resource]_data_source.go   # Data source (if needed)
+├── validate/
+│   ├── [validator_subject].go
+│   └── [validator_subject]_test.go
 ├── parse.go                    # Resource ID parsing
-├── validate.go                 # Validation functions
 └── registration.go             # Service registration
 ```
 
@@ -319,6 +321,11 @@ return fmt.Errorf("account_tier can't be %s", tier)
 - Use `%+v` for verbose error formatting
 - Wrap field names and values in backticks
 - Follow Go standards: lowercase, no punctuation
+
+**Schema Validation Placement:**
+- Reuse shared validators inline when they already express the field constraint clearly
+- For new or materially updated bespoke schema validators, put them in the same service's `validate/` folder as a file-specific validator, for example `validate/{{VALIDATOR_SUBJECT}}.go`, with a matching unit test such as `validate/{{VALIDATOR_SUBJECT}}_test.go`
+- Reserve anonymous inline `ValidateFunc` closures for short one-off checks that stay immediately readable at the schema site
 
 **Resource Lifecycle:**
 - Implement proper CRUD operations

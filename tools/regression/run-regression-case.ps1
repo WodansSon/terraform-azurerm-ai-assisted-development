@@ -210,7 +210,7 @@ if ($caseDefinition.fixture.mode -ne "none" -and $caseDefinition.fixture.path) {
     $fixtureMaterializedPath = Copy-Fixture -SourcePath $fixtureSourcePath -FixtureDirectory $fixtureDirectory
 }
 
-& pwsh -NoProfile -File (Join-Path $PSScriptRoot "new-regression-result-template.ps1") -CasePath $resolvedCasePath -OutputPath $resultOutputPath -RunId $runId | Out-Null
+& pwsh -NoProfile -File (Join-Path $PSScriptRoot "scaffold-regression-result.ps1") -CasePath $resolvedCasePath -OutputPath $resultOutputPath -RunId $runId | Out-Null
 
 $reviewPlaceholder = @(
     "# Review Output Placeholder",

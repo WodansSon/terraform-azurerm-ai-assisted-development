@@ -1,0 +1,48 @@
+{
+  "id": "review-local-no-redundant-lifecycle-logging",
+  "title": "Local review flags redundant provider lifecycle logging additions",
+  "task": "code-review-local-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic local-review scenario where an `internal/**/*.go` change adds generic provider-side lifecycle logging such as `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting`. The correct review should flag those additions when they only duplicate Terraform core/provider-native logging, while not objecting to a narrow remove-from-state diagnostic.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic review case focused on the new lifecycle logging policy and the accepted remove-from-state exception."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005D",
+    "IMPL-CODE-002"
+  ],
+  "mustCatch": [
+    {
+      "key": "redundant-lifecycle-logging-review-issue",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The review should treat newly added generic `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting` logging as a reviewable issue when it adds no unique diagnostic value beyond Terraform core/provider-native logging."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "remove-from-state-diagnostic-forbidden",
+      "description": "The review must not flag the narrow remove-from-state/not-found diagnostic pattern when it is the distinct debugging-value exception allowed by the implementation guidance."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ]
+  },
+  "notes": "Use this case to benchmark whether local review now catches redundant lifecycle/provider logging additions while preserving the accepted remove-from-state exception."
+}

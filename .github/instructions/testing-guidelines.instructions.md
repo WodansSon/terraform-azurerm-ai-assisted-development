@@ -5,41 +5,15 @@ description: Testing guidelines for Terraform AzureRM provider Go files - test e
 
 # 🧪 Testing Guidelines
 
-<a id="🧪-testing-guidelines"></a>
 
 This file is a companion guide. Testing compliance rules are defined by the testing compliance contract:
 
 - `.github/instructions/testing-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
 
-Use this guide for test execution protocols, testing patterns, and Azure-specific testing heuristics.
+Use this guide for testing patterns and Azure-specific testing heuristics.
+Use the `acceptance-testing` skill for acceptance-test execution workflow, environment prerequisites, and failure triage.
 If this guide conflicts with the testing contract, follow the testing contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🚨-test-execution-awareness">🚨 Test Execution Awareness</a> | <a href="#🧪-efficient-testing-with-importstep">🧪 Efficient Testing</a> | <a href="#🧪-test-types">🧪 Test Types</a> | <a href="#⚡-essential-test-patterns">⚡ Essential Patterns</a> | <a href="#✅-customizediff-testing">✅ CustomizeDiff Testing</a> | <a href="#📊-data-source-testing-patterns">📊 Data Source Testing</a> | <a href="#🏗️-test-organization-and-structure">🏗️ Test Organization</a> | <a href="#☁️-azure-specific-testing-guidelines">☁️ Azure-Specific Testing</a> | <a href="#🔧-environment-setup">🔧 Environment Setup</a>
-
-<a id="🚨-test-execution-awareness"></a>
-
-## 🚨 Test Execution Awareness
-
-**⚠️ Azure Testing Considerations**
-
-**Important Notes:**
-- Acceptance tests create **real Azure resources** and require **valid credentials**
-- Tests may incur Azure costs depending on resources created
-- Ensure proper cleanup after test execution
-- Unit tests are safe and don't require Azure credentials
-- The upstream acceptance-test entry point is `make acctests SERVICE='<service>' TESTARGS='-run=<nameOfTheTest>' TESTTIMEOUT='60m'` with the required `ARM_*` and `ARM_TEST_LOCATION*` environment variables present in the shell.
-
-**Example Command Format:**
-```bash
-# Purpose: Test VMSS resiliency policy backward compatibility
-# Duration: 5-10 minutes, creates test VMSS resources in Azure
-# Requires: ARM_SUBSCRIPTION_ID, ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID
-
-make testacc TEST=./internal/services/compute TESTARGS='-run=TestAccLinuxVirtualMachineScaleSet_fieldsNotSetInState'
-```
-
----
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="🧪-efficient-testing-with-importstep"></a>
 
@@ -49,9 +23,9 @@ When using `data.ImportStep()` in acceptance tests, field validation checks are 
 
 **Recommended Pattern - ExistsInAzure Check:**
 ```go
-func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -73,7 +47,6 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 - **Document rationale**: Explain when additional checks add value beyond ImportStep
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="🧪-test-types"></a>
 
@@ -94,22 +67,36 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
 ### Naming Conventions
 
 **Unit Tests:** `TestFunctionName_Scenario_ExpectedOutcome`
-- Example: `TestParseFrontDoorProfileID_ValidID_ReturnsCorrectComponents`
+- Example: `TestParse{{RESOURCE_ID_TYPE}}_ValidID_ReturnsCorrectComponents`
 
 **Acceptance Tests:** `TestAccResourceName_scenario`
-- Example: `TestAccCdnFrontDoorProfile_basic`
-- Example: `TestAccCdnFrontDoorProfile_requiresImport`
+- Example: `TestAcc{{RESOURCE_NAME}}_basic`
+- Example: `TestAcc{{RESOURCE_NAME}}_requiresImport`
 - Use underscores to separate logical components: `TestAccResourceName_featureGroup_specificScenario`
-- Example: `TestAccWindowsVirtualMachineScaleSet_skuProfile_Prioritized`
+- Example: `TestAcc{{RESOURCE_NAME}}_{{FEATURE_GROUP}}_{{SCENARIO_NAME}}`
 
 **Test Helper Functions:** Use camelCase (Go convention for unexported functions)
-- Example: `skuProfilePrioritized(data acceptance.TestData) string`
-- Example: `withLogScrubbingRule(data acceptance.TestData) string`
+- Example: `{{featureGroup}}{{scenarioName}}(data acceptance.TestData) string`
+- Example: `with{{NestedBlockName}}(data acceptance.TestData) string`
 - Example: `basicConfiguration(data acceptance.TestData) string`
 
 **Key Distinction:**
 - **Test function names**: Use underscores for logical separation (`_featureGroup_scenario`)
 - **Helper function names**: Use camelCase following Go naming conventions for unexported functions
+
+### Config Helper Composition
+
+- In helper functions that return `fmt.Sprintf(...)` acceptance-test configuration, pass one-use nested helper calls directly into `fmt.Sprintf(...)` rather than assigning locals like `template := r.template(data)` or `config := r.basic(data)` only to forward them once.
+- Keep a local variable only when the nested helper result is reused, transformed, or clearly improves readability.
+
+### Helper Struct Naming
+
+- In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
+- If the surface already has an established canonical helper type, keep using that same type across all related acceptance tests and generated identity tests.
+- For new surfaces without an established helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+- Keep that same helper type across all acceptance test variants for the same Terraform surface, not just the main file: resource tests, list tests, identity-related tests, and any other helper-instantiating tests should all use the same canonical type.
+- Generated identity tests under `*_identity_gen_test.go` should use that same helper type directly rather than introducing a separate `SomethingIdentityResource` helper, alias, or wrapper.
+- The rule matters because the canonical helper types for a Terraform surface must remain the single source of truth, and generated identity tests must use those same types directly so generated files do not churn.
 
 ### Go Testing Patterns
 
@@ -179,7 +166,6 @@ func TestResourceValidation(t *testing.T) {
 ```
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="⚡-essential-test-patterns"></a>
 
@@ -229,7 +215,6 @@ func TestAccResourceName_requiresImport(t *testing.T) {
 **These practices help maintain awareness of Azure resource implications while enabling effective testing workflows.**
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="✅-customizediff-testing"></a>
 
@@ -331,15 +316,14 @@ func TestAccServiceName_customizeDiffValidation(t *testing.T) {
 **For Azure-specific CustomizeDiff behaviors and validation patterns, see:** [Azure Patterns - CustomizeDiff Validation](./azure-patterns.instructions.md#customizediff-validation)
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 ## Acceptance Testing Patterns
 
 ### Basic Resource Test
 ```go
-func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -348,16 +332,16 @@ func TestAccCdnFrontDoorProfile_basic(t *testing.T) {
                 check.That(data.ResourceName).ExistsInAzure(r),
             ),
         },
-        data.ImportStep(), // No sensitive fields to exclude for CDN profiles
+        data.ImportStep(), // Exclude sensitive fields only when the resource needs it
     })
 }
 ```
 
 ### Resource Update Test
 ```go
-func TestAccCdnFrontDoorProfile_update(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_update(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
@@ -380,9 +364,9 @@ func TestAccCdnFrontDoorProfile_update(t *testing.T) {
 
 ### Resource Requires Import Test
 ```go
-func TestAccCdnFrontDoorProfile_requiresImport(t *testing.T) {
-	data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-	r := CdnFrontDoorProfileResource{}
+func TestAcc{{RESOURCE_NAME}}_requiresImport(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
 	data.ResourceTest(t, r, []acceptance.TestStep{
 		{
 			Config: r.basic(data),
@@ -395,7 +379,6 @@ func TestAccCdnFrontDoorProfile_requiresImport(t *testing.T) {
 }
 ```
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="📊-data-source-testing-patterns"></a>
 
@@ -403,20 +386,24 @@ func TestAccCdnFrontDoorProfile_requiresImport(t *testing.T) {
 
 Data sources have different testing requirements than resources since they retrieve existing information rather than manage resource lifecycle.
 
+When a data source test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.
+This gives the test a stable baseline for computed-field coverage, which data sources commonly assert.
+Use `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` would add unrelated setup noise.
+
 **Basic Data Source Test:**
 ```go
-func TestAccCdnFrontDoorProfileDataSource_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_cdn_frontdoor_profile", "test")
-    r := CdnFrontDoorProfileDataSource{}
+func TestAcc{{DATA_SOURCE_NAME}}_basic(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{DATA_SOURCE_HELPER}}{}
 
     data.DataSourceTest(t, []acceptance.TestStep{
         {
             Config: r.basic(data),
             Check: acceptance.ComposeTestCheckFunc(
                 // Data sources don't have ExistsInAzure checks - they retrieve existing resources
-                check.That(data.ResourceName).Key("name").HasValue(fmt.Sprintf("acctestcdnfd-%d", data.RandomInteger)),
-                check.That(data.ResourceName).Key("resource_group_name").HasValue(fmt.Sprintf("acctestRG-cdn-%d", data.RandomInteger)),
-                check.That(data.ResourceName).Key("sku_name").HasValue("Standard_AzureFrontDoor"),
+                check.That(data.ResourceName).Key("name").HasValue(fmt.Sprintf("acctest-%d", data.RandomInteger)),
+                check.That(data.ResourceName).Key("resource_group_name").HasValue(fmt.Sprintf("acctestRG-%d", data.RandomInteger)),
+                check.That(data.ResourceName).Key("{{FIELD_NAME}}").HasValue("{{EXPECTED_VALUE}}"),
                 check.That(data.ResourceName).Key("id").Exists(),
             ),
         },
@@ -426,17 +413,19 @@ func TestAccCdnFrontDoorProfileDataSource_basic(t *testing.T) {
 
 **Data Source Test Configuration Pattern:**
 ```go
-func (CdnFrontDoorProfileDataSource) basic(data acceptance.TestData) string {
+func ({{DATA_SOURCE_HELPER}}) basic(data acceptance.TestData) string {
     return fmt.Sprintf(`
 %s
 
-data "azurerm_cdn_frontdoor_profile" "test" {
-  name                = azurerm_cdn_frontdoor_profile.test.name
-  resource_group_name = azurerm_cdn_frontdoor_profile.test.resource_group_name
+data "azurerm_{{RESOURCE_SLUG}}" "test" {
+    name                = azurerm_{{RESOURCE_SLUG}}.test.name
+    resource_group_name = azurerm_{{RESOURCE_SLUG}}.test.resource_group_name
 }
-`, CdnFrontDoorProfileResource{}.basic(data))
+`, {{RESOURCE_HELPER}}{}.complete(data))
 }
 ```
+
+If the associated resource does not expose `complete(data)`, or the data source test is intentionally narrow, reuse `{{RESOURCE_HELPER}}{}.basic(data)` or another scenario-specific helper instead.
 
 **Data Source Key Validation Guidelines:**
 - **Field Verification**: Data sources should validate that expected fields are populated with correct values
@@ -459,7 +448,6 @@ check.That(data.ResourceName).Key("log_scrubbing_rule.#").HasValue("2"),
 check.That(data.ResourceName).Key("log_scrubbing_rule.0.match_variable").HasValue("QueryStringArgNames"),
 ```
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="🏗️-test-organization-and-structure"></a>
 
@@ -497,7 +485,6 @@ When working with related Azure resources that have both Linux and Windows varia
 - **Default behavior**: Ensure both implementations handle defaults and omitted fields consistently
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
 <a id="☁️-azure-specific-testing-guidelines"></a>
 
@@ -526,15 +513,15 @@ func (r ServiceNameResource) Exists(ctx context.Context, clients *clients.Client
 
 **UnTyped Resource Existence Check:**
 ```go
-func (CdnFrontDoorProfileResource) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
-    id, err := parse.FrontDoorProfileID(state.ID)
+func ({{RESOURCE_HELPER}}) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
+    id, err := parse.{{RESOURCE_ID_TYPE}}(state.ID)
     if err != nil {
         return nil, err
     }
 
-    resp, err := clients.Cdn.FrontDoorProfilesClient.Get(ctx, *id)
+    resp, err := clients.{{SERVICE_CLIENT_PATH}}.Get(ctx, *id)
     if err != nil {
-        return nil, fmt.Errorf("reading CDN Front Door Profile (%s): %+v", *id, err)
+        return nil, fmt.Errorf("reading {{RESOURCE_LABEL}} (%s): %+v", *id, err)
     }
 
     return utils.Bool(resp.Model != nil), nil
@@ -566,41 +553,16 @@ provider "azurerm" {
 - Any resource blocking normal cleanup
 
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>
 
-<a id="🔧-environment-setup"></a>
+## 📚 Related Specialized Guidance
 
-## 🔧 Environment Setup
+Use the `acceptance-testing` skill for:
 
-**Required Environment Variables:**
-```bash
-export ARM_SUBSCRIPTION_ID="your-azure-subscription-id"
-export ARM_CLIENT_ID="your-service-principal-client-id"
-export ARM_CLIENT_SECRET="your-service-principal-client-secret"
-export ARM_TENANT_ID="your-azure-tenant-id"
-export ARM_TEST_LOCATION=WestEurope
-export ARM_TEST_LOCATION_ALT=EastUS2
-```
+- acceptance-test execution workflow
+- environment prerequisites and narrow rerun commands
+- failure triage and cleanup-oriented troubleshooting
 
-**Running Tests:**
-```bash
-# Unit tests
-go test ./internal/services/cdn/...
-
-# Acceptance tests (Manual execution recommended)
-make testacc TEST=./internal/services/cdn TESTARGS='-run=TestAccCdnFrontDoorProfile_basic'
-```
-
-**Common Azure Test Cleanup Issues:**
-- `ResourceGroupBeingDeleted: Cannot perform operation while resource group is being deleted`
-- Scale-down operations blocked due to health monitoring requirements
-- Soft-delete conflicts preventing immediate recreation
-
-**📚 Official Acceptance Testing References:**
-- [Acceptance Testing Reference](../../../contributing/topics/reference-acceptance-testing.md)
-- `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/running-the-tests.md`
-
-## 📚 Specialized Testing Guidance (On-Demand)
+Other specialized references:
 
 ### **Advanced Testing Patterns**
 - 🔧 **Troubleshooting**: [troubleshooting-decision-trees.instructions.md](./troubleshooting-decision-trees.instructions.md) - Debugging test failures, common issues
@@ -614,4 +576,3 @@ make testacc TEST=./internal/services/cdn TESTARGS='-run=TestAccCdnFrontDoorProf
 - 🔄 **Migration Guide**: [migration-guide.instructions.md](./migration-guide.instructions.md) - Test migration patterns, breaking change testing
 - 🔄 **API Evolution**: [api-evolution-patterns.instructions.md](./api-evolution-patterns.instructions.md) - Testing API changes, version compatibility
 ---
-<a href="#🧪-testing-guidelines">⬆️ Back to top</a>

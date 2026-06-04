@@ -1,23 +1,17 @@
-﻿---
+---
 applyTo: "website/docs/**/*.html.markdown"
 description: This document outlines the standards and guidelines for writing documentation for Terraform resources and data sources in the AzureRM provider.
 ---
 
 # Documentation Guidelines
 
-<a id="documentation-guidelines"></a>
 
 This document outlines the standards and guidelines for writing documentation for Terraform resources, data sources, list resources, ephemeral resources, and provider-defined functions in the AzureRM provider.
 
-<a id="quick-navigation"></a>
 
-**Quick navigation:**
 
-Core: <a href="#canonical-sources">Canonical sources</a> | <a href="#optional-ai-docs-review">Optional AI docs review</a> | <a href="#ai-docs-checks">AI docs checks</a> | <a href="#🚨-critical-pre-implementation-requirements-🚨">Pre-Implementation</a> | <a href="#📋-provider-documentation-standards-note-formatting">Note formatting</a>
 
-AI checks: <a href="#ai-docs-style-enforcement">Style enforcement</a> | <a href="#ai-docs-forcenew-subset">ForceNew subset switching</a> | <a href="#ai-docs-enabled-fields">`*_enabled` wording</a> | <a href="#ai-docs-block-placement">Block placement</a> | <a href="#ai-docs-secrets">Secrets</a> | <a href="#ai-docs-audit">Schema parity</a> | <a href="#ai-docs-quick-audit">Quick audit</a> | <a href="#ai-docs-post-edit">Post-edit</a>
 
-Reference: <a href="#📚-key-differences-resources-vs-data-sources">Resources vs data sources</a> | <a href="#🧾-list-resource-documentation-guidance">List resources</a> | <a href="#⚡-ephemeral-resource-documentation-guidance">Ephemeral resources</a> | <a href="#🔧-function-documentation-guidance">Functions</a> | <a href="#🏗️-documentation-structure">Doc structure</a> | <a href="#📄-resource-documentation-template">Resource template</a> | <a href="#📊-data-source-documentation-template">Data source template</a> | <a href="#✍️-writing-guidelines">Writing guidelines</a> | <a href="#💡-example-configuration-guidelines">Examples</a> | <a href="#📁-import-documentation">Import</a> | <a href="#⏱️-timeout-documentation">Timeouts</a> | <a href="#☁️-azure-specific-documentation-patterns">Azure patterns</a> | <a href="#📋-attributes-reference-differences">Attributes</a> | <a href="#📝-field-documentation-rules">Field rules</a>
 
 <a id="canonical-sources"></a>
 
@@ -47,6 +41,11 @@ To run a complete standards + schema parity audit for the currently-open docs pa
 
 This audit is optional and user-invoked (no CI enforcement).
 
+Workflow note:
+
+- the `docs-writer` skill owns the normal docs-writing workflow
+- the docs review prompt remains the explicit deterministic auditor when formal audit-style output is needed
+
 ## AI docs checks (migrated from docs-writer skill)
 
 <a id="ai-docs-checks"></a>
@@ -69,6 +68,8 @@ Use this file for companion guidance:
 - how to choose or structure examples
 - AzureRM-specific documentation heuristics
 - illustrative templates and snippets
+
+Use the `docs-writer` skill for workflow behavior such as preflight, note-categorization discipline, and post-edit validation.
 
 Practical authoring reminders:
 - Preserve the resource vs data source vs list-resource vs ephemeral-resource vs function distinction in tone and examples.
@@ -299,6 +300,8 @@ After writing or updating a page, run a standards + schema parity pass.
 - For a deterministic audit procedure + output format, use `.github/prompts/code-review-docs.prompt.md`.
 - If you cannot locate the schema under `internal/**` in the target repo, state that explicitly and perform a docs-standards-only review.
 
+The `docs-writer` skill owns the normal post-edit workflow; this section is the pointer to the dedicated auditor, not a second workflow authority.
+
 ### Quick audit checklist (high-signal)
 
 <a id="ai-docs-quick-audit"></a>
@@ -318,13 +321,16 @@ Companion reminders:
 
 <a id="ai-docs-post-edit"></a>
 
-After modifying a docs page under `website/docs/**`:
-- Re-check ordering rules (Arguments/Attributes + nested blocks)
-- Re-check note markers + placement
-- Re-check examples (fences, secrets, self-contained references)
-- Re-run the deterministic audit (`/code-review-docs`) and fix Issues before considering the page done
+The `docs-writer` skill owns the mandatory post-edit workflow for ordinary docs-writing tasks.
 
-Ensure Markdown formatting passes linting.
+Use this section as a companion reminder for the high-signal re-check areas:
+
+- ordering rules for arguments, attributes, and nested blocks
+- note markers and placement
+- examples, including fences, secrets, self-contained references, and implementation-backed values
+- import ID shape from implementation evidence when applicable
+
+When a deterministic audit is explicitly needed, use `.github/prompts/code-review-docs.prompt.md`.
 
 The contract remains the source of truth for what constitutes an Issue.
 
@@ -366,40 +372,21 @@ When the wording is not already obvious from the page:
 
 ## 🚨 **CRITICAL: PRE-IMPLEMENTATION REQUIREMENTS** 🚨
 
-**⚠️ MANDATORY BEFORE ANY DOCUMENTATION CHANGES ⚠️**
+The `docs-writer` skill owns the pre-edit documentation workflow.
 
-**BEFORE making ANY documentation changes, you MUST:**
+Before documentation changes:
 
-1. **📋 READ NOTE FORMATTING GUIDELINES FIRST**
-    - Scroll to <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
-    - Review the three note types: Informational (`->`), Warning (`~>`), Caution (`!>`)
-    - Understand the categorization criteria for each type
+- read the note-formatting guidance at <a href="#📋-provider-documentation-standards-note-formatting">Provider Documentation Standards (Note Formatting)</a>
+- categorize note content as informational, warning, or caution before adding or changing note blocks
+- use the skill and the docs contract as the workflow authority; use this file as the note-formatting and heuristics reference
 
-2. **🎯 CATEGORIZE YOUR CONTENT**
-   - **Informational (`-> **Note:**`)**: Additional useful information, recommendations, tips, external links
-   - **Warning (`~> **Note:**`)**: Information to avoid errors that won't cause irreversible changes (ForceNew behavior, conditional requirements)
-   - **Caution (`!> **Note:**`)**: Critical information about irreversible changes, data loss, permanent effects
+High-signal mistakes to avoid:
 
-3. **✅ VALIDATE BEFORE IMPLEMENTATION**
-   - Ask yourself: "What type of information am I documenting?"
-   - Choose the appropriate note format based on the categorization criteria
-   - ForceNew behavior = Warning note (`~> **Note:**`) - users need to avoid configuration errors
-   - Azure service limitations = Often caution notes (`!> **Note:**`) if irreversible
-   - Additional information/tips = Informational notes (`-> **Note:**`)
-
-**🚫 COMMON MISTAKES TO AVOID:**
-- Using informational notes (`->`) for ForceNew behavior warnings
-- Using warning notes (`~>`) for simple tips or external links
-- Using caution notes (`!>`) for reversible configuration changes
-
-**📋 ENFORCEMENT CHECKLIST:**
-- [ ] Read the note formatting guidelines section first
-- [ ] Categorized the information type according to the criteria
-- [ ] Chosen the appropriate note format based on impact and reversibility
-- [ ] Verified the format matches the content type (warning for ForceNew, etc.)
+- using informational notes (`->`) for ForceNew or conditional-requirement warnings
+- using warning notes (`~>`) for simple tips or external links
+- using caution notes (`!>`) for reversible configuration changes
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📚-key-differences-resources-vs-data-sources"></a>
 
@@ -437,7 +424,6 @@ description: |-
 - **Data Sources**: Omit import section (data sources don't support import)
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="🏗️-documentation-structure"></a>
 
@@ -460,7 +446,6 @@ website/docs/
 - Use lowercase with underscores, match Terraform resource name exactly
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📄-resource-documentation-template"></a>
 
@@ -569,7 +554,6 @@ terraform import azurerm_service_resource.example /subscriptions/00000000-0000-0
 - Tag variations or simple property changes
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📊-data-source-documentation-template"></a>
 
@@ -633,7 +617,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ````
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="✍️-writing-guidelines"></a>
 
@@ -677,7 +660,6 @@ A `configuration` block supports the following:
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="💡-example-configuration-guidelines"></a>
 
@@ -740,15 +722,15 @@ When documenting resources that implement the "None" value pattern (where users 
 
 **Good Example Pattern:**
 ```hcl
-output "log_scrubbing_match_variable" {
-  value = data.azurerm_cdn_frontdoor_profile.example.log_scrubbing_rule.0.match_variable
+output "{{OUTPUT_NAME}}" {
+  value = data.azurerm_{{DATA_SOURCE_SLUG}}.example.{{CONFIGURED_BLOCK_NAME}}.0.{{CONFIGURED_FIELD_NAME}}
 }
 ```
 
 **Pattern to Avoid:**
 ```hcl
-output "log_scrubbing_enabled" {
-  value = data.azurerm_cdn_frontdoor_profile.example.log_scrubbing_rule.0.enabled
+output "{{OUTPUT_NAME}}" {
+  value = data.azurerm_{{DATA_SOURCE_SLUG}}.example.{{OPTIONAL_OR_DERIVED_FIELD_NAME}}.0.{{OPTIONAL_OR_DERIVED_ATTRIBUTE}}
 }
 ```
 
@@ -774,7 +756,6 @@ When adding new fields to existing resources, follow this guidance for documenta
 - **New example needed**: Advanced `custom_domain` setup requiring certificates and DNS validation
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📁-import-documentation"></a>
 
@@ -804,7 +785,6 @@ Rules:
 Data sources do not support import operations, so this section should be omitted from data source documentation.
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="⏱️-timeout-documentation"></a>
 
@@ -837,7 +817,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="☁️-azure-specific-documentation-patterns"></a>
 
@@ -884,7 +863,6 @@ The `timeouts` block allows you to specify [timeouts](https://developer.hashicor
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📋-attributes-reference-differences"></a>
 
@@ -936,7 +914,6 @@ In addition to the Arguments listed above - the following Attributes are exporte
 ```
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📝-field-documentation-rules"></a>
 
@@ -1039,7 +1016,7 @@ When fields are deprecated using the provider's "next major version" feature fla
 - **Major version docs**: Clean up all legacy references and focus on current API
 - **Upgrade guides**: Migration instructions belong in upgrade guides, not resource docs
 
-**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#🚀-fivepointoh-feature-flag-patterns)
+**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#fivepointoh-feature-flag-patterns)
 
 ### Cross-Implementation Documentation Consistency
 
@@ -1063,7 +1040,6 @@ When documenting related Azure resources (like Linux and Windows VMSS), ensure c
 - [ ] Examples demonstrate the same patterns for equivalent functionality
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>
 
 <a id="📋-provider-documentation-standards-note-formatting"></a>
 
@@ -1130,4 +1106,3 @@ Use caution note blocks when providing critical information on potential irrever
 - 📋 **Code Clarity**: [code-clarity-enforcement.instructions.md](./code-clarity-enforcement.instructions.md) - Comment and code quality standards
 
 ---
-<a href="#documentation-guidelines">⬆️ Back to top</a>

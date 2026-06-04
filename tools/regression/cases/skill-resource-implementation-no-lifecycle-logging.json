@@ -1,0 +1,54 @@
+{
+  "id": "skill-resource-implementation-no-lifecycle-logging",
+  "title": "Resource implementation guidance avoids redundant lifecycle logging by default",
+  "task": "resource-implementation",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic implementation-guidance scenario where a contributor is adding provider-side CRUD logging such as `Creating`, `Reading`, `Updating`, or `Deleting` to a new typed resource. The correct guidance should treat those logs as redundant by default, preserve the narrow remove-from-state diagnostic exception, and prefer SDK-level consistency if lifecycle logging is desired broadly.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic implementation scenario focused on suppressing redundant lifecycle logging in generated/provider-authored code examples and guidance."
+  },
+  "expectedRules": [
+    "IMPL-CODE-002"
+  ],
+  "mustCatch": [
+    {
+      "key": "redundant-lifecycle-logging-default",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should say generic `Import check`, `Creating`, `Reading`, `Updating`, and `Deleting` logs are redundant by default when they only duplicate Terraform core or provider-native logging."
+    },
+    {
+      "key": "allow-remove-from-state-diagnostic",
+      "severity": "low",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should preserve the narrow remove-from-state/not-found diagnostic exception when it adds distinct debugging value."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "require-ad-hoc-lifecycle-logging",
+      "description": "The guidance must not present generic CRUD lifecycle/provider logging as a required or recommended default implementation pattern."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this case to benchmark the resource-implementation skill against the maintainer decision that generic lifecycle/provider logging is redundant by default."
+}

@@ -5,11 +5,9 @@ description: Performance optimization patterns and efficiency guidelines for the
 
 # Performance Optimization Guide
 
-<a id="performance-optimization-guide"></a>
 
 Performance optimization patterns and efficiency guidelines for the Terraform AzureRM provider including Azure API optimization, resource management, and scalability considerations.
 
-**Quick navigation:** <a href="#⚡-azure-api-efficiency-patterns">⚡ Azure API Efficiency</a> | <a href="#🔄-resource-management-optimization">🔄 Resource Management</a> | <a href="#📊-monitoring--observability-patterns">📊 Monitoring</a> | <a href="#🚀-scalability-patterns">🚀 Scalability</a>
 
 <a id="⚡-azure-api-efficiency-patterns"></a>
 
@@ -205,16 +203,15 @@ func (r ServiceResource) Create() sdk.ResourceFunc {
             // Enhanced logging with context
             logger := metadata.Logger.WithFields(map[string]interface{}{
                 "resource_type": r.ResourceType(),
-                "operation":     "create",
                 "subscription":  metadata.Client.Account.SubscriptionId,
             })
 
-            logger.Infof("Starting resource creation")
-
-            // Performance monitoring
+            // Performance monitoring with unique diagnostic value rather than generic lifecycle narration
             start := time.Now()
             defer func() {
-                logger.WithField("duration", time.Since(start)).Infof("Resource creation completed")
+                if duration := time.Since(start); duration > 30*time.Second {
+                    logger.WithField("duration", duration).Debugf("create operation exceeded expected duration")
+                }
             }()
 
             // Operation implementation
@@ -337,4 +334,3 @@ func processLargeDataset(ctx context.Context, dataSource DataSource) error {
 }
 ```
 ---
-<a href="#performance-optimization-guide">⬆️ Back to top</a>

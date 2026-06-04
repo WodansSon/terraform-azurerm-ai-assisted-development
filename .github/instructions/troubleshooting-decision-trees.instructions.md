@@ -5,11 +5,12 @@ description: Troubleshooting decision trees and diagnostic patterns for the Terr
 
 # 🔧 Troubleshooting Decision Trees
 
-<a id="🔧-troubleshooting-decision-trees"></a>
+This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
-Troubleshooting decision trees and diagnostic patterns for the Terraform AzureRM provider including common issues, debugging workflows, and resolution strategies.
+- `.github/instructions/implementation-compliance-contract.instructions.md` (see `Canonical sources of truth (precedence)`).
 
-**Quick navigation:** <a href="#🚨-common-issues">🚨 Common Issues</a> | <a href="#🔍-debugging-workflows">🔍 Debugging Workflows</a> | <a href="#⚡-quick-fixes">⚡ Quick Fixes</a> | <a href="#🏗️-development-troubleshooting">🏗️ Development Troubleshooting</a>
+Use this guide for troubleshooting workflows, diagnostic decision paths, and debugging heuristics.
+If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
 <a id="🚨-common-issues"></a>
 
@@ -24,46 +25,25 @@ Troubleshooting decision trees and diagnostic patterns for the Terraform AzureRM
 
 **Decision Tree:**
 ```text
-API Rate Limiting Detected
-├─ Check subscription limits
-│  ├─ Review Azure portal quotas
-│  ├─ Verify service tier limits
-│  └─ Consider subscription upgrade
-├─ Implement retry logic
-│  ├─ Use exponential backoff
-│  ├─ Add jitter to reduce thundering herd
-│  └─ Set maximum retry limits
-└─ Optimize API calls
-   ├─ Batch operations where possible
-   ├─ Cache frequently accessed data
-   └─ Reduce unnecessary API calls
+Evaluate in order and stop at the first matching condition.
+
+- If subscription limits are the primary issue -> Review Azure portal quotas, verify service tier limits, and consider a subscription upgrade
+- Else if polling or backoff behavior is the primary issue -> Prefer a service-specific custom poller for long-running status checks, tune poll interval or backoff deliberately, and use explicit retry limits only where retry behavior is still required
+- Else -> Optimize API calls by batching operations where possible, caching frequently accessed data, and reducing unnecessary API calls
 ```
 
 **Resolution Pattern:**
+```text
+- For provider implementation under `internal/**`, prefer not to introduce a new generic `retryWithBackoff` helper as the default fix for repeated Azure polling.
+- For long-running or repeated status-check behavior, prefer a service-specific custom poller instead of a manual retry loop or `StateChangeConf`-style polling helper.
+- For rate limiting caused by request volume, reduce or batch API calls first and tune the poll interval or existing retry behavior deliberately.
+```
+
+**Custom Poller Pattern:**
 ```go
-// Implement proper retry with exponential backoff
-func retryWithBackoff(operation func() error) error {
-    backoff := time.Second
-    maxRetries := 5
-
-    for i := 0; i < maxRetries; i++ {
-        err := operation()
-        if err == nil {
-            return nil
-        }
-
-        if !isRetryableError(err) {
-            return err
-        }
-
-        time.Sleep(backoff)
-        backoff *= 2
-        if backoff > 30*time.Second {
-            backoff = 30*time.Second
-        }
-    }
-
-    return fmt.Errorf("operation failed after %d retries", maxRetries)
+poller := custompollers.NewExamplePoller(client, id)
+if err := pollers.PollUntilDone(ctx, poller); err != nil {
+    return fmt.Errorf("waiting for completion: %+v", err)
 }
 ```
 
@@ -76,22 +56,11 @@ func retryWithBackoff(operation func() error) error {
 
 **Decision Tree:**
 ```text
-State Drift Detected
-├─ Identify drift source
-│  ├─ Manual Azure portal changes
-│  ├─ Other automation tools
-│  ├─ Azure service auto-scaling
-│  └─ Provider version differences
-├─ Resolve drift
-│  ├─ Update Terraform configuration to match
-│  ├─ Import resources to sync state
-│  ├─ Apply changes to restore desired state
-│  └─ Use refresh-only plan to update state
-└─ Prevent future drift
-   ├─ Implement Azure Policy controls
-   ├─ Use resource locks where appropriate
-   ├─ Establish change management processes
-   └─ Monitor for unauthorized changes
+Evaluate in order and stop at the first matching condition.
+
+- If the next step is to identify the drift source -> Check for manual Azure portal changes, other automation tools, Azure service auto-scaling, and provider version differences
+- Else if the drift source is known and the next step is resolution -> Update Terraform configuration to match, import resources to sync state, apply changes to restore the desired state, or use a refresh-only plan to update state
+- Else -> Prevent future drift by implementing Azure Policy controls, using resource locks where appropriate, establishing change management processes, and monitoring for unauthorized changes
 ```
 
 ### Authentication and Authorization Issues
@@ -103,22 +72,11 @@ State Drift Detected
 
 **Decision Tree:**
 ```text
-Authentication Issue
-├─ Verify credentials
-│  ├─ Check environment variables
-│  ├─ Validate service principal
-│  ├─ Confirm tenant/subscription IDs
-│  └─ Test credential expiration
-├─ Check permissions
-│  ├─ Review Azure RBAC assignments
-│  ├─ Verify resource-level permissions
-│  ├─ Check API permissions for service principal
-│  └─ Validate subscription access
-└─ Test authentication
-   ├─ Use Azure CLI for validation
-   ├─ Test with minimal permissions
-   ├─ Verify network connectivity
-   └─ Check for conditional access policies
+Evaluate in order and stop at the first matching condition.
+
+- If credentials may be wrong or incomplete -> Check environment variables, validate the service principal, confirm tenant and subscription IDs, and test credential expiration
+- Else if credentials are valid but access still fails -> Review Azure RBAC assignments, verify resource-level permissions, check API permissions for the service principal, and validate subscription access
+- Else -> Test authentication with Azure CLI validation, minimal-permission scenarios, network connectivity checks, and conditional access policy checks
 ```
 
 <a id="🔍-debugging-workflows"></a>
@@ -166,22 +124,11 @@ az rest --method GET --url "https://management.azure.com/subscriptions/{subscrip
 
 **Debugging Pattern:**
 ```text
-Connectivity Issue
-├─ Test basic connectivity
-│  ├─ Check internet connection
-│  ├─ Verify DNS resolution
-│  ├─ Test Azure endpoints
-│  └─ Check proxy/firewall settings
-├─ Azure-specific tests
-│  ├─ Test authentication endpoint
-│  ├─ Verify Azure API endpoints
-│  ├─ Check service-specific endpoints
-│  └─ Test from different networks
-└─ Provider-specific debugging
-   ├─ Enable TF_LOG=DEBUG
-   ├─ Check HTTP response codes
-   ├─ Review timeout settings
-   └─ Test with reduced concurrency
+Evaluate in order and stop at the first matching condition.
+
+- If basic connectivity is not yet confirmed -> Check the internet connection, verify DNS resolution, test Azure endpoints, and check proxy or firewall settings
+- Else if basic connectivity works but Azure-specific access still fails -> Test the authentication endpoint, verify Azure API endpoints, check service-specific endpoints, and test from different networks
+- Else -> Use provider-specific debugging by enabling TF_LOG=DEBUG, checking HTTP response codes, reviewing timeout settings, and testing with reduced concurrency
 ```
 
 <a id="⚡-quick-fixes"></a>
@@ -335,5 +282,3 @@ if err != nil {
 }
 log.Printf("[DEBUG] Parsed ID: %+v", id)
 ```
----
-<a href="#🔧-troubleshooting-decision-trees">⬆️ Back to top</a>
