@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **User-Priority:**
+  - **[Installer]** - Install and verify now prune managed payload files from the extracted installer bundle when those files were removed from the current manifest, so extracting a newer release over an older `.terraform-azurerm-ai-installer` directory no longer triggers stale-file checksum mismatches.
+
 ## [3.3.0] - 2026-05-07
 
 ### Added

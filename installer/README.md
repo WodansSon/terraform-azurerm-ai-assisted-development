@@ -476,6 +476,7 @@ Simply use slash commands to invoke the prompts directly:
 > Verification summaries include both files and directories checked.
 > Install, verify, and clean use the bundled payload (`aii/`) and local manifest only.
 > No network downloads occur during these operations.
+> Install and verify automatically prune managed payload files under `aii/` that are no longer present in the current manifest, so extracting a newer bundle over an older installer directory does not leave checksum-breaking stale files behind.
 > Install and verify also validate the bundled payload checksum (`aii.checksum`). If it fails, re-extract the release bundle or re-run `-Bootstrap` (contributors only).
 > This installer self-check validates extracted bundle integrity only. It does not prove that the original release asset came from the official release workflow.
 <!-- -->

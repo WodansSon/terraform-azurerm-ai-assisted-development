@@ -646,9 +646,56 @@ compute_installer_checksum() {
     printf "%s" "${overall_hash}"
 }
 
+get_installer_managed_payload_paths() {
+    local manifest_file="$1"
+
+    awk '
+        /^\[/ {
+            in_section = ($0 == "[MAIN_FILES]" || $0 == "[INSTRUCTION_FILES]" || $0 == "[PROMPT_FILES]" || $0 == "[SKILL_FILES]" || $0 == "[UNIVERSAL_FILES]")
+            next
+        }
+        in_section {
+            if ($0 ~ /^#/ || $0 ~ /^[[:space:]]*$/) next
+            print $0
+        }
+    ' "${manifest_file}"
+}
+
+prune_stale_installer_payload() {
+    local installer_root="$1"
+    local manifest_file="${installer_root}/file-manifest.config"
+    local payload_root="${installer_root}/aii"
+
+    if [[ ! -f "${manifest_file}" ]]; then
+        write_error_message "Installer manifest not found"
+        return 1
+    fi
+    if [[ ! -d "${payload_root}" ]]; then
+        write_error_message "Installer payload not found"
+        return 1
+    fi
+
+    local allowed_file
+    allowed_file="$(mktemp)"
+    get_installer_managed_payload_paths "${manifest_file}" | LC_ALL=C sort -u > "${allowed_file}"
+
+    while IFS= read -r file; do
+        local rel_path
+        rel_path="${file#${payload_root}/}"
+        if ! grep -Fxq "${rel_path}" "${allowed_file}"; then
+            rm -f "${file}"
+        fi
+    done < <(find "${payload_root}" -type f | LC_ALL=C sort)
+
+    find "${payload_root}" -depth -type d -empty -not -path "${payload_root}" -exec rmdir {} + 2>/dev/null || true
+    rm -f "${allowed_file}"
+}
+
 write_installer_checksum() {
     local installer_root="$1"
     local checksum_file="${installer_root}/aii.checksum"
+
+    prune_stale_installer_payload "${installer_root}" || return 1
 
     local version="dev"
     if [[ -f "${installer_root}/VERSION" ]]; then
@@ -680,6 +727,8 @@ verify_installer_checksum() {
         write_error_message "Installer checksum file missing hash"
         return 1
     fi
+
+    prune_stale_installer_payload "${installer_root}" || return 1
 
     local actual
     actual="$(compute_installer_checksum "${installer_root}")" || return 1
