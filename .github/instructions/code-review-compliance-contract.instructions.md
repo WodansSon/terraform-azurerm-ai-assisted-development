@@ -273,6 +273,11 @@ Committed review scope decision table:
 - Rule: Treat that as a reviewable issue when an update branch returns after handling one change while other changed fields remain unapplied, unless the branch is proven to perform a complete replacement that includes all dirty updatable fields.
 - Rule: Do not assume that a special-case PUT or PATCH branch is safe merely because it solves one field-specific API behavior; review whether it still preserves the full set of concurrent user changes.
 
+### REVIEW-SCOPE-005G: Create-time import guards and callback identity setup are reviewable
+- Rule: When `internal/**/*.go` create logic probes for an existing resource and returns `tf.ImportAsExistsError(...)`, review whether that branch honors `SkipImportCheckOnCreateAndAllowOverwritingExistingResources`.
+- Rule: When `internal/**/*.go` create logic uses callback-based `...CreateCallbackThenPoll(...)` flows for a resource that supports Resource Identity, review whether the callback sets both the Terraform ID and identity through `sdk.SetIDAndIdentityCallback(...)` or an equivalent callback.
+- Rule: Treat an unconditional import-as-exists path or a callback-based create flow that omits ID-plus-identity setup as a reviewable issue because those patterns break configured overwrite behavior or leave Resource Identity unset during create.
+
 ### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
 - Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.

@@ -140,6 +140,16 @@ In practice, the review should:
 - allow narrow not-found or removing-from-state diagnostics when they add distinct debugging value
 - prefer SDK/framework-level solutions if consistent lifecycle logging is desired across many resources
 
+### `REVIEW-SCOPE-005G`
+
+This means the review checked two create-path behaviors that are easy to miss in provider Go code.
+
+In practice, the review should:
+
+- flag create-time `tf.ImportAsExistsError(...)` branches that ignore the `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` feature gate
+- flag callback-based create flows for resources with Resource Identity when the callback only sets the Terraform ID and does not also set identity data
+- treat these as behavior issues, not stylistic preferences, because they can break configured overwrite-on-create behavior or leave Resource Identity incomplete after create
+
 ### `REVIEW-FILE-005`
 
 This means the review recognized vendored third-party files under `vendor/**` as non-actionable scope.

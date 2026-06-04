@@ -188,13 +188,15 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
 
             id := parse.NewServiceNameID(subscriptionId, model.ResourceGroup, model.Name)
 
-            existing, err := client.Get(ctx, id)
-            if err != nil && !response.WasNotFound(existing.HttpResponse) {
-                return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
-            }
+            if !metadata.Client.Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources {
+                existing, err := client.Get(ctx, id)
+                if err != nil && !response.WasNotFound(existing.HttpResponse) {
+                    return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
+                }
 
-            if !response.WasNotFound(existing.HttpResponse) {
-                return metadata.ResourceRequiresImport(r.ResourceType(), id)
+                if !response.WasNotFound(existing.HttpResponse) {
+                    return metadata.ResourceRequiresImport(r.ResourceType(), id)
+                }
             }
 
             properties := servicenametype.Resource{
@@ -304,12 +306,14 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
 
     id := parse.NewServiceNameID(subscriptionId, resourceGroupName, name)
 
-    existing, err := client.Get(ctx, id)
-    if err != nil && !response.WasNotFound(existing.HttpResponse) {
-        return fmt.Errorf("checking for existing %s: %+v", id, err)
-    }
-    if !response.WasNotFound(existing.HttpResponse) {
-        return tf.ImportAsExistsError("azurerm_service_name", id.ID())
+    if !meta.(*clients.Client).Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources {
+        existing, err := client.Get(ctx, id)
+        if err != nil && !response.WasNotFound(existing.HttpResponse) {
+            return fmt.Errorf("checking for existing %s: %+v", id, err)
+        }
+        if !response.WasNotFound(existing.HttpResponse) {
+            return tf.ImportAsExistsError("azurerm_service_name", id.ID())
+        }
     }
 
     parameters := servicenametype.Resource{
@@ -331,6 +335,28 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
     return resourceServiceNameRead(ctx, d, meta)
 }
 ```
+
+### Callback-Based Create Pattern For Resource Identity
+
+When a create helper sets the Terraform ID from inside the poller callback, Resource Identity needs to be populated from that same callback rather than waiting for read.
+
+For typed resources:
+
+```go
+if err := client.CreateCallbackThenPoll(ctx, id, properties, metadata.SetIDAndIdentityCallback(&id)); err != nil {
+    return fmt.Errorf("creating %s: %+v", id, err)
+}
+```
+
+For untyped resources:
+
+```go
+if err := client.CreateCallbackThenPoll(ctx, id, properties, sdk.SetIDAndIdentityCallback(meta, &id, d)); err != nil {
+    return fmt.Errorf("creating %s: %+v", id, err)
+}
+```
+
+Use the ID-plus-identity callback form for resources that support Resource Identity. A callback that only sets the Terraform ID leaves create-time identity state incomplete.
 
 ### Import Management Pattern
 

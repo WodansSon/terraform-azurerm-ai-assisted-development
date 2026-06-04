@@ -137,6 +137,24 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` describes the full list-resource workflow: identity prerequisite, implementation, tests, and docs
   - Upstream provider PR `hashicorp/terraform-provider-azurerm#32192` (`List and identity implementation - azurerm_web_pubsub_custom_certificate`) is a concrete example of retrofitting an existing resource with Resource Identity, list implementation, list tests, and list-resource docs together
 
+### IMPL-WF-002B: Create-time import checks must honor the overwrite feature gate
+- Rule: When create logic probes for an existing resource and returns `tf.ImportAsExistsError(...)`, guard that branch with `!meta.(*clients.Client).Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources`.
+- Rule: Do not make the import-as-exists path unconditional when the provider feature flag is configured to allow create-time overwrite behavior.
+- Rule: Keep the normal existence-probe semantics: unexpected GET failures still return an error, `404` still permits create, and only the feature-gated existing-resource branch returns `tf.ImportAsExistsError(...)`.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` under the Create example says the existing-resource import check should only run unless the user has opted into `skip_import_check_on_create_and_allow_overwriting_existing_resources`.
+  - That same upstream example shows the exact guard `if !metadata.Client.Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources { ... return metadata.ResourceRequiresImport(r.ResourceType(), id) }`, which is the typed-resource equivalent of this rule.
+
+### IMPL-WF-002C: Callback-based create flows must set identity when Resource Identity is supported
+- Rule: When a create flow uses a callback-based `...CreateCallbackThenPoll(...)` or equivalent helper and the resource supports Resource Identity, use `sdk.SetIDAndIdentityCallback(meta, &id, d)` or an equivalent callback that sets both the Terraform ID and resource identity during create.
+- Rule: Do not use a callback that only sets the Terraform ID, and do not defer identity population until after polling completes, when the resource implements Resource Identity.
+- Rule: Non-callback create flows should continue to set identity data immediately after `metadata.SetID(id)` or the untyped equivalent in create.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-identity.md` says Resource Identity data must be set right after the `id` attribute during create to prevent `Missing Resource Identity After Create` errors.
+  - That same upstream guide explicitly says that when a resource uses a `CallbackThenPoll` method, the callback should be updated to `SetIDAndIdentityCallBack`, and the untyped example shows `sdk.SetIDAndIdentityCallback(meta, &id, d)`.
+
 ### IMPL-WF-003: New resources must include the required documentation companions
 - Rule: For new resources, plan and implement the primary resource documentation and the corresponding list-resource documentation when a list resource is required.
 - Rule: Place list-resource docs under `website/docs/list-resources/` and treat them as part of the default new-resource workflow, not as an optional follow-up.
