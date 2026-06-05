@@ -1,0 +1,54 @@
+{
+  "id": "review-local-acceptance-test-terraform-formatting",
+  "title": "Local code review catches embedded Terraform indentation drift in acceptance tests",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where an acceptance-test file under `internal/**/*_test.go` contains embedded Terraform that mixes tabs and spaces for indentation. The correct review should flag the embedded Terraform formatting issue, keep the concern scoped to the heredoc, and not rely on test execution to prove the problem.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-acceptance-test-terraform-formatting/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource_test.go"
+    ],
+    "notes": "Sanitized fixture models a local review where embedded Terraform in a Go acceptance-test heredoc looks aligned at the current tab width but still violates the repository formatting rule because tabs and spaces are mixed."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-TEST-003",
+    "TEST-PATTERN-010"
+  ],
+  "mustCatch": [
+    {
+      "key": "embedded-terraform-mixed-indentation-issue",
+      "severity": "high",
+      "file": "internal/services/example/example_resource_test.go",
+      "description": "The review should flag embedded Terraform lines that use tabs or mixed tabs-plus-spaces for indentation instead of the required two-space indentation."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "normal-go-indentation-outside-heredoc",
+      "description": "The review must not treat ordinary Go indentation outside the embedded Terraform block as the issue."
+    },
+    {
+      "key": "test-execution-required-to-prove-formatting",
+      "description": "The review must not require running tests or `make tflint` before flagging the embedded Terraform formatting problem when the file evidence is already sufficient."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES"
+    ]
+  },
+  "notes": "Pair this case with the example review markdown output to benchmark reviewer handling of embedded Terraform formatting drift inside acceptance-test Go files."
+}

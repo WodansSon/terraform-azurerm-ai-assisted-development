@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added adjudicated `acceptance-testing` and local-review regression cases for embedded Terraform formatting drift in `internal/**/*_test.go`, so mixed tab-and-space heredoc indentation is now benchmarked on both the guidance and review surfaces.
+
 ### Changed
+
+- **User-Priority:**
+  - **[Review]** - Review guidance now explicitly flags embedded Terraform formatting drift in `internal/**/*_test.go`, including tab-indented acceptance-test config lines that would fail the repository's acceptance-test formatting checks and the required two-space indentation for Terraform configuration lines.
 
 - **Maintainer/Workflow:**
   - **[Testing]** - Testing guidance now explicitly covers generated identity test helper-name drift, including preserving established canonical helper types, verifying helper-name casing early for new Resource Identity surfaces with a narrow `go generate` run, and forbidding hand-edits to generated identity tests as a drift workaround.
+  - **[Testing]** - Acceptance-test authoring guidance now requires two-space indentation and no tabs in embedded Terraform heredocs under `*_test.go` and explicitly points the AI to companion good and bad examples when editor tab rendering makes formatting ambiguous, so AI-authored test config matches the repository's acceptance-test formatting checks.
 
 ### Fixed
 

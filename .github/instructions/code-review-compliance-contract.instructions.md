@@ -302,11 +302,10 @@ Committed review scope decision table:
 - Rule: Evaluate requires-import tests against the active contributor guidance and the resource's actual behavior.
 - Rule: Do not report a requires-import pattern as wrong solely because it differs from an older prompt preference.
 
-### REVIEW-TEST-003: Embedded Terraform in acceptance tests follows terrafmt
+### REVIEW-TEST-003: Embedded Terraform in acceptance tests must use repository-valid formatting
 - Rule: When reviewing files under `internal/**/*_test.go`, inspect embedded Terraform configuration strings, including raw string literals used to define acceptance-test configuration.
-- Rule: For embedded Terraform blocks, treat `terrafmt` output as the canonical formatting standard.
-- Rule: Flag obvious formatting drift that would likely fail `terrafmt` or `make tflint`.
-- Rule: Within embedded Terraform blocks, tabs used for indentation are not acceptable; follow normal `terrafmt` indentation, which is typically two spaces per nesting level.
+- Rule: For `*_test.go` files containing embedded Terraform configuration, flag Terraform configuration lines whose indentation is not two spaces, including tab-indented lines and mixed tab-and-space indentation.
+- Rule: In acceptance-test Terraform blocks, expect two-space indentation for configuration lines and do not accept tabs anywhere in Terraform configuration indentation.
 - Rule: Scope this rule only to embedded Terraform blocks inside Go acceptance-test strings; do not treat tabs in normal Go source as a formatting issue.
 - Rule: Do not assume `azurerm-linter` will catch formatting problems inside embedded Terraform strings.
 

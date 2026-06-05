@@ -148,6 +148,10 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
    - Keep a local only when the value is reused, transformed, or materially improves readability.
 
+- Keep embedded Terraform formatting valid:
+   - When editing Terraform heredocs in `*_test.go` files, use two spaces for configuration indentation and never tabs.
+   - When editing Terraform heredocs in `*_test.go` files, consult the `Embedded Terraform Formatting` examples in `.github/instructions/testing-guidelines.instructions.md` and match the recommended pattern.
+
 - Prefer associated resource `complete(data)` setup by default in data source tests:
    - When a data source test composes its setup from an associated resource helper and a `complete(data)` helper exists, prefer that helper as the default setup shape.
    - Reuse `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` adds unrelated setup or coupling.

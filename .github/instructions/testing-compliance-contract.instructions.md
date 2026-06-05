@@ -232,4 +232,12 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Upstream contributor-doc PR `#32406` narrows the `fmt.Sprintf(...)` helper guidance without turning data source setup into a single mandatory helper shape, leaving room for defaulting to the fuller associated resource config while preserving scenario-based exceptions.
   - Data sources commonly assert computed fields exposed from the managed resource state, so preferring the associated resource `complete(data)` helper when it exists gives the AI a more deterministic default while still allowing narrower setup when the test intentionally targets a smaller shape.
 
+### TEST-PATTERN-010: Embedded Terraform in acceptance tests must use repository-valid indentation
+- Rule: In embedded Terraform configuration blocks inside `*_test.go` files, indent configuration lines with two spaces and never tabs.
+- Rule: When editing Terraform heredocs in acceptance tests, preserve the surrounding file's Terraform formatting and treat tab-indented configuration lines as invalid, since they can fail the repository's acceptance-test formatting checks.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.
+  - Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks.
+
 <!-- TESTING-CONTRACT-EOF -->
