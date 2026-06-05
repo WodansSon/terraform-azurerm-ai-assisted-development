@@ -157,6 +157,7 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
    - If a surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
    - For new surfaces without an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+   - When a new resource includes generated identity tests, verify the generated helper-name casing early with a narrow `go generate` run and keep the canonical helper type aligned across the main resource tests, list tests, data source setup references, and generated identity tests.
    - Keep that same helper type across all acceptance test variants for the same Terraform surface, including the main resource tests, list tests, identity-related tests, and any other helper-instantiating acceptance tests.
    - Generated identity tests under `*_identity_gen_test.go` should instantiate that same helper type directly.
    - Do not introduce separate `SomethingIdentityResource` helpers, alternate helper names, alias types, or wrapper structs just to satisfy a specific test variant.

@@ -207,6 +207,11 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: For new surfaces that do not yet have an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
 - Rule: That canonical helper type should stay the same across all acceptance test variants for the same Terraform surface, including the main resource test file, list-test files, identity-related tests, and any other acceptance test file that instantiates the helper.
 - Rule: Generated identity tests under `*_identity_gen_test.go` must use that same canonical helper type directly.
+- Rule: For new surfaces that use generated identity tests, the canonical helper type must match the helper name emitted by the resource-identity generator for that Terraform resource name unless the shared generator itself is intentionally being changed.
+- Rule: Before finalizing helper-type names for a new resource with Resource Identity support, run the narrow `go generate` command for that resource to verify the generated helper-name casing and prevent `*_resource_identity_gen_test.go` drift.
+- Rule: When a surface already has an established canonical helper type in hand-written acceptance tests, preserve that helper type across all related tests and ensure generated identity tests align with it. Do not introduce alternate helper names for branding or file-local convenience.
+- Rule: Do not preserve Azure product branding or alternate casing in acceptance-test helper names if that causes `go generate` to rewrite `*_resource_identity_gen_test.go`.
+- Rule: If there is a mismatch between hand-written acceptance tests and generated identity tests, resolve it by aligning the canonical helper type or by making an intentional shared generator change. Do not hand-edit the generated identity test.
 - Rule: Do not introduce variant-specific helper types such as `SomethingIdentityResource` or other alternate names merely because the test lives in a different file or generated identity file.
 - Rule: Do not rely on adapter methods, alias types, or wrapper structs to bridge helper-type drift to generated identity tests.
 - Rule: Keep helper-type naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
@@ -215,6 +220,7 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
   - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
   - Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
+  - Local failure analysis for `azurerm_cdn_frontdoor_batch_rule_set` showed the narrower casing drift problem: the generator emitted `CdnFrontdoor...` while the hand-written helper used `CdnFrontDoor...`, and the correct fix was to align the canonical helper type so hand-written and generated tests matched rather than hand-editing the generated test or broadening shared generator behavior for a one-off case.
 
 ### TEST-PATTERN-009: Data source tests should prefer the associated resource complete config by default
 - Rule: When a data source acceptance test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.

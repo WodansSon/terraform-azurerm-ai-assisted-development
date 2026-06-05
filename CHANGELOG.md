@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Maintainer/Workflow:**
+  - **[Testing]** - Testing guidance now explicitly covers generated identity test helper-name drift, including preserving established canonical helper types, verifying helper-name casing early for new Resource Identity surfaces with a narrow `go generate` run, and forbidding hand-edits to generated identity tests as a drift workaround.
+
 ### Fixed
 
 ## [3.4.0] - 2026-06-04
