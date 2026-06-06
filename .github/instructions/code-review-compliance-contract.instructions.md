@@ -183,18 +183,18 @@ Local review scope decision table:
 
 ### REVIEW-FILE-004: Committed review scope must prefer authoritative PR context
 - Rule: When authoritative pull request metadata exists, committed review must use that pull request changed-file set and diff as the authoritative review scope and must not drift into unrelated branch-only commits.
-- Rule: Deterministic pull request identifiers from user input or environment context are valid PR-scoped inputs. When an explicit PR number is available, the first choice is the direct non-CLI GitHub PR-files API request for that same PR number: `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed. Otherwise use active or viewed PR context first, then any remaining allowed non-CLI GitHub-backed PR-files path.
+- Rule: Deterministic pull request identifiers from user input or environment context are valid PR-scoped inputs. When an explicit PR number is available, the first choice is a direct shell-native HTTPS request for that same PR number to `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed and without relying on the local `gh` binary. Otherwise use active or viewed PR context first, then any remaining allowed non-CLI GitHub-backed PR-files path.
 - Rule: PR summaries, issue-style or status metadata, browser links such as `Open on GitHub.com`, forbidden spill-file transports, and local cache or user-profile paths are never authoritative PR file scope. Ignore them, continue with the next allowed GitHub-backed PR-files path, and never read or shell against local spill files.
-- Rule: If the allowed non-CLI PR-files paths are exhausted and a deterministic PR number remains available, use direct `gh api repos/<owner>/<repo>/pulls/<number>/files` retrieval as the automatic final fallback for that same PR number before failing closed for lack of authoritative PR scope. Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
+- Rule: Do not use local `gh api` as an automatic fallback for PR file retrieval. Use `gh` only when the user explicitly asks to use `gh`. If the direct shell-native HTTPS request and the remaining allowed non-CLI GitHub-backed PR-files paths do not yield authoritative PR scope, fail closed for lack of authoritative PR scope. Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
 - Rule: If explicit user-supplied PR context and environment PR context conflict, committed review must fail closed unless the user explicitly says the supplied PR should override the active or viewed PR context. After the authoritative PR changed-file set is resolved, inspect committed content using repo-local evidence such as the committed diff, `git show`, and targeted file reads rather than repeated remote PR-content fetches.
 
 Committed review scope decision table:
 
 | Condition | Required action |
 | --- | --- |
-| Explicit PR number is supplied | Try the preferred direct non-CLI PR-files API path for that PR number first |
+| Explicit PR number is supplied | Try the preferred direct shell-native HTTPS PR-files request for that PR number first |
 | A GitHub-backed result is only summary metadata, a browser link, or a forbidden spill-file path | Ignore it and continue to the next allowed GitHub-backed PR-files path |
-| Non-CLI GitHub-backed PR-files paths are exhausted and a deterministic PR number is available | Use direct `gh api` PR-files fallback for that same PR number |
+| The direct shell-native HTTPS request and remaining non-CLI GitHub-backed PR-files paths are exhausted | Fail closed for lack of authoritative PR scope; do not auto-fallback to `gh` |
 | No authoritative PR context exists, or the user explicitly requests branch-wide committed review | Fall back to `origin/main...HEAD` branch diff scope |
 | Explicit user-supplied PR context conflicts with environment PR context and there is no explicit override | Fail closed |
 
@@ -493,14 +493,6 @@ azurerm-linter execution-state decision table:
 ### REVIEW-OUT-003: Missing evidence must be disclosed plainly
 - Rule: When a conclusion cannot be proven, say so directly in the review rather than compensating with invented certainty.
 
-### REVIEW-OUT-004: Normal review output must not include execution narration
-- Rule: The normal review output must not include preambles, execution commentary, progress narration, or step-by-step status updates.
-- Rule: Do not emit text such as `re-running the local audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, or similar execution-process narration in user-visible review output.
-- Rule: Do not emit first-person drafting, planning, or self-talk text in user-visible review output, including phrases such as `I’m thinking`, `Maybe I could`, `I should`, `I’ll check`, `Alright`, `Investigating`, `Evaluating`, `Inspecting`, `Checked terminal output`, `Read ... lines ...`, or similar internal workflow narration.
-- Rule: Do not emit tool-by-tool activity summaries in user-visible review output outside the prompt-defined final review template or exact hard-stop messages.
-- Rule: If an internal draft would leak first-person planning or tool narration before the final review begins, suppress that draft and restart silently rather than continuing from the leaked text.
-- Rule: The normal review output should contain only the prompt-defined review headings and their content.
-
 ### REVIEW-OUT-005: Successful fresh runs must emit the full current template
 - Rule: If the mandatory procedure succeeds for the selected review type, emit the full current prompt-defined review template.
 - Rule: Do not short-circuit to a previous review, a delta-only summary, or wording such as `same findings as before` or `no change from the last review`.
@@ -520,5 +512,11 @@ azurerm-linter execution-state decision table:
 - Rule: The verification footer may contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
 - Rule: Do not infer skill use from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - Rule: If the review body states that a skill was loaded or used, the verification footer should include the matching `Skill used:` line.
+
+### REVIEW-OUT-008: Overall assessment must align with the final issues state
+- Rule: The `OVERALL ASSESSMENT` section must be derived from the final frozen `ISSUES` section and must not carry forward stale defects that were cleared before the review body was emitted.
+- Rule: If the final `ISSUES` section contains exactly `- None`, the `OVERALL ASSESSMENT` section must not say `Not ready to merge`, must not describe unresolved defects, and must recommend merge-readiness consistent with the issue-free state.
+- Rule: If the final `ISSUES` section contains one or more issues, the `OVERALL ASSESSMENT` section must not say the change is ready to merge and must summarize only the unresolved issues that still appear in the final `ISSUES` section.
+- Rule: Do not mix a clean final issue state with contradictory verdict text such as `Not ready to merge` followed by prose that says local validation is clean and only rerun is needed.
 
 <!-- REVIEW-CONTRACT-EOF -->

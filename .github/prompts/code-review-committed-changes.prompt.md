@@ -35,7 +35,8 @@ If the fresh-run requirements are not satisfied, hard-stop and output exactly th
 ## Command authorization
 The required read-only git commands and `azurerm-linter` commands in this prompt are already authorized by the prompt itself.
 That authorization includes the mandatory branch and diff commands plus targeted follow-on read-only git inspection commands scoped to already identified in-scope files, such as `git diff -- <paths>` and `git show <rev>:<path>`.
-Read-only `gh api` pull-request metadata commands are authorized when step 1 requires the final direct PR-files fallback for a deterministic PR number, or when the user explicitly asks to use `gh`.
+Read-only shell-native HTTPS requests to the GitHub pull-request files endpoint are authorized when step 1 requires authoritative PR file scope for a deterministic PR number.
+Read-only `gh api` pull-request metadata commands are authorized only when the user explicitly asks to use `gh`.
 Execute the required review commands immediately when their step applies.
 Do not stop to ask the user for confirmation before running them.
 Do not emit a preamble that asks permission or waits for approval before running them.
@@ -44,18 +45,12 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Follow the shared review contract, not stale prompt memory.
 - Do not guess when evidence is missing.
 - Do not present multiple alternative fixes unless the user explicitly asks for options.
-- Do not output progress narration, plans, or TODO lists.
-- Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
+- Do not output plans or TODO lists.
 - Do not begin the normal review output until the audit is complete and the findings set is frozen.
 - If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
 - Perform at least one additional silent completeness pass over the fully drafted review before emitting any user-visible output.
 - Assemble the entire review in an internal buffer and emit it exactly once after that completeness pass succeeds.
-- The first character of the normal review output must be `#`.
-
-## No preamble / no progress narration
-- Do not output any sentences before the review headings.
 - The only allowed normal output is the review template defined in this prompt.
-- Do not output progress narration such as `re-running the committed audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, `next I will`, `now I will`, or similar.
 - Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
 - Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
 
@@ -69,7 +64,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 
 ### 1) Gather the committed change-set
 Use GitHub-backed pull request tools for PR metadata and changed-file scope resolution whenever they can provide the authoritative PR payload.
-Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` only for the required git commands in this step, targeted follow-on read-only git inspection commands on already identified in-scope files, and for the final direct `gh api` PR-files fallback when the contract requires it or when the user explicitly asks to use `gh`.
+Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` only for the required git commands in this step, targeted follow-on read-only git inspection commands on already identified in-scope files, the direct shell-native HTTPS PR-files request when the contract requires it, and `gh api` only when the user explicitly asks to use `gh`.
 The commands in steps 1 and 4 must be executed again for each invocation of this prompt, even if they were executed earlier in the conversation.
 
 Run this command first and do not repeat it:
@@ -82,11 +77,11 @@ Determine committed review scope in this order:
 
 - Apply `REVIEW-FILE-004` and `REVIEW-EVID-*` exactly when resolving PR scope, including the committed-review scope decision table in the shared contract.
 - Treat explicit PR numbers and environment PR identifiers as deterministic inputs for GitHub-backed PR scope resolution.
-- For an explicit PR number, try the preferred direct non-CLI PR-files API path first.
+- For an explicit PR number, first issue the preferred direct shell-native HTTPS request to `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed and without relying on `gh`.
 - Treat summary-only results, browser links, and forbidden spill or cache paths as insufficient for PR scope resolution; ignore them and continue with the next allowed GitHub-backed PR-files path.
-- If the allowed non-CLI PR-files paths are exhausted and a deterministic PR number is still available, use the direct `gh api` PR-files fallback for that same PR before failing closed.
+- Do not auto-fallback to `gh api` for PR file retrieval. Use `gh` only when the user explicitly asks to use `gh`.
 - If authoritative PR scope still cannot be resolved after the contract-defined retrieval paths are exhausted, hard-stop and output exactly this one line and nothing else:
-  - `Cannot run code-review-committed-changes: authoritative PR scope could not be resolved from allowed local context, GitHub-backed review tools, or direct gh api PR-files retrieval. Local spill files remain forbidden. Re-run with a branch-wide committed review if you want to skip PR-scoped resolution.`
+  - `Cannot run code-review-committed-changes: authoritative PR scope could not be resolved from allowed local context, GitHub-backed review tools, or direct shell-native GitHub PR-files retrieval. Local spill files remain forbidden. Re-run with a branch-wide committed review if you want to skip PR-scoped resolution.`
 - After PR scope is resolved, use repo-local evidence for per-file inspection unless the user explicitly requests remote-source verification.
 - If explicit user-supplied PR context and environment PR context both exist, resolve them before continuing:
   - If they match, use that PR.
@@ -253,6 +248,12 @@ Use this template:
 
 ## 🏆 **OVERALL ASSESSMENT**
 [Overall assessment and merge-readiness recommendation.]
+
+Overall assessment rules:
+- The verdict must align with the final `### 🔴 **ISSUES**` section.
+- If `### 🔴 **ISSUES**` contains exactly `- None`, do not say `Not ready to merge` and do not describe unresolved defects.
+- If `### 🔴 **ISSUES**` contains one or more issues, do not say the change is ready to merge.
+- Do not carry forward stale issue text into `## 🏆 **OVERALL ASSESSMENT**` after later evidence clears the issue before the review body is emitted.
 
 Preflight complete: yes
 Skill used: [skill-name]

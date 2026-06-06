@@ -16,14 +16,15 @@
   },
   "findings": {
     "caught": [
-      "embedded-terraform-mixed-indentation-issue"
+      "embedded-terraform-mixed-indentation-issue",
+      "overall-assessment-aligns-with-final-issues"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 1,
-    "total": 1
+    "matched": 2,
+    "total": 2
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

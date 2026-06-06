@@ -34,13 +34,16 @@ A correct local code review should:
 - inspect the embedded Terraform string instead of treating the file as ordinary Go-only scope
 - flag the mixed indentation in the embedded Terraform block as an issue even if the current tab width makes the block look aligned
 - keep the issue scoped to the embedded Terraform heredoc rather than complaining about ordinary Go indentation outside the string
+- keep the final overall assessment aligned with the final unresolved issue state instead of mixing a blocking verdict with later prose that says the local state is clean
 - report azurerm-linter execution in its dedicated section without pretending that linter success clears the embedded Terraform formatting issue
 
 ## Expected Must-Catch Outcomes
 
 - `embedded-terraform-mixed-indentation-issue`
+- `overall-assessment-aligns-with-final-issues`
 
 ## Expected Must-Not-Flag Outcomes
 
 - `normal-go-indentation-outside-heredoc`
 - `test-execution-required-to-prove-formatting`
+- `stale-blocking-verdict-after-fix`

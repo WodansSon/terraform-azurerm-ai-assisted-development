@@ -18,7 +18,6 @@
   },
   "expectedRules": [
     "REVIEW-LINT-002B",
-    "REVIEW-OUT-004",
     "REVIEW-OUT-005",
     "REVIEW-OUT-006",
     "REVIEW-OUT-007"
@@ -36,10 +35,6 @@
       "description": "The review must not continue broader evidence gathering, findings classification, or draft the final review body while the linter is still running."
     },
     {
-      "key": "linter-wait-narration-committed",
-      "description": "The review must not emit user-visible wait narration such as still waiting for azurerm-linter, polling terminal output, or checking whether the linter finished."
-    },
-    {
       "key": "partial-linter-classification-committed",
       "description": "The review must not classify the azurerm-linter section from partial runtime state before the same run has completed."
     }
@@ -53,13 +48,6 @@
       "FILES CHANGED",
       "DETAILED TECHNICAL REVIEW",
       "OVERALL ASSESSMENT"
-    ],
-    "mustNotIncludeMarkers": [
-      "still waiting for azurerm-linter",
-      "waiting for azurerm-linter",
-      "polling terminal output",
-      "checking whether the linter finished",
-      "linter is still running"
     ]
   },
   "notes": "Use this case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait."

@@ -235,6 +235,7 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 ### TEST-PATTERN-010: Embedded Terraform in acceptance tests must use repository-valid indentation
 - Rule: In embedded Terraform configuration blocks inside `*_test.go` files, indent configuration lines with two spaces and never tabs.
 - Rule: When editing Terraform heredocs in acceptance tests, preserve the surrounding file's Terraform formatting and treat tab-indented configuration lines as invalid, since they can fail the repository's acceptance-test formatting checks.
+- Rule: Do not rely on Go linting or Go test execution to detect formatting issues inside embedded Terraform configuration strings.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.

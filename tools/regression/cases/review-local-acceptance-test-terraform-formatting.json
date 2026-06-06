@@ -19,7 +19,8 @@
   "expectedRules": [
     "REVIEW-SCOPE-005",
     "REVIEW-TEST-003",
-    "TEST-PATTERN-010"
+    "TEST-PATTERN-010",
+    "REVIEW-OUT-008"
   ],
   "mustCatch": [
     {
@@ -27,6 +28,11 @@
       "severity": "high",
       "file": "internal/services/example/example_resource_test.go",
       "description": "The review should flag embedded Terraform lines that use tabs or mixed tabs-plus-spaces for indentation instead of the required two-space indentation."
+    },
+    {
+      "key": "overall-assessment-aligns-with-final-issues",
+      "severity": "high",
+      "description": "The final overall assessment should remain consistent with the final unresolved issues state and should not mix a blocking verdict with text that says the change is otherwise clean after the issue is fixed."
     }
   ],
   "mustNotFlag": [
@@ -37,6 +43,10 @@
     {
       "key": "test-execution-required-to-prove-formatting",
       "description": "The review must not require running tests or `make tflint` before flagging the embedded Terraform formatting problem when the file evidence is already sufficient."
+    },
+    {
+      "key": "stale-blocking-verdict-after-fix",
+      "description": "The review must not leave `OVERALL ASSESSMENT` at `Not ready to merge` after later evidence in the same frozen review state says the only issue is resolved or the local state is clean."
     }
   ],
   "expectedTools": {
@@ -47,7 +57,8 @@
       "CHANGE SUMMARY",
       "FILES CHANGED",
       "AZURERM LINTER",
-      "ISSUES"
+      "ISSUES",
+      "OVERALL ASSESSMENT"
     ]
   },
   "notes": "Pair this case with the example review markdown output to benchmark reviewer handling of embedded Terraform formatting drift inside acceptance-test Go files."
