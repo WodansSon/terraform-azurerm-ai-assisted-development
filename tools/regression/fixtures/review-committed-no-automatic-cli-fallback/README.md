@@ -1,4 +1,4 @@
-# Sanitized Fixture: Committed Review Prefers Direct PR-Files API First
+# Sanitized Fixture: Committed Review Prefers Direct HTTPS PR-Files Retrieval First
 
 This fixture is synthetic and benchmarks the explicit-PR direct-API-first rule for committed review.
 
@@ -6,9 +6,9 @@ This fixture is synthetic and benchmarks the explicit-PR direct-API-first rule f
 
 A committed-review run is invoked with an explicit PR number.
 
-The preferred direct non-CLI GitHub PR-files API path for that exact PR number is available.
+The preferred direct shell-native HTTPS GitHub PR-files request for that exact PR number is available.
 
-The historical failure mode is that review starts with active or viewed PR metadata tools, hits summary-only output or a forbidden spill-file transport, and detours into fail-closed behavior even though the direct PR-files API path should have been tried first.
+The historical failure mode is that review starts with active or viewed PR metadata tools, hits summary-only output or a forbidden spill-file transport, and then detours into local `gh api` fallback or fail-closed behavior even though the direct HTTPS PR-files request should have been tried first.
 
 ## Simplified PR Shape
 
@@ -24,9 +24,9 @@ User request:
 
 A correct committed review should:
 
-- try the preferred direct non-CLI GitHub PR-files API path first
+- try the preferred direct shell-native HTTPS GitHub PR-files request first
 - avoid starting explicit-PR scope resolution with summary-only PR metadata tools
-- avoid detouring into spill-file-driven fail-closed behavior while the direct PR-files path remains available
+- avoid detouring into automatic `gh api` fallback or spill-file-driven fail-closed behavior while the direct PR-files path remains available
 
 ## Expected Must-Catch Outcomes
 
@@ -35,3 +35,4 @@ A correct committed review should:
 ## Expected Must-Not-Flag Outcomes
 
 - `metadata-tools-before-direct-pr-files-api`
+- `automatic-gh-cli-fallback-without-user-request`

@@ -9,7 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added adjudicated `acceptance-testing` and local-review regression cases for embedded Terraform formatting drift in `internal/**/*_test.go`, so mixed tab-and-space heredoc indentation is now benchmarked on both the guidance and review surfaces.
+
 ### Changed
+
+- **User-Priority:**
+  - **[Review]** - Review guidance now explicitly flags embedded Terraform formatting drift in `internal/**/*_test.go`, including tab-indented acceptance-test config lines that would fail the repository's acceptance-test formatting checks and the required two-space indentation for Terraform configuration lines, and now also requires `OVERALL ASSESSMENT` to stay aligned with the final unresolved issues state.
+  - **[Review]** - Committed review guidance now treats direct shell-native GitHub PR-files retrieval as the preferred explicit-PR path, avoids automatic `gh api` fallback because local CLI installation and version state is not deterministic, and fails closed when authoritative PR scope still cannot be proven.
+  - **[Review]** - Committed review spill-file guidance now explicitly forbids reconstructing PR scope from saved-output artifacts such as `workspaceStorage` or `chat-session-resources` `content.json` and `content.txt` files, including shell parsing of those local paths.
+
+- **Maintainer/Workflow:**
+  - **[Testing]** - Testing guidance now explicitly covers generated identity test helper-name drift, including preserving established canonical helper types, verifying helper-name casing early for new Resource Identity surfaces with a narrow `go generate` run, and forbidding hand-edits to generated identity tests as a drift workaround.
+  - **[Testing]** - Acceptance-test authoring guidance now requires two-space indentation and no tabs in embedded Terraform heredocs under `*_test.go`, explicitly points the AI to companion good and bad examples when editor tab rendering makes formatting ambiguous, and treats embedded Terraform formatting as a required file shape rather than something inferred from Go linting, Go test execution, or an optional local formatter.
+  - **[Internal]** - Review prompts and regression coverage no longer try to enforce runtime-surfaced progress-narration suppression that the current agent host can emit outside prompt control, while still keeping the final review template and frozen-findings requirements intact.
+  - **[Internal]** - Added review regression coverage that treats stale blocking verdicts in `OVERALL ASSESSMENT` as failures when the final issue state is already clean.
 
 ### Fixed
 

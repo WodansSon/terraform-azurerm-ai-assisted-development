@@ -117,9 +117,9 @@ This means the review applied the committed-review PR-scope rules.
 In practice, the review should:
 
 - use authoritative PR scope instead of drifting into unrelated branch-only commits
-- treat an explicit PR number as a prompt to try the direct PR-files path first
-- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope
-- use the single allowed `gh api` fallback only after the non-CLI PR-files paths are exhausted for that same PR number
+- treat an explicit PR number as a prompt to try a direct shell-native HTTPS PR-files request first
+- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope, including saved-output artifacts under `workspaceStorage` or `chat-session-resources`
+- avoid automatic `gh api` fallback and use `gh` only when the user explicitly asks for it
 
 ### `REVIEW-SCOPE-005`
 
@@ -218,7 +218,7 @@ These IDs come from `.github/instructions/testing-compliance-contract.instructio
 | `TEST-EVID-*` | Evidence and verification | The testing guidance had to follow existing provider test patterns instead of inventing new structures |
 | `TEST-WF-*` | Workflow | How much test coverage should be added and how focused the scenario should be, including list-resource, ephemeral-resource, and provider-function patterns |
 | `TEST-RUN-*` | Execution safety | Acceptance tests create real Azure resources and should be run narrowly and intentionally |
-| `TEST-PATTERN-*` | Acceptance test patterns | How `ExistsInAzure`, `ImportStep()`, and `requiresImport`-style coverage should be used |
+| `TEST-PATTERN-*` | Acceptance test patterns | How `ExistsInAzure`, `ImportStep()`, `requiresImport`-style coverage, and canonical helper naming for generated identity tests should be used |
 
 ## How To Use These Citations As A Reader
 

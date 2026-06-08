@@ -148,6 +148,10 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
    - Keep a local only when the value is reused, transformed, or materially improves readability.
 
+- Keep embedded Terraform formatting valid:
+   - When editing Terraform heredocs in `*_test.go` files, use two spaces for configuration indentation and never tabs.
+   - When editing Terraform heredocs in `*_test.go` files, consult the `Embedded Terraform Formatting` examples in `.github/instructions/testing-guidelines.instructions.md` and match the recommended pattern.
+
 - Prefer associated resource `complete(data)` setup by default in data source tests:
    - When a data source test composes its setup from an associated resource helper and a `complete(data)` helper exists, prefer that helper as the default setup shape.
    - Reuse `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` adds unrelated setup or coupling.
@@ -157,6 +161,7 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
    - If a surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
    - For new surfaces without an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+   - When a new resource includes generated identity tests, verify the generated helper-name casing early with a narrow `go generate` run and keep the canonical helper type aligned across the main resource tests, list tests, data source setup references, and generated identity tests.
    - Keep that same helper type across all acceptance test variants for the same Terraform surface, including the main resource tests, list tests, identity-related tests, and any other helper-instantiating acceptance tests.
    - Generated identity tests under `*_identity_gen_test.go` should instantiate that same helper type directly.
    - Do not introduce separate `SomethingIdentityResource` helpers, alternate helper names, alias types, or wrapper structs just to satisfy a specific test variant.

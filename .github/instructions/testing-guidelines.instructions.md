@@ -89,6 +89,48 @@ func TestAcc{{RESOURCE_NAME}}_basic(t *testing.T) {
 - In helper functions that return `fmt.Sprintf(...)` acceptance-test configuration, pass one-use nested helper calls directly into `fmt.Sprintf(...)` rather than assigning locals like `template := r.template(data)` or `config := r.basic(data)` only to forward them once.
 - Keep a local variable only when the nested helper result is reused, transformed, or clearly improves readability.
 
+### Embedded Terraform Formatting
+
+- In embedded Terraform configuration blocks inside `*_test.go` files, use two spaces for Terraform configuration indentation and never tabs.
+- Preserve the surrounding heredoc formatting when editing an existing acceptance-test config block.
+- If editor tab rendering makes indentation ambiguous, use the examples below as the source of truth for what valid and invalid embedded Terraform formatting look like.
+
+**Recommended Pattern:**
+```go
+func (r ExampleResource) basic(data acceptance.TestData) string {
+        return fmt.Sprintf(`
+resource "azurerm_example" "test" {
+  name                = "acctest-example-%d"
+  resource_group_name = azurerm_resource_group.test.name
+  location            = azurerm_resource_group.test.location
+
+  tags = {
+    environment = "acctest"
+  }
+}
+`, data.RandomInteger)
+}
+```
+
+**Invalid Pattern:**
+```go
+func (r ExampleResource) basic(data acceptance.TestData) string {
+    return fmt.Sprintf(`
+resource "azurerm_example" "test" {
+<TAB>name = "acctest-example-%d"
+<TAB>resource_group_name  = azurerm_resource_group.test.name
+     location<TAB><TAB>   = azurerm_resource_group.test.location
+
+<TAB>tags = {
+<TAB>  environment = "acctest"
+<TAB>}
+}
+`, data.RandomInteger)
+}
+```
+
+- In the invalid example, `<TAB>` represents a literal tab character. That sample intentionally mixes tab-prefixed lines, space-indented lines, and tabs-plus-spaces within a single configuration line so formatting drift stays obvious even in editors that render tabs with a Terraform-sized tab width.
+
 ### Helper Struct Naming
 
 - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.

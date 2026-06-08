@@ -72,11 +72,7 @@ No TODO lists / plans (mandatory; output determinism):
 - Do not add extra sections like "Plan", "Todo", "Steps", or "Checklist".
 - The only allowed output is the 9-heading review template defined in this prompt.
 
-No preamble / no progress narration (mandatory):
-- Do NOT output any sentences before the 9-heading review.
-- The first character of your normal (non-hard-stop) output MUST be `#`.
-- Do NOT output progress narration such as "loaded most of the contract", "next I will", "now I will", or similar.
-- If you cannot complete the audit (for example contract not loaded to EOF), follow the exact hard-stop output rules below.
+If you cannot complete the audit (for example contract not loaded to EOF), follow the exact hard-stop output rules below.
 
 ## ⚡ Mandatory procedure
 

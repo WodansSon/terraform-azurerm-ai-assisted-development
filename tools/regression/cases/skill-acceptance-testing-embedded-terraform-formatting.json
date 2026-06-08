@@ -1,0 +1,49 @@
+{
+  "id": "skill-acceptance-testing-embedded-terraform-formatting",
+  "title": "Acceptance-testing guidance fixes embedded Terraform heredoc indentation drift",
+  "task": "acceptance-testing",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized acceptance-testing guidance scenario where a `*_test.go` helper contains embedded Terraform that mixes tabs and spaces for indentation. The correct guidance should require two-space Terraform indentation, reject tabs and mixed indentation inside the heredoc, preserve the surrounding config shape, and use the companion examples as the source of truth when editor tab rendering is ambiguous.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-acceptance-testing-embedded-terraform-formatting/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource_test.go"
+    ],
+    "notes": "Sanitized fixture models a real acceptance-test formatting failure where embedded Terraform inside a Go heredoc looked aligned in the editor but still failed repository acceptance-test formatting checks because tabs and spaces were mixed."
+  },
+  "expectedRules": [
+    "TEST-PATTERN-010",
+    "TEST-EVID-001",
+    "TEST-PATTERN-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "embedded-terraform-two-space-indentation",
+      "severity": "high",
+      "description": "The guidance should require two-space indentation and no tabs for Terraform configuration lines inside the embedded `*_test.go` heredoc."
+    },
+    {
+      "key": "mixed-indentation-hidden-by-tab-rendering",
+      "severity": "high",
+      "description": "The guidance should treat tabs-plus-spaces used for visual alignment inside a Terraform configuration line as invalid even when the editor renders the line as if it were aligned."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "normal-go-indentation-outside-heredoc",
+      "description": "The guidance must not treat normal Go indentation outside the embedded Terraform block as the acceptance-test formatting problem."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: acceptance-testing"
+    ]
+  },
+  "notes": "Use this case to benchmark the embedded Terraform formatting rule and the companion-example lookup hardening for acceptance-testing guidance."
+}

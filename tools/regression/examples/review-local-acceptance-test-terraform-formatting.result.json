@@ -1,7 +1,7 @@
 {
-  "caseId": "review-local-no-inner-dialog",
-  "runId": "sample-review-local-no-inner-dialog-001",
-  "timestampUtc": "2026-05-27T00:00:00Z",
+  "caseId": "review-local-acceptance-test-terraform-formatting",
+  "runId": "sample-review-acceptance-test-terraform-formatting-001",
+  "timestampUtc": "2026-06-05T00:00:00Z",
   "task": "code-review-local-changes",
   "model": "sample",
   "pass": true,
@@ -16,14 +16,15 @@
   },
   "findings": {
     "caught": [
-      "template-only-final-review-local"
+      "embedded-terraform-mixed-indentation-issue",
+      "overall-assessment-aligns-with-final-issues"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 1,
-    "total": 1
+    "matched": 2,
+    "total": 2
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
@@ -39,5 +40,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for the local-review no-inner-dialog regression case."
+  "notes": "Example adjudicated result for the local review embedded Terraform formatting regression case."
 }

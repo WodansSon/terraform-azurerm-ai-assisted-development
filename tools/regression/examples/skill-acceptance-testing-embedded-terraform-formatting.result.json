@@ -1,8 +1,8 @@
 {
-  "caseId": "review-committed-no-inner-dialog",
-  "runId": "sample-review-committed-no-inner-dialog-001",
-  "timestampUtc": "2026-05-27T00:00:00Z",
-  "task": "code-review-committed-changes",
+  "caseId": "skill-acceptance-testing-embedded-terraform-formatting",
+  "runId": "sample-acctest-embedded-terraform-formatting-001",
+  "timestampUtc": "2026-06-05T00:00:00Z",
+  "task": "acceptance-testing",
   "model": "sample",
   "pass": true,
   "overallScore": 100,
@@ -16,22 +16,21 @@
   },
   "findings": {
     "caught": [
-      "template-only-final-review"
+      "embedded-terraform-two-space-indentation",
+      "mixed-indentation-hidden-by-tab-rendering"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 1,
-    "total": 1
+    "matched": 2,
+    "total": 2
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
     "toolingBehaviorCorrect": true
   },
-  "toolExecution": {
-    "azurermLinter": "run"
-  },
+  "toolExecution": {},
   "outputChecks": {
     "requiredSectionsPresent": true,
     "requiredMarkersPresent": true
@@ -39,5 +38,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for the committed-review no-inner-dialog regression case."
+  "notes": "Example adjudicated result for the acceptance-testing embedded Terraform formatting regression case."
 }

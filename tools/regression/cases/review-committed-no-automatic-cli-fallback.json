@@ -1,11 +1,11 @@
 {
   "id": "review-committed-no-automatic-cli-fallback",
-  "title": "Committed review prefers the direct PR-files API first for explicit PR numbers",
+  "title": "Committed review prefers direct HTTPS PR-files retrieval for explicit PR numbers",
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "sanitized": true,
-  "description": "A committed-review scenario where an explicit PR number is supplied. The correct review should try the preferred direct non-CLI GitHub PR-files API path first, instead of starting with active or viewed PR metadata tools that may only yield summary output or forbidden spill-file transports.",
+  "description": "A committed-review scenario where an explicit PR number is supplied. The correct review should try the preferred direct shell-native HTTPS GitHub PR-files request first, instead of starting with active or viewed PR metadata tools that may only yield summary output or forbidden spill-file transports, and it must not auto-fallback to the local `gh` binary.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-no-automatic-cli-fallback/README.md"
@@ -14,7 +14,7 @@
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Sanitized fixture models the simpler explicit-PR path where the direct non-CLI PR-files API should be the first scope-resolution attempt, avoiding avoidable detours through summary-only or spill-path metadata tools."
+    "notes": "Sanitized fixture models the simpler explicit-PR path where the direct shell-native HTTPS GitHub PR-files request should be the first scope-resolution attempt, avoiding avoidable detours through summary-only or spill-path metadata tools and avoiding automatic local `gh` fallback."
   },
   "expectedRules": [
     "REVIEW-FILE-004"
@@ -23,13 +23,17 @@
     {
       "key": "direct-pr-files-api-first-choice",
       "severity": "high",
-      "description": "The committed review should treat an explicit PR number as a prompt to try the preferred direct non-CLI GitHub PR-files API path first, before active/viewed PR metadata tools or any CLI fallback."
+      "description": "The committed review should treat an explicit PR number as a prompt to try the preferred direct shell-native HTTPS GitHub PR-files request first, before active/viewed PR metadata tools or any CLI fallback."
     }
   ],
   "mustNotFlag": [
     {
       "key": "metadata-tools-before-direct-pr-files-api",
       "description": "The review must not start explicit-PR scope resolution with active/viewed PR metadata tools while the preferred direct non-CLI PR-files API path for that same PR number remains available."
+    },
+    {
+      "key": "automatic-gh-cli-fallback-without-user-request",
+      "description": "The review must not auto-fallback to the local `gh` binary for PR file retrieval when the user did not explicitly ask to use `gh`."
     }
   ],
   "expectedTools": {
@@ -38,8 +42,9 @@
   "outputChecks": {
     "mustNotIncludeMarkers": [
       "Cannot run code-review-committed-changes:",
-      "explicitly request CLI fallback"
+      "explicitly request CLI fallback",
+      "gh api repos/"
     ]
   },
-  "notes": "Use this case to benchmark that explicit PR-number committed review goes straight to the preferred direct non-CLI PR-files API path before trying other PR metadata tooling or any CLI fallback."
+  "notes": "Use this case to benchmark that explicit PR-number committed review goes straight to the preferred direct shell-native HTTPS PR-files request before trying other PR metadata tooling or any CLI fallback."
 }
