@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.4.1] - 2026-06-08
+
+### Added
+
 - **Maintainer/Workflow:**
   - **[Internal]** - Added adjudicated `acceptance-testing` and local-review regression cases for embedded Terraform formatting drift in `internal/**/*_test.go`, so mixed tab-and-space heredoc indentation is now benchmarked on both the guidance and review surfaces.
 
