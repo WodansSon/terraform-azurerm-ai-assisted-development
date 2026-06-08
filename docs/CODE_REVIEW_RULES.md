@@ -118,7 +118,7 @@ In practice, the review should:
 
 - use authoritative PR scope instead of drifting into unrelated branch-only commits
 - treat an explicit PR number as a prompt to try a direct shell-native HTTPS PR-files request first
-- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope
+- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope, including saved-output artifacts under `workspaceStorage` or `chat-session-resources`
 - avoid automatic `gh api` fallback and use `gh` only when the user explicitly asks for it
 
 ### `REVIEW-SCOPE-005`

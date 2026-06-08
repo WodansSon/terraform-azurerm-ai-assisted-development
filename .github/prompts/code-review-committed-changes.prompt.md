@@ -79,6 +79,8 @@ Determine committed review scope in this order:
 - Treat explicit PR numbers and environment PR identifiers as deterministic inputs for GitHub-backed PR scope resolution.
 - For an explicit PR number, first issue the preferred direct shell-native HTTPS request to `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed and without relying on `gh`.
 - Treat summary-only results, browser links, and forbidden spill or cache paths as insufficient for PR scope resolution; ignore them and continue with the next allowed GitHub-backed PR-files path.
+- Treat tool-produced saved-output artifacts under user-profile or cache paths such as `AppData`, `workspaceStorage`, `chat-session-resources`, `content.json`, or `content.txt` as forbidden spill-file transports, not as authoritative PR-files payloads.
+- Do not use `read_file` or shell commands against those saved-output artifacts to reconstruct PR scope.
 - Do not auto-fallback to `gh api` for PR file retrieval. Use `gh` only when the user explicitly asks to use `gh`.
 - If authoritative PR scope still cannot be resolved after the contract-defined retrieval paths are exhausted, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-committed-changes: authoritative PR scope could not be resolved from allowed local context, GitHub-backed review tools, or direct shell-native GitHub PR-files retrieval. Local spill files remain forbidden. Re-run with a branch-wide committed review if you want to skip PR-scoped resolution.`
