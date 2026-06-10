@@ -156,6 +156,7 @@ return fmt.Errorf("creating %s: %+v", id, err)
    - Use consistent validation and error message formats.
    - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
    - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
+   - When `CustomizeDiff` traverses nested `cty.Value` data from `GetRawConfig()`, guard `LengthInt()`, `AsValueSlice()`, and `AsValueMap()` with `IsKnown()` first and defer validation for unknown values, following `IMPL-SCHEMA-013`.
    - Treat read-side ID handling as case-insensitive by parsing import input, stored IDs, and Azure-returned IDs through the shared typed parser instead of comparing raw strings.
    - Parse resource IDs through their typed parser before writing them into Terraform state when the value came from Azure API output, a scoped ID, or an API response property, so casing is normalized and phantom diffs are avoided.
    - When the provider emits or rewrites a resource ID for state or other provider-managed outbound usage, use the canonical parser or provider `.ID()` form rather than preserving arbitrary external casing.

@@ -126,7 +126,40 @@ Azure resources have unique validation requirements that CustomizeDiff functions
 
 **For comprehensive multi-function CustomizeDiff patterns and complex validation examples, see:** [Implementation Guide - CustomizeDiff Import Requirements](./implementation-guide.instructions.md#customizediff-import-requirements)
 
-For the authoritative `CustomizeDiff` requirement on `GetRawConfig()`, configured-versus-unknown values, and enum helper boundaries, see `IMPL-SCHEMA-013` in `.github/instructions/implementation-compliance-contract.instructions.md`.
+For the authoritative `CustomizeDiff` requirement on `GetRawConfig()`, configured-versus-unknown values, raw `cty.Value` shape inspection, and enum helper boundaries, see `IMPL-SCHEMA-013` in `.github/instructions/implementation-compliance-contract.instructions.md`.
+
+### Unknown `cty.Value` Traversal Pattern
+
+When `CustomizeDiff` reads nested raw config from `GetRawConfig()`, guard shape-inspection methods with `IsKnown()` first. Unknown plan values are common during planning, and calling `LengthInt()`, `AsValueSlice()`, or `AsValueMap()` on an unknown value can panic instead of deferring validation cleanly.
+
+Bad:
+
+```go
+conditions := rawConfig.GetAttr("conditions")
+if conditions.IsNull() || conditions.LengthInt() == 0 {
+    return nil
+}
+conditionBlock := conditions.AsValueSlice()[0].AsValueMap()
+```
+
+Good:
+
+```go
+conditions := rawConfig.GetAttr("conditions")
+if !conditions.IsKnown() || conditions.IsNull() || conditions.LengthInt() == 0 {
+    return nil
+}
+conditionBlock := conditions.AsValueSlice()[0].AsValueMap()
+```
+
+For nested values, apply the same guard before more shape inspection:
+
+```go
+matchValues := conditionValue.AsValueSlice()[0].AsValueMap()["match_values"]
+if !matchValues.IsKnown() || matchValues.IsNull() || matchValues.LengthInt() == 0 {
+    return nil
+}
+```
 
 ### Zero Value Validation Pattern
 
@@ -263,14 +296,18 @@ When Azure resources have irreversible configuration changes (like enabling secu
 - **Test Framework**: Acceptance tests require visible state changes to validate ForceNew behavior
 
 **Implementation Pattern:**
+
+This example is limited to top-level field-presence detection. Guard the top-level `rawConfig` value so it is known and non-null before `AsValueMap()` is used; if later logic traverses nested values from that map, follow the `IsKnown()` guard pattern above before any further shape inspection.
+
 ```go
 pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDiff, v interface{}) error {
     var featureExists, policyExists bool
 
     // Check if fields exist in the raw configuration (not computed/inferred values)
-    if rawConfig := diff.GetRawConfig(); !rawConfig.IsNull() {
-        featureExists = !rawConfig.AsValueMap()["irreversible_feature_enabled"].IsNull()
-        policyExists = !rawConfig.AsValueMap()["security_policy_enabled"].IsNull()
+    if rawConfig := diff.GetRawConfig(); rawConfig.IsKnown() && !rawConfig.IsNull() {
+        rawConfigMap := rawConfig.AsValueMap()
+        featureExists = !rawConfigMap["irreversible_feature_enabled"].IsNull()
+        policyExists = !rawConfigMap["security_policy_enabled"].IsNull()
     }
 
     // Only apply ForceNew logic during updates (not during initial creation)
@@ -313,7 +350,7 @@ pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDi
 
 **Key Requirements:**
 - **Irreversible Changes**: Only use for Azure features that cannot be disabled once enabled
-- **Raw Config Detection**: Use `GetRawConfig().AsValueMap()` to detect field presence vs absence in configuration
+- **Raw Config Detection**: When using `AsValueMap()` for top-level field presence detection, first ensure the top-level `GetRawConfig()` value is known and non-null
 - **Update-Only Logic**: Check `diff.Id() != ""` to ensure logic only applies to existing resources, not during creation
 - **State Visibility**: SetNew must be called before ForceNew to create visible plan entry
 - **Error Handling**: SetNew errors should be caught and wrapped with descriptive context
@@ -323,7 +360,7 @@ pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDi
 - **ForceNew without SetNew**: Plan won't show why recreation is needed - users will be confused by ForceNew without visible changes
 - **SetNew without ForceNew**: State changes but resource doesn't recreate when Azure constraints require it
 - **Missing Error Handling**: SetNew failures can break plan generation if not properly handled
-- **Wrong Field Detection**: Use `GetRawConfig().AsValueMap()[field].IsNull()` to detect field removal, not `diff.Get()`
+- **Wrong Field Detection**: Detect field removal from top-level raw config only after confirming `GetRawConfig()` is known and non-null; do not use `diff.Get()` for that presence check
 - **Creation vs Update**: Apply logic only during updates (`diff.Id() != ""`), not during initial resource creation
 
 **For comprehensive `GetRawConfig()` usage guidance, see:** <a href="#🔄-state-management-with-dgetrawconfig">State Management with d.GetRawConfig()</a>

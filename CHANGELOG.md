@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added an adjudicated `resource-implementation` regression case for raw `cty.Value` traversal in `CustomizeDiff`, so the `IMPL-SCHEMA-013` `IsKnown()` guard requirement is now benchmarked directly in the implementation-guidance corpus.
+
 ### Changed
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now consistently requires `CustomizeDiff` logic that traverses raw `cty.Value` config to guard shape-inspection calls with `IsKnown()` first, deferring validation for unknown plan values and keeping raw-config presence-detection examples aligned with that rule.
 
 ### Fixed
 

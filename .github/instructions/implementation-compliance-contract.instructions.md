@@ -295,12 +295,14 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-SCHEMA-013: Use `GetRawConfig()` in `CustomizeDiff` when validation must distinguish configured values from unknown or zero values
 - Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `diff.Get(...)` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
 - Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
+- Rule: When `CustomizeDiff` or other diff-time validation traverses nested raw `cty.Value` config, call `IsKnown()` before `LengthInt()`, `AsValueSlice()`, `AsValueMap()`, `Index()`, or other shape-inspection methods. If a value is unknown, defer validation and return `nil` rather than treating the value as empty or letting shape inspection panic.
 - Rule: Prefer direct `diff.Get(...)` access for required values whose presence is guaranteed by schema and where no configured-versus-unknown distinction is needed.
 - Rule: Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values inside `CustomizeDiff`; reserve those helpers for the SDK or API enum-pointer boundary.
-- **Provenance**: Published upstream standard.
+- **Provenance**: Local safeguard.
 - **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
-  - That guidance uses `GetRawConfig()` as the preferred pattern when `d.Get()` or decoded values would make unknowns look unset
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values` establishes `GetRawConfig()` as the baseline pattern when `d.Get()` or decoded values would make unknowns look unset
+  - Terraform unknown values are common during planning, especially in `GetRawConfig()`-based `CustomizeDiff` validation
+  - Raw `cty.Value` traversal without `IsKnown()` can panic when `LengthInt()`, `AsValueSlice()`, or similar shape-inspection methods are called on unknown values
 
 ## PATCH and residual state
 
