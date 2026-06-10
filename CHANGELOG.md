@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.4.2] - 2026-06-10
+
+### Added
+
 - **Maintainer/Workflow:**
   - **[Internal]** - Added an adjudicated `resource-implementation` regression case for raw `cty.Value` traversal in `CustomizeDiff`, so the `IMPL-SCHEMA-013` `IsKnown()` guard requirement is now benchmarked directly in the implementation-guidance corpus.
 
