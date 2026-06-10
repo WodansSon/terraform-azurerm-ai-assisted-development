@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added an advocate evaluation quality gate to the local and committed code-review prompts so candidate issues are filtered for false positives before appearing in review output, reducing noise and improving issue accuracy.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added `review-validations.instructions.md` as a shipped runtime instruction that defines the defense-advocate evaluation rules, burden-of-proof requirements, and severity adjustment logic consumed by the review prompts.
+
 ### Changed
 
 ### Fixed

@@ -131,6 +131,14 @@ Rules:
 - Do not emit any text after the verification footer.
 - After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
 
+### 6) Advocate evaluation (internal quality gate)
+- If Step 5 identified candidate issues, read and apply `.github/instructions/review-validations.instructions.md` before producing output.
+- For each candidate issue, search for evidence that defends the author's design choice.
+- **Confirmed issues** (no valid defense found): keep in `### 🔴 **ISSUES**` at their original or adjusted priority.
+- **Dismissed/downgraded findings** (valid defense found): move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ Advocate: <one-line defense>]` note.
+- Do not emit a separate advocate section in the output — the advocate filter is invisible machinery that improves issue quality.
+- If no candidate issues were identified in Step 5, skip this step.
+
 ## Output format (use this exact structure)
 
 Output must be rendered Markdown.
