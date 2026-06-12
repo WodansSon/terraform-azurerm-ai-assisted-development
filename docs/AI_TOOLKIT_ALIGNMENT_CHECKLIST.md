@@ -90,6 +90,12 @@ If the contract uses provenance, only use supported labels:
 - `Inferred maintainer convention`
 - `Local safeguard`
 
+Within a letter-suffixed sibling rule family such as `REVIEW-SCOPE-005A` and `REVIEW-SCOPE-005B`:
+
+- Keep sibling rule headings ordered by full rule ID.
+- Do not renumber existing rules solely to improve ordering.
+- If ordering drift is found while touching that family, fix it before publishing the repo package.
+
 ### 2. Consumer files are aligned to the contract
 
 For every declared consumer in a contract:
