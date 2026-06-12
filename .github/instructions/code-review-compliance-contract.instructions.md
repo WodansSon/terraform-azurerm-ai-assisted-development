@@ -278,6 +278,11 @@ Committed review scope decision table:
 - Rule: When `internal/**/*.go` create logic uses callback-based `...CreateCallbackThenPoll(...)` flows for a resource that supports Resource Identity, review whether the callback sets both the Terraform ID and identity through `sdk.SetIDAndIdentityCallback(...)` or an equivalent callback.
 - Rule: Treat an unconditional import-as-exists path or a callback-based create flow that omits ID-plus-identity setup as a reviewable issue because those patterns break configured overwrite behavior or leave Resource Identity unset during create.
 
+### REVIEW-SCOPE-005H: Provider feature-flagged CRUD branch coverage is reviewable
+- Rule: When `internal/**/*.go` changes modify behavior behind a provider-level `features` setting and that setting changes create, update, delete, import, overwrite, or destroy semantics, review whether targeted coverage exists for the changed non-default branch or whether there is a concrete reason that such coverage is not practical.
+- Rule: Do not treat the code-side feature guard alone as sufficient when the changed branch is materially behavior-affecting and meaningfully testable with the existing harness.
+- Rule: For pre-existing remote object scenarios, treat `CheckWithClientForResource`, `CheckWithClientWithoutResource`, and `CheckWithClient`, as appropriate, as valid acceptance setup mechanisms.
+
 ### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
 - Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.

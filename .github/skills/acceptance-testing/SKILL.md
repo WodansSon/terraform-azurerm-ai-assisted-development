@@ -136,6 +136,12 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
    - For resources, plan for `requiresImport` coverage by default using `data.RequiresImportErrorStep`.
    - Only omit it when the resource pattern gives a concrete reason that it is not applicable.
 
+- Provider feature-flagged CRUD branch coverage:
+   - When a provider features block setting changes create, update, delete, import, overwrite, or destroy semantics, consider whether the non-default branch needs one focused acceptance test.
+   - If the branch requires a pre-existing remote object, prefer the existing harness pattern of applying prerequisite infrastructure first, then using `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to create or modify the remote object outside Terraform, then applying the feature-enabled Terraform configuration.
+   - Prefer this direct Azure setup pattern over creating two Terraform-managed resources that intentionally target the same remote ID.
+   - Keep the scenario narrow: prove the feature-enabled branch with one high-signal test unless sibling resources have materially different behavior.
+
 - Do not add acctests for simple property validation by default:
    - If a property validator is already covered adequately by a unit test, do not add an acceptance test only to re-prove that validation.
    - Add an acceptance validation test only when it proves behavior that unit coverage does not, such as broader lifecycle behavior or Azure-specific runtime constraints.

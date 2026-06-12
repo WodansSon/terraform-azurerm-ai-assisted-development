@@ -311,6 +311,80 @@ CustomizeDiff validations are essential for enforcing Azure API constraints and 
 - Do not add acceptance tests purely to prove simple property validation when that validator is already covered by a unit test.
 - Reserve acceptance validation tests for cases where provider behavior needs to be proven beyond unit-test coverage, such as broader lifecycle behavior, Azure-specific cross-field constraints, or runtime interactions that unit tests do not exercise.
 
+### Provider Feature-Flagged CRUD Branch Coverage
+
+When a provider-level `features` setting changes create, update, delete, import, overwrite, or destroy semantics, the default lifecycle matrix may leave the non-default branch unproven even when `basic`, `requiresImport`, `complete`, `update`, and import coverage are already present.
+
+A practical high-signal pattern is:
+
+- apply prerequisite infrastructure first
+- use `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to create or modify the pre-existing remote object outside Terraform
+- apply the feature-enabled configuration that exercises the non-default branch
+- verify overwrite, adoption, or the equivalent changed-branch behavior with one focused proof point, such as a changed field that would fail without the feature-enabled path
+
+**Generalized Pattern:**
+```go
+func TestAcc{{RESOURCE_NAME}}_featureFlaggedBranch(t *testing.T) {
+    data := acceptance.BuildTestData(t, "azurerm_{{RESOURCE_SLUG}}", "test")
+    r := {{RESOURCE_HELPER}}{}
+
+    data.ResourceTest(t, r, []acceptance.TestStep{
+        {
+            Config: r.prerequisites(data),
+            Check: acceptance.ComposeTestCheckFunc(
+                data.CheckWithClientForResource(r.createOutsideTerraform(data), "azurerm_{{PREREQUISITE_RESOURCE_TYPE}}.test"),
+            ),
+        },
+        {
+            Config: r.featureEnabled(data),
+            Check: acceptance.ComposeTestCheckFunc(
+                check.That(data.ResourceName).ExistsInAzure(r),
+                check.That(data.ResourceName).Key("{{FIELD_NAME}}").HasValue("{{EXPECTED_VALUE}}"),
+            ),
+        },
+        data.ImportStep(),
+    })
+}
+```
+
+The callback passed to these helpers should keep the upstream acceptance harness `ClientCheckFunc` shape from `internal/acceptance/steps.go`:
+
+```go
+func (r {{RESOURCE_HELPER}}) createOutsideTerraform(data acceptance.TestData) func(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) error {
+    return func(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) error {
+        // Read the prerequisite resource ID or attributes from state when setup depends on a
+        // related Terraform-managed object.
+        // Use the service-local client from clients.*.
+        // Create or mutate the remote object that should already exist before the next Terraform step.
+        // Return an error if that setup fails.
+        return nil
+    }
+}
+```
+
+**Resource-Scoped Variant:**
+```go
+{
+    Config: r.prerequisites(data),
+    Check: acceptance.ComposeTestCheckFunc(
+        data.CheckWithClientForResource(r.prepareRelatedResource(data), "azurerm_{{RELATED_RESOURCE_TYPE}}.source"),
+        data.CheckWithClientForResource(r.mutateRelatedResource(data), "azurerm_{{RELATED_RESOURCE_TYPE}}.source"),
+    ),
+},
+```
+
+That resource-scoped form is the pattern to use when the pre-existing remote setup or mutation needs the state of a related Terraform-managed object instead of `data.ResourceName`.
+
+Use the helper variants this way:
+
+- use `CheckWithClientForResource(...)` when setup depends on a related Terraform-managed prerequisite resource
+- use `CheckWithClientWithoutResource(...)` when no Terraform state object is needed for the outside-Terraform setup
+- use `CheckWithClient(...)` when the main resource is already in state and you are mutating a related remote object, not when proving a create-time pre-existing-remote-object branch
+
+These examples are generalized from upstream provider patterns, but the durable part is the harness shape: `data.CheckWithClientForResource(...)`, `data.CheckWithClientWithoutResource(...)`, `data.CheckWithClient(...)`, and the `func(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) error` callback signature.
+
+Prefer this direct Azure setup pattern over creating two Terraform-managed resources that intentionally target the same remote ID. Keep the scenario narrow and usually prove the shared branch behavior with one focused test unless sibling resources differ materially.
+
 **Comprehensive Test Coverage:**
 ```go
 func TestAccServiceName_customizeDiffValidation(t *testing.T) {

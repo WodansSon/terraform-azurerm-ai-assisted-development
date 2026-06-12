@@ -339,6 +339,14 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-TEST-002: Prefer ImportStep plus existence checks when appropriate
 - Rule: In acceptance tests, prefer `ImportStep()` for validation and `ExistsInAzure` for existence checks when that pattern fits the resource or data source.
 
+### IMPL-TEST-003: Provider feature-flagged CRUD branch coverage
+- Rule: When implementation changes modify behavior behind a provider-level features block setting and that setting changes create, update, delete, import, overwrite, or destroy semantics, evaluate whether targeted coverage is needed for the changed non-default branch.
+- Rule: When that branch is testable with existing harness patterns, add the smallest focused test that proves the non-default behavior instead of relying only on the default lifecycle matrix.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Feature-gated CRUD branches can leave default-path acceptance tests green while the non-default behavior remains unproven.
+  - The provider acceptance harness already includes client callback patterns suitable for preparing pre-existing remote state when needed.
+
 ## Code clarity
 
 ### IMPL-CODE-001: Avoid unnecessary comments

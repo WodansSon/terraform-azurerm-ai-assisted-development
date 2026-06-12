@@ -184,6 +184,9 @@ return fmt.Errorf("creating %s: %+v", id, err)
 - Tests:
    - Add or adjust tests when implementation behavior changes materially.
    - For new resources that add a list resource, plan a dedicated `*_resource_list_test.go` query-test path in addition to the resource lifecycle tests.
+   - When changing create, update, delete, import, overwrite, or destroy logic behind a provider features block setting, do not stop at the code guard alone.
+   - Check whether the non-default branch should gain one focused unit or acceptance test.
+   - For pre-existing remote object scenarios, prefer existing acceptance harness client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, instead of inventing alternate test shapes.
    - For acceptance-test-specific guidance, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the source of detailed acctest patterns.
 
 - Documentation companions:

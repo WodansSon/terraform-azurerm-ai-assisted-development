@@ -241,4 +241,14 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.
   - Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks.
 
+### TEST-PATTERN-011: Provider feature-flagged CRUD branch coverage
+- Rule: When a provider-level `features` setting changes create, update, delete, import, overwrite, or destroy semantics, add targeted acceptance-test coverage for the non-default branch when feasible.
+- Rule: Prefer one focused acceptance test for the shared branch behavior rather than duplicating equivalent coverage across every sibling resource, unless the resources have materially different behavior.
+- Rule: When exercising that branch requires a pre-existing remote object, use existing client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to prepare the remote object outside Terraform before applying the feature-enabled configuration.
+- Rule: Do not model this scenario by introducing a second Terraform-managed resource with the same remote ID merely to trigger the branch, unless the resource pattern specifically requires that shape.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Provider feature flags can materially alter CRUD semantics without changing the default test matrix shape, so the default `basic`, `requiresImport`, `complete`, `update`, and import scenarios do not reliably prove the feature-enabled branch.
+  - Existing acceptance harness helpers already support direct Azure setup through client callback checks, which is the provider-consistent way to prepare pre-existing remote state for these scenarios.
+
 <!-- TESTING-CONTRACT-EOF -->
