@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User-Priority:**
   - **[Review]** - Review, implementation, and acceptance-testing guidance now treat provider feature-flagged CRUD branch coverage as a first-class requirement, so behavior-changing non-default branches behind provider features blocks are expected to gain one focused test when feasible, including pre-existing remote setup through `CheckWithClient` or `CheckWithClientForResource` instead of duplicate Terraform-managed IDs.
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Repo-side contract validation now enforces ordering for letter-suffixed sibling rule families, so maintainer checks catch drift in contract rule blocks before toolkit packaging.
+
 ### Fixed
 
 ## [3.4.2] - 2026-06-10
