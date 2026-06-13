@@ -104,7 +104,7 @@
       "domain": "implementation",
       "title": "Schema Design Considerations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/schema-design-considerations.md",
-      "baselineSha256": "09bb1bb7813010c6143cb6515eef32d2f560ae10d6fc185c994885abf1cd8243",
+      "baselineSha256": "9ffcde32590e75172c57a66c7de7b4f8194148ddd801f92fead0b8ab3bc60cb9",
       "reviewNotes": [
         "Covers schema-shape choices, Enabled/None patterns, validation expectations, and preview-field rules."
       ]
@@ -144,7 +144,7 @@
       "domain": "implementation-and-testing",
       "title": "Guide: New Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
-      "baselineSha256": "379361ea714d11da12144fd31c0448d106548c2ef7a95df7f804ebdeb8de9c0e",
+      "baselineSha256": "d15f3472c5be32d4bfb46ca350c5a3124538cea8ee1f2b55dd034f105bf1637f",
       "reviewNotes": [
         "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
       ]
@@ -295,7 +295,7 @@
       "domain": "schema-design",
       "title": "Property Naming",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-naming.md",
-      "baselineSha256": "8659b903a5d2de36af5dbaa4bebcc4cc34d22959313047176ceef856793e0649",
+      "baselineSha256": "34197f087ed4ee131180f68b6ba3ac98e8176261a7e96bc6e55e22e4466fcaeb",
       "reviewNotes": [
         "Primary upstream source for property naming conventions including resource ID suffixes, boolean naming, unit suffixes, and marketed names."
       ]

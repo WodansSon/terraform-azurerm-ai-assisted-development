@@ -153,6 +153,10 @@ return fmt.Errorf("creating %s: %+v", id, err)
 - Schema design:
    - Required vs Optional must reflect real API requirements and provider conventions.
    - Treat `tags` consistently and keep it last.
+   - Prefer marketed Azure or portal terminology over awkward raw REST property names when that gives practitioners the clearer user-facing term.
+   - Group semantically related arguments when the portal or CLI already presents them as one settings area and a flat schema would scatter that configuration.
+   - Avoid ambiguous collection-shaped schemas where multiple entries can describe the same conceptual slot.
+   - Use singular names for configured object blocks and plural names for primitive or computed multi-value collections.
    - Use consistent validation and error message formats.
    - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
    - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
