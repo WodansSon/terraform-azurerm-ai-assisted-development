@@ -381,6 +381,53 @@ Use the helper variants this way:
 - use `CheckWithClientWithoutResource(...)` when no Terraform state object is needed for the outside-Terraform setup
 - use `CheckWithClient(...)` when the main resource is already in state and you are mutating a related remote object, not when proving a create-time pre-existing-remote-object branch
 
+When one of these callback helpers needs to call an Azure polling helper such as `CreateOrUpdateThenPoll(...)`, `CreateOrReplaceThenPoll(...)`, `UpdateThenPoll(...)`, or `DeleteThenPoll(...)`, do not pass the provided callback `ctx` directly into the poller. First wrap it with `context.WithTimeout(...)` or `context.WithDeadline(...)`.
+
+This is a repo-specific acceptance-test pattern rather than generic Go advice: in target-provider `internal/acceptance/steps.go`, these callback helpers pass `client.StopContext`, which is not guaranteed to carry a deadline, while Azure polling helpers require one.
+
+Concrete fixed examples of this pattern came from Durable Task acceptance tests in `durable_task_scheduler_resource_test.go`, `durable_task_hub_resource_test.go`, and `durable_task_retention_policy_resource_test.go`.
+
+**Bad Poller Pattern:**
+```go
+data.CheckWithClientForResource(func(ctx context.Context, clients *clients.Client, state *terraform.InstanceState) error {
+    return clients.SomeService.SomeClient.CreateOrUpdateThenPoll(ctx, id, payload)
+}, "azurerm_resource.test")
+```
+
+**Deadline-Wrapped Poller Pattern:**
+```go
+data.CheckWithClientForResource(func(ctx context.Context, clients *clients.Client, state *terraform.InstanceState) error {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+    defer cancel()
+
+    return clients.SomeService.SomeClient.CreateOrUpdateThenPoll(ctx, id, payload)
+}, "azurerm_resource.test")
+```
+
+Use a timeout appropriate for the operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup or mutation.
+
+**Troubleshooting Signal:**
+
+If a test fails with `the context used must have a deadline attached for polling purposes`, first inspect callback-based acceptance setup using:
+
+- `CheckWithClientForResource(...)`
+- `CheckWithClientWithoutResource(...)`
+- `CheckWithClient(...)`
+
+and any callback that then calls an Azure poller such as:
+
+- `CreateOrUpdateThenPoll(...)`
+- `CreateOrReplaceThenPoll(...)`
+- `UpdateThenPoll(...)`
+- `DeleteThenPoll(...)`
+
+In that failure mode, the usual fix is in the test callback itself: wrap the callback context with `context.WithTimeout(...)` or `context.WithDeadline(...)` before calling the poller.
+
+Quota-sensitive acceptance execution is a separate problem from callback-context deadlines:
+
+- for services with hard subscription quotas or low service limits, prefer sequential acceptance execution patterns such as `ResourceSequentialTest(...)`, `DataSourceTestInSequence(...)`, or runner-level `-parallel=1`
+- do not misclassify quota failures as missing-deadline failures in callback-based poller setup
+
 These examples are generalized from upstream provider patterns, but the durable part is the harness shape: `data.CheckWithClientForResource(...)`, `data.CheckWithClientWithoutResource(...)`, `data.CheckWithClient(...)`, and the `func(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) error` callback signature.
 
 Prefer this direct Azure setup pattern over creating two Terraform-managed resources that intentionally target the same remote ID. Keep the scenario narrow and usually prove the shared branch behavior with one focused test unless sibling resources differ materially.

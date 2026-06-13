@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **[Review]** - Review, implementation, and acceptance-testing guidance now treat provider feature-flagged CRUD branch coverage as a first-class requirement, so behavior-changing non-default branches behind provider features blocks are expected to gain one focused test when feasible, including pre-existing remote setup through `CheckWithClient` or `CheckWithClientForResource` instead of duplicate Terraform-managed IDs.
 
 - **Maintainer/Workflow:**
+  - **[Testing]** - Acceptance-test guidance now documents that `CheckWithClientForResource`, `CheckWithClientWithoutResource`, and `CheckWithClient` callbacks must add their own timeout or deadline before calling Azure poller helpers, and separately calls out quota-sensitive acceptance execution as a different failure mode.
   - **[Internal]** - Repo-side contract validation now enforces ordering for letter-suffixed sibling rule families, so maintainer checks catch drift in contract rule blocks before toolkit packaging.
 
 ### Fixed

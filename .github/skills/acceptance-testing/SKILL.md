@@ -139,8 +139,16 @@ make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}
 - Provider feature-flagged CRUD branch coverage:
    - When a provider features block setting changes create, update, delete, import, overwrite, or destroy semantics, consider whether the non-default branch needs one focused acceptance test.
    - If the branch requires a pre-existing remote object, prefer the existing harness pattern of applying prerequisite infrastructure first, then using `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to create or modify the remote object outside Terraform, then applying the feature-enabled Terraform configuration.
+   - When one of those callback helpers needs to call an Azure polling helper such as `CreateOrUpdateThenPoll`, `CreateOrReplaceThenPoll`, `UpdateThenPoll`, or `DeleteThenPoll`, do not pass the callback `ctx` directly into the poller.
+   - First wrap the callback `ctx` with `context.WithTimeout(...)` or `context.WithDeadline(...)`, because callback helpers may supply a context that does not already carry a deadline and Azure pollers require one.
+   - Use a timeout appropriate for the setup or mutation operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup.
    - Prefer this direct Azure setup pattern over creating two Terraform-managed resources that intentionally target the same remote ID.
    - Keep the scenario narrow: prove the feature-enabled branch with one high-signal test unless sibling resources have materially different behavior.
+   - For the detailed bad-vs-good callback-poller example and repo-local evidence, use `.github/instructions/testing-guidelines.instructions.md` rather than expanding this skill into a second example-heavy authority source.
+
+- Quota-sensitive acceptance execution is a separate concern:
+   - For services with hard subscription quotas or low service limits, prefer sequential acceptance execution patterns such as `ResourceSequentialTest(...)`, `DataSourceTestInSequence(...)`, or runner-level `-parallel=1`.
+   - Do not conflate quota-sensitive failures with missing-context-deadline failures in callback-based poller setup.
 
 - Do not add acctests for simple property validation by default:
    - If a property validator is already covered adequately by a unit test, do not add an acceptance test only to re-prove that validation.
