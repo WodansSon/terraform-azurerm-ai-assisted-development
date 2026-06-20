@@ -382,7 +382,7 @@ azurerm-linter execution-state decision table:
   - an explicit PR number provided by the user or prompt invocation text
 - Rule: Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals.
 - Rule: If explicit user-supplied PR context conflicts with environment PR context and there is no explicit user override, do not run the linter.
-- Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to create a draft PR and run the review again.
+- Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to provide an explicit PR number or run the review from an active ready-for-review pull request context.
 - Rule: When the PR number was not provided explicitly in the committed review invocation, that summary should include an example of how to pass one, such as `/code-review-committed-changes PR 12345`.
 
 ### REVIEW-LINT-003: Allowed azurerm-linter section statuses

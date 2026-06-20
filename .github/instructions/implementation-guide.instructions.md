@@ -949,6 +949,7 @@ Use the same parser on import input, existing state values, and API-returned IDs
 ### Extending Existing Resources and Data Sources
 
 - When adding a new resource field, update schema or model ordering first, then wire the property through create, update, and read logic, keeping pointer handling nil-safe in state.
+- When extending an existing resource or data source, do not reorder untouched existing schema or model properties in the same PR just to improve local ordering or style. Keep the functional addition isolated and do any ordering cleanup in a separate follow-up PR.
 - Treat default-value changes and property renames as breaking-change-sensitive work. Review the breaking-change guidance before changing defaults, Optional/Computed behavior, or public property names.
 - For data sources, add new computed attributes in canonical order, set them explicitly in read, extend the basic data source test with direct checks, and update docs last.
 - For resources, new optional properties usually belong in an existing non-basic or complete test; new required properties must be reflected across existing configs.
