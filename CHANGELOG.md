@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [3.4.3] - 2026-06-20
+
+### Added
+
+### Changed
+
 - **User-Priority:**
   - **[Review]** - Review, implementation, and acceptance-testing guidance now treat provider feature-flagged CRUD branch coverage as a first-class requirement, so behavior-changing non-default branches behind provider features blocks are expected to gain one focused test when feasible, including pre-existing remote setup through `CheckWithClient` or `CheckWithClientForResource` instead of duplicate Terraform-managed IDs.
   - **[Review]** - Committed review no longer tells users to create draft pull requests just to obtain PR-scoped linter context, and instead requires an explicit PR number or an active ready-for-review pull request context.
