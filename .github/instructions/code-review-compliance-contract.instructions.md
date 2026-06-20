@@ -250,6 +250,11 @@ Committed review scope decision table:
 - Rule: For the documentation companion, expect the corresponding list-resource doc page under `website/docs/list-resources/` when the new resource requires a list resource.
 - Rule: Do not treat upstream exception labels such as `allow-without-list` or `list-not-supported` as implicit; the review should only accept the omission when the exception is explicitly justified in the change context.
 
+### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
+- Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
+- Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
+- Rule: Treat missing companion docs or tests for new ephemeral resources and provider-defined functions as reviewable issues.
+
 ### REVIEW-SCOPE-005C: Singleton or get-only resources need exception-aware list review
 - Rule: When a brand-new resource appears to be singleton or backed only by a get/read API with no meaningful list API, do not raise a generic missing-list-resource Issue without considering the maintainer-reviewed exception path.
 - Rule: Treat singleton-child implementation evidence as valid justification input even when the PR text is brief. Examples include a fixed child-resource name or path segment, a synthetic ID type representing a singleton child endpoint, CRUD methods that operate on a parent ID plus a fixed child path, or provider semantics that model only one instance per parent.
@@ -278,10 +283,10 @@ Committed review scope decision table:
 - Rule: When `internal/**/*.go` create logic uses callback-based `...CreateCallbackThenPoll(...)` flows for a resource that supports Resource Identity, review whether the callback sets both the Terraform ID and identity through `sdk.SetIDAndIdentityCallback(...)` or an equivalent callback.
 - Rule: Treat an unconditional import-as-exists path or a callback-based create flow that omits ID-plus-identity setup as a reviewable issue because those patterns break configured overwrite behavior or leave Resource Identity unset during create.
 
-### REVIEW-SCOPE-005B: Ephemeral resources and provider-defined functions must include their companions
-- Rule: When the review scope adds a new `*_ephemeral.go` implementation, review whether the required companion artifacts are present: service registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
-- Rule: When the review scope adds a new provider-defined function under `internal/provider/function/`, review whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated unit tests under `internal/provider/function/*_test.go`.
-- Rule: Treat missing companion docs or tests for new ephemeral resources and provider-defined functions as reviewable issues.
+### REVIEW-SCOPE-005H: Provider feature-flagged CRUD branch coverage is reviewable
+- Rule: When `internal/**/*.go` changes modify behavior behind a provider-level `features` setting and that setting changes create, update, delete, import, overwrite, or destroy semantics, review whether targeted coverage exists for the changed non-default branch or whether there is a concrete reason that such coverage is not practical.
+- Rule: Do not treat the code-side feature guard alone as sufficient when the changed branch is materially behavior-affecting and meaningfully testable with the existing harness.
+- Rule: For pre-existing remote object scenarios, treat `CheckWithClientForResource`, `CheckWithClientWithoutResource`, and `CheckWithClient`, as appropriate, as valid acceptance setup mechanisms.
 
 ### REVIEW-SCOPE-006: Manifest and bundle changes must match shipped content expectations
 - Rule: When file manifests, release-bundle lists, or installer packaging inputs change, review whether the changed entries remain consistent with the repository structure and the expected shipped assets.
@@ -377,7 +382,7 @@ azurerm-linter execution-state decision table:
   - an explicit PR number provided by the user or prompt invocation text
 - Rule: Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals.
 - Rule: If explicit user-supplied PR context conflicts with environment PR context and there is no explicit user override, do not run the linter.
-- Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to create a draft PR and run the review again.
+- Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to provide an explicit PR number or run the review from an active ready-for-review pull request context.
 - Rule: When the PR number was not provided explicitly in the committed review invocation, that summary should include an example of how to pass one, such as `/code-review-committed-changes PR 12345`.
 
 ### REVIEW-LINT-003: Allowed azurerm-linter section statuses
@@ -386,11 +391,6 @@ azurerm-linter execution-state decision table:
   - No issues
   - Not applicable
   - Not run
-
-### REVIEW-LINT-003E: Completed zero-issue runs are valid classifications
-- Rule: A completed azurerm-linter run that deterministically reports zero findings is a successful classifiable outcome, not a failure.
-- Rule: In that case, use `Status: No issues` and keep the `### 🎯 **MUST FIX**` section as `- None`.
-- Rule: Do not treat a completed zero-issue run as `Not run` merely because the tool found nothing to report.
 
 ### REVIEW-LINT-003A: Treat "no packages to analyze" as Not applicable when caused by zero changed files
 - Rule: If azurerm-linter output shows that it found zero changed files or zero changed packages for the selected scope and then prints `Error: no packages to analyze`, classify the linter section as `Not applicable` rather than `Not run`.
@@ -414,6 +414,11 @@ azurerm-linter execution-state decision table:
 - Rule: Fail closed only when the primary azurerm-linter run completes but still does not produce a classifiable result for the required review flow.
 - Rule: In that case, either report the linter section as `Not run` with a concise reason from the completed run or hard-stop if the active prompt requires a classifiable linter result before review output.
 - Rule: Do not replace missing linter classification with broader ad hoc file auditing or first-person narration about continuing anyway.
+
+### REVIEW-LINT-003E: Completed zero-issue runs are valid classifications
+- Rule: A completed azurerm-linter run that deterministically reports zero findings is a successful classifiable outcome, not a failure.
+- Rule: In that case, use `Status: No issues` and keep the `### 🎯 **MUST FIX**` section as `- None`.
+- Rule: Do not treat a completed zero-issue run as `Not run` merely because the tool found nothing to report.
 
 ### REVIEW-LINT-004: azurerm-linter findings are reported as issues
 - Rule: When azurerm-linter reports findings for the executed linter scope, report them as issues.
@@ -463,6 +468,11 @@ azurerm-linter execution-state decision table:
 - Rule: On successful runs, prefer a concise execution report plus a separate `### 🎯 **MUST FIX**` section over field-by-field diagnostics.
 - Rule: Build the normal linter subsection from the direct command output returned by the linter run.
 
+### REVIEW-LINT-005B: Normalize finding lines when possible
+- Rule: Each reported linter finding should preserve the check ID, file path, line number, and message from the tool output.
+- Rule: When the tool runs in a temporary worktree and emits absolute temporary paths, convert them to repo-relative paths when this can be done deterministically.
+- Rule: If deterministic path normalization is not possible, keep the raw path rather than guessing.
+
 ### REVIEW-LINT-005C: Persist and inspect full linter output deterministically
 - Rule: Do not create or persist temporary linter log files in the normal review path.
 - Rule: Do not write generated helper scripts or log artifacts to the system temporary directory in the normal review path.
@@ -470,11 +480,6 @@ azurerm-linter execution-state decision table:
 
 ### REVIEW-LINT-005D: Do not claim absence without searching the full saved output
 - Rule: Do not state that a specific rule or file was not reported by azurerm-linter unless the full saved output was searched for the relevant file path and-or rule ID.
-
-### REVIEW-LINT-005B: Normalize finding lines when possible
-- Rule: Each reported linter finding should preserve the check ID, file path, line number, and message from the tool output.
-- Rule: When the tool runs in a temporary worktree and emits absolute temporary paths, convert them to repo-relative paths when this can be done deterministically.
-- Rule: If deterministic path normalization is not possible, keep the raw path rather than guessing.
 
 ### REVIEW-LINT-006: Prefer exact review-scope linting
 - Rule: The linter invocation should match the selected review scope as closely as possible.

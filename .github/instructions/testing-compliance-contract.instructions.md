@@ -241,4 +241,25 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
   - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.
   - Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks.
 
+### TEST-PATTERN-011: Provider feature-flagged CRUD branch coverage
+- Rule: When a provider-level `features` setting changes create, update, delete, import, overwrite, or destroy semantics, add targeted acceptance-test coverage for the non-default branch when feasible.
+- Rule: Prefer one focused acceptance test for the shared branch behavior rather than duplicating equivalent coverage across every sibling resource, unless the resources have materially different behavior.
+- Rule: When exercising that branch requires a pre-existing remote object, use existing client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to prepare the remote object outside Terraform before applying the feature-enabled configuration.
+- Rule: Do not model this scenario by introducing a second Terraform-managed resource with the same remote ID merely to trigger the branch, unless the resource pattern specifically requires that shape.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Provider feature flags can materially alter CRUD semantics without changing the default test matrix shape, so the default `basic`, `requiresImport`, `complete`, `update`, and import scenarios do not reliably prove the feature-enabled branch.
+  - Existing acceptance harness helpers already support direct Azure setup through client callback checks, which is the provider-consistent way to prepare pre-existing remote state for these scenarios.
+
+### TEST-PATTERN-012: Callback-based Azure pollers need explicit deadlines in acceptance setup helpers
+- Rule: When `CheckWithClientForResource(...)`, `CheckWithClientWithoutResource(...)`, or `CheckWithClient(...)` callbacks call Azure polling helpers such as `CreateOrUpdateThenPoll(...)`, `CreateOrReplaceThenPoll(...)`, `UpdateThenPoll(...)`, or `DeleteThenPoll(...)`, do not pass the provided callback `ctx` directly into the poller.
+- Rule: First wrap the callback `ctx` with `context.WithTimeout(...)` or `context.WithDeadline(...)` before calling the poller.
+- Rule: Use a timeout appropriate for the setup or mutation operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup.
+- Rule: Treat quota-sensitive failures separately from missing-deadline failures; if a service has hard subscription quotas or low service limits, prefer sequential acceptance execution patterns or runner-level `-parallel=1` rather than misclassifying those failures as context-deadline issues.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - In target-provider `internal/acceptance/steps.go`, callback helpers invoke the callback with `client.StopContext`, which is not guaranteed to carry a deadline.
+  - Azure polling helpers require a deadline-bearing context, so direct use of the callback `ctx` can fail with `the context used must have a deadline attached for polling purposes, but got no deadline`.
+  - Durable Task fixes in `durable_task_scheduler_resource_test.go`, `durable_task_hub_resource_test.go`, and `durable_task_retention_policy_resource_test.go` resolved this exact failure mode by wrapping the callback `ctx` with `context.WithTimeout(ctx, 30*time.Minute)` before the poller call.
+
 <!-- TESTING-CONTRACT-EOF -->

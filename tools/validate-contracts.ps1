@@ -99,6 +99,87 @@ function Get-SectionLines {
     return $sectionLines
 }
 
+function Get-SuffixedSiblingRuleOrderingErrors {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string[]]$Lines
+    )
+
+    $errors = @()
+    $sectionIndexes = Get-HeadingLineIndexes -Lines $Lines -Pattern '^##\s+'
+
+    foreach ($sectionIndex in $sectionIndexes) {
+        $rulesInSection = @()
+
+        for ($i = $sectionIndex + 1; $i -lt $Lines.Count; $i++) {
+            if ($Lines[$i] -match '^##\s+') {
+                break
+            }
+
+            if ($Lines[$i] -match '^###\s+([^:]+):') {
+                $rulesInSection += [PSCustomObject]@{
+                    id   = $Matches[1].Trim()
+                    line = $i + 1
+                }
+            }
+        }
+
+        if ($rulesInSection.Count -lt 2) {
+            continue
+        }
+
+        $ruleGroups = @{}
+        foreach ($rule in $rulesInSection) {
+            if ($rule.id -notmatch '^(?<stem>[A-Z]+-[A-Z]+-\d{3})(?<suffix>[A-Z]?)$') {
+                continue
+            }
+
+            $stem = $Matches['stem']
+            $suffix = $Matches['suffix']
+
+            if (-not $ruleGroups.ContainsKey($stem)) {
+                $ruleGroups[$stem] = @()
+            }
+
+            $ruleGroups[$stem] += [PSCustomObject]@{
+                id     = $rule.id
+                suffix = $suffix
+                line   = $rule.line
+            }
+        }
+
+        foreach ($stem in $ruleGroups.Keys) {
+            $variants = @($ruleGroups[$stem])
+            $suffixCount = @($variants | Where-Object { -not [string]::IsNullOrEmpty($_.suffix) }).Count
+
+            if ($variants.Count -lt 2 -or $suffixCount -eq 0) {
+                continue
+            }
+
+            $actualIds = @($variants | ForEach-Object { $_.id })
+            $expectedIds = @(
+                $variants |
+                    Sort-Object `
+                        @{ Expression = { if ([string]::IsNullOrEmpty($_.suffix)) { 0 } else { 1 } } }, `
+                        @{ Expression = { $_.suffix } } |
+                    ForEach-Object { $_.id }
+            )
+
+            if (($actualIds -join '|') -ne ($expectedIds -join '|')) {
+                $errors += (
+                    'Rule family {0} has out-of-order suffixed siblings. Found: {1}. Expected: {2}.' -f
+                    $stem,
+                    ($actualIds -join ', '),
+                    ($expectedIds -join ', ')
+                )
+            }
+        }
+    }
+
+    return $errors
+}
+
 function Get-ContractConsumers {
     param(
         [Parameter(Mandatory = $true)]
@@ -264,6 +345,10 @@ function Get-ContractReport {
         if (-not ($lines -contains $heading)) {
             $errors.Add("Missing required contract heading: $heading")
         }
+    }
+
+    foreach ($orderingError in (Get-SuffixedSiblingRuleOrderingErrors -Lines $lines)) {
+        $errors.Add($orderingError)
     }
 
     if (-not $titleLine) {

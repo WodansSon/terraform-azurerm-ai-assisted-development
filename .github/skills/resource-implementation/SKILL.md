@@ -153,6 +153,10 @@ return fmt.Errorf("creating %s: %+v", id, err)
 - Schema design:
    - Required vs Optional must reflect real API requirements and provider conventions.
    - Treat `tags` consistently and keep it last.
+   - Prefer marketed Azure or portal terminology over awkward raw REST property names when that gives practitioners the clearer user-facing term.
+   - Group semantically related arguments when the portal or CLI already presents them as one settings area and a flat schema would scatter that configuration.
+   - Avoid ambiguous collection-shaped schemas where multiple entries can describe the same conceptual slot.
+   - Use singular names for configured object blocks and plural names for primitive or computed multi-value collections.
    - Use consistent validation and error message formats.
    - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
    - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
@@ -184,6 +188,9 @@ return fmt.Errorf("creating %s: %+v", id, err)
 - Tests:
    - Add or adjust tests when implementation behavior changes materially.
    - For new resources that add a list resource, plan a dedicated `*_resource_list_test.go` query-test path in addition to the resource lifecycle tests.
+   - When changing create, update, delete, import, overwrite, or destroy logic behind a provider features block setting, do not stop at the code guard alone.
+   - Check whether the non-default branch should gain one focused unit or acceptance test.
+   - For pre-existing remote object scenarios, prefer existing acceptance harness client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, instead of inventing alternate test shapes.
    - For acceptance-test-specific guidance, use the testing compliance contract and the `acceptance-testing` skill instead of treating this skill as the source of detailed acctest patterns.
 
 - Documentation companions:

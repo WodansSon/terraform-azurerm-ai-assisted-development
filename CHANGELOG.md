@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - Review, implementation, and acceptance-testing guidance now treat provider feature-flagged CRUD branch coverage as a first-class requirement, so behavior-changing non-default branches behind provider features blocks are expected to gain one focused test when feasible, including pre-existing remote setup through `CheckWithClient` or `CheckWithClientForResource` instead of duplicate Terraform-managed IDs.
+  - **[Review]** - Committed review no longer tells users to create draft pull requests just to obtain PR-scoped linter context, and instead requires an explicit PR number or an active ready-for-review pull request context.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now codifies the newer upstream schema-shape and naming expectations around portal-versus-API terminology, grouping semantically related arguments, avoiding ambiguous collection-shaped schemas, and using singular-versus-plural names based on whether Terraform is modeling configured blocks or multi-value collections.
+  - **[Implementation]** - Implementation extension guidance now also preserves existing property order during functional PRs, leaving schema or model reordering to separate follow-up changes so diff readability stays aligned with upstream contributor expectations.
+  - **[Testing]** - Acceptance-test guidance now documents that `CheckWithClientForResource`, `CheckWithClientWithoutResource`, and `CheckWithClient` callbacks must add their own timeout or deadline before calling Azure poller helpers, and separately calls out quota-sensitive acceptance execution as a different failure mode.
+  - **[Internal]** - GitHub workflow validation now retries `Install-PSResource` before falling back to `Install-Module` when PSGallery rejects the `PSScriptAnalyzer` install through the PSResource path, reducing CI failures caused by transient gallery errors or repository-specific package install failures on hosted runners.
+  - **[Internal]** - Repo-side contract validation now enforces ordering for letter-suffixed sibling rule families, so maintainer checks catch drift in contract rule blocks before toolkit packaging.
+
 ### Fixed
 
 ## [3.4.2] - 2026-06-10

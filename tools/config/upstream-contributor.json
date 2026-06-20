@@ -84,7 +84,7 @@
       "domain": "pr-process",
       "title": "Opening a PR",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-opening-a-pr.md",
-      "baselineSha256": "23a9e68705b012c7010db298810eb1c9e3c05a9ad54d494a639b6670bc84dc88",
+      "baselineSha256": "e157cac522cd8d20cab9997ff8a5dbec1a49aec314dcdbab168794fb679ea6b9",
       "reviewNotes": [
         "Review PR-process expectations, testing expectations, and contributor-facing submission guidance."
       ]
@@ -104,7 +104,7 @@
       "domain": "implementation",
       "title": "Schema Design Considerations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/schema-design-considerations.md",
-      "baselineSha256": "09bb1bb7813010c6143cb6515eef32d2f560ae10d6fc185c994885abf1cd8243",
+      "baselineSha256": "9ffcde32590e75172c57a66c7de7b4f8194148ddd801f92fead0b8ab3bc60cb9",
       "reviewNotes": [
         "Covers schema-shape choices, Enabled/None patterns, validation expectations, and preview-field rules."
       ]
@@ -144,7 +144,7 @@
       "domain": "implementation-and-testing",
       "title": "Guide: New Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
-      "baselineSha256": "379361ea714d11da12144fd31c0448d106548c2ef7a95df7f804ebdeb8de9c0e",
+      "baselineSha256": "d15f3472c5be32d4bfb46ca350c5a3124538cea8ee1f2b55dd034f105bf1637f",
       "reviewNotes": [
         "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
       ]
@@ -184,7 +184,7 @@
       "domain": "breaking-changes-and-deprecations",
       "title": "Guide: Breaking Changes and Deprecations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md",
-      "baselineSha256": "d675b26c6b443fe17c38a6a177aac18b085e22d78babbf4079ad9e54c719682a",
+      "baselineSha256": "8c2d5dac53f416f621dd0d8e5563f3568803960c221dfc414a61d62a9c8874cd",
       "reviewNotes": [
         "Primary upstream source for breaking-change handling, FivePointOh feature-flag staging, upgrade-guide expectations, and deprecation cleanup."
       ]
@@ -214,7 +214,7 @@
       "domain": "implementation",
       "title": "Guide: Extending a Data Source",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-data-source.md",
-      "baselineSha256": "186d266c93edb3901ff23c01f7974414d0f65cb18bba6cc979562687f78875eb",
+      "baselineSha256": "e415d54514ce1676c450384b4f66409126bf67587c733d93b1b12943dbf5f93d",
       "reviewNotes": [
         "Primary upstream source for extending existing data sources with new computed fields, read-state updates, tests, and docs."
       ]
@@ -224,7 +224,7 @@
       "domain": "implementation",
       "title": "Guide: Extending a Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-resource.md",
-      "baselineSha256": "baec8843477acdaf81e0146d537da06cdb7e1692599c43bcd980b271a71b1434",
+      "baselineSha256": "2f7df0f0eb82b191715669fba8845191dc06d46d378211cb4ee58615ef944ad5",
       "reviewNotes": [
         "Primary upstream source for extending existing resources with schema, CRUD, tests, docs, and default-value breaking-change review."
       ]
@@ -295,7 +295,7 @@
       "domain": "schema-design",
       "title": "Property Naming",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-naming.md",
-      "baselineSha256": "8659b903a5d2de36af5dbaa4bebcc4cc34d22959313047176ceef856793e0649",
+      "baselineSha256": "34197f087ed4ee131180f68b6ba3ac98e8176261a7e96bc6e55e22e4466fcaeb",
       "reviewNotes": [
         "Primary upstream source for property naming conventions including resource ID suffixes, boolean naming, unit suffixes, and marketed names."
       ]

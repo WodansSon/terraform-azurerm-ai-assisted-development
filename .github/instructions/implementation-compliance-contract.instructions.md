@@ -304,6 +304,33 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Terraform unknown values are common during planning, especially in `GetRawConfig()`-based `CustomizeDiff` validation
   - Raw `cty.Value` traversal without `IsKnown()` can panic when `LengthInt()`, `AsValueSlice()`, or similar shape-inspection methods are called on unknown values
 
+### IMPL-SCHEMA-014: Prefer marketed or portal terminology over raw API names when that improves the Terraform UX
+- Rule: When the Azure Portal or other primary user-facing Azure surface uses a materially clearer name than the REST API property, prefer that marketed or portal terminology in Terraform schema naming unless there is evidence that another surface is the better user anchor.
+- Rule: Do not copy awkward REST property names into public schema purely for one-to-one fidelity when a more recognizable Azure-facing name better matches user expectations.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Prefer Azure Portal terminology when it differs significantly from the REST API`
+  - That guidance says users should be able to correlate Terraform configuration with the portal experience and should align with Azure CLI instead when the portal is not the primary experience
+
+### IMPL-SCHEMA-015: Group semantically related arguments when a flat schema would scatter one conceptual setting family
+- Rule: When a resource has a large set of arguments and the Azure Portal or CLI groups a subset into a coherent settings area, prefer introducing a Terraform block or equivalent grouped shape when that materially reduces cognitive load.
+- Rule: Do not preserve a fully flat schema by default when grouping the related settings would make the Terraform surface clearer without hiding real API semantics.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Group semantically related arguments`
+  - That guidance says portal or CLI sectioning can justify grouping related Terraform settings to reduce cognitive load even though arguments are otherwise commonly ordered alphabetically
+
+### IMPL-SCHEMA-016: Avoid ambiguous collection-shaped schemas and name configured blocks by their real cardinality
+- Rule: When an Azure API models repeated items as a list but multiple entries could target the same semantic slot, redesign the Terraform schema to eliminate ambiguity instead of letting configuration order imply which entry wins.
+- Rule: Use singular names for blocks that represent one configured object at a time, even when the underlying schema uses `TypeList` or another repeated container.
+- Rule: Use plural names for lists of primitive values and for computed-only collections that return multiple values rather than a single configured object.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Eliminate ambiguity in collection-typed arguments`
+  - That guidance says ambiguous collection-based shapes should be redesigned so the Terraform schema does not permit multiple conflicting values for the same conceptual slot
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-naming.md` under `Singular and Plural Block Property Naming Conventions`
+  - That guidance says configured blocks should generally use singular names, while primitive lists and computed multi-value collections should generally use plural names
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows
@@ -338,6 +365,14 @@ If evidence is missing for a behavior-changing claim, do not guess.
 
 ### IMPL-TEST-002: Prefer ImportStep plus existence checks when appropriate
 - Rule: In acceptance tests, prefer `ImportStep()` for validation and `ExistsInAzure` for existence checks when that pattern fits the resource or data source.
+
+### IMPL-TEST-003: Provider feature-flagged CRUD branch coverage
+- Rule: When implementation changes modify behavior behind a provider-level features block setting and that setting changes create, update, delete, import, overwrite, or destroy semantics, evaluate whether targeted coverage is needed for the changed non-default branch.
+- Rule: When that branch is testable with existing harness patterns, add the smallest focused test that proves the non-default behavior instead of relying only on the default lifecycle matrix.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Feature-gated CRUD branches can leave default-path acceptance tests green while the non-default behavior remains unproven.
+  - The provider acceptance harness already includes client callback patterns suitable for preparing pre-existing remote state when needed.
 
 ## Code clarity
 

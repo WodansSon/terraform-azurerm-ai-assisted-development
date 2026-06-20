@@ -1188,12 +1188,21 @@ func (r ServiceResource) Arguments() map[string]*pluginsdk.Schema {
 
 ### Upstream Property Naming Rules
 
+- Prefer Azure Portal or other marketed Azure terminology over raw REST property names when that gives practitioners a more recognizable user-facing term.
 - Prefer the marketed Azure name over raw API names when they differ.
 - Use full words instead of abbreviations unless a schema or service constraint forces a shorter value.
+- Use singular names for blocks that represent one configured object at a time, even when the implementation uses `TypeList` or a similar container.
+- Use plural names for lists of primitive values and for computed-only collections that return multiple values.
 - Suffix resource references as `{resource_name}_id` using the full resource name without the `azurerm_` prefix.
 - Use `_enabled` for booleans by default, but prefer more accurate stateful names such as `mtls_required` or `terms_of_service_accepted` when `_enabled` would be awkward or misleading.
 - Flip negative API booleans into affirmative provider names and avoid `is_` or `no_` prefixes in public schema.
 - Add explicit format or unit suffixes when the value requires one, such as `_base64`, `_in_seconds`, `_in_utc`, `_in_gb`, or `_percentage`.
+
+### Upstream Schema Shape Heuristics
+
+- Group semantically related arguments into a block or equivalent grouped shape when the Azure Portal or CLI presents them as one conceptual settings area and a flat schema would scatter that configuration.
+- Avoid ambiguous collection-shaped schemas where multiple list entries can target the same conceptual slot and leave Terraform users guessing which value wins.
+- When the Azure API exposes a repeated collection shape but the user intent is really one object with distinct semantic fields, reshape the Terraform schema to make those distinct semantics explicit.
 
 Official upstream references:
 
