@@ -42,18 +42,12 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Follow the shared review contract, not stale prompt memory.
 - Do not guess when evidence is missing.
 - Do not present multiple alternative fixes unless the user explicitly asks for options.
-- Do not output progress narration, plans, or TODO lists.
-- Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
+- Do not output plans or TODO lists.
 - Do not begin the normal review output until the audit is complete and the findings set is frozen.
 - If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
 - Perform at least one additional silent completeness pass over the fully drafted review before emitting any user-visible output.
 - Assemble the entire review in an internal buffer and emit it exactly once after that completeness pass succeeds.
-- The first character of the normal review output must be `#`.
-
-## No preamble / no progress narration
-- Do not output any sentences before the review headings.
-- The only allowed normal output is the review template defined in this prompt, plus the Step 5 verification footer and the trailing `Skill used: review-advocate` marker required by Step 6 when the advocate pass runs.
-- Do not output progress narration such as `re-running the local audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, `next I will`, `now I will`, or similar.
+- The only allowed normal output is the review template defined in this prompt.
 - Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
 - Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
 
