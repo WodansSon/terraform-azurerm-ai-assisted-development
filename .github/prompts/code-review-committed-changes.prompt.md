@@ -50,7 +50,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 - If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
 - Perform at least one additional silent completeness pass over the fully drafted review before emitting any user-visible output.
 - Assemble the entire review in an internal buffer and emit it exactly once after that completeness pass succeeds.
-- The only allowed normal output is the review template defined in this prompt.
+- The only allowed normal output is the review template defined in this prompt, plus the Step 5 verification footer when one or more skills were actually used.
 - Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
 - Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
 
@@ -167,7 +167,7 @@ Rules:
 - Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge each candidate Issue.
 - Resolve every candidate Issue to exactly one deterministic outcome (`Confirmed`, `Downgraded`, or `Dismissed`) per `REVIEW-ADV-005`, and freeze the review output only after the advocate pass completes.
 - Do not add a separate advocate section to the review body; the advocate pass is invisible machinery that only adjusts how candidate findings land in `ISSUES` and `OBSERVATIONS` per the advocate contract.
-- Observable proof requirement: when this step runs, the assistant's final response MUST end with the exact line `Skill used: review-advocate` as the last non-empty line, after the review body. This marker is the only trailing content allowed after the review template.
+- Observable proof requirement: when this step runs, `review-advocate` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-advocate` line. Because the advocate pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
 - If the `review-advocate` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-committed-changes: review-advocate skill or contract not fully loaded. Load .github/skills/review-advocate/SKILL.md and .github/instructions/review-advocate-compliance-contract.instructions.md to EOF and re-run this prompt.`
 - If Step 5 produced no candidate Issues, skip this step and do not emit the `Skill used: review-advocate` marker.
