@@ -30,13 +30,17 @@
 │  │  │   │  │  │   ├── code-review-committed-changes...   │  │  │ │
 │  │  │   │  │  │   └── code-review-docs.prompt.md         │  │  │ │
 │  │  │   │  │  ├── skills/                                │  │  │ │
+│  │  │   │  │  │   ├── acceptance-testing/SKILL.md        │  │  │ │
+│  │  │   │  │  │   ├── custom-poller-migration/SKILL.md   │  │  │ │
 │  │  │   │  │  │   ├── docs-writer/SKILL.md               │  │  │ │
-│  │  │   │  │  │   └── [other skill files]                │  │  │ │
+│  │  │   │  │  │   └── resource-implementation/SKILL.md   │  │  │ │
 │  │  │   │  │  └── instructions/                          │  │  │ │
-│  │  │   │  │      ├── api-evolution-patterns.md          │  │  │ │
-│  │  │   │  │      ├── azure-patterns.md                  │  │  │ │
-│  │  │   │  │      ├── testing-guidelines.md              │  │  │ │
-│  │  │   │  │      └── [12+ more instruction files]       │  │  │ │
+│  │  │   │  │      ├── code-review-compliance-contract... │  │  │ │
+│  │  │   │  │      ├── implementation-compliance-contr... │  │  │ │
+│  │  │   │  │      ├── docs-compliance-contract...        │  │  │ │
+│  │  │   │  │      ├── testing-compliance-contract...     │  │  │ │
+│  │  │   │  │      ├── ai-skill-routing-*.instructions... │  │  │ │
+│  │  │   │  │      └── [20 runtime instruction files]     │  │  │ │
 │  │  │   │  └── .vscode/settings.json                     │  │  │ │
 │  │  │   └────────────────────────────────────────────────┘  │  │ │
 │  │  └───────────────────────────────────────────────────────┘  │ │
@@ -106,10 +110,17 @@
 │  ├── .github/skills/                                        │
 │  │   └── */SKILL.md                                         │
 │  ├── .github/instructions/                                  │
-│  │   ├── api-evolution-patterns.md                          │
-│  │   ├── azure-patterns.md                                  │
-│  │   ├── testing-guidelines.md                              │
-│  │   └── [13 instruction files total]                       │
+│  │   ├── code-review-compliance-contract.instructions.md    │
+│  │   ├── implementation-compliance-contract.instructions.md │
+│  │   ├── docs-compliance-contract.instructions.md           │
+│  │   ├── testing-compliance-contract.instructions.md        │
+│  │   ├── ai-skill-routing-*.instructions.md                 │
+│  │   └── [20 instruction files total]                       │
+│  ├── .github/skills/                                        │
+│  │   ├── acceptance-testing/SKILL.md                        │
+│  │   ├── custom-poller-migration/SKILL.md                   │
+│  │   ├── docs-writer/SKILL.md                               │
+│  │   └── resource-implementation/SKILL.md                   │
 │  └── .vscode/settings.json                                  │
 └────────────────────────────┬────────────────────────────────┘
                              │
@@ -212,7 +223,7 @@
 ### Instruction File Hierarchy
 
 ```
-copilot-instructions.md (Root - Applied to ALL files)
+.github/copilot-instructions.md (Root runtime guidance)
 │
 ├── Workspace-First Knowledge Policy
 ├── Risk-Based Safety Guidelines
@@ -222,26 +233,29 @@ copilot-instructions.md (Root - Applied to ALL files)
     ▼
 instructions/*.instructions.md (Specialized - Applied by file pattern)
 │
-├── api-evolution-patterns.md
-│   └── Breaking change detection
-│   └── Version compatibility
+├── *-compliance-contract.instructions.md
+│   └── Shared rule authority and stable rule IDs
 │
-├── azure-patterns.md
-│   └── Azure API patterns (PUT/PATCH/POST)
-│   └── Async operations & polling
+├── ai-skill-routing-*.instructions.md
+│   └── File-type routing into runtime skills
 │
-├── testing-guidelines.md
-│   └── ImportStep() patterns
-│   └── Acceptance test structure
+├── implementation/docs/testing companion guides
+│   └── Examples, heuristics, and companion patterns
 │
-└── [11 more specialized files...]
+└── [20 runtime instruction files in total]
     │
     ▼
 skills/*/SKILL.md (On-demand - Applied when invoked via /<skill>)
 │
-├── docs-writer
-├── resource-implementation
-└── acceptance-testing
+├── Runtime skills shipped to target repos
+│   ├── acceptance-testing
+│   ├── custom-poller-migration
+│   ├── docs-writer
+│   └── resource-implementation
+│
+└── Repo-only maintainer skills in this repository
+  ├── ai-toolkit-maintenance
+  └── changelog-maintenance
 ```
 
 ### Context Awareness Flow
@@ -279,18 +293,27 @@ Write docs        ->  Loads               ->  Generates docs with
 terraform-azurerm-ai-assisted-development/
 │
 ├── .github/
+│   ├── .markdownlint.json
+│   ├── copilot-instructions.md
 │   ├── instructions/
+│   │   ├── ai-skill-routing-docs.instructions.md
+│   │   ├── ai-skill-routing-resource-implementation.instructions.md
+│   │   ├── ai-skill-routing-tests.instructions.md
 │   │   ├── api-evolution-patterns.instructions.md
 │   │   ├── azure-patterns.instructions.md
 │   │   ├── code-clarity-enforcement.instructions.md
+│   │   ├── code-review-compliance-contract.instructions.md
+│   │   ├── docs-compliance-contract.instructions.md
 │   │   ├── documentation-guidelines.instructions.md
 │   │   ├── error-patterns.instructions.md
+│   │   ├── implementation-compliance-contract.instructions.md
 │   │   ├── implementation-guide.instructions.md
 │   │   ├── migration-guide.instructions.md
 │   │   ├── performance-optimization.instructions.md
 │   │   ├── provider-guidelines.instructions.md
 │   │   ├── schema-patterns.instructions.md
 │   │   ├── security-compliance.instructions.md
+│   │   ├── testing-compliance-contract.instructions.md
 │   │   ├── testing-guidelines.instructions.md
 │   │   └── troubleshooting-decision-trees.instructions.md
 │   │
@@ -306,21 +329,27 @@ terraform-azurerm-ai-assisted-development/
 │   │
 │   ├── skills/
 │   │   ├── acceptance-testing/SKILL.md
+│   │   ├── ai-toolkit-maintenance/SKILL.md
+│   │   ├── changelog-maintenance/SKILL.md
+│   │   ├── custom-poller-migration/SKILL.md
 │   │   ├── resource-implementation/SKILL.md
 │   │   └── docs-writer/SKILL.md
 │   │
 │   ├── workflows/
-│   │   ├── validate.yml    # CI for installers & instructions
-│   │   └── release.yml     # Automated releases
+│   │   ├── contracts-validation.yml
+│   │   ├── docs-validation.yml
+│   │   ├── installer-validation.yml
+│   │   ├── regression-harness-validation.yml
+│   │   ├── release.yml
+│   │   └── validate.yml
 │   │
-│   └── copilot-instructions.md
+│   └── pull_request_template.md
 │
 ├── installer/
-│   ├── install-copilot-setup.ps1    # Cross-platform PowerShell
-│   ├── install-copilot-setup.sh     # Traditional Bash
-│   ├── file-manifest.config         # Files to copy
-│   ├── aii                          # AI Infrustructure files
-│   │
+│   ├── aii/
+│   ├── file-manifest.config
+│   ├── install-copilot-setup.ps1
+│   ├── install-copilot-setup.sh
 │   ├── modules/
 │   │   ├── powershell/
 │   │   │   ├── CommonUtilities.psm1
@@ -335,22 +364,70 @@ terraform-azurerm-ai-assisted-development/
 │   │       ├── ui.sh
 │   │       └── validationengine.sh
 │   │
-│   └── README.md
-│
-├── .vscode
-│   └── settings.json
+│   ├── README.md
+│   └── VERSION
 │
 ├── docs/
+│   ├── AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md
+│   ├── AI_CUSTOMIZATION_MIGRATION_INVENTORY.md
+│   ├── AI_REGRESSION_HARNESS.md
+│   ├── AI_TOOLKIT_ALIGNMENT_CHECKLIST.md
+│   ├── ARCHITECTURE.md
+│   ├── CODE_REVIEW_RULES.md
 │   ├── EXAMPLES.md
-│   ├── TROUBLESHOOTING.md
-│   └── ARCHITECTURE.md (this file)
+│   └── TROUBLESHOOTING.md
 │
-├── copilot-instructions.md
+├── tools/
+│   ├── check-upstream-contributor-drift.ps1
+│   ├── validate-ai-toolkit.ps1
+│   ├── validate-changelog-taxonomy.ps1
+│   ├── validate-contracts.ps1
+│   ├── verify-bundle-checksum.ps1
+│   ├── config/
+│   ├── BashAnalyzer/
+│   ├── PSAnalyzer/
+│   └── regression/
+│       ├── cases/
+│       ├── config/
+│       ├── examples/
+│       ├── fixtures/
+│       ├── results/
+│       ├── runs/
+│       ├── schema/
+│       ├── build-regression-test.ps1
+│       ├── run-regression-harness.ps1
+│       ├── run-regression-suite.ps1
+│       ├── scaffold-regression-spec.ps1
+│       ├── scaffold-regression-result.ps1
+│       └── score-regression-case.ps1
+│
+├── .vscode/
+│   └── settings.json
+│
 ├── README.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
+
+### Runtime Payload Vs. Repo-Only Maintenance
+
+The repository contains both shipped runtime guidance and repo-only maintainer tooling.
+
+- Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
+- Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, four shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
+- Repo-only maintenance surfaces stay in this repository and are not installed into target repos.
+- Repo-only surfaces include maintainer skills such as `ai-toolkit-maintenance` and `changelog-maintenance`, the `docs/` architecture and alignment references, and the validation and regression tooling under `tools/`.
+
+### Validation And Regression Surfaces
+
+The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
+
+- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, regression harness, and upstream drift.
+- `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
+- `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
+- `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.
+- `docs/AI_REGRESSION_HARNESS.md`: the benchmark model and scoring philosophy behind the regression suite.
 
 ### Prompt Files (high-level)
 
@@ -363,7 +440,7 @@ Docs components (quick links):
 - Rule reference: `docs/CODE_REVIEW_RULES.md`
 
 - `/code-review-local-changes`: reviews local workspace changes and uses local-diff linting.
-- `/code-review-committed-changes`: reviews committed branch changes against `origin/main` and prefers PR-scoped linting. When PR context is not already available, users can pass a PR number explicitly, for example `/code-review-committed-changes PR 12345`.
+- `/code-review-committed-changes`: reviews committed branch changes against `origin/main`, prefers authoritative PR scope when available, and uses PR-scoped linting. When PR context is not already available, users can pass a PR number explicitly, for example `/code-review-committed-changes PR 12345`.
 - `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, self-contained resource examples, existing-object lookup data source examples, list-resource query examples, ephemeral-resource doc shape, function doc shape, import example ID shape validation, and human-readable timeout defaults).
 - Rule citations such as `REVIEW-SCOPE-005` and `DOCS-EX-003` are explained in `docs/CODE_REVIEW_RULES.md`.
 

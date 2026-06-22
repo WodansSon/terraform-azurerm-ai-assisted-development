@@ -158,6 +158,9 @@
         },
         "requiredMarkersPresent": {
           "type": "boolean"
+        },
+        "forbiddenMarkersAbsent": {
+          "type": "boolean"
         }
       }
     },

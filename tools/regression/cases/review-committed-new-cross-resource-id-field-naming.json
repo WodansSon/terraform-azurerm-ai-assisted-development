@@ -1,0 +1,49 @@
+{
+  "id": "review-committed-new-cross-resource-id-field-naming",
+  "title": "Committed review flags shortened names for new cross-resource ID fields",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where a brand-new resource and its companion docs expose a new cross-resource ID field as `scheduler_id` even though provider naming rules require the full referenced resource name without the `azurerm_` prefix, such as `durable_task_scheduler_id`. The correct review should flag the shortened day-one public field name as a naming issue.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-new-cross-resource-id-field-naming/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go",
+      "internal/services/example/example_resource_list.go",
+      "website/docs/r/example_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a new public resource surface that introduces a shortened cross-resource ID field name across schema, list resource, and docs."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-SCOPE-005E"
+  ],
+  "mustCatch": [
+    {
+      "key": "new-cross-resource-id-field-name-too-short",
+      "severity": "high",
+      "description": "The committed review should flag the new public cross-resource ID field name because it shortens the referenced resource name instead of using the full `{resource_name}_id` pattern."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "accept-shortened-day-one-id-name",
+      "description": "The review must not accept a shortened new cross-resource ID field name such as `scheduler_id` when the referenced resource name is longer and no evidence-backed naming exception is present."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "ISSUES"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review keeps new public cross-resource ID fields aligned with provider naming rules instead of allowing shortened day-one names to ship."
+}

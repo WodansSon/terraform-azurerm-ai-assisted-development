@@ -1,0 +1,48 @@
+{
+  "id": "review-committed-no-trivial-helper-script",
+  "title": "Committed review does not use helper scripts for trivial deterministic checks",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where changed validation strings tempt the reviewer to run a helper command just to compute a string length or prove a trivial literal fact. The correct review should reason directly from the diff and file content.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-no-trivial-helper-script/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/validate/hostname.go",
+      "internal/services/example/validate/hostname_test.go"
+    ],
+    "notes": "Sanitized fixture models a changed managed-certificate hostname validation path where the reviewer only needs direct reasoning about literal lengths and validation layering."
+  },
+  "expectedRules": [
+    "REVIEW-EVID-009",
+    "REVIEW-EVID-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "direct-reasoning-over-helper-script",
+      "severity": "medium",
+      "description": "The review should reason directly from the diff and file content for trivial deterministic facts like string length rather than running helper scripts or terminal calculations."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "helper-script-for-trivial-length-check",
+      "description": "The review must not run ad hoc shell snippets, PowerShell expressions, or helper scripts just to measure a changed literal or other trivial deterministic fact."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW"
+    ]
+  },
+  "notes": "Use this case to benchmark the no-helper-script rule for trivial deterministic review checks."
+}

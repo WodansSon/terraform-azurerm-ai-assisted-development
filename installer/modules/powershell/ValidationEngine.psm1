@@ -637,6 +637,62 @@ function Get-InstallerChecksum {
     return @{ Valid = $true; Hash = $overallHash }
 }
 
+function Remove-StaleInstallerPayload {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $manifestPath = Join-Path $InstallerRoot "file-manifest.config"
+    $payloadRoot = Join-Path $InstallerRoot "aii"
+
+    if (-not (Test-Path $manifestPath)) {
+        return @{ Valid = $false; Reason = "Installer manifest not found" }
+    }
+    if (-not (Test-Path $payloadRoot)) {
+        return @{ Valid = $false; Reason = "Installer payload not found" }
+    }
+
+    $managedSections = @("MAIN_FILES", "INSTRUCTION_FILES", "PROMPT_FILES", "SKILL_FILES", "UNIVERSAL_FILES")
+    $managedPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $currentSection = ""
+
+    foreach ($line in Get-Content -Path $manifestPath) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[(.+)\]$') {
+            $currentSection = $matches[1]
+            continue
+        }
+
+        if (-not $trimmed -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        if ($currentSection -in $managedSections) {
+            [void]$managedPaths.Add(($trimmed -replace '\\', '/'))
+        }
+    }
+
+    $removed = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in Get-ChildItem -Path $payloadRoot -Recurse -File -Force) {
+        $relPath = [System.IO.Path]::GetRelativePath($payloadRoot, $file.FullName) -replace '\\', '/'
+        if (-not $managedPaths.Contains($relPath)) {
+            Remove-Item -Path $file.FullName -Force
+            $removed.Add($relPath)
+        }
+    }
+
+    Get-ChildItem -Path $payloadRoot -Recurse -Directory -Force |
+        Sort-Object -Property FullName -Descending |
+        ForEach-Object {
+            if ((Get-ChildItem -Path $_.FullName -Force | Measure-Object).Count -eq 0) {
+                Remove-Item -Path $_.FullName -Force
+            }
+        }
+
+    return @{ Valid = $true; Removed = @($removed); RemovedCount = $removed.Count }
+}
+
 function Write-InstallerChecksum {
     param(
         [Parameter(Mandatory)]
@@ -646,6 +702,11 @@ function Write-InstallerChecksum {
     )
 
     $checksumPath = Join-Path $InstallerRoot "aii.checksum"
+    $prune = Remove-StaleInstallerPayload -InstallerRoot $InstallerRoot
+    if (-not $prune.Valid) {
+        return $prune
+    }
+
     $result = Get-InstallerChecksum -InstallerRoot $InstallerRoot
     if (-not $result.Valid) {
         return $result
@@ -691,6 +752,11 @@ function Test-InstallerChecksum {
     $expected = $hashLine.Substring(5).Trim()
     if (-not $expected) {
         return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
+    }
+
+    $prune = Remove-StaleInstallerPayload -InstallerRoot $InstallerRoot
+    if (-not $prune.Valid) {
+        return @{ Valid = $false; Reason = $prune.Reason }
     }
 
     # Normalize to lowercase to avoid case-only mismatches

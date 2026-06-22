@@ -50,7 +50,7 @@ You: Create a new resource for Azure CDN Front Door Profile.
 
 **What Copilot Does**:
 1. ✅ Creates the resource file in the correct directory
-2. ✅ Plans Resource Identity and the corresponding list resource
+2. ✅ Implements mandatory Resource Identity and the corresponding list resource
 3. ✅ Implements all CRUD operations
 4. ✅ Adds proper schema with validations
 5. ✅ Includes error handling with formatted errors
@@ -378,6 +378,8 @@ If PR context is not available, pass the PR number explicitly:
 ```
 You: /code-review-committed-changes PR 12345
 ```
+
+An explicit PR number makes the committed review go straight to the authoritative PR-files path for that PR before trying fallback recovery.
 
 If no valid PR can be determined, the committed review reports the linter section as `Not run` and tells you to create a draft PR or rerun with an explicit PR number.
 

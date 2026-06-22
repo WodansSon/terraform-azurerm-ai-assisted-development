@@ -1,0 +1,50 @@
+{
+  "id": "skill-acceptance-testing-associated-resource-config",
+  "title": "Acceptance-testing guidance prefers complete setup for data source tests while allowing justified narrower helpers",
+  "task": "acceptance-testing",
+  "caseStatus": "adjudicated",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized acceptance-testing guidance scenario where data source tests compose setup from associated resource helpers. The correct guidance should prefer the associated resource complete(data) helper by default when it exists, while still allowing narrower setup helpers for intentionally narrow scenarios.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-acceptance-testing-associated-resource-config/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_data_source_test.go",
+      "internal/services/example/example_resource_test.go"
+    ],
+    "notes": "Sanitized fixture models data source tests that reuse associated resource helpers with different setup shapes. The general data source setup should prefer the fuller helper by default, while an intentionally narrow scenario still keeps the narrower helper."
+  },
+  "expectedRules": [
+    "TEST-PATTERN-009",
+    "TEST-EVID-001",
+    "TEST-PATTERN-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "prefer-complete-helper-by-default",
+      "severity": "medium",
+      "description": "The guidance should prefer the associated resource complete(data) helper by default for ordinary data source setup when that helper exists."
+    },
+    {
+      "key": "allow-narrower-helper-when-justified",
+      "severity": "medium",
+      "description": "The guidance should still allow a narrower associated resource helper when the data source scenario is intentionally narrow or complete(data) would add unrelated setup."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "complete-helper-is-an-absolute-mandate",
+      "description": "The guidance must not turn the default preference for complete(data) into an absolute mandate that forbids author choice for narrower or scenario-specific setup."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustIncludeMarkers": [
+      "Skill used: acceptance-testing"
+    ]
+  },
+  "notes": "Use this case to benchmark whether the acceptance-testing guidance prefers complete(data) by default for data source setup while preserving justified narrower exceptions."
+}

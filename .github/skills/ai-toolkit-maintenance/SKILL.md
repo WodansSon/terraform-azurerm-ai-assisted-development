@@ -59,6 +59,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 - Use titled subsections plus bullets for AI-toolkit prose.
 - Let heading order and bullet indentation convey sequence.
 - Avoid fragile ordered-list structures in `.github/skills/`, `.github/prompts/`, and `.github/instructions/`.
+- In runtime guidance under `.github/copilot-instructions.md`, `.github/instructions/`, and `.github/skills/`, prefer generic placeholders such as `{{RESOURCE_NAME}}`, `{{FIELD_NAME}}`, and `{{SERVICE_NAME}}` for broad rules and worked patterns. Reserve concrete resource-specific examples for dedicated example docs, regression fixtures, or evidence that truly depends on the real upstream incident.
 
 ## Maintenance workflow
 

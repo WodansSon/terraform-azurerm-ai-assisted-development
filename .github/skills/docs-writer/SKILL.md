@@ -61,6 +61,34 @@ When this skill is invoked, you must still:
 
 Do not require the user to explicitly ask for these checks.
 
+## Workflow expectations
+
+Use `.github/instructions/documentation-guidelines.instructions.md` as the companion guide for:
+
+- note-formatting reference
+- examples and templates
+- AzureRM-specific documentation heuristics
+
+Do not treat the companion guide as a second workflow authority.
+
+Before editing a docs page:
+
+- review the note-formatting guidance in `.github/instructions/documentation-guidelines.instructions.md`
+- categorize any note content as informational, warning, or caution before adding or changing note blocks
+- use the contract plus this skill as the workflow authority for preflight and compliance behavior
+
+After editing a docs page:
+
+- re-check ordering rules for arguments, attributes, and nested blocks
+- re-check note markers and placement
+- re-check examples for fences, secrets, self-contained references, and implementation-backed values
+- re-check import ID shape from implementation evidence when the page has an import section
+
+Deterministic audit boundary:
+
+- `.github/prompts/code-review-docs.prompt.md` remains the explicit deterministic auditor when the user asks for audit-style output or when parity with the dedicated docs auditor is the point of the task
+- do not require the user to run multiple prompts for an ordinary docs-writing workflow when this skill can complete the requested edit directly
+
 ## Contract compliance (mandatory; prevents drift)
 
 The shared rules contract `.github/instructions/docs-compliance-contract.instructions.md` is the hard compliance checklist.

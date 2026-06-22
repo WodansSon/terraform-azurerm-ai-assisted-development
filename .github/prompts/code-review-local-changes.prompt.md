@@ -8,6 +8,9 @@ description: "Code review for local changes using the shared review contract and
 
 ## Audit-only mode
 This prompt is audit-only. Do not modify files. Do not propose or apply patches unless the user explicitly asks for fixes.
+Do not run unit tests, acceptance tests, `go test`, `runTests`, or other test commands as part of the normal review flow unless the user explicitly asks for test execution.
+Do not run helper scripts, ad hoc shell snippets, or terminal calculations for trivial deterministic checks such as string length, simple literal comparisons, or obvious regex-shape questions during normal review flow.
+Do not invent or execute repo-local prerequisite scripts, validation wrappers, or guessed helper entrypoints unless they are explicitly named in this prompt, the shared contract, current workspace guidance, or the user's request.
 
 ## Recursion prevention
 If the local change-set includes `.github/prompts/code-review-local-changes.prompt.md`, skip only that file and disclose the skip in the review output.
@@ -41,11 +44,15 @@ Do not emit a preamble that asks permission or waits for approval before running
 - Do not present multiple alternative fixes unless the user explicitly asks for options.
 - Do not output progress narration, plans, or TODO lists.
 - Do not narrate intermediate verification steps such as checking file content after linter findings; perform those checks silently and present only final conclusions.
+- Do not begin the normal review output until the audit is complete and the findings set is frozen.
+- If you realize another read, verification step, or finding is needed while drafting, stop drafting silently, finish the audit, refreeze the findings set, and then emit one complete review body.
+- Perform at least one additional silent completeness pass over the fully drafted review before emitting any user-visible output.
+- Assemble the entire review in an internal buffer and emit it exactly once after that completeness pass succeeds.
 - The first character of the normal review output must be `#`.
 
 ## No preamble / no progress narration
 - Do not output any sentences before the review headings.
-- The only allowed normal output is the review template defined in this prompt, plus the single trailing `Skill used: review-advocate` marker line required by Step 6 when the advocate pass runs.
+- The only allowed normal output is the review template defined in this prompt, plus the Step 5 verification footer and the trailing `Skill used: review-advocate` marker required by Step 6 when the advocate pass runs.
 - Do not output progress narration such as `re-running the local audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, `next I will`, `now I will`, or similar.
 - Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
 - Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
@@ -75,9 +82,8 @@ git branch --show-current
 ```
 
 Rules:
-- Use the unstaged diff as the primary review scope when it is non-empty.
-- If the unstaged tracked diff is empty, fall back to the staged diff.
-- If `git status --porcelain=v1` shows untracked files, inspect each reviewed untracked file with `read_file`.
+- Apply `REVIEW-FILE-001`, `REVIEW-FILE-002`, `REVIEW-FILE-003`, `REVIEW-FILE-003A`, and `REVIEW-EVID-*` exactly when resolving the local review scope, including the local review scope decision table in the shared contract.
+- Inspect reviewed untracked files directly from the workspace.
 - If there are no tracked, staged, or untracked changes, hard-stop and output exactly:
   - `☠️ Argh! There be no changes here! ☠️`
 
@@ -93,6 +99,7 @@ Rules:
 - When reviewing a `terraform-provider-azurerm` style workspace, treat `contributing/README.md` as the repo-level contributor guide when present.
 - Read `.github/pull_request_template.md` when present.
 - Read any file-scoped instructions or skills that directly govern the changed files.
+- When `internal/**/*.go` or `internal/**/*_test.go` files are in scope, load the implementation and testing instruction set required by `REVIEW-SCOPE-005` before classifying findings.
 - If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
 - If provider contributor guidance exists in the current workspace or is explicitly fetched as evidence, apply it only where relevant.
 - Use the precedence rules from the shared review contract.
@@ -100,54 +107,13 @@ Rules:
 ### 4) Run azurerm-linter when applicable
 - If the reviewed change-set includes files under `internal/**/*.go` or `internal/**/*_test.go`, attempt azurerm-linter and report it in its own section.
 - When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
-- Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and an explicit timeout of at least `300000` ms for the linter command.
-- Wait for the linter command to finish before classifying the linter section.
-- Do not report `Not run` merely because the initial wait window elapsed while the linter command was still running.
-- If the initial sync call times out but the linter process continues running, keep following that same terminal session until completion before classifying the result.
-- Local review prefers exact local-scope linting from the repo root:
-  - Automatically resolve the git repo root by running `git rev-parse --show-toplevel`; do not ask the user for the repo root
-  - Run the linter from that repo root
-  - Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command
-  - Run the plain local CLI invocation in the current platform shell; do not rewrite it through `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`
-  - Keep stdout clean for JSON parsing by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`
-  - On Windows PowerShell, use plain `azurerm-linter -output json 2>$null` from the resolved repo root rather than a WSL-prefixed equivalent
-  - Run filtered mode first using a direct `azurerm-linter -output json` invocation with shell-native stderr suppression and without `--pr`
-  - Treat filtered mode as the baseline review behavior for this feature
-  - Do not add a `--no-filter` workaround pass during ordinary review runs
-  - If the stderr-suppressed run does not yield valid stdout JSON or otherwise cannot be classified deterministically, rerun once without stderr suppression to inspect diagnostics
+- Apply `REVIEW-LINT-002*` through `REVIEW-LINT-005` exactly for linter execution, blocking behavior, and classification.
+- Use one blocking sync linter run with no timeout, stay blocked until the completed result is classifiable, and do not do unrelated review work or user-visible narration while that run is outstanding.
+- Resolve the git repo root with `git rev-parse --show-toplevel`, change to that working directory in a separate command, and run the plain local CLI invocation from there.
+- Run filtered mode using `azurerm-linter -output json` with shell-native stderr suppression and without `--pr`.
+- Do not add wrapper-shell rewrites, composite wrapper lines, inline variable wrappers, helper scripts, `--no-filter` workaround passes, or second linter runs in the normal review path.
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
-- If the local binary is missing or the tool cannot be run, mark the section as `Not run` and state the reason.
-- If the tool reports no changed files or no changed packages to analyze and prints `Error: no packages to analyze`, treat that result as `Not applicable`, not `Not run`.
-- If the tool reports a flag or usage parse error such as `flag provided but not defined` and prints usage help, treat that result as `Not run` due to invocation error, not as an install problem.
-- Require `azurerm-linter v0.2.0` or newer for review-time JSON mode.
-- When the local binary is missing, older than `v0.2.0`, or execution fails for tool-availability reasons, include an install hint pointing to `https://github.com/QixiaLu/azurerm-linter` and `go install github.com/qixialu/azurerm-linter@latest`.
-- Report azurerm-linter findings from the executed filtered linter scope as `Issues`.
-- Do not leave azurerm-linter findings only inside the `AZURERM LINTER` subsection; also surface them in the main `### 🔴 **ISSUES**` section.
-- Structure the linter section from the actual tool output:
-  - When a valid JSON payload is present on stdout, use `version` as the linter version, use `summary.issue_count` as the issue count, and ignore human-readable preamble logs for structured fields
-  - Treat stdout JSON as the authoritative structured source; use stderr diagnostics only when a rerun without suppression is needed to classify a non-JSON result
-  - When a valid JSON payload is absent, the tool footer such as `Found X issue(s)` may be used as the issue count when present
-  - Put branch/package-detection/loading/cleanup logs into `Summary`, not the `### 🎯 **MUST FIX**` section
-  - Put only actual violation lines into the `### 🎯 **MUST FIX**` section
-  - If there are no violations, set the `### 🎯 **MUST FIX**` section to a single bullet: `- None`
-  - If there are multiple violations, render a separate `### 🎯 **MUST FIX**` section after the linter execution report and list one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise keep the raw `CHECKID path:line: message` form
-  - In the linked form, keep `file:line` together inside the same Markdown link so it matches the clickable file-reference style used elsewhere in the review
-  - When a valid JSON payload is present, derive findings from `findings[]`, derive the reviewer-facing summary from JSON `summary` and `scope` fields, and trim any duplicated leading check ID from `message`
-  - If a valid JSON payload is present but `version` is lower than `v0.2.0`, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and state that JSON review mode requires `azurerm-linter v0.2.0` or newer
-  - Normalize temporary or absolute paths to repo-relative paths when deterministic; otherwise keep the raw path
-  - If the output shape is `Found 0 changed files` plus `Error: no packages to analyze`, use `Status: Not applicable`, not `Not run`
-  - If the output shape is a flag or usage parse error, use `Status: Not run`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not show an install hint unless the binary is actually missing
-  - If `-output json` is unsupported and the tool reports a flag or usage parse error, report that as `Not run`, state that review requires `azurerm-linter v0.2.0` or newer, and do not fall back to text scraping
-  - Do not invent broader-scope fallback reporting fields in the normal review flow
-  - Keep successful linter output concise and reviewer-facing; do not dump branch, upstream, merge-base, command, log-file, or similar debug details unless they materially explain the result
-  - Limit the `### 🧰 **AZURERM LINTER**` execution report to `Version`, `Status`, `Run Scope`, `Issue Count`, and `Summary`
-  - Follow it with a separate `### 🎯 **MUST FIX**` section
-  - Use the completed linter output, not partial early output, when determining `Version`, `Status`, `Issue Count`, `Summary`, and the `### 🎯 **MUST FIX**` section
-  - If the first sync wait returns while the linter is still executing, continue reading from that same terminal session until the process exits instead of treating the timeout itself as the final linter result
-  - If the local binary is not found, do not attempt remote execution; report `Not run` and direct the user to install the tool locally
-  - Do not ask the user to approve `git rev-parse --show-toplevel` or `azurerm-linter` execution during the normal review flow
-  - Do not create temporary scripts or persisted temp log files to run or parse the linter in the normal review flow
-  - If a direct linter run cannot be interpreted deterministically, report `Not run` with a concise reason instead of adding execution scaffolding
+- Classify applicability, failures, JSON requirements, and `AZURERM LINTER` output shape exactly as required by `REVIEW-LINT-003*`, `REVIEW-LINT-004`, and `REVIEW-LINT-005`.
 
 ### 5) Produce the review output
 - Review the full in-scope change-set.
@@ -156,10 +122,20 @@ Rules:
 - Treat vendored files under `vendor/**` as skipped non-actionable files: report only the skipped vendored-file count, and do not raise Issues that require directly editing vendored content.
 - When the selected local diff is vendored-only or vendored-heavy, say so explicitly in the summary or notes so sparse actionable findings are easy to interpret.
 - When `internal/**/*.go` scope adds a brand-new resource, explicitly inspect whether the required companion artifacts from the implementation and testing guidance are present: Resource Identity, list resource, list-resource query tests, and list-resource docs.
+- For singleton or get-only new resources, including singleton child resources whose SDK package may still expose list methods, apply the shared contract's exception-aware list-review rule instead of emitting a generic missing-list-resource finding.
 - When the change adds a new `*_ephemeral.go` implementation, explicitly inspect whether the required companion artifacts are present: `EphemeralResources()` registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
 - When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
 - When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
 - Keep the review concise but complete.
+- Before writing the first `#` of the review output, silently iterate on the drafted review until the findings set is final and no additional findings, evidence corrections, or template fixes are needed.
+- Buffer the full review body internally and emit it once only after that silent iteration completes.
+- If one or more routed skills were actually loaded and used during the review, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
+- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill, in first-use order.
+- Do not emit a verification footer when no skill was actually used during the review.
+- Do not infer a skill from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
+- If `Repo Guidance` states that a skill was loaded or used, the verification footer must include the matching `Skill used:` line.
+- Do not emit any text after the verification footer.
+- After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
 
 ### 6) Advocate evaluation (internal quality gate)
 - This step is mandatory whenever Step 5 produced one or more candidate Issues; it must not be skipped, summarized, deferred, or simulated.
@@ -178,6 +154,7 @@ Output must be rendered Markdown.
 - Do not wrap the review in triple-backtick fences.
 - Do not output text before the review headings.
 - Emit each heading exactly once and in this order.
+- After `## 🏆 **OVERALL ASSESSMENT**`, append the optional verification footer only when one or more skills were actually used.
 
 1. `# 📋 **Code Review**: ${change_description}`
 2. `## 🔄 **CHANGE SUMMARY**`
@@ -261,7 +238,23 @@ Use this template:
 
 ## 🏆 **OVERALL ASSESSMENT**
 [Overall assessment and readiness recommendation.]
+
+Overall assessment rules:
+- The verdict must align with the final `### 🔴 **ISSUES**` section.
+- If `### 🔴 **ISSUES**` contains exactly `- None`, do not say `Not ready to merge` and do not describe unresolved defects.
+- If `### 🔴 **ISSUES**` contains one or more issues, do not say the change is ready to merge.
+- Do not carry forward stale issue text into `## 🏆 **OVERALL ASSESSMENT**` after later evidence clears the issue before the review body is emitted.
+
+Preflight complete: yes
+Skill used: [skill-name]
+Skill used: [skill-name]
 ```
+
+Footer rules:
+- Omit the `Preflight complete:` and `Skill used:` lines entirely when no skill was actually used.
+- When the footer is present, `Preflight complete: yes` must appear exactly once before the `Skill used:` lines.
+- Emit one `Skill used:` line per actually used skill, in first-use order.
+- Emit no other text after the footer.
 
 Individual findings should use this structure when expanded:
 

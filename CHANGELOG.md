@@ -19,6 +19,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [3.4.3] - 2026-06-20
+
+### Added
+
+### Changed
+
+- **User-Priority:**
+  - **[Review]** - Review, implementation, and acceptance-testing guidance now treat provider feature-flagged CRUD branch coverage as a first-class requirement, so behavior-changing non-default branches behind provider features blocks are expected to gain one focused test when feasible, including pre-existing remote setup through `CheckWithClient` or `CheckWithClientForResource` instead of duplicate Terraform-managed IDs.
+  - **[Review]** - Committed review no longer tells users to create draft pull requests just to obtain PR-scoped linter context, and instead requires an explicit PR number or an active ready-for-review pull request context.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now codifies the newer upstream schema-shape and naming expectations around portal-versus-API terminology, grouping semantically related arguments, avoiding ambiguous collection-shaped schemas, and using singular-versus-plural names based on whether Terraform is modeling configured blocks or multi-value collections.
+  - **[Implementation]** - Implementation extension guidance now also preserves existing property order during functional PRs, leaving schema or model reordering to separate follow-up changes so diff readability stays aligned with upstream contributor expectations.
+  - **[Testing]** - Acceptance-test guidance now documents that `CheckWithClientForResource`, `CheckWithClientWithoutResource`, and `CheckWithClient` callbacks must add their own timeout or deadline before calling Azure poller helpers, and separately calls out quota-sensitive acceptance execution as a different failure mode.
+  - **[Internal]** - GitHub workflow validation now retries `Install-PSResource` before falling back to `Install-Module` when PSGallery rejects the `PSScriptAnalyzer` install through the PSResource path, reducing CI failures caused by transient gallery errors or repository-specific package install failures on hosted runners.
+  - **[Internal]** - Repo-side contract validation now enforces ordering for letter-suffixed sibling rule families, so maintainer checks catch drift in contract rule blocks before toolkit packaging.
+
+### Fixed
+
+## [3.4.2] - 2026-06-10
+
+### Added
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added an adjudicated `resource-implementation` regression case for raw `cty.Value` traversal in `CustomizeDiff`, so the `IMPL-SCHEMA-013` `IsKnown()` guard requirement is now benchmarked directly in the implementation-guidance corpus.
+
+### Changed
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now consistently requires `CustomizeDiff` logic that traverses raw `cty.Value` config to guard shape-inspection calls with `IsKnown()` first, deferring validation for unknown plan values and keeping raw-config presence-detection examples aligned with that rule.
+
+### Fixed
+
+## [3.4.1] - 2026-06-08
+
+### Added
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added adjudicated `acceptance-testing` and local-review regression cases for embedded Terraform formatting drift in `internal/**/*_test.go`, so mixed tab-and-space heredoc indentation is now benchmarked on both the guidance and review surfaces.
+
+### Changed
+
+- **User-Priority:**
+  - **[Review]** - Review guidance now explicitly flags embedded Terraform formatting drift in `internal/**/*_test.go`, including tab-indented acceptance-test config lines that would fail the repository's acceptance-test formatting checks and the required two-space indentation for Terraform configuration lines, and now also requires `OVERALL ASSESSMENT` to stay aligned with the final unresolved issues state.
+  - **[Review]** - Committed review guidance now treats direct shell-native GitHub PR-files retrieval as the preferred explicit-PR path, avoids automatic `gh api` fallback because local CLI installation and version state is not deterministic, and fails closed when authoritative PR scope still cannot be proven.
+  - **[Review]** - Committed review spill-file guidance now explicitly forbids reconstructing PR scope from saved-output artifacts such as `workspaceStorage` or `chat-session-resources` `content.json` and `content.txt` files, including shell parsing of those local paths.
+
+- **Maintainer/Workflow:**
+  - **[Testing]** - Testing guidance now explicitly covers generated identity test helper-name drift, including preserving established canonical helper types, verifying helper-name casing early for new Resource Identity surfaces with a narrow `go generate` run, and forbidding hand-edits to generated identity tests as a drift workaround.
+  - **[Testing]** - Acceptance-test authoring guidance now requires two-space indentation and no tabs in embedded Terraform heredocs under `*_test.go`, explicitly points the AI to companion good and bad examples when editor tab rendering makes formatting ambiguous, and treats embedded Terraform formatting as a required file shape rather than something inferred from Go linting, Go test execution, or an optional local formatter.
+  - **[Internal]** - Review prompts and regression coverage no longer try to enforce runtime-surfaced progress-narration suppression that the current agent host can emit outside prompt control, while still keeping the final review template and frozen-findings requirements intact.
+  - **[Internal]** - Added review regression coverage that treats stale blocking verdicts in `OVERALL ASSESSMENT` as failures when the final issue state is already clean.
+
+### Fixed
+
+## [3.4.0] - 2026-06-04
+
+### Added
+
+### Changed
+
+- **User-Priority:**
+  - **[Review]** - The toolkit now states more explicitly that the prompt, contract, and regression baseline are designed and primarily validated for `GPT-5.4 high`, rather than implying equivalent behavior across all selectable models.
+  - **[Review]** - Local and committed review now buffer and complete the audit before emitting headings, forbid leaked inner-dialog or tool narration, and restore explicit end-of-review skill verification footers so findings are emitted once as a finished review.
+  - **[Review]** - Local and committed review now block cleanly on a single `azurerm-linter` run, remain silent until the runtime reports completion, classify only the completed primary result, treat zero-finding completed runs as `No issues`, and fail closed when the completed result is still unclassifiable.
+  - **[Review]** - Committed review now uses a simpler explicit-PR scope model: direct non-CLI GitHub PR-files retrieval first, ignore summary-only or spill-file results, use one automatic `gh api` fallback before failing closed, and avoid the older overgrown fallback ladder in the contract and prompt.
+  - **[Review]** - Shared review guidance now centralizes more PR-scope and linter execution-state logic in the review contract, keeps both review prompts thinner and less repetitive, and aligns the user-facing docs to the simpler review model.
+  - **[Review]** - Review guidance and regression coverage now better preserve full committed-review issue sets, including singleton or get-only child resources, shortened cross-resource ID field names, and update paths that skip concurrent field changes.
+  - **[Docs]** - Docs-writing workflow now lives in the `docs-writer` skill, leaving `documentation-guidelines` focused on contract-backed heuristics, templates, and note-formatting guidance instead of procedural authoring steps.
+  - **[Docs]** - The architecture, alignment, and maintenance docs now reflect the current repo layout and direction more accurately, including contract families, routing instructions, contract-first versus companion-guide responsibilities, runtime versus repo-only skills, installer payload boundaries, and the regression and validation toolchain under `tools/`.
+  - **[Docs]** - The code-review rule reference now explains the contract-first rule model more explicitly, including that stable `REVIEW-*`, `DOCS-*`, `IMPL-*`, and `TEST-*` citations are authoritative in the contract files while companion guides provide supporting patterns and examples, and now also gives end-user-facing examples for create-path detections such as overwrite-gated import checks and callback-based Resource Identity setup.
+  - **[Docs]** - The maintainer release guide now reflects the actual release flow more accurately: validate on the branch, open and merge a PR to `main`, tag from merged `main`, treat release-bundle install smoke as a post-release verification step rather than a prerelease requirement, and explain that the bundled installer `VERSION` file is stamped from the release tag during the release workflow.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now standardizes case-insensitive resource-ID reads with canonical parser writes, treats generic CRUD/provider lifecycle logging as redundant unless it adds distinct diagnostic value, and tightens the `resource-implementation` workflow around implementation-model selection, placeholders, pointer and enum edge cases, validator placement, and list-resource or resource-identity expectations.
+  - **[Implementation]** - The implementation compliance contract now owns the upstream-backed schema, `CustomizeDiff`, and comment-discipline rules, while companion guides were normalized toward examples and heuristics, stripped of decorative HTML or anchor shims, and simplified to plain heading-based deep links.
+  - **[Implementation]** - Implementation and review guidance now explicitly catch two more create-path regressions: missing `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` guards around import-as-exists checks, and callback-based Resource Identity creates that omit `sdk.SetIDAndIdentityCallback(...)`.
+  - **[Testing]** - Acceptance-testing workflow now lives in the `acceptance-testing` skill and more explicitly covers helper composition, helper naming, associated-resource setup helpers, and upstream `preCheck(t *testing.T)` patterns.
+  - **[Internal]** - Repo maintenance coverage was expanded across determinism hardening, lifecycle logging, parser-normalized IDs, blocking `azurerm-linter` waits, and committed or local review edge cases, while tracked upstream contributor baselines were refreshed after semantic drift review.
+  - **[Internal]** - Maintainer scaffolding was cleaned up by renaming the regression scaffold entrypoints, continuing the contract-first companion cleanup, and tightening `changelog-maintenance` so `Unreleased` entries are collapsed into outcome-level release notes before validation.
+
+### Fixed
+
+- **User-Priority:**
+  - **[Installer]** - Install and verify now prune managed payload files from the extracted installer bundle when those files were removed from the current manifest, so extracting a newer release over an older `.terraform-azurerm-ai-installer` directory no longer triggers stale-file checksum mismatches.
+
 ## [3.3.0] - 2026-05-07
 
 ### Added

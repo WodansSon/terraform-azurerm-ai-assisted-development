@@ -5,7 +5,6 @@ description: Azure-specific implementation patterns for the Terraform AzureRM pr
 
 # Azure-Specific Implementation Patterns
 
-<a id="azure-specific-implementation-patterns"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,6 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for Azure-specific implementation patterns such as PATCH behavior, CustomizeDiff patterns, and Azure SDK integration heuristics.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#🔄-patch-operations">🔄 PATCH Operations</a> | <a href="#✅-customizediff-validation">✅ CustomizeDiff</a> | <a href="#🎯-schema-flattening">🎯 Schema Flattening</a> | <a href="#🚫-none-value-pattern">🚫 "None" Value Pattern</a> | <a href="#🔐-security-patterns">🔐 Security</a> | <a href="#🔄-state-management-with-dgetrawconfig">🔄 State Management</a> | <a href="#🏗️-progressive-code-simplification">🏗️ Progressive Code Simplification</a>
 
 <a id="🔄-patch-operations"></a>
 
@@ -87,11 +85,8 @@ func ExpandPolicy(input []interface{}) *azuretype.Policy {
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
-<a id="✅-customizediff-validation"></a>
-
-## ✅ CustomizeDiff Validation
+## CustomizeDiff Validation
 
 ### Standard CustomizeDiff Pattern
 
@@ -131,14 +126,40 @@ Azure resources have unique validation requirements that CustomizeDiff functions
 
 **For comprehensive multi-function CustomizeDiff patterns and complex validation examples, see:** [Implementation Guide - CustomizeDiff Import Requirements](./implementation-guide.instructions.md#customizediff-import-requirements)
 
-### AZURE-PATTERN-001: Prefer `GetRawConfig()` when `CustomizeDiff` must distinguish configured values from known-after-apply or zero values
+For the authoritative `CustomizeDiff` requirement on `GetRawConfig()`, configured-versus-unknown values, raw `cty.Value` shape inspection, and enum helper boundaries, see `IMPL-SCHEMA-013` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
-- Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `d.Get()` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
-- Rule: Use this pattern for cross-field validation where unknown values would otherwise collapse to zero values and trigger false positives.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values`
-    - That guidance uses `GetRawConfig()` as the preferred pattern when `d.Get()` or decoded values would make unknowns look unset
+### Unknown `cty.Value` Traversal Pattern
+
+When `CustomizeDiff` reads nested raw config from `GetRawConfig()`, guard shape-inspection methods with `IsKnown()` first. Unknown plan values are common during planning, and calling `LengthInt()`, `AsValueSlice()`, or `AsValueMap()` on an unknown value can panic instead of deferring validation cleanly.
+
+Bad:
+
+```go
+conditions := rawConfig.GetAttr("conditions")
+if conditions.IsNull() || conditions.LengthInt() == 0 {
+    return nil
+}
+conditionBlock := conditions.AsValueSlice()[0].AsValueMap()
+```
+
+Good:
+
+```go
+conditions := rawConfig.GetAttr("conditions")
+if !conditions.IsKnown() || conditions.IsNull() || conditions.LengthInt() == 0 {
+    return nil
+}
+conditionBlock := conditions.AsValueSlice()[0].AsValueMap()
+```
+
+For nested values, apply the same guard before more shape inspection:
+
+```go
+matchValues := conditionValue.AsValueSlice()[0].AsValueMap()["match_values"]
+if !matchValues.IsKnown() || matchValues.IsNull() || matchValues.LengthInt() == 0 {
+    return nil
+}
+```
 
 ### Zero Value Validation Pattern
 
@@ -179,6 +200,18 @@ When validating optional fields in CustomizeDiff functions, Go's zero value beha
    // Untyped Resource Implementation
    value := diff.Get("field_name").(string)
    // Use value directly - Required fields guaranteed to have values
+   ```
+
+   **Enum fields in CustomizeDiff** → AI keeps enum helpers at the SDK/API boundary only:
+   ```go
+   // GOOD - Terraform values stay as Terraform strings inside CustomizeDiff
+   certificateType := diff.Get("certificate_type").(string)
+   if certificateType == "ManagedCertificate" && !hasDnsZone {
+       return fmt.Errorf("managed certificates require a DNS zone")
+   }
+
+   // FORBIDDEN - diff.Get(...) is not an SDK enum pointer
+   _ = pointer.FromEnum(diff.Get("certificate_type").(string))
    ```
 
    **Optional Fields** → AI suggests checking explicit configuration:
@@ -263,14 +296,18 @@ When Azure resources have irreversible configuration changes (like enabling secu
 - **Test Framework**: Acceptance tests require visible state changes to validate ForceNew behavior
 
 **Implementation Pattern:**
+
+This example is limited to top-level field-presence detection. Guard the top-level `rawConfig` value so it is known and non-null before `AsValueMap()` is used; if later logic traverses nested values from that map, follow the `IsKnown()` guard pattern above before any further shape inspection.
+
 ```go
 pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDiff, v interface{}) error {
     var featureExists, policyExists bool
 
     // Check if fields exist in the raw configuration (not computed/inferred values)
-    if rawConfig := diff.GetRawConfig(); !rawConfig.IsNull() {
-        featureExists = !rawConfig.AsValueMap()["irreversible_feature_enabled"].IsNull()
-        policyExists = !rawConfig.AsValueMap()["security_policy_enabled"].IsNull()
+    if rawConfig := diff.GetRawConfig(); rawConfig.IsKnown() && !rawConfig.IsNull() {
+        rawConfigMap := rawConfig.AsValueMap()
+        featureExists = !rawConfigMap["irreversible_feature_enabled"].IsNull()
+        policyExists = !rawConfigMap["security_policy_enabled"].IsNull()
     }
 
     // Only apply ForceNew logic during updates (not during initial creation)
@@ -313,7 +350,7 @@ pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDi
 
 **Key Requirements:**
 - **Irreversible Changes**: Only use for Azure features that cannot be disabled once enabled
-- **Raw Config Detection**: Use `GetRawConfig().AsValueMap()` to detect field presence vs absence in configuration
+- **Raw Config Detection**: When using `AsValueMap()` for top-level field presence detection, first ensure the top-level `GetRawConfig()` value is known and non-null
 - **Update-Only Logic**: Check `diff.Id() != ""` to ensure logic only applies to existing resources, not during creation
 - **State Visibility**: SetNew must be called before ForceNew to create visible plan entry
 - **Error Handling**: SetNew errors should be caught and wrapped with descriptive context
@@ -323,13 +360,12 @@ pluginsdk.CustomizeDiffShim(func(ctx context.Context, diff *pluginsdk.ResourceDi
 - **ForceNew without SetNew**: Plan won't show why recreation is needed - users will be confused by ForceNew without visible changes
 - **SetNew without ForceNew**: State changes but resource doesn't recreate when Azure constraints require it
 - **Missing Error Handling**: SetNew failures can break plan generation if not properly handled
-- **Wrong Field Detection**: Use `GetRawConfig().AsValueMap()[field].IsNull()` to detect field removal, not `diff.Get()`
+- **Wrong Field Detection**: Detect field removal from top-level raw config only after confirming `GetRawConfig()` is known and non-null; do not use `diff.Get()` for that presence check
 - **Creation vs Update**: Apply logic only during updates (`diff.Id() != ""`), not during initial resource creation
 
 **For comprehensive `GetRawConfig()` usage guidance, see:** <a href="#🔄-state-management-with-dgetrawconfig">State Management with d.GetRawConfig()</a>
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🎯-schema-flattening"></a>
 
@@ -348,14 +384,14 @@ Schema flattening should be considered when Azure APIs contain unnecessary wrapp
 
 **Before Flattening (Complex Structure):**
 ```go
-resource "azurerm_cdn_frontdoor_profile" "example" {
-  name = "example"
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
+    name = "example"
 
-  log_scrubbing {
+    {{WRAPPER_BLOCK_NAME}} {
     enabled = true
 
-    scrubbing_rule {
-      match_variable = "QueryStringArgNames"
+        {{NESTED_BLOCK_NAME}} {
+            {{FIELD_NAME}} = "{{ENUM_VALUE}}"
     }
   }
 }
@@ -363,11 +399,11 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 
 **After Flattening (Simplified Structure):**
 ```go
-resource "azurerm_cdn_frontdoor_profile" "example" {
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
   name = "example"
 
-  log_scrubbing_rule {
-    match_variable = "QueryStringArgNames"
+    {{FLATTENED_BLOCK_NAME}} {
+        {{FIELD_NAME}} = "{{ENUM_VALUE}}"
   }
 }
 ```
@@ -376,17 +412,17 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 
 ```go
 // Schema definition - direct access to the meaningful configuration
-"log_scrubbing_rule": {
+"{{FLATTENED_BLOCK_NAME}}": {
     Type:     pluginsdk.TypeSet,
     MaxItems: 3,
     Optional: true,
     Elem: &pluginsdk.Resource{
         Schema: map[string]*pluginsdk.Schema{
-            "match_variable": {
+            "{{FIELD_NAME}}": {
                 Type:     pluginsdk.TypeString,
                 Required: true,
                 ValidateFunc: validation.StringInSlice(
-                    profiles.PossibleValuesForScrubbingRuleEntryMatchVariable(),
+                    {{SDK_PACKAGE}}.PossibleValuesFor{{POSSIBLE_VALUES_FUNCTION}}(),
                     false),
             },
         },
@@ -394,35 +430,34 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 },
 
 // Expand function - handle the wrapper structure internally
-func expandCdnFrontDoorProfileLogScrubbing(input []interface{}) *profiles.ProfileLogScrubbing {
+func expand{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input []interface{}) *{{SDK_PACKAGE}}.{{WRAPPER_TYPE}} {
     if len(input) == 0 {
         // When no rules configured, set to disabled (following "None" pattern)
-        return &profiles.ProfileLogScrubbing{
-            State:          pointer.To(profiles.ProfileScrubbingStateDisabled),
+        return &{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}{
+            State:          pointer.To({{SDK_PACKAGE}}.{{DISABLED_STATE}}),
             ScrubbingRules: nil,
         }
     }
 
     // When rules are present, always enable the feature
-    return &profiles.ProfileLogScrubbing{
-        State:          pointer.To(profiles.ProfileScrubbingStateEnabled),
-        ScrubbingRules: expandScrubbingRules(input),
+    return &{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}{
+        State:          pointer.To({{SDK_PACKAGE}}.{{ENABLED_STATE}}),
+        ScrubbingRules: expand{{NESTED_BLOCK_NAME}}(input),
     }
 }
 
 // Flatten function - hide wrapper complexity from users
-func flattenCdnFrontDoorProfileLogScrubbing(input *profiles.ProfileLogScrubbing) []interface{} {
-    if input == nil || pointer.From(input.State) == profiles.ProfileScrubbingStateDisabled {
+func flatten{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input *{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}) []interface{} {
+    if input == nil || pointer.From(input.State) == {{SDK_PACKAGE}}.{{DISABLED_STATE}} {
         // When disabled, return empty list (following "None" pattern)
         return make([]interface{}, 0)
     }
 
     // Return only the meaningful rules, hiding the wrapper
-    return flattenScrubbingRules(input.ScrubbingRules)
+    return flatten{{NESTED_BLOCK_NAME}}(input.ScrubbingRules)
 }
 ```
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🚫-none-value-pattern"></a>
 
@@ -430,14 +465,7 @@ func flattenCdnFrontDoorProfileLogScrubbing(input *profiles.ProfileLogScrubbing)
 
 ### The "None" Value Pattern
 
-### AZURE-PATTERN-002: Convert Azure `None`-style defaults through omission rather than exposing them as first-class user values
-
-- Rule: When an Azure API uses `None`, `Off`, or `Default` to express the default state, prefer omission/null in Terraform and convert that omission to the Azure value during expand/flatten.
-- Rule: Do not require practitioners to configure `None`-style values explicitly when omission already expresses the default behavior.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-    - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
-    - That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly
+For the authoritative omission-based `None`/`Off`/`Default` requirement, see `IMPL-SCHEMA-008` in `.github/instructions/implementation-compliance-contract.instructions.md`.
 
 Many Azure APIs accept values like None, Off, or Default as default values. The provider is moving away from exposing these values directly to users, instead leveraging Terraform's native null handling by allowing fields to be omitted.
 
@@ -502,7 +530,6 @@ func (r ServiceResource) Read() sdk.ResourceFunc {
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🔐-security-patterns"></a>
 
@@ -513,8 +540,8 @@ func (r ServiceResource) Read() sdk.ResourceFunc {
 **Never Log Sensitive Information:**
 ```go
 // GOOD - No sensitive data in logs
-metadata.Logger.Infof("Creating Storage Account %s", id.StorageAccountName)
 log.Printf("[DEBUG] Configuring network rules for %s", id)
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // FORBIDDEN - Sensitive data in logs
 log.Printf("[DEBUG] Connection string: %s", connectionString) // Never log connection strings
@@ -574,7 +601,6 @@ func ValidateAzureResourceName(v interface{}, k string) (warnings []string, erro
 }
 ```
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🔄-state-management-with-dgetrawconfig"></a>
 
@@ -637,7 +663,6 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
 ```
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>
 
 <a id="🏗️-progressive-code-simplification"></a>
 
@@ -703,4 +728,3 @@ func ExpandPolicy(input []interface{}) *azuretype.Policy {
 - 🔄 **Migration Guide**: [migration-guide.instructions.md](./migration-guide.instructions.md) - Azure API evolution patterns
 
 ---
-<a href="#azure-specific-implementation-patterns">⬆️ Back to top</a>

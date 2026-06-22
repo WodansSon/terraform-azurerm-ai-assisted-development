@@ -943,7 +943,7 @@ $case = [ordered]@{
 
 $case | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $casePath
 
-& pwsh -NoProfile -File (Join-Path $PSScriptRoot "new-regression-result-template.ps1") -CasePath $casePath -OutputPath $resultPath | Out-Null
+& pwsh -NoProfile -File (Join-Path $PSScriptRoot "scaffold-regression-result.ps1") -CasePath $casePath -OutputPath $resultPath | Out-Null
 
 if ($includeSampleOutputValue) {
     $reviewLines = @(

@@ -1,0 +1,47 @@
+{
+  "id": "review-committed-update-branch-skips-concurrent-changes",
+  "title": "Committed review catches update branches that skip concurrent field changes",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed-review scenario where an update function takes a special-case branch for one field change, performs a PUT-like replacement for that field, and returns immediately even though other updatable fields can change in the same plan. The correct review should flag that branch as a real update bug because concurrent field changes are silently skipped.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-update-branch-skips-concurrent-changes/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic fixture models the partial-update bug where a field-specific update branch returns early and bypasses other changed fields."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-SCOPE-005F"
+  ],
+  "mustCatch": [
+    {
+      "key": "early-return-skips-other-updates",
+      "severity": "high",
+      "description": "The committed review should flag the update path because handling one changed field returns before other changed updatable fields are applied."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "assume-special-case-branch-is-safe",
+      "description": "The review must not assume a special-case PUT or PATCH branch is safe when it returns early and other updatable fields may also be dirty in the same plan."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "ISSUES"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review catches early-return update paths which silently skip concurrent field changes instead of treating them as harmless implementation detail."
+}

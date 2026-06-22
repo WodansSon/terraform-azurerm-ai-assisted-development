@@ -1,9 +1,9 @@
 ---
 applyTo: "internal/**/*.go"
-description: Route Go implementation work to the appropriate Agent Skill(s) and require a stable verification marker in assistant responses.
+description: Route Go implementation work through the resource-implementation skill and its custom-poller companion when applicable.
 ---
 
-# AI skill routing (Go implementation)
+# AI skill routing (resource implementation)
 
 When editing or generating code under `internal/**/*.go`, you must consult and follow the skill definition in:
 
@@ -17,7 +17,7 @@ You must also consult and follow the shared implementation contract:
 
 - `.github/instructions/implementation-compliance-contract.instructions.md`
 
-This is required even if the user does not explicitly ask to “use the skill”. Treat the implementation contract as the authoritative compliance layer, and treat the skill as the workflow layer that applies that contract plus companion implementation guidance.
+This is required even if the user does not explicitly ask to "use the skill". Treat the implementation contract as the authoritative compliance layer, and treat the skill as the workflow layer that applies that contract plus companion implementation guidance.
 
 ## Verification marker (assistant response only)
 

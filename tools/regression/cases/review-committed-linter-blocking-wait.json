@@ -1,0 +1,54 @@
+{
+  "id": "review-committed-linter-blocking-wait",
+  "title": "Committed review must treat azurerm-linter as a blocking wait step",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A committed review scenario where `azurerm-linter` takes noticeable time to finish and the reviewer is tempted to resume auditing, narrate the wait, or classify the linter section from partial runtime state. The correct behavior is to treat the linter as a blocking step and emit no user-visible review content until the completed run can be classified.",
+  "fixture": {
+    "mode": "none"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go",
+      "website/docs/r/example_resource.html.markdown"
+    ],
+    "notes": "Synthetic committed-review scope focused on the blocking linter wait rule rather than a specific implementation defect."
+  },
+  "expectedRules": [
+    "REVIEW-LINT-002B",
+    "REVIEW-OUT-005",
+    "REVIEW-OUT-006",
+    "REVIEW-OUT-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "linter-blocking-step-committed",
+      "severity": "high",
+      "description": "The committed review should treat the in-flight azurerm-linter run as an outstanding blocking step and should not continue the review until that completed run can be classified."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "premature-review-continuation-committed",
+      "description": "The review must not continue broader evidence gathering, findings classification, or draft the final review body while the linter is still running."
+    },
+    {
+      "key": "partial-linter-classification-committed",
+      "description": "The review must not classify the azurerm-linter section from partial runtime state before the same run has completed."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ]
+  },
+  "notes": "Use this case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait."
+}

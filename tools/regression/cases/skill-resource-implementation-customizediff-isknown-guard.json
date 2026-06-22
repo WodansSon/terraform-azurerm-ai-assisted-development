@@ -1,0 +1,67 @@
+{
+  "id": "skill-resource-implementation-customizediff-isknown-guard",
+  "title": "Resource implementation guidance requires IsKnown guards before raw cty shape inspection in CustomizeDiff",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A synthetic implementation-guidance scenario where a contributor walks nested raw `cty.Value` data from `GetRawConfig()` inside `CustomizeDiff` and calls shape-inspection methods directly. The correct guidance should anchor on `IMPL-SCHEMA-013`, require `IsKnown()` before shape inspection, and defer validation for unknown values without broadening the rule into generic `IsKnown()` everywhere advice.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-customizediff-isknown-guard/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Synthetic implementation-guidance scenario focused on raw cty traversal in CustomizeDiff rather than ordinary schema validation or acceptance-test coverage."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-013"
+  ],
+  "mustCatch": [
+    {
+      "key": "isknown-before-shape-inspection",
+      "severity": "high",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should say raw `cty.Value` traversal in `CustomizeDiff` must call `IsKnown()` before `LengthInt()`, `AsValueSlice()`, `AsValueMap()`, `Index()`, or similar shape-inspection methods."
+    },
+    {
+      "key": "defer-unknown-validation",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should defer validation and return `nil` when the traversed value is unknown, rather than treating unknown values as empty or allowing shape inspection to panic."
+    },
+    {
+      "key": "presence-detection-note-stays-narrow",
+      "severity": "low",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The guidance should keep any raw-config `AsValueMap()` example limited to top-level field-presence detection with an explicit known/non-null assumption or guard, rather than presenting it as universally safe nested traversal."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "generic-isknown-everywhere",
+      "description": "The guidance must not broaden the requirement into generic advice to call `IsKnown()` everywhere regardless of whether raw diff-time shape inspection is happening."
+    },
+    {
+      "key": "unknown-equals-empty",
+      "description": "The guidance must not approve treating unknown raw config values as equivalent to empty configuration during `CustomizeDiff` validation."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "IMPL-SCHEMA-013",
+      "IsKnown()",
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this as the adjudicated implementation-guidance case for raw `cty.Value` traversal in `CustomizeDiff` so the `IsKnown()` guard requirement stays benchmarked explicitly."
+}

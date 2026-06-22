@@ -5,7 +5,6 @@ description: Azure-specific guidelines for Go files in the Terraform Azure Provi
 
 # 🏢 Provider Guidelines
 
-<a id="🏢-provider-guidelines"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -14,7 +13,6 @@ This file is a companion guide. Implementation compliance rules are defined by t
 Use this guide for provider-wide AzureRM implementation heuristics and ARM integration patterns.
 If this guide conflicts with the implementation contract, follow the contract and update this guide to re-align.
 
-**Quick navigation:** <a href="#☁️-azure-resource-manager-arm-integration">☁️ ARM Integration</a> | <a href="#⚙️-customizediff-implementation-for-azure-resources">⚙️ CustomizeDiff</a> | <a href="#📐-azure-schema-design-and-flattening-guidelines">📐 Schema Design</a> | <a href="#✅-azure-api-value-validation">✅ API Validation</a>
 
 <a id="☁️-azure-resource-manager-arm-integration"></a>
 
@@ -53,7 +51,6 @@ If this guide conflicts with the implementation contract, follow the contract an
 - Handle nested Azure resource configurations properly using `TypeSet`, `TypeList`, and `TypeMap`
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="⚙️-customizediff-implementation-for-azure-resources"></a>
 
@@ -171,7 +168,7 @@ return fieldExists && old.(bool) == true && new.(bool) == false
 - **Optional fields**: AI should suggest `GetRawConfig().IsNull()` to check explicit configuration
 - **Optional+Computed fields**: AI should suggest distinguishing user-configured vs Azure-computed values
 
-**For comprehensive AI schema verification patterns, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#🚨-schema-definition-verification-before-field-validation)
+**For comprehensive AI schema verification patterns, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#schema-definition-verification-before-field-validation)
 
 - `CustomizeDiff` validations should be thoroughly tested with acceptance tests to ensure they work correctly:
 - Test invalid configurations that should trigger validation errors
@@ -183,7 +180,6 @@ return fieldExists && old.(bool) == true && new.(bool) == false
 For comprehensive `CustomizeDiff` testing examples, see [`testing-guidelines.instructions.md`](./testing-guidelines.instructions.md).
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="📐-azure-schema-design-and-flattening-guidelines"></a>
 
@@ -200,23 +196,23 @@ Schema flattening should be considered when Azure APIs contain unnecessary wrapp
 - **User experience improvement**: Flatten when it simplifies configuration without losing functionality
 - **Logical grouping preservation**: Maintain nested structures when they provide logical organization
 
-**Example: CDN Front Door Profile Log Scrubbing Flattening**
+**Example: Wrapper Flattening For A Resource-Specific Nested Block**
 
 **Before Flattening (Complex Structure):**
 ```go
 # Complex nested structure with unnecessary wrapper
-resource "azurerm_cdn_frontdoor_profile" "example" {
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
   name = "example"
 
-  log_scrubbing {
+    {{WRAPPER_BLOCK_NAME}} {
     enabled = true
 
-    scrubbing_rule {
-      match_variable = "QueryStringArgNames"
+        {{NESTED_BLOCK_NAME}} {
+            {{FIELD_NAME}} = "{{ENUM_VALUE}}"
     }
 
-    scrubbing_rule {
-      match_variable = "RequestIPAddress"
+        {{NESTED_BLOCK_NAME}} {
+            {{FIELD_NAME}} = "{{SECOND_ENUM_VALUE}}"
     }
   }
 }
@@ -225,15 +221,15 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 **After Flattening (Simplified Structure):**
 ```go
 # Flattened structure - direct access to scrubbing rules
-resource "azurerm_cdn_frontdoor_profile" "example" {
+resource "azurerm_{{RESOURCE_SLUG}}" "example" {
   name = "example"
 
-  log_scrubbing_rule {
-    match_variable = "QueryStringArgNames"
+    {{FLATTENED_BLOCK_NAME}} {
+        {{FIELD_NAME}} = "{{ENUM_VALUE}}"
   }
 
-  log_scrubbing_rule {
-    match_variable = "RequestIPAddress"
+    {{FLATTENED_BLOCK_NAME}} {
+        {{FIELD_NAME}} = "{{SECOND_ENUM_VALUE}}"
   }
 }
 ```
@@ -242,17 +238,17 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 
 ```go
 // Schema definition - direct access to the meaningful configuration
-"log_scrubbing_rule": {
+"{{FLATTENED_BLOCK_NAME}}": {
     Type:     pluginsdk.TypeSet,
     MaxItems: 3,
     Optional: true,
     Elem: &pluginsdk.Resource{
         Schema: map[string]*pluginsdk.Schema{
-            "match_variable": {
+            "{{FIELD_NAME}}": {
                 Type:     pluginsdk.TypeString,
                 Required: true,
                 ValidateFunc: validation.StringInSlice(
-                    profiles.PossibleValuesForScrubbingRuleEntryMatchVariable(),
+                    {{SDK_PACKAGE}}.PossibleValuesFor{{POSSIBLE_VALUES_FUNCTION}}(),
                     false),
             },
         },
@@ -260,29 +256,29 @@ resource "azurerm_cdn_frontdoor_profile" "example" {
 },
 
 // Expand function - handle the wrapper structure internally
-func expandCdnFrontDoorProfileLogScrubbing(input []interface{}) *profiles.ProfileLogScrubbing {
+func expand{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input []interface{}) *{{SDK_PACKAGE}}.{{WRAPPER_TYPE}} {
     if len(input) == 0 {
         // When no rules configured, set to disabled (following "None" pattern)
-        policyDisabled := profiles.ProfileScrubbingStateDisabled
-        return &profiles.ProfileLogScrubbing{
+        policyDisabled := {{SDK_PACKAGE}}.{{DISABLED_STATE}}
+        return &{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}{
             State:          &policyDisabled,
             ScrubbingRules: nil,
         }
     }
 
     // When rules are present, always enable the feature
-    policyEnabled := profiles.ProfileScrubbingStateEnabled
-    scrubbingRules := expandScrubbingRules(input)
+    policyEnabled := {{SDK_PACKAGE}}.{{ENABLED_STATE}}
+    scrubbingRules := expand{{NESTED_BLOCK_NAME}}(input)
 
-    return &profiles.ProfileLogScrubbing{
+    return &{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}{
         State:          &policyEnabled,
         ScrubbingRules: scrubbingRules,
     }
 }
 
 // Flatten function - hide wrapper complexity from users
-func flattenCdnFrontDoorProfileLogScrubbing(input *profiles.ProfileLogScrubbing) []interface{} {
-    if input == nil || pointer.From(input.State) == profiles.ProfileScrubbingStateDisabled {
+func flatten{{RESOURCE_NAME}}{{WRAPPER_TYPE}}(input *{{SDK_PACKAGE}}.{{WRAPPER_TYPE}}) []interface{} {
+    if input == nil || pointer.From(input.State) == {{SDK_PACKAGE}}.{{DISABLED_STATE}} {
         // When disabled, return empty list (following "None" pattern)
         return make([]interface{}, 0)
     }
@@ -313,7 +309,6 @@ func flattenCdnFrontDoorProfileLogScrubbing(input *profiles.ProfileLogScrubbing)
 - **Breaking change risk**: When existing users would be significantly impacted
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>
 
 <a id="✅-azure-api-value-validation"></a>
 
@@ -383,4 +378,3 @@ Example of proper Azure value validation:
 - ⚡ **Performance**: [performance-optimization.instructions.md](./performance-optimization.instructions.md) - Azure provider optimization
 
 ---
-<a href="#🏢-provider-guidelines">⬆️ Back to top</a>

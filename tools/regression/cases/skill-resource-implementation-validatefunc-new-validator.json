@@ -1,0 +1,49 @@
+{
+  "id": "skill-resource-implementation-validatefunc-new-validator",
+  "title": "Resource implementation guidance extracts new bespoke validators into validate files with matching tests",
+  "task": "resource-implementation",
+  "caseStatus": "adjudicated",
+  "sourceKind": "maintainer-authored",
+  "sanitized": true,
+  "description": "A sanitized implementation-guidance scenario where a brand-new bespoke validator is added inline in schema. The correct guidance should move that new validator into a service-local validate/ file with matching unit coverage while leaving simple helper-based validation inline.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/skill-resource-implementation-validatefunc-new-validator/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/example_frontdoor_resource.go"
+    ],
+    "notes": "Sanitized fixture models the brand-new validator path for the forward-consistency ValidateFunc rule."
+  },
+  "expectedRules": [
+    "IMPL-SCHEMA-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "new-bespoke-validator-needs-validate-file",
+      "severity": "medium",
+      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "description": "The guidance should move the new bespoke anonymous ValidateFunc closure into a file-specific validator under validate/ and add matching unit coverage."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "simple-inline-helper-composition",
+      "description": "The guidance must not require simple helper-based validators such as validation.StringInSlice or commonids.Validate... to move out of the schema."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "plan",
+      "schema + CRUD mapping decisions",
+      "minimal set of code changes needed",
+      "How you validated"
+    ],
+    "mustIncludeMarkers": [
+      "Skill used: resource-implementation"
+    ]
+  },
+  "notes": "Use this to keep the forward-consistency ValidateFunc rule enforced for brand-new bespoke validators instead of letting them start life as long anonymous inline closures."
+}

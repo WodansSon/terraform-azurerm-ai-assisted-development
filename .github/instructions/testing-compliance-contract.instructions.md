@@ -106,7 +106,17 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 6 and Step 7 examples
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 8 and Step 9 examples
+
+### TEST-WF-002A: Use resource-specific `preCheck` helpers for optional prerequisites
+- Rule: When an acceptance test has prerequisites beyond the global Azure auth and location requirements, add a receiver method named `preCheck(t *testing.T)` on the test helper struct and call it near the start of each affected `TestAcc...`.
+- Rule: Use `t.Skip(...)` or `t.Skipf(...)` for optional or environment-specific prerequisites that are not universally available, rather than failing the test with `t.Fatalf(...)`.
+- Rule: Keep `preCheck` close to the tests that call it, commonly after the `TestAcc...` functions and before the `Exists` or `Destroy` helpers.
+- Rule: Do not duplicate the framework's global Azure-auth pre-check inside resource-specific `preCheck` helpers.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `PreCheck Helpers`
+  - That guidance recommends receiver-based `preCheck(t *testing.T)` helpers, skipping when optional prerequisites are absent, and keeping the helper close to the tests that call it
 
 ### TEST-WF-003: New resources with list resources should include list query coverage
 - Rule: When adding a new resource that includes a list resource, add list-resource acceptance coverage using Terraform 1.14 query tests.
@@ -180,5 +190,76 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - **Evidence**:
   - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `CustomizeDiff Testing` says invalid field combinations should be covered with acceptance tests and notes that success scenarios are usually covered by the broader lifecycle test set
   - Existing local testing guidance explains that CustomizeDiff prevents invalid Azure API calls and is therefore regression-prone if left unexercised
+
+### TEST-PATTERN-007: Inline one-use helper arguments in fmt.Sprintf-based config builders
+- Rule: In acceptance-test helper functions that return `fmt.Sprintf(...)` configuration strings, do not assign one-use helper results such as `template := r.template(data)` or `config := r.basic(data)` to a local variable only to pass them immediately into `fmt.Sprintf(...)`.
+- Rule: Pass those one-use helper calls directly as `fmt.Sprintf(...)` arguments instead, for example `r.template(data)` or `r.basic(data)` inline.
+- Rule: Only introduce a local variable for a nested helper result when it is reused, materially improves readability, or is needed for additional transformation before formatting.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Maintainer review guidance in upstream PR `#28834`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
+  - That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals
+
+### TEST-PATTERN-008: Acctest helper struct names must stay canonical across all test variants
+- Rule: In acceptance test files under `internal/services/**`, helper struct names for a given Terraform resource or data source must use the canonical generated pattern based on the Terraform name.
+- Rule: For each Terraform resource or data source surface, use one canonical helper type and keep it stable across all related acceptance test files.
+- Rule: If the surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
+- Rule: For new surfaces that do not yet have an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+- Rule: That canonical helper type should stay the same across all acceptance test variants for the same Terraform surface, including the main resource test file, list-test files, identity-related tests, and any other acceptance test file that instantiates the helper.
+- Rule: Generated identity tests under `*_identity_gen_test.go` must use that same canonical helper type directly.
+- Rule: For new surfaces that use generated identity tests, the canonical helper type must match the helper name emitted by the resource-identity generator for that Terraform resource name unless the shared generator itself is intentionally being changed.
+- Rule: Before finalizing helper-type names for a new resource with Resource Identity support, run the narrow `go generate` command for that resource to verify the generated helper-name casing and prevent `*_resource_identity_gen_test.go` drift.
+- Rule: When a surface already has an established canonical helper type in hand-written acceptance tests, preserve that helper type across all related tests and ensure generated identity tests align with it. Do not introduce alternate helper names for branding or file-local convenience.
+- Rule: Do not preserve Azure product branding or alternate casing in acceptance-test helper names if that causes `go generate` to rewrite `*_resource_identity_gen_test.go`.
+- Rule: If there is a mismatch between hand-written acceptance tests and generated identity tests, resolve it by aligning the canonical helper type or by making an intentional shared generator change. Do not hand-edit the generated identity test.
+- Rule: Do not introduce variant-specific helper types such as `SomethingIdentityResource` or other alternate names merely because the test lives in a different file or generated identity file.
+- Rule: Do not rely on adapter methods, alias types, or wrapper structs to bridge helper-type drift to generated identity tests.
+- Rule: Keep helper-type naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
+  - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
+  - Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
+  - Local failure analysis for `azurerm_cdn_frontdoor_batch_rule_set` showed the narrower casing drift problem: the generator emitted `CdnFrontdoor...` while the hand-written helper used `CdnFrontDoor...`, and the correct fix was to align the canonical helper type so hand-written and generated tests matched rather than hand-editing the generated test or broadening shared generator behavior for a one-off case.
+
+### TEST-PATTERN-009: Data source tests should prefer the associated resource complete config by default
+- Rule: When a data source acceptance test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.
+- Rule: Use `basic(data)` or another scenario-specific associated resource helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` would introduce unrelated setup, noise, or coupling.
+- Rule: Do not infer that every data source test must use `complete(data)`; the default preference does not remove author choice for scenario-specific setup.
+- Rule: Do not rewrite a data source test away from `complete(data)` or another broader helper when the scenario genuinely depends on the fuller associated resource shape.
+- **Provenance**: Inferred maintainer convention.
+- **Evidence**:
+  - Upstream contributor-doc PR `#32406` narrows the `fmt.Sprintf(...)` helper guidance without turning data source setup into a single mandatory helper shape, leaving room for defaulting to the fuller associated resource config while preserving scenario-based exceptions.
+  - Data sources commonly assert computed fields exposed from the managed resource state, so preferring the associated resource `complete(data)` helper when it exists gives the AI a more deterministic default while still allowing narrower setup when the test intentionally targets a smaller shape.
+
+### TEST-PATTERN-010: Embedded Terraform in acceptance tests must use repository-valid indentation
+- Rule: In embedded Terraform configuration blocks inside `*_test.go` files, indent configuration lines with two spaces and never tabs.
+- Rule: When editing Terraform heredocs in acceptance tests, preserve the surrounding file's Terraform formatting and treat tab-indented configuration lines as invalid, since they can fail the repository's acceptance-test formatting checks.
+- Rule: Do not rely on Go linting or Go test execution to detect formatting issues inside embedded Terraform configuration strings.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.
+  - Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks.
+
+### TEST-PATTERN-011: Provider feature-flagged CRUD branch coverage
+- Rule: When a provider-level `features` setting changes create, update, delete, import, overwrite, or destroy semantics, add targeted acceptance-test coverage for the non-default branch when feasible.
+- Rule: Prefer one focused acceptance test for the shared branch behavior rather than duplicating equivalent coverage across every sibling resource, unless the resources have materially different behavior.
+- Rule: When exercising that branch requires a pre-existing remote object, use existing client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to prepare the remote object outside Terraform before applying the feature-enabled configuration.
+- Rule: Do not model this scenario by introducing a second Terraform-managed resource with the same remote ID merely to trigger the branch, unless the resource pattern specifically requires that shape.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Provider feature flags can materially alter CRUD semantics without changing the default test matrix shape, so the default `basic`, `requiresImport`, `complete`, `update`, and import scenarios do not reliably prove the feature-enabled branch.
+  - Existing acceptance harness helpers already support direct Azure setup through client callback checks, which is the provider-consistent way to prepare pre-existing remote state for these scenarios.
+
+### TEST-PATTERN-012: Callback-based Azure pollers need explicit deadlines in acceptance setup helpers
+- Rule: When `CheckWithClientForResource(...)`, `CheckWithClientWithoutResource(...)`, or `CheckWithClient(...)` callbacks call Azure polling helpers such as `CreateOrUpdateThenPoll(...)`, `CreateOrReplaceThenPoll(...)`, `UpdateThenPoll(...)`, or `DeleteThenPoll(...)`, do not pass the provided callback `ctx` directly into the poller.
+- Rule: First wrap the callback `ctx` with `context.WithTimeout(...)` or `context.WithDeadline(...)` before calling the poller.
+- Rule: Use a timeout appropriate for the setup or mutation operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup.
+- Rule: Treat quota-sensitive failures separately from missing-deadline failures; if a service has hard subscription quotas or low service limits, prefer sequential acceptance execution patterns or runner-level `-parallel=1` rather than misclassifying those failures as context-deadline issues.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - In target-provider `internal/acceptance/steps.go`, callback helpers invoke the callback with `client.StopContext`, which is not guaranteed to carry a deadline.
+  - Azure polling helpers require a deadline-bearing context, so direct use of the callback `ctx` can fail with `the context used must have a deadline attached for polling purposes, but got no deadline`.
+  - Durable Task fixes in `durable_task_scheduler_resource_test.go`, `durable_task_hub_resource_test.go`, and `durable_task_retention_policy_resource_test.go` resolved this exact failure mode by wrapping the callback `ctx` with `context.WithTimeout(ctx, 30*time.Minute)` before the poller call.
 
 <!-- TESTING-CONTRACT-EOF -->

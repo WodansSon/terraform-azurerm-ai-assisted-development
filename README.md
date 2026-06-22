@@ -33,6 +33,18 @@ This is a **community-maintained AI enhancement** for developers working on the 
 - **Building custom providers**: Learn proven patterns from the AzureRM provider
 - **Code reviews**: Automated checks against provider standards
 
+### Model Guidance
+
+This toolkit is designed and primarily validated for use with `GPT-5.4 high` in GitHub Copilot Chat.
+
+That matters most for the stricter workflows in this repository, especially:
+
+- review and audit prompts
+- contract-driven documentation work
+- implementation and acceptance-testing guidance that depends on exact output structure
+
+Other models may still be usable, but they are not expected to match `GPT-5.4 high` for instruction adherence, stable review formatting, or suppression of leaked planning and tool narration.
+
 
 ### 📖 Origin Story
 
@@ -259,7 +271,7 @@ If Copilot does not already have PR context for your branch, pass the PR number 
 ```
 
 > [!NOTE]
-> The generic review prompts require a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The linter is expected to run as the plain local CLI from the repo root on every platform, including Windows; it should not be rewritten through WSL or another shell wrapper. Review-time JSON parsing treats stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`. If that primary run does not yield valid stdout JSON, the prompts rerun once without stderr suppression to inspect diagnostic output for classification.
+> The generic review prompts require a local `v0.2.0` or newer `azurerm-linter` binary from the [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter) repo for JSON-mode review. The linter is expected to run as the plain local CLI from the repo root on every platform, including Windows; it should not be rewritten through WSL or another shell wrapper. Review-time JSON parsing treats stdout as the structured source of truth and suppresses stderr with the current shell's native null-device syntax, such as PowerShell `2>$null`, POSIX shells `2>/dev/null`, or cmd.exe `2>nul`. If that primary run completes without a classifiable result, the review flow classifies from that same completed run only or fails closed as required by the prompt; it does not launch a second diagnostic linter pass.
 
 If you want to reduce approval prompts for the harmless repo-root lookup used by the review prompts, you can allow just that command in your VS Code user settings:
 

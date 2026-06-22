@@ -1,0 +1,72 @@
+{
+  "id": "review-committed-durabletask-multi-issue-coverage",
+  "title": "Committed review catches the Durable Task multi-issue combination",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "real-pr",
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario derived from a real new-service PR where the review must simultaneously catch a special-case update branch that skips concurrent field changes, a shortened new cross-resource ID field name, and redundant generic lifecycle logging, while treating duplicate retention-policy semantics as a non-blocking observation rather than a merge blocker.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-durabletask-multi-issue-coverage/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_scheduler_resource.go",
+      "internal/services/example/example_hub_resource.go",
+      "internal/services/example/example_retention_policy_resource.go",
+      "internal/services/example/example_hub_resource_list.go",
+      "website/docs/r/example_hub.html.markdown",
+      "website/docs/r/example_retention_policy.html.markdown"
+    ],
+    "notes": "Sanitized fixture models the real committed-review failure where the review only reported lifecycle logging and missed the update-path bug and the new public field naming issue."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "REVIEW-SCOPE-005D",
+    "REVIEW-SCOPE-005E",
+    "REVIEW-SCOPE-005F",
+    "REVIEW-OBS-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "durabletask-update-branch-skips-concurrent-changes",
+      "severity": "high",
+      "description": "The committed review should flag the scheduler update path because clearing one field returns early and silently skips concurrent changes to other updatable fields."
+    },
+    {
+      "key": "durabletask-cross-resource-id-name-too-short",
+      "severity": "high",
+      "description": "The committed review should flag the brand-new public cross-resource ID field because it uses a shortened name instead of the full `{resource_name}_id` pattern."
+    },
+    {
+      "key": "durabletask-generic-lifecycle-logging",
+      "severity": "high",
+      "description": "The committed review should flag the repeated generic lifecycle logging pattern in the new resources."
+    },
+    {
+      "key": "retention-policy-duplicate-state-risk-observation",
+      "severity": "low",
+      "description": "The committed review should surface the duplicate or ambiguous retention-policy semantics as a non-blocking observation when service-side precedence is not implementation-backed."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "template-helper-style-as-main-issue",
+      "description": "The review must not reduce the output to helper-style churn while missing the real update-path and naming defects."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES",
+      "OBSERVATIONS"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review preserves multi-issue accuracy on a complex new-service PR instead of collapsing to a single easy finding."
+}

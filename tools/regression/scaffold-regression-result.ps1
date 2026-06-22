@@ -60,6 +60,7 @@ $result = [ordered]@{
     outputChecks = [ordered]@{
         requiredSectionsPresent = $false
         requiredMarkersPresent = $false
+        forbiddenMarkersAbsent = $(if ($case.outputChecks.PSObject.Properties.Name -contains 'mustNotIncludeMarkers' -and @($case.outputChecks.mustNotIncludeMarkers).Count -gt 0) { $false } else { $true })
     }
     determinismChecks = [ordered]@{
         materiallyEquivalentAcrossRuns = $false

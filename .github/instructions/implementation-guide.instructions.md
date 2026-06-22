@@ -5,7 +5,6 @@ description: Complete implementation guide for Go files in the Terraform AzureRM
 
 # Terraform AzureRM Provider Implementation Guide
 
-<a id="terraform-azurerm-provider-implementation-guide"></a>
 
 This file is a companion guide. Implementation compliance rules are defined by the implementation compliance contract:
 
@@ -29,38 +28,13 @@ For exact compliance behavior, use the implementation contract as the source of 
 - implementation workflow rules
 - schema, PATCH, error, testing, and code-clarity rule families
 
-**Quick navigation:** <a href="#🏗️-implementation-patterns">🏗️ Implementation Patterns</a> | <a href="#📏-coding-standards">📏 Coding Standards</a> | <a href="#🎨-coding-style">🎨 Coding Style</a> | <a href="#🔧-azure-sdk-integration">🔧 Azure SDK Integration</a> | <a href="#💡-ai-coding-guidance">💡 AI Coding Guidance</a> | <a href="#📚-specialized-guidance-on-demand">📚 Specialized Guidance</a>
+Use the `resource-implementation` skill for procedural workflow behavior such as implementation-session checklists, quick implementation anchors, and end-to-end implementation sequencing.
 
-**🧠 SMART MEMORY MANAGEMENT:**
-- **Pattern Cache**: Keep these templates in active memory during implementation sessions
-- **Context Stack**: Maintain decision tree paths for rapid access
-- **Quick Templates**: Ready-to-use code patterns for immediate application
 
-**⚡ HOT PATTERNS (Keep in Working Memory):**
-```go
-// Typed Resource Quick Template
-type ServiceNameResourceModel struct {
-    Name              string            `tfschema:"name"`
-    ResourceGroup     string            `tfschema:"resource_group_name"`
-    Location          string            `tfschema:"location"`
-    Tags              map[string]string `tfschema:"tags"`
-    Id                string            `tfschema:"id"`
-}
+Workflow note:
 
-// PATCH Operation Pattern
-func ExpandFeature(input []interface{}) *azuretype.Feature {
-    result := &azuretype.Feature{
-        Enabled: pointer.To(false), // Explicit disable for PATCH
-    }
-    if len(input) > 0 && input[0] != nil {
-        result.Enabled = pointer.To(true)
-    }
-    return result
-}
-
-// Error Pattern
-return fmt.Errorf("creating %s: %+v", id, err)
-```
+- `resource-implementation` owns the implementation-session playbook and quick implementation anchors
+- this guide stays focused on companion patterns, worked examples, and implementation heuristics
 
 <a id="🏗️-implementation-patterns"></a>
 
@@ -82,6 +56,49 @@ This provider supports two implementation approaches:
 - Employs direct schema manipulation and `d.Set()`/`d.Get()` patterns
 - Features traditional error handling and state management
 - **Maintained for existing resources but not recommended for new development**
+
+### Implementation Model Identification
+
+Before suggesting code, identify which implementation model the target actually uses.
+
+Use these categories:
+
+- **Untyped Plugin SDK maintenance surface**
+    - Existing `*pluginsdk.Resource` or `*pluginsdk.ResourceDiff` function-based resources and data sources
+    - Typical signals: `func resourceServiceName() *pluginsdk.Resource`, `Create: resourceServiceNameCreate`, direct `d.Get()` or `d.Set()` usage
+
+- **Typed `internal/sdk` managed resource or data source surface**
+    - Receiver-based resources and data sources using `sdk.Resource`, `sdk.ResourceWithUpdate`, and `sdk.ResourceFunc`
+    - Typical signals: `type ServiceNameResource struct{}`, `func (r ServiceNameResource) Create() sdk.ResourceFunc`, `metadata.Decode()`
+
+- **Framework-specialized surface**
+    - Patterns that are not ordinary managed typed CRUD resources even though they live alongside typed code
+    - Current first-class specialized surfaces in this repo:
+        - list resources
+        - ephemeral resources
+        - provider-defined functions
+    - Typical signals:
+        - list resources: `*_resource_list.go`, `sdk.FrameworkListWrappedResource`, list query tests, list-resource docs
+        - ephemeral resources: `*_ephemeral.go`, `sdk.EphemeralResource`, `Open`, `EphemeralResources()`
+        - provider-defined functions: `internal/provider/function/`, `terraform-plugin-framework/function.Function`, `Definition`, `Run`
+
+Identification rules:
+
+- Match the model of the file or workflow already in use unless the task is an explicit migration.
+- Do not suggest an ordinary typed CRUD template for list resources, ephemeral resources, or provider-defined functions.
+- Do not suggest a new untyped resource or data source just because sibling legacy files are untyped.
+- For brand-new ordinary resources and data sources, default to the typed `internal/sdk` model.
+- For maintenance of an existing untyped file, stay untyped unless the task explicitly asks for migration.
+- For legacy polling migrations, consult the custom poller migration guidance instead of inventing one-off retry loops.
+
+Quick identification checklist:
+
+- Is the target under `internal/provider/function/`? -> Use the provider-defined function model
+- Is the file `*_ephemeral.go` or registered via `EphemeralResources()`? -> Use the ephemeral resource model
+- Is the work for a list resource or `*_resource_list.go`? -> Use the framework list-resource model
+- Is the existing implementation receiver-based with `sdk.ResourceFunc`? -> Use the typed managed resource model
+- Is the existing implementation `*pluginsdk.Resource` with function-based CRUD? -> Use the untyped maintenance model
+- Otherwise, for a new ordinary resource or data source -> Use the typed `internal/sdk` model
 
 ### Typed Resource Structure Pattern
 
@@ -171,17 +188,16 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
 
             id := parse.NewServiceNameID(subscriptionId, model.ResourceGroup, model.Name)
 
-            metadata.Logger.Infof("Import check for %s", id)
-            existing, err := client.Get(ctx, id)
-            if err != nil && !response.WasNotFound(existing.HttpResponse) {
-                return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
-            }
+            if !metadata.Client.Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources {
+                existing, err := client.Get(ctx, id)
+                if err != nil && !response.WasNotFound(existing.HttpResponse) {
+                    return fmt.Errorf("checking for presence of existing %s: %+v", id, err)
+                }
 
-            if !response.WasNotFound(existing.HttpResponse) {
-                return metadata.ResourceRequiresImport(r.ResourceType(), id)
+                if !response.WasNotFound(existing.HttpResponse) {
+                    return metadata.ResourceRequiresImport(r.ResourceType(), id)
+                }
             }
-
-            metadata.Logger.Infof("Creating %s", id)
 
             properties := servicenametype.Resource{
                 Location: model.Location,
@@ -212,10 +228,10 @@ func (r ServiceNameResource) Read() sdk.ResourceFunc {
                 return err
             }
 
-            metadata.Logger.Infof("Reading %s", id)
             resp, err := client.Get(ctx, *id)
             if err != nil {
                 if response.WasNotFound(resp.HttpResponse) {
+                    metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
                     return metadata.MarkAsGone(id)
                 }
                 return fmt.Errorf("retrieving %s: %+v", id, err)
@@ -290,12 +306,14 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
 
     id := parse.NewServiceNameID(subscriptionId, resourceGroupName, name)
 
-    existing, err := client.Get(ctx, id)
-    if err != nil && !response.WasNotFound(existing.HttpResponse) {
-        return fmt.Errorf("checking for existing %s: %+v", id, err)
-    }
-    if !response.WasNotFound(existing.HttpResponse) {
-        return tf.ImportAsExistsError("azurerm_service_name", id.ID())
+    if !meta.(*clients.Client).Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources {
+        existing, err := client.Get(ctx, id)
+        if err != nil && !response.WasNotFound(existing.HttpResponse) {
+            return fmt.Errorf("checking for existing %s: %+v", id, err)
+        }
+        if !response.WasNotFound(existing.HttpResponse) {
+            return tf.ImportAsExistsError("azurerm_service_name", id.ID())
+        }
     }
 
     parameters := servicenametype.Resource{
@@ -317,6 +335,28 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
     return resourceServiceNameRead(ctx, d, meta)
 }
 ```
+
+### Callback-Based Create Pattern For Resource Identity
+
+When a create helper sets the Terraform ID from inside the poller callback, Resource Identity needs to be populated from that same callback rather than waiting for read.
+
+For typed resources:
+
+```go
+if err := client.CreateCallbackThenPoll(ctx, id, properties, metadata.SetIDAndIdentityCallback(&id)); err != nil {
+    return fmt.Errorf("creating %s: %+v", id, err)
+}
+```
+
+For untyped resources:
+
+```go
+if err := client.CreateCallbackThenPoll(ctx, id, properties, sdk.SetIDAndIdentityCallback(meta, &id, d)); err != nil {
+    return fmt.Errorf("creating %s: %+v", id, err)
+}
+```
+
+Use the ID-plus-identity callback form for resources that support Resource Identity. A callback that only sets the Terraform ID leaves create-time identity state incomplete.
 
 ### Import Management Pattern
 
@@ -380,7 +420,6 @@ CustomizeDiff: pluginsdk.CustomDiffWithAll(
 - **Check the function signature**: If you see `*pluginsdk.ResourceDiff` or `pluginsdk.CustomDiffWithAll`, single import is sufficient
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="📏-coding-standards"></a>
 
@@ -425,8 +464,8 @@ if err := metadata.Decode(&model); err != nil {
     return fmt.Errorf("decoding: %+v", err)
 }
 
-// Use metadata.Logger for structured logging
-metadata.Logger.Infof("Import check for %s", id)
+// Use metadata.Logger only for distinct diagnostics that add value beyond Terraform core/provider-native logging
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // Use metadata.ResourceRequiresImport for import conflicts
 if !response.WasNotFound(existing.HttpResponse) {
@@ -468,8 +507,16 @@ if response.WasNotFound(resp.HttpResponse) {
 - **Resource files**: `internal/services/[service]/[resource_type]_resource.go`
 - **Resource Test files**: Same directory and name as source with `_test.go` suffix
 - **Data source files**: `internal/services/[service]/[resource_type]_data_source.go`
-- **Utility files**: Group related functions (e.g., `validate.go`, `parse.go`, `flatten.go`, `expand.go`)
+- **Validation files**: Put bespoke schema validators under `internal/services/[service]/validate/` using file-specific names with matching `_test.go` coverage
+- **Utility files**: Group other related functions (e.g., `parse.go`, `flatten.go`, `expand.go`)
 - **Registration**: Each service has a `registration.go` file
+
+Validation placement note:
+
+- Keep direct helper composition inline in the schema when the validator is already readable as-is, for example `commonids.Validate...`, `validation.StringInSlice(...)`, or a short `validation.All(...)` composition.
+- For new or materially updated bespoke schema validation logic, put the validator under the same service's `validate/` folder in a file named for the validated subject, with a matching `_test.go` file, rather than leaving a long anonymous `ValidateFunc` closure inline.
+- Do not churn untouched legacy validator placement solely to normalize layout if the current task is not already changing that validator.
+- Treat anonymous inline `ValidateFunc` closures as the exception for narrow one-off checks only. If the closure hides the schema shape or would be clearer as a named helper, extract it.
 
 #### File Naming
 - Use snake_case for file names
@@ -478,7 +525,6 @@ if response.WasNotFound(resp.HttpResponse) {
 - Separate complex logic into utility functions
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="🎨-coding-style"></a>
 
@@ -530,7 +576,7 @@ name := nameFromConfig
 
 **⚠️ CRITICAL: Follow ZERO TOLERANCE FOR UNNECESSARY COMMENTS POLICY**
 
-📋 **For complete policy details, enforcement guidelines, decision trees, and comprehensive examples, see:** [Code Clarity Enforcement Guidelines](./code-clarity-enforcement.instructions.md#🚫-zero-tolerance-for-unnecessary-comments-policy)
+📋 **For complete policy details, enforcement guidelines, decision trees, and comprehensive examples, see:** [Code Clarity Enforcement Guidelines](./code-clarity-enforcement.instructions.md#comment-discipline-heuristics)
 
 **Quick Reference - Comments ONLY for:**
 - Azure API-specific quirks not obvious from code
@@ -543,7 +589,6 @@ name := nameFromConfig
 **🔍 MANDATORY JUSTIFICATION:** Every comment requires explicit justification documented in review response explaining which exception case applies and why code cannot be self-explanatory through refactoring.
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="🔧-azure-sdk-integration"></a>
 
@@ -597,6 +642,30 @@ if props.Name != nil {
 }
 ```
 
+**Enum pointer boundary rules:**
+
+- Use `pointer.FromEnum(...)` only when dereferencing an SDK/API enum pointer such as `*EnumType` from an Azure model.
+- Use `pointer.ToEnum[...]` only when assigning a Terraform/config string into an SDK/API field that expects `*EnumType`.
+- Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values because those values are not enum pointers.
+- In `CustomizeDiff`, continue using `diff.Get(...)` for required values and `GetRawConfig()` when the logic must distinguish unset values from known-after-apply or zero values.
+
+```go
+// GOOD - Flatten an SDK enum pointer into Terraform state
+state.CertificateType = pointer.FromEnum(props.TlsSettings.CertificateType)
+
+// GOOD - Convert a Terraform/config string into an SDK enum pointer
+properties.CertificateType = pointer.ToEnum[cdn.CertificateType](model.CertificateType)
+
+// FORBIDDEN - Terraform diff/schema values are not enum pointers
+certificateType := diff.Get("certificate_type").(string)
+_ = pointer.FromEnum(certificateType)
+
+// FORBIDDEN - Decoded schema maps are Terraform values, not SDK enum pointers
+tls := raw["tls"].(map[string]interface{})
+certificateTypeFromSchema := tls["certificate_type"].(string)
+_ = pointer.ToEnum[cdn.CertificateType](certificateTypeFromSchema)
+```
+
 ### Pointer Dereferencing Best Practices
 
 **PREFERRED - Use `pointer.From()` for consistent dereferencing:**
@@ -630,8 +699,8 @@ subscriptionId := metadata.Client.Account.SubscriptionId
 enabled := pointer.To(true)
 name := pointer.To("example")
 
-// Use structured logging with metadata.Logger
-metadata.Logger.Infof("Creating %s", id)
+// Use structured logging only for distinct diagnostics, not generic CRUD lifecycle narration
+metadata.Logger.Debugf("[DEBUG] %s was not found - removing from state", id)
 
 // Use proper error context with typed resource
 if err := client.CreateOrUpdateThenPoll(ctx, id, properties); err != nil {
@@ -719,6 +788,64 @@ If the Azure SDK package offers a `PossibleValuesForFieldName` function, use tha
 },
 ```
 
+#### ValidateFunc Placement Patterns
+
+```go
+// PREFERRED - Simple helper composition stays inline
+"certificate_type": {
+    Type:     pluginsdk.TypeString,
+    Optional: true,
+    ValidateFunc: validation.StringInSlice([]string{
+        "ManagedCertificate",
+        "CustomerCertificate",
+    }, false),
+},
+
+// PREFERRED - Reuse an established shared validator inline
+"{{REFERENCE_FIELD_NAME}}": {
+    Type:         pluginsdk.TypeString,
+    Required:     true,
+    ValidateFunc: commonids.Validate{{REFERENCE_TYPE}}ID,
+},
+
+// PREFERRED - Bespoke logic moves to a named validator under validate/
+"{{FIELD_NAME}}": {
+    Type:         pluginsdk.TypeString,
+    Required:     true,
+    ValidateFunc: validate{{VALIDATOR_NAME}},
+},
+
+// AVOID - Long anonymous closures hide the schema shape and do not reuse well
+"{{FIELD_NAME}}": {
+    Type:     pluginsdk.TypeString,
+    Required: true,
+    ValidateFunc: func(v interface{}, k string) (warnings []string, errors []error) {
+        value := v.(string)
+        if len(value) < 1 || len(value) > 64 {
+            errors = append(errors, fmt.Errorf("property `%s` must be between 1 and 64 characters", k))
+        }
+        if strings.Contains(value, " ") {
+            errors = append(errors, fmt.Errorf("property `%s` cannot contain spaces", k))
+        }
+        return warnings, errors
+    },
+},
+```
+
+Use a service-local `validate/{{VALIDATOR_SUBJECT}}.go` helper with a matching `_test.go` file when the validator is new or materially updated and:
+
+- the same validation will be reused across more than one field or file
+- the validator needs bespoke control flow, loops, or several condition checks
+- the inline closure would materially distract from the schema shape
+
+Do not require unrelated cleanup of untouched legacy validator placement just to satisfy this rule.
+
+Keep the validator inline when:
+
+- the logic is already expressed entirely by existing helpers
+- the schema remains easy to scan without jumping to another file
+- extracting a named helper would add indirection without improving reuse or readability
+
 #### Expand/Flatten Function Patterns
 
 #### HashiCorp Standard Expand Function Pattern
@@ -768,6 +895,20 @@ if err != nil {
 
 // Set resource ID after creation
 d.SetId(id.ID())
+
+// Normalize IDs returned by Azure before storing them in state
+projectId, err := devcenters.ParseProjectID(props.DevCenterProjectResourceId)
+if err != nil {
+    return err
+}
+state.DevCenterProjectId = projectId.ID()
+
+// Normalize scoped IDs before storing the scope in state
+storageAccountId, err := commonids.ParseStorageAccountID(id.Scope)
+if err != nil {
+    return err
+}
+state.StorageAccountId = storageAccountId.ID()
 ```
 
 ### Resource ID Parser Precedence
@@ -776,6 +917,28 @@ d.SetId(id.ID())
 - Use `hashicorp/go-azure-helpers/resourcemanager/commonids` for shared cross-service IDs and composite IDs joined with `|`.
 - Use provider-generated legacy parse and validate helpers only when neither `go-azure-sdk` nor `commonids` currently support the ID shape.
 - Keep import validation, state parsing, and resource identity generation aligned to the same underlying ID type.
+- Treat read-side ID handling as case-insensitive by parsing import input, state values, and Azure-returned IDs through that shared ID type instead of comparing raw strings.
+- Normalize IDs through their typed parser before setting them into state when the value came from API output or another external source that may vary in static-segment casing.
+- Apply that normalization rule to full resource IDs, scoped IDs, and resource ID properties returned from API responses so Terraform state uses the canonical `.ID()` form and avoids phantom diffs.
+- When the provider emits or rewrites a resource ID for state or other provider-managed outbound usage, use the canonical `.ID()` form from that shared ID type rather than preserving arbitrary external casing.
+
+Generalized example:
+
+```go
+resourceId, err := {{RESOURCE_ID_PARSER}}(input.ID)
+if err != nil {
+    return err
+}
+
+apiReturnedId, err := {{RESOURCE_ID_PARSER}}(response.Properties.{{RESOURCE_ID_FIELD}})
+if err != nil {
+    return err
+}
+
+state.{{RESOURCE_ID_FIELD}} = apiReturnedId.ID()
+```
+
+Use the same parser on import input, existing state values, and API-returned IDs. That keeps read-side handling case-insensitive while ensuring Terraform state uses the provider's canonical ID form even when the RP returns different static-segment casing.
 
 ### Codebase Orientation and Build Context
 
@@ -786,6 +949,7 @@ d.SetId(id.ID())
 ### Extending Existing Resources and Data Sources
 
 - When adding a new resource field, update schema or model ordering first, then wire the property through create, update, and read logic, keeping pointer handling nil-safe in state.
+- When extending an existing resource or data source, do not reorder untouched existing schema or model properties in the same PR just to improve local ordering or style. Keep the functional addition isolated and do any ordering cleanup in a separate follow-up PR.
 - Treat default-value changes and property renames as breaking-change-sensitive work. Review the breaking-change guidance before changing defaults, Optional/Computed behavior, or public property names.
 - For data sources, add new computed attributes in canonical order, set them explicitly in read, extend the basic data source test with direct checks, and update docs last.
 - For resources, new optional properties usually belong in an existing non-basic or complete test; new required properties must be reflected across existing configs.
@@ -815,7 +979,6 @@ Official upstream references:
 - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-ids.md`
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>
 
 <a id="💡-ai-coding-guidance"></a>
 
@@ -825,26 +988,22 @@ Official upstream references:
 
 #### Resource Implementation Decision Tree
 ```text
-New Resource Request
-├─ Implementation Approach
-│  ├─ NEW resource/data source → Use Typed Resource Implementation
-│  ├─ EXISTING resource maintenance → Continue Untyped Resource Implementation
-│  └─ MAJOR refactor → Consider migration to Typed Resource Implementation
-│
-├─ File Structure Creation
-│  ├─ Resource: internal/services/[service]/[resource]_resource.go
-│  ├─ Data Source: internal/services/[service]/[resource]_data_source.go
-│  ├─ Tests: same directory with _test.go suffix
-│  └─ Utilities: parse.go, validate.go, expand.go, flatten.go
-│
-└─ Implementation Order
-   ├─ 1. Define model structs (Typed) or schema (Untyped)
-    ├─ 2. Implement Resource Identity
-    ├─ 3. Implement CRUD operations
-    ├─ 4. Implement the corresponding List Resource
-    ├─ 5. Add validation and error handling
-    ├─ 6. Create acceptance tests, including list query tests
-    └─ 7. Write resource and list-resource documentation
+Rule: evaluate in order and stop at the first matching condition.
+
+- If the target is under `internal/provider/function/` -> Use the provider-defined function model
+- Else if the target is an ephemeral resource (`*_ephemeral.go` or `EphemeralResources()`) -> Use the ephemeral resource model
+- Else if the target is a list resource (`*_resource_list.go` or `sdk.FrameworkListWrappedResource`) -> Use the framework list-resource model
+- Else if this is maintenance of an existing `*pluginsdk.Resource` implementation -> Continue the untyped maintenance model
+- Else if this is a new ordinary resource or data source -> Use the typed resource implementation model
+- Else if this is an explicit major refactor of an existing untyped implementation -> Consider migration to the typed resource implementation model
+- Else -> Match the model already used by the target file or workflow
+
+After choosing the model:
+
+- For ordinary managed resources and data sources -> Define model structs (typed) or schema (untyped), implement identity, CRUD, validation, tests, and docs
+- For list resources -> Implement resource identity first, then the list wrapper, list tests, and list-resource docs
+- For ephemeral resources -> Implement `Metadata`, `Configure`, `Schema`, and `Open`, then add docs and Terraform 1.10-gated tests
+- For provider-defined functions -> Implement `Metadata`, `Definition`, and `Run`, then add docs and Terraform 1.8-gated tests
 ```
 
 #### Cross-Implementation Consistency Validation
@@ -901,41 +1060,13 @@ func resourceServiceName() *pluginsdk.Resource {
 ### Efficient Development Workflow
 
 #### Step-by-Step Implementation Checklist
-```text
-□ 1. ANALYZE REQUEST
-  □ Identify Azure service and resource type
-  □ Check if resource already exists (grep search)
-  □ Determine implementation approach (Typed vs Untyped)
+The `resource-implementation` skill owns the step-by-step implementation workflow.
 
-□ 2. SETUP STRUCTURE
-  □ Create/locate service directory: internal/services/[service]/
-  □ Identify required files: resource, tests, utilities
-  □ Check client registration in internal/clients/
+Use this guide for the surrounding patterns and examples, and use the skill for:
 
-□ 3. IMPLEMENT CORE LOGIC
-  □ Define model/schema with ALL required Azure properties
-  □ Implement Create() with proper validation and error handling
-  □ Implement Read() with nil checks and state management
-  □ Implement Update() if supported (check Azure API capabilities)
-  □ Implement Delete() with proper cleanup
-
-□ 4. ADD VALIDATION & ERROR HANDLING
-  □ Implement IDValidationFunc() for resource ID parsing
-  □ Add CustomizeDiff for complex Azure API constraints
-  □ Use proper error formatting with field names in backticks
-  □ Add timeout configurations appropriate for Azure operations
-
-□ 5. CREATE TESTS
-  □ Basic test with minimal configuration
-  □ RequiresImport test for import conflict detection
-  □ Update test if resource supports updates
-  □ CustomizeDiff validation tests if applicable
-
-□ 6. WRITE DOCUMENTATION
-  □ Resource documentation with examples
-  □ Data source documentation if applicable
-  □ Import documentation with example resource ID
-```
+- implementation-session sequencing
+- quick implementation anchors
+- end-to-end implementation checklist behavior
 
 ### Common Implementation Patterns
 
@@ -1114,8 +1245,9 @@ func resourceServiceName() *pluginsdk.Resource {
 - **Required fields**: AI should suggest direct access (`diff.Get()`, `metadata.Decode()`)
 - **Optional fields**: AI should suggest `GetRawConfig().IsNull()` to check explicit configuration
 - **Optional+Computed fields**: AI should suggest distinguishing user-configured vs Azure-computed values
+- **Enum pointer helpers**: AI should reserve `pointer.FromEnum(...)` and `pointer.ToEnum[...]` for the SDK/API boundary only, never for `diff.Get(...)`, `GetRawConfig()`, or decoded schema maps
 
-**For comprehensive AI schema verification guidance, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#🚨-schema-definition-verification-before-field-validation)
+**For comprehensive AI schema verification guidance, see:** [Schema Patterns - AI Schema Definition Verification](./schema-patterns.instructions.md#schema-definition-verification-before-field-validation)
 
 **For Azure-specific CustomizeDiff validation techniques including zero value handling patterns, see:** [Azure Patterns - Zero Value Validation](./azure-patterns.instructions.md#zero-value-validation-pattern)
 
@@ -1145,4 +1277,3 @@ Use `diff.ForceNew()` within CustomizeDiffShim when:
 - 🔐 **Security**: [security-compliance.instructions.md](./security-compliance.instructions.md) - Input validation, compliance
 
 ---
-<a href="#terraform-azurerm-provider-implementation-guide">⬆️ Back to top</a>

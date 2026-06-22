@@ -69,6 +69,33 @@ Before running tests:
 - Prefer narrow test runs (single test) over running the full suite.
 - Ensure cleanup/destroy behavior is covered.
 
+## Execution workflow
+
+Use the upstream acceptance-test entry point as the default command shape:
+
+- `make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run={{TEST_NAME}}' TESTTIMEOUT='60m'`
+
+Expected shell environment for acceptance-test runs includes:
+
+- `ARM_SUBSCRIPTION_ID`
+- `ARM_CLIENT_ID`
+- `ARM_CLIENT_SECRET`
+- `ARM_TENANT_ID`
+- `ARM_TEST_LOCATION`
+- `ARM_TEST_LOCATION_ALT`
+
+Execution rules:
+
+- Prefer the smallest `-run` scope that proves the change.
+- Prefer rerunning one failing test over broad service-wide or suite-wide retries.
+- Treat unit-test runs and acceptance-test runs as different workflows; do not present `go test ./...` as a substitute for a targeted acceptance run.
+
+Example narrow run:
+
+```text
+make acctests SERVICE='{{SERVICE_NAME}}' TESTARGS='-run=TestAcc{{RESOURCE_NAME}}_basic' TESTTIMEOUT='60m'
+```
+
 ## Core patterns to follow
 
 - Acceptance test framework conventions:
@@ -78,6 +105,11 @@ Before running tests:
 - Default resource test matrix should cover the core lifecycle:
    - At a minimum, plan for `basic`, `requiresImport`, `complete`, `update`, and import validation when import is supported.
    - Only omit one of those when the resource behavior or provider pattern makes it genuinely not applicable.
+
+- Use resource-specific `preCheck` helpers when tests need extra prerequisites:
+   - If a test depends on optional shared infrastructure or environment variables beyond the global Azure auth and location checks, add a receiver method named `preCheck(t *testing.T)` on the test helper struct and call it near the start of each affected `TestAcc...`.
+   - Prefer `t.Skip(...)` or `t.Skipf(...)` when those optional prerequisites are absent.
+   - Keep the helper near the tests that call it, commonly before the `Exists` or `Destroy` helpers.
 
 - New-resource list coverage:
    - When a new resource includes a list resource, also plan a dedicated `*_resource_list_test.go` file.
@@ -104,6 +136,20 @@ Before running tests:
    - For resources, plan for `requiresImport` coverage by default using `data.RequiresImportErrorStep`.
    - Only omit it when the resource pattern gives a concrete reason that it is not applicable.
 
+- Provider feature-flagged CRUD branch coverage:
+   - When a provider features block setting changes create, update, delete, import, overwrite, or destroy semantics, consider whether the non-default branch needs one focused acceptance test.
+   - If the branch requires a pre-existing remote object, prefer the existing harness pattern of applying prerequisite infrastructure first, then using `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to create or modify the remote object outside Terraform, then applying the feature-enabled Terraform configuration.
+   - When one of those callback helpers needs to call an Azure polling helper such as `CreateOrUpdateThenPoll`, `CreateOrReplaceThenPoll`, `UpdateThenPoll`, or `DeleteThenPoll`, do not pass the callback `ctx` directly into the poller.
+   - First wrap the callback `ctx` with `context.WithTimeout(...)` or `context.WithDeadline(...)`, because callback helpers may supply a context that does not already carry a deadline and Azure pollers require one.
+   - Use a timeout appropriate for the setup or mutation operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup.
+   - Prefer this direct Azure setup pattern over creating two Terraform-managed resources that intentionally target the same remote ID.
+   - Keep the scenario narrow: prove the feature-enabled branch with one high-signal test unless sibling resources have materially different behavior.
+   - For the detailed bad-vs-good callback-poller example and repo-local evidence, use `.github/instructions/testing-guidelines.instructions.md` rather than expanding this skill into a second example-heavy authority source.
+
+- Quota-sensitive acceptance execution is a separate concern:
+   - For services with hard subscription quotas or low service limits, prefer sequential acceptance execution patterns such as `ResourceSequentialTest(...)`, `DataSourceTestInSequence(...)`, or runner-level `-parallel=1`.
+   - Do not conflate quota-sensitive failures with missing-context-deadline failures in callback-based poller setup.
+
 - Do not add acctests for simple property validation by default:
    - If a property validator is already covered adequately by a unit test, do not add an acceptance test only to re-prove that validation.
    - Add an acceptance validation test only when it proves behavior that unit coverage does not, such as broader lifecycle behavior or Azure-specific runtime constraints.
@@ -111,6 +157,29 @@ Before running tests:
 - Add acctests for CustomizeDiff logic:
    - Add targeted acceptance-test coverage for CustomizeDiff validation paths so invalid field combinations and Azure-specific cross-field constraints are not left untested.
    - Prefer `ExpectError` scenarios for the invalid paths, while letting the broader `basic`, `update`, `complete`, and import flows cover the corresponding success paths unless extra assertions are needed.
+
+- Keep fmt.Sprintf-based config helpers concise:
+   - When a helper returns `fmt.Sprintf(...)`, pass one-use nested helper calls like `r.template(data)` or `r.basic(data)` directly into the format call instead of assigning a temporary local that is only forwarded once.
+   - Keep a local only when the value is reused, transformed, or materially improves readability.
+
+- Keep embedded Terraform formatting valid:
+   - When editing Terraform heredocs in `*_test.go` files, use two spaces for configuration indentation and never tabs.
+   - When editing Terraform heredocs in `*_test.go` files, consult the `Embedded Terraform Formatting` examples in `.github/instructions/testing-guidelines.instructions.md` and match the recommended pattern.
+
+- Prefer associated resource `complete(data)` setup by default in data source tests:
+   - When a data source test composes its setup from an associated resource helper and a `complete(data)` helper exists, prefer that helper as the default setup shape.
+   - Reuse `basic(data)` or another scenario-specific helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` adds unrelated setup or coupling.
+   - Keep a broader helper when the data source scenario genuinely depends on the fuller associated resource shape.
+
+- Keep helper struct names canonical across all acceptance test variants:
+   - In acceptance test files under `internal/services/**`, use one canonical helper struct name per Terraform resource or data source.
+   - If a surface already has an established canonical helper type, preserve and reuse that same type across all related acceptance tests and generated identity tests.
+   - For new surfaces without an established canonical helper type, prefer `ToCamel(x)Resource` for resources and `ToCamel(x)DataSource` for data sources.
+   - When a new resource includes generated identity tests, verify the generated helper-name casing early with a narrow `go generate` run and keep the canonical helper type aligned across the main resource tests, list tests, data source setup references, and generated identity tests.
+   - Keep that same helper type across all acceptance test variants for the same Terraform surface, including the main resource tests, list tests, identity-related tests, and any other helper-instantiating acceptance tests.
+   - Generated identity tests under `*_identity_gen_test.go` should instantiate that same helper type directly.
+   - Do not introduce separate `SomethingIdentityResource` helpers, alternate helper names, alias types, or wrapper structs just to satisfy a specific test variant.
+   - Keep the naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
 
 ## Troubleshooting workflow
 
@@ -129,6 +198,14 @@ When a test fails:
    - Check expand/flatten symmetry.
    - Confirm ForceNew vs Update behavior.
    - Confirm PATCH behavior (omitted vs explicitly disabled fields).
+
+Common cleanup blockers to consider during troubleshooting:
+
+- `ResourceGroupBeingDeleted`
+- soft-delete or purge-protection conflicts
+- protection or health-monitoring features that block normal destroy timing
+
+When provider feature flags are the accepted cleanup path for the resource family, use the existing provider-pattern cleanup flags instead of inventing one-off destroy workarounds.
 
 ## Output expectation
 
