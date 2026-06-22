@@ -45,7 +45,7 @@ Do not emit a preamble that asks permission or waits for approval before running
 
 ## No preamble / no progress narration
 - Do not output any sentences before the review headings.
-- The only allowed normal output is the review template defined in this prompt.
+- The only allowed normal output is the review template defined in this prompt, plus the single trailing `Skill used: review-advocate` marker line required by Step 6 when the advocate pass runs.
 - Do not output progress narration such as `re-running the committed audit`, `the scope is still`, `the review remains`, `I am finishing`, `I have reloaded`, `next I will`, `now I will`, or similar.
 - Do not compare the current run to earlier runs in the conversation; state only the facts established in the current invocation.
 - Do not short-circuit to wording such as `same findings as before`, `no change from the last review`, or other abbreviated carry-over summaries.
@@ -204,12 +204,14 @@ Rules:
 - Keep the review concise but complete.
 
 ### 6) Advocate evaluation (internal quality gate)
-- If Step 5 identified candidate issues, read and apply `.github/instructions/review-validations.instructions.md` before producing output.
-- For each candidate issue, search for evidence that defends the author's design choice.
-- **Confirmed issues** (no valid defense found): keep in `### 🔴 **ISSUES**` at their original or adjusted priority.
-- **Dismissed/downgraded findings** (valid defense found): move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ Advocate: <one-line defense>]` note.
-- Do not emit a separate advocate section in the output — the advocate filter is invisible machinery that improves issue quality.
-- If no candidate issues were identified in Step 5, skip this step.
+- This step is mandatory whenever Step 5 produced one or more candidate Issues; it must not be skipped, summarized, deferred, or simulated.
+- Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge each candidate Issue.
+- Resolve every candidate Issue to exactly one deterministic outcome (`Confirmed`, `Downgraded`, or `Dismissed`) per `REVIEW-ADV-005`, and freeze the review output only after the advocate pass completes.
+- Do not add a separate advocate section to the review body; the advocate pass is invisible machinery that only adjusts how candidate findings land in `ISSUES` and `OBSERVATIONS` per the advocate contract.
+- Observable proof requirement: when this step runs, the assistant's final response MUST end with the exact line `Skill used: review-advocate` as the last non-empty line, after the review body. This marker is the only trailing content allowed after the review template.
+- If the `review-advocate` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: review-advocate skill or contract not fully loaded. Load .github/skills/review-advocate/SKILL.md and .github/instructions/review-advocate-compliance-contract.instructions.md to EOF and re-run this prompt.`
+- If Step 5 produced no candidate Issues, skip this step and do not emit the `Skill used: review-advocate` marker.
 
 ## Output format (use this exact structure)
 
