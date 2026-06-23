@@ -119,16 +119,18 @@ $selectedCases = @($allCases | Where-Object {
     })
 
 if ($selectedCases.Count -gt 0) {
+    $selectedCasePaths = @($selectedCases | ForEach-Object { $_.casePath } | Select-Object -Unique)
+    $selectedResultPaths = @($selectedCases | Where-Object { $_.exampleResultPath } | ForEach-Object { $_.exampleResultPath } | Select-Object -Unique)
+
     $validatorArguments = @{
-        CasePath = @($selectedCases | ForEach-Object { $_.casePath } | Select-Object -Unique)
+        CasePath = $selectedCasePaths
     }
 
-    $selectedResultPaths = @($selectedCases | Where-Object { $_.exampleResultPath } | ForEach-Object { $_.exampleResultPath } | Select-Object -Unique)
     if ($selectedResultPaths.Count -gt 0) {
         $validatorArguments.ResultPath = $selectedResultPaths
     }
 
-    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "validate-regression-artifacts.ps1") @validatorArguments | Out-Null
+    & (Join-Path $PSScriptRoot 'validate-regression-artifacts.ps1') @validatorArguments | Out-Null
 }
 
 $caseResults = @()

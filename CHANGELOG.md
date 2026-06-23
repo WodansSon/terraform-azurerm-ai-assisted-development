@@ -14,10 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Added the `review-advocate` runtime skill and its dedicated `review-advocate-compliance-contract.instructions.md` contract (`REVIEW-ADV-*` rules) so the advocate second-pass method and its deterministic `Confirmed`/`Downgraded`/`Dismissed` outcome mapping live in the skill-plus-contract structure rather than a side instruction file, and shipped both in the installer payload.
+  - **[Internal]** - Added adjudicated local-review regression cases for the `review-advocate` skip path and dismissed-versus-downgraded outcome mapping, so the advocate second-pass behavior is now benchmarked through the generic review prompts without adding a new direct harness task type.
 
 ### Changed
 
 ### Fixed
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Fixed regression-suite validation to pass selected case and example-result paths cleanly into `validate-regression-artifacts.ps1`, so the top-level regression harness and one-shot maintainer validator no longer fail while scoring the full adjudicated corpus.
 
 ## [3.4.3] - 2026-06-20
 
