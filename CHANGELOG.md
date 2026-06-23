@@ -15,8 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Maintainer/Workflow:**
   - **[Internal]** - Added the `review-advocate` runtime skill and its dedicated `review-advocate-compliance-contract.instructions.md` contract (`REVIEW-ADV-*` rules) so the advocate second-pass method and its deterministic `Confirmed`/`Downgraded`/`Dismissed` outcome mapping live in the skill-plus-contract structure rather than a side instruction file, and shipped both in the installer payload.
   - **[Internal]** - Added adjudicated local-review regression cases for the `review-advocate` skip path and dismissed-versus-downgraded outcome mapping, so the advocate second-pass behavior is now benchmarked through the generic review prompts without adding a new direct harness task type.
+  - **[Internal]** - Added `tools/build-release-bundle_dry_run.ps1` and updated maintainer release guidance to run that dry-run bundle before a public release, so maintainers can stage and verify a release-shaped installer bundle locally, including stamped version, commit, checksum, and archives, without publishing a public GitHub release.
 
 ### Changed
+
+- **User-Priority:**
+  - **[Installer]** - Installer summaries now show a composite manifest-and-build fingerprint instead of only the manifest short hash, including a `-DIRTY` suffix for dirty bootstrap-built installer copies, so end users can see which source commit produced an installed toolkit bundle even when `file-manifest.config` itself stays unchanged between builds.
 
 ### Fixed
 

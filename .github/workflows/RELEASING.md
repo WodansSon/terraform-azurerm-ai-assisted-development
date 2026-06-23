@@ -45,8 +45,16 @@ Recommended pre-PR maintainer smoke:
 
 - run a bootstrap install from the working tree so the user-profile installer is refreshed from the branch
 - confirm the branch still installs correctly through the bootstrap path
+- build a release-shaped installer bundle locally with `tools/build-release-bundle_dry_run.ps1`
+- run one install smoke from that dry-run bundle before cutting any public release
 
-This bootstrap check is the right pre-release install smoke because the release bundle does not exist yet.
+The bootstrap check confirms the contributor path, while the dry-run release bundle confirms the release-artifact path without publishing anything publicly.
+
+Example dry-run bundle command:
+
+```powershell
+pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
+```
 
 ### 3. Open and merge the release PR to `main`
 
@@ -187,19 +195,22 @@ The release tag is also the source of truth for installer bundle version stampin
 
 ## Testing a Release
 
-Before creating an official release, you can test locally:
+Before creating an official release, build and test a local release-shaped bundle first:
 
-```bash
-# Create a test tag
-git tag -a v0.0.1-test -m "Test release"
-
-# Push to test the workflow
-git push origin v0.0.1-test
-
-# Delete test release and tag after verification
-git push --delete origin v0.0.1-test
-git tag -d v0.0.1-test
+```powershell
+pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
 ```
+
+That dry run:
+
+- stages the same installer layout as the release workflow
+- stamps `VERSION`, `commit`, and `aii.checksum`
+- verifies the staged bundle checksum
+- creates the same ZIP and TAR.GZ installer archives without publishing them
+
+After the dry run succeeds, run one installer smoke from the staged bundle against a local `terraform-provider-azurerm` checkout.
+
+Use a throwaway test tag only if you specifically need to validate the GitHub release workflow itself rather than the bundle contents.
 
 ## Troubleshooting
 
@@ -231,8 +242,9 @@ After creating a release:
 
 Important distinction:
 
-- the bootstrap install is the pre-release maintainer smoke because it can be run from the branch before a release exists
-- the release-bundle install smoke is a post-release verification step because it depends on the published artifact
+- the bootstrap install is still the pre-release maintainer smoke for the contributor path
+- the dry-run release bundle is the pre-release maintainer smoke for the release-artifact path
+- the published release-bundle install smoke remains a post-release verification step against the real public artifact
 
 ## Rollback Process
 

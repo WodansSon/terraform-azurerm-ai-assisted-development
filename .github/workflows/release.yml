@@ -123,9 +123,10 @@ jobs:
           overall_hash="$(hash_file "${tmp_file}")"
 
           version="$(cat "${installer_root}/VERSION" | tr -d '\r\n')"
+          commit="$(printf "%s" "${GITHUB_SHA}" | cut -c1-8 | tr '[:upper:]' '[:lower:]')"
           timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+          printf "version=%s\ntimestamp=%s\nhash=%s\ncommit=%s\n" "${version}" "${timestamp}" "${overall_hash}" "${commit}" > "${checksum_file}"
 
           rm -f "${tmp_file}"
 

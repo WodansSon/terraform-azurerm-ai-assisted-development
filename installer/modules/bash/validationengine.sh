@@ -693,6 +693,7 @@ prune_stale_installer_payload() {
 
 write_installer_checksum() {
     local installer_root="$1"
+    local commit="${2:-}"
     local checksum_file="${installer_root}/aii.checksum"
 
     prune_stale_installer_payload "${installer_root}" || return 1
@@ -702,6 +703,10 @@ write_installer_checksum() {
         version="$(tr -d '\r\n' < "${installer_root}/VERSION")"
     fi
 
+    if [[ -z "${commit}" && "${version}" =~ ^dev-([0-9a-f]{7,40})(-dirty)?$ ]]; then
+        commit="${BASH_REMATCH[1]}"
+    fi
+
     local timestamp
     timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -709,6 +714,9 @@ write_installer_checksum() {
     overall_hash="$(compute_installer_checksum "${installer_root}")" || return 1
 
     printf "version=%s\ntimestamp=%s\nhash=%s\n" "${version}" "${timestamp}" "${overall_hash}" > "${checksum_file}"
+    if [[ -n "${commit}" ]]; then
+        printf "commit=%s\n" "${commit}" >> "${checksum_file}"
+    fi
 }
 
 verify_installer_checksum() {
