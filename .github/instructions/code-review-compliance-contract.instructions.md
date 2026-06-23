@@ -152,6 +152,12 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Each Issue should point to a single, concrete correction path.
 - Rule: Do not present multiple alternative fixes unless the user explicitly asked for options.
 
+### REVIEW-CLASS-006: Advocate second-pass integration boundary
+- Rule: The advocate second-pass review technique is owned by the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
+- Rule: When a review prompt runs the advocate pass, the advocate `REVIEW-ADV-*` rules govern how candidate Issues are confirmed, downgraded, or dismissed.
+- Rule: The advocate pass must not violate `REVIEW-CLASS-004`; every candidate finding still resolves to exactly one classification.
+- Rule: This shared contract does not define the advocate method or its outcome rules; review flows that do not run the advocate pass are unaffected.
+
 ## Change-set coverage and file handling
 
 ### REVIEW-FILE-001: Review the full change-set in scope

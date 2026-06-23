@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added an advocate evaluation quality gate to the local and committed code-review prompts so candidate issues are filtered for false positives before appearing in review output, reducing noise and improving issue accuracy. The advocate pass is mandatory whenever candidate issues exist and must end the response with an observable `Skill used: review-advocate` marker so the gate is verifiable on every run.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added the `review-advocate` runtime skill and its dedicated `review-advocate-compliance-contract.instructions.md` contract (`REVIEW-ADV-*` rules) so the advocate second-pass method and its deterministic `Confirmed`/`Downgraded`/`Dismissed` outcome mapping live in the skill-plus-contract structure rather than a side instruction file, and shipped both in the installer payload.
+
 ### Changed
 
 ### Fixed
