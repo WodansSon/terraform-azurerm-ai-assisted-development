@@ -1114,9 +1114,11 @@ function Invoke-Bootstrap {
         }
 
         $bootstrapVersion = "dev"
+        $bootstrapCommit = $null
         try {
             $sha = (git -C $Global:WorkspaceRoot rev-parse --short HEAD 2>$null).Trim()
             if ($sha) {
+                $bootstrapCommit = $sha.ToLowerInvariant()
                 $bootstrapVersion = "dev-$sha"
             }
             $dirty = git -C $Global:WorkspaceRoot status --porcelain 2>$null
@@ -1134,7 +1136,7 @@ function Invoke-Bootstrap {
         catch {
         }
 
-        $checksumResult = Write-InstallerChecksum -InstallerRoot $targetDirectory -Version $bootstrapVersion
+        $checksumResult = Write-InstallerChecksum -InstallerRoot $targetDirectory -Version $bootstrapVersion -Commit $bootstrapCommit
         if (-not $checksumResult.Valid) {
             $details = @(
                 "Checksum error: $($checksumResult.Reason)"
@@ -1372,7 +1374,31 @@ function Invoke-InstallInfrastructure {
 
             $manifestValue = $Global:InstallerManifestPath
             if ($manifestValue -and $Global:InstallerManifestHash) {
-                $manifestValue = "$manifestValue ($($Global:InstallerManifestHash.Substring(0,8)))"
+                $manifestFingerprint = $Global:InstallerManifestHash.Substring(0,8)
+                $buildFingerprint = $null
+                $buildSuffix = $null
+
+                $installerRoot = Split-Path $Global:InstallerManifestPath -Parent
+                if ($installerRoot -and (Test-Path $installerRoot)) {
+                    $bundleChecksum = Test-InstallerChecksum -InstallerRoot $installerRoot
+                    if ($bundleChecksum.Valid -and $bundleChecksum.Commit) {
+                        $buildFingerprint = $bundleChecksum.Commit.Substring(0, [Math]::Min(8, $bundleChecksum.Commit.Length)).ToUpperInvariant()
+                        if ($bundleChecksum.Dirty) {
+                            $buildSuffix = 'DIRTY'
+                        }
+                    }
+                }
+
+                if ($buildFingerprint) {
+                    $manifestComposite = "$($manifestFingerprint.ToUpperInvariant())-$buildFingerprint"
+                    if ($buildSuffix) {
+                        $manifestComposite = "$manifestComposite-$buildSuffix"
+                    }
+                    $manifestValue = "$manifestValue ($manifestComposite)"
+                }
+                else {
+                    $manifestValue = "$manifestValue ($($manifestFingerprint.ToUpperInvariant()))"
+                }
             }
             if ($manifestValue) {
                 $details["Manifest"] = $manifestValue

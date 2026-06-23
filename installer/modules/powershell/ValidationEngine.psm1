@@ -698,7 +698,9 @@ function Write-InstallerChecksum {
         [Parameter(Mandatory)]
         [string]$InstallerRoot,
 
-        [string]$Version
+        [string]$Version,
+
+        [string]$Commit
     )
 
     $checksumPath = Join-Path $InstallerRoot "aii.checksum"
@@ -723,14 +725,24 @@ function Write-InstallerChecksum {
         $Version = "dev"
     }
 
+    if (-not $Commit -and $Version -match '^dev-([0-9a-f]{7,40})(?:-dirty)?$') {
+        $Commit = $matches[1].ToLowerInvariant()
+    }
+
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    @(
+    $checksumLines = @(
         "version=$Version",
         "timestamp=$timestamp",
         "hash=$($result.Hash)"
-    ) | Set-Content -Path $checksumPath
+    )
 
-    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath }
+    if ($Commit) {
+        $checksumLines += "commit=$($Commit.ToLowerInvariant())"
+    }
+
+    $checksumLines | Set-Content -Path $checksumPath
+
+    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath; Commit = $Commit }
 }
 
 function Test-InstallerChecksum {
@@ -744,9 +756,33 @@ function Test-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer checksum file not found" }
     }
 
-    $hashLine = Get-Content -Path $checksumPath | Where-Object { $_ -match '^hash=' } | Select-Object -First 1
+    $checksumLines = Get-Content -Path $checksumPath
+
+    $hashLine = $checksumLines | Where-Object { $_ -match '^hash=' } | Select-Object -First 1
     if (-not $hashLine) {
         return @{ Valid = $false; Reason = "Installer checksum file missing hash" }
+    }
+
+    $versionLine = $checksumLines | Where-Object { $_ -match '^version=' } | Select-Object -First 1
+    $version = $null
+    $dirty = $false
+    if ($versionLine) {
+        $version = $versionLine.Substring(8).Trim()
+        if (-not $version) {
+            $version = $null
+        }
+        elseif ($version -match '-dirty$') {
+            $dirty = $true
+        }
+    }
+
+    $commitLine = $checksumLines | Where-Object { $_ -match '^commit=' } | Select-Object -First 1
+    $commit = $null
+    if ($commitLine) {
+        $commit = $commitLine.Substring(7).Trim().ToLowerInvariant()
+        if (-not $commit) {
+            $commit = $null
+        }
     }
 
     $expected = $hashLine.Substring(5).Trim()
@@ -771,7 +807,7 @@ function Test-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer checksum mismatch"; Expected = $expected; Actual = $computed.Hash }
     }
 
-    return @{ Valid = $true; Hash = $computed.Hash }
+    return @{ Valid = $true; Hash = $computed.Hash; Commit = $commit; Version = $version; Dirty = $dirty }
 }
 
 function Test-PreInstallation {

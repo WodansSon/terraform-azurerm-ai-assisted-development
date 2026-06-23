@@ -19,9 +19,10 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are four main contract files:
+There are five main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
+- Advocate second-pass contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
 - Testing contract: `.github/instructions/testing-compliance-contract.instructions.md`
@@ -30,10 +31,14 @@ The prompts, skills, and routing instructions consume those contracts:
 
 - `/code-review-local-changes`
 - `/code-review-committed-changes`
+- `/review-advocate`
 - `/code-review-docs`
 - `/docs-writer`
 - `/resource-implementation`
 - `/acceptance-testing`
+
+The `review-advocate` skill is the dedicated advocate second-pass quality gate.
+The generic code review prompts invoke it when candidate Issues exist, while the dedicated advocate contract owns the deterministic `REVIEW-ADV-*` rules that govern `Confirmed`, `Downgraded`, and `Dismissed` outcomes.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -172,6 +177,22 @@ These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW
 
 The contract-first model matters here too: the linter execution policy, status mapping, and output-shape requirements now live in the shared review contract, while troubleshooting and companion docs explain the runtime behavior and known failure modes around those rules.
 
+## `REVIEW-ADV-*` Rule Area
+
+These IDs come from `.github/instructions/review-advocate-compliance-contract.instructions.md` and are consumed by `/review-advocate`, which the generic code review prompts invoke as the second-pass advocate quality gate when candidate Issues exist.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-ADV-*` | Advocate second-pass evaluation | How candidate Issues are challenged, confirmed, downgraded, or dismissed before review output is frozen |
+
+In practice, `REVIEW-ADV-*` rules explain things such as:
+
+- when the advocate pass is allowed to run
+- what counts as a valid defense
+- how trust-boundary defenses must be justified
+- why a finding stayed in `ISSUES` at lower severity versus moving to `OBSERVATIONS`
+- why a dismissed finding carries a `[⚖️ ADVOCATE: ...]` annotation instead of disappearing entirely
+
 ## `DOCS-*` Rule Areas
 
 These IDs come from `.github/instructions/docs-compliance-contract.instructions.md` and are primarily used by `/code-review-docs` and `/docs-writer` for `website/docs/**/*.html.markdown` pages.
@@ -242,6 +263,7 @@ This reference is most useful when:
 ## Short Version
 
 - `REVIEW-*` IDs are generic code review contract rules.
+- `REVIEW-ADV-*` IDs are advocate second-pass contract rules consumed by `/review-advocate`.
 - `DOCS-*` IDs are documentation review contract rules.
 - `IMPL-*` IDs are Go implementation contract rules.
 - `TEST-*` IDs are acceptance-testing contract rules.

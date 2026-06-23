@@ -268,6 +268,7 @@ Near-term target state:
 - `.github/skills/custom-poller-migration/SKILL.md`
 - `.github/skills/acceptance-testing/SKILL.md`
 - `.github/skills/docs-writer/SKILL.md`
+- `.github/skills/review-advocate/SKILL.md`
 
 Current classification:
 

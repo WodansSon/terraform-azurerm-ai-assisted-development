@@ -203,7 +203,7 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ### What the Installer Does
 
 - 🔧 **Installs AI instruction files** to your target repository's `.github/` directory
-- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invocable via slash commands like `/docs-writer`)
+- 🔧 **Installs Agent Skills** to your target repository's `.github/skills/` directory (invocable via slash commands like `/docs-writer` and `/review-advocate`)
 - 🔧 **Configures workspace settings** in `.vscode/settings.json` for AI assistance
 - 🔧 **Works per-repository** - each repo gets its own AI infrastructure
 - 🔧 **Non-invasive** - doesn't modify your personal VS Code settings
@@ -261,6 +261,13 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 ```
 /code-review-committed-changes
 ```
+
+### Run The Advocate Second Pass Directly
+```
+/review-advocate
+```
+
+Use this when you already have candidate Issues and want the dedicated second-pass advocate skill to challenge them, defend intentional design, and apply the deterministic `Confirmed` / `Downgraded` / `Dismissed` outcome mapping.
 
 Both generic review prompts now report the count of vendored files under `vendor/**` when they are in scope, but treat them as skipped non-actionable files rather than asking contributors to edit vendored third-party content directly.
 
@@ -401,7 +408,7 @@ As you type, Copilot suggests:
 ### 🎓 Instruction Files (Comprehensive Guidelines)
 
 | File | Purpose |
-|------|---------|
+| ---- | ------- |
 | **implementation-guide** | Complete Go implementation patterns for typed and untyped resources |
 | **azure-patterns** | Azure-specific PATCH operations, CustomizeDiff patterns |
 | **testing-guidelines** | Test execution protocols and acceptance testing patterns |

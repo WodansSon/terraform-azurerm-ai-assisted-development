@@ -1,0 +1,62 @@
+{
+  "id": "review-local-advocate-dismissed-and-downgraded",
+  "title": "Local review applies advocate outcomes for dismissed and downgraded findings",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where the primary review pass produces multiple candidate Issues and the advocate pass must resolve them deterministically: one false positive is dismissed into Observations with rationale, while one real but less severe problem remains in Issues at reduced severity.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-advocate-dismissed-and-downgraded/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/prompts/code-review-committed-changes.prompt.md",
+      ".github/instructions/review-advocate-compliance-contract.instructions.md"
+    ],
+    "notes": "Sanitized fixture models a prompt-orchestration update plus advocate-contract wording where the primary review pass can over-flag one design choice, but a second pass should dismiss that false positive while preserving a narrower wording-drift issue."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-004",
+    "REVIEW-CLASS-006",
+    "REVIEW-ADV-005",
+    "REVIEW-ADV-007",
+    "REVIEW-ADV-009"
+  ],
+  "mustCatch": [
+    {
+      "key": "advocate-dismissed-finding-observation",
+      "severity": "observation",
+      "description": "A false-positive candidate finding should be dismissed into `OBSERVATIONS` with a `[⚖️ ADVOCATE: ...]` annotation rather than staying in `ISSUES` or disappearing entirely."
+    },
+    {
+      "key": "advocate-downgraded-finding-stays-in-issues",
+      "severity": "medium",
+      "description": "A real but less severe prompt-orchestration problem should stay in `ISSUES` at reduced severity after the advocate pass instead of moving into `OBSERVATIONS`."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "dismissed-finding-left-in-issues",
+      "description": "The dismissed false-positive finding must not remain in `ISSUES` after the advocate pass."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: review-advocate",
+      "[⚖️ ADVOCATE:"
+    ]
+  },
+  "notes": "Use this case to benchmark dismissed-versus-downgraded advocate outcomes through the generic local review prompt without adding a direct review-advocate task type."
+}

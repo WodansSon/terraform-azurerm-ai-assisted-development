@@ -67,6 +67,7 @@ Current runtime skills already map well to the desired architecture:
 | `.github/skills/custom-poller-migration/SKILL.md` | Strong fit for a narrow specialized migration workflow | Keep as a focused specialist skill |
 | `.github/skills/acceptance-testing/SKILL.md` | Strong fit for test workflow behavior | Absorb more execution procedure content from `testing-guidelines` |
 | `.github/skills/docs-writer/SKILL.md` | Strong fit for docs authoring and review workflow | Absorb more procedural content from `documentation-guidelines` and docs review supporting text |
+| `.github/skills/review-advocate/SKILL.md` | Strong fit for reusable second-pass review challenge workflow | Keep advocate behavior behind the generic review prompts while the dedicated advocate contract owns deterministic outcome mapping |
 
 Skill conclusion:
 
