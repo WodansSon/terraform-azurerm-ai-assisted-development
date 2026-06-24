@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added `review-skeptic` and `review-architect` runtime skills so a code review can be stress-tested by an adversarial pass that proposes additional evidence-backed candidate issues, and checked by a design-direction pass that evaluates structural fit and naming, with both passes handing their candidates to the existing advocate gate before review output is frozen.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added the `review-skeptic-compliance-contract.instructions.md` (`REVIEW-SKEP-*`) and `review-architect-compliance-contract.instructions.md` (`REVIEW-ARCH-*`) contracts and shipped both skills plus contracts in the installer payload, mirroring the skill-plus-contract structure of `review-advocate` so the adversarial and direction methods stay separated from the deterministic rules they follow.
+
 ### Changed
 
 ### Fixed
