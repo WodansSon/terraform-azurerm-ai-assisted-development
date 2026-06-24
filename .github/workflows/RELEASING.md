@@ -8,7 +8,7 @@ This document describes how to create a new release of the Terraform AzureRM AI-
 
 Before opening the release PR, make sure the current `## [Unreleased]` section in `CHANGELOG.md` reads like final release notes rather than patch-history notes and still follows the current grouped taxonomy structure.
 
-When you are actually cutting the release, move those `Unreleased` notes into the new versioned section using the same grouped taxonomy shape:
+When you are actually cutting the release, move those `Unreleased` notes into a new versioned changelog section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape:
 
 ```markdown
 ## [1.0.0] - 2025-10-21
@@ -32,6 +32,13 @@ When you are actually cutting the release, move those `Unreleased` notes into th
 - **User-Priority:**
   - **[Installer]** - Fixed line endings in bash scripts.
 ```
+
+Maintainer conventions for the changelog cut:
+
+- after moving the release notes into the new versioned section, restore an empty `## [Unreleased]` section at the top with empty `### Added`, `### Changed`, and `### Fixed` headings
+- commit that changelog-only release cut on `main` before creating the tag
+- use the established commit-subject pattern `Prepare X.Y.Z changelog`, for example `Prepare 3.5.0 changelog`
+- create and push the `vX.Y.Z` tag only after that changelog commit is present on `main`
 
 ### 2. Validate the branch before opening the PR
 

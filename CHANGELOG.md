@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.5.0] - 2026-06-24
+
+### Added
+
 - **User-Priority:**
   - **[Review]** - Added an advocate evaluation quality gate to the local and committed code-review prompts so candidate issues are filtered for false positives before appearing in review output, reducing noise and improving issue accuracy. The advocate pass is mandatory whenever candidate issues exist and must end the response with an observable `Skill used: review-advocate` marker so the gate is verifiable on every run.
 
