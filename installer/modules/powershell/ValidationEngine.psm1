@@ -781,7 +781,7 @@ function Write-InstallerChecksum {
     return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath; Commit = $Commit; ManifestComposite = $manifestComposite }
 }
 
-function Get-InstallerChecksumMetadata {
+function Get-InstallerChecksumInfo {
     param(
         [Parameter(Mandatory)]
         [string]$InstallerRoot
@@ -808,7 +808,7 @@ function Test-InstallerChecksum {
         [string]$InstallerRoot
     )
 
-    $metadataResult = Get-InstallerChecksumMetadata -InstallerRoot $InstallerRoot
+    $metadataResult = Get-InstallerChecksumInfo -InstallerRoot $InstallerRoot
     if (-not $metadataResult.Valid) {
         return $metadataResult
     }
@@ -1392,7 +1392,7 @@ function Invoke-VerifyInstallerBundle {
 Export-ModuleMember -Function @(
     'Test-WorkspaceValid',
     'Test-PreInstallation',
-    'Get-InstallerChecksumMetadata',
+    'Get-InstallerChecksumInfo',
     'Test-InstallerChecksum',
     'Write-InstallerChecksum',
     'Invoke-VerifyInstallerBundle',

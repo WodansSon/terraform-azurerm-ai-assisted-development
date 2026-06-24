@@ -508,7 +508,7 @@ write_success_message() {
 
 # Function to get user profile directory
 get_user_profile() {
-    # Return the full expanded path (not using ~ shorthand) to match PowerShell behavio
+    # Return the full expanded path (not using ~ shorthand) to match PowerShell behavior
     local expanded_home
     expanded_home="${HOME:-/home/$(whoami)}"
     echo "${expanded_home}/.terraform-azurerm-ai-installer"

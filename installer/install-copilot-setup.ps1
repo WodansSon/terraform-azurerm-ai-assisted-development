@@ -493,7 +493,7 @@ function Get-InstallerSupportInfo {
         [string]$Version
     )
 
-    $metadataResult = Get-InstallerChecksumMetadata -InstallerRoot $InstallerRoot
+    $metadataResult = Get-InstallerChecksumInfo -InstallerRoot $InstallerRoot
 
     $displayVersion = 'Unavailable'
     $displayManifest = 'Unavailable'
