@@ -727,38 +727,18 @@ show_installation_summary() {
 
     local manifest_value="${INSTALLER_MANIFEST_FILE:-}"
     if [[ -n "${manifest_value}" ]]; then
-        local manifest_hash=""
-        local build_commit=""
-        local build_dirty="false"
-        if command -v sha256sum >/dev/null 2>&1; then
-            manifest_hash=$(sha256sum "${manifest_value}" 2>/dev/null | awk '{print $1}')
-        elif command -v shasum >/dev/null 2>&1; then
-            manifest_hash=$(shasum -a 256 "${manifest_value}" 2>/dev/null | awk '{print $1}')
-        fi
-        local checksum_file="$(dirname "${manifest_value}")/aii.checksum"
-        if [[ -f "${checksum_file}" ]]; then
-            build_commit="$(grep '^commit=' "${checksum_file}" | head -n 1 | cut -d= -f2- | tr -d '\r\n')"
-            local bundle_version
-            bundle_version="$(grep '^version=' "${checksum_file}" | head -n 1 | cut -d= -f2- | tr -d '\r\n')"
-            if [[ "${bundle_version}" == *-dirty ]]; then
-                build_dirty="true"
+        local installer_root="$(dirname "${manifest_value}")"
+        local metadata_output=""
+        metadata_output="$(get_installer_checksum_metadata "${installer_root}" 2>/dev/null || true)"
+        local manifest_composite="Unavailable"
+        if [[ -n "${metadata_output}" ]]; then
+            local metadata_manifest
+            metadata_manifest="$(printf '%s\n' "${metadata_output}" | grep '^manifest_composite=' | head -n 1 | cut -d= -f2- | tr -d '\r\n')"
+            if [[ -n "${metadata_manifest}" ]]; then
+                manifest_composite="${metadata_manifest}"
             fi
         fi
-        if [[ -n "${manifest_hash}" ]]; then
-            local manifest_fingerprint="${manifest_hash:0:8}"
-            local manifest_fingerprint_upper="$(printf '%s' "${manifest_fingerprint}" | tr '[:lower:]' '[:upper:]')"
-            if [[ -n "${build_commit}" ]]; then
-                local build_fingerprint="${build_commit:0:8}"
-                local build_fingerprint_upper="$(printf '%s' "${build_fingerprint}" | tr '[:lower:]' '[:upper:]')"
-                local manifest_composite="${manifest_fingerprint_upper}-${build_fingerprint_upper}"
-                if [[ "${build_dirty}" == "true" ]]; then
-                    manifest_composite="${manifest_composite}-DIRTY"
-                fi
-                manifest_value="${manifest_value} (${manifest_composite})"
-            else
-                manifest_value="${manifest_value} (${manifest_fingerprint_upper})"
-            fi
-        fi
+        manifest_value="${manifest_value} (${manifest_composite})"
     fi
 
     show_operation_summary "Installation" "${success_status}" \

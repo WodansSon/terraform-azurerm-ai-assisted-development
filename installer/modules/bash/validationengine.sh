@@ -145,6 +145,27 @@ test_system_requirements() {
     echo "Commands=${commands_result}"
 }
 
+get_installer_checksum_metadata() {
+    local installer_root="$1"
+    local checksum_file="${installer_root}/aii.checksum"
+
+    if [[ ! -f "${checksum_file}" ]]; then
+        echo "valid=false"
+        echo "reason=Installer checksum file not found"
+        return 1
+    fi
+
+    echo "valid=true"
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        if [[ "${line}" == *=* ]]; then
+            echo "${line%$'\r'}"
+        fi
+    done < "${checksum_file}"
+
+    return 0
+}
+
 # Function to test workspace validity
 test_workspace_valid() {
     local workspace_path="${1:-$(pwd)}"

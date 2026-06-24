@@ -52,6 +52,7 @@ $LocalPath = ""
 $Verify = $false
 $Clean = $false
 $Help = $false
+$VersionOnly = $false
 
 #endregion Variable Initialization
 
@@ -71,7 +72,7 @@ function Show-EarlyErrorHeader {
 function Show-EarlyValidationError {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'EmptyLocalPath', 'LocalPathNotFound', 'EmptyRepoDirectory', 'RepoDirectoryNotFound')]
+        [ValidateSet('BootstrapNoArgs', 'BootstrapRequiresGitRepo', 'VersionNoArgs', 'EmptyLocalPath', 'LocalPathNotFound', 'EmptyRepoDirectory', 'RepoDirectoryNotFound')]
         [string]$ErrorType,
 
         [string]$Path = ""
@@ -100,6 +101,14 @@ function Show-EarlyValidationError {
                 Write-Host ""
             }
             Write-Host " -Bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy." -ForegroundColor Cyan
+        }
+
+        'VersionNoArgs' {
+            Write-Host " Error:" -ForegroundColor Red -NoNewline
+            Write-Host " -Version must be used by itself" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host " Run the standalone version/provenance command:" -ForegroundColor Cyan
+            Write-Host "   .\install-copilot-setup.ps1 -Version" -ForegroundColor White
         }
 
         'EmptyLocalPath' {
@@ -162,13 +171,15 @@ function Get-ParameterSuggestion {
     # Prefix matching (higher priority)
     if ($cleanParam -match '^bo') { $suggestion = 'Bootstrap' }
     elseif ($cleanParam -match '^cl') { $suggestion = 'Clean' }
-    elseif ($cleanParam -match '^ve') { $suggestion = 'Verify' }
+    elseif ($cleanParam -match '^vers') { $suggestion = 'Version' }
+    elseif ($cleanParam -match '^veri|^ve') { $suggestion = 'Verify' }
     elseif ($cleanParam -match '^he') { $suggestion = 'Help' }
     elseif ($cleanParam -match '^re') { $suggestion = 'RepoDirectory' }
     elseif ($cleanParam -match '^lo') { $suggestion = 'LocalPath' }
     # Fuzzy matching (lower priority)
     elseif ($cleanParam -like '*cle*') { $suggestion = 'Clean' }
     elseif ($cleanParam -like '*boo*') { $suggestion = 'Bootstrap' }
+    elseif ($cleanParam -like '*version*') { $suggestion = 'Version' }
     elseif ($cleanParam -like '*ver*') { $suggestion = 'Verify' }
     elseif ($cleanParam -like '*hel*') { $suggestion = 'Help' }
     elseif ($cleanParam -like '*repo*') { $suggestion = 'RepoDirectory' }
@@ -192,7 +203,7 @@ while ($i -lt $args.Count) {
         Write-Host " Invalid parameter '$($args[$i])' (incomplete parameter)" -ForegroundColor Cyan
         Write-Host ""
         Write-Host " Valid parameters:" -ForegroundColor Cyan
-        Write-Host "   -Bootstrap, -Verify, -Clean, -Help, -RepoDirectory <path>" -ForegroundColor White
+        Write-Host "   -Bootstrap, -Verify, -Version, -Clean, -Help, -RepoDirectory <path>" -ForegroundColor White
         Write-Host "   -LocalPath <path>" -ForegroundColor White
         Write-Host ""
         Write-Host " Examples:" -ForegroundColor Green
@@ -225,6 +236,14 @@ while ($i -lt $args.Count) {
         }
         '-verify' {
             $Verify = $true
+            $i++
+        }
+        '-version' {
+            $VersionOnly = $true
+            $i++
+        }
+        '--version' {
+            $VersionOnly = $true
             $i++
         }
         '-clean' {
@@ -289,6 +308,11 @@ if ($args.Count -eq 0 -and -not ($Bootstrap -or $RepoDirectory -or $LocalPath -o
 # PRIORITY 1: -Bootstrap must be a standalone operation (no additional flags)
 if ($Bootstrap -and ($RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
     Show-EarlyValidationError -ErrorType 'BootstrapNoArgs'
+    exit 1
+}
+
+if ($VersionOnly -and ($Bootstrap -or $RepoDirectory -or $LocalPath -or $Verify -or $Clean -or $Help)) {
+    Show-EarlyValidationError -ErrorType 'VersionNoArgs'
     exit 1
 }
 
@@ -460,6 +484,81 @@ $Global:InstallerCommandLine = $MyInvocation.Line
 $Global:InstallerManifestPath = $null
 $Global:InstallerManifestHash = $null
 
+function Get-InstallerSupportInfo {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot,
+
+        [Parameter(Mandatory)]
+        [string]$Version
+    )
+
+    $metadataResult = Get-InstallerChecksumInfo -InstallerRoot $InstallerRoot
+
+    $displayVersion = 'Unavailable'
+    $displayManifest = 'Unavailable'
+    $metadataAvailable = $false
+
+    if ($metadataResult.Valid) {
+        $metadata = $metadataResult.Metadata
+        if ($metadata['version']) {
+            $displayVersion = $metadata['version']
+        }
+        if ($metadata['manifest_composite']) {
+            $displayManifest = $metadata['manifest_composite']
+        }
+        $metadataAvailable = ($displayVersion -ne 'Unavailable' -and $displayManifest -ne 'Unavailable')
+    }
+
+    $info = [ordered]@{
+        Version = $displayVersion
+        Manifest = $displayManifest
+    }
+
+    $sourcePath = Join-Path $InstallerRoot 'aii'
+    if (Test-Path $sourcePath) {
+        $info['Source'] = $sourcePath
+    }
+    else {
+        $info['Source'] = $InstallerRoot
+    }
+
+    $info['MetadataAvailable'] = $metadataAvailable
+
+    return $info
+}
+
+function Show-InstallerVersionInfo {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot,
+
+        [Parameter(Mandatory)]
+        [string]$Version
+    )
+
+    $supportInfo = Get-InstallerSupportInfo -InstallerRoot $InstallerRoot -Version $Version
+
+    $displayVersion = $supportInfo['Version']
+    Write-Header -Title "Terraform AzureRM Provider - AI Infrastructure Installer" -Version $displayVersion
+    Write-Host "VERSION INFORMATION:" -ForegroundColor Cyan
+
+    foreach ($entry in $supportInfo.GetEnumerator()) {
+        if ($entry.Key -eq 'MetadataAvailable') {
+            continue
+        }
+        Write-Host ("  {0,-8}: " -f $entry.Key) -NoNewline -ForegroundColor White
+        Write-Host $entry.Value -ForegroundColor Yellow
+    }
+
+    if (-not $supportInfo['MetadataAvailable']) {
+        Write-Host ""
+        Write-Host "  Reinstall the official bundle to restore installer metadata." -ForegroundColor Cyan
+    }
+
+    Write-Host ""
+}
+
 #endregion Module Loading
 
 #region Workspace Detection
@@ -499,6 +598,11 @@ function Main {
     #>
 
      try {
+        if ($VersionOnly) {
+            Show-InstallerVersionInfo -InstallerRoot $ScriptDirectory -Version $script:InstallerVersion
+            return
+        }
+
         # Step 1: Initialize workspace
         # Detect workspace root from -RepoDirectory or current script directory.
         $Global:WorkspaceRoot = Get-WorkspaceRoot -RepoDirectory $RepoDirectory -ScriptDirectory $ScriptDirectory

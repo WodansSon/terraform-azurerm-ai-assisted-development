@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **User-Priority:**
   - **[Installer]** - Installer summaries now show a composite manifest-and-build fingerprint instead of only the manifest short hash, including a `-DIRTY` suffix for dirty bootstrap-built installer copies, so end users can see which source commit produced an installed toolkit bundle even when `file-manifest.config` itself stays unchanged between builds.
+  - **[Installer]** - PowerShell and bash installers now expose standalone version/provenance commands (`-Version` and `--version`) backed by bundle-stamped checksum metadata rather than runtime recomputation, so support tickets collect the exact published version and manifest composite the bundle was built to report, and missing metadata now surfaces as `Unavailable` with reinstall guidance instead of drifting guesses.
 
 ### Fixed
 
