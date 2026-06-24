@@ -56,6 +56,12 @@ Example dry-run bundle command:
 pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
 ```
 
+Maintainer note:
+
+- the standalone installer version commands (`-Version` in PowerShell and `--version` in Bash) read stamped bundle metadata rather than recomputing provenance at runtime
+- a plain source checkout can therefore show `Unavailable` for the support metadata block, because those fields are stamped only during bootstrap or release-bundle assembly
+- validate support output from the bootstrapped installer copy or the dry-run/release-shaped bundle, not from a raw source checkout
+
 ### 3. Open and merge the release PR to `main`
 
 The normal workflow is PR-based.

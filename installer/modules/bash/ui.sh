@@ -112,6 +112,13 @@ show_early_validation_error() {
             echo -e "${CYAN} -bootstrap is for contributors working on this repo. It is not supported from a release bundle or user-profile copy.${NC}"
             ;;
 
+        "VersionNoArgs")
+            echo -e "${RED} Error:${NC}${CYAN} -version must be used by itself${NC}"
+            echo ""
+            echo -e "${CYAN} Run the standalone version/provenance command:${NC}"
+            echo -e "   ${WHITE}${script_name} --version${NC}"
+            ;;
+
         "EmptyLocalPath")
             echo -e "${RED} Error:${NC}${CYAN} -local-path parameter cannot be empty${NC}"
             echo ""
@@ -742,6 +749,7 @@ show_usage() {
     write_plain "  Installer operations are offline-only and use the bundled payload (aii/)."
     write_plain "  No network downloads occur during install, verify, or clean."
     write_plain "  Install and verify validate the bundled payload checksum (aii.checksum)."
+    write_plain "  Use --version to print a support-friendly version and manifest provenance summary."
     echo ""
     write_plain "  Target installs require a terraform-provider-azurerm clone with an origin remote."
     write_plain "  The AI development repo is a source-only workspace and is not a valid target."
@@ -777,6 +785,7 @@ show_source_branch_help() {
     write_plain "  -bootstrap        Copy installer to user profile (~/.terraform-azurerm-ai-installer/)"
     write_plain "                    Must be run from a git clone (.git present)"
     write_plain "  -verify           Check current workspace status and validate setup"
+    write_plain "  --version         Show installer version and manifest provenance information"
     write_plain "  -help             Show this help information"
     echo ""
     write_cyan "EXAMPLES:"
@@ -785,6 +794,9 @@ show_source_branch_help() {
     echo ""
     write_plain "  Verify setup:"
     write_plain "    ./install-copilot-setup.sh -verify"
+    echo ""
+    write_plain "  Show installer version/provenance:"
+    write_plain "    ./install-copilot-setup.sh --version"
     echo ""
 
     # Show command-specific help if a command was attempted
@@ -816,6 +828,7 @@ show_feature_branch_help() {
     write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
     write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
+    write_plain "  --version         Show installer version and manifest provenance information"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
@@ -831,6 +844,9 @@ show_feature_branch_help() {
     write_cyan "  Clean removal:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer/"
     write_plain "    ./install-copilot-setup.sh -repo-directory \"/path/to/terraform-provider-azurerm\" -clean"
+    echo ""
+    write_cyan "  Show installer version/provenance:"
+    write_plain "    ./install-copilot-setup.sh --version"
     echo ""
 
     # Show command-specific help if a command was attempted.
@@ -904,6 +920,7 @@ show_unknown_branch_help() {
     write_plain "  -repo-directory   Path to your terraform-provider-azurerm working copy"
     write_plain "  -local-path       Local directory to copy AI files from (source override; instead of bundled payload)"
     write_plain "  -verify           Check current workspace status and validate setup"
+    write_plain "  --version         Show installer version and manifest provenance information"
     write_plain "  -clean            Remove AI infrastructure from workspace"
     write_plain "  -help             Show this help information"
     echo ""
@@ -912,6 +929,7 @@ show_unknown_branch_help() {
     write_dark_cyan "  Source Branch Operations:"
     write_plain "    ./install-copilot-setup.sh -bootstrap"
     write_plain "    ./install-copilot-setup.sh -verify"
+    write_plain "    ./install-copilot-setup.sh --version"
     echo ""
     write_dark_cyan "  Feature Branch Operations:"
     write_plain "    cd ~/.terraform-azurerm-ai-installer"
@@ -924,6 +942,70 @@ show_unknown_branch_help() {
 
     write_cyan "BRANCH DETECTION:"
     write_plain "  The installer automatically detects your branch type and shows appropriate options."
+    echo ""
+}
+
+get_installer_support_info() {
+    local installer_root="${SCRIPT_DIR}"
+    local version_value="Unavailable"
+    local source_path="${installer_root}"
+    local manifest_value="Unavailable"
+    local metadata_available="false"
+
+    if [[ -d "${installer_root}/aii" ]]; then
+        source_path="${installer_root}/aii"
+    fi
+
+    local metadata_output=""
+    metadata_output="$(get_installer_checksum_metadata "${installer_root}" 2>/dev/null || true)"
+    if [[ -n "${metadata_output}" ]]; then
+        local metadata_version
+        metadata_version=$(printf '%s\n' "${metadata_output}" | awk -F= '/^version=/{print substr($0, index($0, "=")+1); exit}' | tr -d '\r\n')
+        local metadata_manifest
+        metadata_manifest=$(printf '%s\n' "${metadata_output}" | awk -F= '/^manifest_composite=/{print substr($0, index($0, "=")+1); exit}' | tr -d '\r\n')
+
+        if [[ -n "${metadata_version}" ]]; then
+            version_value="${metadata_version}"
+        fi
+        if [[ -n "${metadata_manifest}" ]]; then
+            manifest_value="${metadata_manifest}"
+        fi
+        if [[ "${version_value}" != "Unavailable" && "${manifest_value}" != "Unavailable" ]]; then
+            metadata_available="true"
+        fi
+    fi
+
+    printf 'Version=%s\n' "${version_value}"
+    printf 'Manifest=%s\n' "${manifest_value}"
+    printf 'Source=%s\n' "${source_path}"
+    printf 'MetadataAvailable=%s\n' "${metadata_available}"
+}
+
+show_installer_version_info() {
+    write_header "Terraform AzureRM Provider - AI Infrastructure Installer" "${VERSION:-${INSTALLER_VERSION}}"
+    write_cyan "VERSION INFORMATION:"
+
+    local support_info
+    support_info="$(get_installer_support_info)"
+
+    local line key value
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        if [[ "${key}" == "MetadataAvailable" ]]; then
+            continue
+        fi
+        printf "${WHITE}  %-8s:${NC} ${YELLOW}%s${NC}\n" "${key}" "${value}"
+    done <<< "${support_info}"
+
+    local metadata_available
+    metadata_available="$(printf '%s\n' "${support_info}" | awk -F= '/^MetadataAvailable=/{print substr($0, index($0, "=")+1); exit}' | tr -d '\r\n')"
+    if [[ "${metadata_available}" != "true" ]]; then
+        echo ""
+        write_cyan "  Reinstall the official bundle to restore installer metadata."
+    fi
+
     echo ""
 }
 

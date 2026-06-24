@@ -126,7 +126,11 @@ jobs:
           commit="$(printf "%s" "${GITHUB_SHA}" | cut -c1-8 | tr '[:upper:]' '[:lower:]')"
           timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          printf "version=%s\ntimestamp=%s\nhash=%s\ncommit=%s\n" "${version}" "${timestamp}" "${overall_hash}" "${commit}" > "${checksum_file}"
+          manifest_fingerprint="$(printf "%s" "${manifest_hash}" | cut -c1-8 | tr '[:lower:]' '[:upper:]')"
+          build_fingerprint="$(printf "%s" "${commit}" | cut -c1-8 | tr '[:lower:]' '[:upper:]')"
+          manifest_composite="${manifest_fingerprint}-${build_fingerprint}"
+
+          printf "version=%s\ntimestamp=%s\nhash=%s\ncommit=%s\nmanifest_fingerprint=%s\nbuild_fingerprint=%s\nmanifest_composite=%s\n" "${version}" "${timestamp}" "${overall_hash}" "${commit}" "${manifest_fingerprint}" "${build_fingerprint}" "${manifest_composite}" > "${checksum_file}"
 
           rm -f "${tmp_file}"
 

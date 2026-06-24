@@ -132,6 +132,21 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -help
 ```
 
+> [!TIP]
+> **Support / provenance command**: the installer exposes a standalone version command that prints the installer version, manifest composite, and bundle source without running a full install flow.
+>
+> PowerShell:
+> ```powershell
+> & "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Version
+> ```
+>
+> Bash:
+> ```bash
+> ~/.terraform-azurerm-ai-installer/install-copilot-setup.sh --version
+> ```
+>
+> Ask users to include that output in help tickets when they are reporting installer issues.
+<!-- -->
 > [!NOTE]
 > **About `-Verify` / `-verify`:** verification has two modes:
 > - **Bundle self-check (no repo directory):** when run from the user-profile installer directory *without* `-RepoDirectory` / `-repo-directory`, it verifies the installer bundle itself (manifest/modules/payload/checksum).

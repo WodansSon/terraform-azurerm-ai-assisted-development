@@ -50,6 +50,25 @@ pwsh ./install-copilot-setup.ps1 -RepoDirectory "/path/to/terraform-provider-azu
 ./install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"
 ```
 
+### Support / Provenance Command
+
+Use the standalone version command when you need the installer's stamped support metadata without running a full install flow.
+
+PowerShell:
+```powershell
+.\install-copilot-setup.ps1 -Version
+```
+
+Bash:
+```bash
+./install-copilot-setup.sh --version
+```
+
+That output is the preferred thing to request in support tickets because it prints:
+- installer version
+- manifest composite
+- local bundle source path
+
 ### 🔧 Installation Paths
 - **Windows**: `%USERPROFILE%\.terraform-azurerm-ai-installer`
 - **macOS/Linux**: `~/.terraform-azurerm-ai-installer`

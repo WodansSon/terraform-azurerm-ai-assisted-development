@@ -20,6 +20,7 @@ LOCAL_SOURCE_PATH=""
 VERIFY="false"
 CLEAN="false"
 HELP="false"
+VERSION_ONLY="false"
 
 # ============================================================================
 # PARAMETER DEFINITIONS
@@ -196,6 +197,11 @@ main() {
     # STEP 1: Parse command line arguments first
     parse_arguments "$@"
 
+    if [[ "${VERSION_ONLY}" == "true" ]] && { [[ "${BOOTSTRAP}" == "true" ]] || [[ -n "${REPO_DIRECTORY}" ]] || [[ -n "${LOCAL_SOURCE_PATH}" ]] || [[ "${VERIFY}" == "true" ]] || [[ "${CLEAN}" == "true" ]] || [[ "${HELP}" == "true" ]]; }; then
+        show_early_validation_error "VersionNoArgs" "$0"
+        exit 1
+    fi
+
     # STEP 1.0: Validate -repo-directory is not empty/whitespace when explicitly provided
     if [[ "${REPO_DIRECTORY_EXPLICIT}" == "true" ]] && [[ -z "${REPO_DIRECTORY//[[:space:]]/}" ]]; then
         show_early_validation_error "EmptyRepoDirectory" "$0"
@@ -235,6 +241,11 @@ main() {
     if [[ -n "${LOCAL_SOURCE_PATH}" ]] && [[ ! -d "${LOCAL_SOURCE_PATH}" ]]; then
         show_early_validation_error "LocalPathNotFound" "$0" "${LOCAL_SOURCE_PATH}"
         exit 1
+    fi
+
+    if [[ "${VERSION_ONLY}" == "true" ]]; then
+        show_installer_version_info
+        exit 0
     fi
 
     # STEP 2: Show header immediately for consistent user experience
@@ -560,6 +571,7 @@ main() {
 check_typos() {
     local param="$1"
     local suggestion=""
+    local suggestion_display=""
 
     # Handle bare dash edge case
     if [[ "${param}" == "-" ]] || [[ "${param}" == "--" ]]; then
@@ -582,6 +594,8 @@ check_typos() {
         suggestion="clean"
     elif echo "${lower_param}" | grep -q '^bo'; then
         suggestion="bootstrap"
+    elif echo "${lower_param}" | grep -q '^vers'; then
+        suggestion="version"
     elif echo "${lower_param}" | grep -q '^ve'; then
         suggestion="verify"
     elif echo "${lower_param}" | grep -q '^he'; then
@@ -595,6 +609,8 @@ check_typos() {
         suggestion="clean"
     elif [[ "${lower_param}" == *boo* ]]; then
         suggestion="bootstrap"
+    elif [[ "${lower_param}" == *version* ]]; then
+        suggestion="version"
     elif [[ "${lower_param}" == *ver* ]]; then
         suggestion="verify"
     elif [[ "${lower_param}" == *hel* ]]; then
@@ -608,9 +624,15 @@ check_typos() {
     fi
 
     if [[ -n "${suggestion}" ]]; then
+        if [[ "${suggestion}" == "version" ]]; then
+            suggestion_display="--version"
+        else
+            suggestion_display="-${suggestion}"
+        fi
+
         printf " \033[31mError:\033[0m\033[36m Failed to parse command-line argument:\033[0m\n"
         printf " \033[36mArgument provided but not defined:\033[0m \033[33m${param}\033[0m\n"
-        printf " \033[36mDid you mean:\033[0m \033[32m-${suggestion}\033[0m\033[36m?\033[0m\n"
+        printf " \033[36mDid you mean:\033[0m \033[32m${suggestion_display}\033[0m\033[36m?\033[0m\n"
         echo ""
         printf " \033[36mFor more help on using this command, run:\033[0m\n"
         printf "   \033[37m$0 -help\033[0m\n"
@@ -624,6 +646,10 @@ parse_arguments() {
         case $1 in
             -bootstrap)
                 BOOTSTRAP=true
+                shift
+                ;;
+            -version|--version)
+                VERSION_ONLY=true
                 shift
                 ;;
             -repo-directory)

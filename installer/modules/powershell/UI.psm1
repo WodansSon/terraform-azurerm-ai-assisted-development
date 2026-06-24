@@ -375,6 +375,7 @@ function Show-Help {
     Write-Host "  Installer operations are offline-only and use the bundled payload (aii/)." -ForegroundColor White
     Write-Host "  No network downloads occur during install, verify, or clean." -ForegroundColor White
     Write-Host "  Install and verify validate the bundled payload checksum (aii.checksum)." -ForegroundColor White
+    Write-Host "  Use -Version to print a support-friendly version and manifest provenance summary." -ForegroundColor White
     Write-Host ""
     Write-Host "  Target installs require a terraform-provider-azurerm clone with an origin remote." -ForegroundColor White
     Write-Host "  The AI development repo is a source-only workspace and is not a valid target." -ForegroundColor White
@@ -412,6 +413,7 @@ function Show-SourceBranchHelp {
     Write-Host "  -Bootstrap        Copy installer to user profile (~\.terraform-azurerm-ai-installer\)"
     Write-Host "                    Must be run from a git clone (.git present)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
+    Write-Host "  -Version          Show installer version and manifest provenance information"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
     Write-Host "EXAMPLES:" -ForegroundColor Cyan
@@ -420,6 +422,9 @@ function Show-SourceBranchHelp {
     Write-Host ""
     Write-Host "  Verify setup:"
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
+    Write-Host ""
+    Write-Host "  Show installer version/provenance:"
+    Write-Host "    .\install-copilot-setup.ps1 -Version"
     Write-Host ""
     Write-Host "BOOTSTRAP WORKFLOW:" -ForegroundColor Cyan
     Write-Host "  1. Run -Bootstrap from a git clone to copy installer to user profile"
@@ -443,6 +448,7 @@ function Show-FeatureBranchHelp {
     Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
     Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
+    Write-Host "  -Version          Show installer version and manifest provenance information"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
@@ -456,6 +462,9 @@ function Show-FeatureBranchHelp {
     Write-Host ""
     Write-Host "  Clean removal:"
     Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`" -Clean"
+    Write-Host ""
+    Write-Host "  Show installer version/provenance:"
+    Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -Version"
     Write-Host ""
 
     Write-Host "WORKFLOW:" -ForegroundColor Cyan
@@ -514,6 +523,7 @@ function Show-UnknownBranchHelp {
     Write-Host "  -RepoDirectory    Path to your terraform-provider-azurerm working copy"
     Write-Host "  -LocalPath        Local directory to copy AI files from (source override; instead of bundled payload)"
     Write-Host "  -Verify           Check current workspace status and validate setup"
+    Write-Host "  -Version          Show installer version and manifest provenance information"
     Write-Host "  -Clean            Remove AI infrastructure from workspace"
     Write-Host "  -Help             Show this help information"
     Write-Host ""
@@ -522,6 +532,7 @@ function Show-UnknownBranchHelp {
     Write-Host "  Source Branch Operations:" -ForegroundColor DarkCyan
     Write-Host "    .\install-copilot-setup.ps1 -Bootstrap"
     Write-Host "    .\install-copilot-setup.ps1 -Verify"
+    Write-Host "    .\install-copilot-setup.ps1 -Version"
     Write-Host ""
     Write-Host "  Feature Branch Operations:" -ForegroundColor DarkCyan
     Write-Host "    & `"$(Join-Path (Get-CrossPlatformInstallerPath -Raw) 'install-copilot-setup.ps1')`" -RepoDirectory `"/path/to/terraform-provider-azurerm`""

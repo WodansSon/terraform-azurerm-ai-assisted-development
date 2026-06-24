@@ -1373,32 +1373,18 @@ function Invoke-InstallInfrastructure {
             }
 
             $manifestValue = $Global:InstallerManifestPath
-            if ($manifestValue -and $Global:InstallerManifestHash) {
-                $manifestFingerprint = $Global:InstallerManifestHash.Substring(0,8)
-                $buildFingerprint = $null
-                $buildSuffix = $null
+            if ($manifestValue) {
+                $manifestDisplay = 'Unavailable'
 
                 $installerRoot = Split-Path $Global:InstallerManifestPath -Parent
                 if ($installerRoot -and (Test-Path $installerRoot)) {
                     $bundleChecksum = Test-InstallerChecksum -InstallerRoot $installerRoot
-                    if ($bundleChecksum.Valid -and $bundleChecksum.Commit) {
-                        $buildFingerprint = $bundleChecksum.Commit.Substring(0, [Math]::Min(8, $bundleChecksum.Commit.Length)).ToUpperInvariant()
-                        if ($bundleChecksum.Dirty) {
-                            $buildSuffix = 'DIRTY'
-                        }
+                    if ($bundleChecksum.Valid -and $bundleChecksum.ManifestComposite) {
+                        $manifestDisplay = $bundleChecksum.ManifestComposite
                     }
                 }
 
-                if ($buildFingerprint) {
-                    $manifestComposite = "$($manifestFingerprint.ToUpperInvariant())-$buildFingerprint"
-                    if ($buildSuffix) {
-                        $manifestComposite = "$manifestComposite-$buildSuffix"
-                    }
-                    $manifestValue = "$manifestValue ($manifestComposite)"
-                }
-                else {
-                    $manifestValue = "$manifestValue ($($manifestFingerprint.ToUpperInvariant()))"
-                }
+                $manifestValue = "$manifestValue ($manifestDisplay)"
             }
             if ($manifestValue) {
                 $details["Manifest"] = $manifestValue

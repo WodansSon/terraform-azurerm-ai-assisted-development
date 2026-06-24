@@ -729,6 +729,30 @@ function Write-InstallerChecksum {
         $Commit = $matches[1].ToLowerInvariant()
     }
 
+    $manifestFingerprint = $null
+    $buildFingerprint = $null
+    $manifestComposite = $null
+
+    $manifestPath = Join-Path $InstallerRoot "file-manifest.config"
+    if (Test-Path $manifestPath) {
+        $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash
+        $manifestFingerprint = $manifestHash.Substring(0, [Math]::Min(8, $manifestHash.Length)).ToUpperInvariant()
+    }
+
+    if ($Commit) {
+        $buildFingerprint = $Commit.Substring(0, [Math]::Min(8, $Commit.Length)).ToUpperInvariant()
+    }
+
+    if ($manifestFingerprint) {
+        $manifestComposite = $manifestFingerprint
+        if ($buildFingerprint) {
+            $manifestComposite = "$manifestComposite-$buildFingerprint"
+            if ($Version -match '-dirty$') {
+                $manifestComposite = "$manifestComposite-DIRTY"
+            }
+        }
+    }
+
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     $checksumLines = @(
         "version=$Version",
@@ -740,12 +764,24 @@ function Write-InstallerChecksum {
         $checksumLines += "commit=$($Commit.ToLowerInvariant())"
     }
 
+    if ($manifestFingerprint) {
+        $checksumLines += "manifest_fingerprint=$manifestFingerprint"
+    }
+
+    if ($buildFingerprint) {
+        $checksumLines += "build_fingerprint=$buildFingerprint"
+    }
+
+    if ($manifestComposite) {
+        $checksumLines += "manifest_composite=$manifestComposite"
+    }
+
     $checksumLines | Set-Content -Path $checksumPath
 
-    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath; Commit = $Commit }
+    return @{ Valid = $true; Hash = $result.Hash; Path = $checksumPath; Commit = $Commit; ManifestComposite = $manifestComposite }
 }
 
-function Test-InstallerChecksum {
+function Get-InstallerChecksumMetadata {
     param(
         [Parameter(Mandatory)]
         [string]$InstallerRoot
@@ -756,39 +792,39 @@ function Test-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer checksum file not found" }
     }
 
-    $checksumLines = Get-Content -Path $checksumPath
+    $metadata = @{}
+    foreach ($line in Get-Content -Path $checksumPath) {
+        if ($line -match '^([A-Za-z0-9_]+)=(.*)$') {
+            $metadata[$matches[1].ToLowerInvariant()] = $matches[2].Trim()
+        }
+    }
 
-    $hashLine = $checksumLines | Where-Object { $_ -match '^hash=' } | Select-Object -First 1
-    if (-not $hashLine) {
+    return @{ Valid = $true; Metadata = $metadata; Path = $checksumPath }
+}
+
+function Test-InstallerChecksum {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InstallerRoot
+    )
+
+    $metadataResult = Get-InstallerChecksumMetadata -InstallerRoot $InstallerRoot
+    if (-not $metadataResult.Valid) {
+        return $metadataResult
+    }
+
+    $metadata = $metadataResult.Metadata
+    $expected = $metadata['hash']
+    if (-not $expected) {
         return @{ Valid = $false; Reason = "Installer checksum file missing hash" }
     }
 
-    $versionLine = $checksumLines | Where-Object { $_ -match '^version=' } | Select-Object -First 1
-    $version = $null
-    $dirty = $false
-    if ($versionLine) {
-        $version = $versionLine.Substring(8).Trim()
-        if (-not $version) {
-            $version = $null
-        }
-        elseif ($version -match '-dirty$') {
-            $dirty = $true
-        }
-    }
-
-    $commitLine = $checksumLines | Where-Object { $_ -match '^commit=' } | Select-Object -First 1
-    $commit = $null
-    if ($commitLine) {
-        $commit = $commitLine.Substring(7).Trim().ToLowerInvariant()
-        if (-not $commit) {
-            $commit = $null
-        }
-    }
-
-    $expected = $hashLine.Substring(5).Trim()
-    if (-not $expected) {
-        return @{ Valid = $false; Reason = "Installer checksum hash is empty" }
-    }
+    $version = $metadata['version']
+    $commit = $metadata['commit']
+    $dirty = [bool]($version -and $version -match '-dirty$')
+    $manifestFingerprint = $metadata['manifest_fingerprint']
+    $buildFingerprint = $metadata['build_fingerprint']
+    $manifestComposite = $metadata['manifest_composite']
 
     $prune = Remove-StaleInstallerPayload -InstallerRoot $InstallerRoot
     if (-not $prune.Valid) {
@@ -807,7 +843,7 @@ function Test-InstallerChecksum {
         return @{ Valid = $false; Reason = "Installer checksum mismatch"; Expected = $expected; Actual = $computed.Hash }
     }
 
-    return @{ Valid = $true; Hash = $computed.Hash; Commit = $commit; Version = $version; Dirty = $dirty }
+    return @{ Valid = $true; Hash = $computed.Hash; Commit = $commit; Version = $version; Dirty = $dirty; ManifestFingerprint = $manifestFingerprint; BuildFingerprint = $buildFingerprint; ManifestComposite = $manifestComposite }
 }
 
 function Test-PreInstallation {
@@ -1356,6 +1392,7 @@ function Invoke-VerifyInstallerBundle {
 Export-ModuleMember -Function @(
     'Test-WorkspaceValid',
     'Test-PreInstallation',
+    'Get-InstallerChecksumMetadata',
     'Test-InstallerChecksum',
     'Write-InstallerChecksum',
     'Invoke-VerifyInstallerBundle',
