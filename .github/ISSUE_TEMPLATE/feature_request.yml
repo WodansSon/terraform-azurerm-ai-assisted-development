@@ -42,9 +42,9 @@ body:
   - type: input
     id: toolkit
     attributes:
-      label: Toolkit Version / Source Ref
-      description: Which released version, bootstrap install, or repository commit are you currently using?
-      placeholder: v1.0.0 or main @ abc1234
+      label: Toolkit Version
+      description: Which released version are you currently using?
+      placeholder: v1.0.0
     validations:
       required: true
   - type: textarea

@@ -6,7 +6,7 @@ body:
       value: |
         Thank you for taking the time to fill out a bug report.
 
-        If you are not running the latest release bundle, bootstrap install, or repository commit, please upgrade first because your issue may already have been fixed.
+        If you are not running the latest released version, please upgrade first because your issue may already have been fixed.
 
         Please also note the following scenarios that are often owned outside this repository:
 
@@ -39,28 +39,25 @@ body:
         <!--- Thank you for keeping this note for the community --->
     validations:
       required: true
-  - type: input
-    id: toolkit
+  - type: textarea
+    id: version_information
     attributes:
-      label: Toolkit Version / Source Ref
-      description: Which released version, bootstrap install, or repository commit are you using?
-      placeholder: v1.0.0 or main @ abc1234
-    validations:
-      required: true
-  - type: input
-    id: vscode
-    attributes:
-      label: VS Code Version
-      description: Which VS Code version are you using?
-      placeholder: 1.100.0
-    validations:
-      required: true
-  - type: input
-    id: copilot
-    attributes:
-      label: GitHub Copilot / Copilot Chat Extension Version
-      description: Which GitHub Copilot or Copilot Chat extension version are you using?
-      placeholder: 1.300.0
+      label: Version Information
+      description: |
+        Paste the full output of `./install-copilot-setup.sh --version` or `.\install-copilot-setup.ps1 -Version`.
+
+        This should include the toolkit version, manifest, and source information shown by the installer.
+      render: shell
+      placeholder: |
+        ============================================================
+         Terraform AzureRM Provider - AI Infrastructure Installer
+         Version: X.Y.Z
+        ============================================================
+
+        VERSION INFORMATION:
+          Version : X.Y.Z
+          Manifest: 12345678-12345678
+          Source  : C:\Users\example\.terraform-azurerm-ai-installer\aii
     validations:
       required: true
   - type: input
@@ -72,14 +69,19 @@ body:
     validations:
       required: true
   - type: input
-    id: manifest
+    id: copilot
     attributes:
-      label: Manifest Composite / Build Fingerprint
-      description: |
-        What manifest composite or build fingerprint does the installer report?
-
-        If available, copy it from the support/provenance output of `./install-copilot-setup.sh --version` or `.\install-copilot-setup.ps1 -Version`.
-      placeholder: abc1234-def5678 or Unavailable
+      label: GitHub Copilot / Copilot Chat Extension Version
+      description: Which GitHub Copilot or Copilot Chat extension version are you using?
+      placeholder: 1.300.0
+    validations:
+      required: true
+  - type: input
+    id: vscode
+    attributes:
+      label: VS Code Version
+      description: Which VS Code version are you using?
+      placeholder: 1.100.0
     validations:
       required: true
   - type: input
@@ -90,6 +92,42 @@ body:
       placeholder: installer/install-copilot-setup.ps1, .github/copilot-instructions.md, tools/run-regression-harness.ps1
     validations:
       required: true
+  - type: input
+    id: workflow
+    attributes:
+      label: Triggered Command / Workflow
+      description: Which command, slash command, or workflow were you using when the issue occurred?
+      placeholder: /code-review-local-changes, /code-review-docs, install-copilot-setup.ps1, freeform chat request
+    validations:
+      required: true
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt / Request
+      description: |
+        If this issue came from a prompt-driven interaction, paste the exact prompt or request that triggered it.
+
+        If the issue was not caused by a prompt, you can leave this blank.
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install Method
+      description: How was this toolkit install obtained?
+      options:
+        - Windows ZIP release bundle
+        - Linux/macOS TAR.GZ release bundle
+        - Existing installer upgraded in place
+        - Not sure
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility
+      description: How consistently does this issue occur?
+      options:
+        - Always
+        - Intermittent
+        - Happened once so far
+        - Not sure
   - type: input
     id: environment
     attributes:
@@ -112,12 +150,15 @@ body:
   - type: textarea
     id: debug
     attributes:
-      label: Debug Output / Logs / Screenshots
+      label: Screenshots / Terminal Output / Artifacts
       description: |
-        For long logs, please provide a link to a GitHub Gist containing the complete output. Please do NOT paste extremely large logs directly into the issue.
+        If helpful, include supporting evidence for the issue.
 
-        Include any relevant installer output, terminal output, regression harness artifacts, or VS Code Copilot Chat debug logs that help explain the failure.
-      render: shell
+        For screenshots, capture the failing UI state, visible error messages, and any relevant VS Code panel or terminal context.
+
+        For terminal output, paste only the relevant excerpt inline. If the output is long, link to a GitHub Gist instead of pasting the full transcript.
+
+        For artifacts, include links or attachments for things like screen recordings, minimal repro repositories, or copied assistant responses that help explain the failure.
     validations:
       required: true
   - type: textarea
@@ -145,12 +186,13 @@ body:
     attributes:
       label: Important Factoids
       description: |
-        Are there anything atypical about your environment that we should know? For example: VS Code Insiders, WSL, Remote SSH, dev containers, enterprise proxy restrictions, custom local instructions, or a bootstrap install from a source checkout.
+        Is there anything atypical about your environment that we should know? For example: VS Code Insiders, WSL, Remote SSH, dev containers, enterprise proxy restrictions, or custom local instructions.
   - type: textarea
     id: references
     attributes:
       label: References
       description: |
-        Information about referencing GitHub issues: https://docs.github.com/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue
-
         Are there any other GitHub issues, pull requests, discussion threads, or external documentation that should be linked here?
+
+        For information about linking GitHub issues and pull requests, see:
+        https://docs.github.com/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue
