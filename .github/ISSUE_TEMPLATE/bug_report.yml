@@ -64,6 +64,25 @@ body:
     validations:
       required: true
   - type: input
+    id: model
+    attributes:
+      label: Selected LLM / Model
+      description: Which model were you running when the issue occurred?
+      placeholder: GPT-5.4 high
+    validations:
+      required: true
+  - type: input
+    id: manifest
+    attributes:
+      label: Manifest Composite / Build Fingerprint
+      description: |
+        What manifest composite or build fingerprint does the installer report?
+
+        If available, copy it from the support/provenance output of `./install-copilot-setup.sh --version` or `.\install-copilot-setup.ps1 -Version`.
+      placeholder: abc1234-def5678 or Unavailable
+    validations:
+      required: true
+  - type: input
     id: component
     attributes:
       label: Affected Component(s)
