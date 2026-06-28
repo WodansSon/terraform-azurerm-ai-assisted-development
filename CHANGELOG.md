@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.6.0] - 2026-06-28
+
+### Added
+
 - **User-Priority:**
   - **[Review]** - Added `review-skeptic` and `review-architect` runtime skills so a code review can be stress-tested by an adversarial pass that proposes additional evidence-backed candidate issues, and checked by a design-direction pass that evaluates structural fit and naming, with both passes handing their candidates to the existing advocate gate before review output is frozen.
   - **[Review]** - Added a staged `review-moderator` contract and skill plus an adjudicated regression case for schema-preserving routed-role handoff through advocate resolution, so the future synthesis role and the current JSON-schema transport are both benchmarked before moderator routing is enabled.
@@ -686,7 +694,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.5.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.6.0...HEAD
+[3.6.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.6.0
 [3.5.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.5.0
 [3.4.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.3
 [3.4.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.2
