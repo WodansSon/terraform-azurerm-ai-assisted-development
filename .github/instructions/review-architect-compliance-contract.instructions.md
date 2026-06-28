@@ -1,5 +1,5 @@
 ---
-description: "Architect direction pass compliance contract (single source of truth) used by the review-architect skill to evaluate design fit and structural direction before review output is frozen."
+description: "Architect direction pass compliance contract (single source of truth) used by the review-architect skill as a workflow-governed intermediate pass to evaluate design fit and structural direction before review output is frozen."
 ---
 
 # Review Architect Compliance Contract
@@ -12,13 +12,15 @@ One workflow MUST follow this contract:
 
 - Consumer: `.github/skills/review-architect/SKILL.md`
   - Role: Architect
-  - Command: `review-architect` skill, invokable as `/review-architect`, intended to augment `/code-review-local-changes` and `/code-review-committed-changes` with a design-direction pass
+  - Command: `review-architect` skill, invocable as a governed workflow pass during `/code-review-local-changes` and `/code-review-committed-changes`, not as an independent final-output review stage
   - Requires EOF Load: yes
   - Goal: evaluate the change-set for design fit, schema and naming direction, and long-term maintainability, raising mandatory-source-backed Issues and otherwise recording direction as Observations before output is frozen.
 
 The review prompts orchestrate when the architect pass runs.
 The architect skill encapsulates the reusable direction method.
 This contract defines the architect-specific deterministic rules.
+Direct invocation does not grant the architect pass authority to freeze review output or emit a standalone final review section.
+The shared workflow handoff schema lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
 ## Canonical sources of truth (precedence)
 
@@ -26,7 +28,7 @@ Use these sources with the following roles:
 
 - The shared code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
   - Authoritative for overall review flow, evidence handling, finding classification, and output shape.
-  - This architect contract refines how design-direction findings are proposed before output is frozen; it must not weaken or override the `REVIEW-CLASS-*`, `REVIEW-EVID-*`, or `REVIEW-OBS-*` semantics.
+  - This architect contract refines how design-direction findings are proposed before output is frozen; it must not weaken or override the `REVIEW-CLASS-*`, `REVIEW-EVID-*`, `REVIEW-OBS-*`, or `REVIEW-HANDOFF-*` semantics.
 - The advocate contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
   - Authoritative for how candidate Issues, including architect-proposed candidates, are confirmed, downgraded, or dismissed before output is frozen.
 - The skeptic contract: `.github/instructions/review-skeptic-compliance-contract.instructions.md`
@@ -40,6 +42,8 @@ Conflict resolution:
 
 - This contract is authoritative for architect-pass activation, direction-coverage scope, and the bar a design concern must clear before it is raised as an Issue rather than an Observation.
 - The shared code review contract remains authoritative for overall review flow, evidence handling, classification semantics, and output shape.
+- The shared code review contract remains authoritative for the intermediate handoff shape used to carry architect output to later passes.
+- `.github/instructions/review-workflow-handoff.schema.json` is the concrete runtime schema artifact for that handoff shape.
 - The advocate contract remains authoritative for resolving every candidate Issue, including architect-proposed candidates, to exactly one outcome.
 - If this contract would contradict `REVIEW-OBS-001` (design preference is observation-only by default) or `REVIEW-CLASS-004` (one finding, one classification), those shared rules win and each architect concern must still resolve to exactly one classification.
 
@@ -71,11 +75,13 @@ If a design concern cannot be tied to this evidence, it stays an Observation rat
 
 ### REVIEW-ARCH-001: Architect evaluates direction, not line-level defects
 - Rule: The architect pass evaluates structural fit, design direction, and maintainability across the change-set, not line-level correctness defects already owned by the primary audit and the skeptic pass.
+- Rule: The architect pass is governed workflow machinery, not an independent review stage with its own frozen output behavior.
 - Rule: The architect pass runs before the advocate pass and before the review output is frozen, never after.
 - Rule: If the change-set is empty or out of scope under the shared contract, the architect pass does not run and changes nothing.
 
 ### REVIEW-ARCH-002: Observation is the default classification
 - Rule: An architect-proposed design concern defaults to an Observation under `REVIEW-CLASS-002` and `REVIEW-OBS-001`.
+- Rule: Every architect finding that stays in workflow scope must use the shared `REVIEW-HANDOFF-*` field shape with `status` set to `observation` or `candidate` as appropriate.
 - Rule: The architect escalates a concern to an Issue only when a current workspace contributor document, instruction file, skill, or contract makes that design rule mandatory for the reviewed change.
 - Rule: When escalating to an Issue, the architect must cite the exact governing rule or guidance source.
 

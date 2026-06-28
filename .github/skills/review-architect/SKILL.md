@@ -1,6 +1,6 @@
 ---
 name: review-architect
-description: Design-direction second-pass evaluation for code reviews — assess structural fit, schema and naming direction, and long-term maintainability, raising mandatory-source-backed Issues and otherwise recording direction as Observations before review output is frozen. Use when a code-review pass should be checked for design fit.
+description: Design-direction workflow-governed review pass for code reviews — assess structural fit, schema and naming direction, and long-term maintainability, raising mandatory-source-backed Issues and otherwise recording direction as Observations before review output is frozen. Use when a code-review workflow should be checked for design fit.
 ---
 
 # Review Architect (design-direction pass)
@@ -15,6 +15,7 @@ When running the architect pass, use `.github/instructions/review-architect-comp
 - the `REVIEW-ARCH-*` rule families
 
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
+Do not treat this skill as an independent final review stage. It is governed invisible workflow machinery that can add architect findings to an in-flight review, but it cannot freeze or publish final review output on its own.
 
 The architect proposes findings only. It never finalizes outcomes: every architect-proposed candidate Issue is adjudicated by the advocate pass under `.github/instructions/review-advocate-compliance-contract.instructions.md` before output is frozen.
 
@@ -28,7 +29,7 @@ Before running an architect pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-architect-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-ARCH-*` rules.
-- [ ] The primary review pass has gathered the change-set and its evidence (otherwise this skill does not run).
+- [ ] The primary review pass has gathered the change-set and its evidence, and the review workflow has routed this governed architect pass (otherwise this skill does not run).
 - [ ] I am evaluating design direction and structural fit, not line-level correctness defects.
 
 If preflight is incomplete, do not run the architect pass.
@@ -46,12 +47,13 @@ Rules:
 
 ## Scope
 
-This skill is the reusable design-direction technique for the code-review prompts:
+This skill is the reusable design-direction technique orchestrated inside the code-review prompts:
 
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
 It runs as invisible machinery between the primary review pass and the advocate pass. It does not produce its own output section; it only adds findings that, after advocate adjudication, land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the shared and advocate contracts.
+When the architect adds a finding, it should do so through the shared intermediate finding shape rather than a one-off prose note.
 
 ## Role
 
@@ -79,6 +81,8 @@ Findings must be tied to evidence, not asserted:
 - cite the governing instruction, contract, or contributor-guidance source for any architectural Issue
 - quote the workspace rule that the change violates
 - cross-reference how related resources or patterns model the same concern
+
+When the concern stays in workflow scope, preserve the shared handoff fields for `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`, as defined by `.github/instructions/review-workflow-handoff.schema.json`.
 
 Mark derived assumptions clearly ("based on how sibling resources model this block, the singular name appears inconsistent because...") rather than stating preference as policy. If no mandatory source supports the concern, keep it an Observation per `REVIEW-OBS-001`.
 

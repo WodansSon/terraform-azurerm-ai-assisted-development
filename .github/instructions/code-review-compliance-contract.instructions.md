@@ -152,11 +152,37 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Each Issue should point to a single, concrete correction path.
 - Rule: Do not present multiple alternative fixes unless the user explicitly asked for options.
 
-### REVIEW-CLASS-006: Advocate second-pass integration boundary
-- Rule: The advocate second-pass review technique is owned by the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
-- Rule: When a review prompt runs the advocate pass, the advocate `REVIEW-ADV-*` rules govern how candidate Issues are confirmed, downgraded, or dismissed.
-- Rule: The advocate pass must not violate `REVIEW-CLASS-004`; every candidate finding still resolves to exactly one classification.
-- Rule: This shared contract does not define the advocate method or its outcome rules; review flows that do not run the advocate pass are unaffected.
+### REVIEW-CLASS-006: Current final adjudication owner integration boundary
+- Rule: The current final adjudication owner is the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
+- Rule: When a review prompt runs the current final adjudication owner, the routed owner's rules govern how the aggregate candidate-Issue set from the primary pass and any routed intermediate passes is confirmed, downgraded, dismissed, or otherwise normalized.
+- Rule: The current final adjudication owner must not violate `REVIEW-CLASS-004`; every candidate finding still resolves to exactly one classification.
+- Rule: This shared contract does not define the routed adjudication owner's method or outcome rules; review flows that do not run a final adjudication owner are unaffected.
+
+## Workflow handoff structure
+
+### REVIEW-HANDOFF-001: Intermediate findings use one shared semantic shape
+- Rule: Before output is frozen, the review workflow must treat routed-role findings as internal intermediate records rather than free-form unlabeled prose.
+- Rule: Each intermediate record must conform to `.github/instructions/review-workflow-handoff.schema.json`.
+- Rule: Each intermediate record must be able to express `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`.
+- Rule: `ruleReferences` is optional, but should be populated when a contract rule, instruction, or contributor-guidance source is part of the evidence chain.
+
+### REVIEW-HANDOFF-002: Status values are stage-aware
+- Rule: Before advocate adjudication, the allowed intermediate statuses are `candidate` and `observation`.
+- Rule: The advocate pass may resolve only `candidate` records, changing status to `confirmed`, `downgraded`, or `dismissed`.
+- Rule: Final visible `ISSUES` and `OBSERVATIONS` sections are derived from the resolved intermediate records rather than bypassing the handoff structure.
+
+### REVIEW-HANDOFF-003: Routed passes may add or refine records, but must preserve shape
+- Rule: The primary review pass, architect pass, and skeptic pass may add records or enrich existing records with evidence and reasoning, but they must preserve the shared field set.
+- Rule: Routed passes must not replace a structured intermediate record with an unlabeled prose note that loses `scope`, `evidence`, or `status`.
+- Rule: When multiple passes touch the same concern, enrich one record rather than cloning duplicate records.
+
+### REVIEW-HANDOFF-005: Roles communicate through schema updates, not free-form debate
+- Rule: Routed roles communicate by adding evidence, reasoning, `roles`, `ruleReferences`, or `roleNotes` to the shared schema record, not by inventing a separate unstructured dialogue channel.
+- Rule: If a role challenges an earlier finding, that challenge must be recorded inside the shared schema record rather than as disconnected prose.
+
+### REVIEW-HANDOFF-004: The handoff shape is semantic, not transport-specific
+- Rule: The workflow may represent the intermediate record as structured markdown, table-like text, or JSON-like state, but the semantic fields and statuses must remain stable.
+- Rule: The intermediate record is workflow-internal and must not force a new reader-visible section in the final review body.
 
 ## Change-set coverage and file handling
 

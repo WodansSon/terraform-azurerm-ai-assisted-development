@@ -1,5 +1,5 @@
 ---
-description: "Skeptic adversarial pass compliance contract (single source of truth) used by the review-skeptic skill to surface additional evidence-backed candidate Issues before review output is frozen."
+description: "Skeptic adversarial pass compliance contract (single source of truth) used by the review-skeptic skill as a workflow-governed intermediate pass to surface additional evidence-backed candidate Issues before review output is frozen."
 ---
 
 # Review Skeptic Compliance Contract
@@ -12,13 +12,15 @@ One workflow MUST follow this contract:
 
 - Consumer: `.github/skills/review-skeptic/SKILL.md`
   - Role: Skeptic
-  - Command: `review-skeptic` skill, invokable as `/review-skeptic`, intended to augment `/code-review-local-changes` and `/code-review-committed-changes` with an adversarial pass
+  - Command: `review-skeptic` skill, invocable as a governed workflow pass during `/code-review-local-changes` and `/code-review-committed-changes`, not as an independent final-output review stage
   - Requires EOF Load: yes
   - Goal: surface additional evidence-backed candidate Issues the primary audit may have missed, then hand them to the advocate pass for adjudication before output is frozen.
 
 The review prompts orchestrate when the skeptic pass runs.
 The skeptic skill encapsulates the reusable adversarial method.
 This contract defines the skeptic-specific deterministic rules.
+Direct invocation does not grant the skeptic pass authority to freeze review output or emit a standalone final review section.
+The shared workflow handoff schema lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
 ## Canonical sources of truth (precedence)
 
@@ -26,7 +28,7 @@ Use these sources with the following roles:
 
 - The shared code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
   - Authoritative for overall review flow, evidence handling, finding classification, and output shape.
-  - This skeptic contract refines how additional candidate Issues are proposed before output is frozen; it must not weaken or override the `REVIEW-CLASS-*` or `REVIEW-EVID-*` semantics.
+  - This skeptic contract refines how additional candidate Issues are proposed before output is frozen; it must not weaken or override the `REVIEW-CLASS-*`, `REVIEW-EVID-*`, or `REVIEW-HANDOFF-*` semantics.
 - The advocate contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
   - Authoritative for how candidate Issues, including skeptic-proposed candidates, are confirmed, downgraded, or dismissed before output is frozen.
 - The architect contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
@@ -40,6 +42,8 @@ Conflict resolution:
 
 - This contract is authoritative for skeptic-pass activation, attack-surface coverage, and the evidence bar a skeptic-proposed candidate must clear before it joins the candidate Issue set.
 - The shared code review contract remains authoritative for overall review flow, evidence handling, classification semantics, and output shape.
+- The shared code review contract remains authoritative for the intermediate handoff shape used to carry skeptic output to later passes.
+- `.github/instructions/review-workflow-handoff.schema.json` is the concrete runtime schema artifact for that handoff shape.
 - The advocate contract remains authoritative for resolving every candidate Issue, including skeptic-proposed candidates, to exactly one outcome.
 - If this contract would contradict `REVIEW-CLASS-004` (one finding, one classification), `REVIEW-CLASS-004` wins and each skeptic-proposed concern must still resolve to exactly one classification.
 
@@ -71,11 +75,13 @@ If a proposed candidate cannot be backed by this evidence, it is not a valid can
 
 ### REVIEW-SKEP-001: Skeptic pass augments, never replaces, the primary audit
 - Rule: The skeptic pass adds candidate Issues to the primary review pass; it does not restate, replace, or re-run the primary audit.
+- Rule: The skeptic pass is governed workflow machinery, not an independent review stage with its own frozen output behavior.
 - Rule: The skeptic pass runs before the advocate pass and before the review output is frozen, never after.
 - Rule: If the change-set is empty or out of scope under the shared contract, the skeptic pass does not run and changes nothing.
 
 ### REVIEW-SKEP-002: Skeptic proposes candidate Issues only from evidence
 - Rule: Every skeptic-proposed candidate Issue must cite concrete evidence such as a `file:line` reference, a quoted line of code, tool output, or a cross-referenced pattern elsewhere in the codebase.
+- Rule: Every skeptic finding that stays in workflow scope must use the shared `REVIEW-HANDOFF-*` field shape with `status` set to `candidate` or `observation` as appropriate.
 - Rule: A concern that cannot meet the evidence hierarchy is demoted to an Observation or dropped per `REVIEW-EVID-001`; it must not be asserted as an Issue.
 - Rule: Mark derived assumptions explicitly rather than stating inference as fact.
 

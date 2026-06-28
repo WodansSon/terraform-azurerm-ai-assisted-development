@@ -1,6 +1,6 @@
 ---
 name: review-skeptic
-description: Adversarial second-pass evaluation for code reviews — attack the change-set for missed defects, propose additional evidence-backed candidate Issues, and hand them to the advocate pass before review output is frozen. Use when a code-review pass should be stress-tested for missed problems.
+description: Adversarial workflow-governed review pass for code reviews — attack the change-set for missed defects, propose additional evidence-backed candidate Issues, and hand them to the advocate pass before review output is frozen. Use when a code-review workflow should be stress-tested for missed problems.
 ---
 
 # Review Skeptic (adversarial augmentation pass)
@@ -15,6 +15,7 @@ When running the skeptic pass, use `.github/instructions/review-skeptic-complian
 - the `REVIEW-SKEP-*` rule families
 
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
+Do not treat this skill as an independent final review stage. It is governed invisible workflow machinery that can add candidates to an in-flight review, but it cannot freeze or publish final review output on its own.
 
 The skeptic proposes candidate Issues only. It never finalizes outcomes: every skeptic-proposed candidate is adjudicated by the advocate pass under `.github/instructions/review-advocate-compliance-contract.instructions.md` before output is frozen.
 
@@ -28,7 +29,7 @@ Before running a skeptic pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-skeptic-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-SKEP-*` rules.
-- [ ] The primary review pass has gathered the change-set and its evidence (otherwise this skill does not run).
+- [ ] The primary review pass has gathered the change-set and its evidence, and the review workflow has routed this governed skeptic pass (otherwise this skill does not run).
 - [ ] I am proposing net-new candidate Issues from evidence, not restating existing findings.
 
 If preflight is incomplete, do not run the skeptic pass.
@@ -46,12 +47,13 @@ Rules:
 
 ## Scope
 
-This skill is the reusable adversarial augmentation technique for the code-review prompts:
+This skill is the reusable adversarial augmentation technique orchestrated inside the code-review prompts:
 
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
 It runs as invisible machinery between the primary review pass and the advocate pass. It does not produce its own output section; it only adds candidate Issues that, after advocate adjudication, land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the shared and advocate contracts.
+When the skeptic adds or strengthens a concern, it should do so through the shared intermediate finding shape rather than a one-off prose note.
 
 ## Role
 
@@ -79,6 +81,8 @@ Candidate Issues must be proven with evidence, not asserted:
 - cite `file:line` references showing the relevant code
 - connect the evidence to an observable failure, regression, or policy violation
 - cross-reference similar patterns or guidance elsewhere in the codebase
+
+When the concern stays in workflow scope, preserve the shared handoff fields for `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`, as defined by `.github/instructions/review-workflow-handoff.schema.json`.
 
 Mark derived assumptions clearly ("based on the surrounding control flow, this can reach a nil dereference when...") rather than stating inference as fact. If evidence is inconclusive, choose the lower justified classification per the shared contract rather than asserting a defect.
 

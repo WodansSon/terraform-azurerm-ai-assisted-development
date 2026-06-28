@@ -513,14 +513,14 @@ function Get-ContractReport {
     return [PSCustomObject]@{
         path = $relativePath
         title = if ($titleLine) { $titleLine -replace '^#\s+', '' } else { $null }
-        canonicalSources = $canonicalSources
-        companionInstructionCount = $companionInstructionPaths.Count
-        companionInstructions = $companionInstructionPaths
-        declaredConsumerCount = $declaredConsumers.Count
-        declaredConsumers = $declaredConsumerPaths
+        canonicalSources = @($canonicalSources)
+        companionInstructionCount = @($companionInstructionPaths).Count
+        companionInstructions = @($companionInstructionPaths)
+        declaredConsumerCount = @($declaredConsumers).Count
+        declaredConsumers = @($declaredConsumerPaths)
         eofLoadConsumerCount = $eofLoadConsumerCount
-        consumerCount = $consumers.Count
-        consumers = $consumers
+        consumerCount = @($consumers).Count
+        consumers = @($consumers)
         eofMarker = $lastNonEmptyLine
         ruleCount = $ruleHeadingIndexes.Count
         provenanceRuleCount = $provenanceRuleCount
@@ -604,9 +604,9 @@ if ($contractFiles.Count -eq 0) {
     throw 'No contract instruction files were found under .github/instructions'
 }
 
-$reports = foreach ($contractFile in $contractFiles) {
+$reports = @(foreach ($contractFile in $contractFiles) {
     Get-ContractReport -RepoRoot $resolvedRootPath -ContractFile $contractFile
-}
+})
 
 if ($OutputFormat -eq 'Json') {
     $reports | ConvertTo-Json -Depth 8

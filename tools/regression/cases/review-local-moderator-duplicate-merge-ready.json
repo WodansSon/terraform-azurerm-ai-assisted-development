@@ -1,0 +1,59 @@
+{
+  "id": "review-local-moderator-duplicate-merge-ready",
+  "title": "Local review moderator should merge duplicate routed findings into one final record",
+  "task": "code-review-local-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where the reviewer, skeptic, and architect all surface the same underlying concern through schema-conformant handoff records. Once moderator routing is enabled, the final adjudication owner should merge those duplicates into one final finding that preserves the strongest evidence and combined role attribution.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-moderator-duplicate-merge-ready/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/instructions/review-workflow-handoff.schema.json",
+      ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      ".github/prompts/code-review-local-changes.prompt.md"
+    ],
+    "notes": "Sanitized fixture models duplicate routed concerns that should converge into one moderated record rather than surviving as repeated issues with slightly different wording."
+  },
+  "expectedRules": [
+    "REVIEW-HANDOFF-003",
+    "REVIEW-MOD-001",
+    "REVIEW-MOD-002",
+    "REVIEW-MOD-003",
+    "REVIEW-MOD-004",
+    "REVIEW-CLASS-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "duplicate-routed-findings-merge-into-one-record",
+      "severity": "medium",
+      "description": "The final adjudication owner should merge duplicate routed findings into one final record instead of emitting the same concern multiple times under different wording."
+    },
+    {
+      "key": "strongest-evidence-survives-merge",
+      "severity": "medium",
+      "description": "When duplicate records merge, the surviving final record should preserve the strongest evidence and combined role attribution rather than keeping the weakest version."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "duplicate-concern-emitted-twice",
+      "description": "The final output must not contain two separate findings for the same underlying concern once moderator routing is enabled."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ]
+  },
+  "notes": "This is a staged benchmark for the future moderator-routed workflow. Keep it ready so the advocate-to-moderator routing swap has an explicit duplicate-merge quality gate."
+}

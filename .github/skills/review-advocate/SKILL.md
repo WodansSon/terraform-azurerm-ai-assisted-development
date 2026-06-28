@@ -1,9 +1,9 @@
 ---
 name: review-advocate
-description: Second-pass advocate evaluation for code reviews — challenge candidate Issues, defend intentional design, inspect trust boundaries, and filter false positives before review output is frozen. Use when a code-review pass has produced candidate Issues.
+description: Transitional false-positive-defense pass for code reviews — challenge candidate Issues, defend intentional design, inspect trust boundaries, and filter false positives before review output is frozen. Use when a review workflow has produced candidate Issues.
 ---
 
-# Review Advocate (second-pass quality gate)
+# Review Advocate (transitional false-positive-defense gate)
 
 ## Canonical sources of truth (contract-driven)
 
@@ -15,6 +15,7 @@ When running the advocate pass, use `.github/instructions/review-advocate-compli
 - the `REVIEW-ADV-*` rule families
 
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
+Do not treat this skill as the permanent owner of final synthesis. In the current workflow it is a transitional false-positive-defense gate that narrows or dismisses weak candidate Issues before frozen output.
 
 ## Mandatory: read the entire skill
 
@@ -26,7 +27,7 @@ Before running an advocate pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-advocate-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-ADV-*` rules.
-- [ ] The primary review pass has already produced candidate Issues (otherwise this skill does not run).
+- [ ] The review workflow has already produced candidate Issues, whether from the primary pass or any routed skeptic or architect pass (otherwise this skill does not run).
 - [ ] I am evaluating candidate Issues only, not strengths or positive observations.
 
 If preflight is incomplete, do not run the advocate pass.
@@ -49,7 +50,8 @@ This skill is the reusable second-pass advocate technique for the code-review pr
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
-It runs as invisible machinery between the primary review pass and frozen output. It does not produce its own output section; it only adjusts how candidate findings land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the advocate contract.
+It runs as invisible machinery between the earlier review passes and frozen output. It does not produce its own output section; it only adjusts how candidate findings land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the advocate contract.
+It consumes the shared intermediate finding records produced earlier in the workflow and resolves only the records whose `status` is `candidate`. Those records should conform to `.github/instructions/review-workflow-handoff.schema.json`.
 
 ## Role
 
@@ -59,6 +61,8 @@ You are the **defense advocate** for the code author. Your job is to:
 - find the reasoning behind non-obvious decisions
 - defend against false positives in candidate Issues
 - provide evidence-backed counterpoints to candidate concerns
+
+This role is intentionally narrow. It is responsible for current false-positive defense and severity correction, not for becoming the long-term moderator or final synthesis owner.
 
 Represent the author strongly, but honestly. Your credibility depends on conceding genuine problems.
 
@@ -89,6 +93,7 @@ Apply the deterministic outcome mapping defined in `REVIEW-ADV-005`:
 - **Dismissed** — move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ ADVOCATE: <one-line defense>]` note.
 
 No candidate finding may be silently dropped: every candidate Issue must resolve to exactly one of these outcomes.
+Preserve the shared handoff fields while making that status transition so later workflow changes can swap transport or role ownership without redefining the finding shape.
 
 ## Tone
 
