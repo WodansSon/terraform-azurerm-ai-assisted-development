@@ -1,82 +1,87 @@
-name: ✨ Feature Request
-description: Suggest a new feature or enhancement for the toolkit
-title: "[Feature]: "
-labels: ["enhancement", "needs-triage"]
+name: Feature Request
+description: If you want to propose a new feature or improvement.
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a new feature! Help us understand what you'd like to see.
+        Thank you for taking the time to suggest a feature request.
 
-  - type: dropdown
-    id: component
+        Before filing, please check whether the same request has already been raised or is already being implemented in an open pull request.
+
+        Please also consider whether the request belongs in this repository or should be proposed upstream instead. Requests that are fundamentally about VS Code, GitHub Copilot service behavior, Terraform CLI, or the AzureRM provider may need to be opened in those projects instead.
+  - type: checkboxes
     attributes:
-      label: Component
-      description: Which component would this feature enhance?
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue already exists for the feature you want.
       options:
-        - Copilot Instructions
-        - Code Generation Patterns
-        - Installer
-        - Testing Guidelines
-        - Documentation
-        - New Component
-        - Other
+        - label: I have searched the existing issues and pull requests
+          required: true
+  - type: textarea
+    id: community
+    attributes:
+      label: Community Note
+      description: This note is for the community, please leave and skip this.
+      value: |
+        <!--- Please keep this note for the community --->
+
+        * Please vote on this issue by adding a :thumbsup: [reaction](https://github.blog/news-insights/product-news/add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request
+        * Please do not leave comments along the lines of "+1", "me too" or "any updates", they generate extra noise for issue followers and do not help prioritize the request
+        * If you are interested in working on this issue or have submitted a pull request, please leave a comment and review the [contribution guide](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CONTRIBUTING.md) to help
+
+        <!--- Thank you for keeping this note for the community --->
     validations:
       required: true
-
+  - type: input
+    id: component
+    attributes:
+      label: Affected Component(s)
+      description: Please list the toolkit component, workflow, prompt, script, or documentation area this request is about.
+      placeholder: installer, regression harness, copilot instructions, review prompts
+    validations:
+      required: true
+  - type: input
+    id: toolkit
+    attributes:
+      label: Toolkit Version
+      description: Which released version are you currently using?
+      placeholder: v1.0.0
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:
       label: Problem Statement
-      description: What problem does this feature solve?
-      placeholder: I'm always frustrated when...
+      description: What problem does this request solve?
     validations:
       required: true
-
   - type: textarea
     id: solution
     attributes:
       label: Proposed Solution
-      description: How would you like this feature to work?
-      placeholder: I'd like to see...
+      description: How would you like this feature or improvement to work?
     validations:
       required: true
-
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives Considered
-      description: What other solutions have you considered?
-      placeholder: I've also thought about...
-    validations:
-      required: false
-
+      description: What other solutions or workarounds have you considered?
   - type: textarea
-    id: benefits
+    id: impact
     attributes:
-      label: Benefits
-      description: Who would benefit from this feature and how?
-      placeholder: This would help...
-    validations:
-      required: false
-
-  - type: dropdown
-    id: priority
+      label: Current Workaround / Impact
+      description: Describe any workaround you use today and the cost of not having this feature.
+  - type: input
+    id: environment
     attributes:
-      label: Priority
-      description: How important is this feature to you?
-      options:
-        - Nice to have
-        - Would improve workflow
-        - Critical for my use case
-    validations:
-      required: true
-
+      label: Relevant Environment(s)
+      description: If this request is environment-specific, describe that context here.
+      placeholder: Windows 11, WSL2, VS Code Insiders, Remote SSH, dev container
   - type: textarea
-    id: additional
+    id: references
     attributes:
-      label: Additional Context
-      description: Add any other context, screenshots, or examples
-      placeholder: For example...
-    validations:
-      required: false
+      label: References
+      description: |
+        Are there any related issues, pull requests, discussions, screenshots, or external documentation that should be linked here?
+
+        If another project implements the behavior you want, include that reference as well.

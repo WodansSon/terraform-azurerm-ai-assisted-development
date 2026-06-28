@@ -1,76 +1,87 @@
-name: 📚 Documentation Issue
-description: Report an issue with documentation or suggest improvements
-title: "[Docs]: "
-labels: ["documentation", "needs-triage"]
+name: Documentation Issue
+description: If documentation is incorrect, unclear, or missing.
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve our documentation!
+        Thank you for taking the time to report a documentation issue.
 
-  - type: dropdown
-    id: doc-type
+        Before filing, please check whether the problem has already been reported or is already addressed in an open pull request.
+
+        If the issue is actually with VS Code, GitHub Copilot, Terraform CLI behavior, or the AzureRM provider rather than this repository's documentation, please consider opening an issue with the relevant upstream project instead.
+  - type: checkboxes
     attributes:
-      label: Documentation Type
-      description: What type of documentation needs attention?
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue already exists for the documentation problem you encountered.
       options:
-        - README
-        - Installation Guide
-        - Copilot Instructions
-        - Code Patterns/Examples
-        - Contributing Guide
-        - API/Reference
-        - Other
-    validations:
-      required: true
-
-  - type: dropdown
-    id: issue-type
-    attributes:
-      label: Issue Type
-      description: What kind of documentation issue is this?
-      options:
-        - Unclear or confusing
-        - Incorrect or outdated
-        - Missing information
-        - Typo or grammar
-        - Broken link
-        - Needs example
-        - Other
-    validations:
-      required: true
-
+        - label: I have searched the existing issues and pull requests
+          required: true
   - type: textarea
+    id: community
+    attributes:
+      label: Community Note
+      description: This note is for the community, please leave and skip this.
+      value: |
+        <!--- Please keep this note for the community --->
+
+        * Please vote on this issue by adding a :thumbsup: [reaction](https://github.blog/news-insights/product-news/add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request
+        * Please do not leave comments along the lines of "+1", "me too" or "any updates", they generate extra noise for issue followers and do not help prioritize the request
+        * If you are interested in working on this issue or have submitted a pull request, please leave a comment and review the [contribution guide](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CONTRIBUTING.md) to help
+
+        <!--- Thank you for keeping this note for the community --->
+    validations:
+      required: true
+  - type: input
+    id: toolkit
+    attributes:
+      label: Toolkit Version
+      description: Which released version were you using when you found the documentation issue?
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
     id: location
     attributes:
       label: Documentation Location
-      description: Where in the docs is the issue? (file path, section, URL)
-      placeholder: e.g., README.md line 45, installer/README.md "Installation" section
+      description: Please provide the file path, section heading, or URL that needs attention.
+      placeholder: README.md, docs/TROUBLESHOOTING.md, installer/README.md#installation
     validations:
       required: true
-
-  - type: textarea
-    id: issue
+  - type: input
+    id: issue_type
     attributes:
-      label: What's Wrong?
-      description: Describe the documentation issue
-      placeholder: The current documentation says...
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      placeholder: incorrect, outdated, missing information, broken link, unclear example
     validations:
       required: true
-
   - type: textarea
-    id: suggestion
+    id: problem
     attributes:
-      label: Suggested Improvement
-      description: How would you improve it?
-      placeholder: It should say... or include...
+      label: What Is Wrong?
+      description: Describe the documentation problem as precisely as you can.
     validations:
-      required: false
-
+      required: true
   - type: textarea
-    id: additional
+    id: expected
     attributes:
-      label: Additional Context
-      description: Any other information that might help
-    validations:
-      required: false
+      label: What Should It Say Instead?
+      description: If you know the expected wording, behavior, or example, please describe it here.
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How Did You Find The Problem?
+      description: |
+        Please list the steps that led you to the documentation issue, for example.
+
+        1. Open a specific guide or README
+        2. Follow the documented steps
+        3. Reach the incorrect, missing, or confusing section
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: |
+        Are there any related issues, pull requests, release notes, or external documentation that should be linked here?
+
+        If you already have corrected wording or an example from another source, include it here.

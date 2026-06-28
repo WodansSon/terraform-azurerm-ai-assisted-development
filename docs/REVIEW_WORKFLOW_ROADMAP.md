@@ -215,8 +215,6 @@ During the stabilization phase, the semantic schema matters more than the final 
 
 The current concrete runtime schema for that transport now lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
-### Why This Matters Now
-
 If the single-workflow version uses structured intermediate outputs now, the future multi-agent cutover becomes mostly a transport change:
 
 - sequential execution can become parallel execution
@@ -237,6 +235,7 @@ The moderator layer should eventually be governed by explicit rules such as:
 - preserve the final review template and required markers
 
 These rules should be regression-tested once they are formalized.
+
 An initial staged benchmark for duplicate-merge behavior now exists so this moderator-specific responsibility can be validated before moderator routing is enabled.
 
 ## Design Principle For The Current Workflow

@@ -1,101 +1,198 @@
-name: 🐛 Bug Report
-description: Report a bug or issue with the AI-assisted development toolkit
-title: "[Bug]: "
-labels: ["bug", "needs-triage"]
+name: Bug Report
+description: If something isn't working as expected.
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
+        Thank you for taking the time to fill out a bug report.
 
-  - type: dropdown
+        If you are not running the latest released version, please upgrade first because your issue may already have been fixed.
+
+        Please also note the following scenarios that are often owned outside this repository:
+
+        * VS Code editor or extension host issues
+        * GitHub Copilot authentication, subscription, or service-side issues
+        * Terraform CLI, Terraform language, or Terraform state/backend issues
+        * AzureRM provider or Azure service API issues unrelated to this toolkit
+        * Local network, proxy, enterprise policy, or machine configuration issues
+
+        If you are running into one of these scenarios, please consider opening an issue with the relevant upstream project instead of this repository.
+  - type: checkboxes
+    attributes:
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue already exists for the bug you encountered.
+      options:
+        - label: I have searched the existing issues
+          required: true
+  - type: textarea
+    id: community
+    attributes:
+      label: Community Note
+      description: This note is for the community, please leave and skip this.
+      value: |
+        <!--- Please keep this note for the community --->
+
+        * Please vote on this issue by adding a :thumbsup: [reaction](https://github.blog/news-insights/product-news/add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request
+        * Please do not leave comments along the lines of "+1", "me too" or "any updates", they generate extra noise for issue followers and do not help prioritize the request
+        * If you are interested in working on this issue or have submitted a pull request, please leave a comment and review the [contribution guide](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CONTRIBUTING.md) to help
+
+        <!--- Thank you for keeping this note for the community --->
+    validations:
+      required: true
+  - type: textarea
+    id: version_information
+    attributes:
+      label: Version Information
+      description: |
+        Paste the full output of `./install-copilot-setup.sh --version` or `.\install-copilot-setup.ps1 -Version`.
+
+        This should include the toolkit version, manifest, and source information shown by the installer.
+      render: shell
+      placeholder: |
+        ============================================================
+         Terraform AzureRM Provider - AI Infrastructure Installer
+         Version: X.Y.Z
+        ============================================================
+
+        VERSION INFORMATION:
+          Version : X.Y.Z
+          Manifest: 12345678-12345678
+          Source  : C:\Users\example\.terraform-azurerm-ai-installer\aii
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Selected LLM / Model
+      description: Which model were you running when the issue occurred?
+      placeholder: GPT-5.4 high
+    validations:
+      required: true
+  - type: input
+    id: copilot
+    attributes:
+      label: GitHub Copilot / Copilot Chat Extension Version
+      description: Which GitHub Copilot or Copilot Chat extension version are you using?
+      placeholder: 1.300.0
+    validations:
+      required: true
+  - type: input
+    id: vscode
+    attributes:
+      label: VS Code Version
+      description: Which VS Code version are you using?
+      placeholder: 1.100.0
+    validations:
+      required: true
+  - type: input
     id: component
     attributes:
-      label: Component
-      description: Which component is experiencing the issue?
+      label: Affected Component(s)
+      description: Please list the affected toolkit component, prompt, workflow, document, or script.
+      placeholder: installer/install-copilot-setup.ps1, .github/copilot-instructions.md, tools/run-regression-harness.ps1
+    validations:
+      required: true
+  - type: input
+    id: workflow
+    attributes:
+      label: Triggered Command / Workflow
+      description: Which command, slash command, or workflow were you using when the issue occurred?
+      placeholder: /code-review-local-changes, /code-review-docs, install-copilot-setup.ps1, freeform chat request
+    validations:
+      required: true
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt / Request
+      description: |
+        If this issue came from a prompt-driven interaction, paste the exact prompt or request that triggered it.
+
+        If the issue was not caused by a prompt, you can leave this blank.
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install Method
+      description: How was this toolkit install obtained?
       options:
-        - Installer (PowerShell)
-        - Installer (Bash)
-        - Copilot Instructions
-        - Code Generation Patterns
-        - Testing Guidelines
-        - Documentation
-        - Other
-    validations:
-      required: true
-
-  - type: textarea
-    id: description
+        - Windows ZIP release bundle
+        - Linux/macOS TAR.GZ release bundle
+        - Existing installer upgraded in place
+        - Not sure
+  - type: dropdown
+    id: reproducibility
     attributes:
-      label: Bug Description
-      description: A clear and concise description of what the bug is
-      placeholder: Tell us what went wrong
-    validations:
-      required: true
-
-  - type: textarea
-    id: reproduction
+      label: Reproducibility
+      description: How consistently does this issue occur?
+      options:
+        - Always
+        - Intermittent
+        - Happened once so far
+        - Not sure
+  - type: input
+    id: environment
     attributes:
-      label: Steps to Reproduce
-      description: Steps to reproduce the behavior
-      placeholder: |
-        1. Run installer with '...'
-        2. Open VS Code with '...'
-        3. Try to generate '...'
-        4. See error
+      label: Affected Environment(s)
+      description: Please list the operating system and execution context you were using.
+      placeholder: Windows 11, VS Code Stable, local workspace or Ubuntu 24.04, WSL2, VS Code Insiders
     validations:
       required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant Configuration / Prompt / Command Input
+      description: |
+        Please provide the smallest prompt, configuration snippet, command sequence, or reproduction input that can demonstrate the issue.
 
+        For larger reproductions, please share a link to a Gist or repository with a minimal example.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Screenshots / Terminal Output / Artifacts
+      description: |
+        If helpful, include supporting evidence for the issue.
+
+        For screenshots, capture the failing UI state, visible error messages, and any relevant VS Code panel or terminal context.
+
+        For terminal output, paste only the relevant excerpt inline. If the output is long, link to a GitHub Gist instead of pasting the full transcript.
+
+        For artifacts, include links or attachments for things like screen recordings, minimal repro repositories, or copied assistant responses that help explain the failure.
+    validations:
+      required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
-      placeholder: I expected...
-    validations:
-      required: true
-
+      label: Expected Behaviour
+      description: What should have happened?
   - type: textarea
     id: actual
     attributes:
-      label: Actual Behavior
+      label: Actual Behaviour
       description: What actually happened?
-      placeholder: Instead, I got...
-    validations:
-      required: true
-
-  - type: input
-    id: os
-    attributes:
-      label: Operating System
-      description: What OS are you running?
-      placeholder: e.g., Windows 11, macOS 14.0, Ubuntu 22.04
-    validations:
-      required: true
-
-  - type: input
-    id: vscode-version
-    attributes:
-      label: VS Code Version
-      description: What version of VS Code are you using?
-      placeholder: e.g., 1.85.0
-    validations:
-      required: false
-
-  - type: input
-    id: copilot-version
-    attributes:
-      label: GitHub Copilot Version
-      description: What version of GitHub Copilot extension?
-      placeholder: e.g., v1.145.0
-    validations:
-      required: false
-
   - type: textarea
-    id: additional
+    id: reproduce
     attributes:
-      label: Additional Context
-      description: Add any other context about the problem here
-      placeholder: Logs, screenshots, error messages, etc.
-    validations:
-      required: false
+      label: Steps to Reproduce
+      description: |
+        Please list the steps required to reproduce the issue, e.g.
+
+        1. Run `pwsh -NoProfile -File ./installer/install-copilot-setup.ps1`
+        2. Open the workspace in VS Code
+        3. Trigger the failing prompt, workflow, or script
+  - type: input
+    id: facts
+    attributes:
+      label: Important Factoids
+      description: |
+        Is there anything atypical about your environment that we should know? For example: VS Code Insiders, WSL, Remote SSH, dev containers, enterprise proxy restrictions, or custom local instructions.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: |
+        Are there any other GitHub issues, pull requests, discussion threads, or external documentation that should be linked here?
+
+        For information about linking GitHub issues and pull requests, see:
+        https://docs.github.com/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue

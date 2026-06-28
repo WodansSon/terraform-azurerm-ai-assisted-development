@@ -237,20 +237,20 @@ Before using the AI-powered development features, ensure you have the following 
 #### Recommended Configuration
 For optimal performance and the best AI assistance experience:
 
-- **LLM Model**: **Claude Sonnet 4.5** (optimal for Terraform and Go development)
-- **Copilot Chat Model**: Set to `Claude Sonnet 4.5` in VS Code settings
-- **Alternative**: GPT-4o (good alternative if Claude is unavailable)
+- **LLM Model**: **GPT-5.4 high** (the primary validated model for this toolkit)
+- **Copilot Chat Model**: Set to `GPT-5.4 high` in VS Code settings
+- **Alternative**: Other models may still be usable, but they are not expected to match `GPT-5.4 high` for instruction adherence and stable workflow behavior
 
 #### Quick Setup
 1. Install the required extensions from VS Code marketplace
 2. Sign in to GitHub Copilot with your account
-3. Configure `Claude Sonnet 4.5` as your preferred model:
+3. Configure `GPT-5.4 high` as your preferred model:
    - Open VS Code Settings (`Ctrl+,`)
    - Search for "copilot chat model"
-   - Select `Claude Sonnet 4.5` from the dropdown
+   - Select `GPT-5.4 high` from the dropdown
 
 > [!NOTE]
-> `Claude Sonnet 4.5` provides superior understanding of Terraform patterns, Azure API specifics, and Go code generation compared to other models.
+> This repository's prompts, contracts, and regression baseline are primarily validated against `GPT-5.4 high`.
 
 ### First Time Setup
 
