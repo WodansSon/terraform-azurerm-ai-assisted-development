@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **[Review]** - The generic review workflow now ships a shared JSON handoff schema for routed role findings and narrows `review-advocate` toward a transitional false-positive-defense gate, so the future moderator split can change role ownership later without redefining the candidate-finding schema.
   - **[Review]** - The generic review prompts now describe their last stage as a final adjudication owner slot that is currently bound to `review-advocate`, and the regression harness now includes a staged duplicate-merge moderator case so the future advocate-to-moderator cutover has an explicit benchmark for merged final findings.
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Changelog validation now checks release-footer link consistency, including the `Unreleased` compare base and per-version footer entries, so stale changelog links fail the maintainer validator before release preparation.
+
 ### Fixed
 
 ## [3.5.0] - 2026-06-24
@@ -683,10 +686,29 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.5.0
+[3.4.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.3
+[3.4.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.2
+[3.4.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.1
+[3.4.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.0
 [3.3.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.3.0
+[3.2.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.2.2
+[3.2.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.2.1
+[3.2.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.2.0
+[3.1.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.1.0
+[3.0.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.2
 [3.0.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.1
 [3.0.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.0.0
+[2.0.8]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.8
+[2.0.7]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.7
+[2.0.6]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.6
+[2.0.5]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.5
+[2.0.4]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.4
+[2.0.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.3
+[2.0.2]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.2
+[2.0.1]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.1
+[2.0.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v2.0.0
 [1.0.5]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v1.0.3

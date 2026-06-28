@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $changelogTaxonomyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-taxonomy.ps1'
+$changelogConsistencyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-consistency.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
@@ -227,6 +228,10 @@ try {
         & pwsh -NoProfile -File $changelogTaxonomyScriptPath
     }
 
+    $steps += Invoke-ValidationStep -Name 'changelog-consistency' -Detail 'Validate release footer links and the Unreleased compare link against the changelog release headings.' -Skipped:$SkipChangelog -Command {
+        & pwsh -NoProfile -File $changelogConsistencyScriptPath
+    }
+
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {
         & pwsh -NoProfile -File $contractsScriptPath
     }
@@ -291,6 +296,7 @@ try {
         steps = $steps
         highlights = [ordered]@{
             changelogStatus = @($steps | Where-Object { $_.name -eq 'changelog' })[0].status
+            changelogConsistencyStatus = @($steps | Where-Object { $_.name -eq 'changelog-consistency' })[0].status
             regressionCasesSelected = if ($regressionStep.status -eq 'passed') { Get-TextMatchValue -Text $regressionStep.output -Pattern 'Cases Selected\s*:\s*([0-9]+)' } else { $null }
             regressionCasesScored = if ($regressionStep.status -eq 'passed') { Get-TextMatchValue -Text $regressionStep.output -Pattern 'Cases Scored\s*:\s*([0-9]+)' } else { $null }
             upstreamChangedSources = if ($driftStep.status -ne 'skipped') { Get-TextMatchValue -Text $driftStep.output -Pattern 'Changed:\s*([0-9]+)' } else { $null }
@@ -323,6 +329,9 @@ try {
         $changelogTaxonomyStep = @($steps | Where-Object { $_.name -eq 'changelog-taxonomy' })[0]
         if ($null -ne $changelogTaxonomyStep) {
             Write-Output "  Changelog Taxonomy       : $($changelogTaxonomyStep.status)"
+        }
+        if ($null -ne $summary.highlights.changelogConsistencyStatus) {
+            Write-Output "  Changelog Consistency    : $($summary.highlights.changelogConsistencyStatus)"
         }
         if ($null -ne $summary.highlights.regressionCasesSelected) {
             Write-Output "  Regression Cases Selected : $($summary.highlights.regressionCasesSelected)"

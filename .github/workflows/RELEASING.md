@@ -36,8 +36,9 @@ When you are actually cutting the release, move those `Unreleased` notes into a 
 Maintainer conventions for the changelog cut:
 
 - after moving the release notes into the new versioned section, restore an empty `## [Unreleased]` section at the top with empty `### Added`, `### Changed`, and `### Fixed` headings
+- update the footer reference block so the new release section has a `[X.Y.Z]` link entry and `[Unreleased]` compares from the newly latest released version
 - commit that changelog-only release cut on `main` before creating the tag
-- use the established commit-subject pattern `Prepare X.Y.Z changelog`, for example `Prepare 3.5.0 changelog`
+- use the established commit-subject pattern `Prepare X.Y.Z changelog`, for example `Prepare X.Y.Z changelog`
 - create and push the `vX.Y.Z` tag only after that changelog commit is present on `main`
 
 ### 2. Validate the branch before opening the PR

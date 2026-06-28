@@ -28,6 +28,7 @@ When maintaining the changelog in this repository, use these sources in this ord
 - `.github/pull_request_template.md`
 - `tools/validate-ai-toolkit.ps1`
 - `tools/validate-changelog-taxonomy.ps1`
+- `tools/validate-changelog-consistency.ps1`
 
 ## Mandatory: read the entire skill
 
@@ -126,6 +127,7 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 - Under `Unreleased`, keep `### Added`, `### Changed`, and `### Fixed` headings present even when they are empty.
 - When preparing a release, move the relevant `Unreleased` bullets into the dated release section.
 - After creating a release section, restore empty `Added`, `Changed`, and `Fixed` headings under `Unreleased`.
+- When preparing a release, update the footer reference block so `[Unreleased]` compares from the new latest release and the new versioned section has a matching `[X.Y.Z]` footer link.
 - Preserve the repository's current release-section shape, including empty release subsection headings when the repo already keeps them.
 - Keep exactly one blank line after each `### Added`, `### Changed`, or `### Fixed` heading before the first grouped bullet or entry.
 - Inside each `Added`, `Changed`, or `Fixed` subsection, render entries under `**User-Priority:**` and `**Maintainer/Workflow:**` top-level bullets when those groups are present.
@@ -139,6 +141,12 @@ After changing the changelog, run:
 
 ```powershell
 pwsh -NoProfile -File ./tools/validate-changelog-taxonomy.ps1
+```
+
+When preparing a release section or updating footer links, also run:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-changelog-consistency.ps1
 ```
 
 Preferred one-shot validation:
