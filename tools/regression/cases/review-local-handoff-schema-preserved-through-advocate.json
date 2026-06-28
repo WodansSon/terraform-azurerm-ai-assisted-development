@@ -1,0 +1,68 @@
+{
+  "id": "review-local-handoff-schema-preserved-through-advocate",
+  "title": "Local review preserves schema-backed handoff records through advocate resolution",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where the workflow handoff schema, skeptic guidance, and advocate contract all change together. The routed roles must preserve one schema-conformant candidate record through advocate adjudication instead of replacing it with free-form prose.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-handoff-schema-preserved-through-advocate/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/instructions/review-workflow-handoff.schema.json",
+      ".github/prompts/code-review-local-changes.prompt.md",
+      ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      ".github/instructions/review-advocate-compliance-contract.instructions.md"
+    ],
+    "notes": "Sanitized fixture models a handoff-schema change plus prompt and contract wording updates. A correct review should catch any wording that would let the advocate replace a schema record with prose, while dismissing claims that optional schema fields are mandatory."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-004",
+    "REVIEW-HANDOFF-001",
+    "REVIEW-HANDOFF-002",
+    "REVIEW-HANDOFF-003",
+    "REVIEW-HANDOFF-005",
+    "REVIEW-SKEP-002",
+    "REVIEW-ADV-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "schema-record-preserved-through-advocate",
+      "severity": "medium",
+      "description": "A real workflow issue should be raised if routed-role wording would let the advocate replace a schema-backed candidate record with free-form prose instead of preserving the shared handoff shape through adjudication."
+    },
+    {
+      "key": "optional-role-notes-not-required",
+      "severity": "observation",
+      "description": "A false-positive claim that every handoff record must include `roleNotes` should be dismissed because the shared schema makes `roleNotes` optional; the dismissal should remain visible through the advocate outcome path."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "schema-record-replaced-by-freeform-dialogue",
+      "description": "The review must not accept an implementation that preserves only prose debate and loses the schema-backed candidate record shape."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: review-architect",
+      "Skill used: review-skeptic",
+      "Skill used: review-advocate",
+      "[⚖️ ADVOCATE:"
+    ]
+  },
+  "notes": "Use this case to benchmark schema-preserving routed-role handoff behavior through the generic local review prompt without adding a direct schema-validation task type."
+}

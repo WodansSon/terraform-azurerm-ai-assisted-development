@@ -19,10 +19,13 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are five main contract files:
+There are eight main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
 - Advocate second-pass contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
+- Skeptic adversarial-pass contract: `.github/instructions/review-skeptic-compliance-contract.instructions.md`
+- Architect direction-pass contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
+- Moderator synthesis-pass contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
 - Testing contract: `.github/instructions/testing-compliance-contract.instructions.md`
@@ -32,13 +35,23 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/code-review-local-changes`
 - `/code-review-committed-changes`
 - `/review-advocate`
+- `/review-skeptic`
+- `/review-architect`
+- `/review-moderator`
 - `/code-review-docs`
 - `/docs-writer`
 - `/resource-implementation`
 - `/acceptance-testing`
 
-The `review-advocate` skill is the dedicated advocate second-pass quality gate.
-The generic code review prompts invoke it when candidate Issues exist, while the dedicated advocate contract owns the deterministic `REVIEW-ADV-*` rules that govern `Confirmed`, `Downgraded`, and `Dismissed` outcomes.
+The `review-skeptic` and `review-architect` skills are workflow-governed intermediate passes.
+The generic code review prompts invoke them after the primary review pass as governed intermediate passes.
+They may add evidence-backed candidate Issues or Observations inside the generic code-review workflow, but they do not emit standalone final review sections and any candidate Issues they add still flow through the advocate gate.
+
+The `review-advocate` skill is the current transitional false-positive-defense gate.
+The generic code review prompts currently bind the final adjudication owner slot to `review-advocate` when candidate Issues exist after the primary review pass and any routed skeptic or architect passes, while the dedicated advocate contract owns the deterministic `REVIEW-ADV-*` rules that govern `Confirmed`, `Downgraded`, and `Dismissed` outcomes.
+
+The `review-moderator` skill is the planned final synthesis role.
+Its contract is defined now so moderator semantics can stabilize early, but the generic code review prompts do not yet bind the final adjudication owner slot to it.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -86,6 +99,7 @@ These IDs come from `.github/instructions/code-review-compliance-contract.instru
 | ------ | ------- | ------------------------------ |
 | `REVIEW-EVID-*` | Evidence and verification | The review had to prove the claim from the diff, code, docs, or tool output instead of guessing |
 | `REVIEW-CLASS-*` | Finding classification | Why something was reported as an Issue, Observation, or Strength |
+| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How routed review roles exchange candidate findings before final output is frozen |
 | `REVIEW-FILE-*` | File handling and scope coverage | Which changed files had to be considered and how they were classified |
 | `REVIEW-SCOPE-*` | File-type-specific review coverage | Which extra checks applied because of the file type or content |
 | `REVIEW-TEST-*` | Acceptance-test review guidance | How embedded Terraform, ImportStep, or requires-import patterns were evaluated |
@@ -179,7 +193,7 @@ The contract-first model matters here too: the linter execution policy, status m
 
 ## `REVIEW-ADV-*` Rule Area
 
-These IDs come from `.github/instructions/review-advocate-compliance-contract.instructions.md` and are consumed by `/review-advocate`, which the generic code review prompts invoke as the second-pass advocate quality gate when candidate Issues exist.
+These IDs come from `.github/instructions/review-advocate-compliance-contract.instructions.md` and are consumed by `/review-advocate`, which the generic code review prompts invoke as the second-pass advocate quality gate when candidate Issues exist anywhere in the workflow candidate set.
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
@@ -188,10 +202,72 @@ These IDs come from `.github/instructions/review-advocate-compliance-contract.in
 In practice, `REVIEW-ADV-*` rules explain things such as:
 
 - when the advocate pass is allowed to run
+- which earlier passes are allowed to feed candidate Issues into the advocate gate
 - what counts as a valid defense
 - how trust-boundary defenses must be justified
 - why a finding stayed in `ISSUES` at lower severity versus moving to `OBSERVATIONS`
 - why a dismissed finding carries a `[⚖️ ADVOCATE: ...]` annotation instead of disappearing entirely
+
+## `REVIEW-HANDOFF-*` Rule Area
+
+These IDs come from `.github/instructions/code-review-compliance-contract.instructions.md` and govern the shared intermediate finding shape used between the primary review pass, routed intermediate passes, and the advocate gate. The concrete runtime schema for that shape lives at `.github/instructions/review-workflow-handoff.schema.json`.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How the workflow preserves title, scope, evidence, reasoning, confidence, and status while routed roles add or adjudicate findings |
+
+In practice, `REVIEW-HANDOFF-*` rules explain things such as:
+
+- which semantic fields every intermediate finding must preserve
+- which statuses exist before advocate adjudication versus after it
+- why routed roles should enrich one record instead of cloning duplicate findings
+- why the workflow can change transport later without redefining role semantics
+- where the concrete JSON schema artifact for the handoff record lives in the installed toolkit
+
+## `REVIEW-SKEP-*` Rule Area
+
+These IDs come from `.github/instructions/review-skeptic-compliance-contract.instructions.md` and are consumed by `/review-skeptic` as a workflow-governed intermediate pass inside the generic code review prompts.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-SKEP-*` | Skeptic adversarial-pass evaluation | How the workflow stress-tests a change-set for missed defects before the advocate pass freezes output |
+
+In practice, `REVIEW-SKEP-*` rules explain things such as:
+
+- when the skeptic pass is allowed to run
+- which attack surfaces it must examine
+- what evidence a skeptic-proposed candidate Issue must carry
+- why skeptic output stays invisible until the normal review sections are finalized
+
+## `REVIEW-ARCH-*` Rule Area
+
+These IDs come from `.github/instructions/review-architect-compliance-contract.instructions.md` and are consumed by `/review-architect` as a workflow-governed intermediate pass inside the generic code review prompts.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-ARCH-*` | Architect direction-pass evaluation | How the workflow evaluates design fit, schema direction, and maintainability before the advocate pass freezes output |
+
+In practice, `REVIEW-ARCH-*` rules explain things such as:
+
+- when the architect pass is allowed to run
+- which design-direction areas it must examine
+- why most architect feedback is an Observation unless a mandatory source is violated
+- why architect output stays invisible until the normal review sections are finalized
+
+## `REVIEW-MOD-*` Rule Area
+
+These IDs come from `.github/instructions/review-moderator-compliance-contract.instructions.md` and describe the planned moderator synthesis role that will eventually merge schema-conformant workflow findings once explicit moderator routing exists.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-MOD-*` | Moderator synthesis-pass evaluation | How the planned moderator role will merge, normalize, and finalize routed findings without re-running an independent review |
+
+In practice, `REVIEW-MOD-*` rules explain things such as:
+
+- how duplicate findings should merge into one strongest record
+- how schema-backed workflow records should survive into final moderation
+- why the planned moderator role is distinct from the current advocate gate
+- why staged moderator artifacts do not mean moderator routing is already active
 
 ## `DOCS-*` Rule Areas
 

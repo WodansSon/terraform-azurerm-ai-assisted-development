@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added `review-skeptic` and `review-architect` runtime skills so a code review can be stress-tested by an adversarial pass that proposes additional evidence-backed candidate issues, and checked by a design-direction pass that evaluates structural fit and naming, with both passes handing their candidates to the existing advocate gate before review output is frozen.
+  - **[Review]** - Added a staged `review-moderator` contract and skill plus an adjudicated regression case for schema-preserving routed-role handoff through advocate resolution, so the future synthesis role and the current JSON-schema transport are both benchmarked before moderator routing is enabled.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added the `review-skeptic-compliance-contract.instructions.md` (`REVIEW-SKEP-*`) and `review-architect-compliance-contract.instructions.md` (`REVIEW-ARCH-*`) contracts and shipped both skills plus contracts in the installer payload, mirroring the skill-plus-contract structure of `review-advocate` so the adversarial and direction methods stay separated from the deterministic rules they follow.
+  - **[Internal]** - Shipped the `review-workflow-handoff.schema.json` runtime artifact and the staged `review-moderator-compliance-contract.instructions.md` plus `review-moderator` skill in the installer payload, so target repositories can stabilize the shared finding transport and future moderator semantics before prompt routing changes.
+
 ### Changed
+
+- **User-Priority:**
+  - **[Review]** - The local and committed generic code-review prompts now invoke `review-architect` and `review-skeptic` as prompt-governed intermediate passes before the existing advocate gate, so design-direction and adversarial findings can enter the workflow candidate set even when the primary review pass would otherwise conclude with no candidate Issues.
+  - **[Review]** - The generic review workflow now ships a shared JSON handoff schema for routed role findings and narrows `review-advocate` toward a transitional false-positive-defense gate, so the future moderator split can change role ownership later without redefining the candidate-finding schema.
+  - **[Review]** - The generic review prompts now describe their last stage as a final adjudication owner slot that is currently bound to `review-advocate`, and the regression harness now includes a staged duplicate-merge moderator case so the future advocate-to-moderator cutover has an explicit benchmark for merged final findings.
 
 ### Fixed
 

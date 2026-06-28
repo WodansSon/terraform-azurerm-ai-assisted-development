@@ -1,5 +1,5 @@
 ---
-description: "Advocate second-pass compliance contract (single source of truth) used by the review-advocate skill to challenge candidate Issues and filter false positives before review output is frozen."
+description: "Advocate second-pass compliance contract (single source of truth) used by the review-advocate skill as the current transitional false-positive-defense gate for the workflow candidate-Issue set before review output is frozen."
 ---
 
 # Review Advocate Compliance Contract
@@ -14,11 +14,13 @@ One workflow MUST follow this contract:
   - Role: Advocate
   - Command: `review-advocate` skill, invoked by `/code-review-local-changes` and `/code-review-committed-changes`
   - Requires EOF Load: yes
-  - Goal: challenge candidate Issues, defend intentional design, and resolve each candidate to a deterministic outcome before output is frozen.
+  - Goal: perform the current transitional false-positive-defense step by challenging candidate Issues, defending intentional design where supported, and resolving each candidate to a deterministic outcome before output is frozen.
 
 The review prompts orchestrate when the advocate pass runs.
 The advocate skill encapsulates the reusable advocate method.
 This contract defines the advocate-specific deterministic rules.
+This contract governs the current transitional advocate gate, not a long-term moderator or final-synthesis role.
+The shared workflow handoff schema lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
 ## Canonical sources of truth (precedence)
 
@@ -26,7 +28,7 @@ Use these sources with the following roles:
 
 - The shared code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
   - Authoritative for overall review flow, evidence handling, finding classification, and output shape.
-  - This advocate contract refines how candidate Issues are challenged before output is frozen; it must not weaken or override the `REVIEW-CLASS-*` semantics.
+  - This advocate contract refines how candidate Issues are challenged before output is frozen; it must not weaken or override the `REVIEW-CLASS-*` or `REVIEW-HANDOFF-*` semantics.
 - This contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
   - Authoritative for the advocate second-pass deterministic rules in this repository.
 - The advocate skill: `.github/skills/review-advocate/SKILL.md`
@@ -34,8 +36,10 @@ Use these sources with the following roles:
 
 Conflict resolution:
 
-- This contract is authoritative for advocate-pass activation, candidate evaluation, valid-defense requirements, and the `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping.
+- This contract is authoritative for the current advocate-pass activation, candidate evaluation, valid-defense requirements, and the `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping.
 - The shared code review contract remains authoritative for overall review flow, evidence handling, classification semantics, and output shape.
+- The shared code review contract remains authoritative for the intermediate handoff shape and the allowed workflow statuses that exist before and after advocate adjudication.
+- `.github/instructions/review-workflow-handoff.schema.json` is the concrete runtime schema artifact for that handoff shape.
 - If this contract would contradict `REVIEW-CLASS-004` (one finding, one classification), `REVIEW-CLASS-004` wins and the outcome mapping in `REVIEW-ADV-005` must be read so that each candidate still resolves to exactly one classification.
 
 ## Rule IDs
@@ -64,10 +68,12 @@ If a defense cannot be backed by this evidence, it is not a valid defense.
 
 ## Advocate second-pass evaluation
 
-### REVIEW-ADV-001: Advocate pass runs only after candidate Issues exist
-- Rule: The advocate pass runs only after the primary review pass has produced one or more candidate Issues.
-- Rule: If the primary pass produced no candidate Issues, the advocate pass does not run and changes nothing.
+### REVIEW-ADV-001: Advocate pass runs only after workflow candidate Issues exist
+- Rule: The advocate pass runs only after the review workflow has produced one or more candidate Issues.
+- Rule: Candidate Issues eligible for the advocate pass may originate in the primary review pass or in routed skeptic or architect passes that run before output is frozen.
+- Rule: If the primary pass and any routed intermediate passes produced no candidate Issues, the advocate pass does not run and changes nothing.
 - Rule: The advocate pass runs before the review output is frozen, never after.
+- Rule: The advocate consumes the structured workflow candidate set defined by `REVIEW-HANDOFF-*` and `.github/instructions/review-workflow-handoff.schema.json`; it must not bypass that shared handoff shape with ad hoc prose-only reasoning.
 
 ### REVIEW-ADV-002: Advocate evaluates candidate Issues, not strengths
 - Rule: The advocate evaluates candidate Issues only.
@@ -85,6 +91,7 @@ If a defense cannot be backed by this evidence, it is not a valid defense.
 
 ### REVIEW-ADV-005: Deterministic outcome mapping
 - Rule: Each candidate Issue must resolve to exactly one of three outcomes.
+- Rule: When the advocate resolves a candidate, it preserves the record's shared handoff fields and changes only the status and any evidence-backed severity adjustment needed for the outcome.
 - Rule: `Confirmed` — no valid defense found. Keep in `### 🔴 **ISSUES**` at original or adjusted severity.
 - Rule: `Downgraded` — partial valid defense found; the issue is less severe than first classified. Keep in `### 🔴 **ISSUES**` at reduced severity.
 - Rule: `Dismissed` — strong evidence the finding is a false positive or intentional design. Move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ ADVOCATE: <one-line defense>]` note.

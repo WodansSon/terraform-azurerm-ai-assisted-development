@@ -34,15 +34,20 @@
 │  │  │   │  │  │   ├── custom-poller-migration/SKILL.md   │  │  │ │
 │  │  │   │  │  │   ├── docs-writer/SKILL.md               │  │  │ │
 │  │  │   │  │  │   ├── resource-implementation/SKILL.md   │  │  │ │
-│  │  │   │  │  │   └── review-advocate/SKILL.md           │  │  │ │
+│  │  │   │  │  │   ├── review-advocate/SKILL.md           │  │  │ │
+│  │  │   │  │  │   ├── review-architect/SKILL.md          │  │  │ │
+│  │  │   │  │  │   ├── review-moderator/SKILL.md          │  │  │ │
+│  │  │   │  │  │   └── review-skeptic/SKILL.md            │  │  │ │
 │  │  │   │  │  └── instructions/                          │  │  │ │
 │  │  │   │  │      ├── code-review-compliance-contract... │  │  │ │
 │  │  │   │  │      ├── implementation-compliance-contr... │  │  │ │
 │  │  │   │  │      ├── docs-compliance-contract...        │  │  │ │
 │  │  │   │  │      ├── review-advocate-compliance...      │  │  │ │
+│  │  │   │  │      ├── review-moderator-compliance...     │  │  │ │
+│  │  │   │  │      ├── review-workflow-handoff.schema.json│  │  │ │
 │  │  │   │  │      ├── testing-compliance-contract...     │  │  │ │
 │  │  │   │  │      ├── ai-skill-routing-*.instructions... │  │  │ │
-│  │  │   │  │      └── [21 runtime instruction files]     │  │  │ │
+│  │  │   │  │      └── [26 runtime instruction/schema files]│  │  │ │
 │  │  │   │  └── .vscode/settings.json                     │  │  │ │
 │  │  │   └────────────────────────────────────────────────┘  │  │ │
 │  │  └───────────────────────────────────────────────────────┘  │ │
@@ -116,9 +121,11 @@
 │  │   ├── implementation-compliance-contract.instructions.md │
 │  │   ├── docs-compliance-contract.instructions.md           │
 │  │   ├── review-advocate-compliance-contract.instructions.md│
+│  │   ├── review-moderator-compliance-contract.instructions.md│
+│  │   ├── review-workflow-handoff.schema.json                │
 │  │   ├── testing-compliance-contract.instructions.md        │
 │  │   ├── ai-skill-routing-*.instructions.md                 │
-│  │   └── [21 instruction files total]                       │
+│  │   └── [26 instruction/schema files total]                │
 │  ├── .github/skills/                                        │
 │  │   ├── acceptance-testing/SKILL.md                        │
 │  │   ├── custom-poller-migration/SKILL.md                   │
@@ -317,6 +324,10 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── performance-optimization.instructions.md
 │   │   ├── provider-guidelines.instructions.md
 │   │   ├── review-advocate-compliance-contract.instructions.md
+│   │   ├── review-architect-compliance-contract.instructions.md
+│   │   ├── review-moderator-compliance-contract.instructions.md
+│   │   ├── review-skeptic-compliance-contract.instructions.md
+│   │   ├── review-workflow-handoff.schema.json
 │   │   ├── schema-patterns.instructions.md
 │   │   ├── security-compliance.instructions.md
 │   │   ├── testing-compliance-contract.instructions.md
@@ -340,7 +351,10 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── custom-poller-migration/SKILL.md
 │   │   ├── docs-writer/SKILL.md
 │   │   ├── resource-implementation/SKILL.md
-│   │   └── review-advocate/SKILL.md
+│   │   ├── review-advocate/SKILL.md
+│   │   ├── review-architect/SKILL.md
+│   │   ├── review-moderator/SKILL.md
+│   │   └── review-skeptic/SKILL.md
 │   │
 │   ├── workflows/
 │   │   ├── contracts-validation.yml
@@ -449,7 +463,10 @@ Docs components (quick links):
 - `/code-review-local-changes`: reviews local workspace changes and uses local-diff linting.
 - `/code-review-committed-changes`: reviews committed branch changes against `origin/main`, prefers authoritative PR scope when available, and uses PR-scoped linting. When PR context is not already available, users can pass a PR number explicitly, for example `/code-review-committed-changes PR 12345`.
 - `/code-review-docs`: deterministic docs review for `website/docs/**` pages (enforces `hcl` code fences in Terraform examples, self-contained resource examples, existing-object lookup data source examples, list-resource query examples, ephemeral-resource doc shape, function doc shape, import example ID shape validation, and human-readable timeout defaults).
-- `/review-advocate`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as the second-pass advocate quality gate when candidate Issues exist.
+- `/review-architect`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as a workflow-governed design-direction pass before final adjudication is frozen.
+- `/review-skeptic`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as a workflow-governed adversarial pass before final adjudication is frozen.
+- `/review-advocate`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as the final false-positive-defense quality gate after the primary, architect, and skeptic passes have populated the workflow candidate set.
+- `/review-moderator`: slash-invokable runtime skill, not a prompt file. Its contract and skill are staged now to define the future synthesis role, but the generic code review prompts do not yet invoke it.
 - Rule citations such as `REVIEW-SCOPE-005` and `DOCS-EX-003` are explained in `docs/CODE_REVIEW_RULES.md`.
 
 ### Docs governance (contract, prompt, skill)
