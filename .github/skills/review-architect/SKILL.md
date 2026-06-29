@@ -17,7 +17,7 @@ When running the architect pass, use `.github/instructions/review-architect-comp
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
 Do not treat this skill as an independent final review stage. It is governed invisible workflow machinery that can add architect findings to an in-flight review, but it cannot freeze or publish final review output on its own.
 
-The architect proposes findings only. It never finalizes outcomes: every architect-proposed candidate Issue is adjudicated by the advocate pass under `.github/instructions/review-advocate-compliance-contract.instructions.md` before output is frozen.
+The architect proposes findings only. It never finalizes outcomes: every architect-proposed candidate Issue remains part of the in-flight review and is resolved under the workflow rules before output is frozen.
 
 ## Mandatory: read the entire skill
 
@@ -52,7 +52,7 @@ This skill is the reusable design-direction technique orchestrated inside the co
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
-It runs as invisible machinery between the primary review pass and the advocate pass. It does not produce its own output section; it only adds findings that, after advocate adjudication, land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the shared and advocate contracts.
+It runs as invisible machinery after the primary review pass and before final output is frozen. It does not produce its own output section; it only adds findings that later appear in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` under the shared workflow rules.
 When the architect adds a finding, it should do so through the shared intermediate finding shape rather than a one-off prose note.
 
 ## Role
@@ -68,7 +68,7 @@ Be principled, but restrained. Most design feedback is an Observation; an Issue 
 
 ## The architect method
 
-1. **Work at altitude** — evaluate direction and structural fit across the change-set, not line-level defects already owned by the primary audit and the skeptic pass.
+1. **Work at altitude** — evaluate direction and structural fit across the change-set, not line-level defects already owned by earlier audit passes.
 2. **Walk the direction areas** — per `REVIEW-ARCH-003`: schema shape and field naming, argument grouping and singular-versus-plural naming, resource decomposition and singleton modeling, typed-versus-untyped approach, cross-resource and cross-platform consistency, required companion artifacts such as Resource Identity, list resources, and ephemeral resources, and overall maintainability.
 3. **Apply scoped guidance, do not reinvent it** — for `internal/**` Go changes, use the file-scoped instructions loaded per `REVIEW-SCOPE-005` rather than recalling provider design rules from memory.
 4. **Default to Observation** — escalate to an Issue only when a current contributor document, instruction file, skill, or contract makes the design rule mandatory, and cite that source.
@@ -91,9 +91,9 @@ Mark derived assumptions clearly ("based on how sibling resources model this blo
 The architect does not own the final outcome mapping. Findings resolve as follows:
 
 - **Observation (default)** — design direction, preference, or out-of-scope structural idea, recorded in `### 🟡 **OBSERVATIONS**`.
-- **Candidate Issue** — only when a mandatory source is violated; it then enters the candidate set and is resolved by the advocate pass under `REVIEW-ADV-005` (`Confirmed` / `Downgraded` / `Dismissed`).
+- **Candidate Issue** — only when a mandatory source is violated; it then enters the candidate set and is resolved under the workflow's candidate-issue outcome mapping.
 
-No architect-proposed candidate may bypass advocate adjudication, and none may appear in both Issues and Observations.
+No architect-proposed candidate may bypass adjudication, and none may appear in both Issues and Observations.
 
 ## Tone
 

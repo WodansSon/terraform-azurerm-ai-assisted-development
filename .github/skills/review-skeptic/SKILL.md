@@ -1,6 +1,6 @@
 ---
 name: review-skeptic
-description: Adversarial workflow-governed review pass for code reviews — attack the change-set for missed defects, propose additional evidence-backed candidate Issues, and hand them to the advocate pass before review output is frozen. Use when a code-review workflow should be stress-tested for missed problems.
+description: Adversarial workflow-governed review pass for code reviews — attack the change-set for missed defects, propose additional evidence-backed candidate Issues, and pass them into the workflow's adjudication step before review output is frozen. Use when a code-review workflow should be stress-tested for missed problems.
 ---
 
 # Review Skeptic (adversarial augmentation pass)
@@ -17,7 +17,7 @@ When running the skeptic pass, use `.github/instructions/review-skeptic-complian
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
 Do not treat this skill as an independent final review stage. It is governed invisible workflow machinery that can add candidates to an in-flight review, but it cannot freeze or publish final review output on its own.
 
-The skeptic proposes candidate Issues only. It never finalizes outcomes: every skeptic-proposed candidate is adjudicated by the advocate pass under `.github/instructions/review-advocate-compliance-contract.instructions.md` before output is frozen.
+The skeptic proposes candidate Issues only. It never finalizes outcomes: every skeptic-proposed candidate remains part of the in-flight review and is resolved under the workflow rules before output is frozen.
 
 ## Mandatory: read the entire skill
 
@@ -52,7 +52,7 @@ This skill is the reusable adversarial augmentation technique orchestrated insid
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
-It runs as invisible machinery between the primary review pass and the advocate pass. It does not produce its own output section; it only adds candidate Issues that, after advocate adjudication, land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the shared and advocate contracts.
+It runs as invisible machinery after the primary review pass and before final output is frozen. It does not produce its own output section; it only adds candidate Issues that later appear in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` under the shared workflow rules.
 When the skeptic adds or strengthens a concern, it should do so through the shared intermediate finding shape rather than a one-off prose note.
 
 ## Role
@@ -72,7 +72,7 @@ Be adversarial, but honest. Your credibility depends on every candidate Issue be
 2. **Apply scoped guidance, do not reinvent it** — for `internal/**` Go changes, use the file-scoped instructions loaded per `REVIEW-SCOPE-005`; treat PATCH residual state, "None"-style defaults, `CustomizeDiff` placement, and Linux/Windows parity as known attack vectors.
 3. **Demand a failure path** — for each candidate, state exactly how the change breaks, citing `file:line`. If you cannot, demote it to an Observation.
 4. **Do not duplicate** — strengthen an existing candidate with new evidence rather than re-raising it.
-5. **Hand off, do not freeze** — pass every candidate Issue to the advocate pass for the `Confirmed` / `Downgraded` / `Dismissed` outcome mapping.
+5. **Hand off, do not freeze** — pass every candidate Issue into the workflow's adjudication step for deterministic outcome mapping.
 
 ## Burden of proof
 
@@ -88,13 +88,13 @@ Mark derived assumptions clearly ("based on the surrounding control flow, this c
 
 ## Outcomes
 
-The skeptic does not own the final outcome mapping. Each skeptic-proposed candidate Issue enters the candidate set and is then resolved by the advocate pass under `REVIEW-ADV-005`:
+The skeptic does not own the final outcome mapping. Each skeptic-proposed candidate Issue enters the candidate set and is then resolved under the workflow's candidate-issue outcome mapping:
 
 - **Confirmed** — keep in `### 🔴 **ISSUES**` at original or adjusted severity.
 - **Downgraded** — keep in `### 🔴 **ISSUES**` at reduced severity.
-- **Dismissed** — move to `### 🟡 **OBSERVATIONS**` with a brief advocate note.
+- **Dismissed** — move to `### 🟡 **OBSERVATIONS**` with the workflow's defense rationale.
 
-No skeptic-proposed candidate may bypass advocate adjudication, and none may appear in both Issues and Observations.
+No skeptic-proposed candidate may bypass adjudication, and none may appear in both Issues and Observations.
 
 ## Tone
 

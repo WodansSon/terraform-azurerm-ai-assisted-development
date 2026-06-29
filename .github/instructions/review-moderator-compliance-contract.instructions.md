@@ -1,5 +1,5 @@
 ---
-description: "Moderator synthesis pass compliance contract (single source of truth) used by the review-moderator skill as the planned final moderation role for merging workflow findings once explicit moderator routing is enabled."
+description: "Moderator synthesis pass compliance contract (single source of truth) used by the review-moderator skill as the final moderation role for merging workflow findings in the generic code review workflow."
 ---
 
 # Review Moderator Compliance Contract
@@ -12,11 +12,11 @@ One workflow MUST follow this contract:
 
 - Consumer: `.github/skills/review-moderator/SKILL.md`
   - Role: Moderator
-  - Command: `review-moderator` skill, planned as a governed workflow pass after reviewer, architect, skeptic, and advocate records exist, but not yet invoked by the generic code review prompts
+  - Command: `review-moderator` skill, invoked as the governed final moderation pass after reviewer, architect, skeptic, and advocate records exist
   - Requires EOF Load: yes
-  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final accepted outcome set inside the prompt-owned review template once explicit moderator routing is enabled.
+  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final merged-and-normalized visible finding set inside the prompt-owned review template.
 
-The current generic code review prompts do not yet orchestrate this contract.
+The generic code review prompts orchestrate this contract.
 The moderator skill encapsulates the reusable moderation method.
 This contract defines the moderator-specific deterministic rules.
 The shared workflow handoff schema lives at `.github/instructions/review-workflow-handoff.schema.json`.
@@ -27,26 +27,26 @@ Use these sources with the following roles:
 
 - The shared code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
   - Authoritative for overall review flow, evidence handling, finding classification, output shape, and the `REVIEW-HANDOFF-*` handoff semantics.
-  - This moderator contract refines how schema-conformant workflow findings are merged and normalized once explicit moderator routing exists; it must not weaken or override the shared output-shape or handoff rules.
+  - This moderator contract refines how schema-conformant workflow findings are merged and normalized in the routed workflow; it must not weaken or override the shared output-shape or handoff rules.
 - The advocate contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
-  - Authoritative for the current transitional false-positive-defense gate and its `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping.
+  - Authoritative for upstream candidate-level `Confirmed`, `Downgraded`, and `Dismissed` status outcomes that this contract must consume rather than recreate.
 - The workflow handoff schema: `.github/instructions/review-workflow-handoff.schema.json`
   - Authoritative for the concrete runtime JSON shape the moderator consumes.
 - This contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
-  - Authoritative for the planned moderator synthesis-pass deterministic rules in this repository.
+  - Authoritative for the moderator synthesis-pass deterministic rules in this repository.
 - The moderator skill: `.github/skills/review-moderator/SKILL.md`
   - Reusable moderation method: how to merge routed findings without re-running an independent review.
 
 Conflict resolution:
 
-- This contract is authoritative for planned moderator-pass synthesis, duplicate resolution, severity normalization, and final accepted-outcome selection once the moderator pass is actually invoked.
+- This contract is authoritative for moderator-pass synthesis, duplicate resolution, severity normalization, and final accepted-outcome selection in the routed workflow.
+- Upstream candidate-level `Confirmed`, `Downgraded`, and `Dismissed` status outcomes remain authoritative inputs to moderation; this contract must consume those outcomes rather than recreate them.
 - The shared code review contract remains authoritative for scope resolution, evidence handling, output shape, and the schema-backed handoff record itself.
-- The advocate contract remains authoritative for the current false-positive-defense behavior until the workflow explicitly routes a moderator pass and reassigns responsibilities.
 - If this contract would contradict `REVIEW-CLASS-004` (one finding, one classification), `REVIEW-CLASS-004` wins and each moderated concern must still resolve to exactly one classification.
 
 ## Rule IDs
 
-Rules are identified by stable IDs so the moderator skill and any future routed prompts reference the same requirement set without drifting.
+Rules are identified by stable IDs so the moderator skill and the routed prompts reference the same requirement set without drifting.
 
 ID format:
 - REVIEW-MOD-<NNN>
@@ -74,7 +74,7 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 ### REVIEW-MOD-001: Moderator synthesizes existing workflow findings, not a new independent review
 - Rule: The moderator consumes schema-conformant workflow records from earlier passes; it does not replace them with a new independent audit.
 - Rule: The moderator must not invent new evidence-free issues that were never surfaced into the workflow candidate set.
-- Rule: The moderator may request that a weaker claim be narrowed, merged, downgraded, or dismissed based on stronger evidence already in the workflow.
+- Rule: The moderator may request that a weaker claim be narrowed, merged, or phrased more precisely based on stronger evidence already in the workflow.
 
 ### REVIEW-MOD-002: Moderator consumes the shared handoff schema
 - Rule: Every finding the moderator reads or emits in workflow scope must conform to `.github/instructions/review-workflow-handoff.schema.json`.
@@ -91,19 +91,23 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: When two plausible phrasings exist, prefer the narrower defensible claim over the broader speculative claim.
 - Rule: A normalized record still resolves to exactly one final classification.
 
+### REVIEW-MOD-004A: Moderator does not reopen advocate-owned defense outcomes
+- Rule: When the workflow includes already-adjudicated records, the moderator must treat `confirmed`, `downgraded`, and `dismissed` as upstream status outcomes rather than re-litigating them.
+- Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized for final presentation, but it must not invent a second false-positive-defense pass under moderator authority.
+
 ### REVIEW-MOD-005: Final synthesis stays inside the prompt-owned output contract
-- Rule: The moderator may decide the final accepted, downgraded, dismissed, or merged outcome set, but it must stay inside the prompt-owned visible output structure.
+- Rule: The moderator may decide the final merged-and-normalized visible finding set from the workflow records it received, but it must stay inside the prompt-owned visible output structure.
 - Rule: The moderator must not add a new reader-visible section that the prompt did not authorize.
 - Rule: Scope resolution, stage ordering, and final section names remain prompt-owned even when moderation is enabled.
 
-### REVIEW-MOD-006: Current workflow status must stay explicit
-- Rule: Until a prompt explicitly routes the moderator pass, no workflow may claim that `review-moderator` ran.
-- Rule: Staged moderator artifacts may exist before moderator routing, but their presence alone does not change the active execution model.
+### REVIEW-MOD-006: Moderator routing must stay explicit
+- Rule: Only a prompt that explicitly routes the moderator pass may claim that `review-moderator` ran.
+- Rule: Generic code review prompts that route moderator must do so after candidate-level adjudication and before final output is frozen.
 
 ## Output integration
 
 ### REVIEW-MOD-007: Moderator output is final synthesis, not role narration
 - Rule: The moderator must not narrate its internal merge or conflict-resolution process in the final review body.
-- Rule: Any future reader-visible trace of moderator behavior must come through the final normalized finding set or an explicit verification marker authorized by the routed prompt.
+- Rule: Any reader-visible trace of moderator behavior must come through the final normalized finding set or an explicit verification marker authorized by the routed prompt.
 
 <!-- REVIEW-MOD-CONTRACT-EOF -->

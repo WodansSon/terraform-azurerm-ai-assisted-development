@@ -1,5 +1,5 @@
 ---
-description: "Advocate second-pass compliance contract (single source of truth) used by the review-advocate skill as the current transitional false-positive-defense gate for the workflow candidate-Issue set before review output is frozen."
+description: "Advocate second-pass compliance contract (single source of truth) used by the review-advocate skill as the workflow false-positive-defense gate for the workflow candidate-Issue set before review output is frozen."
 ---
 
 # Review Advocate Compliance Contract
@@ -14,12 +14,13 @@ One workflow MUST follow this contract:
   - Role: Advocate
   - Command: `review-advocate` skill, invoked by `/code-review-local-changes` and `/code-review-committed-changes`
   - Requires EOF Load: yes
-  - Goal: perform the current transitional false-positive-defense step by challenging candidate Issues, defending intentional design where supported, and resolving each candidate to a deterministic outcome before output is frozen.
+  - Goal: perform the workflow false-positive-defense step by challenging candidate Issues, defending intentional design where supported, and resolving each candidate to a deterministic status outcome before the review output is frozen.
 
 The review prompts orchestrate when the advocate pass runs.
 The advocate skill encapsulates the reusable advocate method.
 This contract defines the advocate-specific deterministic rules.
-This contract governs the current transitional advocate gate, not a long-term moderator or final-synthesis role.
+This contract governs the advocate false-positive-defense gate only.
+It owns candidate-level false-positive defense and status adjudication only.
 The shared workflow handoff schema lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
 ## Canonical sources of truth (precedence)
@@ -36,7 +37,7 @@ Use these sources with the following roles:
 
 Conflict resolution:
 
-- This contract is authoritative for the current advocate-pass activation, candidate evaluation, valid-defense requirements, and the `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping.
+- This contract is authoritative for advocate-pass activation, candidate evaluation, valid-defense requirements, and the `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping.
 - The shared code review contract remains authoritative for overall review flow, evidence handling, classification semantics, and output shape.
 - The shared code review contract remains authoritative for the intermediate handoff shape and the allowed workflow statuses that exist before and after advocate adjudication.
 - `.github/instructions/review-workflow-handoff.schema.json` is the concrete runtime schema artifact for that handoff shape.
@@ -92,6 +93,7 @@ If a defense cannot be backed by this evidence, it is not a valid defense.
 ### REVIEW-ADV-005: Deterministic outcome mapping
 - Rule: Each candidate Issue must resolve to exactly one of three outcomes.
 - Rule: When the advocate resolves a candidate, it preserves the record's shared handoff fields and changes only the status and any evidence-backed severity adjustment needed for the outcome.
+- Rule: The advocate owns candidate-level status adjudication only; it does not merge, combine, or rewrite multiple records.
 - Rule: `Confirmed` — no valid defense found. Keep in `### 🔴 **ISSUES**` at original or adjusted severity.
 - Rule: `Downgraded` — partial valid defense found; the issue is less severe than first classified. Keep in `### 🔴 **ISSUES**` at reduced severity.
 - Rule: `Dismissed` — strong evidence the finding is a false positive or intentional design. Move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ ADVOCATE: <one-line defense>]` note.
@@ -109,6 +111,7 @@ If a defense cannot be backed by this evidence, it is not a valid defense.
 - Rule: When evidence is inconclusive, choose the lower justified classification rather than asserting intent as fact.
 - Rule: Prefer `Downgraded` over `Confirmed`, and `Dismissed` over `Downgraded`, only when evidence supports it; otherwise keep the finding `Confirmed`.
 - Rule: Do not present advocate inference as proven design intent when the evidence does not establish it.
+- Rule: Do not merge duplicate records, combine role attribution across multiple records, or rewrite several concerns into one final concern; those actions are outside advocate scope.
 
 ## Output integration
 

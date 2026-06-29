@@ -152,11 +152,12 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Each Issue should point to a single, concrete correction path.
 - Rule: Do not present multiple alternative fixes unless the user explicitly asked for options.
 
-### REVIEW-CLASS-006: Current final adjudication owner integration boundary
-- Rule: The current final adjudication owner is the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
-- Rule: When a review prompt runs the current final adjudication owner, the routed owner's rules govern how the aggregate candidate-Issue set from the primary pass and any routed intermediate passes is confirmed, downgraded, dismissed, or otherwise normalized.
-- Rule: The current final adjudication owner must not violate `REVIEW-CLASS-004`; every candidate finding still resolves to exactly one classification.
-- Rule: This shared contract does not define the routed adjudication owner's method or outcome rules; review flows that do not run a final adjudication owner are unaffected.
+### REVIEW-CLASS-006: Final moderation owner integration boundary
+- Rule: The final moderation owner is the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`) and its dedicated contract (`.github/instructions/review-moderator-compliance-contract.instructions.md`).
+- Rule: The candidate-level false-positive-defense and status-adjudication gate is the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
+- Rule: When a review prompt runs the final moderation owner, the routed owner's rules govern how the already-adjudicated workflow record set is merged, normalized, retained, or omitted as duplicate for final visible output.
+- Rule: The final moderation owner must not violate `REVIEW-CLASS-004`; every surviving concern still resolves to exactly one classification.
+- Rule: This shared contract does not define the routed moderation owner's method or merge rules; review flows that do not run a final moderation owner are unaffected.
 
 ## Workflow handoff structure
 
@@ -169,10 +170,11 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-HANDOFF-002: Status values are stage-aware
 - Rule: Before advocate adjudication, the allowed intermediate statuses are `candidate` and `observation`.
 - Rule: The advocate pass may resolve only `candidate` records, changing status to `confirmed`, `downgraded`, or `dismissed`.
-- Rule: Final visible `ISSUES` and `OBSERVATIONS` sections are derived from the resolved intermediate records rather than bypassing the handoff structure.
+- Rule: The moderator pass may consume `observation`, `confirmed`, `downgraded`, and `dismissed` records, preserving status while merging duplicates or normalizing surviving records for final visible output.
+- Rule: Final visible `ISSUES` and `OBSERVATIONS` sections are derived from the moderated intermediate records rather than bypassing the handoff structure.
 
 ### REVIEW-HANDOFF-003: Routed passes may add or refine records, but must preserve shape
-- Rule: The primary review pass, architect pass, and skeptic pass may add records or enrich existing records with evidence and reasoning, but they must preserve the shared field set.
+- Rule: The primary review pass, architect pass, and skeptic pass may add records or enrich existing records with evidence and reasoning, and later routed passes may adjudicate or normalize those records, but all passes must preserve the shared field set.
 - Rule: Routed passes must not replace a structured intermediate record with an unlabeled prose note that loses `scope`, `evidence`, or `status`.
 - Rule: When multiple passes touch the same concern, enrich one record rather than cloning duplicate records.
 

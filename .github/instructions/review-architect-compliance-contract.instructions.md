@@ -29,10 +29,8 @@ Use these sources with the following roles:
 - The shared code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
   - Authoritative for overall review flow, evidence handling, finding classification, and output shape.
   - This architect contract refines how design-direction findings are proposed before output is frozen; it must not weaken or override the `REVIEW-CLASS-*`, `REVIEW-EVID-*`, `REVIEW-OBS-*`, or `REVIEW-HANDOFF-*` semantics.
-- The advocate contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
-  - Authoritative for how candidate Issues, including architect-proposed candidates, are confirmed, downgraded, or dismissed before output is frozen.
-- The skeptic contract: `.github/instructions/review-skeptic-compliance-contract.instructions.md`
-  - The sibling adversarial panel pass; both the skeptic and architect passes feed their candidates to the advocate before output is frozen, and neither overrides the other.
+- The workflow handoff schema: `.github/instructions/review-workflow-handoff.schema.json`
+  - Authoritative for the concrete runtime JSON shape the architect consumes and emits in workflow scope.
 - This contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
   - Authoritative for the architect direction-pass deterministic rules in this repository.
 - The architect skill: `.github/skills/review-architect/SKILL.md`
@@ -44,7 +42,6 @@ Conflict resolution:
 - The shared code review contract remains authoritative for overall review flow, evidence handling, classification semantics, and output shape.
 - The shared code review contract remains authoritative for the intermediate handoff shape used to carry architect output to later passes.
 - `.github/instructions/review-workflow-handoff.schema.json` is the concrete runtime schema artifact for that handoff shape.
-- The advocate contract remains authoritative for resolving every candidate Issue, including architect-proposed candidates, to exactly one outcome.
 - If this contract would contradict `REVIEW-OBS-001` (design preference is observation-only by default) or `REVIEW-CLASS-004` (one finding, one classification), those shared rules win and each architect concern must still resolve to exactly one classification.
 
 ## Rule IDs
@@ -74,9 +71,9 @@ If a design concern cannot be tied to this evidence, it stays an Observation rat
 ## Architect direction-pass evaluation
 
 ### REVIEW-ARCH-001: Architect evaluates direction, not line-level defects
-- Rule: The architect pass evaluates structural fit, design direction, and maintainability across the change-set, not line-level correctness defects already owned by the primary audit and the skeptic pass.
+- Rule: The architect pass evaluates structural fit, design direction, and maintainability across the change-set, not line-level correctness defects already owned by earlier audit passes.
 - Rule: The architect pass is governed workflow machinery, not an independent review stage with its own frozen output behavior.
-- Rule: The architect pass runs before the advocate pass and before the review output is frozen, never after.
+- Rule: The architect pass runs before the review output is frozen, never after.
 - Rule: If the change-set is empty or out of scope under the shared contract, the architect pass does not run and changes nothing.
 
 ### REVIEW-ARCH-002: Observation is the default classification
@@ -101,7 +98,7 @@ If a design concern cannot be tied to this evidence, it stays an Observation rat
 - Rule: The architect does not block a self-consistent, evidence-acceptable change merely because another architecture might be preferable, per `REVIEW-CLASS-002`.
 
 ### REVIEW-ARCH-006: Architect does not finalize outcomes
-- Rule: The architect does not freeze severity or final classification; every architect-proposed candidate Issue is subject to the advocate pass under `REVIEW-ADV-*` before output is frozen.
+- Rule: The architect does not freeze severity or final classification; every architect-proposed candidate Issue remains subject to workflow adjudication before output is frozen.
 - Rule: A concern that is uncertain in severity follows `REVIEW-CLASS-004` and resolves to exactly one classification.
 
 ## Output integration

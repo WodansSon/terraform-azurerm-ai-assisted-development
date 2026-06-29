@@ -136,8 +136,8 @@ Rules:
 - This step is mandatory after Step 5 has gathered the change-set evidence, even when the primary review pass is otherwise about to conclude with no candidate Issues.
 - Invoke the `review-architect` skill (`.github/skills/review-architect/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-architect-compliance-contract.instructions.md` (the `REVIEW-ARCH-*` rules) to evaluate structural fit, naming direction, and maintainability.
 - Any architect finding added at this step must be represented as a `REVIEW-HANDOFF-*` intermediate record that conforms to `.github/instructions/review-workflow-handoff.schema.json`, with `status` set to `observation` or `candidate` as appropriate.
-- This is prompt-governed workflow machinery for the current single-workflow design. It may add Observations or mandatory-source-backed candidate Issues, but it must not emit its own section, freeze outcomes, or change the final review template.
-- Treat the current execution order as a determinism choice owned by the prompt, not as an authority ranking between roles.
+- This is prompt-governed workflow machinery for the single-workflow design. It may add Observations or mandatory-source-backed candidate Issues, but it must not emit its own section, freeze outcomes, or change the final review template.
+- Treat this execution order as a determinism choice owned by the prompt, not as an authority ranking between roles.
 - Observable proof requirement: when this step runs, `review-architect` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-architect` line before any later routed-skill entries.
 - If the `review-architect` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-architect skill or contract not fully loaded. Load .github/skills/review-architect/SKILL.md and .github/instructions/review-architect-compliance-contract.instructions.md to EOF and re-run this prompt.`
@@ -146,22 +146,34 @@ Rules:
 - This step is mandatory after the architect pass has completed and before the advocate pass, even when the primary review pass is otherwise about to conclude with no candidate Issues.
 - Invoke the `review-skeptic` skill (`.github/skills/review-skeptic/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-skeptic-compliance-contract.instructions.md` (the `REVIEW-SKEP-*` rules) to attack the diff for missed defects and weakly-supported reasoning.
 - Any skeptic finding added or strengthened at this step must use the same schema-backed `REVIEW-HANDOFF-*` intermediate record shape; enrich existing records when the concern already exists.
-- This is prompt-governed workflow machinery for the current single-workflow design. It may add net-new candidate Issues or strengthen existing candidates with new evidence, but it must not emit its own section, freeze outcomes, or change the final review template.
-- Observable proof requirement: when this step runs, `review-skeptic` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-skeptic` line before the final `Skill used: review-advocate` entry when the advocate pass also runs.
+- This is prompt-governed workflow machinery for the single-workflow design. It may add net-new candidate Issues or strengthen existing candidates with new evidence, but it must not emit its own section, freeze outcomes, or change the final review template.
+- Observable proof requirement: when this step runs, `review-skeptic` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-skeptic` line before any later adjudication or moderation entries.
 - If the `review-skeptic` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-skeptic skill or contract not fully loaded. Load .github/skills/review-skeptic/SKILL.md and .github/instructions/review-skeptic-compliance-contract.instructions.md to EOF and re-run this prompt.`
 
-### 6) Final adjudication owner (current binding: advocate)
+### 6) Advocate adjudication gate (binding: advocate)
 - This step is mandatory whenever Step 5 or any routed intermediate pass produced one or more candidate Issues; it must not be skipped, summarized, deferred, or simulated.
-- The current final adjudication owner for this workflow is `review-advocate`.
+- The candidate-level false-positive-defense and status-adjudication gate for this workflow is `review-advocate`.
 - Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge each candidate Issue.
 - Consume only schema-conformant `REVIEW-HANDOFF-*` intermediate records whose `status` is `candidate`, preserve the other handoff fields, and update `status` to `confirmed`, `downgraded`, or `dismissed` per `REVIEW-ADV-005`.
-- Resolve every candidate Issue from the primary review pass and the routed architect and skeptic passes to exactly one deterministic outcome (`Confirmed`, `Downgraded`, or `Dismissed`) per `REVIEW-ADV-005`, and freeze the review output only after the advocate pass completes.
-- Do not add a separate final-adjudication section to the review body; the current advocate binding is invisible machinery that only adjusts how candidate findings land in `ISSUES` and `OBSERVATIONS` per the routed contract.
-- Observable proof requirement: when this step runs, `review-advocate` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-advocate` line. Because the advocate pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
+- Resolve every candidate Issue from the primary review pass and the routed architect and skeptic passes to exactly one deterministic outcome (`Confirmed`, `Downgraded`, or `Dismissed`) per `REVIEW-ADV-005`, then hand the adjudicated workflow record set to final moderation.
+- Do not add a separate advocate-adjudication section to the review body; this routed gate is invisible machinery that only adjusts record status and downstream landing behavior per the routed contract.
+- Observable proof requirement: when this step runs, `review-advocate` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-advocate` line before the final `Skill used: review-moderator` entry when moderation also runs.
 - If the `review-advocate` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-advocate skill or contract not fully loaded. Load .github/skills/review-advocate/SKILL.md and .github/instructions/review-advocate-compliance-contract.instructions.md to EOF and re-run this prompt.`
 - If the primary review pass plus the routed architect and skeptic passes produced no candidate Issues, skip this step and do not emit the `Skill used: review-advocate` marker.
+
+### 7) Final moderation owner (binding: moderator)
+- This step is mandatory whenever the workflow has one or more schema-conformant intermediate findings after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
+- The final moderation owner for this workflow is `review-moderator`.
+- Invoke the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-moderator-compliance-contract.instructions.md` (the `REVIEW-MOD-*` rules) to merge duplicates, normalize surviving records, and produce the final visible finding set.
+- Consume only schema-conformant `REVIEW-HANDOFF-*` intermediate records, preserve record identity and status semantics, and use moderation only for duplicate merge, wording normalization, severity normalization, and final visible-set selection.
+- Freeze the review output only after the moderator pass completes.
+- Do not add a separate final-moderation section to the review body; the moderator binding is invisible machinery that only determines the final visible `ISSUES` and `OBSERVATIONS` set per the routed contract.
+- Observable proof requirement: when this step runs, `review-moderator` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-moderator` line. Because the moderator pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
+- If the `review-moderator` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-moderator skill or contract not fully loaded. Load .github/skills/review-moderator/SKILL.md and .github/instructions/review-moderator-compliance-contract.instructions.md to EOF and re-run this prompt.`
+- If the workflow produced no schema-conformant intermediate findings, skip this step and do not emit the `Skill used: review-moderator` marker.
 
 ## Output format (use this exact structure)
 
