@@ -1,0 +1,72 @@
+{
+  "id": "review-committed-pr-scoped-file-references",
+  "title": "Committed review keeps PR-scoped file references out of editor-local URIs",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where authoritative PR scope exists for a large Front Door change-set. The correct rendered review must keep file references repo-scoped or PR-scoped and must not leak editor-local `vscode-file://` or spill-path placeholders into the final review body.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-pr-scoped-file-references/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/cdn/cdn_frontdoor_batch_rule_set_resource.go",
+      "internal/services/cdn/cdn_frontdoor_batch_rule_set_resource_list.go",
+      "website/docs/r/cdn_frontdoor_batch_rule_set.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a PR-scoped committed review where the historical failure mode was rendering file references as `vscode-file://...workbench.html` editor-session links instead of repo-scoped or PR-scoped references."
+  },
+  "expectedRules": [
+    "REVIEW-FILE-004",
+    "REVIEW-PRESENT-004E",
+    "REVIEW-EVID-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "repo-scoped-file-references-preserved",
+      "severity": "high",
+      "description": "The committed review should keep file references repo-scoped or PR-scoped when authoritative PR scope is available instead of converting them into editor-local placeholder links."
+    },
+    {
+      "key": "editor-local-link-leak-blocked",
+      "severity": "high",
+      "description": "The final committed review body should not contain `vscode-file://`, `workbench.html`, `AppData`, or `workspaceStorage` link material anywhere in the rendered output."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "vscode-file-uri-output",
+      "description": "The committed review must not emit `vscode-file://` editor-local URIs in file lists, findings, or standards-check bullets."
+    },
+    {
+      "key": "spill-path-output",
+      "description": "The committed review must not emit spill-path fragments such as `workbench.html`, `AppData`, or `workspaceStorage` in the rendered review body."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "internal/services/cdn/cdn_frontdoor_batch_rule_set_resource.go",
+      "internal/services/cdn/cdn_frontdoor_batch_rule_set_resource_list.go",
+      "website/docs/r/cdn_frontdoor_batch_rule_set.html.markdown",
+      "Preflight complete: yes"
+    ],
+    "mustNotIncludeMarkers": [
+      "vscode-file://",
+      "workbench.html",
+      "AppData",
+      "workspaceStorage"
+    ]
+  },
+  "notes": "Use this case to benchmark committed-review rendering of file references when authoritative PR scope is known and editor-local link placeholders must stay out of the final review body."
+}

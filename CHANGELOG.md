@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - The generic local and committed review workflows now route their final Markdown body through a shared `review-presentation` render-only skill and contract after moderation, so both review prompts use one deterministic output template without changing findings, verdicts, or hard-stop behavior.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Added the `review-presentation` runtime skill, the `review-presentation-compliance-contract.instructions.md` contract, and the `review-presentation-input.schema.json` render-input schema to the shipped toolkit payload, and removed duplicated successful-review body templates from the two generic code-review prompts so presentation changes now land in one runtime surface.
+
 ### Fixed
 
 ## [3.6.0] - 2026-06-28

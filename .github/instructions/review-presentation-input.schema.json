@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/.github/instructions/review-presentation-input.schema.json",
+  "title": "Review Presentation Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reviewMode",
+    "changeDescription",
+    "changeSummaryLines",
+    "primaryChangesAnalysis",
+    "recursionPreventionLines",
+    "standardsCheckLines",
+    "linterLines",
+    "mustFix",
+    "strengths",
+    "observations",
+    "issues",
+    "immediateRecommendations",
+    "futureConsiderations",
+    "overallAssessment"
+  ],
+  "properties": {
+    "reviewMode": {
+      "type": "string",
+      "enum": [
+        "local",
+        "committed"
+      ]
+    },
+    "changeDescription": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changeSummaryLines": {
+      "$ref": "#/$defs/nonEmptyStringArray"
+    },
+    "modifiedFiles": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "addedFiles": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "untrackedFiles": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "deletedFiles": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "skippedVendoredFiles": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "primaryChangesAnalysis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recursionPreventionLines": {
+      "$ref": "#/$defs/nonEmptyStringArray"
+    },
+    "standardsCheckLines": {
+      "$ref": "#/$defs/nonEmptyStringArray"
+    },
+    "linterLines": {
+      "$ref": "#/$defs/nonEmptyStringArray"
+    },
+    "mustFix": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "strengths": {
+      "$ref": "#/$defs/findingArray"
+    },
+    "observations": {
+      "$ref": "#/$defs/findingArray"
+    },
+    "issues": {
+      "$ref": "#/$defs/findingArray"
+    },
+    "immediateRecommendations": {
+      "$ref": "#/$defs/findingArray"
+    },
+    "futureConsiderations": {
+      "$ref": "#/$defs/findingArray"
+    },
+    "overallAssessment": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verificationFooter": {
+      "$ref": "#/$defs/verificationFooter"
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": false
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": false
+    },
+    "verificationFooter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preflightComplete",
+        "skillsUsed"
+      ],
+      "properties": {
+        "preflightComplete": {
+          "type": "boolean",
+          "const": true
+        },
+        "skillsUsed": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "findingArray": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/findingItem"
+      },
+      "uniqueItems": false
+    },
+    "findingItem": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "$ref": "#/$defs/structuredFinding"
+        }
+      ]
+    },
+    "structuredFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewType",
+        "summary",
+        "priority",
+        "file",
+        "evidence",
+        "impact"
+      ],
+      "properties": {
+        "reviewType": {
+          "type": "string",
+          "enum": [
+            "change-request",
+            "nitpick",
+            "refactor-suggestion",
+            "thought-or-concern",
+            "positive-feedback",
+            "future-consideration"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "observation",
+            "notable",
+            "good"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "impact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestedChange": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correctedCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codeLanguage": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

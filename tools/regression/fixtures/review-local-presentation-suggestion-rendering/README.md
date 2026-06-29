@@ -1,0 +1,40 @@
+# Sanitized Fixture: Local Review Presentation Suggestion Rendering
+
+This fixture is synthetic and sanitized. It defines the expected behavior for the new moderator-plus-presentation review workflow.
+
+## Scenario
+
+The modeled local change touches these files:
+
+- `.github/instructions/review-workflow-handoff.schema.json`
+- `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- `.github/prompts/code-review-local-changes.prompt.md`
+
+The workflow introduces moderator-owned `presentation` hints for surviving findings and a render-only presentation contract that should emit GitHub-style suggestion blocks when those hints include current and corrected code. It also relies on presentation-only positive-feedback levels so baseline standards-compliant work stays distinct from stronger above-and-beyond implementation callouts.
+
+## Simplified Change Shape
+
+- The shared handoff schema grows richer `presentation` metadata for final moderated findings.
+- The moderator contract states that prompt-side derivation of rich-display semantics is forbidden.
+- The presentation contract describes `Current Code`, `Suggested Code`, and a fenced `suggestion` block for structured findings.
+- The presentation contract distinguishes `✅ Good` baseline positive feedback from `⭐ Notable` above-and-beyond positive feedback.
+
+## Expected Review Behavior
+
+A correct local review should:
+
+- Flag any wording that still lets the prompt invent rich-display semantics after moderation.
+- Preserve the new rendering hierarchy for structured finding cards under `###` review sections.
+- Preserve `Current Code`, `Suggested Code`, and a fenced `suggestion` block when the moderated record carries those hints.
+- Preserve the intended positive-feedback distinction between `✅ Good` and `⭐ Notable`.
+
+## Expected Must-Catch Outcomes
+
+- `moderator-owns-rich-presentation-hints`
+- `suggestion-style-rendering-preserved`
+- `positive-feedback-priority-semantics-preserved`
+
+## Expected Must-Not-Flag Outcomes
+
+- `prompt-invents-rich-display-semantics`

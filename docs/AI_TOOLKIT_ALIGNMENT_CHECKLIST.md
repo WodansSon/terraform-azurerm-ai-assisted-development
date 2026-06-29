@@ -59,7 +59,11 @@ The current contract-driven domains are:
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
+- `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- `.github/instructions/review-skeptic-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
 ## Current High-Signal Implementation Rule

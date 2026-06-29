@@ -533,10 +533,12 @@ azurerm-linter execution-state decision table:
 - Rule: When a conclusion cannot be proven, say so directly in the review rather than compensating with invented certainty.
 
 ### REVIEW-OUT-005: Successful fresh runs must emit the full current template
-- Rule: If the mandatory procedure succeeds for the selected review type, emit the full current prompt-defined review template.
+- Rule: If the mandatory procedure succeeds for the selected review type, emit the full current routed review template.
+- Rule: When the selected review type routes `review-presentation`, the final successful review body must follow `.github/instructions/review-presentation-compliance-contract.instructions.md`.
+- Rule: When the selected review type does not route `review-presentation`, the final successful review body must follow the prompt-defined template for that workflow.
 - Rule: Do not short-circuit to a previous review, a delta-only summary, or wording such as `same findings as before` or `no change from the last review`.
 - Rule: This applies even when the reviewed code, linter findings, or conclusions are unchanged from an earlier invocation.
-- Rule: Current prompt/template/layout requirements are part of the output contract and must be honored on every successful fresh run.
+- Rule: Current routed template/layout requirements are part of the output contract and must be honored on every successful fresh run.
 
 ### REVIEW-OUT-006: Freeze the review before emitting final output
 - Rule: Complete evidence gathering, silent verification, file coverage checks, linter classification, and finding classification before emitting the first character of the normal review output.
@@ -549,6 +551,7 @@ azurerm-linter execution-state decision table:
 - Rule: That verification footer is part of the normal successful output contract, not extra narration.
 - Rule: The verification footer must be omitted when no skill was actually used during the review.
 - Rule: The verification footer may contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
+- Rule: A render-only presentation skill may own footer rendering without adding its own `Skill used:` line, as long as it preserves the actual routed review-skill set supplied by the prompt.
 - Rule: Do not infer skill use from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - Rule: If the review body states that a skill was loaded or used, the verification footer should include the matching `Skill used:` line.
 

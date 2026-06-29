@@ -19,13 +19,14 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are eight main contract files:
+There are nine main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
 - Advocate second-pass contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
 - Skeptic adversarial-pass contract: `.github/instructions/review-skeptic-compliance-contract.instructions.md`
 - Architect direction-pass contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
 - Moderator synthesis-pass contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- Presentation render contract: `.github/instructions/review-presentation-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
 - Testing contract: `.github/instructions/testing-compliance-contract.instructions.md`
@@ -38,6 +39,7 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/review-skeptic`
 - `/review-architect`
 - `/review-moderator`
+- `/review-presentation`
 - `/code-review-docs`
 - `/docs-writer`
 - `/resource-implementation`
@@ -52,6 +54,9 @@ The generic code review prompts bind candidate-level `Confirmed`, `Downgraded`, 
 
 The `review-moderator` skill is the workflow's final moderation role.
 The generic code review prompts route the final visible finding set through `review-moderator` after candidate-level adjudication completes.
+
+The `review-presentation` skill is the workflow's render-only presentation layer.
+The generic code review prompts route the final frozen review data through `review-presentation` after moderation completes so both prompts share one output template.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -267,7 +272,22 @@ In practice, `REVIEW-MOD-*` rules explain things such as:
 - how duplicate findings should merge into one strongest record
 - how schema-backed workflow records should survive into final moderation
 - how moderator routing consumes already-adjudicated workflow records without reopening candidate-level defense outcomes
-- why moderator output stays inside the prompt-owned review template rather than adding a separate reader-visible section
+- why moderator output stays upstream of final rendering rather than adding a separate reader-visible section
+
+## `REVIEW-PRES-*` Rule Area
+
+These IDs come from `.github/instructions/review-presentation-compliance-contract.instructions.md` and are consumed by `/review-presentation`, which the generic code review prompts invoke as the render-only final step after moderation freezes the review data.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-PRES-*` | Review presentation rendering | How the final review body is rendered from frozen data without changing findings |
+
+In practice, `REVIEW-PRES-*` rules explain things such as:
+
+- why local and committed review share one final output template
+- which section order and heading text are fixed by the presentation layer
+- why the renderer must not add, remove, or reinterpret findings
+- how footer lines such as `Preflight complete: yes` and `Skill used: ...` are rendered deterministically
 
 ## `DOCS-*` Rule Areas
 

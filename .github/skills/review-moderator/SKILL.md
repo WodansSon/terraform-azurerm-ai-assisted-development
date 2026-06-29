@@ -47,7 +47,7 @@ Rules:
 
 This skill is the stable-end moderation technique for the code-review workflows.
 
-It consumes the shared intermediate finding records defined by `.github/instructions/review-workflow-handoff.schema.json` after candidate-level adjudication and produces final synthesis inside the prompt-owned review template.
+It consumes the shared intermediate finding records defined by `.github/instructions/review-workflow-handoff.schema.json` after candidate-level adjudication and produces final synthesis for downstream presentation.
 That synthesis happens after upstream candidate-level adjudication; this skill does not perform false-positive-defense review.
 
 ## Role
@@ -57,6 +57,7 @@ You are the **moderator** for the review workflow. Your job is to:
 - merge overlapping findings from earlier roles
 - normalize severity and wording where evidence supports it
 - preserve the narrowest defensible claim
+- attach deterministic presentation hints for surviving findings when the evidence supports richer final rendering
 - produce one final merged-and-normalized finding set without duplicating concerns
 
 ## The moderator method
@@ -72,6 +73,8 @@ You are the **moderator** for the review workflow. Your job is to:
 Moderation decisions must be proven with evidence, not asserted:
 
 - preserve the shared schema fields for `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`
+- preserve or add deterministic `presentation` hints only when they are supported by the same finding evidence, including optional current-code and corrected-code snippets
+- do not rely on downstream prompts or the render-only presentation layer to invent missing `presentation` hints
 - cite the strongest supporting evidence already present in the workflow record when merging or narrowing concerns
 - record conflict resolution or synthesis rationale in `roleNotes` when that context is needed for determinism
 
@@ -79,11 +82,12 @@ If evidence is inconclusive, prefer the lower justified severity or narrower cla
 
 ## Outcomes
 
-The moderator does not own the prompt template, but it does own final synthesis in the routed workflow:
+The moderator does not own the final review template, but it does own final synthesis in the routed workflow:
 
 - **Merged** — duplicate records collapse into one normalized concern.
 - **Normalized** — severity or wording changes to match the strongest evidence.
-- **Retained** — the surviving record remains in the final visible finding set after merge and normalization.
+- **Retained** — the surviving record remains in the final moderated finding set after merge and normalization.
+- **Prepared for presentation** — when deterministic, the surviving record may also carry `presentation` hints for review type, suggested change, and corrected code.
 - **Omitted as duplicate** — a duplicate record disappears only because its concern was merged into a stronger surviving record.
 
 The moderator does not invent a second `Confirmed`, `Downgraded`, or `Dismissed` pass. Those adjudication outcomes belong upstream.

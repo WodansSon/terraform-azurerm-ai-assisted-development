@@ -166,143 +166,34 @@ Rules:
 ### 7) Final moderation owner (binding: moderator)
 - This step is mandatory whenever the workflow has one or more schema-conformant intermediate findings after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
 - The final moderation owner for this workflow is `review-moderator`.
-- Invoke the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-moderator-compliance-contract.instructions.md` (the `REVIEW-MOD-*` rules) to merge duplicates, normalize surviving records, and produce the final visible finding set.
+- Invoke the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-moderator-compliance-contract.instructions.md` (the `REVIEW-MOD-*` rules) to merge duplicates, normalize surviving records, and produce the final moderated finding set for presentation.
 - Consume only schema-conformant `REVIEW-HANDOFF-*` intermediate records, preserve record identity and status semantics, and use moderation only for duplicate merge, wording normalization, severity normalization, and final visible-set selection.
-- Freeze the review output only after the moderator pass completes.
+- Freeze the review findings set only after the moderator pass completes.
 - Do not add a separate final-moderation section to the review body; the moderator binding is invisible machinery that only determines the final visible `ISSUES` and `OBSERVATIONS` set per the routed contract.
 - Observable proof requirement: when this step runs, `review-moderator` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-moderator` line. Because the moderator pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
 - If the `review-moderator` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-moderator skill or contract not fully loaded. Load .github/skills/review-moderator/SKILL.md and .github/instructions/review-moderator-compliance-contract.instructions.md to EOF and re-run this prompt.`
 - If the workflow produced no schema-conformant intermediate findings, skip this step and do not emit the `Skill used: review-moderator` marker.
 
-## Output format (use this exact structure)
+### 8) Final presentation renderer
+- This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.
+- Build a presentation payload that conforms to `.github/instructions/review-presentation-input.schema.json`.
+- For local review, populate at minimum: `reviewMode=local`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterLines`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and optional `verificationFooter`.
+- When populating `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, and any file-bearing structured findings, use workspace-repo paths or workspace-repo path-plus-line references only.
+- Do not place editor-local or spill-path links into the payload, including `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, or `workspaceStorage` references.
+- For `mustFix`, supply normalized actionable linter lines or the explicit empty-state bullet `- None`.
+- For `strengths`, `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects from the schema only when the final moderated finding already carries deterministic `presentation` hints or when the corresponding display fields are otherwise already frozen by the shared workflow record.
+- Treat the moderator-owned `presentation` object on surviving moderated handoff records as the canonical source for rich-display semantics.
+- Do not derive or invent `reviewType`, `suggestedChange`, `currentCode`, `correctedCode`, `codeLanguage`, or any other rich-display semantics in this prompt.
+- Invoke the `review-presentation` skill (`.github/skills/review-presentation/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-presentation-compliance-contract.instructions.md` together with `.github/instructions/review-presentation-input.schema.json` to render the final review body.
+- The presentation skill is render-only. It must not change findings, severity, classification, recommendations, or verdict semantics.
+- The presentation skill owns the normal successful review body. After this step begins, emit exactly the rendered review body and nothing else.
+- When `verificationFooter` is present, preserve the supplied routed-skill order and do not add `review-presentation` to `skillsUsed`.
+- If the `review-presentation` skill, contract, or schema cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-presentation skill, contract, or schema not fully loaded. Load .github/skills/review-presentation/SKILL.md, .github/instructions/review-presentation-compliance-contract.instructions.md, and .github/instructions/review-presentation-input.schema.json to EOF and re-run this prompt.`
 
-Output must be rendered Markdown.
+## Output format
 
-- Do not wrap the review in triple-backtick fences.
-- Do not output text before the review headings.
-- Emit each heading exactly once and in this order.
-- After `## 🏆 **OVERALL ASSESSMENT**`, append the optional verification footer only when one or more skills were actually used.
-
-1. `# 📋 **Code Review**: ${change_description}`
-2. `## 🔄 **CHANGE SUMMARY**`
-3. `## 📁 **FILES CHANGED**`
-4. `## 🎯 **PRIMARY CHANGES ANALYSIS**`
-5. `## 📋 **DETAILED TECHNICAL REVIEW**`
-6. `## ✅ **RECOMMENDATIONS**`
-7. `## 🏆 **OVERALL ASSESSMENT**`
-
-Use this template:
-
-```markdown
-# 📋 **Code Review**: ${change_description}
-
-## 🔄 **CHANGE SUMMARY**
-- **Files Changed**: [number] files ([tracked_additions] tracked new, [untracked_files] untracked, [modifications] modified, [deletions] deleted)
-- **Line Changes**: [insertions] insertions, [deletions] deletions (tracked files only)
-- **Branch**: [current_branch]
-- **Type**: [unstaged local changes/staged changes/untracked files only/mixed local changes]
-- **Scope**: [brief summary of what changed]
-
-## 📁 **FILES CHANGED**
-
-**Modified Files:**
-- `path/to/file`
-
-**Added Files (Tracked):**
-- `path/to/file`
-
-**Untracked Files (New):**
-- `path/to/file`
-
-**Deleted Files:**
-- `path/to/file`
-
-**Skipped Vendored Files:** [count]
-
-## 🎯 **PRIMARY CHANGES ANALYSIS**
-[Brief explanation of the implementation or content changes in scope.]
-
-## 📋 **DETAILED TECHNICAL REVIEW**
-
-### 🔄 **RECURSION PREVENTION**
-- **File Skipped**: `.github/prompts/code-review-local-changes.prompt.md` - Cannot review code review prompt itself to prevent infinite loops
-
-### 🔍 **STANDARDS CHECK**
-- **Contract**: [shared review contract rules applied]
-- **Repo Guidance**: [contributor docs / instructions / skills actually used]
-- **Scope Rules**: [which `REVIEW-SCOPE-*` rules were relevant]
-- **Docs Contract**: [whether `DOCS-*` rules were loaded for `website/docs/**/*.html.markdown` files in scope]
-- **Notes**: [scope-specific guidance that affected severity or classification, including whether the change-set is vendored-only or vendored-heavy]
-
-### 🧰 **AZURERM LINTER**
-- **Version**: [JSON `version`, `n/a`, or `unknown` when the tool could not be interrogated reliably]
-- **Status**: [Issues found/No issues/Not applicable/Not run]
-- **Run Scope**: [filtered local-diff scope or `n/a`]
-- **Issue Count**: [JSON `summary.issue_count`, tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
-- **Summary**: [result summary or failure reason]
-
-### 🎯 **MUST FIX**
-- `None`
-- [when violations exist, replace `None` with one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise use `CHECKID path:line: message`]
-
-### 🟢 **STRENGTHS**
-- [Concrete positive findings only]
-
-### 🟡 **OBSERVATIONS**
-- [Non-blocking concerns, uncertainty, or follow-up ideas]
-
-### 🔴 **ISSUES** (only actual problems)
-- [Evidence-backed defects, regressions, or policy violations]
-- [Include azurerm-linter findings from the filtered run]
-
-## ✅ **RECOMMENDATIONS**
-
-### 🎯 **IMMEDIATE**
-- [Blocking or high-value next actions]
-
-### 🔄 **FUTURE CONSIDERATIONS**
-- [Non-blocking follow-up work]
-
-## 🏆 **OVERALL ASSESSMENT**
-[Overall assessment and readiness recommendation.]
-
-Overall assessment rules:
-- The verdict must align with the final `### 🔴 **ISSUES**` section.
-- If `### 🔴 **ISSUES**` contains exactly `- None`, do not say `Not ready to merge` and do not describe unresolved defects.
-- If `### 🔴 **ISSUES**` contains one or more issues, do not say the change is ready to merge.
-- Do not carry forward stale issue text into `## 🏆 **OVERALL ASSESSMENT**` after later evidence clears the issue before the review body is emitted.
-
-Preflight complete: yes
-Skill used: [skill-name]
-Skill used: [skill-name]
-```
-
-Footer rules:
-- Omit the `Preflight complete:` and `Skill used:` lines entirely when no skill was actually used.
-- When the footer is present, `Preflight complete: yes` must appear exactly once before the `Skill used:` lines.
-- Emit one `Skill used:` line per actually used skill, in first-use order.
-- Emit no other text after the footer.
-
-Individual findings should use this structure when expanded:
-
-```markdown
-## ${🔧/❓/⛏️/♻️/🤔/🚀/ℹ️/📌} ${Review Type}: ${Summary}
-* **Priority**: ${🔥/🔴/🟡/🔵/⭐/✅}
-* **File**: ${relative/path/to/file}
-* **Evidence**: [what the diff, file, instruction, or tool output shows]
-* **Impact**: [why it matters]
-* **Suggested Change**: [single deterministic fix when applicable]
-```
-
-Priority system: 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
-
-Review type emojis:
-- 🔧 Change request
-- ❓ Question
-- ⛏️ Nitpick
-- ♻️ Refactor suggestion
-- 🤔 Thought or concern
-- 🚀 Positive feedback
-- ℹ️ Explanatory note
-- 📌 Future consideration
+- On the normal successful path, the final review body is owned by Step 8's `review-presentation` renderer.
+- Do not duplicate or override that template in this prompt.
+- Prompt-owned hard-stop messages remain prompt-owned.

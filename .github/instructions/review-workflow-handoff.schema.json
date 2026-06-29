@@ -113,6 +113,9 @@
       "items": {
         "$ref": "#/$defs/roleNote"
       }
+    },
+    "presentation": {
+      "$ref": "#/$defs/presentationHint"
     }
   },
   "$defs": {
@@ -175,6 +178,39 @@
           ]
         },
         "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "presentationHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewType": {
+          "type": "string",
+          "enum": [
+            "change-request",
+            "nitpick",
+            "refactor-suggestion",
+            "thought-or-concern",
+            "positive-feedback",
+            "future-consideration"
+          ]
+        },
+        "suggestedChange": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correctedCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codeLanguage": {
           "type": "string",
           "minLength": 1
         }

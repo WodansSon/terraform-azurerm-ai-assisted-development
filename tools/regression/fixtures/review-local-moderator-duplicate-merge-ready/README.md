@@ -1,6 +1,6 @@
 # Sanitized Fixture: Local Review Moderator Duplicate Merge
 
-This fixture is synthetic and sanitized. It exists to define the expected duplicate-merge behavior for the future moderator-routed review workflow.
+This fixture is synthetic and sanitized. It defines the expected duplicate-merge behavior for the live moderator-routed review workflow.
 
 ## Scenario
 
@@ -16,7 +16,7 @@ The reviewer, skeptic, and architect all surface the same underlying concern thr
 
 - The workflow handoff schema preserves routed findings as shared records.
 - The future moderator contract defines duplicate merging and final synthesis semantics.
-- One concern appears multiple times across roles and should be merged into one final record once moderator routing is enabled.
+- One concern appears multiple times across roles and should be merged into one final moderated record in the live workflow.
 
 ## Expected Review Behavior
 

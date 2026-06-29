@@ -1,0 +1,82 @@
+{
+  "id": "review-local-presentation-suggestion-rendering",
+  "title": "Local review preserves moderator-owned suggestion rendering and positive-feedback semantics through the presentation layer",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where the moderator, handoff schema, and presentation contract all change together. The final rendered review should preserve structured finding cards with GitHub-style suggestion blocks driven by moderator-owned presentation hints rather than prompt-side invention, and should keep positive-feedback display levels distinct between baseline `good` work and above-and-beyond `notable` work.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-presentation-suggestion-rendering/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/instructions/review-workflow-handoff.schema.json",
+      ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      ".github/prompts/code-review-local-changes.prompt.md"
+    ],
+    "notes": "Sanitized fixture models the new moderator-plus-presentation flow where surviving findings carry deterministic presentation hints and the final renderer must preserve Current Code and Suggested Code blocks without prompt-side derivation while also keeping `good` and `notable` positive-feedback strengths semantically distinct."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-004",
+    "REVIEW-HANDOFF-003",
+    "REVIEW-MOD-002A",
+    "REVIEW-MOD-004B",
+    "REVIEW-MOD-008",
+    "REVIEW-PRESENT-003A",
+    "REVIEW-PRESENT-004A",
+    "REVIEW-PRESENT-004C",
+    "REVIEW-PRESENT-006"
+  ],
+  "mustCatch": [
+    {
+      "key": "moderator-owns-rich-presentation-hints",
+      "severity": "medium",
+      "description": "The review should raise a real issue if wording lets the prompt invent rich-display semantics instead of requiring surviving moderated findings to carry the canonical `presentation` hints."
+    },
+    {
+      "key": "suggestion-style-rendering-preserved",
+      "severity": "medium",
+      "description": "The final rendered review should preserve a structured finding card that includes `Current Code`, `Suggested Code`, and a fenced `suggestion` block when the moderated record carries those hints."
+    },
+    {
+      "key": "positive-feedback-priority-semantics-preserved",
+      "severity": "low",
+      "description": "The final rendered review should preserve positive-feedback structured findings so ordinary standards-compliant work renders as `✅ Good` while above-and-beyond non-obvious implementation work renders as `⭐ Notable`."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "prompt-invents-rich-display-semantics",
+      "description": "The workflow must not accept prompt-side derivation of review type, suggested change, current code, corrected code, or code language once moderator-owned presentation hints exist."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: review-architect",
+      "Skill used: review-skeptic",
+      "Skill used: review-advocate",
+      "Skill used: review-moderator",
+      "#### 🔧 Change request:",
+      "#### 🚀 Positive feedback:",
+      "* **Priority**: ⭐ Notable",
+      "* **Priority**: ✅ Good",
+      "**Current Code:**",
+      "**Suggested Code:**",
+      "```suggestion"
+    ]
+  },
+  "notes": "Use this case to benchmark the new moderator-owned presentation-hint model, render-only suggestion-style output contract, and positive-feedback priority semantics through the generic local review prompt."
+}

@@ -208,6 +208,11 @@ In this repository, those validator and benchmark surfaces are part of the inten
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/review-architect-compliance-contract.instructions.md`
+- `.github/instructions/review-advocate-compliance-contract.instructions.md`
+- `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- `.github/instructions/review-skeptic-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
 These remain the authoritative rule layers for their domains.
@@ -268,7 +273,11 @@ Near-term target state:
 - `.github/skills/custom-poller-migration/SKILL.md`
 - `.github/skills/acceptance-testing/SKILL.md`
 - `.github/skills/docs-writer/SKILL.md`
+- `.github/skills/review-architect/SKILL.md`
 - `.github/skills/review-advocate/SKILL.md`
+- `.github/skills/review-moderator/SKILL.md`
+- `.github/skills/review-presentation/SKILL.md`
+- `.github/skills/review-skeptic/SKILL.md`
 
 Current classification:
 
@@ -306,7 +315,8 @@ Because review UX is already considered difficult by the team, prompt multiplica
 Current review architecture direction:
 
 - keep the three review prompts as compatibility-sensitive front doors
-- keep exact hard-stop text and output contracts in the prompts where they are user-visible and regression-sensitive
+- keep exact hard-stop text in the prompts where it is user-visible and regression-sensitive
+- keep shared successful-review presentation in a render-only skill-plus-contract layer instead of duplicating body templates in multiple prompts
 - keep PR-scope logic, linter status mapping, and review-rule authority in the contracts
 - keep troubleshooting and reference docs aligned with that contract-first review model
 

@@ -37,6 +37,7 @@
 │  │  │   │  │  │   ├── review-advocate/SKILL.md           │  │  │ │
 │  │  │   │  │  │   ├── review-architect/SKILL.md          │  │  │ │
 │  │  │   │  │  │   ├── review-moderator/SKILL.md          │  │  │ │
+│  │  │   │  │  │   ├── review-presentation/SKILL.md       │  │  │ │
 │  │  │   │  │  │   └── review-skeptic/SKILL.md            │  │  │ │
 │  │  │   │  │  └── instructions/                          │  │  │ │
 │  │  │   │  │      ├── code-review-compliance-contract... │  │  │ │
@@ -44,10 +45,12 @@
 │  │  │   │  │      ├── docs-compliance-contract...        │  │  │ │
 │  │  │   │  │      ├── review-advocate-compliance...      │  │  │ │
 │  │  │   │  │      ├── review-moderator-compliance...     │  │  │ │
+│  │  │   │  │      ├── review-presentation-compliance...  │  │  │ │
+│  │  │   │  │      ├── review-presentation-input.schema...│  │  │ │
 │  │  │   │  │      ├── review-workflow-handoff.schema.json│  │  │ │
 │  │  │   │  │      ├── testing-compliance-contract...     │  │  │ │
 │  │  │   │  │      ├── ai-skill-routing-*.instructions... │  │  │ │
-│  │  │   │  │      └── [26 runtime instruction/schema files]│  │  │ │
+│  │  │   │  │      └── [28 runtime instruction/schema files]│  │  │ │
 │  │  │   │  └── .vscode/settings.json                     │  │  │ │
 │  │  │   └────────────────────────────────────────────────┘  │  │ │
 │  │  └───────────────────────────────────────────────────────┘  │ │
@@ -122,16 +125,22 @@
 │  │   ├── docs-compliance-contract.instructions.md           │
 │  │   ├── review-advocate-compliance-contract.instructions.md│
 │  │   ├── review-moderator-compliance-contract.instructions.md│
+│  │   ├── review-presentation-compliance-contract.instructions.md│
+│  │   ├── review-presentation-input.schema.json             │
 │  │   ├── review-workflow-handoff.schema.json                │
 │  │   ├── testing-compliance-contract.instructions.md        │
 │  │   ├── ai-skill-routing-*.instructions.md                 │
-│  │   └── [26 instruction/schema files total]                │
+│  │   └── [28 instruction/schema files total]                │
 │  ├── .github/skills/                                        │
 │  │   ├── acceptance-testing/SKILL.md                        │
 │  │   ├── custom-poller-migration/SKILL.md                   │
 │  │   ├── docs-writer/SKILL.md                               │
 │  │   ├── resource-implementation/SKILL.md                   │
-│  │   └── review-advocate/SKILL.md                           │
+│  │   ├── review-advocate/SKILL.md                           │
+│  │   ├── review-architect/SKILL.md                          │
+│  │   ├── review-moderator/SKILL.md                          │
+│  │   ├── review-presentation/SKILL.md                       │
+│  │   └── review-skeptic/SKILL.md                            │
 │  └── .vscode/settings.json                                  │
 └────────────────────────────┬────────────────────────────────┘
                              │
@@ -354,6 +363,7 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── review-advocate/SKILL.md
 │   │   ├── review-architect/SKILL.md
 │   │   ├── review-moderator/SKILL.md
+│   │   ├── review-presentation/SKILL.md
 │   │   └── review-skeptic/SKILL.md
 │   │
 │   ├── workflows/
@@ -436,7 +446,7 @@ terraform-azurerm-ai-assisted-development/
 The repository contains both shipped runtime guidance and repo-only maintainer tooling.
 
 - Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
-- Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, five shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
+- Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
 - Repo-only maintenance surfaces stay in this repository and are not installed into target repos.
 - Repo-only surfaces include maintainer skills such as `ai-toolkit-maintenance` and `changelog-maintenance`, the `docs/` architecture and alignment references, and the validation and regression tooling under `tools/`.
 
@@ -466,7 +476,8 @@ Docs components (quick links):
 - `/review-architect`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as a workflow-governed design-direction pass before final adjudication is frozen.
 - `/review-skeptic`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as a workflow-governed adversarial pass before final adjudication is frozen.
 - `/review-advocate`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it as the final false-positive-defense quality gate after the primary, architect, and skeptic passes have populated the workflow candidate set.
-- `/review-moderator`: slash-invokable runtime skill, not a prompt file. Its contract and skill are staged now to define the future synthesis role, but the generic code review prompts do not yet invoke it.
+- `/review-moderator`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it after advocate adjudication to merge duplicates, normalize surviving findings, and freeze the final moderated findings set.
+- `/review-presentation`: slash-invokable runtime skill, not a prompt file. The generic code review prompts invoke it after moderation as a render-only final step so local and committed review share one presentation template.
 - Rule citations such as `REVIEW-SCOPE-005` and `DOCS-EX-003` are explained in `docs/CODE_REVIEW_RULES.md`.
 
 ### Docs governance (contract, prompt, skill)

@@ -14,7 +14,7 @@ One workflow MUST follow this contract:
   - Role: Moderator
   - Command: `review-moderator` skill, invoked as the governed final moderation pass after reviewer, architect, skeptic, and advocate records exist
   - Requires EOF Load: yes
-  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final merged-and-normalized visible finding set inside the prompt-owned review template.
+  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final merged-and-normalized moderated finding set for downstream presentation.
 
 The generic code review prompts orchestrate this contract.
 The moderator skill encapsulates the reusable moderation method.
@@ -78,8 +78,19 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 
 ### REVIEW-MOD-002: Moderator consumes the shared handoff schema
 - Rule: Every finding the moderator reads or emits in workflow scope must conform to `.github/instructions/review-workflow-handoff.schema.json`.
-- Rule: The moderator may enrich `roles`, `ruleReferences`, and `roleNotes`, but it must preserve the record identity and the shared core fields.
+- Rule: The moderator may enrich `roles`, `ruleReferences`, `roleNotes`, and `presentation`, but it must preserve the record identity and the shared core fields.
 - Rule: The moderator must not replace a structured record with prose that loses `id`, `scope`, `evidence`, `reasoning`, `confidence`, or `status`.
+
+### REVIEW-MOD-002A: Moderator owns deterministic presentation hints for surviving findings
+- Rule: For surviving moderated findings, the moderator may populate the optional `presentation` object on the shared handoff record when that metadata can be stated deterministically from the finding and its evidence.
+- Rule: If a surviving finding is intended to render as a structured finding card in the downstream presentation layer, the moderator owns the corresponding `presentation` hints for that card.
+- Rule: `presentation.reviewType` should be set when the surviving finding clearly fits one of the supported renderer review types.
+- Rule: `presentation.suggestedChange` should be set when one narrow deterministic fix or next change is supported by the evidence.
+- Rule: `presentation.correctedCode` may be set only when the moderator can provide a concrete corrected snippet without guessing surrounding semantics.
+- Rule: `presentation.currentCode` may be set only when the moderator can identify the relevant current snippet deterministically from the finding evidence.
+- Rule: `presentation.codeLanguage` may be set only when `presentation.correctedCode` is present.
+- Rule: If a suggested change, current code snippet, or corrected code snippet cannot be backed deterministically, leave the corresponding `presentation` field absent rather than inventing it.
+- Rule: Downstream prompts and the render-only presentation layer must not invent missing `presentation.reviewType`, `presentation.suggestedChange`, `presentation.currentCode`, `presentation.correctedCode`, or `presentation.codeLanguage` fields on behalf of the moderator.
 
 ### REVIEW-MOD-003: Duplicate concerns merge into one strongest record
 - Rule: When multiple workflow records describe the same underlying concern, the moderator must merge them into one record rather than repeat them.
@@ -95,10 +106,14 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: When the workflow includes already-adjudicated records, the moderator must treat `confirmed`, `downgraded`, and `dismissed` as upstream status outcomes rather than re-litigating them.
 - Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized for final presentation, but it must not invent a second false-positive-defense pass under moderator authority.
 
-### REVIEW-MOD-005: Final synthesis stays inside the prompt-owned output contract
-- Rule: The moderator may decide the final merged-and-normalized visible finding set from the workflow records it received, but it must stay inside the prompt-owned visible output structure.
-- Rule: The moderator must not add a new reader-visible section that the prompt did not authorize.
-- Rule: Scope resolution, stage ordering, and final section names remain prompt-owned even when moderation is enabled.
+### REVIEW-MOD-004B: Presentation hints are evidence-bound
+- Rule: The moderator may normalize or add `presentation.reviewType`, `presentation.suggestedChange`, `presentation.currentCode`, or `presentation.correctedCode` only when the finding evidence supports the change.
+- Rule: The moderator must not attach optimistic remediation prose or corrected code that goes beyond the proven defect.
+
+### REVIEW-MOD-005: Final synthesis stays inside the downstream output contract
+- Rule: The moderator may decide the final merged-and-normalized moderated finding set from the workflow records it received, but it must not render or restructure the final reader-visible review body.
+- Rule: The moderator must not add a new reader-visible section that the prompt or downstream presentation renderer did not authorize.
+- Rule: Scope resolution, stage ordering, and final section names remain outside moderator authority even when moderation is enabled.
 
 ### REVIEW-MOD-006: Moderator routing must stay explicit
 - Rule: Only a prompt that explicitly routes the moderator pass may claim that `review-moderator` ran.
@@ -109,5 +124,9 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 ### REVIEW-MOD-007: Moderator output is final synthesis, not role narration
 - Rule: The moderator must not narrate its internal merge or conflict-resolution process in the final review body.
 - Rule: Any reader-visible trace of moderator behavior must come through the final normalized finding set or an explicit verification marker authorized by the routed prompt.
+
+### REVIEW-MOD-008: Moderator output may prepare the render-only presentation layer
+- Rule: The moderator may enrich surviving workflow findings with deterministic `presentation` hints so the downstream render-only presentation layer can emit the richer legacy review hierarchy without the prompts inventing display semantics ad hoc.
+- Rule: Those hints must remain subordinate to the shared handoff record and must not become a second classification system.
 
 <!-- REVIEW-MOD-CONTRACT-EOF -->
