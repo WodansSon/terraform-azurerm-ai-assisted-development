@@ -20,14 +20,33 @@ git --no-pager diff --no-prefix origin/main...HEAD -- ":(exclude)vendor/**" ":(e
 # Get commit context
 git log --oneline origin/main..HEAD
 git status
+
+# Get PR URL when this branch has an associated GitHub pull request
+gh pr view --json url --jq .url
 ```
 
 **⚠️ IMPORTANT**: If the commands do not show any changes, abandon the code review and display:
 **"☠️ Argh! Shiver me source files! This branch be cleaner than a swabbed deck! Push some code, Ye Lily-livered scallywag! ☠️"**
 
-**2. REVIEW THE CHANGES** - Apply expertise as principal Terraform provider engineer
+**PR Link Handling**:
+- If `gh pr view --json url --jq .url` returns a URL, include it as **PR** in the change summary.
+- If the review output mentions a PR, include the direct PR URL whenever available.
+- If `gh` is unavailable, the branch has no associated PR, or the command fails, omit the PR field rather than inventing a link.
 
-**3. PROVIDE STRUCTURED FEEDBACK** - Use the review format below
+**2. BUILD THE EVIDENCE BASE** - Track which sources were inspected before making findings:
+
+- **Diff evidence**: changed files and changed lines from `origin/main...HEAD`
+- **Existing provider patterns**: similar resources/data sources/tests/docs in the same service or nearest comparable service
+- **Schema evidence**: relevant schema definitions under `internal/**`
+- **SDK evidence**: generated HashiCorp Go Azure SDK clients/models when the finding depends on Azure payload shape, enum values, response fields, polling, or API behavior
+- **REST/API evidence**: Azure REST API documentation/spec behavior when SDK and existing code do not answer an API-sensitive question
+- **Instruction evidence**: applicable workspace rules from `.github/copilot-instructions.md`, `.github/instructions/**`, and `.github/skills/**`
+
+**Evidence rule**: Every issue must identify the source(s) that prove it. If a finding depends on SDK/REST/API behavior but SDK/REST/API evidence was not checked, classify it as **Needs verification** or **Observation**, not a confirmed issue.
+
+**3. REVIEW THE CHANGES** - Apply expertise as principal Terraform provider engineer
+
+**4. PROVIDE STRUCTURED FEEDBACK** - Use the review format below
 
 ---
 
@@ -88,10 +107,21 @@ As a principal Terraform provider engineer with expertise in Go development, Azu
 - **Files Changed**: [number] files ([additions], [modifications], [deletions])
 - **Scale**: [insertions] insertions, [deletions] deletions
 - **Branch**: [current_branch_from_git_command] vs origin/main
+- **PR**: [direct PR URL if available; omit this line if unavailable]
 - **Scope**: [Brief description of overall scope]
 
 ## 🎯 **PRIMARY CHANGES ANALYSIS**
 [Overview of the code changes and purpose]
+
+## 🔍 **EVIDENCE & VERIFICATION**
+- **Diff Reviewed**: `origin/main...HEAD`
+- **Files Inspected**: [changed files and any additional files opened for context]
+- **Existing Patterns Checked**: [similar provider resources/tests/docs inspected, or `None`]
+- **Schema Sources Checked**: [schema files/definitions inspected, or `None`]
+- **SDK Sources Checked**: [HashiCorp Go Azure SDK client/model files inspected, or `Not checked`]
+- **REST/API Sources Checked**: [Azure REST API docs/specs inspected, or `Not checked`]
+- **Instruction Sources Applied**: [workspace instruction/skill files used]
+- **Not Verified**: [tests not run, live Azure behavior not checked, SDK/REST not checked, docs audit not run, etc.]
 
 ## 📋 **DETAILED TECHNICAL REVIEW**
 
@@ -102,7 +132,7 @@ As a principal Terraform provider engineer with expertise in Go development, Azu
 [List areas for consideration or minor improvements]
 
 ### 🔴 **ISSUES** (if any)
-[List ONLY actual problems that need to be fixed - bugs, errors, violations, missing requirements, typos, misspellings, improper pointer handling, incorrect SDK usage, using deprecated utilities, etc. Do NOT include observations about what was done correctly or opinions about changes that are already implemented properly]
+[List ONLY actual problems that need to be fixed - bugs, errors, violations, missing requirements, typos, misspellings, improper pointer handling, incorrect SDK usage, using deprecated utilities, etc. Each issue must include evidence and confidence. Do NOT include observations about what was done correctly or opinions about changes that are already implemented properly]
 
 ## ✅ **RECOMMENDATIONS**
 
@@ -121,10 +151,13 @@ As a principal Terraform provider engineer with expertise in Go development, Azu
 
 ## ${🔧/❓/⛏️/♻️/🤔/🚀/ℹ️/📌} ${Review Type}: ${Summary}
 * **Priority**: ${🔥/🔴/🟡/🔵/⭐/✅}
+* **Confidence**: ${High / Medium / Needs verification}
 * **File**: ${relative/path/to/file}
+* **Evidence**: ${diff/schema/existing pattern/SDK/REST/instruction source proving the finding}
 * **Details**: Clear explanation
 * **Azure Context** (if applicable): Service behavior reference
 * **Terraform Impact** (if applicable): Configuration/state effects
+* **Not Verified** (if applicable): ${what would need to be checked before treating this as confirmed}
 * **Suggested Change** (if applicable): Code snippet
 
 # Summary
@@ -132,6 +165,11 @@ Concise assessment and any follow-up items.
 ```
 
 **Priority System:** 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
+
+**Confidence System:**
+* **High** - Proven by the diff plus schema, existing provider pattern, SDK model/client, REST/API documentation, or explicit workspace rule
+* **Medium** - Strongly supported by provider conventions or nearby code, but not fully proven by API/SDK evidence
+* **Needs verification** - Plausible concern that depends on live Azure behavior, undocumented API behavior, or SDK/REST sources that were not inspected
 
 **Review Type Emojis:**
 * 🔧 Change request - Functional issues requiring fixes
@@ -165,6 +203,7 @@ git --no-pager diff --stat --no-prefix origin/main...HEAD
 git --no-pager diff --no-prefix origin/main...HEAD
 git log --oneline origin/main..HEAD
 git status
+gh pr view --json url --jq .url
 ```
 
 **If no changes found:**
