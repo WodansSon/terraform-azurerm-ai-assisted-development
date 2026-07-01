@@ -1,18 +1,18 @@
 {
   "id": "review-local-advocate-skip-no-candidates",
-  "title": "Local review skips advocate pass when no candidate Issues exist",
+  "title": "Local review skips advocate but still runs moderator when no candidate Issues exist",
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
-    "whyItMattered": "Use this case to benchmark the advocate skip path through the generic local review prompt without expanding the harness task model.",
-    "genericCondition": "Sanitized fixture models benign wording-alignment updates in the advocate skill and contract. The generic local review should stay issue-free, so Step 6 must not run.",
+    "whyItMattered": "Use this case to benchmark the zero-candidate path through the generic local review prompt so advocate still skips while moderator freezes a deterministic empty result.",
+    "genericCondition": "Sanitized fixture models benign wording-alignment updates in the advocate skill and contract. The generic local review should stay issue-free, so Step 6 must not run, but Step 7 must still finalize the empty result.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A sanitized local-review scenario where AI-toolkit files change, but the primary review pass should produce no candidate Issues. The advocate pass must not run and the final output must not include the review-advocate skill marker.",
+  "description": "A sanitized local-review scenario where AI-toolkit files change, but the primary review pass should produce no candidate Issues. The advocate pass must not run, but the moderator must still run to freeze a deterministic zero-findings result.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-local-advocate-skip-no-candidates/README.md"
@@ -22,7 +22,7 @@
       ".github/skills/review-advocate/SKILL.md",
       ".github/instructions/review-advocate-compliance-contract.instructions.md"
     ],
-    "notes": "Sanitized fixture models benign wording-alignment updates in the advocate skill and contract. The generic local review should stay issue-free, so Step 6 must not run."
+    "notes": "Sanitized fixture models benign wording-alignment updates in the advocate skill and contract. The generic local review should stay issue-free, so Step 6 must not run, but Step 7 must still finalize the empty result."
   },
   "expectedRules": [
     "REVIEW-SCOPE-004",
@@ -33,13 +33,17 @@
     {
       "key": "advocate-skip-when-no-candidate-issues",
       "severity": "medium",
-      "description": "When the primary review pass produces no candidate Issues, the final review should remain issue-free and must not invoke the advocate pass or emit the review-advocate verification marker."
+      "description": "When the primary review pass produces no candidate Issues, the final review should remain issue-free, must not invoke the advocate pass, and must still invoke moderator to freeze a deterministic zero-findings result."
     }
   ],
   "mustNotFlag": [
     {
       "key": "spurious-review-advocate-marker",
       "description": "The review must not emit `Skill used: review-advocate` when the primary pass produced no candidate Issues."
+    },
+    {
+      "key": "missing-review-moderator-marker-on-zero-findings-path",
+      "description": "The review must not skip `Skill used: review-moderator` on the zero-candidate path because moderator now owns the deterministic empty-result freeze."
     }
   ],
   "expectedTools": {
@@ -52,10 +56,16 @@
       "DETAILED TECHNICAL REVIEW",
       "OVERALL ASSESSMENT"
     ],
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: review-architect",
+      "Skill used: review-skeptic",
+      "Skill used: review-moderator"
+    ],
     "mustNotIncludeMarkers": [
       "Skill used: review-advocate",
       "[⚖️ ADVOCATE:"
     ]
   },
-  "notes": "Use this case to benchmark the advocate skip path through the generic local review prompt without expanding the harness task model."
+  "notes": "Use this case to benchmark the zero-candidate path through the generic local review prompt so advocate skips while moderator still freezes a deterministic empty result."
 }

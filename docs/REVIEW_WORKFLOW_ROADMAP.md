@@ -23,9 +23,9 @@ Load docs/REVIEW_WORKFLOW_ROADMAP.md into working memory and use it as the canon
 - `review-advocate` already functions as a governed second-pass role through `.github/skills/review-advocate/SKILL.md` and its companion contract `.github/instructions/review-advocate-compliance-contract.instructions.md`.
 - Additional routed roles now exist in the active single-workflow design: `review-architect` and `review-skeptic`.
 - The workflow now has a concrete shared handoff schema at `.github/instructions/review-workflow-handoff.schema.json` so routed findings move through one stable JSON-backed transport.
-- The generic review prompts now describe a final adjudication owner slot that is currently bound to `review-advocate`.
-- `review-moderator` now exists as staged semantics through `.github/skills/review-moderator/SKILL.md` and `.github/instructions/review-moderator-compliance-contract.instructions.md`, but the generic review prompts do not yet route it.
-- Initial regression coverage now exists for schema-preserving routed-role handoff and for the future duplicate-merge moderation behavior.
+- The generic review prompts now bind candidate-level adjudication to `review-advocate` and final synthesis to `review-moderator`.
+- `review-moderator` is now a routed part of the generic review workflow through `.github/skills/review-moderator/SKILL.md` and `.github/instructions/review-moderator-compliance-contract.instructions.md`.
+- Regression coverage now exists for schema-preserving routed-role handoff, moderator-owned duplicate merge, zero-findings moderation, and deterministic issue-class coverage.
 
 ### Current Prompt Responsibilities
 
@@ -51,9 +51,9 @@ The immediate goal is to make the current single-workflow review pipeline correc
 	- `.github/skills/review-skeptic/SKILL.md`
 	- `.github/instructions/review-architect-compliance-contract.instructions.md`
 	- `.github/instructions/review-skeptic-compliance-contract.instructions.md`
-2. Complete the stabilization work that now already exists in staged form on this branch: shared handoff schema, staged moderator semantics, routed-role regression coverage, and prompt wording that separates the final adjudication owner slot from the specific role currently bound to it.
+2. Complete the remaining stabilization work around role boundaries, deterministic issue-class coverage, and user-facing documentation so the routed workflow semantics are fully aligned across prompts, contracts, skills, and repo-only docs.
 3. Run the stabilized single-workflow design for a period of time and refine it through regression coverage and real usage.
-4. Rebind the final adjudication owner from `review-advocate` to `review-moderator` once the moderator rules and regression coverage are sufficient.
+4. Revisit whether `review-advocate` should remain a distinct false-positive-defense role or be simplified further now that `review-moderator` owns final synthesis.
 5. Revisit multi-agent execution only after the role model and handoff behavior are stable.
 
 ## Stabilization Goals
@@ -76,7 +76,7 @@ The exact naming can still evolve, but the intended shape is:
 - `review-architect`: structure, design, and maintainability concerns; currently represented by `.github/skills/review-architect/SKILL.md`
 - `review-skeptic`: challenge assumptions, push on edge cases, surface weaknesses; currently represented by `.github/skills/review-skeptic/SKILL.md`
 - `review-advocate`: current false-positive-defense and second-pass challenge role; currently represented by `.github/skills/review-advocate/SKILL.md`
-- `moderator`: intended stable end-state synthesis and adjudication role; now represented in staged form by `.github/skills/review-moderator/SKILL.md`, but not yet routed by the generic prompts
+- `moderator`: current final synthesis and adjudication role; represented by `.github/skills/review-moderator/SKILL.md` and routed by the generic prompts
 
 In this roadmap, `reviewer` refers to one logical primary review role. The local-changes and committed-changes review prompts are two different scope-acquisition entrypoints for that same role. Their difference is how they gather the code under review, not the semantics of the reviewer itself.
 
@@ -178,7 +178,7 @@ For avoidance of doubt after a reset:
 - `review-advocate` = existing second-pass false-positive-defense role
 - `review-architect` = new structure and maintainability role introduced by PR `#30`
 - `review-skeptic` = new challenge and edge-case role introduced by PR `#30`
-- `moderator` = intended future synthesis and adjudication role, now defined in staged form but not yet routed by generic prompts
+- `moderator` = current final synthesis and adjudication role, routed by the generic prompts after advocate adjudication completes
 
 ## Ownership Boundaries And Allowed Actions
 
@@ -236,7 +236,7 @@ The moderator layer should eventually be governed by explicit rules such as:
 
 These rules should be regression-tested once they are formalized.
 
-An initial staged benchmark for duplicate-merge behavior now exists so this moderator-specific responsibility can be validated before moderator routing is enabled.
+Benchmarks now exist for duplicate-merge behavior, zero-findings moderation, and deterministic issue-class coverage so this moderator-specific responsibility can be validated in the live routed workflow.
 
 ## Design Principle For The Current Workflow
 
@@ -368,7 +368,7 @@ This stabilization PR is also the explicit reconciliation point between the exis
 
 The stabilization work should therefore ensure that:
 
-- `review-advocate`, `review-skeptic`, and the intended `moderator` role do not retain overlapping responsibilities by accident
+- `review-advocate`, `review-skeptic`, and `review-moderator` do not retain overlapping responsibilities by accident
 - contract rules are not duplicated across role-specific artifacts without an intentional reason
 - challenge, downgrade, dismissal, and synthesis responsibilities are assigned to one clear owner each
 - the resulting role split is a clean consolidation rather than an additive layering of partially redundant second-pass behaviors
@@ -376,9 +376,9 @@ The stabilization work should therefore ensure that:
 The branch is already partway through this phase now:
 
 - the shared handoff schema is defined and shipped
-- the current final adjudication owner slot is abstracted in prompt wording and still bound to advocate
-- moderator semantics are staged but not yet routed
-- initial regression coverage exists for schema-preserving handoff and future duplicate-merge moderation behavior
+- candidate-level adjudication is explicitly bound to advocate and final synthesis is explicitly bound to moderator
+- moderator semantics are routed in the generic prompts and exercised on successful review paths, including zero-findings paths
+- regression coverage exists for schema-preserving handoff, duplicate-merge moderation behavior, zero-findings moderation, and deterministic issue-class coverage
 
 #### Phase 2 Implementation Checklist
 

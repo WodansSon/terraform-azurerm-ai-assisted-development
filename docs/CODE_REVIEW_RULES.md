@@ -176,7 +176,8 @@ In practice, they require the workflow to:
 - model issue-class completion explicitly, including not-applicable issue classes, instead of inferring that state only from prose
 - treat the router validation sub-phase as the canonical completion gate rather than relying on prompt prose alone
 - block architect, skeptic, advocate, and moderator routing until the coverage matrix is complete
-- complete mandatory issue-class checks, such as ownership overlap and destructive-path gating symmetry, before final output is emitted
+- complete mandatory issue-class checks, such as ownership overlap, destructive-path gating symmetry, PATCH or residual-state review, and omitted-config state-drift review, before final output is emitted
+- surface any evidence-backed concern found in those required checks at the justified classification instead of silently dropping it just because another blocking issue was found first
 
 ### `REVIEW-SCOPE-005D`
 

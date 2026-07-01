@@ -211,7 +211,7 @@ Example:
 
 - Rule: If `suggestedChange` is absent, omit the `Suggested Change` line.
 - Rule: If `currentCode` is present, render a `**Current Code:**` label followed by a fenced code block using `codeLanguage` when supplied.
-- Rule: If `currentCode` and `correctedCode` are both present, render a `**Suggested Code:**` label followed by a fenced `suggestion` code block containing only the replacement snippet.
+- Rule: If `currentCode` and `correctedCode` are both present, render a `**Suggested Code:**` label followed by a fenced code block containing only the replacement snippet, using `codeLanguage` when supplied.
 - Rule: If `correctedCode` is present without `currentCode`, render a fenced code block immediately after the `Suggested Change` line, using `codeLanguage` when supplied.
 - Rule: Plain string items remain plain bullets in input order and are the default shape when no structured finding object is supplied.
 
@@ -234,7 +234,7 @@ ${currentCode}
 
 **Suggested Code:**
 
-```suggestion
+```text
 ${correctedCode}
 ```
 ````

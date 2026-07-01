@@ -140,6 +140,8 @@ Rules:
 - Review the full in-scope change-set.
 - Complete the deterministic coverage matrix built in Step 2A and validated in Step 3A before drafting or freezing findings.
 - Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
+- When multiple mandatory issue-class checks uncover distinct evidence-backed concerns, preserve each concern as its own schema-conformant intermediate record; do not stop after the first blocking defect and do not treat one concern as satisfying another required issue class.
+- When a mandatory issue-class check yields an evidence-backed non-blocking concern, keep it in `OBSERVATIONS`; do not drop it solely because another issue already blocks merge or because it does not change the final verdict.
 - Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
 - Treat vendored files under `vendor/**` as skipped non-actionable files: report only the skipped vendored-file count, and do not raise Issues that require directly editing vendored content.
 - When the selected local diff is vendored-only or vendored-heavy, say so explicitly in the summary or notes so sparse actionable findings are easy to interpret.
@@ -195,17 +197,17 @@ Rules:
 - If the primary review pass plus the routed architect and skeptic passes produced no candidate Issues, skip this step and do not emit the `Skill used: review-advocate` marker.
 
 ### 7) Final moderation owner (binding: moderator)
-- This step is mandatory whenever the workflow has one or more schema-conformant intermediate findings after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
+- This step is mandatory on every normal successful review path after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
 - Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
 - The final moderation owner for this workflow is `review-moderator`.
 - Invoke the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-moderator-compliance-contract.instructions.md` (the `REVIEW-MOD-*` rules) to merge duplicates, normalize surviving records, and produce the final moderated finding set for presentation.
-- Consume only schema-conformant `REVIEW-HANDOFF-*` intermediate records, preserve record identity and status semantics, and use moderation only for duplicate merge, wording normalization, severity normalization, and final visible-set selection.
+- Consume the schema-conformant `REVIEW-HANDOFF-*` intermediate record set for the run, including the explicit empty-record-set case, preserve record identity and status semantics when records exist, and use moderation only for duplicate merge, wording normalization, severity normalization, and final visible-set selection.
 - Freeze the review findings set only after the moderator pass completes.
 - Do not add a separate final-moderation section to the review body; the moderator binding is invisible machinery that only determines the final visible `ISSUES` and `OBSERVATIONS` set per the routed contract.
-- Observable proof requirement: when this step runs, `review-moderator` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-moderator` line. Because the moderator pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
+- Observable proof requirement: because this step now runs on every normal successful routed review path, `review-moderator` is an actually-used skill and the Step 5 verification footer MUST include a `Skill used: review-moderator` line. Because the moderator pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
 - If the `review-moderator` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-moderator skill or contract not fully loaded. Load .github/skills/review-moderator/SKILL.md and .github/instructions/review-moderator-compliance-contract.instructions.md to EOF and re-run this prompt.`
-- If the workflow produced no schema-conformant intermediate findings, skip this step and do not emit the `Skill used: review-moderator` marker.
+- If earlier steps produced no schema-conformant intermediate findings, invoke moderator with an explicit empty record set and freeze a deterministic zero-findings result instead of skipping this step.
 
 ### 8) Final presentation renderer
 - This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.

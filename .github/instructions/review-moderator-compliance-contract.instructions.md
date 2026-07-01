@@ -14,7 +14,7 @@ One workflow MUST follow this contract:
   - Role: Moderator
   - Command: `review-moderator` skill, invoked as the governed final moderation pass after reviewer, architect, skeptic, and advocate records exist
   - Requires EOF Load: yes
-  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final merged-and-normalized moderated finding set for downstream presentation.
+  - Goal: merge schema-conformant workflow findings, deduplicate overlaps, normalize severity and wording, and produce the final merged-and-normalized moderated finding set for downstream presentation, including an explicit deterministic empty-result freeze when no findings survive into moderation.
 
 The generic code review prompts orchestrate this contract.
 The moderator skill encapsulates the reusable moderation method.
@@ -75,11 +75,13 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: The moderator consumes schema-conformant workflow records from earlier passes; it does not replace them with a new independent audit.
 - Rule: The moderator must not invent new evidence-free issues that were never surfaced into the workflow candidate set.
 - Rule: The moderator may request that a weaker claim be narrowed, merged, or phrased more precisely based on stronger evidence already in the workflow.
+- Rule: The moderator must also support the explicit empty-record-set case and freeze that case as a deterministic zero-findings outcome rather than leaving the workflow without a final moderation owner.
 
 ### REVIEW-MOD-002: Moderator consumes the shared handoff schema
 - Rule: Every finding the moderator reads or emits in workflow scope must conform to `.github/instructions/review-workflow-handoff.schema.json`.
 - Rule: The moderator may enrich `roles`, `ruleReferences`, `roleNotes`, and `presentation`, but it must preserve the record identity and the shared core fields.
 - Rule: The moderator must not replace a structured record with prose that loses `id`, `scope`, `evidence`, `reasoning`, `confidence`, or `status`.
+- Rule: A routed prompt may invoke moderator with an explicit empty record set for the current run; that empty set is a valid schema-conformant moderation input and must be treated as a real finalization state, not as an implicit skip.
 
 ### REVIEW-MOD-002A: Moderator owns deterministic presentation hints for surviving findings
 - Rule: For surviving moderated findings, the moderator may populate the optional `presentation` object on the shared handoff record when that metadata can be stated deterministically from the finding and its evidence.
@@ -114,6 +116,7 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: The moderator may decide the final merged-and-normalized moderated finding set from the workflow records it received, but it must not render or restructure the final reader-visible review body.
 - Rule: The moderator must not add a new reader-visible section that the prompt or downstream presentation renderer did not authorize.
 - Rule: Scope resolution, stage ordering, and final section names remain outside moderator authority even when moderation is enabled.
+- Rule: When the moderator receives an explicit empty record set, it must finalize that run as a deterministic empty moderated result rather than treating the absence of findings as a skipped moderation stage.
 
 ### REVIEW-MOD-006: Moderator routing must stay explicit
 - Rule: Only a prompt that explicitly routes the moderator pass may claim that `review-moderator` ran.

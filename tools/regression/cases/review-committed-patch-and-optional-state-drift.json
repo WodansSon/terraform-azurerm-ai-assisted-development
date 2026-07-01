@@ -1,0 +1,67 @@
+{
+  "id": "review-committed-patch-and-optional-state-drift",
+  "title": "Committed review keeps PATCH-shape concern in observations alongside omitted-config state drift",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark that committed review preserves both an atypical PUT-versus-update-shape concern and an omitted-config read-state drift concern on the same new-resource PR, keeping the former as a non-blocking observation instead of dropping it once a blocking issue exists.",
+    "genericCondition": "Sanitized fixture models a new typed provider resource whose create path uses a full PUT-style request, whose update path calls the create-style helper even though the SDK exposes a dedicated update path, and whose read path hydrates API-returned metadata into an Optional field even when the config omits it.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario for a new typed resource family where the review must simultaneously surface an atypical create-versus-update request-shaping concern in `OBSERVATIONS` and an omitted-config state-drift risk in `ISSUES`.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-patch-and-optional-state-drift/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_project_connection_resource.go",
+      "internal/services/example/example_project_connection_resource_list.go",
+      "internal/services/example/example_project_connection_resource_test.go",
+      "website/docs/r/example_project_connection.html.markdown",
+      "website/docs/r/example_project_connection_list.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a new typed provider resource whose create path uses a full PUT-style request, whose update path calls the create-style helper even though the SDK exposes a dedicated update path, and whose read path hydrates API-returned metadata into an Optional field even when the config omits it."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-004",
+    "REVIEW-SCOPE-005",
+    "IMPL-PATCH-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "patch-shape-concern-surfaced",
+      "severity": "medium",
+      "description": "The committed review should surface the atypical create-versus-update request-shaping concern in `OBSERVATIONS` when the SDK exposes a dedicated update path but current-run evidence does not yet prove a blocking field-loss or service-contract failure."
+    },
+    {
+      "key": "optional-field-omitted-config-state-drift",
+      "severity": "high",
+      "description": "The committed review should surface the read-state drift risk when an Optional field omitted from config is repopulated from API-owned metadata during refresh."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "single-easy-finding-only",
+      "description": "The final review must not collapse to only the state-drift issue while silently dropping the separate create-versus-update request-shaping concern when the fixture evidence supports both."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "OBSERVATIONS",
+      "ISSUES",
+      "OVERALL ASSESSMENT"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review preserves both an atypical create-versus-update request-shaping concern in `OBSERVATIONS` and an omitted-config read-state drift concern in `ISSUES` on the same new-resource PR instead of oscillating between whichever one the reviewer notices first or dropping the non-blocking concern entirely."
+}

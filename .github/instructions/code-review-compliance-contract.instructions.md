@@ -216,6 +216,11 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-COORD-004: Provider reviews have mandatory issue-class checks
 - Rule: For new or changed provider resources, data sources, or list resources under `internal/**/*.go`, the workflow must perform mandatory issue-class checks rather than relying on ad hoc reviewer heuristics alone.
 - Rule: The mandatory checks are ownership overlap, import/read/update/delete mode-gating symmetry, destructive-path gating, poller terminal-failure handling, validator-to-doc parity for blocking conditions, companion artifact completeness, list-resource exception handling, and identity/list/docs/test companion coverage.
+- Rule: For resources, data sources, or list resources with special-case create versus update request shaping, PATCH-capable APIs, or partial-update branches, the mandatory checks also include PATCH and residual-state behavior so concurrent-change and stale-state risks are reviewed every run rather than only when the reviewer happens to notice them first.
+- Rule: For `Optional` or `Optional+Computed` fields whose values may be omitted in config but returned by the API, the mandatory checks also include read-state round-trip symmetry so omitted config does not repopulate provider-owned values into state accidentally.
+- Rule: Completing a mandatory issue-class check means more than glancing at the code path. If the check uncovers an evidence-backed concern, the workflow must materialize that concern as a schema-conformant intermediate record at the justified classification before the issue class can be marked complete.
+- Rule: When a mandatory issue-class check uncovers an evidence-backed non-blocking concern, the workflow must preserve it in `OBSERVATIONS`; it must not be omitted solely because another blocking issue already determines the merge verdict or because the reviewer is trying to keep the review shorter.
+- Rule: One evidence-backed concern does not satisfy a different mandatory issue class. Distinct evidence-backed concerns discovered under different required issue classes must remain distinct intermediate records unless they are genuinely the same underlying concern.
 - Rule: If a mandatory issue-class check is not applicable, the current run must be able to justify that from current-run evidence.
 - Rule: The structured coverage matrix must model issue-class status explicitly using `requiredIssueClasses`, `completedIssueClasses`, and `notApplicableIssueClasses` rather than leaving non-applicable issue-class state implicit.
 
@@ -233,6 +238,7 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Findings, routed review-role passes, and final output must not freeze until the deterministic coverage matrix is complete.
 - Rule: A coverage-matrix row is complete only when every required window is present in `completedWindows` or `notApplicableWindows`, and every required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`.
 - Rule: A coverage matrix is complete only when every required row is complete, every top-level required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, and all not-applicable states are justified by current-run evidence.
+- Rule: A required issue class must not be marked `completed` if the reviewer found an evidence-backed concern in that class but failed to serialize it into the shared `REVIEW-HANDOFF-*` record set at the justified classification, including `observation` when the concern is non-blocking.
 - Rule: Standards-dependent issue-class checks may be marked complete only after the relevant workspace standards and scoped guidance needed to evaluate them have been loaded in the current run.
 - Rule: When a mandatory overlap surface or issue-class check has not been completed, the workflow must continue auditing rather than drafting or freezing findings.
 

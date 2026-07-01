@@ -208,7 +208,9 @@
         "validator-doc-parity",
         "companion-completeness",
         "list-resource-exception",
-        "identity-list-docs-tests"
+        "identity-list-docs-tests",
+        "patch-residual-state",
+        "optional-state-drift"
       ]
     }
   }
