@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark that committed review catches early-return update paths which silently skip concurrent field changes instead of treating them as harmless implementation detail.",
+    "genericCondition": "Synthetic fixture models the partial-update bug where a field-specific update branch returns early and bypasses other changed fields.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed-review scenario where an update function takes a special-case branch for one field change, performs a PUT-like replacement for that field, and returns immediately even though other updatable fields can change in the same plan. The correct review should flag that branch as a real update bug because concurrent field changes are silently skipped.",
   "fixture": {

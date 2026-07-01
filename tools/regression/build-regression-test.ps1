@@ -12,8 +12,19 @@ param(
 
     [string[]] $ChangedFiles,
 
-    [ValidateSet("real-pr", "local-diff", "synthetic")]
-    [string] $SourceKind = "real-pr",
+    [ValidateSet("synthetic")]
+    [string] $SourceKind = "synthetic",
+
+    [ValidateSet("real-pr", "local-diff", "maintainer-authored", "synthetic-design")]
+    [string] $OriginKind = "synthetic-design",
+
+    [string] $OriginSummary,
+
+    [string] $WhyItMattered,
+
+    [string] $GenericCondition,
+
+    [string] $ProvenanceNotes,
 
     [ValidateSet("planned", "ready", "adjudicated", "retired")]
     [string] $CaseStatus = "planned",
@@ -175,6 +186,21 @@ function Set-RegressionTestValue {
             }
             break
         }
+        'provenance' {
+            switch ($Assignment.key) {
+                'origin_kind' {
+                    Assert-RegressionTestAllowedValue -Definition $definition -EnumName 'originKind' -Value ([string]$Assignment.value) -Context 'provenance.origin_kind'
+                    $ContextData.originKind = [string]$Assignment.value
+                    break
+                }
+                'origin_summary' { $ContextData.originSummary = [string]$Assignment.value; break }
+                'why_it_mattered' { $ContextData.whyItMattered = [string]$Assignment.value; break }
+                'generic_condition' { $ContextData.genericCondition = [string]$Assignment.value; break }
+                'notes' { $ContextData.notes = [string]$Assignment.value; break }
+                default { throw "unsupported property '$($Assignment.key)' inside provenance block" }
+            }
+            break
+        }
         'config' {
             switch ($Assignment.key) {
                 'body' { $Spec.config = [string]$Assignment.value; break }
@@ -232,6 +258,13 @@ function Get-RegressionTestSpec {
         description = $null
         config = $null
         sourceKind = 'real-pr'
+        provenance = [ordered]@{
+            originKind = 'synthetic-design'
+            originSummary = $null
+            whyItMattered = $null
+            genericCondition = $null
+            notes = $null
+        }
         caseStatus = 'planned'
         scopeNotes = $null
         caseNotes = $null
@@ -335,6 +368,16 @@ function Get-RegressionTestSpec {
             continue
         }
 
+        if ($line -match '^provenance\s*\{$') {
+            $currentContext = if ($blockStack.Count -gt 0) { $blockStack[$blockStack.Count - 1] } else { $null }
+            if ($null -eq $currentContext -or $currentContext.name -ne 'test') {
+                throw "provenance block must be a direct child of AccTest"
+            }
+            [void]$blockStack.Add([pscustomobject]@{ name = 'provenance'; label = $spec.runName; data = $spec.provenance })
+            $lineIndex++
+            continue
+        }
+
         if ($line -match '^(test_case|must_catch|must_not_flag)\s*\{$') {
             $blockName = $Matches[1]
             $blockData = if ($blockName -in @('must_catch', 'must_not_flag')) { [ordered]@{} } else { $null }
@@ -384,6 +427,10 @@ function Get-RegressionTestSpec {
 
     if ([string]::IsNullOrWhiteSpace($spec.config)) {
         throw "regression test spec must define config inside test_case"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($spec.provenance.originKind) -or [string]::IsNullOrWhiteSpace($spec.provenance.originSummary) -or [string]::IsNullOrWhiteSpace($spec.provenance.whyItMattered) -or [string]::IsNullOrWhiteSpace($spec.provenance.genericCondition)) {
+        throw "regression test spec must define provenance.origin_kind, provenance.origin_summary, provenance.why_it_mattered, and provenance.generic_condition"
     }
 
     return [pscustomobject]$spec
@@ -749,6 +796,11 @@ if (-not [string]::IsNullOrWhiteSpace($SpecPath)) {
     if ([string]::IsNullOrWhiteSpace($ScopeNotes)) { $ScopeNotes = $parsedSpec.scopeNotes }
     if ([string]::IsNullOrWhiteSpace($CaseNotes)) { $CaseNotes = $parsedSpec.caseNotes }
     if (-not $PSBoundParameters.ContainsKey('SourceKind')) { $SourceKind = $parsedSpec.sourceKind }
+    if (-not $PSBoundParameters.ContainsKey('OriginKind')) { $OriginKind = $parsedSpec.provenance.originKind }
+    if ([string]::IsNullOrWhiteSpace($OriginSummary)) { $OriginSummary = $parsedSpec.provenance.originSummary }
+    if ([string]::IsNullOrWhiteSpace($WhyItMattered)) { $WhyItMattered = $parsedSpec.provenance.whyItMattered }
+    if ([string]::IsNullOrWhiteSpace($GenericCondition)) { $GenericCondition = $parsedSpec.provenance.genericCondition }
+    if ([string]::IsNullOrWhiteSpace($ProvenanceNotes)) { $ProvenanceNotes = $parsedSpec.provenance.notes }
     if (-not $PSBoundParameters.ContainsKey('CaseStatus')) { $CaseStatus = $parsedSpec.caseStatus }
     if (-not $PSBoundParameters.ContainsKey('IncludeSampleOutput') -and $parsedSpec.includeSampleOutput) { $IncludeSampleOutput = $true }
 }
@@ -794,6 +846,36 @@ else {
 }
 $ScopeNotes = if ($null -ne $parsedSpec) { $ScopeNotes } else { Read-OptionalValue -Prompt "Scope notes (optional)" -CurrentValue $ScopeNotes }
 $CaseNotes = if ($null -ne $parsedSpec) { $CaseNotes } else { Read-OptionalValue -Prompt "Maintainer notes (optional)" -CurrentValue $CaseNotes }
+$OriginKind = if ($null -ne $parsedSpec) {
+    if ([string]::IsNullOrWhiteSpace($OriginKind)) { throw "spec did not provide provenance.origin_kind" }
+    $OriginKind
+}
+else {
+    Read-RequiredValue -Prompt "Provenance origin kind" -CurrentValue $OriginKind
+}
+Assert-RegressionTestAllowedValue -Definition (Get-RegressionTestDefinition) -EnumName 'originKind' -Value $OriginKind -Context 'origin_kind'
+$OriginSummary = if ($null -ne $parsedSpec) {
+    if ([string]::IsNullOrWhiteSpace($OriginSummary)) { throw "spec did not provide provenance.origin_summary" }
+    $OriginSummary.Trim()
+}
+else {
+    Read-RequiredValue -Prompt "Provenance origin summary" -CurrentValue $OriginSummary
+}
+$WhyItMattered = if ($null -ne $parsedSpec) {
+    if ([string]::IsNullOrWhiteSpace($WhyItMattered)) { throw "spec did not provide provenance.why_it_mattered" }
+    $WhyItMattered.Trim()
+}
+else {
+    Read-RequiredValue -Prompt "Why the original failure mode mattered" -CurrentValue $WhyItMattered
+}
+$GenericCondition = if ($null -ne $parsedSpec) {
+    if ([string]::IsNullOrWhiteSpace($GenericCondition)) { throw "spec did not provide provenance.generic_condition" }
+    $GenericCondition.Trim()
+}
+else {
+    Read-RequiredValue -Prompt "Abstract generic condition this benchmark models" -CurrentValue $GenericCondition
+}
+$ProvenanceNotes = if ($null -ne $parsedSpec) { $ProvenanceNotes } else { Read-OptionalValue -Prompt "Provenance notes (optional)" -CurrentValue $ProvenanceNotes }
 
 $includeSampleOutputValue = if ($PSBoundParameters.ContainsKey("IncludeSampleOutput")) {
     [bool]$IncludeSampleOutput
@@ -923,6 +1005,13 @@ $case = [ordered]@{
     task = $Task
     caseStatus = $CaseStatus
     sourceKind = $SourceKind
+    provenance = [ordered]@{
+        originKind = $OriginKind
+        originSummary = $OriginSummary
+        whyItMattered = $WhyItMattered
+        genericCondition = $GenericCondition
+        notes = $ProvenanceNotes
+    }
     sanitized = $true
     description = $Description
     fixture = [ordered]@{

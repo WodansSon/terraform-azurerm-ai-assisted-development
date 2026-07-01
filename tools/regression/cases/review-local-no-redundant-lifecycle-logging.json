@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark whether local review now catches redundant lifecycle/provider logging additions while preserving the accepted remove-from-state exception.",
+    "genericCondition": "Synthetic review case focused on the new lifecycle logging policy and the accepted remove-from-state exception.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic local-review scenario where an `internal/**/*.go` change adds generic provider-side lifecycle logging such as `Import check`, `Creating`, `Reading`, `Updating`, or `Deleting`. The correct review should flag those additions when they only duplicate Terraform core/provider-native logging, while not objecting to a narrow remove-from-state diagnostic.",
   "fixture": {

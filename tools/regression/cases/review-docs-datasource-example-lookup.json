@@ -3,7 +3,14 @@
   "title": "Docs review accepts existing-object lookup examples for data sources",
   "task": "code-review-docs",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the sample docs-review markdown output to benchmark the clarified data source example standard.",
+    "genericCondition": "Sanitized fixture models a data source docs review after the upstream example-standard clarification.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized docs-review scenario where a data source page uses a minimal existing-object lookup example. The correct review should apply the resource-versus-data-source example split and must not require backing-resource scaffolding on the page.",
   "fixture": {

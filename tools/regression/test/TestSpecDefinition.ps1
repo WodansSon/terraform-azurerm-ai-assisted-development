@@ -13,13 +13,15 @@ function Get-RegressionTestDefinition {
                 "resource-implementation",
                 "acceptance-testing"
             )
-            sourceKind = @("real-pr", "local-diff", "synthetic")
+            sourceKind = @("synthetic")
+            originKind = @("real-pr", "local-diff", "maintainer-authored", "synthetic-design")
             caseStatus = @("planned", "ready", "adjudicated", "retired")
             severity = @("low", "medium", "high")
         }
         allowedFields = [ordered]@{
             root = @("title")
             test_case = @("task", "source_kind", "case_status", "changed_files", "notes")
+            provenance = @("origin_kind", "origin_summary", "why_it_mattered", "generic_condition", "notes")
             config = @()
             rules = @("description", "notes", "include_sample_output")
             must_catch = @("description", "severity", "file")

@@ -4,6 +4,13 @@
   "task": "resource-implementation",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to keep the resource-implementation skill forward-looking on resource ID normalization, even when older provider code still contains mixed-case or raw-string patterns.",
+    "genericCondition": "Synthetic implementation scenario focused on forward-looking resource ID normalization guidance rather than legacy provider drift.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic implementation-guidance scenario where a contributor compares raw resource ID strings and writes an Azure-returned nested resource ID directly into Terraform state. The correct guidance should treat read-side ID handling as case-insensitive through the shared typed parser and should persist the parser's canonical `.ID()` form instead of preserving arbitrary casing returned by the RP.",
   "fixture": {

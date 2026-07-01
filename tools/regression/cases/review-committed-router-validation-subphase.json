@@ -1,0 +1,67 @@
+{
+  "id": "review-committed-router-validation-subphase",
+  "title": "Committed review uses router validation sub-phase as canonical completion gate",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the explicit router-owned validation sub-phase before introducing a separate validator surface.",
+    "genericCondition": "Synthetic fixture models a PR where the deterministic matrix already exists, but the review must make it explicit that the already-loaded router skill owns the validation sub-phase and that findings cannot proceed until that sub-phase succeeds.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where deterministic routing is already correct, but the workflow must make the router validation sub-phase the explicit canonical completion gate before findings or routed roles begin.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-router-validation-subphase/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_group_resource.go",
+      "internal/services/example/example_mode_validation.go",
+      "website/docs/r/example_group_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a PR where the deterministic matrix already exists, but the review must make it explicit that the already-loaded router skill owns the validation sub-phase and that findings cannot proceed until that sub-phase succeeds."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-006",
+    "REVIEW-COORD-006A",
+    "REVIEW-COORD-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "router-validation-subphase-canonical",
+      "severity": "medium",
+      "description": "The committed review should treat the router validation sub-phase as the canonical mechanism that confirms matrix completion before findings or routed roles proceed."
+    },
+    {
+      "key": "no-prose-only-completion-check",
+      "severity": "medium",
+      "description": "The committed review should not rely on a looser prose-only completion check when the router validation sub-phase is the required gate."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "separate-validator-required-now",
+      "description": "The review must not require a separate validation skill yet when the intended next step is an explicit validation sub-phase inside the router skill."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "validation sub-phase",
+      "canonical completion gate",
+      "Skill used: review-coordinator"
+    ]
+  },
+  "notes": "Use this case to benchmark the explicit router-owned validation sub-phase before introducing a separate validator surface."
+}

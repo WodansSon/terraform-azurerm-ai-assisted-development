@@ -440,15 +440,71 @@ As you type, Copilot suggests:
 
 ### 🤖 AI Prompts
 
-- **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/code-review-committed-changes** - Review commits and PRs for standards
 - **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
+- **/code-review-local-changes** - Review uncommitted changes for compliance
 
 ### 🧠 Agent Skills
 
+These skills fall into three practical groups:
+
+- common direct entry-point skills you are likely to invoke yourself
+- workflow-routed or companion skills that are often activated by broader review or implementation flows
+- repository-maintenance-only skills used when working on this AI toolkit repository itself
+
+#### Common Direct Entry-Point Skills:
+
+These skills can often be selected implicitly from a natural-language request, but direct invocation works best when you include a concrete task after the skill name.
+
+- **/acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
 - **/docs-writer** - Write/update AzureRM provider docs in HashiCorp style (schema-aware; supports dry-run scaffolding into `website_scaffold_tmp`)
 - **/resource-implementation** - Implement/update AzureRM provider resources using provider patterns
-- **/acceptance-testing** - Write/troubleshoot AzureRM provider acceptance tests
+
+**Examples:**
+
+```text
+/acceptance-testing Fix missing ImportStep coverage in internal/services/example/example_resource_test.go
+/docs-writer Update the existing docs page for azurerm_example_resource and keep the example self-contained
+/resource-implementation Add list-resource support for the existing example resource and include the required companion surfaces
+```
+
+#### Companion Implementation Skills:
+
+- **/custom-poller-migration** - Narrow companion skill typically pulled in by `resource-implementation` for legacy polling migrations
+
+**Example:**
+
+```text
+/custom-poller-migration Replace pluginsdk.StateChangeConf and WaitForStateContext() in internal/services/example/example_resource.go with a custom poller while preserving the current pending, success, and terminal error behavior
+```
+
+#### Internal Workflow-Only Review Stages:
+
+> [!WARNING]
+> These are internal workflow stages, not normal end-user commands. Do not invoke them ad hoc. They expect structured handoff data or in-flight review state from the code review workflow, such as candidate findings, coverage-matrix state, adjudication records, or frozen presentation payloads.
+
+- **/review-advocate** - False-positive-defense and candidate-issue adjudication pass
+- **/review-architect** - Design-direction review pass for structural fit, schema direction, and long-term maintainability
+- **/review-coordinator** - Deterministic coverage-routing layer that builds review scope from authoritative changed-file context before routed analysis begins
+- **/review-moderator** - Final moderation pass that merges duplicates and freezes the normalized finding set
+- **/review-presentation** - Render-only final presentation pass for frozen review data
+- **/review-skeptic** - Adversarial review pass that stress-tests a change for missed defects
+
+#### Repository-Maintenance-Only Skills:
+
+> [!WARNING]
+> These skills are repo-only maintenance tools. They are not part of the published runtime toolkit payload installed into a target provider repository, so end users should not expect them to be available there. They are only executable when you are a maintainer or contributor working directly in this AI toolkit repository.
+
+- **/ai-toolkit-maintenance** - Maintain the repository's AI toolkit scaffolding, contracts, alignment, and shipped bundle boundaries
+- **/changelog-maintenance** - Maintain changelog taxonomy, wording, and release-section consistency for toolkit changes
+
+#### Practical Usage Boundaries:
+
+In practice, `custom-poller-migration` is a specialist companion skill for polling migrations and is usually brought in by `resource-implementation` rather than used as the first command for general implementation work.
+
+For review work, start with `/code-review-local-changes`, `/code-review-committed-changes`, or `/code-review-docs`. The internal review stages above consume workflow-produced structured state and should not be invoked ad hoc.
+
+The repository-maintenance-only skills are available only when working directly in this AI toolkit repository and are not part of the published runtime toolkit installed into target provider repos.
 
 ### ⚙️ Configuration Templates
 

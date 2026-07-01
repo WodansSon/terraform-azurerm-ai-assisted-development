@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark schema-preserving routed-role handoff behavior through the generic local review prompt without adding a direct schema-validation task type.",
+    "genericCondition": "Sanitized fixture models a handoff-schema change plus prompt and contract wording updates. A correct review should catch any wording that would let the advocate replace a schema record with prose, while dismissing claims that optional schema fields are mandatory.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where the workflow handoff schema, skeptic guidance, and advocate contract all change together. The routed roles must preserve one schema-conformant candidate record through advocate adjudication instead of replacing it with free-form prose.",
   "fixture": {

@@ -1,0 +1,70 @@
+{
+  "id": "review-committed-new-resource-overlap-coverage",
+  "title": "Committed review inspects overlap surfaces for new resources before findings freeze",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark deterministic overlap-surface coverage for new resources so reruns over the same PR do not drift based on the active editor file.",
+    "genericCondition": "Synthetic fixture models the historical drift where the active file is the new group-managed resource, but the critical defect sits on the unchanged legacy single-item surface `internal/services/example/example_item_resource.go`. The deterministic router must still add that sibling surface to the coverage matrix because it can manage the same remote object.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where a pull request adds a new provider resource, but the real defect lives on a pre-existing sibling surface that can still manage the same remote object. The correct review must build a deterministic coverage matrix, inspect the unchanged sibling lifecycle windows, and surface the overlap issue regardless of which new file is active in the editor.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-new-resource-overlap-coverage/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_group_resource.go",
+      "internal/services/example/example_mode_validation.go",
+      "website/docs/r/example_group_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models the modeled drift where the active file is the new group-managed resource, but the critical defect sits on the unchanged legacy single-item surface `internal/services/example/example_item_resource.go`. The deterministic router must still add that sibling surface to the coverage matrix because it can manage the same remote object."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-001",
+    "REVIEW-COORD-003",
+    "REVIEW-COORD-004",
+    "REVIEW-COORD-006"
+  ],
+  "mustCatch": [
+    {
+      "key": "overlap-sibling-surface-inspected",
+      "severity": "high",
+      "description": "The committed review should inspect unchanged sibling ownership surfaces when a new resource overlaps existing management paths, rather than limiting review to the new files alone."
+    },
+    {
+      "key": "lifecycle-mode-gating-symmetry-checked",
+      "severity": "high",
+      "description": "The committed review should check import/read/update/delete mode-gating symmetry on the overlapping sibling surface and surface a missing guard when create or update is protected but importer, read, or delete is not."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "active-file-anchor-shortcut",
+      "description": "The review must not let the active new-resource file suppress inspection of unchanged overlapping sibling surfaces."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "internal/services/example/example_item_resource.go",
+      "Skill used: review-coordinator",
+      "import/read/delete",
+      "group-managed"
+    ]
+  },
+  "notes": "Use this case to benchmark deterministic overlap-surface coverage for new resources so reruns over the same PR do not drift based on the active editor file."
+}

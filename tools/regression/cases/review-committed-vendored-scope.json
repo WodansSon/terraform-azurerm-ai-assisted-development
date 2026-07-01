@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark count-only vendored-file reporting and the explicit vendored-heavy scope callout in committed review output.",
+    "genericCondition": "Sanitized fixture models a committed-review PR where the actionable surface is limited because most changed files are vendored SDK updates.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed-review scenario where a pull request is dominated by vendored SDK churn plus a small non-vendored control-surface change. The correct review should report only the skipped vendored-file count, explicitly call out the vendored-heavy scope, and avoid telling contributors to edit vendored files directly.",
   "fixture": {

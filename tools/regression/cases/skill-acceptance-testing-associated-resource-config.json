@@ -3,7 +3,14 @@
   "title": "Acceptance-testing guidance prefers complete setup for data source tests while allowing justified narrower helpers",
   "task": "acceptance-testing",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark whether the acceptance-testing guidance prefers complete(data) by default for data source setup while preserving justified narrower exceptions.",
+    "genericCondition": "Sanitized fixture models data source tests that reuse associated resource helpers with different setup shapes. The general data source setup should prefer the fuller helper by default, while an intentionally narrow scenario still keeps the narrower helper.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized acceptance-testing guidance scenario where data source tests compose setup from associated resource helpers. The correct guidance should prefer the associated resource complete(data) helper by default when it exists, while still allowing narrower setup helpers for intentionally narrow scenarios.",
   "fixture": {

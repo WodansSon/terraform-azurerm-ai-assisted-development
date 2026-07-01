@@ -1,0 +1,63 @@
+{
+  "id": "review-committed-authoritative-status-signal-suppression",
+  "title": "Committed review suppresses unsupported diagnostic-status failure concerns",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark suppression of unsupported diagnostic-status failure concerns unless later implementation-backed evidence changes that judgment.",
+    "genericCondition": "Synthetic fixture models a provider poller where `primary_status` is the authoritative readiness signal and `secondary_status` is diagnostic-only context. The benchmark is that review should suppress an unsupported failure-handling concern that relies only on the diagnostic field.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A synthetic committed-review scenario where an earlier run treated a diagnostic-only status field as an independent terminal-failure signal even though the implementation explicitly marks a different status field as authoritative. The correct benchmark is that review should not raise a failure-handling issue without new implementation-backed evidence.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-authoritative-status-signal-suppression/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_batch_operation_pollers.go",
+      "internal/services/example/example_batch_resource.go",
+      "website/docs/r/example_batch_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a provider poller where `primary_status` is the authoritative readiness signal and `secondary_status` is diagnostic-only context. The benchmark is that review should suppress an unsupported failure-handling concern that relies only on the diagnostic field."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-004",
+    "REVIEW-EVID-*",
+    "REVIEW-OBS-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "authoritative-status-signal-rationale-applied",
+      "severity": "medium",
+      "description": "The committed review should distinguish implementation-backed poller behavior from unsupported semantic speculation and should respect the in-code rationale that `primary_status` is authoritative while `secondary_status` is diagnostic-only context."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "diagnostic-status-alone-terminal-failure-issue",
+      "description": "The review must not raise an Issue claiming the update poller can miss a terminal failure solely because it does not independently fail on `secondary_status == Failed` when the current implementation-backed evidence says `primary_status` is authoritative and `secondary_status` is diagnostic-only context."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "primary_status",
+      "secondary_status",
+      "diagnostic",
+      "authoritative"
+    ]
+  },
+  "notes": "Use this case to benchmark suppression of unsupported diagnostic-status failure concerns unless later implementation-backed evidence changes that judgment."
+}

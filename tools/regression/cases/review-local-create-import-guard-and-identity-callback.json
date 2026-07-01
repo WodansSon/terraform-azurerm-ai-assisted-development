@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark whether local review now catches both the create-time import-check feature gate regression and the callback identity regression in the same Go create path.",
+    "genericCondition": "Synthetic review case focused on create-time overwrite gating and callback-based Resource Identity handling.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic local-review scenario where a Go create path unconditionally returns an import-as-exists error and uses a callback-based create helper without wiring `sdk.SetIDAndIdentityCallback(...)` for a resource that supports Resource Identity.",
   "fixture": {
@@ -12,7 +19,7 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/storage/example_account_resource.go"
+      "internal/services/example/example_account_resource.go"
     ],
     "notes": "Synthetic review case focused on create-time overwrite gating and callback-based Resource Identity handling."
   },
@@ -26,13 +33,13 @@
     {
       "key": "missing-overwrite-feature-guard",
       "severity": "high",
-      "file": "internal/services/storage/example_account_resource.go",
+      "file": "internal/services/example/example_account_resource.go",
       "description": "The review should flag an unconditional import-as-exists branch when the create path does not honor `SkipImportCheckOnCreateAndAllowOverwritingExistingResources`."
     },
     {
       "key": "missing-id-and-identity-callback",
       "severity": "high",
-      "file": "internal/services/storage/example_account_resource.go",
+      "file": "internal/services/example/example_account_resource.go",
       "description": "The review should flag callback-based create flows that omit `sdk.SetIDAndIdentityCallback(...)` for resources that support Resource Identity."
     }
   ],

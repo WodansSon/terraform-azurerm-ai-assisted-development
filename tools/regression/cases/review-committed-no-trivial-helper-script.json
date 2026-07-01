@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the no-helper-script rule for trivial deterministic review checks.",
+    "genericCondition": "Sanitized fixture models a changed managed-certificate hostname validation path where the reviewer only needs direct reasoning about literal lengths and validation layering.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed-review scenario where changed validation strings tempt the reviewer to run a helper command just to compute a string length or prove a trivial literal fact. The correct review should reason directly from the diff and file content.",
   "fixture": {

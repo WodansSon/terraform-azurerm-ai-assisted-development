@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the positive committed-review path where an explicit PR number survives a forbidden spill-file transport from one GitHub-backed metadata tool and scope resolution continues correctly through another allowed non-CLI GitHub-backed path.",
+    "genericCondition": "Synthetic fixture models the explicit-PR happy path where one PR metadata tool is unusable because it exposes only a forbidden spill-file transport, but another allowed non-CLI GitHub-backed retrieval path can still resolve the changed-file set for that same PR.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed-review scenario where the invocation supplies an explicit PR number, one GitHub-backed PR metadata path yields only a forbidden AppData or workspaceStorage spill-file transport, and another allowed non-CLI GitHub-backed path remains available. The correct review must ignore the spill path and continue resolving authoritative PR scope for that same explicit PR number rather than failing closed early.",
   "fixture": {

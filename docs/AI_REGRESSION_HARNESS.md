@@ -274,11 +274,19 @@ The repo-only `ai-toolkit-maintenance` skill is intentionally excluded from the 
 
 These starter cases are planning manifests first. They define the shape and expectations of the future corpus even before a full runner exists.
 
-The first non-synthetic adjudicated case should be treated as the reference pattern for future case authoring:
+Runnable case artifacts should now be interpreted with a strict separation:
+
+- the runnable benchmark surface is synthetic and sanitized
+- maintainer provenance is embedded in the case metadata as origin, rationale, and normalized generic condition
+- any inventory or summary derived from provenance should be generated from case metadata rather than maintained as a second hand-authored source of truth
+- generated provenance reports should be written to ignored harness output directories rather than committed alongside the canonical case corpus
+
+The first adjudicated cases derived from historical incidents should be treated as the reference pattern for future case authoring:
 
 - Sanitize the historical source
-- Remove PR identity from the final artifact
-- Preserve the real failure mode and expected review behavior
+- Remove PR identity from the runnable artifact
+- Preserve the real failure mode and expected review behavior in normalized synthetic form
+- Record origin and rationale in embedded provenance metadata
 - Attach a scored example result when practical
 
 ## Case Lifecycle
@@ -305,7 +313,7 @@ The current starter scripts do not execute prompts or skills yet. They solve the
 - Scaffold a result document from a case definition
 - Validate case and result artifacts against the benchmark schemas before scoring
 - Score a completed result document against a case and the weighted rubric
-- Score the adjudicated example corpus as a suite and report direct target-skill coverage gaps
+- Score the adjudicated example corpus as a suite and report both direct skill-task coverage and routed or companion skill coverage gaps
 - Present the case fixture, sample review output, and score summary together for easier inspection
 - Create a repeatable single-case run directory with snapshotted inputs, repository metadata, and placeholder artifacts so a real run can be captured consistently
 - Hydrate a scaffolded run from adjudicated example artifacts so the full run layout can be inspected end to end
@@ -345,8 +353,9 @@ The current suite-level benchmark workflow is:
 
 - Run `tools/regression/validate-regression-artifacts.ps1` so schema or fixture-shape drift fails fast.
 - Run `tools/regression/run-regression-suite.ps1` to score every adjudicated example result in the corpus.
-- Use the target-skill coverage summary to see which direct skills are covered, planned-only, or still missing a direct case.
-- Add or adjudicate direct skill cases before treating that skill as benchmarked.
+- Use the `Direct skill task coverage` section to see which directly-invoked skill tasks are covered, planned-only, or still missing a direct case.
+- Use the `Routed and companion skill coverage` section to see which workflow skills are already exercised indirectly through benchmark markers in broader review or implementation cases.
+- Add or adjudicate direct skill cases before treating a direct top-level skill task as benchmarked, even if a related routed workflow skill already appears in the routed coverage section.
 
 The harness now exposes a normalized machine-readable output parameter for local and CI reporting:
 

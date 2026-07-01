@@ -3,9 +3,16 @@
   "title": "Committed review catches the Durable Task multi-issue combination",
   "task": "code-review-committed-changes",
   "caseStatus": "ready",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark that committed review preserves multi-issue accuracy on a complex new-service PR instead of collapsing to a single easy finding.",
+    "genericCondition": "Sanitized fixture models the real committed-review failure where the review only reported lifecycle logging and missed the update-path bug and the new public field naming issue.",
+    "notes": ""
+  },
   "sanitized": true,
-  "description": "A sanitized committed-review scenario derived from a real new-service PR where the review must simultaneously catch a special-case update branch that skips concurrent field changes, a shortened new cross-resource ID field name, and redundant generic lifecycle logging, while treating duplicate retention-policy semantics as a non-blocking observation rather than a merge blocker.",
+  "description": "A sanitized committed-review scenario new-service PR where the review must simultaneously catch a special-case update branch that skips concurrent field changes, a shortened new cross-resource ID field name, and redundant generic lifecycle logging, while treating duplicate retention-policy semantics as a non-blocking observation rather than a merge blocker.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-durabletask-multi-issue-coverage/README.md"
@@ -19,7 +26,7 @@
       "website/docs/r/example_hub.html.markdown",
       "website/docs/r/example_retention_policy.html.markdown"
     ],
-    "notes": "Sanitized fixture models the real committed-review failure where the review only reported lifecycle logging and missed the update-path bug and the new public field naming issue."
+    "notes": "Sanitized fixture models the committed-review failure where the review only reported lifecycle logging and missed the update-path bug and the new public field naming issue."
   },
   "expectedRules": [
     "REVIEW-SCOPE-005",

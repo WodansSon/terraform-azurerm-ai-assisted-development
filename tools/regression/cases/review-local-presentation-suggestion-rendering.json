@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the new moderator-owned presentation-hint model, render-only suggestion-style output contract, and positive-feedback priority semantics through the generic local review prompt.",
+    "genericCondition": "Sanitized fixture models the new moderator-plus-presentation flow where surviving findings carry deterministic presentation hints and the final renderer must preserve Current Code and Suggested Code blocks without prompt-side derivation while also keeping `good` and `notable` positive-feedback strengths semantically distinct.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where the moderator, handoff schema, and presentation contract all change together. The final rendered review should preserve structured finding cards with GitHub-style suggestion blocks driven by moderator-owned presentation hints rather than prompt-side invention, and should keep positive-feedback display levels distinct between baseline `good` work and above-and-beyond `notable` work.",
   "fixture": {

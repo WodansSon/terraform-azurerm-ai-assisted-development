@@ -1,0 +1,75 @@
+{
+  "id": "review-local-workspace-repo-file-references",
+  "title": "Local review keeps workspace-repo file references out of machine-local links",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark local-review rendering of workspace-repo-relative file references and to prevent machine-local link leakage in the final review body.",
+    "genericCondition": "Synthetic fixture models a local-review run where the historical failure mode was rendering workspace files as editor-session or absolute-disk links instead of workspace-repo-relative references.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where AI-customization files change and the final rendered review should use workspace-repo-relative file references rather than `vscode-file://`, `file:///`, or absolute machine-local disk paths.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-workspace-repo-file-references/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/prompts/code-review-local-changes.prompt.md",
+      ".github/instructions/review-presentation-compliance-contract.instructions.md"
+    ],
+    "notes": "Synthetic fixture models a local-review run where the modeled failure mode was rendering workspace files as editor-session or absolute-disk links instead of workspace-repo-relative references."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-004",
+    "REVIEW-PRESENT-004E",
+    "REVIEW-OUT-*"
+  ],
+  "mustCatch": [
+    {
+      "key": "workspace-repo-file-references-preserved",
+      "severity": "medium",
+      "description": "The local review should preserve workspace-repo-relative file references in the rendered review body instead of converting them into machine-local URIs or absolute disk paths."
+    },
+    {
+      "key": "local-link-leak-blocked",
+      "severity": "medium",
+      "description": "The final local review body should not contain `vscode-file://`, `file:///`, `C:\\`, `/Users/`, `AppData`, or `workspaceStorage` fragments anywhere in the rendered output."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "absolute-disk-link-output",
+      "description": "The local review must not emit absolute machine-local disk paths or URIs in file lists, findings, or standards-check bullets."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      ".github/prompts/code-review-local-changes.prompt.md",
+      ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "Preflight complete: yes"
+    ],
+    "mustNotIncludeMarkers": [
+      "vscode-file://",
+      "file:///",
+      "C:\\",
+      "/Users/",
+      "AppData",
+      "workspaceStorage"
+    ]
+  },
+  "notes": "Use this case to benchmark local-review rendering of workspace-repo-relative file references and to prevent machine-local link leakage in the final review body."
+}

@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "This adjudicated benchmark protects the live moderator-routed duplicate-merge behavior so future review-workflow refactors cannot regress back to repeated final concerns.",
+    "genericCondition": "Sanitized fixture models duplicate routed concerns that should converge into one moderated record rather than surviving as repeated issues with slightly different wording in the live routed workflow.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where the reviewer, skeptic, and architect all surface the same underlying concern through schema-conformant handoff records. The live moderator-routed workflow should merge those duplicates into one final moderated finding that preserves the strongest evidence and combined role attribution.",
   "fixture": {

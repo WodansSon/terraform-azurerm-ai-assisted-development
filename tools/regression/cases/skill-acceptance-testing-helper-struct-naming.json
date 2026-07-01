@@ -3,9 +3,16 @@
   "title": "Acceptance-testing guidance preserves the canonical helper type across all test variants",
   "task": "acceptance-testing",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark the canonical helper-struct stability rule after the Durable Task identity-generation drift surfaced in upstream PR #32194.",
+    "genericCondition": "Sanitized fixture models helper-type naming drift without retaining live upstream file contents. The canonical helper type drifted across resource or data source test variants while the generated identity test continued to instantiate a separate IdentityResource helper.",
+    "notes": ""
+  },
   "sanitized": true,
-  "description": "A sanitized historical acceptance-test guidance scenario where helper struct names drifted away from the established canonical helper type across test variants and generated identity tests started instantiating different helper types. The correct guidance should restore one canonical helper type per Terraform surface so go generate produces no diff and Generation Check stays green.",
+  "description": "A sanitized modeled acceptance-test guidance scenario where helper struct names drifted away from the established canonical helper type across test variants and generated identity tests started instantiating different helper types. The correct guidance should restore one canonical helper type per Terraform surface so go generate produces no diff and Generation Check stays green.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/skill-acceptance-testing-helper-struct-naming/README.md"
@@ -16,7 +23,7 @@
       "internal/services/example/example_data_source_test.go",
       "internal/services/example/example_resource_identity_gen_test.go"
     ],
-    "notes": "Sanitized fixture models helper-type naming drift without retaining live upstream file contents. The canonical helper type drifted across resource or data source test variants while the generated identity test continued to instantiate a separate IdentityResource helper."
+    "notes": "Sanitized fixture models helper-type naming drift. The canonical helper type drifted across resource or data source test variants while the generated identity test continued to instantiate a separate IdentityResource helper."
   },
   "expectedRules": [
     "TEST-PATTERN-008",
@@ -60,5 +67,5 @@
       "Skill used: acceptance-testing"
     ]
   },
-  "notes": "Use this case to benchmark the canonical helper-struct stability rule after the Durable Task identity-generation drift surfaced in upstream PR #32194."
+  "notes": "Use this case to benchmark the canonical helper-struct stability rule after the Durable Task identity-generation drift surfaced in the source incident."
 }

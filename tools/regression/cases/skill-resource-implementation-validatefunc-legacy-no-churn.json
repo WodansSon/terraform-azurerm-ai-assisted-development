@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance tolerates untouched legacy validator placement outside changed scope",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "maintainer-authored",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Maintainer-authored benchmark scenario.",
+    "whyItMattered": "Use this to prevent the forward-consistency ValidateFunc rule from turning into a blanket churn-only migration demand for untouched legacy validator layouts.",
+    "genericCondition": "Sanitized fixture models a scope-aware no-churn decision for legacy validator placement.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where the active change does not modify a legacy bespoke validator. The correct guidance should not demand churn-only migration of untouched legacy validator placement while still allowing the changed simple helper-based validation to remain inline.",
   "fixture": {
@@ -12,7 +19,7 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/cdn/example_frontdoor_resource.go"
+      "internal/services/example/example_resource.go"
     ],
     "notes": "Sanitized fixture models a scope-aware no-churn decision for legacy validator placement."
   },
@@ -23,7 +30,7 @@
     {
       "key": "untouched-legacy-validator-layout-tolerated",
       "severity": "low",
-      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "file": "internal/services/example/example_resource.go",
       "description": "The guidance should explicitly avoid demanding migration of untouched legacy validator placement outside the changed scope."
     }
   ],

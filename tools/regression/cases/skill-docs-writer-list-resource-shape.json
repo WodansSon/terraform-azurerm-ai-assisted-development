@@ -3,7 +3,14 @@
   "title": "Docs-writer guidance applies list-resource doc-type rules",
   "task": "docs-writer",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this as the direct docs-writer benchmark for list-resource page remediation without scaffold drift.",
+    "genericCondition": "Sanitized fixture models a docs-writer request against an existing list-resource page without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized direct docs-writer scenario where an existing list-resource page drifts on the list-resource title, summary, and example form, and the correct output should edit the page in place using the list-resource-specific rules rather than resource-doc defaults.",
   "fixture": {
@@ -14,7 +21,7 @@
     "changedFiles": [
       "website/docs/list-resources/example_network_profile.html.markdown"
     ],
-    "notes": "Sanitized fixture models a docs-writer request against an existing list-resource page without retaining live PR identity."
+    "notes": "Sanitized fixture models a docs-writer request against an existing list-resource page."
   },
   "expectedRules": [
     "DOCS-STRUCT-*",

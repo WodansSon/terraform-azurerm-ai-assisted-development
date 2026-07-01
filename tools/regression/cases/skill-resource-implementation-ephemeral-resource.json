@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance applies the framework ephemeral-resource pattern",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this as the adjudicated implementation-guidance case for the framework ephemeral-resource workflow.",
+    "genericCondition": "Sanitized fixture models a real implementation-guidance pattern without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where a contributor starts a provider ephemeral resource but drifts toward ordinary CRUD resource patterns. The correct guidance should require the framework ephemeral pattern and its companion artifacts.",
   "fixture": {
@@ -12,10 +19,10 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/keyvault/example_secret_ephemeral.go",
-      "internal/services/keyvault/registration.go"
+      "internal/services/example/example_secret_ephemeral.go",
+      "internal/services/example/registration.go"
     ],
-    "notes": "Sanitized fixture models a real implementation-guidance pattern without retaining live PR identity."
+    "notes": "Sanitized fixture models a implementation-guidance pattern."
   },
   "expectedRules": [
     "IMPL-WF-004",
@@ -25,13 +32,13 @@
     {
       "key": "ephemeral-open-pattern-required",
       "severity": "high",
-      "file": "internal/services/keyvault/example_secret_ephemeral.go",
+      "file": "internal/services/example/example_secret_ephemeral.go",
       "description": "The guidance should require the framework ephemeral pattern with `sdk.EphemeralResource` and `Open(...)` rather than CRUD resource methods."
     },
     {
       "key": "ephemeral-companion-artifacts",
       "severity": "medium",
-      "file": "internal/services/keyvault/registration.go",
+      "file": "internal/services/example/registration.go",
       "description": "The guidance should require `EphemeralResources()` registration plus companion docs and Terraform 1.10-gated tests for the ephemeral resource."
     }
   ],

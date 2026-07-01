@@ -4,6 +4,13 @@
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this as the adjudicated implementation-guidance benchmark for routing legacy polling migrations through the shipped custom-poller companion skill.",
+    "genericCondition": "Synthetic fixture models a narrow polling-migration request after the custom-poller skill was wired into the shipped Go implementation workflow.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic implementation-guidance scenario where a contributor needs to replace legacy `pluginsdk.StateChangeConf.WaitForStateContext()` polling with a custom poller. The correct guidance should preserve polling parity, require a `pollers.PollerType` migration path, and include both the primary implementation skill marker and the custom-poller companion skill marker.",
   "fixture": {

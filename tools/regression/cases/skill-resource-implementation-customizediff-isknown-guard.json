@@ -4,6 +4,13 @@
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this as the adjudicated implementation-guidance case for raw `cty.Value` traversal in `CustomizeDiff` so the `IsKnown()` guard requirement stays benchmarked explicitly.",
+    "genericCondition": "Synthetic implementation-guidance scenario focused on raw cty traversal in CustomizeDiff rather than ordinary schema validation or acceptance-test coverage.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic implementation-guidance scenario where a contributor walks nested raw `cty.Value` data from `GetRawConfig()` inside `CustomizeDiff` and calls shape-inspection methods directly. The correct guidance should anchor on `IMPL-SCHEMA-013`, require `IsKnown()` before shape inspection, and defer validation for unknown values without broadening the rule into generic `IsKnown()` everywhere advice.",
   "fixture": {

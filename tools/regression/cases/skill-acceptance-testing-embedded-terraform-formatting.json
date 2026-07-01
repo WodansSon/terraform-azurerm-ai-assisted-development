@@ -3,7 +3,14 @@
   "title": "Acceptance-testing guidance fixes embedded Terraform heredoc indentation drift",
   "task": "acceptance-testing",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark the embedded Terraform formatting rule and the companion-example lookup hardening for acceptance-testing guidance.",
+    "genericCondition": "Sanitized fixture models a real acceptance-test formatting failure where embedded Terraform inside a Go heredoc looked aligned in the editor but still failed repository acceptance-test formatting checks because tabs and spaces were mixed.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized acceptance-testing guidance scenario where a `*_test.go` helper contains embedded Terraform that mixes tabs and spaces for indentation. The correct guidance should require two-space Terraform indentation, reject tabs and mixed indentation inside the heredoc, preserve the surrounding config shape, and use the companion examples as the source of truth when editor tab rendering is ambiguous.",
   "fixture": {

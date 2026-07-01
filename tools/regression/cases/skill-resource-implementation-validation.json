@@ -3,19 +3,26 @@
   "title": "Resource implementation guidance applies contract-backed schema and error rules",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this as the first adjudicated real-world case pattern for future sanitized implementation-guidance fixtures.",
+    "genericCondition": "Sanitized fixture models a real implementation-review incident without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
-  "description": "A sanitized historical implementation-guidance scenario where the correct output should prefer stronger evidence-backed validation, avoid blind SDK-enum expansion, and return comprehensive parser errors directly.",
+  "description": "A sanitized modeled implementation-guidance scenario where the correct output should prefer stronger evidence-backed validation, avoid blind SDK-enum expansion, and return comprehensive parser errors directly.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/skill-resource-implementation-validation/README.md"
   },
   "scope": {
     "changedFiles": [
-      "internal/services/cdn/example_frontdoor_resource.go",
-      "internal/services/cdn/parse.go"
+      "internal/services/example/example_resource.go",
+      "internal/services/example/parse.go"
     ],
-    "notes": "Sanitized fixture models a real implementation-review incident without retaining live PR identity."
+    "notes": "Sanitized fixture models a implementation-review benchmark."
   },
   "expectedRules": [
     "IMPL-SCHEMA-003",
@@ -27,13 +34,13 @@
     {
       "key": "fallback-validator-overuse",
       "severity": "medium",
-      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "file": "internal/services/example/example_resource.go",
       "description": "The guidance should prefer stronger validation when the real constraints are knowable."
     },
     {
       "key": "redundant-parser-wrapper",
       "severity": "medium",
-      "file": "internal/services/cdn/parse.go",
+      "file": "internal/services/example/parse.go",
       "description": "The guidance should avoid wrapping comprehensive parser errors with redundant context."
     }
   ],

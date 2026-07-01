@@ -3,7 +3,14 @@
   "title": "Docs review enforces function page structure and examples",
   "task": "code-review-docs",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the sample docs-review markdown output to benchmark function docs review behavior.",
+    "genericCondition": "Sanitized fixture models a function docs review after the local docs workflow was extended to treat function pages as a first-class doc type.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized docs-review scenario where a function page drifts toward ordinary resource-doc structure. The correct review should apply the function-specific doc rules instead of resource or data source rules.",
   "fixture": {

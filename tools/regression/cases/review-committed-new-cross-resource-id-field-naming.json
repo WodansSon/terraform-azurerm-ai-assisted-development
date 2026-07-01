@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark that committed review keeps new public cross-resource ID fields aligned with provider naming rules instead of allowing shortened day-one names to ship.",
+    "genericCondition": "Synthetic fixture models a new public resource surface that introduces a shortened cross-resource ID field name across schema, list resource, and docs.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed-review scenario where a brand-new resource and its companion docs expose a new cross-resource ID field as `scheduler_id` even though provider naming rules require the full referenced resource name without the `azurerm_` prefix, such as `durable_task_scheduler_id`. The correct review should flag the shortened day-one public field name as a naming issue.",
   "fixture": {

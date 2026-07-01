@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait.",
+    "genericCondition": "Synthetic committed-review scope focused on the blocking linter wait rule rather than a specific implementation defect.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed review scenario where `azurerm-linter` takes noticeable time to finish and the reviewer is tempted to resume auditing, narrate the wait, or classify the linter section from partial runtime state. The correct behavior is to treat the linter as a blocking step and emit no user-visible review content until the completed run can be classified.",
   "fixture": {

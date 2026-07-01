@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the advocate skip path through the generic local review prompt without expanding the harness task model.",
+    "genericCondition": "Sanitized fixture models benign wording-alignment updates in the advocate skill and contract. The generic local review should stay issue-free, so Step 6 must not run.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where AI-toolkit files change, but the primary review pass should produce no candidate Issues. The advocate pass must not run and the final output must not include the review-advocate skill marker.",
   "fixture": {

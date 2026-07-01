@@ -1,0 +1,69 @@
+{
+  "id": "review-committed-coverage-matrix-sequencing",
+  "title": "Committed review validates coverage completion after standards load",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the split between matrix build and post-standards completion validation so deterministic routing does not deadlock or drift when issue-class checks depend on loaded scoped guidance.",
+    "genericCondition": "Synthetic fixture models a PR where the router can identify rows and overlap surfaces immediately, but validator-to-doc parity and companion checks require scoped guidance loaded after the matrix build phase.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where the deterministic coverage matrix can be built early, but standards-dependent issue-class completion requires scoped implementation and docs guidance loaded later in the prompt. The correct review builds the matrix first, loads standards next, validates completion after that, and only then starts routed analysis.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-coverage-matrix-sequencing/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_group_resource.go",
+      "internal/services/example/example_mode_validation.go",
+      "website/docs/r/example_group_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a PR where the router can identify rows and overlap surfaces immediately, but validator-to-doc parity and companion checks require scoped guidance loaded after the matrix build phase."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-001",
+    "REVIEW-COORD-001A",
+    "REVIEW-COORD-006",
+    "REVIEW-COORD-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "matrix-built-before-standards",
+      "severity": "medium",
+      "description": "The committed review should build the structured coverage matrix before standards loading instead of waiting until findings are already being drafted."
+    },
+    {
+      "key": "matrix-validated-after-standards",
+      "severity": "high",
+      "description": "The committed review should validate standards-dependent matrix completion only after the relevant implementation and docs guidance is loaded, then block routed roles until that later validation succeeds."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "pre-standards-completion-deadlock",
+      "description": "The review must not require final coverage completion before the scoped standards needed for standards-dependent issue-class checks have been loaded."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "review-coverage-matrix.schema.json",
+      "implementation guidance",
+      "docs contract",
+      "Skill used: review-coordinator"
+    ]
+  },
+  "notes": "Use this case to benchmark the split between matrix build and post-standards completion validation so deterministic routing does not deadlock or drift when issue-class checks depend on loaded scoped guidance."
+}

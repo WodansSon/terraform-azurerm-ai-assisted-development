@@ -1,0 +1,67 @@
+{
+  "id": "review-committed-not-applicable-issue-classes",
+  "title": "Committed review models not-applicable issue classes explicitly",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark explicit not-applicable issue-class modeling so matrix completion no longer depends on prose-only interpretation.",
+    "genericCondition": "Synthetic fixture models a PR where some mandatory issue classes remain required globally, but specific rows can justify them as not applicable. The determinism requirement is that those not-applicable states are recorded explicitly in the structured matrix rather than implied in reviewer prose.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where the deterministic coverage matrix includes required issue classes that are intentionally not applicable for some rows and at the matrix level. The correct review should model those states explicitly rather than inferring them only from prose.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-not-applicable-issue-classes/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_group_resource.go",
+      "internal/services/example/example_mode_validation.go",
+      "website/docs/r/example_group_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a PR where some mandatory issue classes remain required globally, but specific rows can justify them as not applicable. The determinism requirement is that those not-applicable states are recorded explicitly in the structured matrix rather than implied in reviewer prose."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-004",
+    "REVIEW-COORD-006"
+  ],
+  "mustCatch": [
+    {
+      "key": "row-level-not-applicable-issue-classes",
+      "severity": "medium",
+      "description": "The committed review should model row-level issue classes as explicitly completed or explicitly not applicable rather than leaving the status implicit."
+    },
+    {
+      "key": "top-level-not-applicable-issue-classes",
+      "severity": "medium",
+      "description": "The committed review should model top-level required issue classes as explicitly completed or explicitly not applicable rather than relying on prose-only explanation."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "implicit-issue-class-state",
+      "description": "The review must not treat an uncompleted issue class as satisfied solely because prose implies it was not applicable."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "notApplicableIssueClasses",
+      "row-level",
+      "top-level",
+      "Skill used: review-coordinator"
+    ]
+  },
+  "notes": "Use this case to benchmark explicit not-applicable issue-class modeling so matrix completion no longer depends on prose-only interpretation."
+}

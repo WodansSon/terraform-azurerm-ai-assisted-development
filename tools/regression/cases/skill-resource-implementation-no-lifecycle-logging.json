@@ -4,6 +4,13 @@
   "task": "resource-implementation",
   "caseStatus": "ready",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the resource-implementation skill against the maintainer decision that generic lifecycle/provider logging is redundant by default.",
+    "genericCondition": "Synthetic implementation scenario focused on suppressing redundant lifecycle logging in generated/provider-authored code examples and guidance.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic implementation-guidance scenario where a contributor is adding provider-side CRUD logging such as `Creating`, `Reading`, `Updating`, or `Deleting` to a new typed resource. The correct guidance should treat those logs as redundant by default, preserve the narrow remove-from-state diagnostic exception, and prefer SDK-level consistency if lifecycle logging is desired broadly.",
   "fixture": {

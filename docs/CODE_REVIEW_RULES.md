@@ -40,6 +40,7 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/review-architect`
 - `/review-moderator`
 - `/review-presentation`
+- `/review-coordinator`
 - `/code-review-docs`
 - `/docs-writer`
 - `/resource-implementation`
@@ -57,6 +58,10 @@ The generic code review prompts route the final visible finding set through `rev
 
 The `review-presentation` skill is the workflow's render-only presentation layer.
 The generic code review prompts route the final frozen review data through `review-presentation` after moderation completes so both prompts share one output template.
+
+The `review-coordinator` skill is the workflow's deterministic coverage-routing layer.
+The generic code review prompts route authoritative changed-file scope through `review-coordinator` before standards loading and finding drafting so active-file bias cannot decide the first review anchor.
+That routing layer now produces a schema-backed internal coverage matrix via `.github/instructions/review-coverage-matrix.schema.json`, names unchanged overlap rows by explicit file path, builds the matrix before standards loading, validates completion after scoped standards load, and must complete before any routed review role can start.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -104,6 +109,7 @@ These IDs come from `.github/instructions/code-review-compliance-contract.instru
 | ------ | ------- | ------------------------------ |
 | `REVIEW-EVID-*` | Evidence and verification | The review had to prove the claim from the diff, code, docs, or tool output instead of guessing |
 | `REVIEW-CLASS-*` | Finding classification | Why something was reported as an Issue, Observation, or Strength |
+| `REVIEW-COORD-*` | Deterministic coverage routing | Which files, lifecycle windows, overlap surfaces, and mandatory issue-class checks had to be inspected before findings could freeze |
 | `REVIEW-HANDOFF-*` | Intermediate finding handoff | How routed review roles exchange candidate findings before final output is frozen |
 | `REVIEW-FILE-*` | File handling and scope coverage | Which changed files had to be considered and how they were classified |
 | `REVIEW-SCOPE-*` | File-type-specific review coverage | Which extra checks applied because of the file type or content |
@@ -153,6 +159,24 @@ This means the review applied Go/provider-specific guidance because the change t
 - `internal/**/*_test.go`
 
 It is the rule that tells the auditor to load the scoped Go instructions and skills instead of relying only on the generic review contract.
+
+### `REVIEW-COORD-*`
+
+These rules explain how the review stays deterministic before findings are drafted.
+
+In practice, they require the workflow to:
+
+- build a deterministic coverage matrix before findings freeze
+- represent that matrix as a schema-backed internal artifact rather than prose intent alone
+- load the coverage-matrix schema explicitly before building the matrix
+- sort changed implementation surfaces lexically instead of anchoring on the active editor file
+- inspect lifecycle windows such as Importer, Create, Read, Update, Delete, and CustomizeDiff in a fixed order when those windows exist
+- scan unchanged sibling ownership surfaces when a PR adds a new resource that can overlap an older management surface, and materialize those overlap surfaces as explicit file-path rows
+- build the matrix early but validate standards-dependent completion only after the relevant scoped guidance is loaded
+- model issue-class completion explicitly, including not-applicable issue classes, instead of inferring that state only from prose
+- treat the router validation sub-phase as the canonical completion gate rather than relying on prompt prose alone
+- block architect, skeptic, advocate, and moderator routing until the coverage matrix is complete
+- complete mandatory issue-class checks, such as ownership overlap and destructive-path gating symmetry, before final output is emitted
 
 ### `REVIEW-SCOPE-005D`
 

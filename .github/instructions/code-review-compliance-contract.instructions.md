@@ -58,6 +58,7 @@ ID format:
 Areas:
 - EVID = evidence and verification guardrails
 - CLASS = finding classification
+- COVER = deterministic coverage routing and review order
 - FILE = change-set coverage and file handling
 - SCOPE = file-type-specific review coverage
 - TEST = acceptance test review guidance
@@ -185,6 +186,65 @@ If evidence is missing for a claim that would change severity or requested actio
 ### REVIEW-HANDOFF-004: The handoff shape is semantic, not transport-specific
 - Rule: The workflow may represent the intermediate record as structured markdown, table-like text, or JSON-like state, but the semantic fields and statuses must remain stable.
 - Rule: The intermediate record is workflow-internal and must not force a new reader-visible section in the final review body.
+
+## Deterministic coverage routing
+
+### REVIEW-COORD-001: Build a deterministic coverage matrix before findings
+- Rule: After the selected review scope is resolved and changed files are classified, the workflow must build a deterministic coverage matrix before findings are drafted or frozen.
+- Rule: The workflow must load `.github/instructions/review-coverage-matrix.schema.json` to EOF before building the matrix.
+- Rule: The coverage matrix must enumerate the applicable implementation file families, required lifecycle/control windows, required overlap surfaces, and mandatory issue-class checks for the current run.
+- Rule: The coverage matrix must have a structured internal representation that conforms to `.github/instructions/review-coverage-matrix.schema.json`; prose intent alone is insufficient.
+- Rule: The coverage matrix is part of review methodology, not an optional reviewer aid.
+
+### REVIEW-COORD-001A: Matrix build and matrix completion are separate phases
+- Rule: The workflow must build the structured coverage matrix before findings are drafted, but it must not require final matrix completion before the applicable workspace standards and scoped guidance needed for standards-dependent issue-class checks have been loaded.
+- Rule: Matrix construction happens before standards-dependent finding analysis; matrix completion validation happens after the relevant contributor guidance, file-scoped instructions, and contracts needed for the required issue-class checks are available.
+- Rule: Findings and routed roles remain blocked until the later completion-validation phase succeeds.
+
+### REVIEW-COORD-002: Changed implementation files use a fixed review order
+- Rule: For changed implementation files under `internal/**/*.go`, the workflow must sort the applicable implementation files lexically before choosing a first review anchor.
+- Rule: For each applicable resource, data source, list-resource, ephemeral-resource, or provider-function surface, inspect present lifecycle/control windows in this fixed order: `Importer`, `Create`, `Read`, `Update`, `Delete`, `CustomizeDiff`, explicit validation or mode or ownership helpers, then companion registration, tests, docs, and association surfaces when applicable.
+- Rule: If a given window does not exist for that surface, record it as not applicable and continue with the next required window rather than changing the order.
+- Rule: Freeform surrounding reads may happen only after the required control-window reads for the current matrix row are complete.
+
+### REVIEW-COORD-003: New resources require overlap and ownership scans
+- Rule: When review scope adds a brand-new resource under `internal/**/*.go`, the workflow must inspect overlapping pre-existing sibling surfaces that can manage the same remote object even when those sibling surfaces are unchanged in the diff.
+- Rule: The required overlap set includes, when applicable, the new resource itself, existing resources that can overlap ownership, existing data sources or list resources that expose the same remote object shape, route or association or referencing surfaces, and explicit mode or ownership validation helpers.
+- Rule: Overlap surfaces for new resources must be materialized as explicit file-path rows in the structured coverage matrix, not merely as inferred categories.
+- Rule: Overlap surfaces must be added to the deterministic coverage matrix and inspected with the same fixed control-window order when those windows exist.
+
+### REVIEW-COORD-004: Provider reviews have mandatory issue-class checks
+- Rule: For new or changed provider resources, data sources, or list resources under `internal/**/*.go`, the workflow must perform mandatory issue-class checks rather than relying on ad hoc reviewer heuristics alone.
+- Rule: The mandatory checks are ownership overlap, import/read/update/delete mode-gating symmetry, destructive-path gating, poller terminal-failure handling, validator-to-doc parity for blocking conditions, companion artifact completeness, list-resource exception handling, and identity/list/docs/test companion coverage.
+- Rule: If a mandatory issue-class check is not applicable, the current run must be able to justify that from current-run evidence.
+- Rule: The structured coverage matrix must model issue-class status explicitly using `requiredIssueClasses`, `completedIssueClasses`, and `notApplicableIssueClasses` rather than leaving non-applicable issue-class state implicit.
+
+### REVIEW-COORD-005: Active-file bias is forbidden for initial routing
+- Rule: The active editor file, search result ordering, or PR wording must not decide the initial review route for committed or local review.
+- Rule: The active editor file may be used only as a convenience after the deterministic coverage matrix is built.
+- Rule: If the active file belongs to a required matrix row, review it when that row's fixed order is reached rather than jumping to it early.
+
+### REVIEW-COORD-005A: Family grouping prefers explicit code anchors over filename intuition
+- Rule: When the workflow groups files into a resource family, it should prefer explicit code anchors over filename intuition alone.
+- Rule: Relevant anchors include shared ID parsers, shared validation helpers, shared registration entries, shared route or association references, and shared ownership or mode helpers.
+- Rule: If family boundaries remain ambiguous after checking those anchors, prefer broader inclusion in the coverage matrix over omission.
+
+### REVIEW-COORD-006: Findings cannot freeze before coverage completion
+- Rule: Findings, routed review-role passes, and final output must not freeze until the deterministic coverage matrix is complete.
+- Rule: A coverage-matrix row is complete only when every required window is present in `completedWindows` or `notApplicableWindows`, and every required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`.
+- Rule: A coverage matrix is complete only when every required row is complete, every top-level required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, and all not-applicable states are justified by current-run evidence.
+- Rule: Standards-dependent issue-class checks may be marked complete only after the relevant workspace standards and scoped guidance needed to evaluate them have been loaded in the current run.
+- Rule: When a mandatory overlap surface or issue-class check has not been completed, the workflow must continue auditing rather than drafting or freezing findings.
+
+### REVIEW-COORD-006A: Router validation sub-phase is the canonical completion gate
+- Rule: The router's validation sub-phase is the canonical mechanism that confirms coverage-matrix completion before findings or routed roles can proceed.
+- Rule: Prompts may orchestrate when that validation sub-phase runs, but they must not substitute looser prose-only completion checks for the router-owned validation step.
+- Rule: If the router validation sub-phase cannot confirm the required row, window, issue-class, overlap-row, and evidence-backed completion invariants from current-run evidence, the workflow must hard-stop rather than continue to findings or routed roles.
+
+### REVIEW-COORD-007: Routed roles start only after coverage completion
+- Rule: The routed review roles `review-architect`, `review-skeptic`, `review-advocate`, and `review-moderator` must not start until the deterministic coverage matrix is complete.
+- Rule: Partial primary-pass findings or partially populated intermediate records must not be handed to routed roles before matrix completion.
+- Rule: If the coverage matrix cannot be completed from current-run evidence, the prompt must hard-stop instead of starting routed roles on a partial audit.
 
 ## Change-set coverage and file handling
 

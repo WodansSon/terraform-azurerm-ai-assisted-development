@@ -1,0 +1,62 @@
+{
+  "id": "review-committed-conditional-required-field-docs-parity",
+  "title": "Committed review catches conditional required-field docs parity gaps",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope.",
+    "genericCondition": "Synthetic fixture models a provider review where docs and validator logic are both in scope. The benchmark is that review should catch a missing conditional requirement note rather than treating the docs as complete because the field is mentioned somewhere on the page.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A synthetic committed-review scenario where validator logic requires a field for specific mode values, but the companion docs describe the field without documenting the conditional requirement. The correct review must surface the validator-to-doc parity gap when the docs page is in scope.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-conditional-required-field-docs-parity/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_rule_definition_validation.go",
+      "website/docs/r/example_batch_resource.html.markdown",
+      "internal/services/example/example_batch_resource.go"
+    ],
+    "notes": "Synthetic fixture models a provider review where docs and validator logic are both in scope. The benchmark is that review should catch a missing conditional requirement note rather than treating the docs as complete because the field is mentioned somewhere on the page."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-004",
+    "DOCS-EVID-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "conditional-required-field-docs-mismatch",
+      "severity": "medium",
+      "description": "The committed review should flag that the validator requires `duration_value` when `duration_mode` is `AlwaysOverride` or `OverrideWhenMissing`, but the resource docs do not currently document that conditional requirement."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "field-described-therefore-complete",
+      "description": "The review must not treat the docs as complete merely because `duration_value` is described somewhere on the page when the conditional blocking requirement is still omitted."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "duration_value",
+      "AlwaysOverride",
+      "OverrideWhenMissing",
+      "website/docs/r/example_batch_resource.html.markdown"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope."
+}

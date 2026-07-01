@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/.github/instructions/review-coverage-matrix.schema.json",
+  "title": "Review Coverage Matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reviewMode",
+    "rows",
+    "requiredIssueClasses",
+    "completedIssueClasses",
+    "notApplicableIssueClasses",
+    "completionStatus"
+  ],
+  "properties": {
+    "reviewMode": {
+      "type": "string",
+      "enum": [
+        "local",
+        "committed"
+      ]
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "requiredIssueClasses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/issueClass"
+      }
+    },
+    "completedIssueClasses": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/issueClass"
+      }
+    },
+    "notApplicableIssueClasses": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/issueClass"
+      }
+    },
+    "completionStatus": {
+      "type": "string",
+      "enum": [
+        "incomplete",
+        "complete"
+      ]
+    },
+    "evidenceNotes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rowId",
+        "family",
+        "surfaceType",
+        "file",
+        "isChanged",
+        "requiredWindows",
+        "completedWindows",
+        "notApplicableWindows",
+        "requiredIssueClasses",
+        "completedIssueClasses",
+        "notApplicableIssueClasses",
+        "completionStatus"
+      ],
+      "properties": {
+        "rowId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaceType": {
+          "type": "string",
+          "enum": [
+            "resource",
+            "data-source",
+            "list-resource",
+            "ephemeral-resource",
+            "provider-function",
+            "validation-helper",
+            "mode-helper",
+            "ownership-helper",
+            "registration",
+            "tests",
+            "docs",
+            "association",
+            "reference-surface",
+            "other"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isChanged": {
+          "type": "boolean"
+        },
+        "overlapReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredWindows": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/window"
+          }
+        },
+        "completedWindows": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/window"
+          }
+        },
+        "notApplicableWindows": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/window"
+          }
+        },
+        "requiredIssueClasses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/issueClass"
+          }
+        },
+        "completedIssueClasses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/issueClass"
+          }
+        },
+        "notApplicableIssueClasses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/issueClass"
+          }
+        },
+        "completionStatus": {
+          "type": "string",
+          "enum": [
+            "incomplete",
+            "complete"
+          ]
+        },
+        "evidenceNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "window": {
+      "type": "string",
+      "enum": [
+        "importer",
+        "create",
+        "read",
+        "update",
+        "delete",
+        "customize-diff",
+        "validation-helper",
+        "mode-helper",
+        "ownership-helper",
+        "registration",
+        "tests",
+        "docs",
+        "association",
+        "reference-surface"
+      ]
+    },
+    "issueClass": {
+      "type": "string",
+      "enum": [
+        "ownership-overlap",
+        "mode-gating-symmetry",
+        "destructive-path-gating",
+        "poller-terminal-failure",
+        "validator-doc-parity",
+        "companion-completeness",
+        "list-resource-exception",
+        "identity-list-docs-tests"
+      ]
+    }
+  }
+}

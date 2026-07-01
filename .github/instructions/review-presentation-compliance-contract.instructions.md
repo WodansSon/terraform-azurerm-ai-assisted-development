@@ -273,12 +273,12 @@ ${correctedCode}
 - Rule: The final rendered review body continues to support both plain bullet findings and expanded finding cards in the same section when the payload supplies them.
 - Rule: The renderer must not collapse an expanded finding card into a plain bullet merely because a section also contains plain bullet items.
 
-### REVIEW-PRESENT-004E: File references must be repo-scoped, not editor-local
-- Rule: File references rendered in the final review body must use repository-scoped paths or repository-scoped path plus line references carried by the payload; they must not be rewritten into editor-local placeholder URIs.
-- Rule: The renderer must not emit editor-local or spill-path references such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, or `workspaceStorage` anywhere in the review body.
+### REVIEW-PRESENT-004E: File references must stay stable and non-local
+- Rule: File references rendered in the final review body must use stable repo-scoped references supplied by the payload; they must not be rewritten into editor-local placeholder URIs or absolute on-disk paths.
+- Rule: The renderer must not emit editor-local, spill-path, or absolute-disk references such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, `/Users/`, or other machine-local path prefixes anywhere in the review body.
 - Rule: For committed reviews with authoritative PR scope, file references should remain PR-scoped or repo-scoped references derived from that authoritative scope rather than local editor-session links.
-- Rule: For local reviews, file references should remain workspace-repo paths or workspace-repo path plus line references, not editor-session links.
-- Rule: If the payload supplies plain repo-relative paths, preserve them as such instead of inventing richer editor-local links.
+- Rule: For local reviews, file references should remain workspace-repo-relative paths or workspace-repo-relative path plus line references, not PR links, editor-session links, or absolute disk paths.
+- Rule: If the payload supplies plain repo-relative paths, preserve them as such instead of inventing richer editor-local or absolute-disk links.
 
 ### REVIEW-PRESENT-005: Footer rendering is deterministic
 - Rule: The verification footer is rendered only when the optional `verificationFooter` object is present.
