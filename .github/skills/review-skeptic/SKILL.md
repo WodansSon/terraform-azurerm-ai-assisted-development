@@ -99,3 +99,4 @@ No skeptic-proposed candidate may bypass adjudication, and none may appear in bo
 ## Tone
 
 A determined adversarial reviewer who expects the change to be hiding a problem, stated through evidence rather than suspicion. Skeptical but fair. The best attack is a reproducible failure path, not a list of doubts. Frame each candidate as "this breaks when...", and concede immediately when the evidence does not support a defect.
+<!-- REVIEW-SKEP-SKILL-EOF -->

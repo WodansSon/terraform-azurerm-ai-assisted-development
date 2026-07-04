@@ -518,6 +518,31 @@ This auto-approves only the read-only repo-root command used by the review promp
 - The review should launch `azurerm-linter` once.
 - The review should then block silently until that same linter run finishes.
 - The review should not read more files, draft findings, or emit inner-dialog text while the linter is still outstanding.
+
+---
+
+### Review Output Shows `vscode-file://...` Links Even Though Repo Rules Forbid Them
+
+**Symptoms**:
+- You copy review output from the VS Code chat UI and see clickable links with `vscode-file://...`, `workbench.html`, or other machine-local targets
+- The repo contracts and prompts say review file references should stay repo-scoped, PR-scoped, or workspace-repo-relative
+
+**Cause**:
+- The repo-controlled review workflow owns the assistant-emitted markdown body, not the VS Code or Copilot client runtime's post-render link rewriting
+- In investigated runs, the raw assistant output used repo-scoped markdown link targets, while the chat UI later rewrote clickable hrefs to `vscode-file://...` targets for editor navigation
+
+**What this means**:
+- Treat the assistant-emitted markdown body as the source of truth for regression and contract validation
+- Do not treat the final VS Code-rendered href scheme as workflow output owned by this repository
+
+**Checks**:
+1. Use the troubleshoot skill and inspect the raw session debug log for the affected review run
+2. Compare the raw `agent_response` body with what the chat UI displays
+3. If the raw response already uses repo-scoped, PR-scoped, or workspace-repo-relative markdown targets, then the workflow is behaving correctly and the UI is rewriting links afterward
+
+**Notes**:
+- The review presentation layer remains render-only and does not own client-side href rewriting
+- If you need to change the repo rules, change them to validate assistant-emitted markdown, not post-render UI href schemes
 - The normal review baseline is one filtered JSON-mode run from the repo root, not a stack of recovery or workaround passes.
 
 **What this usually means**:

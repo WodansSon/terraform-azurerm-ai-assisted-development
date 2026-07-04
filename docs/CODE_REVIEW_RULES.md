@@ -151,6 +151,7 @@ In practice, the review should:
 - treat an explicit PR number as a prompt to try a direct shell-native HTTPS PR-files request first
 - ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope, including saved-output artifacts under `workspaceStorage` or `chat-session-resources`
 - avoid automatic `gh api` fallback and use `gh` only when the user explicitly asks for it
+- fail closed with a specific file-availability error when authoritative PR scope names a non-deleted changed file that is missing from the local committed checkout, instead of degrading that condition into a generic coverage-matrix failure
 
 ### `REVIEW-SCOPE-005`
 
@@ -184,7 +185,11 @@ In practice, they require the workflow to:
 - keep ownership-boundary, lifecycle-symmetry, PATCH-or-residual-state, and optional-state-drift concerns as separate findings when current-run evidence supports each one on the same new-resource PR
 - classify mandatory issue-class concerns as `OBSERVATIONS` when the current run proves only broader risk or a non-blocking mismatch, and escalate them to `ISSUES` only when the evidence proves concrete blocking harm or another explicitly blocking rule applies
 - complete mandatory issue-class checks, such as ownership overlap, destructive-path gating symmetry, PATCH or residual-state review, and omitted-config state-drift review, before final output is emitted
+- treat the upstream minimum new-resource acceptance-test matrix as part of the mandatory issue-class review surface for brand-new managed resources with acceptance coverage, so missing `basic`, `requiresImport`, `complete`, or `update` scenarios cannot be silently dropped behind larger findings
+- when changed reference docs are in scope, treat evidence-backed docs example correctness under exact `DOCS-*` rules as part of the mandatory preserved concern set, so broken example values or non-functional example blocks are not silently dropped behind implementation findings
 - surface any evidence-backed concern found in those required checks at the justified classification instead of silently dropping it just because another blocking issue was found first
+- validate file-reference policy against the assistant-emitted markdown body the workflow owns, not against any later VS Code or Copilot client href rewriting
+- for brand-new managed resources with acceptance coverage, explicitly inspect the upstream minimum resource test matrix of `basic`, `requiresImport`, `complete`, and `update`, and keep any missing minimum scenario visible at least as an observation unless current-run evidence shows that specific expectation does not apply
 
 ### `REVIEW-SCOPE-005D`
 

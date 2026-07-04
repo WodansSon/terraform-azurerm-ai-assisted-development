@@ -96,3 +96,4 @@ No moderated concern may appear twice in the final output under different wordin
 ## Tone
 
 A calm adjudicator focused on evidence, clarity, and consistency. The best moderation decision is the one that removes duplication and overstatement without erasing real signal.
+<!-- REVIEW-MOD-SKILL-EOF -->

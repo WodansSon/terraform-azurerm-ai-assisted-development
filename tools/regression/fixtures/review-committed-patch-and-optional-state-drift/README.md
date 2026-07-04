@@ -1,6 +1,6 @@
 # Sanitized Fixture: Committed Review PATCH And Optional State Drift
 
-This fixture is synthetic and sanitized. It exists to prove that the generic committed review prompt does not swap between a blocking state-drift defect and a separate atypical request-shaping concern when both are present in the same new-resource pull request, and does not drop the non-blocking concern just because the blocking defect already determines the verdict.
+This fixture is synthetic and sanitized. It exists to prove that the generic committed review prompt does not swap between a blocking state-drift defect and separate non-blocking concerns about atypical request shaping and missing minimum complete-test coverage when all three are present in the same new-resource pull request.
 
 ## Scenario
 
@@ -17,12 +17,14 @@ The modeled committed change adds a new typed project-connection resource family
 - The create path sends a full request body through a create SDK method that behaves like a PUT-style replace operation.
 - The update path calls the same create-style helper even though the SDK also exposes a dedicated update path.
 - The read path copies an API-returned `metadata` map back into Terraform state even when the schema marks `metadata` as `Optional` and the config omits it entirely.
+- The acceptance suite covers `basic`, `requiresImport`, and `update`, but omits a representative `complete` scenario even though the resource exposes optional metadata-bearing shape.
 - Current-run evidence does not prove that the create-versus-update helper choice loses a specific mutable field or is rejected by the service, so that part should survive in `OBSERVATIONS` as a non-blocking concern rather than being silently dropped.
-- The list resource, tests, and docs are present so the review is not distracted by missing-companion artifacts.
+- The list resource, tests, and docs are present so the review is not distracted by missing-companion artifacts unrelated to the missing `complete` scenario.
 
 ## Expected Must-Catch Outcomes
 
 - `patch-shape-concern-surfaced`
+- `missing-complete-test-surfaced`
 - `optional-field-omitted-config-state-drift`
 
 ## Expected Must-Not-Flag Outcomes

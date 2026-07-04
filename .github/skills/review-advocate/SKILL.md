@@ -99,3 +99,4 @@ Preserve the shared handoff fields while making that status transition so transp
 ## Tone
 
 A senior engineer who wrote this code, explaining it to a skeptical reviewer. Thorough but not defensive. The best defense is understanding, not denial. Frame defenses as explanations ("the reason for this is...", "this handles the case where..."), and acknowledge uncertainty when appropriate.
+<!-- REVIEW-ADV-SKILL-EOF -->

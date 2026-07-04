@@ -29,7 +29,7 @@ Before running the presentation pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-presentation-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-PRESENT-*` rules.
-- [ ] I have loaded `.github/instructions/review-presentation-input.schema.json` to EOF and am consuming a payload that conforms to it.
+- [ ] I have explicitly loaded `.github/instructions/review-presentation-input.schema.json` to EOF in the current run and am not inferring schema knowledge from the contract, prompt text, or earlier summaries.
 - [ ] The findings set is already frozen and no more review reasoning remains to be done.
 
 If preflight is incomplete, do not run the presentation pass.
@@ -65,10 +65,11 @@ You are the **renderer** for the review workflow. Your job is to:
 ## The presentation method
 
 1. **Consume the payload, do not reopen the review** — treat the payload as the frozen source of truth.
-2. **Render only** — do not invent new findings, new evidence, or new recommendations.
-3. **Apply the fixed template** — use the headings, section order, expanded finding-card format, and footer rules from the contract.
-4. **Preserve meaning exactly** — if the payload says `- None`, render `- None`; if it contains issues, do not soften them.
-5. **Stop at presentation** — emit the final review body and nothing else.
+2. **Require an explicit schema read in the current run** — do not treat the schema as loaded unless `.github/instructions/review-presentation-input.schema.json` itself was read to EOF.
+3. **Render only** — do not invent new findings, new evidence, or new recommendations.
+4. **Apply the fixed template** — use the headings, section order, expanded finding-card format, and footer rules from the contract.
+5. **Preserve meaning exactly** — if the payload says `- None`, render `- None`; if it contains issues, do not soften them.
+6. **Stop at presentation** — emit the final review body and nothing else.
 
 The presentation pass owns no business logic. It does not classify findings, merge related concerns, demote issues to observations, decide whether evidence is strong enough, or repair an invalid findings set. If the payload is wrong or incomplete, the correct behavior is to hard-stop rather than compensate in the renderer.
 
@@ -96,3 +97,4 @@ The presentation skill owns only final rendering:
 ## Tone
 
 Neutral and mechanical. The best presentation pass is the one that makes the frozen review easier to read without changing what it means.
+<!-- REVIEW-PRESENT-SKILL-EOF -->

@@ -64,6 +64,32 @@ Do not emit a preamble that asks permission or waits for approval before running
 - If the schema is not fully loaded, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review coverage matrix schema not fully loaded. Load .github/instructions/review-coverage-matrix.schema.json to EOF and re-run this prompt.`
 
+### 0B) Load routed workflow and final presentation prerequisites
+- Before Step 1 begins, explicitly load each routed workflow skill and contract that the normal successful review path may require:
+  - `.github/skills/review-coordinator/SKILL.md`
+  - `.github/skills/review-architect/SKILL.md`
+  - `.github/instructions/review-architect-compliance-contract.instructions.md`
+  - `.github/skills/review-skeptic/SKILL.md`
+  - `.github/instructions/review-skeptic-compliance-contract.instructions.md`
+  - `.github/skills/review-advocate/SKILL.md`
+  - `.github/instructions/review-advocate-compliance-contract.instructions.md`
+  - `.github/skills/review-moderator/SKILL.md`
+  - `.github/instructions/review-moderator-compliance-contract.instructions.md`
+  - `.github/skills/review-presentation/SKILL.md`
+  - `.github/instructions/review-presentation-compliance-contract.instructions.md`
+  - `.github/instructions/review-presentation-input.schema.json`
+- For routed workflow skill files in this step, EOF marker verification is mandatory. The last non-empty line must be the matching skill EOF marker comment:
+  - `.github/skills/review-coordinator/SKILL.md` -> `<!-- REVIEW-COORD-SKILL-EOF -->`
+  - `.github/skills/review-architect/SKILL.md` -> `<!-- REVIEW-ARCH-SKILL-EOF -->`
+  - `.github/skills/review-skeptic/SKILL.md` -> `<!-- REVIEW-SKEP-SKILL-EOF -->`
+  - `.github/skills/review-advocate/SKILL.md` -> `<!-- REVIEW-ADV-SKILL-EOF -->`
+  - `.github/skills/review-moderator/SKILL.md` -> `<!-- REVIEW-MOD-SKILL-EOF -->`
+  - `.github/skills/review-presentation/SKILL.md` -> `<!-- REVIEW-PRESENT-SKILL-EOF -->`
+- The presentation schema file `.github/instructions/review-presentation-input.schema.json` does not use a Markdown EOF marker; verify that it is readable end-to-end in the current run.
+- Do not defer routed-skill, routed-contract, or presentation-path availability checks until after findings are drafted or frozen.
+- If any routed workflow skill, routed contract, presentation contract, or presentation schema cannot be loaded to EOF in this preflight phase, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: the routed review workflow is incomplete or stale in this workspace. Refresh the AI toolkit files, then confirm these exact files are present and readable end-to-end: .github/skills/review-coordinator/SKILL.md; .github/skills/review-architect/SKILL.md; .github/instructions/review-architect-compliance-contract.instructions.md; .github/skills/review-skeptic/SKILL.md; .github/instructions/review-skeptic-compliance-contract.instructions.md; .github/skills/review-advocate/SKILL.md; .github/instructions/review-advocate-compliance-contract.instructions.md; .github/skills/review-moderator/SKILL.md; .github/instructions/review-moderator-compliance-contract.instructions.md; .github/skills/review-presentation/SKILL.md; .github/instructions/review-presentation-compliance-contract.instructions.md; .github/instructions/review-presentation-input.schema.json.`
+
 ### 1) Gather the local change-set
 Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` for each command.
 Execute these required commands directly when this step begins; do not pause for confirmation.
@@ -217,6 +243,7 @@ Rules:
 
 ### 8) Final presentation renderer
 - This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.
+- Explicitly load `.github/instructions/review-presentation-input.schema.json` to EOF in the current run before invoking the presentation skill; do not assume that loading the presentation contract or skill implicitly loaded the schema.
 - Build a presentation payload that conforms to `.github/instructions/review-presentation-input.schema.json`.
 - For local review, populate at minimum: `reviewMode=local`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterLines`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and optional `verificationFooter`.
 - Populate `changeDescription` as a concise change-focused title derived from `changeSummaryLines` and `primaryChangesAnalysis`; do not use only a generic placeholder such as `Local Changes` when the current run established a more informative description.
@@ -232,13 +259,13 @@ Rules:
 - If a surviving non-empty observation, issue, immediate recommendation, or future consideration does not carry the moderator-owned presentation fields required by the current schema and presentation contract, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: final moderated findings are not presentation-complete under the current review-presentation contract. Rebuild the moderated finding set with structured presentation fields and re-run this prompt.`
 - Do not derive or invent `summary`, `reviewType`, `impact`, `evidence`, `suggestedChange`, `currentCode`, `correctedCode`, `codeLanguage`, or any other rich-display semantics in this prompt.
-- Invoke the `review-presentation` skill (`.github/skills/review-presentation/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-presentation-compliance-contract.instructions.md` together with `.github/instructions/review-presentation-input.schema.json` to render the final review body.
+- Invoke the `review-presentation` skill (`.github/skills/review-presentation/SKILL.md`), read it to EOF, confirm that `.github/instructions/review-presentation-compliance-contract.instructions.md` and `.github/instructions/review-presentation-input.schema.json` were both explicitly loaded to EOF in the current run, and only then render the final review body.
 - The presentation skill is render-only. It must not change findings, severity, classification, recommendations, or verdict semantics.
 - The presentation skill owns the normal successful review body. After this step begins, emit exactly the rendered review body and nothing else.
 - When `verificationFooter` is present, preserve the supplied routed-skill order and do not add `review-presentation` to `skillsUsed`.
 - If the `review-presentation` skill, contract, or schema cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-presentation skill, contract, or schema not fully loaded. Load .github/skills/review-presentation/SKILL.md, .github/instructions/review-presentation-compliance-contract.instructions.md, and .github/instructions/review-presentation-input.schema.json to EOF and re-run this prompt.`
-- Before emitting the first character of the final review body, verify all of the following silently from the frozen current-run payload and rendered output shape: section order, heading text, heading-based structured finding layout, footer ordering, that every evidence-backed concern discovered during mandatory issue-class checks appears in either `ISSUES` or `OBSERVATIONS`, and that neither the payload nor the rendered body contains forbidden local-link markers such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, or `/Users/`.
+- Before emitting the first character of the final review body, verify all of the following silently from the frozen current-run payload and the assistant-emitted markdown body: section order, heading text, heading-based structured finding layout, footer ordering, that every evidence-backed concern discovered during mandatory issue-class checks appears in either `ISSUES` or `OBSERVATIONS`, and that neither the payload nor the assistant-emitted markdown body contains forbidden local-link markers such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, or `/Users/`.
 - If any of those checks fail, abort the normal output path, silently rebuild the current-run payload or findings once when possible, and re-run the final presentation step.
 - If exact presentation compliance still cannot be satisfied after that silent retry, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: final review body could not be rendered in exact compliance with the current review-presentation contract. Re-run the current audit and presentation steps under the latest contracts.`

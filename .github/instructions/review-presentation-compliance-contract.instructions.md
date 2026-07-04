@@ -301,12 +301,13 @@ ${correctedCode}
 - Rule: The renderer must not collapse an expanded finding card into a plain bullet merely because a section also contains plain bullet items.
 
 ### REVIEW-PRESENT-004E: File references must stay stable and non-local
-- Rule: File references rendered in the final review body must use stable repo-scoped references supplied by the payload; they must not be rewritten into editor-local placeholder URIs or absolute on-disk paths.
-- Rule: The renderer must not emit editor-local, spill-path, or absolute-disk references such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, `/Users/`, or other machine-local path prefixes anywhere in the review body.
+- Rule: File references in the assistant-emitted markdown review body must use stable repo-scoped references supplied by the payload; they must not be rewritten by the renderer into editor-local placeholder URIs or absolute on-disk paths.
+- Rule: The renderer must not emit editor-local, spill-path, or absolute-disk references such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, `/Users/`, or other machine-local path prefixes anywhere in the assistant-emitted markdown review body.
 - Rule: For committed reviews with authoritative PR scope, file references should remain PR-scoped or repo-scoped references derived from that authoritative scope rather than local editor-session links.
 - Rule: For local reviews, file references should remain workspace-repo-relative paths or workspace-repo-relative path plus line references, not PR links, editor-session links, or absolute disk paths.
 - Rule: If the payload supplies plain repo-relative paths, preserve them as such instead of inventing richer editor-local or absolute-disk links.
-- Rule: If the payload or rendered review body contains any forbidden local-link marker from this rule family, the normal successful review body is invalid and the workflow must hard-stop instead of emitting that body.
+- Rule: If the payload or assistant-emitted markdown review body contains any forbidden local-link marker from this rule family, the normal successful review body is invalid and the workflow must hard-stop instead of emitting that body.
+- Rule: This contract governs the assistant-emitted markdown body only. Client-side link rewriting performed later by the VS Code or Copilot chat runtime is outside renderer scope and must not be treated as renderer-authored output when validating this rule family.
 
 ### REVIEW-PRESENT-005: Footer rendering is deterministic
 - Rule: The verification footer is rendered only when the optional `verificationFooter` object is present.

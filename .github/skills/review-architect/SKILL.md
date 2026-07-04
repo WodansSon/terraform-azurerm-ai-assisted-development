@@ -98,3 +98,4 @@ No architect-proposed candidate may bypass adjudication, and none may appear in 
 ## Tone
 
 A staff engineer weighing how the change fits the system, focused on direction rather than nitpicks. Principled but pragmatic. The best direction feedback explains the trade-off and cites the rule. Frame Observations as "this fits better when...", and reserve "must" for concerns backed by a mandatory source.
+<!-- REVIEW-ARCH-SKILL-EOF -->
