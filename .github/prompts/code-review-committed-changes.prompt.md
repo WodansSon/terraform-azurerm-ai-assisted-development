@@ -168,6 +168,8 @@ Rules:
 - Review the full committed change-set.
 - Complete the deterministic coverage matrix built in Step 2A and validated in Step 3A before drafting or freezing findings.
 - Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
+- When Step 5 reviews a new or materially changed variant-constrained ownership surface, apply `REVIEW-COORD-003A` first and keep ownership-boundary, lifecycle-symmetry, PATCH-or-residual-state, and optional-state-drift concerns as separate records when current-run evidence supports each one.
+- Apply `REVIEW-HANDOFF-006A` and the linkage-state requirements in `REVIEW-COORD-006` during Step 5: mandatory issue-class concerns must be emitted and linked immediately in the structured coverage matrix before the review continues.
 - When multiple mandatory issue-class checks uncover distinct evidence-backed concerns, preserve each concern as its own schema-conformant intermediate record; do not stop after the first blocking defect and do not treat one concern as satisfying another required issue class.
 - When a mandatory issue-class check yields an evidence-backed non-blocking concern, keep it in `OBSERVATIONS`; do not drop it solely because another issue already blocks merge or because it does not change the final verdict.
 - Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
@@ -192,6 +194,10 @@ Rules:
 - If `Repo Guidance` states that a skill was loaded or used, the verification footer must include the matching `Skill used:` line.
 - Do not emit any text after the verification footer.
 - After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
+- Before Step 5A begins, invoke the post-review linkage-validation sub-phase required by `REVIEW-COORD-006B` over the frozen current-run findings set and the structured coverage matrix.
+- Treat that router-owned linkage-validation sub-phase as the contract-defined backstop over already-emitted state, not as prompt-local bookkeeping or permission to postpone emission until the end of Step 5.
+- If that router-owned linkage-validation sub-phase fails, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: reviewer discovered evidence-backed concerns that were not serialized into the REVIEW-HANDOFF record set. Materialize the missing handoff records and re-run this prompt.`
 
 ### 5A) Architect evaluation (internal design-direction pass)
 - This step is mandatory after Step 5 has gathered the change-set evidence, even when the primary review pass is otherwise about to conclude with no candidate Issues.
@@ -244,19 +250,30 @@ Rules:
 - This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.
 - Build a presentation payload that conforms to `.github/instructions/review-presentation-input.schema.json`.
 - For committed review, populate at minimum: `reviewMode=committed`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterLines`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and optional `verificationFooter`.
+- Populate `changeDescription` as a concise change-focused title derived from the authoritative PR title, `changeSummaryLines`, and `primaryChangesAnalysis`; do not use only `PR <number>` when the current run established a more informative description.
 - When populating `modifiedFiles`, `addedFiles`, `deletedFiles`, and any file-bearing structured findings, use PR-scoped or repo-scoped paths or path-plus-line references only.
 - Do not place editor-local, spill-path, or absolute-disk links into the payload, including `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, or `/Users/` references.
 - When authoritative PR scope is available, keep file references PR-scoped or repo-scoped instead of converting them to local editor links or absolute disk paths.
+- If the frozen payload contains any forbidden local-link marker, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: final payload contains editor-local or absolute-disk file references. Rebuild the payload with repo-scoped or PR-scoped file references and re-run this prompt.`
 - For `mustFix`, supply normalized actionable linter lines or the explicit empty-state bullet `- None`.
-- For `strengths`, `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects from the schema only when the final moderated finding already carries deterministic `presentation` hints or when the corresponding display fields are otherwise already frozen by the shared workflow record.
+- For `strengths`, structured finding objects remain optional when the payload intentionally uses simple strength bullets.
+- For non-empty `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects only. The only allowed plain-string content in those sections is the explicit empty-state payload `- None`.
 - Treat the moderator-owned `presentation` object on surviving moderated handoff records as the canonical source for rich-display semantics.
-- Do not derive or invent `reviewType`, `suggestedChange`, `currentCode`, `correctedCode`, `codeLanguage`, or any other rich-display semantics in this prompt.
+- When promoting a moderated finding into a structured finding for `observations`, `issues`, `immediateRecommendations`, or `futureConsiderations`, use moderator-owned `presentation.summary`, `presentation.reviewType`, `presentation.impact`, and `presentation.evidence`, plus `presentation.suggestedChange`, `presentation.currentCode`, `presentation.correctedCode`, and `presentation.codeLanguage` when present.
+- If a surviving non-empty observation, issue, immediate recommendation, or future consideration does not carry the moderator-owned presentation fields required by the current schema and presentation contract, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: final moderated findings are not presentation-complete under the current review-presentation contract. Rebuild the moderated finding set with structured presentation fields and re-run this prompt.`
+- Do not derive or invent `summary`, `reviewType`, `impact`, `evidence`, `suggestedChange`, `currentCode`, `correctedCode`, `codeLanguage`, or any other rich-display semantics in this prompt.
 - Invoke the `review-presentation` skill (`.github/skills/review-presentation/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-presentation-compliance-contract.instructions.md` together with `.github/instructions/review-presentation-input.schema.json` to render the final review body.
 - The presentation skill is render-only. It must not change findings, severity, classification, recommendations, or verdict semantics.
 - The presentation skill owns the normal successful review body. After this step begins, emit exactly the rendered review body and nothing else.
 - When `verificationFooter` is present, preserve the supplied routed-skill order and do not add `review-presentation` to `skillsUsed`.
 - If the `review-presentation` skill, contract, or schema cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-committed-changes: review-presentation skill, contract, or schema not fully loaded. Load .github/skills/review-presentation/SKILL.md, .github/instructions/review-presentation-compliance-contract.instructions.md, and .github/instructions/review-presentation-input.schema.json to EOF and re-run this prompt.`
+- Before emitting the first character of the final review body, verify all of the following silently from the frozen current-run payload and rendered output shape: section order, heading text, heading-based structured finding layout, footer ordering, that every evidence-backed concern discovered during mandatory issue-class checks appears in either `ISSUES` or `OBSERVATIONS`, and that neither the payload nor the rendered body contains forbidden local-link markers such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, or `/Users/`.
+- If any of those checks fail, abort the normal output path, silently rebuild the current-run payload or findings once when possible, and re-run the final presentation step.
+- If exact presentation compliance still cannot be satisfied after that silent retry, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-committed-changes: final review body could not be rendered in exact compliance with the current review-presentation contract. Re-run the current audit and presentation steps under the latest contracts.`
 
 ## Output format
 

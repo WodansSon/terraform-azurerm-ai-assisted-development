@@ -86,13 +86,19 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 ### REVIEW-MOD-002A: Moderator owns deterministic presentation hints for surviving findings
 - Rule: For surviving moderated findings, the moderator may populate the optional `presentation` object on the shared handoff record when that metadata can be stated deterministically from the finding and its evidence.
 - Rule: If a surviving finding is intended to render as a structured finding card in the downstream presentation layer, the moderator owns the corresponding `presentation` hints for that card.
+- Rule: For every surviving finding that will appear in non-empty final `ISSUES`, `OBSERVATIONS`, `IMMEDIATE`, or `FUTURE CONSIDERATIONS` sections, the moderator must provide a presentation-ready structured finding shape instead of relying on downstream fallback behavior.
+- Rule: That presentation-ready shape must include `presentation.summary`, `presentation.reviewType`, `presentation.impact`, and `presentation.evidence` for each such surviving finding.
 - Rule: `presentation.reviewType` should be set when the surviving finding clearly fits one of the supported renderer review types.
+- Rule: `presentation.summary` should be set to the concise user-visible finding title that downstream presentation will render. When a surviving finding is intended to render in the compact titled-finding layout, the moderator should normalize that title to concise title case unless literal code identifiers or source wording must remain unchanged for correctness.
+- Rule: `presentation.impact` should be set when the surviving finding is intended to render in the compact titled-finding layout and the user-facing consequence can be stated deterministically from the finding and its evidence.
+- Rule: `presentation.evidence` should be set when the surviving finding needs a preserved user-facing evidence block, including direct file references or line references, in the compact titled-finding layout.
+- Rule: `presentation.evidence` in the compact titled-finding layout should preserve the core explanatory reasoning for why the referenced code is a concern; a bare list of file or line links is insufficient when the finding's meaning depends on behavior, state transitions, or contract mismatch.
 - Rule: `presentation.suggestedChange` should be set when one narrow deterministic fix or next change is supported by the evidence.
 - Rule: `presentation.correctedCode` may be set only when the moderator can provide a concrete corrected snippet without guessing surrounding semantics.
 - Rule: `presentation.currentCode` may be set only when the moderator can identify the relevant current snippet deterministically from the finding evidence.
 - Rule: `presentation.codeLanguage` may be set only when `presentation.correctedCode` is present.
-- Rule: If a suggested change, current code snippet, or corrected code snippet cannot be backed deterministically, leave the corresponding `presentation` field absent rather than inventing it.
-- Rule: Downstream prompts and the render-only presentation layer must not invent missing `presentation.reviewType`, `presentation.suggestedChange`, `presentation.currentCode`, `presentation.correctedCode`, or `presentation.codeLanguage` fields on behalf of the moderator.
+- Rule: If a summary, impact summary, evidence block, suggested change, current code snippet, or corrected code snippet cannot be backed deterministically, leave the corresponding `presentation` field absent rather than inventing it, and do not keep that record in a non-empty final `ISSUES`, `OBSERVATIONS`, `IMMEDIATE`, or `FUTURE CONSIDERATIONS` section that requires structured presentation.
+- Rule: Downstream prompts and the render-only presentation layer must not invent missing `presentation.summary`, `presentation.reviewType`, `presentation.impact`, `presentation.evidence`, `presentation.suggestedChange`, `presentation.currentCode`, `presentation.correctedCode`, or `presentation.codeLanguage` fields on behalf of the moderator.
 
 ### REVIEW-MOD-003: Duplicate concerns merge into one strongest record
 - Rule: When multiple workflow records describe the same underlying concern, the moderator must merge them into one record rather than repeat them.
@@ -109,7 +115,7 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized for final presentation, but it must not invent a second false-positive-defense pass under moderator authority.
 
 ### REVIEW-MOD-004B: Presentation hints are evidence-bound
-- Rule: The moderator may normalize or add `presentation.reviewType`, `presentation.suggestedChange`, `presentation.currentCode`, or `presentation.correctedCode` only when the finding evidence supports the change.
+- Rule: The moderator may normalize or add `presentation.summary`, `presentation.reviewType`, `presentation.impact`, `presentation.evidence`, `presentation.suggestedChange`, `presentation.currentCode`, or `presentation.correctedCode` only when the finding evidence supports the change.
 - Rule: The moderator must not attach optimistic remediation prose or corrected code that goes beyond the proven defect.
 
 ### REVIEW-MOD-005: Final synthesis stays inside the downstream output contract

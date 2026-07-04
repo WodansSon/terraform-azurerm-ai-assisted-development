@@ -10,6 +10,8 @@
     "requiredIssueClasses",
     "completedIssueClasses",
     "notApplicableIssueClasses",
+    "emittedRecordIds",
+    "issueClassToRecordIds",
     "completionStatus"
   ],
   "properties": {
@@ -49,6 +51,19 @@
         "$ref": "#/$defs/issueClass"
       }
     },
+    "emittedRecordIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/recordId"
+      }
+    },
+    "issueClassToRecordIds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issueClassRecordIds"
+      }
+    },
     "completionStatus": {
       "type": "string",
       "enum": [
@@ -80,6 +95,8 @@
         "requiredIssueClasses",
         "completedIssueClasses",
         "notApplicableIssueClasses",
+        "emittedRecordIds",
+        "issueClassToRecordIds",
         "completionStatus"
       ],
       "properties": {
@@ -163,6 +180,19 @@
             "$ref": "#/$defs/issueClass"
           }
         },
+        "emittedRecordIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/recordId"
+          }
+        },
+        "issueClassToRecordIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/issueClassRecordIds"
+          }
+        },
         "completionStatus": {
           "type": "string",
           "enum": [
@@ -212,6 +242,31 @@
         "patch-residual-state",
         "optional-state-drift"
       ]
+    },
+    "recordId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "issueClassRecordIds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueClass",
+        "recordIds"
+      ],
+      "properties": {
+        "issueClass": {
+          "$ref": "#/$defs/issueClass"
+        },
+        "recordIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/recordId"
+          }
+        }
+      }
     }
   }
 }

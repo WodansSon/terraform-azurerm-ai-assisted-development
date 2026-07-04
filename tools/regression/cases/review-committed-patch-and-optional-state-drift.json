@@ -28,6 +28,7 @@
     "notes": "Sanitized fixture models a new typed provider resource whose create path uses a full PUT-style request, whose update path calls the create-style helper even though the SDK exposes a dedicated update path, and whose read path hydrates API-returned metadata into an Optional field even when the config omits it."
   },
   "expectedRules": [
+    "REVIEW-CLASS-001A",
     "REVIEW-COORD-004",
     "REVIEW-SCOPE-005",
     "IMPL-PATCH-001"

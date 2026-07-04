@@ -212,9 +212,14 @@ That command runs the current repo-level maintainer validation flow in one pass:
 - Explicit changelog-decision validation for current branch changes
 - Changelog taxonomy validation for `Unreleased` entries
 - Contract validation
+- Branch-local regression case runnability validation for changed cases and fixtures
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - Regression harness validation and suite scoring
 - Upstream contributor drift detection
+
+If the current branch changes a regression case, fixture, or adjudicated example path under `tools/regression/`, the one-shot validator now expects the matching case to be `adjudicated` and to have a runnable `.result.json` example artifact. Schema-valid but non-runnable `ready` cases are not enough for the branch to validate cleanly.
+
+By default this runnability gate uses the current worktree when uncommitted edits exist, and falls back to branch-diff scope when the worktree is clean. Override that behavior with `-ChangedRegressionScope Worktree`, `-ChangedRegressionScope Branch`, or `-ChangedRegressionScope Combined` when you need a stricter or broader audit.
 
 If the current branch intentionally does not need a changelog entry, make that explicit instead of relying on path-based inference:
 

@@ -1,0 +1,69 @@
+{
+  "id": "review-local-handoff-serialization-gate",
+  "title": "Local review hard-stops when discovered concerns are not serialized into handoff records",
+  "task": "code-review-local-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the reviewer-to-handoff completeness gate directly.",
+    "whyItMattered": "Use this case to benchmark that the generic local review workflow requires immediate handoff emission during mandatory issue-class checks and still fails closed through coordinator-owned linkage validation before routed roles when a discovered concern is not materialized.",
+    "genericCondition": "Sanitized fixture models a review-workflow change where the shared contract owns the immediate-emission rule and the coordinator plus local review prompt are thin consumers that invoke that contract-owned behavior instead of restating it independently.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where reviewer analysis discovers one blocking concern and one non-blocking concern, but the workflow wording would allow issue-class completion without immediate linkage of those concerns to structured handoff record IDs or would let prompt or coordinator wording drift away from the contract-owned rule. The correct review should flag that as a workflow-breaking gap.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-handoff-serialization-gate/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      ".github/instructions/code-review-compliance-contract.instructions.md",
+      ".github/instructions/review-coverage-matrix.schema.json",
+      ".github/prompts/code-review-local-changes.prompt.md",
+      ".github/skills/review-coordinator/SKILL.md"
+    ],
+    "notes": "Sanitized fixture models the reviewer-to-handoff serialization gap where mandatory issue-class checks can be marked complete even when no handoff record IDs were emitted immediately for discovered concerns and coordinator-owned linkage validation was not defined as a backstop."
+  },
+  "expectedRules": [
+    "REVIEW-HANDOFF-006",
+    "REVIEW-COORD-004",
+    "REVIEW-COORD-006",
+    "REVIEW-COORD-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "missing-reviewer-to-handoff-serialization-gate",
+      "severity": "high",
+      "description": "The review should raise a real workflow issue if the contract-owned rule can drift across the prompt or coordinator consumers, or if a mandatory issue-class check can find a concern without emitting a matching handoff record ID immediately before continuing the audit and before routed roles begin."
+    },
+    {
+      "key": "issue-class-completion-needs-record-linkage",
+      "severity": "medium",
+      "description": "The review should require the coverage matrix to track emitted record IDs and issue-class-to-record-ID bindings so completion can be tied to actual serialized findings at the moment they are discovered instead of reviewer prose or delayed bulk serialization."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "moderator-recovers-missing-findings",
+      "description": "The review must not accept a design that relies on architect, advocate, moderator, or presentation to recover concerns that the reviewer never serialized into the handoff record set."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "Preflight complete: yes",
+      "Skill used: review-coordinator"
+    ]
+  },
+  "notes": "Use this case to benchmark the contract-owned immediate-emission rule plus the coordinator-owned pre-routing serialization invariant in the generic local review workflow."
+}

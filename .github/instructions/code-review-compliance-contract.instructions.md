@@ -137,9 +137,17 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: An Issue must be a real defect, regression, policy violation, missing requirement, or correctness risk with evidence.
 - Rule: Do not place stylistic preferences or speculative concerns in Issues.
 
+### REVIEW-CLASS-001A: Blocking classification requires concrete current-run harm
+- Rule: Keep a concern in `ISSUES` only when current-run evidence proves a present defect, destructive behavior, policy violation, concrete state corruption risk, or another clearly blocking correctness failure.
+- Rule: If current-run evidence proves only broader architectural risk, request-shape risk, uncertainty, or a non-blocking mismatch, classify that concern as an `OBSERVATION` unless another rule family explicitly says the concern is blocking by definition.
+
 ### REVIEW-CLASS-002: Observations are non-blocking
 - Rule: Observations capture design concerns, preferences, uncertainty, or follow-up ideas that are not clearly blocking.
 - Rule: If the current implementation is acceptable under the available evidence, keep it out of Issues even if another design might be preferable.
+
+### REVIEW-CLASS-002A: Evidence-backed non-blocking concerns must remain visible
+- Rule: If a mandatory issue-class check or routed pass yields an evidence-backed non-blocking concern, that concern must appear in the final output under `OBSERVATIONS`.
+- Rule: Do not omit such a concern solely because another issue already blocks merge, because the concern does not change the overall verdict, or because a shorter review would be more convenient.
 
 ### REVIEW-CLASS-003: Strengths must be factual
 - Rule: Strengths should call out concrete, evidenced positives.
@@ -183,6 +191,16 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Routed roles communicate by adding evidence, reasoning, `roles`, `ruleReferences`, or `roleNotes` to the shared schema record, not by inventing a separate unstructured dialogue channel.
 - Rule: If a role challenges an earlier finding, that challenge must be recorded inside the shared schema record rather than as disconnected prose.
 
+### REVIEW-HANDOFF-006: Reviewer-to-handoff serialization is mandatory before routed roles
+- Rule: If the primary review pass discovers an evidence-backed concern, that concern must exist as a schema-conformant `REVIEW-HANDOFF-*` record before `review-architect`, `review-skeptic`, `review-advocate`, or `review-moderator` begin.
+- Rule: The workflow must fail closed if the reviewer analysis says a concern exists but no corresponding structured handoff record was emitted for it.
+- Rule: Routed roles and the presentation layer are not responsible for recovering findings that the reviewer failed to serialize into the handoff record set.
+
+### REVIEW-HANDOFF-006A: Mandatory issue-class concerns emit records immediately
+- Rule: When a mandatory issue-class check yields an evidence-backed concern, the primary review pass must emit the corresponding schema-conformant `REVIEW-HANDOFF-*` record immediately rather than deferring serialization to a later bulk step.
+- Rule: The primary review pass must update the applicable row-level and matrix-level linkage state for that emitted record before moving to the next mandatory issue-class check or control window.
+- Rule: A mandatory issue-class concern must not exist only in reviewer memory or transient prose notes while the workflow continues auditing other checks.
+
 ### REVIEW-HANDOFF-004: The handoff shape is semantic, not transport-specific
 - Rule: The workflow may represent the intermediate record as structured markdown, table-like text, or JSON-like state, but the semantic fields and statuses must remain stable.
 - Rule: The intermediate record is workflow-internal and must not force a new reader-visible section in the final review body.
@@ -213,16 +231,27 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Overlap surfaces for new resources must be materialized as explicit file-path rows in the structured coverage matrix, not merely as inferred categories.
 - Rule: Overlap surfaces must be added to the deterministic coverage matrix and inspected with the same fixed control-window order when those windows exist.
 
+### REVIEW-COORD-003A: Variant-constrained ownership surfaces prioritize ownership and lifecycle first
+- Rule: For a new or materially changed managed surface whose ownership is constrained to a discriminator, mode, subtype, or other remote-object variant, the first cold-review priority is ownership boundary and lifecycle symmetry, not secondary polish findings.
+- Rule: Before treating metadata filtering, test-shape completeness, or similar secondary concerns as the lead finding, the workflow must first answer whether the surface can adopt foreign variants, mutate foreign variants, destroy foreign variants, and keep import or read or update or delete behavior symmetric for variant ownership.
+- Rule: If the importer, ID validator, lookup helper, or read path accepts a generic identifier that can resolve to foreign variants outside the surface's intended ownership slice, treat that as an immediate trigger for ownership-boundary inspection rather than a downstream follow-up check.
+
 ### REVIEW-COORD-004: Provider reviews have mandatory issue-class checks
 - Rule: For new or changed provider resources, data sources, or list resources under `internal/**/*.go`, the workflow must perform mandatory issue-class checks rather than relying on ad hoc reviewer heuristics alone.
 - Rule: The mandatory checks are ownership overlap, import/read/update/delete mode-gating symmetry, destructive-path gating, poller terminal-failure handling, validator-to-doc parity for blocking conditions, companion artifact completeness, list-resource exception handling, and identity/list/docs/test companion coverage.
+- Rule: For variant-constrained managed resources whose sibling list, read, or reference surfaces exclude foreign variants, the ownership-overlap check must explicitly verify that the managed resource does not adopt, update, or delete those out-of-scope variants.
+- Rule: When a variant-constrained resource accepts or imports a foreign variant into state and later update rejects that variant or delete still removes it, emit a distinct lifecycle-symmetry concern in addition to any ownership-boundary concern; one does not satisfy the other.
+- Rule: When current-run evidence shows update is using a PUT or create-style path even though the SDK exposes a dedicated PATCH or update path, preserve that concern as its own PATCH-or-residual-state record at the justified classification instead of folding it into a higher-severity ownership or lifecycle issue.
+- Rule: When current-run evidence shows omitted optional metadata is repopulated from the API into state, preserve that concern as its own optional-state-drift record instead of treating ownership or lifecycle findings as sufficient coverage for the same resource.
 - Rule: For resources, data sources, or list resources with special-case create versus update request shaping, PATCH-capable APIs, or partial-update branches, the mandatory checks also include PATCH and residual-state behavior so concurrent-change and stale-state risks are reviewed every run rather than only when the reviewer happens to notice them first.
 - Rule: For `Optional` or `Optional+Computed` fields whose values may be omitted in config but returned by the API, the mandatory checks also include read-state round-trip symmetry so omitted config does not repopulate provider-owned values into state accidentally.
+- Rule: For the optional-state-drift check, treat a code path that filters configured keys in one branch but falls back to repopulating all API-returned values in another branch as a mandatory round-trip-symmetry trigger rather than a reviewer preference call.
 - Rule: Completing a mandatory issue-class check means more than glancing at the code path. If the check uncovers an evidence-backed concern, the workflow must materialize that concern as a schema-conformant intermediate record at the justified classification before the issue class can be marked complete.
+- Rule: That materialization must happen immediately when the mandatory issue-class check yields the concern; do not defer record emission until the end of the file, the end of Step 5, or a later bulk serialization pass.
 - Rule: When a mandatory issue-class check uncovers an evidence-backed non-blocking concern, the workflow must preserve it in `OBSERVATIONS`; it must not be omitted solely because another blocking issue already determines the merge verdict or because the reviewer is trying to keep the review shorter.
 - Rule: One evidence-backed concern does not satisfy a different mandatory issue class. Distinct evidence-backed concerns discovered under different required issue classes must remain distinct intermediate records unless they are genuinely the same underlying concern.
 - Rule: If a mandatory issue-class check is not applicable, the current run must be able to justify that from current-run evidence.
-- Rule: The structured coverage matrix must model issue-class status explicitly using `requiredIssueClasses`, `completedIssueClasses`, and `notApplicableIssueClasses` rather than leaving non-applicable issue-class state implicit.
+- Rule: The structured coverage matrix must model issue-class status explicitly using `requiredIssueClasses`, `completedIssueClasses`, `notApplicableIssueClasses`, `emittedRecordIds`, and `issueClassToRecordIds` rather than leaving non-applicable state or record linkage implicit.
 
 ### REVIEW-COORD-005: Active-file bias is forbidden for initial routing
 - Rule: The active editor file, search result ordering, or PR wording must not decide the initial review route for committed or local review.
@@ -239,6 +268,10 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: A coverage-matrix row is complete only when every required window is present in `completedWindows` or `notApplicableWindows`, and every required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`.
 - Rule: A coverage matrix is complete only when every required row is complete, every top-level required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, and all not-applicable states are justified by current-run evidence.
 - Rule: A required issue class must not be marked `completed` if the reviewer found an evidence-backed concern in that class but failed to serialize it into the shared `REVIEW-HANDOFF-*` record set at the justified classification, including `observation` when the concern is non-blocking.
+- Rule: A required issue class that found an evidence-backed concern must link that concern to at least one handoff record ID through `issueClassToRecordIds` before the issue class can be marked `completed`.
+- Rule: Every handoff record ID referenced by a row-level `issueClassToRecordIds` entry must also appear in that row's `emittedRecordIds` and in the matrix-level `emittedRecordIds`.
+- Rule: Before any routed role begins, the workflow must assert that every evidence-backed concern discovered in the primary review pass is represented by at least one emitted handoff record ID; if that assertion fails, the review must hard-stop.
+- Rule: The primary review pass must keep `emittedRecordIds` and `issueClassToRecordIds` current as concerns are discovered so the later linkage-validation phase is validating already-emitted workflow state rather than reconstructing reviewer memory after the fact.
 - Rule: Standards-dependent issue-class checks may be marked complete only after the relevant workspace standards and scoped guidance needed to evaluate them have been loaded in the current run.
 - Rule: When a mandatory overlap surface or issue-class check has not been completed, the workflow must continue auditing rather than drafting or freezing findings.
 
@@ -246,6 +279,13 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: The router's validation sub-phase is the canonical mechanism that confirms coverage-matrix completion before findings or routed roles can proceed.
 - Rule: Prompts may orchestrate when that validation sub-phase runs, but they must not substitute looser prose-only completion checks for the router-owned validation step.
 - Rule: If the router validation sub-phase cannot confirm the required row, window, issue-class, overlap-row, and evidence-backed completion invariants from current-run evidence, the workflow must hard-stop rather than continue to findings or routed roles.
+
+### REVIEW-COORD-006B: Router owns post-review handoff-linkage validation before routed roles
+- Rule: After the primary review pass has drafted its frozen current-run findings set and before any routed role begins, the workflow must invoke a router-owned post-review linkage-validation sub-phase.
+- Rule: That router-owned linkage-validation sub-phase is the canonical mechanism that confirms reviewer-to-handoff synchronization, including `emittedRecordIds` and `issueClassToRecordIds`, before routed roles can proceed.
+- Rule: Prompts may orchestrate when that linkage-validation sub-phase runs, but they must not replace it with a prompt-only bookkeeping assertion.
+- Rule: If the router-owned linkage-validation sub-phase cannot confirm that every evidence-backed concern discovered in the primary review pass is represented by at least one emitted handoff record ID, the workflow must hard-stop rather than continue to architect, skeptic, advocate, or moderator.
+- Rule: For variant-constrained ownership reviews whose current-run evidence supports separate ownership-boundary, lifecycle-symmetry, PATCH-or-residual-state, and optional-state-drift concerns, linkage validation must confirm those concerns remain separate records at the justified classifications rather than a collapsed prose summary.
 
 ### REVIEW-COORD-007: Routed roles start only after coverage completion
 - Rule: The routed review roles `review-architect`, `review-skeptic`, `review-advocate`, and `review-moderator` must not start until the deterministic coverage matrix is complete.
@@ -406,6 +446,10 @@ Committed review scope decision table:
 ### REVIEW-TEST-002: RequiresImport patterns follow current contributor guidance
 - Rule: Evaluate requires-import tests against the active contributor guidance and the resource's actual behavior.
 - Rule: Do not report a requires-import pattern as wrong solely because it differs from an older prompt preference.
+
+### REVIEW-TEST-002A: New managed resources should prove one representative complete scenario when practical
+- Rule: When review scope adds a brand-new managed resource or materially new managed mode with acceptance coverage, inspect whether the suite includes one representative complete lifecycle scenario in addition to narrower `basic`, `requiresImport`, or `update` slices when the resource exposes optional, metadata-bearing, or category-dependent shape.
+- Rule: If the current-run evidence shows only partial acceptance slices and does not justify why a complete scenario is impractical, treat that gap as a reviewable concern rather than silently skipping it.
 
 ### REVIEW-TEST-003: Embedded Terraform in acceptance tests must use repository-valid formatting
 - Rule: When reviewing files under `internal/**/*_test.go`, inspect embedded Terraform configuration strings, including raw string literals used to define acceptance-test configuration.
@@ -602,6 +646,8 @@ azurerm-linter execution-state decision table:
 - Rule: If the mandatory procedure succeeds for the selected review type, emit the full current routed review template.
 - Rule: When the selected review type routes `review-presentation`, the final successful review body must follow `.github/instructions/review-presentation-compliance-contract.instructions.md`.
 - Rule: When the selected review type does not route `review-presentation`, the final successful review body must follow the prompt-defined template for that workflow.
+- Rule: For routed committed and local review, a normal successful review body is valid only when both conditions hold: the evidence and findings were gathered in a fresh run under the current contracts, and the final rendered body exactly matches the current `review-presentation` contract.
+- Rule: If either condition fails, the workflow must fail closed and must not emit a normal review body.
 - Rule: Do not short-circuit to a previous review, a delta-only summary, or wording such as `same findings as before` or `no change from the last review`.
 - Rule: This applies even when the reviewed code, linter findings, or conclusions are unchanged from an earlier invocation.
 - Rule: Current routed template/layout requirements are part of the output contract and must be honored on every successful fresh run.

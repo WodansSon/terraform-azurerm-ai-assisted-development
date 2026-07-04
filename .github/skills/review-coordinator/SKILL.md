@@ -80,6 +80,7 @@ The build phase runs before standards loading. It is responsible for:
 - materializing unchanged overlap rows by explicit file path
 - attaching fixed lifecycle/control-window ordering
 - attaching required issue classes and explicit not-applicable issue-class containers
+- attaching explicit `emittedRecordIds` and `issueClassToRecordIds` containers at the row and matrix levels so later workflow steps can bind discovered concerns to handoff record IDs mechanically
 - building the structured matrix without freezing completion state prematurely
 
 ### Validation phase
@@ -95,6 +96,13 @@ The validation phase runs after the prompt has loaded the applicable workspace s
 
 Routed roles cannot start until this validation phase succeeds.
 
+### Post-review linkage-validation phase
+
+The post-review linkage-validation phase runs after the primary review pass has frozen its current-run findings set and before any routed role begins.
+It enforces the contract-owned `REVIEW-COORD-006B` linkage invariants over `emittedRecordIds` and `issueClassToRecordIds`.
+Routed roles cannot start until this linkage-validation phase succeeds.
+This linkage-validation phase is a backstop for the immediate-emission behavior required by `REVIEW-HANDOFF-006A`, not permission for delayed serialization.
+
 Be mechanical, not interpretive. Prefer broader deterministic inclusion over omission when ambiguity remains.
 
 ## The coverage-routing method
@@ -106,10 +114,12 @@ Be mechanical, not interpretive. Prefer broader deterministic inclusion over omi
 5. **Attach fixed control-window order** — for each applicable row, require reads in this order when present: `Importer`, `Create`, `Read`, `Update`, `Delete`, `CustomizeDiff`, explicit validation or mode or ownership helpers, then companion registration, tests, docs, and association surfaces.
 6. **Expand overlap coverage for new resources** — when the scope adds a brand-new resource, add overlapping sibling resources, data sources, list resources, route or association or referencing surfaces, and explicit mode or ownership validation helpers that can manage the same remote object, even if they are unchanged.
 7. **Materialize overlap rows by file path** — every unchanged overlap surface must appear as its own explicit file-path row in the structured matrix; do not record overlap coverage only as a category-level note.
-8. **Attach mandatory issue-class checks** — for provider surfaces, require ownership-overlap checks, import/read/update/delete mode-gating symmetry checks, destructive-path gating checks, poller terminal-failure checks, validator-to-doc parity checks, companion completeness checks, list-resource exception checks, identity/list/docs/test companion checks, PATCH-and-residual-state checks when create or update shaping can diverge, and optional-state-drift checks when API-returned values can repopulate omitted Optional or Optional+Computed fields.
-9. **Build first, validate later** — use the build phase to create rows, overlap rows, required windows, required issue classes, and explicit `notApplicableIssueClasses` containers before standards loading. Use the later validation phase, after the prompt has loaded the relevant workspace standards and scoped guidance, to mark standards-dependent issue classes complete or not applicable.
-10. **Validate completion mechanically** — use the validation phase as the explicit completion gate that confirms row existence, window coverage, issue-class coverage, overlap-row materialization, and evidence-backed not-applicable state before the matrix can be marked complete.
-11. **Gate completion before routed roles** — mark the matrix complete only when every required row has either been inspected in the required order or has a current-run evidence-backed not-applicable justification. Routed roles must not start before that completion state is reached.
+8. **Attach mandatory issue-class checks** — for provider surfaces, require ownership-overlap checks, import/read/update/delete mode-gating symmetry checks, destructive-path gating checks, poller terminal-failure checks, validator-to-doc parity checks, companion completeness checks, list-resource exception checks, identity/list/docs/test companion checks, PATCH-and-residual-state checks when create or update shaping can diverge, and optional-state-drift checks when API-returned values can repopulate omitted Optional or Optional+Computed fields. For variant-constrained ownership surfaces, apply `REVIEW-COORD-003A` before secondary polish findings and keep distinct concerns separate per `REVIEW-COORD-004`.
+9. **Attach handoff-link containers** — initialize `emittedRecordIds` and `issueClassToRecordIds` at both the row and matrix levels so the primary review pass can satisfy `REVIEW-HANDOFF-006A` immediately as concerns are discovered and later workflow stages can prove that every discovered concern became a structured handoff record before routed roles begin.
+10. **Build first, validate later** — use the build phase to create rows, overlap rows, required windows, required issue classes, explicit `notApplicableIssueClasses` containers, and empty handoff-link containers before standards loading. Use the later validation phase, after the prompt has loaded the relevant workspace standards and scoped guidance, to mark standards-dependent issue classes complete or not applicable.
+11. **Validate completion mechanically** — use the validation phase as the explicit completion gate that confirms row existence, window coverage, issue-class coverage, overlap-row materialization, evidence-backed not-applicable state, and readiness for later handoff-linkage validation before the matrix can be marked complete.
+12. **Run post-review linkage validation mechanically** — after the primary review pass has frozen its findings set, use the router-owned linkage-validation phase to enforce `REVIEW-COORD-006B` against the already-emitted linkage state required by `REVIEW-HANDOFF-006A`.
+13. **Gate routed roles after linkage validation** — routed roles must not start before both completion validation and post-review linkage validation have succeeded.
 
 ## Burden of proof
 
@@ -118,6 +128,7 @@ Coverage routing decisions must be mechanical and evidenced:
 - use the changed-file scope, path shape, nearby helper names, and current workspace structure to identify required rows
 - use the schema's row fields and completion fields explicitly rather than keeping the matrix only as prose intent
 - use the later validation phase to complete standards-dependent issue classes only after the prompt has loaded the relevant contributor guidance, file-scoped instructions, or docs contract guidance
+- require the primary review pass to satisfy `REVIEW-HANDOFF-006A` incrementally when mandatory issue-class checks discover concerns, then use the router-owned `REVIEW-COORD-006B` linkage-validation phase as the workflow backstop rather than as a deferred serialization mechanism
 - represent non-applicable issue-class state explicitly in `notApplicableIssueClasses` at both the row and matrix levels rather than inferring it only from prose
 - treat the validation phase as the canonical place where completion invariants are checked rather than as an informal follow-up reminder
 - prefer explicit overlaps such as shared IDs, shared helpers, shared route associations, or documented management-boundary helpers over speculative architecture guesses
@@ -131,7 +142,7 @@ This skill does not prove defects. It proves only what the workflow must inspect
 The coverage coordinator does not own findings. It produces only workflow-internal coverage state:
 
 - **Coverage matrix built** — the prompt now has a schema-conformant matrix that names required files, windows, issue classes, and explicit not-applicable issue-class state.
-- **Validation phase defined** — the prompt now has an explicit router-owned completion gate for row existence, coverage invariants, overlap-row materialization, and evidence-backed completion status.
+- **Validation phases defined** — the prompt now has explicit router-owned completion and post-review linkage-validation gates for row existence, coverage invariants, overlap-row materialization, evidence-backed completion status, and reviewer-to-handoff synchronization.
 - **Overlap surfaces identified** — unchanged sibling surfaces are explicitly included as file-path rows when new resources create ownership overlap risk.
 - **Completion gate armed** — the rest of the workflow, including routed roles, cannot continue until the matrix is complete.
 

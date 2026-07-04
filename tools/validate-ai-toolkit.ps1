@@ -3,6 +3,9 @@ param(
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
 
+    [ValidateSet('Auto', 'Worktree', 'Branch', 'Combined')]
+    [string]$ChangedRegressionScope = 'Auto',
+
     [switch]$SkipChangelog,
 
     [switch]$ChangelogNotRequired,
@@ -191,6 +194,176 @@ function Get-ChangedRepositoryPaths {
     return @($paths | Sort-Object)
 }
 
+function Get-WorktreeChangedPaths {
+    param([string]$RepoRoot)
+
+    if ($null -eq $gitCommand) {
+        return @()
+    }
+
+    $paths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $statusLines = @(Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('status', '--porcelain') -AllowFailure)
+
+    foreach ($statusLine in $statusLines) {
+        if ([string]::IsNullOrWhiteSpace($statusLine) -or $statusLine.Length -lt 4) {
+            continue
+        }
+
+        $pathValue = $statusLine.Substring(3).Trim()
+        if ($pathValue -match ' -> ') {
+            $pathValue = ($pathValue -split ' -> ')[-1]
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($pathValue)) {
+            [void]$paths.Add($pathValue.Replace('\', '/'))
+        }
+    }
+
+    return @($paths | Sort-Object)
+}
+
+function Get-BranchDiffPaths {
+    param([string]$RepoRoot)
+
+    if ($null -eq $gitCommand) {
+        return @()
+    }
+
+    $paths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    $candidateRefs = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_BASE_REF)) {
+        $candidateRefs += @("origin/$($env:GITHUB_BASE_REF)", $env:GITHUB_BASE_REF)
+    }
+    $candidateRefs += @('origin/main', 'upstream/main', 'main')
+    $candidateRefs = @($candidateRefs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+
+    foreach ($candidateRef in $candidateRefs) {
+        $verifiedRef = Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('rev-parse', '--verify', $candidateRef) -AllowFailure
+        if ($null -eq $verifiedRef) {
+            continue
+        }
+
+        $diffPaths = @(Invoke-GitCommand -RepoRoot $RepoRoot -Arguments @('diff', '--name-only', "$candidateRef...HEAD") -AllowFailure)
+        if ($null -eq $diffPaths) {
+            continue
+        }
+
+        foreach ($diffPath in $diffPaths) {
+            if (-not [string]::IsNullOrWhiteSpace($diffPath)) {
+                [void]$paths.Add($diffPath.Replace('\', '/'))
+            }
+        }
+
+        break
+    }
+
+    return @($paths | Sort-Object)
+}
+
+function Resolve-ChangedRegressionScopePaths {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Scope
+    )
+
+    $worktreePaths = @(Get-WorktreeChangedPaths -RepoRoot $RepoRoot)
+    $branchPaths = @(Get-BranchDiffPaths -RepoRoot $RepoRoot)
+
+    switch ($Scope) {
+        'Worktree' {
+            return [pscustomobject]@{ scope = 'worktree'; paths = $worktreePaths }
+        }
+
+        'Branch' {
+            return [pscustomobject]@{ scope = 'branch'; paths = $branchPaths }
+        }
+
+        'Combined' {
+            $combined = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($path in @($worktreePaths + $branchPaths)) {
+                [void]$combined.Add($path)
+            }
+
+            return [pscustomobject]@{ scope = 'combined'; paths = @($combined | Sort-Object) }
+        }
+
+        'Auto' {
+            if ($worktreePaths.Count -gt 0) {
+                return [pscustomobject]@{ scope = 'worktree'; paths = $worktreePaths }
+            }
+
+            return [pscustomobject]@{ scope = 'branch'; paths = $branchPaths }
+        }
+    }
+
+    throw "unsupported changed regression scope '$Scope'"
+}
+
+function Get-ChangedRegressionCases {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$ChangedPaths
+    )
+
+    $caseIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($changedPath in $ChangedPaths) {
+        if ($changedPath -match '^tools/regression/cases/(?<id>[^/]+)\.json$') {
+            [void]$caseIds.Add($Matches['id'])
+            continue
+        }
+
+        if ($changedPath -match '^tools/regression/fixtures/(?<id>[^/]+)/') {
+            [void]$caseIds.Add($Matches['id'])
+            continue
+        }
+
+        if ($changedPath -match '^tools/regression/examples/(?<id>[^/]+)\.(result\.json|review\.md)$') {
+            [void]$caseIds.Add($Matches['id'])
+            continue
+        }
+    }
+
+    $changedCases = @()
+    foreach ($caseId in @($caseIds | Sort-Object)) {
+        $caseRelativePath = "tools/regression/cases/$caseId.json"
+        $caseFullPath = Join-Path $RepoRoot ($caseRelativePath.Replace('/', '\'))
+        $resultRelativePath = "tools/regression/examples/$caseId.result.json"
+        $resultFullPath = Join-Path $RepoRoot ($resultRelativePath.Replace('/', '\'))
+        $reviewRelativePath = "tools/regression/examples/$caseId.review.md"
+        $reviewFullPath = Join-Path $RepoRoot ($reviewRelativePath.Replace('/', '\'))
+
+        $caseStatus = $null
+        $task = $null
+        if (Test-Path -LiteralPath $caseFullPath) {
+            $caseDefinition = Get-Content -LiteralPath $caseFullPath -Raw | ConvertFrom-Json
+            $caseStatus = [string]$caseDefinition.caseStatus
+            $task = [string]$caseDefinition.task
+        }
+
+        $changedCases += [pscustomobject]@{
+            id = $caseId
+            task = $task
+            casePath = $caseRelativePath
+            casePathExists = (Test-Path -LiteralPath $caseFullPath)
+            caseStatus = $caseStatus
+            resultPath = $resultRelativePath
+            resultPathExists = (Test-Path -LiteralPath $resultFullPath)
+            reviewPath = $reviewRelativePath
+            reviewPathExists = (Test-Path -LiteralPath $reviewFullPath)
+        }
+    }
+
+    return @($changedCases)
+}
+
 Push-Location $repoRoot
 try {
     $steps = @()
@@ -234,6 +407,41 @@ try {
 
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {
         & pwsh -NoProfile -File $contractsScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'changed-regression-cases' -Detail 'Confirm branch-local regression case changes are runnable with adjudicated example results, not merely schema-valid.' -Command {
+        $scopeResolution = Resolve-ChangedRegressionScopePaths -RepoRoot $repoRoot -Scope $ChangedRegressionScope
+        $changedCases = @(Get-ChangedRegressionCases -RepoRoot $repoRoot -ChangedPaths $scopeResolution.paths)
+
+        if ($changedCases.Count -eq 0) {
+            Write-Output ("No {0}-scoped regression case changes detected." -f $scopeResolution.scope)
+            return
+        }
+
+        $errors = New-Object 'System.Collections.Generic.List[string]'
+        foreach ($changedCase in $changedCases) {
+            if (-not $changedCase.casePathExists) {
+                $errors.Add("changed regression artifacts reference missing case file '$($changedCase.casePath)'")
+                continue
+            }
+
+            if ($changedCase.caseStatus -ne 'adjudicated') {
+                $errors.Add("changed regression case '$($changedCase.id)' is '$($changedCase.caseStatus)'; expected 'adjudicated' so the regression suite can score it")
+            }
+
+            if (-not $changedCase.resultPathExists) {
+                $errors.Add("changed regression case '$($changedCase.id)' is missing adjudicated example result '$($changedCase.resultPath)'")
+            }
+        }
+
+        if ($errors.Count -gt 0) {
+            throw ($errors -join [Environment]::NewLine)
+        }
+
+        Write-Output ("Changed regression scope: {0}" -f $scopeResolution.scope)
+        foreach ($changedCase in $changedCases) {
+            Write-Output ("{0}: task={1}; status={2}; exampleResult={3}" -f $changedCase.id, $changedCase.task, $changedCase.caseStatus, $changedCase.resultPath)
+        }
     }
 
     $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the repo markdownlint configuration.' -Command {
@@ -297,6 +505,7 @@ try {
         highlights = [ordered]@{
             changelogStatus = @($steps | Where-Object { $_.name -eq 'changelog' })[0].status
             changelogConsistencyStatus = @($steps | Where-Object { $_.name -eq 'changelog-consistency' })[0].status
+            changedRegressionCasesStatus = @($steps | Where-Object { $_.name -eq 'changed-regression-cases' })[0].status
             regressionCasesSelected = if ($regressionStep.status -eq 'passed') { Get-TextMatchValue -Text $regressionStep.output -Pattern 'Cases Selected\s*:\s*([0-9]+)' } else { $null }
             regressionCasesScored = if ($regressionStep.status -eq 'passed') { Get-TextMatchValue -Text $regressionStep.output -Pattern 'Cases Scored\s*:\s*([0-9]+)' } else { $null }
             upstreamChangedSources = if ($driftStep.status -ne 'skipped') { Get-TextMatchValue -Text $driftStep.output -Pattern 'Changed:\s*([0-9]+)' } else { $null }
@@ -332,6 +541,9 @@ try {
         }
         if ($null -ne $summary.highlights.changelogConsistencyStatus) {
             Write-Output "  Changelog Consistency    : $($summary.highlights.changelogConsistencyStatus)"
+        }
+        if ($null -ne $summary.highlights.changedRegressionCasesStatus) {
+            Write-Output "  Changed Regression Cases : $($summary.highlights.changedRegressionCasesStatus)"
         }
         if ($null -ne $summary.highlights.regressionCasesSelected) {
             Write-Output "  Regression Cases Selected : $($summary.highlights.regressionCasesSelected)"

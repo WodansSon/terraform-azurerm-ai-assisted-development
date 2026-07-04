@@ -187,6 +187,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
         "reviewType": {
           "type": "string",
           "enum": [
@@ -197,6 +201,14 @@
             "positive-feedback",
             "future-consideration"
           ]
+        },
+        "impact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
         },
         "suggestedChange": {
           "type": "string",

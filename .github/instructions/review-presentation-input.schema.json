@@ -30,7 +30,8 @@
     },
     "changeDescription": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "A concise change-focused review title for the final review heading, not merely a generic scope label when richer evidence exists."
     },
     "changeSummaryLines": {
       "$ref": "#/$defs/nonEmptyStringArray"
@@ -71,16 +72,16 @@
       "$ref": "#/$defs/findingArray"
     },
     "observations": {
-      "$ref": "#/$defs/findingArray"
+      "$ref": "#/$defs/structuredFindingArrayOrExplicitNone"
     },
     "issues": {
-      "$ref": "#/$defs/findingArray"
+      "$ref": "#/$defs/structuredFindingArrayOrExplicitNone"
     },
     "immediateRecommendations": {
-      "$ref": "#/$defs/findingArray"
+      "$ref": "#/$defs/structuredFindingArrayOrExplicitNone"
     },
     "futureConsiderations": {
-      "$ref": "#/$defs/findingArray"
+      "$ref": "#/$defs/structuredFindingArrayOrExplicitNone"
     },
     "overallAssessment": {
       "type": "string",
@@ -137,6 +138,33 @@
         "$ref": "#/$defs/findingItem"
       },
       "uniqueItems": false
+    },
+    "structuredFindingArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/structuredFinding"
+      },
+      "uniqueItems": false
+    },
+    "explicitNoneArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "string",
+        "const": "- None"
+      }
+    },
+    "structuredFindingArrayOrExplicitNone": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/structuredFindingArray"
+        },
+        {
+          "$ref": "#/$defs/explicitNoneArray"
+        }
+      ]
     },
     "findingItem": {
       "oneOf": [

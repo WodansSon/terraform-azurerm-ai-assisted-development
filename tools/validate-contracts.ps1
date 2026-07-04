@@ -22,6 +22,23 @@ $requiredContractHeadings = @(
     '## Evidence hierarchy'
 )
 
+$consumerRuleReferenceRequirements = @{
+    '.github/instructions/code-review-compliance-contract.instructions.md' = @(
+        [PSCustomObject]@{
+            path = '.github/skills/review-coordinator/SKILL.md'
+            ruleIds = @('REVIEW-HANDOFF-006A', 'REVIEW-COORD-003A', 'REVIEW-COORD-006B')
+        },
+        [PSCustomObject]@{
+            path = '.github/prompts/code-review-local-changes.prompt.md'
+            ruleIds = @('REVIEW-HANDOFF-006A', 'REVIEW-COORD-003A', 'REVIEW-COORD-006B')
+        },
+        [PSCustomObject]@{
+            path = '.github/prompts/code-review-committed-changes.prompt.md'
+            ruleIds = @('REVIEW-HANDOFF-006A', 'REVIEW-COORD-003A', 'REVIEW-COORD-006B')
+        }
+    )
+}
+
 function Get-NormalizedRelativePath {
     param(
         [Parameter(Mandatory = $true)]
@@ -491,6 +508,26 @@ function Get-ContractReport {
 
             if ($declaredConsumer.requiresEofLoad -and $consumerRawContent -notmatch 'to EOF') {
                 $errors.Add("Declared consumer is marked 'Requires EOF Load: yes' but does not mention loading the contract to EOF: $declaredConsumerPath")
+            }
+        }
+    }
+
+    if ($consumerRuleReferenceRequirements.ContainsKey($relativePath)) {
+        foreach ($requirement in $consumerRuleReferenceRequirements[$relativePath]) {
+            $consumerPath = $requirement.path
+            $consumerFullPath = Join-Path $RepoRoot ($consumerPath.Replace('/', '\'))
+
+            if (-not (Test-Path -LiteralPath $consumerFullPath)) {
+                $errors.Add("Required rule-reference consumer path does not exist: $consumerPath")
+                continue
+            }
+
+            $consumerRawContent = Get-Content -LiteralPath $consumerFullPath -Raw
+
+            foreach ($ruleId in $requirement.ruleIds) {
+                if (-not $consumerRawContent.Contains($ruleId)) {
+                    $errors.Add("Consumer does not reference required contract rule ID '$ruleId': $consumerPath")
+                }
             }
         }
     }

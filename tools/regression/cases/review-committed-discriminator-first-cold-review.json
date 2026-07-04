@@ -1,0 +1,97 @@
+{
+  "id": "review-committed-discriminator-first-cold-review",
+  "title": "Committed review keeps discriminator ownership, lifecycle, patch, and drift findings separate on first cold review",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise discriminator-specific cold-review ordering and multi-finding preservation directly.",
+    "whyItMattered": "Use this case to benchmark that a first cold review of a brand-new discriminator-specific resource starts with ownership boundary and lifecycle symmetry, and still preserves a PUT-versus-PATCH observation plus optional-state-drift issue when the same PR supports all four findings.",
+    "genericCondition": "Sanitized fixture models a new AAD-only project connection resource that accepts a generic project-connection identifier, reads foreign auth variants into state, updates through a create-style PUT helper even though the SDK exposes PATCH, and repopulates omitted optional metadata from the API.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where a brand-new discriminator-specific managed resource supports four separate first-pass findings: ownership-boundary violation, lifecycle-symmetry violation, PUT-versus-PATCH update-shape observation, and optional metadata drift. The correct cold review must surface them as separate records instead of collapsing them into one prose summary or dropping the non-blocking observation.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-discriminator-first-cold-review/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_aad_project_connection_resource.go",
+      "internal/services/example/example_aad_project_connection_resource_test.go",
+      "internal/services/example/example_project_connection_id_validation.go",
+      "website/docs/r/example_aad_project_connection.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a new discriminator-specific resource whose generic ID handling allows foreign variants into state, whose lifecycle windows are not ownership-symmetric, whose update path uses a create-style helper despite an SDK patch path, and whose read path repopulates omitted optional metadata from the API."
+  },
+  "expectedRules": [
+    "REVIEW-CLASS-001A",
+    "REVIEW-COORD-003A",
+    "REVIEW-COORD-004",
+    "REVIEW-COORD-006B"
+  ],
+  "mustCatch": [
+    {
+      "key": "foreign-variant-ownership-boundary",
+      "severity": "high",
+      "description": "The committed review should surface that the discriminator-specific resource can adopt, manage, or delete foreign variants when a generic project-connection identifier or read path accepts them into state."
+    },
+    {
+      "key": "foreign-variant-lifecycle-symmetry",
+      "severity": "high",
+      "description": "The committed review should surface a separate lifecycle-symmetry issue when import or read accepts a foreign variant into state, update rejects it later, and delete still removes it."
+    },
+    {
+      "key": "put-versus-patch-observation-preserved",
+      "severity": "medium",
+      "description": "The committed review should preserve a separate non-blocking PUT-versus-PATCH update-shape concern in `OBSERVATIONS` when the SDK exposes a dedicated update path but current-run evidence does not yet prove a blocking field-loss or service-contract failure."
+    },
+    {
+      "key": "optional-metadata-drift",
+      "severity": "high",
+      "description": "The committed review should surface the omitted-config optional metadata drift risk when the read path repopulates API-owned metadata into an Optional field that the config omitted."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "collapsed-discriminator-summary",
+      "description": "The final review must not collapse ownership, lifecycle, PATCH-shape, and optional-state-drift concerns into a single prose summary that makes separate issue-class coverage unverifiable."
+    },
+    {
+      "key": "observation-dropped-because-blocking-issues-exist",
+      "description": "The final review must not let blocking ownership or lifecycle issues suppress the separate PUT-versus-PATCH observation when the fixture evidence supports both."
+    },
+    {
+      "key": "local-link-leak-in-final-body",
+      "description": "The final committed review must not emit editor-local or absolute-disk file references such as `vscode-file://`, `workbench.html`, `AppData`, or `workspaceStorage` anywhere in the rendered body."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "OBSERVATIONS",
+      "ISSUES",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "foreign",
+      "import/read/update/delete",
+      "PATCH",
+      "metadata"
+    ],
+    "mustNotIncludeMarkers": [
+      "vscode-file://",
+      "workbench.html",
+      "AppData",
+      "workspaceStorage"
+    ]
+  },
+  "notes": "Use this case to benchmark discriminator-specific first-cold-review ordering and preservation of separate ownership, lifecycle, PATCH-shape, and optional-state-drift findings on the same PR."
+}

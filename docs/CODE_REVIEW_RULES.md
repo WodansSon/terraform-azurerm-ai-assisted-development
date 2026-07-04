@@ -62,6 +62,7 @@ The generic code review prompts route the final frozen review data through `revi
 The `review-coordinator` skill is the workflow's deterministic coverage-routing layer.
 The generic code review prompts route authoritative changed-file scope through `review-coordinator` before standards loading and finding drafting so active-file bias cannot decide the first review anchor.
 That routing layer now produces a schema-backed internal coverage matrix via `.github/instructions/review-coverage-matrix.schema.json`, names unchanged overlap rows by explicit file path, builds the matrix before standards loading, validates completion after scoped standards load, and must complete before any routed review role can start.
+The matrix now also carries explicit `emittedRecordIds` and `issueClassToRecordIds` fields, and the coordinator owns a post-review linkage-validation phase so the workflow can hard-stop if a reviewer noticed a concern but failed to serialize it into the shared handoff record set before architect, skeptic, advocate, or moderator begin.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -172,10 +173,16 @@ In practice, they require the workflow to:
 - sort changed implementation surfaces lexically instead of anchoring on the active editor file
 - inspect lifecycle windows such as Importer, Create, Read, Update, Delete, and CustomizeDiff in a fixed order when those windows exist
 - scan unchanged sibling ownership surfaces when a PR adds a new resource that can overlap an older management surface, and materialize those overlap surfaces as explicit file-path rows
+- start new or materially changed variant-constrained ownership reviews with ownership-boundary and lifecycle-symmetry checks before secondary polish findings such as metadata filtering or test-shape completeness
 - build the matrix early but validate standards-dependent completion only after the relevant scoped guidance is loaded
 - model issue-class completion explicitly, including not-applicable issue classes, instead of inferring that state only from prose
 - treat the router validation sub-phase as the canonical completion gate rather than relying on prompt prose alone
 - block architect, skeptic, advocate, and moderator routing until the coverage matrix is complete
+- fail closed if an evidence-backed concern was discovered but no structured handoff record ID was emitted for it before routed roles begin
+- emit and link a structured handoff record immediately when a mandatory issue-class check yields an evidence-backed concern, instead of relying on later bulk serialization
+- keep the shared review contract as the full authority for that immediate-emission and linkage-validation behavior, with prompts and the coordinator invoking the relevant rule IDs instead of restating the full rule text independently
+- keep ownership-boundary, lifecycle-symmetry, PATCH-or-residual-state, and optional-state-drift concerns as separate findings when current-run evidence supports each one on the same new-resource PR
+- classify mandatory issue-class concerns as `OBSERVATIONS` when the current run proves only broader risk or a non-blocking mismatch, and escalate them to `ISSUES` only when the evidence proves concrete blocking harm or another explicitly blocking rule applies
 - complete mandatory issue-class checks, such as ownership overlap, destructive-path gating symmetry, PATCH or residual-state review, and omitted-config state-drift review, before final output is emitted
 - surface any evidence-backed concern found in those required checks at the justified classification instead of silently dropping it just because another blocking issue was found first
 
@@ -312,6 +319,7 @@ In practice, `REVIEW-PRES-*` rules explain things such as:
 - why local and committed review share one final output template
 - which section order and heading text are fixed by the presentation layer
 - why the renderer must not add, remove, or reinterpret findings
+- why structured issue and observation findings can render as titled list items with separate `Impact` and `Evidence` blocks once moderator-owned presentation hints exist
 - how footer lines such as `Preflight complete: yes` and `Skill used: ...` are rendered deterministically
 
 ## `DOCS-*` Rule Areas

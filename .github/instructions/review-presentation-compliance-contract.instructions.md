@@ -88,6 +88,13 @@ If a rendering decision cannot be backed by this authority chain, prefer the nar
 - Rule: The renderer must not invent missing required fields.
 - Rule: If the required schema, contract, or skill cannot be loaded to EOF, the prompt must hard-stop instead of emitting a partial review body.
 
+### REVIEW-PRESENT-002A: `changeDescription` must be a change-focused review title
+- Rule: `changeDescription` is a concise human-readable summary of what the reviewed change does, suitable for the final `# 📋 **Code Review**: ...` heading.
+- Rule: `changeDescription` must not be only a generic scope label such as `PR 32628`, `Pull Request 32628`, `Committed Changes`, `Local Changes`, or a branch name when richer current-run evidence exists.
+- Rule: For committed review with authoritative pull request metadata, prefer a concise change-focused description derived from the authoritative pull request title or from the reviewed change summary; include the PR number only as supporting context when helpful, not as the whole title.
+- Rule: For local review, derive `changeDescription` from the current change summary or primary changes analysis rather than falling back to a generic placeholder when the current run established a more informative description.
+- Rule: The renderer remains render-only; prompts and upstream workflow stages own populating `changeDescription` correctly.
+
 ### REVIEW-PRESENT-003: Section order and headings are fixed
 - Rule: The normal successful review body must render these headings exactly once and in this order:
   - `# 📋 **Code Review**: ${changeDescription}`
@@ -185,6 +192,11 @@ Skill used: ${skillName1}
 - Rule: `RECOMMENDATIONS` renders the supplied immediate and future-consideration items without inventing new follow-up work.
 - Rule: When a list-backed section is empty, the renderer should emit exactly one bullet: `- None`.
 
+### REVIEW-PRESENT-004F: Presentation is render-only and owns no review business logic
+- Rule: The renderer must not decide whether a concern belongs in `ISSUES` or `OBSERVATIONS`; classification comes from the frozen payload.
+- Rule: The renderer must not invent, merge, suppress, downgrade, upgrade, or otherwise reinterpret findings, severity, recommendations, or verdicts.
+- Rule: If the supplied payload is not valid under the current presentation contract, the renderer must hard-stop instead of compensating with new review logic.
+
 ### REVIEW-PRESENT-004A: `MUST FIX` is the linter-action section
 - Rule: `### 🎯 **MUST FIX**` renders the supplied `mustFix` entries as plain bullet lines in payload order.
 - Rule: `mustFix` is reserved for normalized actionable linter lines or the explicit empty-state bullet `- None`.
@@ -197,8 +209,29 @@ Example:
 - AZBP123 [resource.go:88](internal/services/example/resource.go#L88): add a nil guard before dereferencing the optional identity block
 ```
 
-### REVIEW-PRESENT-004B: Structured findings preserve the legacy expanded card format
-- Rule: When a finding item in `strengths`, `observations`, `issues`, `immediateRecommendations`, or `futureConsiderations` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
+### REVIEW-PRESENT-004B: Structured findings in issues, observations, and recommendations render as heading-based finding blocks
+- Rule: When a finding item in `observations`, `issues`, `immediateRecommendations`, or `futureConsiderations` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
+
+```markdown
+#### ${summary}
+- **Impact**: ${impact}
+- **Evidence**: ${evidence}
+- **Suggested Change**: ${suggestedChange}
+```
+
+- Rule: Render the supplied `summary` text as the heading text without adding punctuation or changing its casing; title-case normalization remains upstream moderator responsibility.
+- Rule: Render `Impact`, `Evidence`, and `Suggested Change` as three separate top-level bullet lines immediately below the finding heading, in that exact order.
+- Rule: Do not inline those fields onto the heading line, do not place them inside a parent bullet item, and do not use hidden HTML or escaped HTML separators between them.
+- Rule: When `Suggested Change` is absent, render only the `Impact` bullet followed by the `Evidence` bullet.
+- Rule: If `suggestedChange` is absent, omit the `Suggested Change` line.
+- Rule: If `currentCode` is present, render a `**Current Code:**` label followed by a fenced code block using `codeLanguage` when supplied.
+- Rule: If `currentCode` and `correctedCode` are both present, render a `**Suggested Code:**` label followed by a fenced code block containing only the replacement snippet, using `codeLanguage` when supplied.
+- Rule: If `correctedCode` is present without `currentCode`, render a fenced code block immediately after the `Suggested Change` line, using `codeLanguage` when supplied.
+- Rule: For non-empty `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, structured finding objects are mandatory. Plain-string fallback is forbidden for those sections except the explicit empty-state payload `- None`.
+- Rule: If the payload for one of those non-empty sections is not presentation-complete under the schema and this contract, the normal successful review body is invalid and the prompt must hard-stop instead of rendering a fallback shape.
+
+### REVIEW-PRESENT-004BA: Structured strengths preserve the expanded positive-feedback card format
+- Rule: When a finding item in `strengths` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
 
 ```markdown
 #### ${reviewTypeEmoji} ${reviewTypeLabel}: ${summary}
@@ -206,25 +239,19 @@ Example:
 * **File**: ${file}
 * **Evidence**: ${evidence}
 * **Impact**: ${impact}
-* **Suggested Change**: ${suggestedChange}
 ```
 
-- Rule: If `suggestedChange` is absent, omit the `Suggested Change` line.
-- Rule: If `currentCode` is present, render a `**Current Code:**` label followed by a fenced code block using `codeLanguage` when supplied.
-- Rule: If `currentCode` and `correctedCode` are both present, render a `**Suggested Code:**` label followed by a fenced code block containing only the replacement snippet, using `codeLanguage` when supplied.
-- Rule: If `correctedCode` is present without `currentCode`, render a fenced code block immediately after the `Suggested Change` line, using `codeLanguage` when supplied.
-- Rule: Plain string items remain plain bullets in input order and are the default shape when no structured finding object is supplied.
+- Rule: Structured strengths must not render `Suggested Change`, `Current Code`, or `Suggested Code` blocks.
+- Rule: Plain-string strengths remain allowed when the payload intentionally uses simple strength bullets.
 
 Example:
 
 ````markdown
 ### 🔴 **ISSUES**
-#### 🔧 Change request: ${summary}
-* **Priority**: ${priorityEmoji}
-* **File**: ${file}
-* **Evidence**: ${evidence}
-* **Impact**: ${impact}
-* **Suggested Change**: ${suggestedChange}
+#### ${summary}
+- **Impact**: ${impact}
+- **Evidence**: ${evidence}
+- **Suggested Change**: ${suggestedChange}
 
 **Current Code:**
 
@@ -279,6 +306,7 @@ ${correctedCode}
 - Rule: For committed reviews with authoritative PR scope, file references should remain PR-scoped or repo-scoped references derived from that authoritative scope rather than local editor-session links.
 - Rule: For local reviews, file references should remain workspace-repo-relative paths or workspace-repo-relative path plus line references, not PR links, editor-session links, or absolute disk paths.
 - Rule: If the payload supplies plain repo-relative paths, preserve them as such instead of inventing richer editor-local or absolute-disk links.
+- Rule: If the payload or rendered review body contains any forbidden local-link marker from this rule family, the normal successful review body is invalid and the workflow must hard-stop instead of emitting that body.
 
 ### REVIEW-PRESENT-005: Footer rendering is deterministic
 - Rule: The verification footer is rendered only when the optional `verificationFooter` object is present.

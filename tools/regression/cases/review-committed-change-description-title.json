@@ -1,0 +1,64 @@
+{
+  "id": "review-committed-change-description-title",
+  "title": "Committed review uses a change-focused title instead of a bare PR number",
+  "task": "code-review-committed-changes",
+  "caseStatus": "ready",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to lock down review-title readability.",
+    "whyItMattered": "Use this case to benchmark that the final committed-review header stays change-focused when the review already established a rich summary of the pull request.",
+    "genericCondition": "Sanitized fixture models a committed review where authoritative PR context exists and the primary changes analysis clearly describes a new resource family, but a weak implementation might still title the review with only the PR number.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where the final review title must summarize the reviewed change rather than echo only the pull request number.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-change-description-title/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_project_connection_resource.go",
+      "internal/services/example/example_project_connection_resource_list.go",
+      "internal/services/example/example_project_connection_resource_test.go",
+      "website/docs/r/example_project_connection.html.markdown",
+      "website/docs/r/example_project_connection_list.html.markdown"
+    ],
+    "notes": "The review establishes a clear summary for a new project-connection resource family, so the final heading should reuse that context instead of emitting only a PR number."
+  },
+  "expectedRules": [
+    "REVIEW-PRESENT-002A",
+    "REVIEW-PRESENT-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "change-focused-review-title",
+      "severity": "low",
+      "description": "The committed review should use a concise change-focused title in the final review heading when the current run established what the PR actually adds or changes."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "bare-pr-number-title",
+      "description": "The final review heading must not use only a bare PR number such as `PR 32628` when richer current-run evidence exists."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "# 📋 **Code Review**: Add Cognitive Services project-connection resource family"
+    ],
+    "mustNotIncludeMarkers": [
+      "# 📋 **Code Review**: PR 32628"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review titles stay change-focused instead of collapsing to only a pull request number."
+}
