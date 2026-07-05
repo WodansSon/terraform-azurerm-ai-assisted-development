@@ -39,7 +39,7 @@ The workflow now expects moderator to attach deterministic presentation hints fo
 * **Suggested Change**: Tighten the prompt wording so it transports only frozen moderated `presentation` hints and never invents missing rich-display semantics. **Current Code:** ```markdown
 - For `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects from the schema only when the final moderated finding already carries deterministic `presentation` hints or when the corresponding display fields are otherwise already frozen by the shared workflow record.
 ``` **Suggested Code:** ```markdown
-- For `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects from the schema only when the final moderated finding already carries deterministic `presentation` hints.
+- For `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, use structured finding objects only. The only allowed plain-string content in those sections is the explicit empty-state payload `- None`.
 ``` ## ✅ **RECOMMENDATIONS** ### 🎯 **IMMEDIATE**
 - Keep moderator as the canonical owner of rich-display semantics and keep the prompt limited to transport. ### 🔄 **FUTURE CONSIDERATIONS**
 - Extend the adjudicated corpus if the renderer grows other richer code-review affordances beyond language-tagged suggested-code blocks, or if the positive-feedback taxonomy grows beyond `good` and `notable`. ## 🏆 **OVERALL ASSESSMENT**

@@ -2,12 +2,12 @@
   "id": "review-committed-overlap-lifecycle-ownership-gap",
   "title": "Committed review catches overlap ownership gaps across lifecycle windows",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
-    "whyItMattered": "Use this case to benchmark deterministic overlap-surface coverage for grouped-management resources so reruns do not drift based on the active editor file or live repo shape.",
+    "whyItMattered": "Use this adjudicated case to benchmark deterministic overlap-surface coverage for grouped-management resources so reruns do not drift based on the active editor file or live repo shape.",
     "genericCondition": "Synthetic fixture models the historical drift where the active file is the new grouped-management resource, but the critical defect sits on an unchanged legacy single-item surface `internal/services/example/example_item_resource.go`. The deterministic review must still add that sibling surface because it can manage the same remote object.",
     "notes": ""
   },
@@ -66,5 +66,5 @@
       "single-item"
     ]
   },
-  "notes": "Use this case to benchmark deterministic overlap-surface coverage for grouped-management resources so reruns do not drift based on the active editor file or live repo shape."
+  "notes": "Use this adjudicated case and paired sample review output to benchmark deterministic overlap-surface coverage for grouped-management resources so reruns do not drift based on the active editor file or live repo shape."
 }

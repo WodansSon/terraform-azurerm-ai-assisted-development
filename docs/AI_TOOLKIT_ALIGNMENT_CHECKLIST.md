@@ -59,6 +59,7 @@ The current contract-driven domains are:
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/review-linter-compliance-contract.instructions.md`
 - `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
 - `.github/instructions/review-moderator-compliance-contract.instructions.md`

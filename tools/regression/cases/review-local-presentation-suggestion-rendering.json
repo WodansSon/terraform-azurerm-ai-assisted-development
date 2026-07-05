@@ -41,7 +41,7 @@
     {
       "key": "moderator-owns-rich-presentation-hints",
       "severity": "medium",
-      "description": "The review should raise a real issue if wording lets the prompt invent rich-display semantics instead of requiring surviving moderated findings to carry the canonical `presentation` hints."
+      "description": "The review should raise a real issue if wording lets the prompt invent rich-display semantics instead of treating moderator-owned `presentation` hints as the canonical source when those richer hints are present."
     },
     {
       "key": "suggestion-style-rendering-preserved",

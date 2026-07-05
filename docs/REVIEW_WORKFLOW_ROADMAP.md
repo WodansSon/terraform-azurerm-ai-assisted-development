@@ -25,7 +25,7 @@ Load docs/REVIEW_WORKFLOW_ROADMAP.md into working memory and use it as the canon
 - The workflow now has a concrete shared handoff schema at `.github/instructions/review-workflow-handoff.schema.json` so routed findings move through one stable JSON-backed transport.
 - The generic review prompts now bind candidate-level adjudication to `review-advocate` and final synthesis to `review-moderator`.
 - `review-moderator` is now a routed part of the generic review workflow through `.github/skills/review-moderator/SKILL.md` and `.github/instructions/review-moderator-compliance-contract.instructions.md`.
-- Regression coverage now exists for schema-preserving routed-role handoff, moderator-owned duplicate merge, zero-findings moderation, and deterministic issue-class coverage.
+- Regression coverage now exists for schema-preserving routed-role handoff, moderator-owned duplicate merge, zero-findings moderation, deterministic issue-class coverage, and mixed-scope review preservation where evidence-backed concerns from one applicable issue class are not silently dropped behind stronger findings from another.
 
 ### Current Prompt Responsibilities
 
@@ -46,7 +46,7 @@ The immediate goal is to make the current single-workflow review pipeline correc
 
 ### Planned Sequence
 
-1. Merge the role-addition PR `#30`, `Add review-skeptic and review-architect panel review skills`. That PR introduces the following review artifacts:
+1. Land the role-addition change set that introduces `review-architect` and `review-skeptic`. That change set should introduce the following review artifacts:
 	- `.github/skills/review-architect/SKILL.md`
 	- `.github/skills/review-skeptic/SKILL.md`
 	- `.github/instructions/review-architect-compliance-contract.instructions.md`
@@ -176,8 +176,8 @@ Explicitly, the intended stable end-state role lineup is:
 For avoidance of doubt after a reset:
 
 - `review-advocate` = existing second-pass false-positive-defense role
-- `review-architect` = new structure and maintainability role introduced by PR `#30`
-- `review-skeptic` = new challenge and edge-case role introduced by PR `#30`
+- `review-architect` = structure and maintainability role added by the routed-role expansion
+- `review-skeptic` = challenge and edge-case role added by the routed-role expansion
 - `moderator` = current final synthesis and adjudication role, routed by the generic prompts after advocate adjudication completes
 
 ## Ownership Boundaries And Allowed Actions
@@ -329,12 +329,12 @@ The desired cutover is a transport and runtime upgrade, not a simultaneous rewri
 
 ### State Check Before Using This Plan
 
-Before acting on the rollout phases in a fresh or reset session, check the current repository state for PR `#30`, `Add review-skeptic and review-architect panel review skills`.
+Before acting on the rollout phases in a fresh or reset session, check the current repository state for the routed-role expansion that adds `review-architect` and `review-skeptic`.
 
 Use the current branch contents and git history to decide which phase applies:
 
-- If PR `#30` is still open or its artifacts are not present on the current branch, treat **Phase 1** as still pending.
-- If PR `#30` is already merged and the following artifacts exist on the current branch, treat **Phase 1** as complete and begin from **Phase 2**:
+- If those role-expansion artifacts are not present on the current branch, treat **Phase 1** as still pending.
+- If the following artifacts exist on the current branch, treat **Phase 1** as complete and begin from **Phase 2**:
 	- `.github/skills/review-architect/SKILL.md`
 	- `.github/skills/review-skeptic/SKILL.md`
 	- `.github/instructions/review-architect-compliance-contract.instructions.md`
@@ -350,13 +350,13 @@ If the current branch also contains the following staged artifacts, treat **Phas
 - `tools/regression/cases/review-local-handoff-schema-preserved-through-advocate.json`
 - `tools/regression/cases/review-local-moderator-duplicate-merge-ready.json`
 
-### Phase 1: Merge Current Role PR
+### Phase 1: Land Current Role Expansion
 
-- land PR `#30`, which adds `review-architect` and `review-skeptic` plus their companion contract files
+- land the role-expansion change set that adds `review-architect` and `review-skeptic` plus their companion contract files
 - confirm that `review-architect` and `review-skeptic` are directionally correct as role additions
-- avoid broad execution-model changes in the same PR
+- avoid broad execution-model changes in the same change set
 
-### Phase 2: Stabilization PR
+### Phase 2: Stabilization Change Set
 
 - split advocate responsibilities where needed
 - clarify skeptic versus moderator versus architect ownership
@@ -364,7 +364,7 @@ If the current branch also contains the following staged artifacts, treat **Phas
 - reduce prompt ambiguity around role permissions
 - add regression coverage for role interactions and outcome classification
 
-This stabilization PR is also the explicit reconciliation point between the existing `review-advocate` behavior and the new `review-skeptic` role introduced by PR `#30`. The cleanup should not treat those as independent changes.
+This stabilization change set is also the explicit reconciliation point between the existing `review-advocate` behavior and the routed-role expansion that adds `review-skeptic`. The cleanup should not treat those as independent changes.
 
 The stabilization work should therefore ensure that:
 
@@ -382,7 +382,7 @@ The branch is already partway through this phase now:
 
 #### Phase 2 Implementation Checklist
 
-The stabilization PR should aim to leave the current workflow in a state where every role is understandable and testable without needing multi-agent execution.
+The stabilization change set should aim to leave the current workflow in a state where every role is understandable and testable without needing multi-agent execution.
 
 ##### A. Clarify Role Definitions
 
@@ -441,7 +441,7 @@ The stabilization PR should aim to leave the current workflow in a state where e
 
 ##### H. Define Success Criteria For Stabilization
 
-The stabilization PR should be considered successful only if:
+The stabilization phase should be considered successful only if:
 
 - the routed roles use one stable handoff structure
 - the active final adjudication owner is explicit

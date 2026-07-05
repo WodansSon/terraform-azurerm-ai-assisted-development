@@ -188,14 +188,9 @@ Skill used: ${skillName1}
 ### REVIEW-PRESENT-004: Section bodies render from payload data only
 - Rule: `CHANGE SUMMARY` renders the supplied `changeSummaryLines` in payload order.
 - Rule: `FILES CHANGED` renders only the file groups relevant to the review mode, using the payload arrays and `skippedVendoredFiles` count.
-- Rule: `DETAILED TECHNICAL REVIEW` renders the supplied recursion-prevention, standards-check, linter, must-fix, strengths, observations, and issues data without reclassification.
+- Rule: `DETAILED TECHNICAL REVIEW` renders the supplied recursion-prevention, standards-check, linter report, must-fix, strengths, observations, and issues data without reclassification.
 - Rule: `RECOMMENDATIONS` renders the supplied immediate and future-consideration items without inventing new follow-up work.
 - Rule: When a list-backed section is empty, the renderer should emit exactly one bullet: `- None`.
-
-### REVIEW-PRESENT-004F: Presentation is render-only and owns no review business logic
-- Rule: The renderer must not decide whether a concern belongs in `ISSUES` or `OBSERVATIONS`; classification comes from the frozen payload.
-- Rule: The renderer must not invent, merge, suppress, downgrade, upgrade, or otherwise reinterpret findings, severity, recommendations, or verdicts.
-- Rule: If the supplied payload is not valid under the current presentation contract, the renderer must hard-stop instead of compensating with new review logic.
 
 ### REVIEW-PRESENT-004A: `MUST FIX` is the linter-action section
 - Rule: `### 🎯 **MUST FIX**` renders the supplied `mustFix` entries as plain bullet lines in payload order.
@@ -209,8 +204,8 @@ Example:
 - AZBP123 [resource.go:88](internal/services/example/resource.go#L88): add a nil guard before dereferencing the optional identity block
 ```
 
-### REVIEW-PRESENT-004B: Structured findings in issues, observations, and recommendations render as heading-based finding blocks
-- Rule: When a finding item in `observations`, `issues`, `immediateRecommendations`, or `futureConsiderations` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
+### REVIEW-PRESENT-004B: Structured findings in issues and observations render as heading-based finding blocks
+- Rule: When a finding item in `observations` or `issues` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
 
 ```markdown
 #### ${summary}
@@ -227,8 +222,12 @@ Example:
 - Rule: If `currentCode` is present, render a `**Current Code:**` label followed by a fenced code block using `codeLanguage` when supplied.
 - Rule: If `currentCode` and `correctedCode` are both present, render a `**Suggested Code:**` label followed by a fenced code block containing only the replacement snippet, using `codeLanguage` when supplied.
 - Rule: If `correctedCode` is present without `currentCode`, render a fenced code block immediately after the `Suggested Change` line, using `codeLanguage` when supplied.
-- Rule: For non-empty `observations`, `issues`, `immediateRecommendations`, and `futureConsiderations`, structured finding objects are mandatory. Plain-string fallback is forbidden for those sections except the explicit empty-state payload `- None`.
+- Rule: For non-empty `observations` and `issues`, structured finding objects are mandatory. Plain-string fallback is forbidden for those sections except the explicit empty-state payload `- None`.
 - Rule: If the payload for one of those non-empty sections is not presentation-complete under the schema and this contract, the normal successful review body is invalid and the prompt must hard-stop instead of rendering a fallback shape.
+### REVIEW-PRESENT-004BB: Recommendations are plain follow-up bullets
+- Rule: `immediateRecommendations` and `futureConsiderations` render as plain bullet lines in payload order.
+- Rule: Recommendation sections must not be used as an alternate home for evidence-backed review concerns that belong in `ISSUES` or `OBSERVATIONS`.
+- Rule: Recommendations may summarize next steps implied by already-visible findings, but they must not be the only place where a present defect or evidence-backed non-blocking concern appears.
 
 ### REVIEW-PRESENT-004BA: Structured strengths preserve the expanded positive-feedback card format
 - Rule: When a finding item in `strengths` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
@@ -308,6 +307,16 @@ ${correctedCode}
 - Rule: If the payload supplies plain repo-relative paths, preserve them as such instead of inventing richer editor-local or absolute-disk links.
 - Rule: If the payload or assistant-emitted markdown review body contains any forbidden local-link marker from this rule family, the normal successful review body is invalid and the workflow must hard-stop instead of emitting that body.
 - Rule: This contract governs the assistant-emitted markdown body only. Client-side link rewriting performed later by the VS Code or Copilot chat runtime is outside renderer scope and must not be treated as renderer-authored output when validating this rule family.
+
+### REVIEW-PRESENT-004F: Presentation is render-only and owns no review business logic
+- Rule: The renderer must not decide whether a concern belongs in `ISSUES` or `OBSERVATIONS`; classification comes from the frozen payload.
+- Rule: The renderer must not invent, merge, suppress, downgrade, upgrade, or otherwise reinterpret findings, severity, recommendations, or verdicts.
+- Rule: If the supplied payload is not valid under the current presentation contract, the renderer must hard-stop instead of compensating with new review logic.
+
+### REVIEW-PRESENT-004L: Linter execution report renders from structured payload fields
+- Rule: The `### 🧰 **AZURERM LINTER**` execution report must render from the supplied `linterReport` object, not from preformatted prose lines.
+- Rule: The renderer must render the linter execution report fields in this exact order: `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`.
+- Rule: The renderer must use the supplied `mustFix` payload entries for the `### 🎯 **MUST FIX**` section and must not infer actionable linter entries from the linter report summary text.
 
 ### REVIEW-PRESENT-005: Footer rendering is deterministic
 - Rule: The verification footer is rendered only when the optional `verificationFooter` object is present.

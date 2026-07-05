@@ -240,7 +240,9 @@
         "list-resource-exception",
         "identity-list-docs-tests",
         "patch-residual-state",
-        "optional-state-drift"
+        "optional-state-drift",
+        "acceptance-test-matrix",
+        "docs-example-correctness"
       ]
     },
     "recordId": {

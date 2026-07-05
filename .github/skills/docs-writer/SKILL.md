@@ -81,7 +81,7 @@ After editing a docs page:
 
 - re-check ordering rules for arguments, attributes, and nested blocks
 - re-check note markers and placement
-- re-check examples for fences, secrets, self-contained references, and implementation-backed values
+- re-check examples for fences, secrets, self-contained references, and implementation-backed or acceptance-test-backed values and key casing
 - re-check import ID shape from implementation evidence when the page has an import section
 
 Deterministic audit boundary:

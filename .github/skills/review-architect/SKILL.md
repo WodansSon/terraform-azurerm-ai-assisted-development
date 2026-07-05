@@ -17,7 +17,7 @@ When running the architect pass, use `.github/instructions/review-architect-comp
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
 Do not treat this skill as an independent final review stage. It is governed invisible workflow machinery that can add architect findings to an in-flight review, but it cannot freeze or publish final review output on its own.
 
-The architect proposes findings only. It never finalizes outcomes: every architect-proposed candidate Issue remains part of the in-flight review and is resolved under the workflow rules before output is frozen.
+The architect proposes findings only. It never finalizes outcomes: every architect-proposed issue or observation remains part of the in-flight review and is moderated under the workflow rules before output is frozen.
 
 ## Mandatory: read the entire skill
 
@@ -82,18 +82,18 @@ Findings must be tied to evidence, not asserted:
 - quote the workspace rule that the change violates
 - cross-reference how related resources or patterns model the same concern
 
-When the concern stays in workflow scope, preserve the shared handoff fields for `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`, as defined by `.github/instructions/review-workflow-handoff.schema.json`.
+When the concern stays in workflow scope, preserve the shared handoff fields for `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, `classification`, and `visible`, as defined by `.github/instructions/review-workflow-handoff.schema.json`.
 
 Mark derived assumptions clearly ("based on how sibling resources model this block, the singular name appears inconsistent because...") rather than stating preference as policy. If no mandatory source supports the concern, keep it an Observation per `REVIEW-OBS-001`.
 
 ## Outcomes
 
-The architect does not own the final outcome mapping. Findings resolve as follows:
+The architect does not own final moderation. Findings resolve as follows:
 
-- **Observation (default)** — design direction, preference, or out-of-scope structural idea, recorded in `### 🟡 **OBSERVATIONS**`.
-- **Candidate Issue** — only when a mandatory source is violated; it then enters the candidate set and is resolved under the workflow's candidate-issue outcome mapping.
+- **Observation (default)** — design direction, preference, or out-of-scope structural idea, recorded as `classification=observation`.
+- **Issue** — only when a mandatory source is violated; it is recorded as `classification=issue`.
 
-No architect-proposed candidate may bypass adjudication, and none may appear in both Issues and Observations.
+No architect finding may bypass moderation, and none may appear in both issues and observations.
 
 ## Tone
 

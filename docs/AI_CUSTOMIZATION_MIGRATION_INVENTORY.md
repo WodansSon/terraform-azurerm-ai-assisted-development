@@ -31,7 +31,7 @@ Prompt conclusions:
 
 - The three current review prompts should remain as compatibility entrypoints in the near term.
 - Prompt count should not increase.
-- If review UX is simplified later, it should happen by adding a simpler front door while keeping these prompts as compatibility aliases until parity is proven.
+- If review UX is simplified later, it should happen by adding a simpler entrypoint while keeping these prompts as compatibility aliases until parity is proven.
 
 ## Runtime Companion Guide Inventory
 
@@ -95,7 +95,7 @@ Skill conclusion:
 ### Step 4: Delay prompt simplification until parity evidence exists
 
 - Do not collapse review prompts into a single entrypoint until regression coverage proves equivalence.
-- If a simpler front door is added later, keep the current prompts as compatibility aliases until maintainers intentionally retire them.
+- If a simpler entrypoint is added later, keep the current prompts as compatibility aliases until maintainers intentionally retire them.
 
 ## Suggested First Runtime Migration Candidates
 
@@ -116,7 +116,7 @@ These are the lowest-risk runtime modernization targets after the current archit
 ## Deferred Items
 
 - Review prompt consolidation
-- New review agent or single review front door
+- New review agent or single review entrypoint
 - Standalone troubleshooting skill
 - Provider-guidelines merge or retirement
 - Broad style-only cleanup across all companion guides

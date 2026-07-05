@@ -2,12 +2,12 @@
   "id": "review-committed-discriminator-first-cold-review",
   "title": "Committed review keeps discriminator ownership, lifecycle, patch, and drift findings separate on first cold review",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark scenario designed to exercise discriminator-specific cold-review ordering and multi-finding preservation directly.",
-    "whyItMattered": "Use this case to benchmark that a first cold review of a brand-new discriminator-specific resource starts with ownership boundary and lifecycle symmetry, and still preserves a PUT-versus-PATCH observation, an optional-state-drift issue, and a docs example correctness issue when the same PR supports all of them.",
+    "whyItMattered": "Use this adjudicated benchmark to keep first cold-review ordering and mixed implementation-plus-docs finding preservation stable for discriminator-specific resources.",
     "genericCondition": "Sanitized fixture models a new AAD-only project connection resource that accepts a generic project-connection identifier, reads foreign auth variants into state, updates through a create-style PUT helper even though the SDK exposes PATCH, repopulates omitted optional metadata from the API, and ships a changed reference-doc example whose metadata field casing does not match implementation-backed example evidence.",
     "notes": ""
   },
@@ -104,5 +104,5 @@
       "workspaceStorage"
     ]
   },
-  "notes": "Use this case to benchmark discriminator-specific first-cold-review ordering and preservation of separate ownership, lifecycle, PATCH-shape, optional-state-drift, and docs example correctness findings on the same PR."
+  "notes": "Use this adjudicated case and paired sample review output to benchmark discriminator-specific first-cold-review ordering and preservation of separate ownership, lifecycle, PATCH-shape, optional-state-drift, and docs example correctness findings on the same PR."
 }

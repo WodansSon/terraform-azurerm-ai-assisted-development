@@ -162,6 +162,8 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 ### TEST-PATTERN-003: Complete tests should cover the full supported shape when needed
 - Rule: Include a `complete` acceptance test for resource scenarios so the broader supported configuration surface is exercised alongside `basic` and `update` coverage.
 - Rule: Only omit `complete` coverage when there is concrete evidence that the resource shape does not warrant a distinct complete scenario.
+- Rule: Do not treat category-specific, subtype-specific, or otherwise narrower targeted scenarios as satisfying `complete` coverage when the resource still exposes a broader supported shape.
+- Rule: When a new managed resource exposes optional metadata, optional blocks, or multiple supported shapes beyond the narrow success path, that broader shape normally warrants a distinct `complete` scenario.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` listing `Complete Test` in the essential resource-test set

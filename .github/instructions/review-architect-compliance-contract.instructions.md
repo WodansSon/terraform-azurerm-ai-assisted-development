@@ -78,7 +78,7 @@ If a design concern cannot be tied to this evidence, it stays an Observation rat
 
 ### REVIEW-ARCH-002: Observation is the default classification
 - Rule: An architect-proposed design concern defaults to an Observation under `REVIEW-CLASS-002` and `REVIEW-OBS-001`.
-- Rule: Every architect finding that stays in workflow scope must use the shared `REVIEW-HANDOFF-*` field shape with `status` set to `observation` or `candidate` as appropriate.
+- Rule: Every architect finding that stays in workflow scope must use the shared `REVIEW-HANDOFF-*` field shape with `classification` set to `observation` or `issue` as appropriate and `visible=true` unless later merged as a duplicate.
 - Rule: The architect escalates a concern to an Issue only when a current workspace contributor document, instruction file, skill, or contract makes that design rule mandatory for the reviewed change.
 - Rule: When escalating to an Issue, the architect must cite the exact governing rule or guidance source.
 
@@ -98,7 +98,7 @@ If a design concern cannot be tied to this evidence, it stays an Observation rat
 - Rule: The architect does not block a self-consistent, evidence-acceptable change merely because another architecture might be preferable, per `REVIEW-CLASS-002`.
 
 ### REVIEW-ARCH-006: Architect does not finalize outcomes
-- Rule: The architect does not freeze severity or final classification; every architect-proposed candidate Issue remains subject to workflow adjudication before output is frozen.
+- Rule: The architect does not freeze final visibility or final moderated wording; every architect-proposed issue or observation remains subject to workflow moderation before output is frozen.
 - Rule: A concern that is uncertain in severity follows `REVIEW-CLASS-004` and resolves to exactly one classification.
 
 ## Output integration

@@ -29,7 +29,7 @@ Use these sources with the following roles:
   - Authoritative for overall review flow, evidence handling, finding classification, output shape, and the `REVIEW-HANDOFF-*` handoff semantics.
   - This moderator contract refines how schema-conformant workflow findings are merged and normalized in the routed workflow; it must not weaken or override the shared output-shape or handoff rules.
 - The advocate contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
-  - Authoritative for upstream candidate-level `Confirmed`, `Downgraded`, and `Dismissed` status outcomes that this contract must consume rather than recreate.
+  - Authoritative for upstream advocate commentary that this contract must consume rather than recreate.
 - The workflow handoff schema: `.github/instructions/review-workflow-handoff.schema.json`
   - Authoritative for the concrete runtime JSON shape the moderator consumes.
 - This contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
@@ -40,7 +40,7 @@ Use these sources with the following roles:
 Conflict resolution:
 
 - This contract is authoritative for moderator-pass synthesis, duplicate resolution, severity normalization, and final accepted-outcome selection in the routed workflow.
-- Upstream candidate-level `Confirmed`, `Downgraded`, and `Dismissed` status outcomes remain authoritative inputs to moderation; this contract must consume those outcomes rather than recreate them.
+- Upstream reviewer, architect, skeptic, and advocate record content remains authoritative input to moderation; this contract must consume that full finding set rather than recreate it.
 - The shared code review contract remains authoritative for scope resolution, evidence handling, output shape, and the schema-backed handoff record itself.
 - If this contract would contradict `REVIEW-CLASS-004` (one finding, one classification), `REVIEW-CLASS-004` wins and each moderated concern must still resolve to exactly one classification.
 
@@ -80,16 +80,17 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 ### REVIEW-MOD-002: Moderator consumes the shared handoff schema
 - Rule: Every finding the moderator reads or emits in workflow scope must conform to `.github/instructions/review-workflow-handoff.schema.json`.
 - Rule: The moderator may enrich `roles`, `ruleReferences`, `roleNotes`, and `presentation`, but it must preserve the record identity and the shared core fields.
-- Rule: The moderator must not replace a structured record with prose that loses `id`, `scope`, `evidence`, `reasoning`, `confidence`, or `status`.
+- Rule: The moderator must not replace a structured record with prose that loses `id`, `scope`, `evidence`, `reasoning`, `confidence`, `classification`, or `visible`.
 - Rule: A routed prompt may invoke moderator with an explicit empty record set for the current run; that empty set is a valid schema-conformant moderation input and must be treated as a real finalization state, not as an implicit skip.
 
 ### REVIEW-MOD-002A: Moderator owns deterministic presentation hints for surviving findings
-- Rule: For surviving moderated findings, the moderator may populate the optional `presentation` object on the shared handoff record when that metadata can be stated deterministically from the finding and its evidence.
+- Rule: For surviving moderated findings, the moderator must populate the `presentation` object on the shared handoff record whenever that finding will remain in a non-empty final `ISSUES` or `OBSERVATIONS` section and the required metadata can be stated deterministically from the finding and its evidence.
 - Rule: If a surviving finding is intended to render as a structured finding card in the downstream presentation layer, the moderator owns the corresponding `presentation` hints for that card.
-- Rule: For every surviving finding that will appear in non-empty final `ISSUES`, `OBSERVATIONS`, `IMMEDIATE`, or `FUTURE CONSIDERATIONS` sections, the moderator must provide a presentation-ready structured finding shape instead of relying on downstream fallback behavior.
+- Rule: For every surviving finding that will appear in non-empty final `ISSUES` or `OBSERVATIONS` sections, the moderator must provide a presentation-ready structured finding shape instead of relying on downstream fallback behavior.
 - Rule: That presentation-ready shape must include `presentation.summary`, `presentation.reviewType`, `presentation.impact`, and `presentation.evidence` for each such surviving finding.
 - Rule: `presentation.reviewType` should be set when the surviving finding clearly fits one of the supported renderer review types.
-- Rule: `presentation.summary` should be set to the concise user-visible finding title that downstream presentation will render. When a surviving finding is intended to render in the compact titled-finding layout, the moderator should normalize that title to concise title case unless literal code identifiers or source wording must remain unchanged for correctness.
+- Rule: `presentation.summary` should be set to the concise user-visible finding title that downstream presentation will render.
+- Rule: When a surviving finding is intended to render in the compact titled-finding layout, the moderator must normalize `presentation.summary` to concise title case unless literal code identifiers, Terraform or Go identifiers, acronym casing, or quoted source wording must remain unchanged for correctness.
 - Rule: `presentation.impact` should be set when the surviving finding is intended to render in the compact titled-finding layout and the user-facing consequence can be stated deterministically from the finding and its evidence.
 - Rule: `presentation.evidence` should be set when the surviving finding needs a preserved user-facing evidence block, including direct file references or line references, in the compact titled-finding layout.
 - Rule: `presentation.evidence` in the compact titled-finding layout should preserve the core explanatory reasoning for why the referenced code is a concern; a bare list of file or line links is insufficient when the finding's meaning depends on behavior, state transitions, or contract mismatch.
@@ -97,26 +98,52 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: `presentation.correctedCode` may be set only when the moderator can provide a concrete corrected snippet without guessing surrounding semantics.
 - Rule: `presentation.currentCode` may be set only when the moderator can identify the relevant current snippet deterministically from the finding evidence.
 - Rule: `presentation.codeLanguage` may be set only when `presentation.correctedCode` is present.
-- Rule: If a summary, impact summary, evidence block, suggested change, current code snippet, or corrected code snippet cannot be backed deterministically, leave the corresponding `presentation` field absent rather than inventing it, and do not keep that record in a non-empty final `ISSUES`, `OBSERVATIONS`, `IMMEDIATE`, or `FUTURE CONSIDERATIONS` section that requires structured presentation.
+- Rule: If a summary, impact summary, evidence block, suggested change, current code snippet, or corrected code snippet cannot be backed deterministically, leave the corresponding `presentation` field absent rather than inventing it, and do not keep that record in a non-empty final `ISSUES` or `OBSERVATIONS` section that requires structured presentation.
 - Rule: Downstream prompts and the render-only presentation layer must not invent missing `presentation.summary`, `presentation.reviewType`, `presentation.impact`, `presentation.evidence`, `presentation.suggestedChange`, `presentation.currentCode`, `presentation.correctedCode`, or `presentation.codeLanguage` fields on behalf of the moderator.
+
+### REVIEW-MOD-002B: Moderator owns final visibility
+- Rule: The moderator owns whether a moderated record is visible in the final review by setting `visible=true` or `visible=false` on the shared handoff record.
+- Rule: Final visible findings must carry `visible=true`.
+- Rule: Records absorbed into a genuine duplicate merge must carry `visible=false` and `mergedInto=<surviving-record-id>`.
+- Rule: Downstream prompts and the presentation layer must not override moderator-owned `visible` decisions.
+
+### REVIEW-MOD-002C: Moderator owns visible issue and observation semantics
+- Rule: For final `ISSUES` and `OBSERVATIONS`, the moderator is the sole owner of which concerns appear, whether they appear, and how surviving records are classified as `issue` or `observation`.
+- Rule: Generic review prompts may transport moderator-owned visibility, classification, and presentation data into the presentation payload, but they must not add a second policy layer for concern selection, placement, or rich finding semantics.
+- Rule: The render-only presentation layer may format the supplied payload, but it must not reinterpret moderator-owned visibility or classification decisions.
 
 ### REVIEW-MOD-003: Duplicate concerns merge into one strongest record
 - Rule: When multiple workflow records describe the same underlying concern, the moderator must merge them into one record rather than repeat them.
 - Rule: The merged record should preserve the strongest evidence, the narrowest defensible claim, and the combined `roles` attribution.
 - Rule: Duplicate merging must not inflate the visible finding count.
+- Rule: Records are not duplicates merely because they touch the same file, resource, or pull request.
+- Rule: Distinct issue-class concerns, distinct lifecycle-window concerns, and distinct docs-versus-implementation concerns must remain separate records when their evidence or reasoning establishes different defects or different non-blocking risks.
+- Rule: For variant-constrained managed surfaces, a foreign-variant admission concern (`ownership-overlap`) and a later foreign-variant lifecycle inconsistency concern (`mode-gating-symmetry`) are not duplicates and must remain separate even when the same generic ID or lookup path is part of both evidence chains.
+- Rule: A `patch-residual-state` concern such as a `PUT` versus `PATCH` mismatch is not a duplicate of ownership, lifecycle-symmetry, or optional-state-drift concerns merely because the same update path or metadata field helps prove more than one review concern.
+- Rule: A missing `acceptance-test-matrix` concern is not a duplicate of metadata-drift, import-symmetry, or docs-example findings merely because the same acceptance-test file supplies part of the evidence.
+- Rule: Records with different mandatory `issueClasses` lineage must remain separate unless they are genuinely duplicate descriptions of the same single concern and the surviving record preserves the union of their `issueClasses` values.
+- Rule: When records are merged as genuine duplicates, the absorbed records must carry `mergedInto=<surviving-record-id>` so downstream payload assembly can prove that those records were merged rather than silently dropped.
 
 ### REVIEW-MOD-004: Severity and wording normalization are evidence-bound
 - Rule: The moderator may normalize severity or wording only when the evidence supports the change.
 - Rule: When two plausible phrasings exist, prefer the narrower defensible claim over the broader speculative claim.
 - Rule: A normalized record still resolves to exactly one final classification.
 
-### REVIEW-MOD-004A: Moderator does not reopen advocate-owned defense outcomes
-- Rule: When the workflow includes already-adjudicated records, the moderator must treat `confirmed`, `downgraded`, and `dismissed` as upstream status outcomes rather than re-litigating them.
-- Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized for final presentation, but it must not invent a second false-positive-defense pass under moderator authority.
+### REVIEW-MOD-004A: Moderator consumes advocate commentary without inventing a second advocate pass
+- Rule: When the workflow includes advocate `roleNotes`, the moderator must treat them as upstream commentary inputs rather than inventing a second false-positive-defense pass.
+- Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized or classified for final presentation, but it must not erase advocate commentary from surviving records.
+
+### REVIEW-MOD-004AA: Surviving findings map mechanically by classification and visibility
+- Rule: For surviving non-duplicate records, the moderator must set `classification=issue` or `classification=observation` explicitly.
+- Rule: The moderator must keep a surviving record classified as an `issue` when current-run evidence proves a concrete foreign-variant admission path or a concrete foreign-variant destroy or mutate path on a variant-constrained managed surface.
+- Rule: The moderator must keep a surviving `patch-residual-state` record classified as an `observation` when current-run evidence proves only broader request-shape or residual-state risk, including `PUT` versus `PATCH` mismatches, and does not prove concrete destructive harm.
+- Rule: The moderator must not set `visible=false` on a surviving non-duplicate record merely because another surviving record is stronger, richer, or already carries structured presentation hints.
+- Rule: A record may disappear from the final visible set only because it was merged as a genuine duplicate into a stronger surviving record, or because the moderator received an explicit empty record set.
 
 ### REVIEW-MOD-004B: Presentation hints are evidence-bound
 - Rule: The moderator may normalize or add `presentation.summary`, `presentation.reviewType`, `presentation.impact`, `presentation.evidence`, `presentation.suggestedChange`, `presentation.currentCode`, or `presentation.correctedCode` only when the finding evidence supports the change.
 - Rule: The moderator must not attach optimistic remediation prose or corrected code that goes beyond the proven defect.
+- Rule: The moderator must preserve any `issueClasses` lineage on surviving records, and when genuine duplicates merge, the surviving record must preserve the union of the absorbed records' `issueClasses` values.
 
 ### REVIEW-MOD-005: Final synthesis stays inside the downstream output contract
 - Rule: The moderator may decide the final merged-and-normalized moderated finding set from the workflow records it received, but it must not render or restructure the final reader-visible review body.
@@ -126,7 +153,7 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 
 ### REVIEW-MOD-006: Moderator routing must stay explicit
 - Rule: Only a prompt that explicitly routes the moderator pass may claim that `review-moderator` ran.
-- Rule: Generic code review prompts that route moderator must do so after candidate-level adjudication and before final output is frozen.
+- Rule: Generic code review prompts that route moderator must do so after earlier finding-generation and commentary passes and before final output is frozen.
 
 ## Output integration
 

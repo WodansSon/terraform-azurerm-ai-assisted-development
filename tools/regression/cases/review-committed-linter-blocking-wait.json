@@ -2,12 +2,12 @@
   "id": "review-committed-linter-blocking-wait",
   "title": "Committed review must treat azurerm-linter as a blocking wait step",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
-    "whyItMattered": "Use this case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait.",
+    "whyItMattered": "Use this adjudicated case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait.",
     "genericCondition": "Synthetic committed-review scope focused on the blocking linter wait rule rather than a specific implementation defect.",
     "notes": ""
   },
@@ -57,5 +57,5 @@
       "OVERALL ASSESSMENT"
     ]
   },
-  "notes": "Use this case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait."
+  "notes": "Use this adjudicated case to benchmark whether committed review actually waits for azurerm-linter to finish instead of resuming the audit or narrating the wait."
 }

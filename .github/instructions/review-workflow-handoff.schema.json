@@ -13,7 +13,8 @@
     "evidence",
     "reasoning",
     "confidence",
-    "status"
+    "classification",
+    "visible"
   ],
   "properties": {
     "id": {
@@ -90,15 +91,36 @@
         "low"
       ]
     },
-    "status": {
+    "classification": {
       "type": "string",
       "enum": [
-        "candidate",
-        "observation",
-        "confirmed",
-        "downgraded",
-        "dismissed"
+        "issue",
+        "observation"
       ]
+    },
+    "visible": {
+      "type": "boolean"
+    },
+    "issueClasses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ownership-overlap",
+          "mode-gating-symmetry",
+          "destructive-path-gating",
+          "poller-terminal-failure",
+          "validator-doc-parity",
+          "companion-completeness",
+          "list-resource-exception",
+          "identity-list-docs-tests",
+          "patch-residual-state",
+          "optional-state-drift",
+          "acceptance-test-matrix",
+          "docs-example-correctness"
+        ]
+      },
+      "uniqueItems": true
     },
     "ruleReferences": {
       "type": "array",
@@ -113,6 +135,10 @@
       "items": {
         "$ref": "#/$defs/roleNote"
       }
+    },
+    "mergedInto": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
     },
     "presentation": {
       "$ref": "#/$defs/presentationHint"

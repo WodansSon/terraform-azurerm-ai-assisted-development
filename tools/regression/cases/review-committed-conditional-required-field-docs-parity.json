@@ -2,12 +2,12 @@
   "id": "review-committed-conditional-required-field-docs-parity",
   "title": "Committed review catches conditional required-field docs parity gaps",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
-    "whyItMattered": "Use this case to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope.",
+    "whyItMattered": "Use this adjudicated case to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope.",
     "genericCondition": "Synthetic fixture models a provider review where docs and validator logic are both in scope. The benchmark is that review should catch a missing conditional requirement note rather than treating the docs as complete because the field is mentioned somewhere on the page.",
     "notes": ""
   },
@@ -58,5 +58,5 @@
       "website/docs/r/example_batch_resource.html.markdown"
     ]
   },
-  "notes": "Use this case to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope."
+  "notes": "Use this adjudicated case and paired sample review output to benchmark that committed review preserves conditional required-field validator-to-doc parity findings whenever the resource docs page is in scope."
 }

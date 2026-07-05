@@ -32,7 +32,7 @@ Key takeaways from that guidance:
 - use file-scoped instructions for targeted rules, not for all workflow logic
 - use prompt files for explicit, user-invoked tasks
 - use skills for reusable multi-step capabilities that the model can load when relevant
-- use agents when the user needs a simpler front door for a specialized domain
+- use agents when the user needs a simpler entrypoint for a specialized domain
 - use executable tooling for enforcement instead of endlessly expanding prose instructions
 
 ## Design Goals
@@ -56,6 +56,13 @@ The current direction is:
 - treat `installer/file-manifest.config` as the source of truth for shipped runtime payload
 - treat validators, drift checks, and the regression harness as first-class parts of the architecture rather than optional maintenance extras
 - keep repo-only maintainer docs aligned with the runtime model so architectural guidance does not lag behind the contracts and prompts
+
+For routed code-review workflows, keep the ownership split explicit:
+
+- moderator contract plus skill own final visible finding selection and placement for `ISSUES` and `OBSERVATIONS`
+- prompts own orchestration and payload transport only
+- presentation contract plus skill own final markdown rendering only
+- prompts and presentation must not become second policy layers for finding selection, placement, or rich finding semantics once moderation has frozen those decisions
 
 ## Layer Responsibilities
 
@@ -163,7 +170,7 @@ If the agent should load behavior automatically, that behavior belongs in skills
 
 ### Custom agents
 
-Use custom agents when the user needs a simpler front door for a domain with many internal steps.
+Use custom agents when the user needs a simpler entrypoint for a domain with many internal steps.
 
 Good candidates:
 
@@ -208,6 +215,7 @@ In this repository, those validator and benchmark surfaces are part of the inten
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/review-linter-compliance-contract.instructions.md`
 - `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
 - `.github/instructions/review-moderator-compliance-contract.instructions.md`
@@ -273,6 +281,7 @@ Near-term target state:
 - `.github/skills/custom-poller-migration/SKILL.md`
 - `.github/skills/acceptance-testing/SKILL.md`
 - `.github/skills/docs-writer/SKILL.md`
+- `.github/skills/review-reviewer/SKILL.md`
 - `.github/skills/review-architect/SKILL.md`
 - `.github/skills/review-advocate/SKILL.md`
 - `.github/skills/review-moderator/SKILL.md`
@@ -314,7 +323,8 @@ Because review UX is already considered difficult by the team, prompt multiplica
 
 Current review architecture direction:
 
-- keep the three review prompts as compatibility-sensitive front doors
+- keep the three review prompts as compatibility-sensitive entrypoints
+- move the concrete primary review pass into a dedicated shipped `review-reviewer` skill instead of embedding that behavior in prompt Step 5 prose
 - keep exact hard-stop text in the prompts where it is user-visible and regression-sensitive
 - keep shared successful-review presentation in a render-only skill-plus-contract layer instead of duplicating body templates in multiple prompts
 - keep PR-scope logic, linter status mapping, and review-rule authority in the contracts
@@ -330,7 +340,7 @@ Preferred future direction:
 
 - consolidate shared review logic into contracts and skills
 - keep user-facing review entrypoints minimal
-- consider a single review front door only after parity is proven by regression coverage
+- consider a single review entrypoint only after parity is proven by regression coverage
 
 ## Regression-Safe Migration Rules
 
@@ -397,7 +407,7 @@ Purpose:
 
 Rules:
 
-- introduce simplified front doors only after parity is demonstrated
+- introduce simplified entrypoints only after parity is demonstrated
 - keep old entrypoints as compatibility aliases until the regression harness proves the replacement is safe
 
 ### Phase 4: Retire redundant surfaces
