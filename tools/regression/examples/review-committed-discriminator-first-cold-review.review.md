@@ -45,8 +45,8 @@ The modeled PR adds a brand-new discriminator-specific managed resource, but its
 - The update branch still uses a create-style PUT helper even though the SDK exposes a dedicated `PATCH` path. Current-run evidence justifies preserving this as a separate medium-severity observation rather than letting the larger ownership and lifecycle issues suppress it.
 
 ### 🔴 **ISSUES**
+- Import/read/update/delete behavior is not lifecycle-symmetric for foreign variants: read can accept them into state, update later rejects them, and delete still removes them. This must remain a separate critical-severity finding from the raw ownership-boundary problem.
 - The new resource accepts a generic project-connection identifier and its read path can hydrate foreign variants into state, so the surface can adopt or later delete foreign resources outside its intended discriminator boundary.
-- Import/read/update/delete behavior is not lifecycle-symmetric for foreign variants: read can accept them into state, update later rejects them, and delete still removes them. This must remain a separate high-severity finding from the raw ownership-boundary problem.
 - Omitted optional metadata is repopulated from the API into state on read, so config that intentionally leaves metadata unset can still drift when provider-owned values are written back.
 - The changed reference-doc example in `website/docs/r/example_aad_project_connection.html.markdown` contains an evidence-backed docs example correctness bug under `DOCS-EX-010`: the implementation-backed test helper uses metadata keys `ApiType`, `ResourceId`, and `Location` with the `aiservices` cognitive-account reference, while the docs example still shows `apiType`, `resourceId`, and `location` with the `openai` reference. That docs metadata mismatch must survive the same mixed review even though stronger Go findings are already present.
 

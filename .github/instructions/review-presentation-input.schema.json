@@ -18,7 +18,8 @@
     "issues",
     "immediateRecommendations",
     "futureConsiderations",
-    "overallAssessment"
+    "overallAssessment",
+    "verificationFooter"
   ],
   "properties": {
     "reviewMode": {
@@ -157,7 +158,9 @@
       "additionalProperties": false,
       "required": [
         "preflightComplete",
-        "skillsUsed"
+        "skillsUsed",
+        "requiredStages",
+        "executedStages"
       ],
       "properties": {
         "preflightComplete": {
@@ -172,8 +175,34 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "requiredStages": {
+          "$ref": "#/$defs/routedStageArray"
+        },
+        "executedStages": {
+          "$ref": "#/$defs/routedStageArray"
         }
       }
+    },
+    "routedStageName": {
+      "type": "string",
+      "enum": [
+        "review-coordinator",
+        "review-reviewer",
+        "review-architect",
+        "review-skeptic",
+        "review-advocate",
+        "review-moderator",
+        "review-presentation"
+      ]
+    },
+    "routedStageArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/routedStageName"
+      },
+      "uniqueItems": true
     },
     "findingArray": {
       "type": "array",

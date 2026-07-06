@@ -170,11 +170,12 @@ Rules:
 - Observable proof requirement: when this step runs, `review-reviewer` is an actually-used skill, so the verification footer MUST include a `Skill used: review-reviewer` line before any later routed-skill entries.
 - If the `review-reviewer` skill cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-reviewer skill not fully loaded. Load .github/skills/review-reviewer/SKILL.md to EOF and re-run this prompt.`
-- If one or more workflow skills were actually loaded and used during the review, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
-- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill, in first-use order.
-- Do not emit a verification footer when no skill was actually used during the review.
+- On every normal successful routed review path, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
+- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used routed review skill, in canonical routed stage order.
 - Do not infer a skill from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - If `Repo Guidance` states that a skill was loaded or used, the verification footer must include the matching `Skill used:` line.
+- Maintain a current-run routed-stage execution ledger through Steps 2A-8.
+- For the normal successful routed path, `requiredStages` must be exactly `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, `review-presentation`, in that order.
 - Do not emit any text after the verification footer.
 - After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
 - Before Step 5A begins, invoke the post-review linkage-validation sub-phase required by `REVIEW-COORD-006B` over the frozen current-run findings set and the structured coverage matrix.
@@ -204,16 +205,16 @@ Rules:
   - `Cannot run code-review-local-changes: review-skeptic skill or contract not fully loaded. Load .github/skills/review-skeptic/SKILL.md and .github/instructions/review-skeptic-compliance-contract.instructions.md to EOF and re-run this prompt.`
 
 ### 6) Advocate commentary pass (binding: advocate)
-- This step is mandatory whenever Step 5 or any routed intermediate pass produced one or more findings; it must not be skipped, summarized, deferred, or simulated.
+- This step is mandatory on every normal successful routed review path after Step 5 and any prior routed intermediate passes; it must not be skipped, summarized, deferred, or simulated.
 - Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
 - The advocate pass for this workflow is `review-advocate`.
 - Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge the existing findings set.
+- If the primary review pass plus the routed architect and skeptic passes produced no findings, invoke the advocate pass with an explicit empty structured finding set and treat the result as a deterministic no-op rather than skipping the stage.
 - Consume the full schema-conformant `REVIEW-HANDOFF-*` intermediate record set, preserve the shared fields, and add advocate `roleNotes`, evidence, or reasoning where the defense is supported.
 - Do not add a separate advocate section to the review body; this routed pass is invisible machinery that only enriches the shared finding set before moderation.
-- Observable proof requirement: when this step runs, `review-advocate` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-advocate` line before the final `Skill used: review-moderator` entry when moderation also runs.
+- Observable proof requirement: because this step now runs on every normal successful routed review path, `review-advocate` is an actually-used skill and the Step 5 verification footer MUST include a `Skill used: review-advocate` line before the final `Skill used: review-moderator` entry.
 - If the `review-advocate` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-advocate skill or contract not fully loaded. Load .github/skills/review-advocate/SKILL.md and .github/instructions/review-advocate-compliance-contract.instructions.md to EOF and re-run this prompt.`
-- If the primary review pass plus the routed architect and skeptic passes produced no findings, skip this step and do not emit the `Skill used: review-advocate` marker.
 
 ### 7) Final moderation owner (binding: moderator)
 - This step is mandatory on every normal successful review path after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
@@ -232,7 +233,12 @@ Rules:
 - This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.
 - Explicitly load `.github/instructions/review-presentation-input.schema.json` to EOF in the current run before invoking the presentation skill; do not assume that loading the presentation contract or skill implicitly loaded the schema.
 - Build a presentation payload that conforms to `.github/instructions/review-presentation-input.schema.json`.
-- For local review, populate at minimum: `reviewMode=local`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterReport`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and optional `verificationFooter`.
+- For local review, populate at minimum: `reviewMode=local`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterReport`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and required `verificationFooter`.
+- When `verificationFooter` is present, populate `requiredStages` and `executedStages` from the current-run routed-stage execution ledger.
+- For the normal successful routed path, `requiredStages` and `executedStages` must both be exactly `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, `review-presentation`, in that order.
+- Derive `verificationFooter.skillsUsed` mechanically from `executedStages`, preserving order and omitting only the render-only `review-presentation` stage.
+- If `requiredStages` and `executedStages` differ in content or order, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: required routed review stages did not all execute in canonical order. Re-run this prompt under the latest workflow files.`
 - Populate `changeDescription` as a concise change-focused title derived from `changeSummaryLines` and `primaryChangesAnalysis`; do not use only a generic placeholder such as `Local Changes` when the current run established a more informative description.
 - When populating `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, and any file-bearing structured findings, use workspace-repo-relative paths or workspace-repo-relative path-plus-line references only.
 - Do not place editor-local, spill-path, PR-link, or absolute-disk links into the payload, including `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, `/Users/`, or hosted PR URLs.

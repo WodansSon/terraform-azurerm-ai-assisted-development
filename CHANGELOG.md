@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **User-Priority:**
+  - **[Review]** - Final visible `ISSUES` are now moderator-sorted by severity before presentation renders them, so `critical` findings appear ahead of `high`, `medium`, and `low` findings instead of preserving discovery order.
+  - **[Review]** - Moderator severity normalization now treats the combination of late foreign-variant admission plus a later unconditional delete or mutate window on the same generic path as sufficient proof for a `critical` lifecycle-window issue, instead of requiring the destructive chain to be restated inside one finding.
+  - **[Review]** - Proven foreign-variant destroy or mutate paths now require `critical` severity in moderator normalization and the adjudicated discriminator cold-review benchmark now enforces that destructive lifecycle-symmetry findings cannot drift back to `high`.
+  - **[Review]** - Moderator severity normalization now distinguishes `critical` from `high` explicitly, treating proven destructive foreign-variant mutate-or-destroy paths as normally `critical` while keeping other blocking-but-non-catastrophic defects such as pure admission or optional-state-drift concerns at `high` unless the current run proves broader harm.
+  - **[Review]** - Normal successful committed and local review now require the verification footer and routed-stage execution ledger payload instead of treating `verificationFooter` as optional.
+  - **[Review]** - Routed committed and local review now require one canonical stage sequence, always invoking `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, and `review-presentation` in fixed order, with empty-payload no-op handling instead of prompt-side stage skipping.
+  - **[Review]** - Verification footers now carry a schema-backed routed-stage execution ledger so committed and local review can hard-stop when required stages and executed stages diverge in content or order.
   - **[Review]** - Compact emoji-only issue and observation title prefixes now preserve the existing moderator-owned title-case normalization requirement instead of allowing sentence-case summary prose to slip through unchanged.
   - **[Review]** - Structured issue and observation finding cards now render `Impact`, `Evidence`, and `Suggested Change` with dedicated inline field-label emojis, and those field-label emojis no longer overload the review-type mapping table.
   - **[Review]** - Structured issue and observation finding cards now render their scan-first markers inline in the title line, using severity-specific `🔥`, `🔴`, `🟡`, `🔵`, and `ℹ️` prefixes instead of plain unprefixed headings.

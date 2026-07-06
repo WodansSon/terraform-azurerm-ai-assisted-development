@@ -12,7 +12,7 @@
     "notes": ""
   },
   "sanitized": true,
-  "description": "A sanitized committed-review scenario where a brand-new discriminator-specific managed resource supports five separate first-pass findings: ownership-boundary violation, lifecycle-symmetry violation, PUT-versus-PATCH update-shape observation, optional metadata drift, and a broken docs metadata example. The correct cold review must surface them as separate records instead of collapsing them into one prose summary or dropping the non-blocking or docs concerns.",
+  "description": "A sanitized committed-review scenario where a brand-new discriminator-specific managed resource supports five separate first-pass findings: ownership-boundary violation, lifecycle-symmetry violation, PUT-versus-PATCH update-shape observation, optional metadata drift, and a broken docs metadata example. The correct cold review must surface them as separate records, keep the destructive lifecycle finding at critical severity, and order the final visible issues by severity instead of discovery order.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-discriminator-first-cold-review/README.md"
@@ -41,8 +41,8 @@
     },
     {
       "key": "foreign-variant-lifecycle-symmetry",
-      "severity": "high",
-      "description": "The committed review should surface a separate lifecycle-symmetry issue when import or read accepts a foreign variant into state, update rejects it later, and delete still removes it."
+      "severity": "critical",
+      "description": "The committed review should surface a separate lifecycle-symmetry issue at critical severity when import or read accepts a foreign variant into state, update rejects it later, and delete still removes it, even when the destructive proof is assembled across separate ownership-boundary and delete-window findings on the same generic path."
     },
     {
       "key": "put-versus-patch-observation-preserved",
@@ -104,5 +104,5 @@
       "workspaceStorage"
     ]
   },
-  "notes": "Use this adjudicated case and paired sample review output to benchmark discriminator-specific first-cold-review ordering and preservation of separate ownership, lifecycle, PATCH-shape, optional-state-drift, and docs example correctness findings on the same PR."
+  "notes": "Use this adjudicated case and paired sample review output to benchmark discriminator-specific first-cold-review ordering, severity-sorted visible issues, and preservation of separate ownership, lifecycle, PATCH-shape, optional-state-drift, and docs example correctness findings on the same PR."
 }

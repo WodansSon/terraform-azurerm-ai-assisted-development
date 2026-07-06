@@ -131,18 +131,32 @@ If a moderation decision cannot be backed by this evidence, prefer the narrower 
 - Rule: When two plausible phrasings exist, prefer the narrower defensible claim over the broader speculative claim.
 - Rule: A normalized record still resolves to exactly one final classification.
 
-### REVIEW-MOD-004A: Moderator consumes advocate commentary without inventing a second advocate pass
+### REVIEW-MOD-004A: Critical versus high severity is determined by present destructive or catastrophic harm
+- Rule: Use `critical` severity only when current-run evidence proves a present destructive, catastrophic, or severe trust-boundary failure, not merely a blocking correctness defect.
+- Rule: `critical` severity is appropriate when the current run proves one or more of the following on a valid workflow path: irreversible delete or destroy behavior against the wrong remote object, concrete mutate-or-destroy behavior across a variant or ownership boundary, severe security-boundary failure with meaningful exposure, or another clearly catastrophic state-corruption path.
+- Rule: Use `high` severity for proven blocking correctness defects that must be fixed before merge but do not meet that catastrophic or destructive bar.
+- Rule: A concrete foreign-variant admission path without a separately proven foreign-variant mutate-or-destroy path is normally `high`, even though it remains a blocking `issue`.
+- Rule: A concrete foreign-variant mutate-or-destroy path must be `critical` because the current run already proves destructive behavior across the ownership boundary.
+- Rule: That destructive-path proof may be assembled across separate surviving findings when the current run proves late foreign-variant admission on the same generic identifier or lookup path and also proves an unconditional foreign-variant delete or mutate window on that path; the lifecycle-window finding must still normalize to `critical` even if its own prose states the destructive consequence conditionally.
+- Rule: Blocking optional-state-drift and import round-trip defects are normally `high` unless the current run also proves catastrophic corruption or destructive side effects.
+
+### REVIEW-MOD-004B: Moderator consumes advocate commentary without inventing a second advocate pass
 - Rule: When the workflow includes advocate `roleNotes`, the moderator must treat them as upstream commentary inputs rather than inventing a second false-positive-defense pass.
 - Rule: The moderator may decide which records survive duplicate merge and how surviving records are normalized or classified for final presentation, but it must not erase advocate commentary from surviving records.
 
-### REVIEW-MOD-004AA: Surviving findings map mechanically by classification and visibility
+### REVIEW-MOD-004BA: Surviving findings map mechanically by classification and visibility
 - Rule: For surviving non-duplicate records, the moderator must set `classification=issue` or `classification=observation` explicitly.
 - Rule: The moderator must keep a surviving record classified as an `issue` when current-run evidence proves a concrete foreign-variant admission path or a concrete foreign-variant destroy or mutate path on a variant-constrained managed surface.
+- Rule: When current-run evidence proves a concrete foreign-variant destroy or mutate path on a variant-constrained managed surface, the moderator must normalize that surviving `issue` to `critical` severity.
+- Rule: When current-run evidence proves late foreign-variant admission in one surviving finding and a later unconditional delete or mutate window in another surviving finding on the same generic identifier or lookup path, the moderator must treat that pair as sufficient proof for `critical` severity on the lifecycle-window finding.
+- Rule: When current-run evidence proves a concrete foreign-variant admission path on a variant-constrained managed surface but does not separately prove destroy or mutate behavior, the moderator should normally keep that surviving `issue` at `high` severity.
+- Rule: When multiple visible `issue` records survive moderation, the moderator must order them for final presentation by descending severity: `critical`, then `high`, then `medium`, then `low`.
+- Rule: Within the same severity tier, the moderator should preserve the existing deterministic surviving-record order unless another explicit contract rule requires a different ordering.
 - Rule: The moderator must keep a surviving `patch-residual-state` record classified as an `observation` when current-run evidence proves only broader request-shape or residual-state risk, including `PUT` versus `PATCH` mismatches, and does not prove concrete destructive harm.
 - Rule: The moderator must not set `visible=false` on a surviving non-duplicate record merely because another surviving record is stronger, richer, or already carries structured presentation hints.
 - Rule: A record may disappear from the final visible set only because it was merged as a genuine duplicate into a stronger surviving record, or because the moderator received an explicit empty record set.
 
-### REVIEW-MOD-004B: Presentation hints are evidence-bound
+### REVIEW-MOD-004C: Presentation hints are evidence-bound
 - Rule: The moderator may normalize or add `presentation.summary`, `presentation.reviewType`, `presentation.impact`, `presentation.evidence`, `presentation.suggestedChange`, `presentation.currentCode`, or `presentation.correctedCode` only when the finding evidence supports the change.
 - Rule: The moderator must not attach optimistic remediation prose or corrected code that goes beyond the proven defect.
 - Rule: The moderator must preserve any `issueClasses` lineage on surviving records, and when genuine duplicates merge, the surviving record must preserve the union of the absorbed records' `issueClasses` values.

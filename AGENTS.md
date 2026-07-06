@@ -14,6 +14,8 @@ These rules govern maintainer collaboration behavior before any formal review wo
 
 - Treat surfaced PR, resource, or service issues as evidence, not as the target fix, unless the user explicitly asks for a one-off fix.
 - Assume the first question is whether the problem is system-wide, flow-specific, or truly one-off.
+- Treat `vscode-file://...AppData...workbench.html` links in pasted Copilot review output as a likely runtime/editor link-rewrite artifact first, not as automatic proof that the workflow payload itself emitted forbidden local paths.
+- Before proposing workflow-contract or prompt fixes for pasted editor-local links, distinguish between runtime-rendered link rewriting and actual payload/body path generation defects.
 - Do not convert diagnosis or wording discussion into code edits unless the user explicitly asks to make the change.
 - Before proposing or making an edit, restate the shared invariant or architectural behavior that is actually being fixed.
 - Prefer fixes that generalize across all applicable reviews, prompts, contracts, or skills instead of fixes that only help the surfaced example.

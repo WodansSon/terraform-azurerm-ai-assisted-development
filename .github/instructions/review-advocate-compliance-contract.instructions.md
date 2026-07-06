@@ -70,9 +70,10 @@ If a defense cannot be backed by this evidence, it is not a valid defense.
 ## Advocate second-pass evaluation
 
 ### REVIEW-ADV-001: Advocate pass runs only after workflow findings exist
-- Rule: The advocate pass runs only after the review workflow has produced one or more findings.
+- Rule: The advocate pass runs on every normal successful routed review path after the earlier routed finding-generation passes and before output is frozen.
 - Rule: Findings eligible for the advocate pass may originate in the primary review pass or in routed skeptic or architect passes that run before output is frozen.
-- Rule: If the primary pass and any routed intermediate passes produced no findings, the advocate pass does not run and changes nothing.
+- Rule: If the primary pass and any routed intermediate passes produced no findings, the advocate pass still runs against an explicit empty structured finding set and returns a deterministic no-op result.
+- Rule: The advocate pass must not invent new findings merely because it was invoked with an empty set.
 - Rule: The advocate pass runs before the review output is frozen, never after.
 - Rule: The advocate consumes the structured workflow finding set defined by `REVIEW-HANDOFF-*` and `.github/instructions/review-workflow-handoff.schema.json`; it must not bypass that shared handoff shape with ad hoc prose-only reasoning.
 

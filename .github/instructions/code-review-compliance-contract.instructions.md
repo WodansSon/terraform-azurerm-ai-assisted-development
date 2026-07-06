@@ -530,13 +530,24 @@ Committed review scope decision table:
 - Rule: Do not use user-visible self-correction or second-pass wording inside the normal review output, such as `one more thing`, `actually`, `updating this review`, `adding another issue`, or similar mid-review amendments.
 
 ### REVIEW-OUT-007: Skill verification footer is allowed when skills were actually used
-- Rule: When a review actually loads and uses one or more routed skills, the final review output may append a verification footer after the prompt's last review section.
+- Rule: For normal successful routed committed and local review, the final review output must append a verification footer after the prompt's last review section.
 - Rule: That verification footer is part of the normal successful output contract, not extra narration.
-- Rule: The verification footer must be omitted when no skill was actually used during the review.
-- Rule: The verification footer may contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
+- Rule: For routed committed and local review, the verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
 - Rule: A render-only presentation skill may own footer rendering without adding its own `Skill used:` line, as long as it preserves the actual routed review-skill set supplied by the prompt.
 - Rule: Do not infer skill use from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - Rule: If the review body states that a skill was loaded or used, the verification footer should include the matching `Skill used:` line.
+
+### REVIEW-OUT-007A: Normal successful routed reviews use one canonical stage sequence
+- Rule: For routed committed and local review, the normal successful stage sequence is `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, then `review-presentation`, in that exact order.
+- Rule: After preflight succeeds, the prompt must invoke those stages in that exact order and must not skip a later stage merely because an earlier stage appears to have no findings or no visible delta.
+- Rule: When a routed stage has no findings or no additional work, the prompt must still invoke it with the appropriate explicit empty or no-op payload for that stage rather than skipping the stage.
+- Rule: Preflight hard-stops remain allowed before the routed stage sequence begins; once the normal successful routed path starts, missing stages are invalid.
+
+### REVIEW-OUT-007B: Verification footer must be backed by an execution ledger
+- Rule: When a routed review emits a verification footer, the workflow must maintain a current-run execution ledger containing `requiredStages` and `executedStages`.
+- Rule: For the normal successful routed path, `requiredStages` and `executedStages` must match exactly in content and order before the final review body may be emitted.
+- Rule: `verificationFooter.skillsUsed` must be derived mechanically from `executedStages`, preserving order and excluding only the render-only `review-presentation` stage.
+- Rule: If `requiredStages` and `executedStages` do not match exactly, the workflow must hard-stop instead of emitting a normal review body.
 
 ### REVIEW-OUT-008: Overall assessment must align with the final issues state
 - Rule: The `OVERALL ASSESSMENT` section must be derived from the final frozen `ISSUES` section and must not carry forward stale defects that were cleared before the review body was emitted.

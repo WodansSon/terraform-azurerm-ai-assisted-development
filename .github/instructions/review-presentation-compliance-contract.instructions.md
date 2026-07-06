@@ -189,6 +189,7 @@ Skill used: ${skillName1}
 - Rule: `CHANGE SUMMARY` renders the supplied `changeSummaryLines` in payload order.
 - Rule: `FILES CHANGED` renders only the file groups relevant to the review mode, using the payload arrays and `skippedVendoredFiles` count.
 - Rule: `DETAILED TECHNICAL REVIEW` renders the supplied recursion-prevention, standards-check, linter report, must-fix, strengths, observations, and issues data without reclassification.
+- Rule: `ISSUES`, `OBSERVATIONS`, `STRENGTHS`, `IMMEDIATE`, and `FUTURE CONSIDERATIONS` render in the supplied payload order; the renderer must not reorder findings by severity, review type, or any other presentation heuristic.
 - Rule: `RECOMMENDATIONS` renders the supplied immediate and future-consideration items without inventing new follow-up work.
 - Rule: When a list-backed section is empty, the renderer should emit exactly one bullet: `- None`.
 
@@ -331,9 +332,10 @@ Observation example:
 - Rule: The renderer must use the supplied `mustFix` payload entries for the `### 🎯 **MUST FIX**` section and must not infer actionable linter entries from the linter report summary text.
 
 ### REVIEW-PRESENT-005: Footer rendering is deterministic
-- Rule: The verification footer is rendered only when the optional `verificationFooter` object is present.
+- Rule: For the normal successful routed review path used by the committed-review and local-review prompts, the verification footer object is required and must be rendered exactly once.
 - Rule: When the footer is present, render `Preflight complete: yes` exactly once before the `Skill used:` lines.
 - Rule: Render one `Skill used:` line per `verificationFooter.skillsUsed` entry, in the supplied order.
+- Rule: If `verificationFooter` also includes execution-ledger fields such as `requiredStages` or `executedStages`, those fields are upstream validation artifacts only and must not be rendered in the assistant-emitted review body.
 - Rule: The renderer must not add `review-presentation` to the footer.
 - Rule: The renderer must not emit any text after the footer.
 

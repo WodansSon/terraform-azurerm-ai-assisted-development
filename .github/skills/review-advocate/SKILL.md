@@ -27,7 +27,7 @@ Before running an advocate pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-advocate-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-ADV-*` rules.
-- [ ] The review workflow has already produced findings, whether from the primary pass or any routed skeptic or architect pass (otherwise this skill does not run).
+- [ ] The review workflow has already produced a schema-conformant findings set or an explicit empty record set from the earlier routed passes.
 - [ ] I am evaluating existing findings only, not strengths or positive observations.
 
 If preflight is incomplete, do not run the advocate pass.
@@ -52,6 +52,7 @@ This skill is the reusable second-pass advocate technique for the code-review pr
 
 It runs as invisible machinery between the earlier review passes and frozen output. It does not produce its own output section; it only adds advocate commentary to the shared findings set before moderation.
 It consumes the shared intermediate finding records produced earlier in the workflow. Those records should conform to `.github/instructions/review-workflow-handoff.schema.json`.
+It may also receive an explicit empty shared finding set and return a deterministic no-op result while still counting as an executed routed stage.
 It does not merge duplicate findings, combine overlapping records, or rewrite multiple concerns into a single final record.
 
 ## Role
@@ -92,6 +93,7 @@ The advocate does not own final outcomes. It contributes:
 - **Defense note** — an evidence-backed `roleNotes` entry that explains why a finding may be narrower, less severe, or intentionally designed.
 - **Challenge note** — an evidence-backed `roleNotes` entry that questions part of a finding without deleting it.
 - **Supplemental evidence** — additional evidence or reasoning attached to the same shared finding record.
+- **No-op result** — an explicit do-nothing outcome when the routed workflow invokes the advocate pass with an empty findings set.
 
 No finding may be silently dropped by the advocate pass.
 
