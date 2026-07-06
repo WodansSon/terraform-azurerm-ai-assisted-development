@@ -208,14 +208,17 @@ Example:
 - Rule: When a finding item in `observations` or `issues` is a structured finding object from `.github/instructions/review-presentation-input.schema.json`, render it in this exact shape instead of the normal plain-bullet form:
 
 ```markdown
-#### ${summary}
-- **Impact**: ${impact}
-- **Evidence**: ${evidence}
-- **Suggested Change**: ${suggestedChange}
+#### ${inlinePrefix}${summary}
+- ⚠️ **Impact**: ${impact}
+- 🔍 **Evidence**: ${evidence}
+- 🔧 **Suggested Change**: ${suggestedChange}
 ```
 
-- Rule: Render the supplied `summary` text as the heading text without adding punctuation or changing its casing; title-case normalization remains upstream moderator responsibility.
+- Rule: For structured findings rendered in `ISSUES`, `inlinePrefix` must be the severity-specific priority emoji plus a trailing space, using the exact severity-to-emoji mappings from `REVIEW-PRESENT-004C`, for example `🔥 `, `🔴 `, `🟡 `, or `🔵 `.
+- Rule: For structured findings rendered in `OBSERVATIONS`, `inlinePrefix` must be exactly `ℹ️ `.
+- Rule: Render the supplied `summary` text after the inline prefix without adding extra punctuation or changing the summary text casing; title-case normalization remains upstream moderator responsibility even when the title prefix is emoji-only.
 - Rule: Render `Impact`, `Evidence`, and `Suggested Change` as three separate top-level bullet lines immediately below the finding heading, in that exact order.
+- Rule: Those three structured finding lines must use these exact emoji-prefixed labels in `ISSUES` and `OBSERVATIONS`: `⚠️ **Impact**:`, `🔍 **Evidence**:`, and `🔧 **Suggested Change**:`.
 - Rule: Do not inline those fields onto the heading line, do not place them inside a parent bullet item, and do not use hidden HTML or escaped HTML separators between them.
 - Rule: When `Suggested Change` is absent, render only the `Impact` bullet followed by the `Evidence` bullet.
 - Rule: If `suggestedChange` is absent, omit the `Suggested Change` line.
@@ -247,10 +250,10 @@ Example:
 
 ````markdown
 ### 🔴 **ISSUES**
-#### ${summary}
-- **Impact**: ${impact}
-- **Evidence**: ${evidence}
-- **Suggested Change**: ${suggestedChange}
+#### ${priorityEmoji} ${summary}
+- ⚠️ **Impact**: ${impact}
+- 🔍 **Evidence**: ${evidence}
+- 🔧 **Suggested Change**: ${suggestedChange}
 
 **Current Code:**
 
@@ -265,6 +268,15 @@ ${correctedCode}
 ```
 ````
 
+Observation example:
+
+```markdown
+### 🟡 **OBSERVATIONS**
+#### ℹ️ ${summary}
+- ⚠️ **Impact**: ${impact}
+- 🔍 **Evidence**: ${evidence}
+```
+
 ### REVIEW-PRESENT-004C: Presentation priority and review-type mappings remain active
 - Rule: Structured finding `priority` is a presentation-layer display value. It should stay aligned with workflow severity language when the finding came from routed review roles.
 - Rule: For structured findings rendered in `ISSUES` and `IMMEDIATE`, `priority` should be one of `critical`, `high`, `medium`, or `low`.
@@ -273,10 +285,10 @@ ${correctedCode}
 - Rule: `good` is reserved for ordinary positive-feedback rendering in `STRENGTHS`, for example when a developer followed contributor guidance or provider patterns correctly and delivered the expected baseline implementation without any unusual workaround or extra validation machinery.
 - Rule: `notable` and `good` must not be used for `ISSUES`.
 - Rule: Structured finding `priority` values map as follows:
-  - `critical` -> `🔥 Critical`
-  - `high` -> `🔴 High`
-  - `medium` -> `🟡 Medium`
-  - `low` -> `🔵 Low`
+  - `critical` -> `🔥`
+  - `high` -> `🔴`
+  - `medium` -> `🟡`
+  - `low` -> `🔵`
   - `observation` -> `ℹ️ Observation`
   - `notable` -> `⭐ Notable`
   - `good` -> `✅ Good`

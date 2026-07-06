@@ -60,6 +60,7 @@ You are the **moderator** for the review workflow. Your job is to:
 - attach the required deterministic presentation hints for surviving findings that remain in final non-empty sections
 - produce one final merged-and-normalized finding set without duplicating concerns
 - normalize surviving `presentation.summary` titles to concise title case when the downstream layout renders titled finding cards, while preserving literal identifier or acronym casing when correctness depends on it
+- keep that title-case normalization even when the downstream issue and observation headings use emoji-only prefixes instead of textual severity labels
 
 ## The moderator method
 

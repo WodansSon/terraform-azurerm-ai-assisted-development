@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **User-Priority:**
+  - **[Review]** - Compact emoji-only issue and observation title prefixes now preserve the existing moderator-owned title-case normalization requirement instead of allowing sentence-case summary prose to slip through unchanged.
+  - **[Review]** - Structured issue and observation finding cards now render `Impact`, `Evidence`, and `Suggested Change` with dedicated inline field-label emojis, and those field-label emojis no longer overload the review-type mapping table.
+  - **[Review]** - Structured issue and observation finding cards now render their scan-first markers inline in the title line, using severity-specific `🔥`, `🔴`, `🟡`, `🔵`, and `ℹ️` prefixes instead of plain unprefixed headings.
   - **[Review]** - `PUT` versus `PATCH` and similar broader update-shape residual-state risks now explicitly trigger a separate `patch-residual-state` observation and cannot disappear behind stronger ownership, lifecycle, or metadata findings.
   - **[Review]** - Moderator-owned structured finding titles now normalize to concise title case by default, while preserving literal identifier and acronym casing when correctness depends on it.
   - **[Review]** - User-managed map/object fields that can repopulate undeclared API-returned values, especially when acceptance tests already need import-ignore exceptions for that field, now explicitly trigger a separate blocking `optional-state-drift` finding instead of disappearing behind broader metadata or test-shape concerns.

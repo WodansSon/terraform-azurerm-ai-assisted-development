@@ -58,7 +58,7 @@ You are the **renderer** for the review workflow. Your job is to:
 
 - consume the frozen presentation payload
 - render the standard section order and headings
-- render contract-defined structured findings, including compact titled issue or observation findings and expanded positive-feedback cards, plus suggested changes and corrected code blocks when the payload supplies them
+- render contract-defined structured findings, including compact titled issue findings with severity-specific inline issue emojis, compact titled observation findings with the inline observation marker, emoji-prefixed `Impact`/`Evidence`/`Suggested Change` field labels, and expanded positive-feedback cards, plus suggested changes and corrected code blocks when the payload supplies them
 - preserve the supplied finding content exactly
 - render the footer deterministically when footer metadata is present
 
