@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [3.7.0] - 2026-07-07
+
+### Added
+
+### Changed
+
 - **User-Priority:**
   - **[Review]** - Review results are now easier to scan and trust: the most severe findings appear first, issue cards are more readable, and critical lifecycle or ownership problems are less likely to be buried behind lower-priority concerns.
   - **[Review]** - Local and committed reviews now preserve multiple real findings on the same change more reliably, so ownership bugs, lifecycle gaps, PATCH-versus-PUT risks, state-drift problems, docs mismatches, and missing acceptance coverage are less likely to crowd each other out.
@@ -726,7 +734,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.6.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.7.0...HEAD
+[3.7.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.7.0
 [3.6.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.6.0
 [3.5.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.5.0
 [3.4.3]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.4.3
