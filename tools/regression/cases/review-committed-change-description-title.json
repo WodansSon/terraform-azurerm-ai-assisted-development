@@ -2,7 +2,7 @@
   "id": "review-committed-change-description-title",
   "title": "Committed review uses a change-focused title instead of a bare PR number",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

@@ -2,7 +2,7 @@
   "id": "review-committed-patch-and-optional-state-drift",
   "title": "Committed review keeps PATCH-shape and missing-complete concerns in observations alongside omitted-config state drift",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

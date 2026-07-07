@@ -2,7 +2,7 @@
   "id": "review-committed-new-cross-resource-id-field-naming",
   "title": "Committed review flags shortened names for new cross-resource ID fields",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

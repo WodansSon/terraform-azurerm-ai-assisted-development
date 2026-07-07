@@ -2,7 +2,7 @@
   "id": "review-committed-authoritative-status-signal-suppression",
   "title": "Committed review suppresses unsupported diagnostic-status failure concerns",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

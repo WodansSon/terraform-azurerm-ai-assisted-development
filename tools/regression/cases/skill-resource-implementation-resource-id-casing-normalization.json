@@ -2,7 +2,7 @@
   "id": "skill-resource-implementation-resource-id-casing-normalization",
   "title": "Resource implementation guidance normalizes resource IDs through typed parsers instead of preserving Azure-returned casing",
   "task": "resource-implementation",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

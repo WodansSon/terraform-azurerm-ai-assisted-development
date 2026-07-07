@@ -2,7 +2,7 @@
   "id": "review-committed-explicit-pr-survives-spill-path",
   "title": "Committed review keeps using an explicit PR number after one tool yields a forbidden spill path",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

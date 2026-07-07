@@ -2,7 +2,7 @@
   "id": "review-local-handoff-serialization-gate",
   "title": "Local review hard-stops when discovered concerns are not serialized into handoff records",
   "task": "code-review-local-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

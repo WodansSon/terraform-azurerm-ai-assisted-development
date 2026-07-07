@@ -2,7 +2,7 @@
   "id": "review-local-no-redundant-lifecycle-logging",
   "title": "Local review flags redundant provider lifecycle logging additions",
   "task": "code-review-local-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

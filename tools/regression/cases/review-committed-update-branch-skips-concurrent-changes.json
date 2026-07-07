@@ -2,7 +2,7 @@
   "id": "review-committed-update-branch-skips-concurrent-changes",
   "title": "Committed review catches update branches that skip concurrent field changes",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

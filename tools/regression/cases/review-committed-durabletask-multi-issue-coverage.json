@@ -2,7 +2,7 @@
   "id": "review-committed-durabletask-multi-issue-coverage",
   "title": "Committed review catches the Durable Task multi-issue combination",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

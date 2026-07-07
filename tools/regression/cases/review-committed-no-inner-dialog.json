@@ -1,0 +1,65 @@
+{
+  "id": "review-committed-no-inner-dialog",
+  "title": "Committed review emits only the final review body",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the committed-review output rule directly.",
+    "whyItMattered": "Use this case to benchmark that committed review emits only the final review body and does not leak first-person planning or tool narration.",
+    "genericCondition": "Synthetic committed-review scope focused on final-body-only output behavior rather than a specific implementation defect.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A synthetic committed-review scenario where the reviewer is tempted to leak drafting chatter such as `I'm thinking`, `Investigating`, or tool-by-tool narration before or during the final review body. The correct behavior is to complete the audit silently and emit only the final review body plus any applicable skill verification footer.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-no-inner-dialog/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go",
+      "website/docs/r/example_resource.html.markdown"
+    ],
+    "notes": "Synthetic committed-review scope focused on suppressing first-person planning and tool narration in the final output."
+  },
+  "expectedRules": [
+    "REVIEW-OUT-005",
+    "REVIEW-OUT-006",
+    "REVIEW-OUT-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "template-only-final-review",
+      "severity": "medium",
+      "description": "The committed review should emit only the prompt-defined final review body and any applicable skill verification footer."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "leaked-first-person-planning",
+      "description": "The committed review must not leak first-person planning narration such as `I'm thinking` or `Investigating`."
+    },
+    {
+      "key": "leaked-tool-narration",
+      "description": "The committed review must not leak tool-by-tool runtime narration in the final review body."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustNotIncludeMarkers": [
+      "I'm thinking",
+      "Investigating"
+    ]
+  },
+  "notes": "Use this case to benchmark that committed review emits only the final review body."
+}

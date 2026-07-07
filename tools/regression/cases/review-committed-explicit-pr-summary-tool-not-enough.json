@@ -2,7 +2,7 @@
   "id": "review-committed-explicit-pr-summary-tool-not-enough",
   "title": "Committed review does not treat PR-summary or browser-link results as authoritative scope",
   "task": "code-review-committed-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

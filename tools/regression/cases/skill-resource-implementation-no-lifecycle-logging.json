@@ -2,7 +2,7 @@
   "id": "skill-resource-implementation-no-lifecycle-logging",
   "title": "Resource implementation guidance avoids redundant lifecycle logging by default",
   "task": "resource-implementation",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",

@@ -2,7 +2,7 @@
   "id": "review-local-create-import-guard-and-identity-callback",
   "title": "Local review catches missing overwrite guard and callback identity setup",
   "task": "code-review-local-changes",
-  "caseStatus": "ready",
+  "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
