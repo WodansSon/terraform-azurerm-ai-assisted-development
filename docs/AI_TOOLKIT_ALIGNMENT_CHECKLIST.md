@@ -197,6 +197,8 @@ For new `CHANGELOG.md` entries under `## [Unreleased]`:
 - If only one group appears in a subsection, do not emit the empty group and do not add a separator blank line just for formatting
 - Prefer the user-facing capability tag over `[Internal]` when the change materially affects end-user behavior
 - Use `[Internal]` for repo-only harness, validation, scaffolding, or maintainer workflow changes
+- Treat `User-Priority` bullets as end-user release notes: they should describe what users can expect to notice or rely on, not the internal sequence of prompt, contract, skill, schema, or regression changes that produced that outcome
+- If a `User-Priority` bullet requires repo-internal workflow knowledge to make sense, collapse and rewrite it at a higher level or move it into `Maintainer/Workflow`
 - Do not churn older release sections just to retrofit taxonomy unless that is the explicit task
 - Preserve the repo's current changelog shape: `Unreleased` plus empty `Added`, `Changed`, and `Fixed` headings when those sections have no entries
 

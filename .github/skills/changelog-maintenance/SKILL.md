@@ -102,6 +102,14 @@ Render the subsection using grouped top-level bullets plus nested entries:
 
 Within the same taxonomy tag, preserve the original bullet order unless there is a specific reason to reorder.
 
+## User-Priority intent
+
+- `User-Priority` is release-note space for end users, not a maintainer work log.
+- A reader should be able to understand each `User-Priority` bullet without knowing this repository's prompt, contract, skill, schema, or regression-harness internals.
+- Write `User-Priority` bullets at the level of what changed in the shipped experience or what users should expect to notice in the next release.
+- Do not describe `User-Priority` bullets as a sequence of internal hardening steps, validation moves, routing rewrites, or contract refinements unless those details are the only user-visible outcome.
+- If a change is important mainly because it improves internal determinism, validation, scaffolding, or maintainer workflow, it belongs in `Maintainer/Workflow`, usually under `[Internal]`, even when the implementation touched user-facing review surfaces indirectly.
+
 ## Taxonomy selection rules
 
 - Use exactly one taxonomy tag per nested changelog bullet.
@@ -115,6 +123,9 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 
 - Lead with user-visible effect before internal mechanism where possible.
 - Keep the first clause understandable without requiring repository-internal knowledge.
+- For `User-Priority` bullets, prefer plain release-note language such as "reviews now surface critical problems first" or "docs examples are checked more reliably" over repo-internal mechanism language such as "moderator normalization", "handoff schema", "routing ledger", or "coverage-matrix validation".
+- For `User-Priority` bullets, describe the final user-facing outcome first and omit implementation-path detail unless that detail is necessary for the reader to understand the outcome.
+- If a `User-Priority` bullet still sounds like commit history, a design note, or a maintainer retrospective, rewrite it or move it to `Maintainer/Workflow`.
 - Mention file paths only when they materially help the reader understand the scope.
 - Avoid changelog bullets that are accurate but only meaningful to repository maintainers unless the entry is intentionally tagged `[Internal]`.
 - Treat `## [Unreleased]` as release notes, not commit history. If a set of bullets reads like a patch-by-patch implementation log, collapse and rewrite it before concluding the edit.
