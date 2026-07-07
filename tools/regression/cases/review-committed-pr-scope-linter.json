@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Pair this case with the sample review Markdown output and scored result to benchmark committed-review linter-scope reporting.",
+    "genericCondition": "Sanitized fixture models an explicit committed-review PR context without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A committed review should run azurerm-linter with deterministic PR scope when explicit PR context exists and report the result with the required section structure.",
   "fixture": {
@@ -14,7 +21,7 @@
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Sanitized fixture models an explicit committed-review PR context without retaining live PR identity."
+    "notes": "Sanitized fixture models an explicit committed-review PR context."
   },
   "expectedRules": [
     "REVIEW-LINT-*",

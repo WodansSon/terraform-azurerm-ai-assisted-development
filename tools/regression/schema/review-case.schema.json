@@ -10,6 +10,7 @@
     "task",
     "caseStatus",
     "sourceKind",
+    "provenance",
     "sanitized",
     "fixture",
     "scope",
@@ -51,11 +52,44 @@
     "sourceKind": {
       "type": "string",
       "enum": [
-        "real-pr",
-        "local-diff",
-        "maintainer-authored",
         "synthetic"
       ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originKind",
+        "originSummary",
+        "whyItMattered",
+        "genericCondition"
+      ],
+      "properties": {
+        "originKind": {
+          "type": "string",
+          "enum": [
+            "real-pr",
+            "local-diff",
+            "maintainer-authored",
+            "synthetic-design"
+          ]
+        },
+        "originSummary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whyItMattered": {
+          "type": "string",
+          "minLength": 1
+        },
+        "genericCondition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
     },
     "sanitized": {
       "type": "boolean"

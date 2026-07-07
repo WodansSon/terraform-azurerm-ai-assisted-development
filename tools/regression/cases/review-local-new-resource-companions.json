@@ -3,7 +3,14 @@
   "title": "Local review catches missing new-resource companion artifacts",
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the example review markdown output to benchmark new-resource companion-artifact review behavior.",
+    "genericCondition": "Sanitized fixture models a new-resource PR where the base resource lands without the corresponding list-resource docs or other mandatory companions.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where a contributor adds a brand-new resource implementation but omits one or more mandatory companion artifacts. The correct review should flag the missing list-resource docs and the rest of the required new-resource workflow companions.",
   "fixture": {

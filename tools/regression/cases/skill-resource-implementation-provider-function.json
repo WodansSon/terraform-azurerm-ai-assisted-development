@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance applies the provider-defined function pattern",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this as the adjudicated implementation-guidance case for the provider-defined function workflow.",
+    "genericCondition": "Sanitized fixture models a real provider-function implementation-guidance pattern without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where a contributor starts a provider-defined function but drifts toward service-resource patterns. The correct guidance should require the internal provider-function workflow and its companion artifacts.",
   "fixture": {
@@ -14,7 +21,7 @@
     "changedFiles": [
       "internal/provider/function/example_resource_id.go"
     ],
-    "notes": "Sanitized fixture models a real provider-function implementation-guidance pattern without retaining live PR identity."
+    "notes": "Sanitized fixture models a provider-function implementation-guidance pattern."
   },
   "expectedRules": [
     "IMPL-WF-005",

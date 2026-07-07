@@ -4,6 +4,13 @@
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Pair this case with the sample review output and scored result to benchmark committed-review PR conflict fail-closed behavior.",
+    "genericCondition": "The active or viewed PR context resolves to PR 30997, while the invocation text mistakenly supplies PR 30998. No review or linter run should continue until the conflict is resolved or explicitly overridden.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized committed-review scenario where active PR context identifies one PR, but the user supplies a different PR number by mistake. The correct review must fail closed instead of silently choosing one scope.",
   "fixture": {

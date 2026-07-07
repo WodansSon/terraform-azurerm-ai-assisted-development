@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance extracts new bespoke validators into validate files with matching tests",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "maintainer-authored",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Maintainer-authored benchmark scenario.",
+    "whyItMattered": "Use this to keep the forward-consistency ValidateFunc rule enforced for brand-new bespoke validators instead of letting them start life as long anonymous inline closures.",
+    "genericCondition": "Sanitized fixture models the brand-new validator path for the forward-consistency ValidateFunc rule.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where a brand-new bespoke validator is added inline in schema. The correct guidance should move that new validator into a service-local validate/ file with matching unit coverage while leaving simple helper-based validation inline.",
   "fixture": {
@@ -12,7 +19,7 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/cdn/example_frontdoor_resource.go"
+      "internal/services/example/example_resource.go"
     ],
     "notes": "Sanitized fixture models the brand-new validator path for the forward-consistency ValidateFunc rule."
   },
@@ -23,7 +30,7 @@
     {
       "key": "new-bespoke-validator-needs-validate-file",
       "severity": "medium",
-      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "file": "internal/services/example/example_resource.go",
       "description": "The guidance should move the new bespoke anonymous ValidateFunc closure into a file-specific validator under validate/ and add matching unit coverage."
     }
   ],

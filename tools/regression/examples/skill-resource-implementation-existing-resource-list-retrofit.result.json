@@ -37,5 +37,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for the existing-resource list-retrofit implementation-guidance case derived from upstream PR #32192."
+  "notes": "Example adjudicated result for the existing-resource list-retrofit implementation-guidance case derived from the source incident."
 }

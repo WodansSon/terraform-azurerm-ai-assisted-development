@@ -3,7 +3,14 @@
   "title": "Committed review uses authoritative PR scope instead of branch-only commits",
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the sample review Markdown output and scored result to benchmark PR-authoritative committed-review scope selection.",
+    "genericCondition": "The authoritative PR scope contains one provider Go file. The local branch also contains an unrelated docs-only commit that is intentionally outside PR scope and must not leak into committed-review findings.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized committed-review scenario where explicit PR context exists, but the local branch also contains unrelated branch-only commits. The correct review must treat the PR changed-file set as authoritative and must not report findings from branch-only files.",
   "fixture": {

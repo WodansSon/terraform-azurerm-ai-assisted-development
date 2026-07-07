@@ -19,10 +19,23 @@ if ($AsJson) {
     $Output = "json"
 }
 
-$targetSkillTasks = @(
+$directSkillTasks = @(
     "docs-writer",
     "resource-implementation",
     "acceptance-testing"
+)
+
+$skillCoverageTargets = @(
+    [pscustomobject]@{ name = 'docs-writer'; matchMode = 'task'; matchValue = 'docs-writer'; section = 'direct' },
+    [pscustomobject]@{ name = 'resource-implementation'; matchMode = 'task'; matchValue = 'resource-implementation'; section = 'direct' },
+    [pscustomobject]@{ name = 'acceptance-testing'; matchMode = 'task'; matchValue = 'acceptance-testing'; section = 'direct' },
+    [pscustomobject]@{ name = 'review-coordinator'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-coordinator'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-architect'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-architect'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-skeptic'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-skeptic'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-advocate'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-advocate'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-moderator'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-moderator'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-presentation'; matchMode = 'regex'; matchValue = 'review-presentation-compliance-contract\.instructions\.md'; section = 'routed' },
+    [pscustomobject]@{ name = 'custom-poller-migration'; matchMode = 'regex'; matchValue = 'Skill used:\s*custom-poller-migration'; section = 'routed' }
 )
 
 function Expand-ListParameter {
@@ -97,6 +110,25 @@ function Get-SkillCoverageStatus {
     return "no-direct-case"
 }
 
+function Test-CaseMatchesSkillCoverageTarget {
+    param(
+        $CaseRecord,
+        $CoverageTarget
+    )
+
+    switch ($CoverageTarget.matchMode) {
+        'task' {
+            return [string]$CaseRecord.definition.task -eq [string]$CoverageTarget.matchValue
+        }
+
+        'regex' {
+            return [string]$CaseRecord.coverageText -match [string]$CoverageTarget.matchValue
+        }
+    }
+
+    throw "unsupported skill coverage match mode '$($CoverageTarget.matchMode)'"
+}
+
 $Task = Expand-ListParameter -Value $Task
 $CaseStatus = Expand-ListParameter -Value $CaseStatus
 
@@ -110,6 +142,7 @@ foreach ($caseFile in $allCaseFiles) {
         casePath = $caseFile.FullName
         exampleResultPath = Resolve-ExampleArtifactPath -ExamplesDirectory $ExamplesDirectory -CaseId $case.id -Extension ".result.json"
         exampleReviewPath = Resolve-ExampleArtifactPath -ExamplesDirectory $ExamplesDirectory -CaseId $case.id -Extension ".review.md"
+        coverageText = ($case | ConvertTo-Json -Depth 100)
     }
 }
 
@@ -161,20 +194,33 @@ foreach ($selectedCase in $selectedCases) {
     }
 }
 
-$targetSkillCoverage = @()
-foreach ($skillTask in $targetSkillTasks) {
-    $taskCases = @($allCases | Where-Object { $_.definition.task -eq $skillTask })
-    $adjudicatedCases = @($taskCases | Where-Object { $_.definition.caseStatus -eq "adjudicated" })
-    $exampleResultCases = @($taskCases | Where-Object { $_.exampleResultPath })
+$skillCoverage = @()
+foreach ($coverageTarget in $skillCoverageTargets) {
+    $matchingCases = @($allCases | Where-Object { Test-CaseMatchesSkillCoverageTarget -CaseRecord $_ -CoverageTarget $coverageTarget })
+    $adjudicatedCases = @($matchingCases | Where-Object { $_.definition.caseStatus -eq "adjudicated" })
+    $exampleResultCases = @($matchingCases | Where-Object { $_.exampleResultPath })
 
-    $targetSkillCoverage += [pscustomobject]@{
-        task = $skillTask
-        caseCount = $taskCases.Count
+    $skillCoverage += [pscustomobject]@{
+        skill = $coverageTarget.name
+        section = $coverageTarget.section
+        caseCount = $matchingCases.Count
         adjudicatedCount = $adjudicatedCases.Count
         exampleResultCount = $exampleResultCases.Count
-        status = Get-SkillCoverageStatus -CaseCount $taskCases.Count -AdjudicatedCount $adjudicatedCases.Count -ExampleResultCount $exampleResultCases.Count
+        status = Get-SkillCoverageStatus -CaseCount $matchingCases.Count -AdjudicatedCount $adjudicatedCases.Count -ExampleResultCount $exampleResultCases.Count
     }
 }
+
+$targetSkillCoverage = @($skillCoverage | Where-Object { $_.section -eq 'direct' } | ForEach-Object {
+    [pscustomobject]@{
+        task = $_.skill
+        caseCount = $_.caseCount
+        adjudicatedCount = $_.adjudicatedCount
+        exampleResultCount = $_.exampleResultCount
+        status = $_.status
+    }
+})
+
+$routedSkillCoverage = @($skillCoverage | Where-Object { $_.section -eq 'routed' })
 
 $summary = [ordered]@{
     selectedCaseCount = $selectedCases.Count
@@ -185,6 +231,8 @@ $summary = [ordered]@{
         caseStatus = if ($CaseStatus.Count -gt 0) { @($CaseStatus) } else { @() }
     }
     targetSkillCoverage = $targetSkillCoverage
+    routedSkillCoverage = $routedSkillCoverage
+    skillCoverage = $skillCoverage
     caseResults = $caseResults
 }
 
@@ -200,9 +248,15 @@ Write-Output "  Skipped Cases   : $($summary.skippedCaseCount)"
 Write-Output "  Task Filter     : $(if ($Task.Count -gt 0) { $Task -join ', ' } else { 'all' })"
 Write-Output "  Status Filter   : $(if ($CaseStatus.Count -gt 0) { $CaseStatus -join ', ' } else { 'all' })"
 Write-Output ""
-Write-Output "Target skill coverage"
+Write-Output "Direct skill task coverage"
 foreach ($coverage in $targetSkillCoverage) {
     Write-Output "  $($coverage.task): cases=$($coverage.caseCount), adjudicated=$($coverage.adjudicatedCount), exampleResults=$($coverage.exampleResultCount), status=$($coverage.status)"
+}
+
+Write-Output ""
+Write-Output "Routed and companion skill coverage"
+foreach ($coverage in $routedSkillCoverage) {
+    Write-Output "  $($coverage.skill): cases=$($coverage.caseCount), adjudicated=$($coverage.adjudicatedCount), exampleResults=$($coverage.exampleResultCount), status=$($coverage.status)"
 }
 
 Write-Output ""

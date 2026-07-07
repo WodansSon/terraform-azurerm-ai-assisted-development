@@ -80,6 +80,77 @@ function Test-JsonSchemaFile {
     }
 }
 
+function Get-CaseStringValues {
+    param(
+        $Node,
+        [string] $Path = '',
+        [switch] $SkipProvenance
+    )
+
+    $values = @()
+
+    if ($null -eq $Node) {
+        return @()
+    }
+
+    if ($SkipProvenance -and $Path -like 'provenance*') {
+        return @()
+    }
+
+    if ($Node -is [string]) {
+        return @([pscustomobject]@{ path = $Path; value = $Node })
+    }
+
+    if ($Node -is [System.Collections.IDictionary]) {
+        foreach ($key in $Node.Keys) {
+            $childPath = if ([string]::IsNullOrWhiteSpace($Path)) { [string]$key } else { "$Path.$key" }
+            $values += @(Get-CaseStringValues -Node $Node[$key] -Path $childPath -SkipProvenance:$SkipProvenance)
+        }
+        return @($values)
+    }
+
+    if ($Node -is [System.Collections.IEnumerable] -and -not ($Node -is [string])) {
+        $index = 0
+        foreach ($item in $Node) {
+            $childPath = "${Path}[$index]"
+            $values += @(Get-CaseStringValues -Node $item -Path $childPath -SkipProvenance:$SkipProvenance)
+            $index++
+        }
+        return @($values)
+    }
+
+    foreach ($property in $Node.PSObject.Properties) {
+        $childPath = if ([string]::IsNullOrWhiteSpace($Path)) { $property.Name } else { "$Path.$($property.Name)" }
+        $values += @(Get-CaseStringValues -Node $property.Value -Path $childPath -SkipProvenance:$SkipProvenance)
+    }
+
+    return @($values)
+}
+
+function Assert-NoForbiddenSyntheticAnchors {
+    param(
+        [string] $Content,
+        [string] $ArtifactPath,
+        [string] $ArtifactKind
+    )
+
+    $forbiddenPatterns = @(
+        [pscustomobject]@{ label = 'non-example service path'; regex = 'internal/services/(?!example/)[a-z0-9_-]+/' },
+        [pscustomobject]@{ label = 'non-example resource doc path'; regex = 'website/docs/r/(?!example_)[a-z0-9_-]+\.html\.markdown' },
+        [pscustomobject]@{ label = 'non-example guide path'; regex = 'website/docs/guides/(?!example-)[a-z0-9._-]+\.html\.markdown' },
+        [pscustomobject]@{ label = 'non-example Terraform resource type'; regex = 'azurerm_(?!example_)[a-z0-9_]+' },
+        [pscustomobject]@{ label = 'service-specific Front Door anchor'; regex = 'Front Door|AzureFrontDoor|cdn_frontdoor_' },
+        [pscustomobject]@{ label = 'historical reference'; regex = '(?i)\bhistorical\b|derived from a real|live PR identity|live upstream file contents|retaining live PR identity|real PR|real review|real docs-review|real committed-review|real local review|real implementation-guidance|real contributor-guidance|real mixed committed-review|real false-positive class|real docs-remediation|real new-resource|real prompt or skill run' },
+        [pscustomobject]@{ label = 'PR number reference'; regex = '(?i)\bPR\s*#\d+\b|\bpull request\s*#\d+\b|\bupstream PR\s*#\d+\b' }
+    )
+
+    foreach ($pattern in $forbiddenPatterns) {
+        if ($Content -match $pattern.regex) {
+            throw "$ArtifactKind contains forbidden synthetic anchor '$($pattern.label)' in '$ArtifactPath'"
+        }
+    }
+}
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $CasePath = Expand-ListParameter -Value $CasePath
 $ResultPath = Expand-ListParameter -Value $ResultPath
@@ -98,6 +169,19 @@ foreach ($casePathItem in $resolvedCasePaths) {
         throw "duplicate case id '$($case.id)' found in '$casePathItem'"
     }
 
+    if ($case.sourceKind -ne 'synthetic') {
+        throw "case file '$casePathItem' must use sourceKind 'synthetic'"
+    }
+
+    if (-not $case.sanitized) {
+        throw "case file '$casePathItem' must remain sanitized"
+    }
+
+    $caseStrings = @(Get-CaseStringValues -Node $case -SkipProvenance)
+    foreach ($stringValue in $caseStrings) {
+        Assert-NoForbiddenSyntheticAnchors -Content $stringValue.value -ArtifactPath "$casePathItem::$($stringValue.path)" -ArtifactKind 'case file'
+    }
+
     if ($case.fixture.mode -ne "none" -and [string]::IsNullOrWhiteSpace($case.fixture.path)) {
         throw "case file '$casePathItem' requires fixture.path when fixture.mode is '$($case.fixture.mode)'"
     }
@@ -106,6 +190,15 @@ foreach ($casePathItem in $resolvedCasePaths) {
         $fixtureAbsolutePath = Join-Path $repoRoot $case.fixture.path
         if (-not (Test-Path -LiteralPath $fixtureAbsolutePath)) {
             throw "fixture path not found for case '$($case.id)': $fixtureAbsolutePath"
+        }
+
+        $fixtureContent = Get-Content -LiteralPath $fixtureAbsolutePath -Raw
+        Assert-NoForbiddenSyntheticAnchors -Content $fixtureContent -ArtifactPath $fixtureAbsolutePath -ArtifactKind 'fixture file'
+
+        $reviewExamplePath = Join-Path $ExamplesDirectory ($case.id + '.review.md')
+        if (Test-Path -LiteralPath $reviewExamplePath) {
+            $reviewContent = Get-Content -LiteralPath $reviewExamplePath -Raw
+            Assert-NoForbiddenSyntheticAnchors -Content $reviewContent -ArtifactPath $reviewExamplePath -ArtifactKind 'review example'
         }
     }
 
@@ -118,6 +211,9 @@ foreach ($casePathItem in $resolvedCasePaths) {
 foreach ($resultPathItem in $resolvedResultPaths) {
     Test-JsonSchemaFile -Path $resultPathItem -SchemaPath $ResultSchemaPath -Kind "result file"
     $result = Get-JsonFile -Path $resultPathItem
+
+    $resultContent = Get-Content -LiteralPath $resultPathItem -Raw
+    Assert-NoForbiddenSyntheticAnchors -Content $resultContent -ArtifactPath $resultPathItem -ArtifactKind 'result file'
 
     if (-not $validatedCases.ContainsKey($result.caseId)) {
         throw "result file '$resultPathItem' references unknown case id '$($result.caseId)'"

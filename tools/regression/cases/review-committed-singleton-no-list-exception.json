@@ -3,9 +3,16 @@
   "title": "Committed review applies singleton no-list exception-aware review",
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark the exception-aware singleton no-list review behavior added after the Durable Task retention-policy false positive.",
+    "genericCondition": "The singleton resource is modeled as a fixed child endpoint under its parent. The historical failure mode is that review notices an SDK list method and raises a generic missing-list-resource issue instead of applying the exception-aware singleton path.",
+    "notes": ""
+  },
   "sanitized": true,
-  "description": "A sanitized committed-review scenario derived from a real new-resource PR where one resource is a singleton child configuration object. The SDK package exposes a list method, but the Terraform resource models a fixed child endpoint per parent, so the review should not raise a plain missing-list-resource issue.",
+  "description": "A sanitized committed-review scenario new-resource PR where one resource is a singleton child configuration object. The SDK package exposes a list method, but the Terraform resource models a fixed child endpoint per parent, so the review should not raise a plain missing-list-resource issue.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/review-committed-singleton-no-list-exception/README.md"
@@ -17,7 +24,7 @@
       "internal/services/example/example_singleton_resource.go",
       "internal/services/example/example_singleton_resource_test.go"
     ],
-    "notes": "The singleton resource is modeled as a fixed child endpoint under its parent. The historical failure mode is that review notices an SDK list method and raises a generic missing-list-resource issue instead of applying the exception-aware singleton path."
+    "notes": "The singleton resource is modeled as a fixed child endpoint under its parent. The modeled failure mode is that review notices an SDK list method and raises a generic missing-list-resource issue instead of applying the exception-aware singleton path."
   },
   "expectedRules": [
     "REVIEW-SCOPE-005A",

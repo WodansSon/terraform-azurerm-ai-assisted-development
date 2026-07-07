@@ -1,0 +1,68 @@
+{
+  "id": "review-committed-explicit-overlap-rows",
+  "title": "Committed review names unchanged overlap rows explicitly before routed roles",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark the stronger determinism requirement that overlap coverage be materialized as explicit unchanged file-path rows before routed roles begin.",
+    "genericCondition": "Synthetic fixture models a PR where the critical determinism requirement is not just scanning overlap surfaces, but naming the unchanged overlap rows concretely in the router-owned coverage plan so reruns cannot omit them silently.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where a new provider resource overlaps multiple unchanged sibling surfaces. The correct review must use the review-coordinator layer to materialize those unchanged siblings as explicit file-path overlap rows before routed analysis begins.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-explicit-overlap-rows/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_group_resource.go",
+      "internal/services/example/example_mode_validation.go",
+      "website/docs/r/example_group_resource.html.markdown"
+    ],
+    "notes": "Synthetic fixture models a PR where the critical determinism requirement is not just scanning overlap surfaces, but naming the unchanged overlap rows concretely in the router-owned coverage plan so reruns cannot omit them silently."
+  },
+  "expectedRules": [
+    "REVIEW-COORD-001",
+    "REVIEW-COORD-003",
+    "REVIEW-COORD-007"
+  ],
+  "mustCatch": [
+    {
+      "key": "explicit-overlap-file-rows",
+      "severity": "high",
+      "description": "The committed review should name unchanged overlap surfaces by file path rather than referring to overlap only as a category or family."
+    },
+    {
+      "key": "routed-roles-after-coverage",
+      "severity": "medium",
+      "description": "The committed review should present routed-role work only after the deterministic coverage plan has explicitly named the required overlap rows."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "implicit-overlap-only",
+      "description": "The review must not rely only on generic overlap language that omits explicit unchanged sibling file paths from the deterministic coverage plan."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "internal/services/example/example_item_resource.go",
+      "internal/services/example/example_set_resource.go",
+      "internal/services/example/example_route_resource.go",
+      "Skill used: review-coordinator"
+    ]
+  },
+  "notes": "Use this case to benchmark the stronger determinism requirement that overlap coverage be materialized as explicit unchanged file-path rows before routed roles begin."
+}

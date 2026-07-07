@@ -20,7 +20,8 @@ Two independent review workflows MUST follow this contract:
   - Goal: review committed branch changes deterministically.
 
 The prompts define the execution flow and output template.
-This contract defines the review rules, evidence hierarchy, finding classification, and azurerm-linter handling.
+This core contract defines the shared review rules, evidence hierarchy, finding classification, handoff model, coverage routing, and output semantics.
+`azurerm-linter` execution and reporting are defined by `.github/instructions/review-linter-compliance-contract.instructions.md`.
 
 ## Canonical sources of truth (precedence)
 
@@ -58,11 +59,11 @@ ID format:
 Areas:
 - EVID = evidence and verification guardrails
 - CLASS = finding classification
+- COVER = deterministic coverage routing and review order
 - FILE = change-set coverage and file handling
 - SCOPE = file-type-specific review coverage
 - TEST = acceptance test review guidance
 - OBS = observation-only design guidance
-- LINT = azurerm-linter behavior
 - OUT = required review output semantics
 
 ## Evidence hierarchy
@@ -136,9 +137,30 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: An Issue must be a real defect, regression, policy violation, missing requirement, or correctness risk with evidence.
 - Rule: Do not place stylistic preferences or speculative concerns in Issues.
 
+### REVIEW-CLASS-001A: Blocking classification requires concrete current-run harm
+- Rule: Keep a concern in `ISSUES` only when current-run evidence proves a present defect, destructive behavior, policy violation, concrete state corruption risk, or another clearly blocking correctness failure.
+- Rule: If current-run evidence proves only broader architectural risk, request-shape risk, uncertainty, or a non-blocking mismatch, classify that concern as an `OBSERVATION` unless another rule family explicitly says the concern is blocking by definition.
+
+### REVIEW-CLASS-001B: Certain variant-ownership and lifecycle defects are blocking by definition
+- Rule: For a variant-constrained managed surface, if current-run evidence shows that a generic identifier, generic ID validator, generic importer, or generic lookup path can admit or hydrate a foreign variant before a later discriminator check rejects it, that ownership-boundary concern is blocking by definition and must remain in `ISSUES`.
+- Rule: For that same variant-constrained surface, if current-run evidence shows that a later lifecycle window such as delete can still mutate or destroy the foreign variant after read or update already applies a discriminator guard, that lifecycle-symmetry concern is blocking by definition and must remain in `ISSUES`.
+- Rule: Do not downgrade either of those concrete foreign-variant admission or destruction paths to `OBSERVATIONS` merely because the current run did not execute a live foreign-variant fixture.
+
+### REVIEW-CLASS-001C: Concrete optional-state drift on user-managed fields is blocking by definition
+- Rule: When current-run evidence shows that a user-managed map or object field can round-trip undeclared API-added keys or values back into Terraform state through read or import, that optional-state-drift concern is blocking by definition and must remain in `ISSUES`.
+- Rule: When current-run evidence shows that import verification already has to ignore a user-managed field because read or import cannot round-trip the configured value cleanly, treat that as blocking optional-state drift unless another current-run source proves the ignored field is intentionally non-user-managed.
+
 ### REVIEW-CLASS-002: Observations are non-blocking
 - Rule: Observations capture design concerns, preferences, uncertainty, or follow-up ideas that are not clearly blocking.
 - Rule: If the current implementation is acceptable under the available evidence, keep it out of Issues even if another design might be preferable.
+
+### REVIEW-CLASS-002A: Evidence-backed non-blocking concerns must remain visible
+- Rule: If a mandatory issue-class check or routed pass yields an evidence-backed non-blocking concern, that concern must appear in the final output under `OBSERVATIONS`.
+- Rule: Do not omit such a concern solely because another issue already blocks merge, because the concern does not change the overall verdict, or because a shorter review would be more convenient.
+
+### REVIEW-CLASS-002B: Update-shape and residual-state risks default to observations unless concrete harm is proven
+- Rule: When current-run evidence shows an update-shape or residual-state risk such as a `PUT` versus `PATCH` mismatch, broader-than-expected update request shape, or omitted-field preservation concern, but does not prove a present destructive behavior, policy violation, or concrete state corruption path, classify that concern as an `OBSERVATION`.
+- Rule: Do not drop that concern merely because stronger ownership, lifecycle, or import-drift issues already exist in the same review.
 
 ### REVIEW-CLASS-003: Strengths must be factual
 - Rule: Strengths should call out concrete, evidenced positives.
@@ -152,37 +174,148 @@ If evidence is missing for a claim that would change severity or requested actio
 - Rule: Each Issue should point to a single, concrete correction path.
 - Rule: Do not present multiple alternative fixes unless the user explicitly asked for options.
 
-### REVIEW-CLASS-006: Current final adjudication owner integration boundary
-- Rule: The current final adjudication owner is the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`).
-- Rule: When a review prompt runs the current final adjudication owner, the routed owner's rules govern how the aggregate candidate-Issue set from the primary pass and any routed intermediate passes is confirmed, downgraded, dismissed, or otherwise normalized.
-- Rule: The current final adjudication owner must not violate `REVIEW-CLASS-004`; every candidate finding still resolves to exactly one classification.
-- Rule: This shared contract does not define the routed adjudication owner's method or outcome rules; review flows that do not run a final adjudication owner are unaffected.
+### REVIEW-CLASS-006: Final moderation owner integration boundary
+- Rule: The final moderation owner is the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`) and its dedicated contract (`.github/instructions/review-moderator-compliance-contract.instructions.md`).
+- Rule: The advocate pass is the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`) and its dedicated contract (`.github/instructions/review-advocate-compliance-contract.instructions.md`); it adds commentary to the full findings set but does not own final visibility or final classification.
+- Rule: When a review prompt runs the final moderation owner, the routed owner's rules govern how the full workflow findings set is merged, normalized, classified, retained, or omitted as duplicate for final visible output.
+- Rule: The final moderation owner must not violate `REVIEW-CLASS-004`; every surviving concern still resolves to exactly one classification.
+- Rule: This shared contract does not define the routed moderation owner's method or merge rules; review flows that do not run a final moderation owner are unaffected.
 
 ## Workflow handoff structure
 
 ### REVIEW-HANDOFF-001: Intermediate findings use one shared semantic shape
 - Rule: Before output is frozen, the review workflow must treat routed-role findings as internal intermediate records rather than free-form unlabeled prose.
 - Rule: Each intermediate record must conform to `.github/instructions/review-workflow-handoff.schema.json`.
-- Rule: Each intermediate record must be able to express `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, and `status`.
+- Rule: Each intermediate record must be able to express `id`, `roles`, `title`, `scope`, `severity`, `evidence`, `reasoning`, `confidence`, `classification`, and `visible`.
 - Rule: `ruleReferences` is optional, but should be populated when a contract rule, instruction, or contributor-guidance source is part of the evidence chain.
 
-### REVIEW-HANDOFF-002: Status values are stage-aware
-- Rule: Before advocate adjudication, the allowed intermediate statuses are `candidate` and `observation`.
-- Rule: The advocate pass may resolve only `candidate` records, changing status to `confirmed`, `downgraded`, or `dismissed`.
-- Rule: Final visible `ISSUES` and `OBSERVATIONS` sections are derived from the resolved intermediate records rather than bypassing the handoff structure.
+### REVIEW-HANDOFF-002: Classification and visibility are workflow-owned fields
+- Rule: The reviewer, architect, and skeptic passes may emit records classified as `issue` or `observation` based on current-run evidence.
+- Rule: The advocate pass consumes the full finding set and communicates through `roleNotes`; it must not delete findings or replace them with a candidate-only state machine.
+- Rule: The moderator pass consumes the full finding set, may merge genuine duplicates, and owns the final `classification` and `visible` values on surviving records.
+- Rule: Final visible `ISSUES` and `OBSERVATIONS` sections are derived mechanically from moderated records where `visible=true`, grouped by their moderated `classification` values.
 
 ### REVIEW-HANDOFF-003: Routed passes may add or refine records, but must preserve shape
-- Rule: The primary review pass, architect pass, and skeptic pass may add records or enrich existing records with evidence and reasoning, but they must preserve the shared field set.
-- Rule: Routed passes must not replace a structured intermediate record with an unlabeled prose note that loses `scope`, `evidence`, or `status`.
+- Rule: The primary review pass, architect pass, and skeptic pass may add records or enrich existing records with evidence and reasoning, and later routed passes may annotate or normalize those records, but all passes must preserve the shared field set.
+- Rule: Routed passes must not replace a structured intermediate record with an unlabeled prose note that loses `scope`, `evidence`, `classification`, or `visible`.
 - Rule: When multiple passes touch the same concern, enrich one record rather than cloning duplicate records.
+- Rule: When a record carries originating mandatory `issueClasses` lineage, routed passes must preserve that lineage unless a later moderator-owned genuine duplicate merge consolidates it under one survivor.
 
 ### REVIEW-HANDOFF-005: Roles communicate through schema updates, not free-form debate
 - Rule: Routed roles communicate by adding evidence, reasoning, `roles`, `ruleReferences`, or `roleNotes` to the shared schema record, not by inventing a separate unstructured dialogue channel.
 - Rule: If a role challenges an earlier finding, that challenge must be recorded inside the shared schema record rather than as disconnected prose.
 
+### REVIEW-HANDOFF-006: Reviewer-to-handoff serialization is mandatory before routed roles
+- Rule: If the primary review pass discovers an evidence-backed concern, that concern must exist as a schema-conformant `REVIEW-HANDOFF-*` record before `review-architect`, `review-skeptic`, `review-advocate`, or `review-moderator` begin.
+- Rule: The workflow must fail closed if the reviewer analysis says a concern exists but no corresponding structured handoff record was emitted for it.
+- Rule: Routed roles and the presentation layer are not responsible for recovering findings that the reviewer failed to serialize into the handoff record set.
+
+### REVIEW-HANDOFF-006A: Mandatory issue-class concerns emit records immediately
+- Rule: When a mandatory issue-class check yields an evidence-backed concern, the primary review pass must emit the corresponding schema-conformant `REVIEW-HANDOFF-*` record immediately rather than deferring serialization to a later bulk step.
+- Rule: The primary review pass must update the applicable row-level and matrix-level linkage state for that emitted record before moving to the next mandatory issue-class check or control window.
+- Rule: A mandatory issue-class concern must not exist only in reviewer memory or transient prose notes while the workflow continues auditing other checks.
+- Rule: When a record is emitted for a mandatory issue-class concern, preserve the originating `issueClasses` value on that record so later workflow stages can validate concern-family survival mechanically.
+
 ### REVIEW-HANDOFF-004: The handoff shape is semantic, not transport-specific
 - Rule: The workflow may represent the intermediate record as structured markdown, table-like text, or JSON-like state, but the semantic fields and statuses must remain stable.
 - Rule: The intermediate record is workflow-internal and must not force a new reader-visible section in the final review body.
+
+## Deterministic coverage routing
+
+### REVIEW-COORD-001: Build a deterministic coverage matrix before findings
+- Rule: After the selected review scope is resolved and changed files are classified, the workflow must build a deterministic coverage matrix before findings are drafted or frozen.
+- Rule: The workflow must load `.github/instructions/review-coverage-matrix.schema.json` to EOF before building the matrix.
+- Rule: The coverage matrix must enumerate the applicable implementation file families, required lifecycle/control windows, required overlap surfaces, and mandatory issue-class checks for the current run.
+- Rule: The coverage matrix must have a structured internal representation that conforms to `.github/instructions/review-coverage-matrix.schema.json`; prose intent alone is insufficient.
+- Rule: The coverage matrix is part of review methodology, not an optional reviewer aid.
+
+### REVIEW-COORD-001A: Matrix build and matrix completion are separate phases
+- Rule: The workflow must build the structured coverage matrix before findings are drafted, but it must not require final matrix completion before the applicable workspace standards and scoped guidance needed for standards-dependent issue-class checks have been loaded.
+- Rule: Matrix construction happens before standards-dependent finding analysis; matrix completion validation happens after the relevant contributor guidance, file-scoped instructions, and contracts needed for the required issue-class checks are available.
+- Rule: Findings and routed roles remain blocked until the later completion-validation phase succeeds.
+
+### REVIEW-COORD-002: Changed implementation files use a fixed review order
+- Rule: For changed implementation files under `internal/**/*.go`, the workflow must sort the applicable implementation files lexically before choosing a first review anchor.
+- Rule: For each applicable resource, data source, list-resource, ephemeral-resource, or provider-function surface, inspect present lifecycle/control windows in this fixed order: `Importer`, `Create`, `Read`, `Update`, `Delete`, `CustomizeDiff`, explicit validation or mode or ownership helpers, then companion registration, tests, docs, and association surfaces when applicable.
+- Rule: If a given window does not exist for that surface, record it as not applicable and continue with the next required window rather than changing the order.
+- Rule: Freeform surrounding reads may happen only after the required control-window reads for the current matrix row are complete.
+
+### REVIEW-COORD-003: New resources require overlap and ownership scans
+- Rule: When review scope adds a brand-new resource under `internal/**/*.go`, the workflow must inspect overlapping pre-existing sibling surfaces that can manage the same remote object even when those sibling surfaces are unchanged in the diff.
+- Rule: The required overlap set includes, when applicable, the new resource itself, existing resources that can overlap ownership, existing data sources or list resources that expose the same remote object shape, route or association or referencing surfaces, and explicit mode or ownership validation helpers.
+- Rule: Overlap surfaces for new resources must be materialized as explicit file-path rows in the structured coverage matrix, not merely as inferred categories.
+- Rule: Overlap surfaces must be added to the deterministic coverage matrix and inspected with the same fixed control-window order when those windows exist.
+
+### REVIEW-COORD-003A: Variant-constrained ownership surfaces prioritize ownership and lifecycle first
+- Rule: For a new or materially changed managed surface whose ownership is constrained to a discriminator, mode, subtype, or other remote-object variant, the first cold-review priority is ownership boundary and lifecycle symmetry, not secondary polish findings.
+- Rule: Before treating metadata filtering, test-shape completeness, or similar secondary concerns as the lead finding, the workflow must first answer whether the surface can adopt foreign variants, mutate foreign variants, destroy foreign variants, and keep import or read or update or delete behavior symmetric for variant ownership.
+- Rule: For a variant-constrained managed surface, the primary review pass must explicitly complete and record the outcome of the ownership-boundary and lifecycle-symmetry checks before freezing any later issue class on that same surface.
+- Rule: If current-run evidence does not support an ownership-boundary or lifecycle-symmetry concern, the workflow must still justify that completion from the inspected importer, identifier validation, lookup, read, update, and delete paths rather than skipping straight to secondary findings.
+- Rule: If the importer, ID validator, lookup helper, or read path accepts a generic identifier that can resolve to foreign variants outside the surface's intended ownership slice, treat that as an immediate trigger for ownership-boundary inspection rather than a downstream follow-up check.
+- Rule: When current-run evidence on the managed surface itself shows that a generic identifier, importer, ID validator, lookup helper, or read path can resolve or hydrate an out-of-scope object into state, the workflow must materialize an ownership-boundary concern immediately at the justified classification; do not wait for an unchanged sibling overlap surface before emitting that record.
+- Rule: A variant-constrained surface that uses a generic ID type, generic ID validator, or generic lookup helper and only checks the discriminator after the lookup or read has already resolved the remote object has already shown enough evidence for an ownership-boundary concern unless the earlier identifier or lookup path itself enforces the discriminator.
+- Rule: When read or update contains a discriminator or subtype guard only after a generic ID or generic lookup path has already resolved the remote object, treat that as affirmative evidence that foreign variants can be admitted into the lifecycle and emit the ownership-boundary concern immediately.
+- Rule: When the same variant-constrained surface can admit an out-of-scope object through import or read, but later lifecycle windows reject it, mutate it inconsistently, or still delete it, the workflow must materialize a distinct lifecycle-symmetry concern immediately before moving on to other issue classes on that surface such as update-shape-and-residual-state, optional-state-drift, minimum acceptance-matrix coverage, or docs-example correctness.
+- Rule: When the same surface shows a read-time or update-time discriminator guard after generic resolution, inspect delete against that same path immediately. If delete still proceeds on the generic ID without the same guard, materialize the lifecycle-symmetry concern even when no explicit foreign-variant fixture exists in the current test suite.
+
+### REVIEW-COORD-004: Provider reviews have mandatory issue-class checks
+- Rule: For new or changed provider resources, data sources, or list resources under `internal/**/*.go`, the workflow must perform mandatory issue-class checks rather than relying on ad hoc reviewer heuristics alone.
+- Rule: The mandatory issue-class families are ownership overlap, import or read or update or delete mode-gating symmetry, destructive-path gating, poller terminal-failure handling, validator-to-doc parity for blocking conditions, companion artifact completeness, list-resource exception handling, identity/list/docs/test companion coverage, update-shape-and-residual-state behavior, optional-state-drift behavior, and upstream-minimum acceptance-test matrix coverage for brand-new managed resources with acceptance tests.
+- Rule: When the same review scope also includes changed reference docs under `website/docs/**/*.html.markdown`, the mandatory issue-class set also includes evidence-backed docs example correctness under exact `DOCS-*` support from the docs contract.
+- Rule: For docs example correctness in generic review, acceptance-test-backed or implementation-backed Terraform HCL is sufficient local evidence for user-facing field-key, map-key, and casing parity when the docs Example is demonstrating that same user-facing configuration shape; do not require a separate API-layer proof before surfacing that mismatch.
+- Rule: When changed docs and local acceptance-test-backed or implementation-backed HCL both show the same Terraform argument as a map or object literal, the review must compare those keys directly for spelling/casing parity and surface the mismatch as docs-example correctness when they differ.
+- Rule: For variant-constrained managed surfaces, ownership-boundary and lifecycle-symmetry checks remain mandatory first-pass issue classes under `REVIEW-COORD-003A`, and later issue classes do not satisfy them.
+- Rule: For user-managed map or object fields on changed provider surfaces, optional-state-drift is applicable when current-run evidence shows read or import can rehydrate API-added keys or values that were not declared in configuration, including cases where the implementation falls back to full API metadata when prior configured values are absent.
+- Rule: For that same optional-state-drift issue class, an acceptance test that already needs to ignore a user-managed field during import verification is affirmative current-run evidence that the field may not round-trip cleanly and must be reviewed as a potential emitted concern rather than dismissed as a mere test quirk.
+- Rule: For update-shape-and-residual-state behavior, `patch-residual-state` is applicable when current-run evidence shows that the update path uses a broader request method or shape than the surrounding provider or service pattern expects, including `PUT` versus `PATCH` mismatches, and that mismatch could preserve, replace, or broaden unspecified fields in ways the current run cannot fully prove safe.
+- Rule: When current-run evidence proves only that broader request-shape or residual-state risk, emit `patch-residual-state` as an observation rather than suppressing it for lack of already-proven destructive harm.
+- Rule: Treat the primary review pass as a broad serializer: when an applicable issue class yields an evidence-backed concern, emit that concern immediately as its own shared handoff record and keep it separate unless it is genuinely the same underlying concern as another emitted record.
+- Rule: The primary review pass must not suppress, merge, downgrade, dismiss, or otherwise filter an evidence-backed concern merely because another concern appears stronger or more likely to determine the final verdict; downstream routed stages own that filtering work.
+- Rule: If an applicable mandatory issue class does not yield a concern, the current run must still complete it with evidence-backed justification through the structured matrix state rather than leaving it implicit.
+
+### REVIEW-COORD-005: Active-file bias is forbidden for initial routing
+- Rule: The active editor file, search result ordering, or PR wording must not decide the initial review route for committed or local review.
+- Rule: The active editor file may be used only as a convenience after the deterministic coverage matrix is built.
+- Rule: If the active file belongs to a required matrix row, review it when that row's fixed order is reached rather than jumping to it early.
+
+### REVIEW-COORD-005A: Family grouping prefers explicit code anchors over filename intuition
+- Rule: When the workflow groups files into a resource family, it should prefer explicit code anchors over filename intuition alone.
+- Rule: Relevant anchors include shared ID parsers, shared validation helpers, shared registration entries, shared route or association references, shared ownership or mode helpers, shared ARM ID types, and shared SDK client methods or resource paths that manage the same remote object.
+- Rule: For a variant-constrained managed surface, an unchanged sibling resource, data source, or list resource is an overlap surface when it shares the same ARM ID type or the same SDK `Get`/`Create`/`Update`/`Delete` remote-object method family, even if the sibling surface is more generic than the changed resource.
+- Rule: When those shared-ID or shared-method anchors exist, the overlap surface must be materialized as its own explicit file-path row in the matrix rather than left implicit in prose.
+- Rule: If family boundaries remain ambiguous after checking those anchors, prefer broader inclusion in the coverage matrix over omission.
+
+### REVIEW-COORD-006: Findings cannot freeze before coverage completion
+- Rule: Findings, routed review-role passes, and final output must not freeze until the deterministic coverage matrix is complete.
+- Rule: A coverage-matrix row is complete only when every required window is present in `completedWindows` or `notApplicableWindows`, and every required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`.
+- Rule: A coverage matrix is complete only when every required row is complete, every top-level required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, and all not-applicable states are justified by current-run evidence.
+- Rule: A required issue class must not be marked `completed` if the reviewer found an evidence-backed concern in that class but failed to serialize it into the shared `REVIEW-HANDOFF-*` record set at the justified classification, including `observation` when the concern is non-blocking.
+- Rule: A required issue class that found an evidence-backed concern must link that concern to at least one handoff record ID through `issueClassToRecordIds` before the issue class can be marked `completed`.
+- Rule: Every handoff record ID referenced by a row-level `issueClassToRecordIds` entry must also appear in that row's `emittedRecordIds` and in the matrix-level `emittedRecordIds`.
+- Rule: Before any routed role begins, the workflow must assert that every evidence-backed concern discovered in the primary review pass is represented by at least one emitted handoff record ID; if that assertion fails, the review must hard-stop.
+- Rule: The primary review pass must keep `emittedRecordIds` and `issueClassToRecordIds` current as concerns are discovered so the later linkage-validation phase is validating already-emitted workflow state rather than reconstructing reviewer memory after the fact.
+- Rule: Standards-dependent issue-class checks may be marked complete only after the relevant workspace standards and scoped guidance needed to evaluate them have been loaded in the current run.
+- Rule: When a mandatory overlap surface or issue-class check has not been completed, the workflow must continue auditing rather than drafting or freezing findings.
+
+### REVIEW-COORD-006A: Router validation sub-phase is the canonical completion gate
+- Rule: The router's validation sub-phase is the canonical mechanism that confirms coverage-matrix completion before findings or routed roles can proceed.
+- Rule: Prompts may orchestrate when that validation sub-phase runs, but they must not substitute looser prose-only completion checks for the router-owned validation step.
+- Rule: If the router validation sub-phase cannot confirm the required row, window, issue-class, overlap-row, and evidence-backed completion invariants from current-run evidence, the workflow must hard-stop rather than continue to findings or routed roles.
+
+### REVIEW-COORD-006B: Router owns post-review handoff-linkage validation before routed roles
+- Rule: After the primary review pass has drafted its frozen current-run findings set and before any routed role begins, the workflow must invoke a router-owned post-review linkage-validation sub-phase.
+- Rule: That router-owned linkage-validation sub-phase is the canonical mechanism that confirms reviewer-to-handoff synchronization, including `emittedRecordIds` and `issueClassToRecordIds`, before routed roles can proceed.
+- Rule: Prompts may orchestrate when that linkage-validation sub-phase runs, but they must not replace it with a prompt-only bookkeeping assertion.
+- Rule: If the router-owned linkage-validation sub-phase cannot confirm that every evidence-backed concern discovered in the primary review pass is represented by at least one emitted handoff record ID, the workflow must hard-stop rather than continue to architect, skeptic, advocate, or moderator.
+- Rule: For variant-constrained ownership reviews whose current-run evidence supports separate ownership-boundary, lifecycle-symmetry, update-shape-and-residual-state, and optional-state-drift concerns, linkage validation must confirm those concerns remain separate records at the justified classifications rather than a collapsed prose summary.
+- Rule: For variant-constrained managed-surface reviews whose current-run evidence makes ownership-boundary, lifecycle-symmetry, update-shape-and-residual-state, optional-state-drift, minimum acceptance-matrix coverage, or docs-example correctness applicable, linkage validation must confirm each applicable issue class ended as a separate emitted record or an evidence-backed completed/non-applicable state rather than disappearing into a partial subset of findings.
+- Rule: When current-run evidence for the update path includes a `PUT` versus `PATCH` mismatch or another broader request-shape residual-state risk, linkage validation must not accept `patch-residual-state` as implicitly covered by ownership, lifecycle, optional-state-drift, or acceptance-matrix concerns; it must end as its own emitted record or an evidence-backed non-applicable state.
+- Rule: When current-run evidence for a user-managed map or object field includes import-ignore exceptions or implementation helpers that repopulate undeclared API-returned values, linkage validation must not accept `optional-state-drift` as implicitly covered by another metadata, docs, or acceptance-matrix concern; it must end as its own emitted record or an evidence-backed non-applicable state.
+
+### REVIEW-COORD-007: Routed roles start only after coverage completion
+- Rule: The routed review roles `review-architect`, `review-skeptic`, `review-advocate`, and `review-moderator` must not start until the deterministic coverage matrix is complete.
+- Rule: Partial primary-pass findings or partially populated intermediate records must not be handed to routed roles before matrix completion.
+- Rule: If the coverage matrix cannot be completed from current-run evidence, the prompt must hard-stop instead of starting routed roles on a partial audit.
 
 ## Change-set coverage and file handling
 
@@ -216,16 +349,21 @@ Local review scope decision table:
 ### REVIEW-FILE-004: Committed review scope must prefer authoritative PR context
 - Rule: When authoritative pull request metadata exists, committed review must use that pull request changed-file set and diff as the authoritative review scope and must not drift into unrelated branch-only commits.
 - Rule: Deterministic pull request identifiers from user input or environment context are valid PR-scoped inputs. When an explicit PR number is available, the first choice is a direct shell-native HTTPS request for that same PR number to `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/files`, using pagination when needed and without relying on the local `gh` binary. Otherwise use active or viewed PR context first, then any remaining allowed non-CLI GitHub-backed PR-files path.
-- Rule: PR summaries, issue-style or status metadata, browser links such as `Open on GitHub.com`, forbidden spill-file transports, and local cache or user-profile paths are never authoritative PR file scope. This includes tool-produced saved-output artifacts under paths such as `AppData`, `workspaceStorage`, `chat-session-resources`, `content.json`, or `content.txt`. Ignore them, continue with the next allowed GitHub-backed PR-files path, and never use `read_file` or shell commands against local spill files to reconstruct PR scope.
+- Rule: The preferred direct shell-native HTTPS request should use a JSON-returning request shape, for example a shell-native REST request that yields JSON directly rather than formatted web-response text. When the authoritative response is larger than the inline tool transport can carry comfortably, reduce it in-process to the fields needed for scope resolution or write a current-run transient JSON artifact from that already-authoritative response instead of trying to parse terminal wrapper text.
+- Rule: PR summaries, issue-style or status metadata, browser links such as `Open on GitHub.com`, forbidden spill-file transports, and local cache or user-profile paths are never authoritative initial PR file scope. This includes tool-produced saved-output artifacts under paths such as `AppData`, `workspaceStorage`, `chat-session-resources`, `content.json`, or `content.txt` when they are being offered as the starting source of truth for PR file scope. Ignore them, continue with the next allowed GitHub-backed PR-files path, and never use `read_file` or shell commands against pre-existing or tool-spilled local artifacts to reconstruct authoritative PR scope.
+- Rule: After authoritative PR scope has already been established from an allowed source, the current run may generate a transient local transport artifact from that already-authoritative dataset when needed for size or tool-shape reasons, as long as the workflow does not treat that artifact itself as a new authoritative source and the artifact is used only as a transport buffer for the current run.
+- Rule: Tool-generated wrapper text such as "output too large" notices, saved-output banners, or other transport metadata is never part of the authoritative PR-files payload and must not be parsed as if it were the JSON response body.
 - Rule: Do not use local `gh api` as an automatic fallback for PR file retrieval. Use `gh` only when the user explicitly asks to use `gh`. If the direct shell-native HTTPS request and the remaining allowed non-CLI GitHub-backed PR-files paths do not yield authoritative PR scope, fail closed for lack of authoritative PR scope. Fall back to `origin/main...HEAD` only when no authoritative pull request metadata exists or when the user explicitly requests a branch-wide committed review.
 - Rule: If explicit user-supplied PR context and environment PR context conflict, committed review must fail closed unless the user explicitly says the supplied PR should override the active or viewed PR context. After the authoritative PR changed-file set is resolved, inspect committed content using repo-local evidence such as the committed diff, `git show`, and targeted file reads rather than repeated remote PR-content fetches.
+- Rule: After authoritative PR scope is resolved, committed review must verify that every non-deleted scoped file needed for deterministic review coverage is inspectable from repo-local committed evidence before coverage-matrix build or standards loading continues.
+- Rule: If authoritative PR scope includes a non-deleted changed file that is missing from the local committed checkout or otherwise not inspectable from repo-local committed evidence, fail closed with a file-availability error; do not silently skip that file and do not degrade the condition into a generic coverage-matrix-incomplete result.
 
 Committed review scope decision table:
 
 | Condition | Required action |
 | --- | --- |
 | Explicit PR number is supplied | Try the preferred direct shell-native HTTPS PR-files request for that PR number first |
-| A GitHub-backed result is only summary metadata, a browser link, or a forbidden spill-file path such as a `workspaceStorage`/`chat-session-resources` saved artifact | Ignore it and continue to the next allowed GitHub-backed PR-files path |
+| A GitHub-backed result is only summary metadata, a browser link, or a forbidden spill-file path such as a `workspaceStorage`/`chat-session-resources` saved artifact being offered as initial PR scope | Ignore it and continue to the next allowed GitHub-backed PR-files path |
 | The direct shell-native HTTPS request and remaining non-CLI GitHub-backed PR-files paths are exhausted | Fail closed for lack of authoritative PR scope; do not auto-fallback to `gh` |
 | No authoritative PR context exists, or the user explicitly requests branch-wide committed review | Fall back to `origin/main...HEAD` branch diff scope |
 | Explicit user-supplied PR context conflicts with environment PR context and there is no explicit override | Fail closed |
@@ -339,6 +477,12 @@ Committed review scope decision table:
 - Rule: Evaluate requires-import tests against the active contributor guidance and the resource's actual behavior.
 - Rule: Do not report a requires-import pattern as wrong solely because it differs from an older prompt preference.
 
+### REVIEW-TEST-002A: New managed resources should cover the upstream minimum resource test matrix
+- Rule: When review scope adds a brand-new managed resource or materially new managed mode with acceptance coverage, inspect whether the suite includes the upstream minimum resource scenarios: `basic`, `requiresImport`, `complete`, and `update`.
+- Rule: When the current-run evidence shows that one of those minimum scenarios is missing, treat that gap as a reviewable concern instead of silently skipping it.
+- Rule: Absence of any upstream-minimum resource scenario should remain visible at least as an `OBSERVATION` for new managed resources unless current-run evidence shows that specific expectation does not apply or the scenario is genuinely impractical.
+- Rule: Give extra weight to a missing `complete` scenario when the resource exposes optional, metadata-bearing, or category-dependent shape, because that broader supported surface is otherwise left under-proven even when narrower `basic`, `requiresImport`, or `update` slices exist.
+
 ### REVIEW-TEST-003: Embedded Terraform in acceptance tests must use repository-valid formatting
 - Rule: When reviewing files under `internal/**/*_test.go`, inspect embedded Terraform configuration strings, including raw string literals used to define acceptance-test configuration.
 - Rule: For `*_test.go` files containing embedded Terraform configuration, flag Terraform configuration lines whose indentation is not two spaces, including tab-indented lines and mixed tab-and-space indentation.
@@ -356,167 +500,6 @@ Committed review scope decision table:
 - Rule: A TypeString field using only validation.StringIsNotEmpty is not, by itself, sufficient evidence for an Issue.
 - Rule: Escalate only when current guidance or clear implementation context shows stronger validation is both feasible and required.
 
-## azurerm-linter
-
-### REVIEW-LINT-001: Include a dedicated azurerm-linter section in every review
-- Rule: Both review prompts must emit a standalone azurerm-linter section.
-- Rule: The section must appear even when the tool is not applicable or cannot be run.
-
-### REVIEW-LINT-002: Run azurerm-linter when the scoped changes include provider Go files
-- Rule: If the reviewed change-set includes files under internal/**/*.go or internal/**/*_test.go, attempt azurerm-linter.
-- Rule: If no such files are in scope, report the section as Not applicable.
-
-### REVIEW-LINT-002A: Local installation is required for linter execution
-- Rule: Review prompts should rely on a locally installed `azurerm-linter` binary.
-- Rule: Treat `azurerm-linter` as a standalone locally installed CLI, not as a Go toolchain command.
-- Rule: Do not fetch or execute `azurerm-linter` via `go run` from a remote module path during review.
-- Rule: The minimum supported `azurerm-linter` version for review is `v0.2.0`.
-- Rule: If the local binary is missing, older than `v0.2.0`, or the tool cannot be executed reliably, report the linter section as `Not run` and include a short install hint pointing to the upstream repository and the local install command.
-
-### REVIEW-LINT-002B: Execute azurerm-linter from the git repo root
-- Rule: Before running azurerm-linter, resolve the git repository root with `git rev-parse --show-toplevel`.
-- Rule: Execute azurerm-linter from that repo root, not from an arbitrary subdirectory.
-- Rule: Run the linter in the current platform's native shell environment using the plain local CLI invocation, and keep stdout clean for the primary JSON-mode run by redirecting stderr to the active shell's null device using native syntax such as PowerShell `2>$null`, POSIX `2>/dev/null`, or cmd.exe `2>nul`.
-- Rule: Do not rewrite the command through another runtime environment or wrapper such as `wsl`, `wsl --cd`, `bash -lc`, `sh -lc`, `cmd /c`, or `powershell -Command`, and do not replace the direct invocation with generated scripts, composite wrapper lines, or inline variable-assignment wrappers.
-- Rule: Use `run_in_terminal` in `mode: "sync"` for azurerm-linter without an explicit timeout so the tool can wait for natural completion in one blocking call.
-- Rule: If that sync azurerm-linter call unexpectedly returns control with a live terminal ID or a runtime note that the command may still be running, treat that state as still blocked. Do not inspect partial terminal output, do not resume other review work, and do not emit user-visible commentary until the same linter run has completed and the linter section can be classified.
-- Rule: Do not kill, restart, or replace the active linter run, and do not launch a second azurerm-linter pass during normal review merely because the primary run did not yield valid stdout JSON.
-- Rule: If the primary linter run does not produce a classifiable completed result, do not continue the review from file evidence alone; fail closed with `Not run` for the linter section or hard-stop the review as the active prompt requires.
-
-azurerm-linter execution-state decision table:
-
-| Condition | Required action |
-| --- | --- |
-| In-scope provider Go files exist | Run one blocking sync `azurerm-linter` call |
-| The sync linter call is still running | Stay blocked and do no unrelated review work |
-| The sync linter call returns early with a live terminal ID or runtime note that it may still be running | Treat it as still blocked; do not query partial output |
-| The completed run yields valid JSON findings | Classify from the completed JSON payload |
-| The completed run deterministically reports zero findings | Classify as `No issues` |
-| The completed run deterministically reports `no packages to analyze` for zero changed packages | Classify as `Not applicable` |
-| The completed run deterministically reports a tool-availability or invocation problem | Classify as `Not run` |
-| The completed run is still unclassifiable | Fail closed rather than continuing the review |
-
-### REVIEW-LINT-002C: Default to filtered mode first
-- Rule: The preferred review-time lint pass is normal filtered JSON mode with shell-native stderr suppression: `azurerm-linter -output json` plus the active shell's null-device redirection for stderr.
-- Rule: Do not default to `--no-filter`.
-- Rule: Treat filtered mode as the primary run because it is faster and scoped to the current diff shape detected by the tool.
-- Rule: Use stdout JSON as the authoritative structured source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content whenever a valid JSON payload is present.
-- Rule: Treat stderr as diagnostics only; do not trigger a second linter pass just to recover diagnostic text during normal review.
-- Rule: Normal review runs should rely on filtered azurerm-linter mode as the authoritative baseline, and should not add a `--no-filter` workaround pass for deletion-only diffs or `0` changed lines during ordinary review runs.
-- Rule: If the user explicitly asks for broader package debt or manual no-filter validation, disclose that this is broader than the standard review scope.
-
-### REVIEW-LINT-002E: Match linter invocation to the review type deterministically
-- Rule: Local review should use a direct native filtered `azurerm-linter -output json` invocation without `--pr`.
-- Rule: Committed review should use the direct native invocation `azurerm-linter --pr=<number> -output json` when a valid pull request number can be determined deterministically from explicit review context.
-- Rule: Allowed PR number sources are:
-  - the active pull request context, when available
-  - the currently open or viewed pull request context, when available
-  - an explicit PR number provided by the user or prompt invocation text
-- Rule: Do not guess or invent a PR number from the branch name, diff text, commit messages, or other ambiguous signals.
-- Rule: If explicit user-supplied PR context conflicts with environment PR context and there is no explicit user override, do not run the linter.
-- Rule: If committed review cannot determine a valid PR number, report the linter section as `Not run` with a concise summary that instructs the user to provide an explicit PR number or run the review from an active ready-for-review pull request context.
-- Rule: When the PR number was not provided explicitly in the committed review invocation, that summary should include an example of how to pass one, such as `/code-review-committed-changes PR 12345`.
-
-### REVIEW-LINT-003: Allowed azurerm-linter section statuses
-- Rule: The linter section must use exactly one of these statuses:
-  - Issues found
-  - No issues
-  - Not applicable
-  - Not run
-
-### REVIEW-LINT-003A: Treat "no packages to analyze" as Not applicable when caused by zero changed files
-- Rule: If azurerm-linter output shows that it found zero changed files or zero changed packages for the selected scope and then prints `Error: no packages to analyze`, classify the linter section as `Not applicable` rather than `Not run`.
-- Rule: In this case, record the tool output in `Summary`, set `Issue Count` to `0` or `n/a`, and keep the `### 🎯 **MUST FIX**` section as `- None`.
-- Rule: Do not treat this specific output shape as a tool failure requiring an install hint.
-
-### REVIEW-LINT-003B: Treat flag and usage parse errors as Not run due to invocation error
-- Rule: If azurerm-linter exits with a flag parsing or usage error such as `flag provided but not defined` and prints its usage help, classify the linter section as `Not run`.
-- Rule: In this case, record the command error in `Summary`, keep the `### 🎯 **MUST FIX**` section as `- None`, and do not emit an install hint unless there is separate evidence that the binary is missing.
-- Rule: When the corrected command form is deterministic from the prompt context, include that correction in `Summary`.
-
-### REVIEW-LINT-003C: Prefer JSON payloads when available
-- Rule: When azurerm-linter emits a valid JSON payload, treat that payload as the authoritative source for `Version`, `Status`, `Run Scope`, `Issue Count`, `Summary`, and `### 🎯 **MUST FIX**` content.
-- Rule: Ignore human-readable preamble logs when a valid JSON payload is present, except when they are needed to explain a non-JSON failure.
-- Rule: Extract the JSON object from the linter output even if log lines precede it.
-- Rule: If `-output json` is unsupported by the installed binary and the tool reports a flag or usage parse error, classify the section as `Not run` rather than falling back to text scraping.
-- Rule: If a valid JSON payload is present but its `version` field is missing, unparsable, or lower than `v0.2.0`, classify the section as `Not run` and state that JSON review mode requires `azurerm-linter v0.2.0` or newer.
-
-### REVIEW-LINT-003D: Only truly unclassifiable linter completion fails closed
-- Rule: If the primary azurerm-linter run completes and deterministically reports findings, zero findings, or a known `Not applicable`/`Not run` shape, classify that completed result normally.
-- Rule: Fail closed only when the primary azurerm-linter run completes but still does not produce a classifiable result for the required review flow.
-- Rule: In that case, either report the linter section as `Not run` with a concise reason from the completed run or hard-stop if the active prompt requires a classifiable linter result before review output.
-- Rule: Do not replace missing linter classification with broader ad hoc file auditing or first-person narration about continuing anyway.
-
-### REVIEW-LINT-003E: Completed zero-issue runs are valid classifications
-- Rule: A completed azurerm-linter run that deterministically reports zero findings is a successful classifiable outcome, not a failure.
-- Rule: In that case, use `Status: No issues` and keep the `### 🎯 **MUST FIX**` section as `- None`.
-- Rule: Do not treat a completed zero-issue run as `Not run` merely because the tool found nothing to report.
-
-### REVIEW-LINT-004: azurerm-linter findings are reported as issues
-- Rule: When azurerm-linter reports findings for the executed linter scope, report them as issues.
-- Rule: Do not downgrade, suppress, or reclassify azurerm-linter findings based on contributor guidance preferences.
-- Rule: If the executed linter scope is broader or narrower than the reviewed diff, disclose that scope mismatch, but still report the linter findings found in the executed scope.
-- Rule: azurerm-linter findings must not remain only inside the linter subsection; they must also be surfaced in the review's main `ISSUES` section.
-- Rule: The linter subsection is the execution report. The main `ISSUES` section is where the actionable findings are enumerated.
-- Rule: Actionable violation lines should appear in a separate `### 🎯 **MUST FIX**` section immediately after the `### 🧰 **AZURERM LINTER**` execution report.
-
-### REVIEW-LINT-005: Report scope and failure reasons explicitly
-- Rule: The linter section must state the scope it covered.
-- Rule: The linter section should prioritize reviewer-facing results over raw execution mechanics.
-- Rule: If the linter could not be executed or could not be scoped correctly, report Not run with the concrete reason.
-- Rule: Do not silently omit the tool or imply that it passed when it was not run.
-- Rule: When the local binary is missing or the section is reported as Not run for tool-availability reasons, include an install hint of the form:
-  - Repo: [QixiaLu/azurerm-linter](https://github.com/QixiaLu/azurerm-linter)
-  - Install: go install github.com/qixialu/azurerm-linter@latest
-- Rule: When the section is `Not run` because the installed binary is older than `v0.2.0` or does not support `-output json`, the summary should explicitly say that review requires `azurerm-linter v0.2.0` or newer.
-- Rule: Do not describe a WSL-prefixed or cross-shell-wrapped linter invocation as compliant review execution on Windows when the local binary is available natively.
-- Rule: The linter section should describe the filtered run that powers the normal review flow.
-- Rule: The `### 🧰 **AZURERM LINTER**` execution report should be limited to these reviewer-facing fields only:
-  - Version
-  - Status
-  - Run Scope
-  - Issue Count
-  - Summary
-- Rule: The normal review output should then include a separate `### 🎯 **MUST FIX**` section with the actionable lines.
-- Rule: If a direct linter invocation cannot be interpreted deterministically, prefer `Not run` with a concise reason over creating extra execution scaffolding.
-
-### REVIEW-LINT-005A: Structure the linter section from actual tool output
-- Rule: When a valid JSON payload is present, capture `version` as the linter version and `summary.issue_count` as the issue count.
-- Rule: When a valid JSON payload is absent, the tool's issue footer (`Found X issue(s)`) may be used as the issue count when present.
-- Rule: Treat preamble and cleanup logs (for example auto-detected remote, worktree creation, changed package detection, loading packages, cleanup) as execution notes or summary material, not as findings.
-- Rule: Treat only the violation lines as `### 🎯 **MUST FIX**` entries.
-- Rule: If there are no linter violations, the `### 🎯 **MUST FIX**` section must contain exactly one bullet: `- None`.
-- Rule: If there are one or more linter violations, the `### 🎯 **MUST FIX**` section must be introduced by that exact heading and then list one normalized violation per bullet, and must not collapse multiple violations into a single sentence.
-- Rule: When a deterministic repo-relative file path and line number are available, each `### 🎯 **MUST FIX**` bullet should prefer the form `CHECKID [file:line](repo/relative/path#Lline): message`.
-- Rule: In the linked form, the `file:line` token should be a single Markdown link so the visible shape matches other clickable file references in the review.
-- Rule: When the basename is unambiguous within the current `### 🎯 **MUST FIX**` section, use `basename:line` as the link label.
-- Rule: When the basename would be ambiguous within the current `### 🎯 **MUST FIX**` section, use `repo/relative/path:line` as both the link label and the link target label.
-- Rule: If deterministic repo-relative path normalization is not possible, keep the fallback form `CHECKID path:line: message` rather than guessing.
-- Rule: When a valid JSON payload is present, derive findings from `findings[]` rather than scraping text lines.
-- Rule: When a JSON finding message repeats the check ID as a leading prefix (for example `AZBP010: ...`), remove that duplicate prefix when constructing the final `### 🎯 **MUST FIX**` bullet.
-- Rule: When a valid JSON payload is present, derive reviewer-facing summary facts from JSON fields such as `version`, `summary.changed_files`, `summary.changed_lines`, `summary.issue_count`, `scope.mode`, and `scope.patterns` rather than from log lines.
-- Rule: When filtered mode reports changed files but zero changed lines, preserve that fact in `Summary` as tool behavior, not as a trigger for a workaround pass.
-- Rule: Omit low-value execution chatter such as current branch, upstream branch, merge-base, and raw loader mode from normal successful output unless it materially explains the result.
-- Rule: On successful runs, prefer a concise execution report plus a separate `### 🎯 **MUST FIX**` section over field-by-field diagnostics.
-- Rule: Build the normal linter subsection from the direct command output returned by the linter run.
-
-### REVIEW-LINT-005B: Normalize finding lines when possible
-- Rule: Each reported linter finding should preserve the check ID, file path, line number, and message from the tool output.
-- Rule: When the tool runs in a temporary worktree and emits absolute temporary paths, convert them to repo-relative paths when this can be done deterministically.
-- Rule: If deterministic path normalization is not possible, keep the raw path rather than guessing.
-
-### REVIEW-LINT-005C: Persist and inspect full linter output deterministically
-- Rule: Do not create or persist temporary linter log files in the normal review path.
-- Rule: Do not write generated helper scripts or log artifacts to the system temporary directory in the normal review path.
-- Rule: If explicit debugging is requested later, any temporary artifacts must be clearly intentional and removed before the review run completes.
-
-### REVIEW-LINT-005D: Do not claim absence without searching the full saved output
-- Rule: Do not state that a specific rule or file was not reported by azurerm-linter unless the full saved output was searched for the relevant file path and-or rule ID.
-
-### REVIEW-LINT-006: Prefer exact review-scope linting
-- Rule: The linter invocation should match the selected review scope as closely as possible.
-- Rule: If exact scoping is not possible, disclose any broader or narrower scope in the linter section.
-
 ## Output semantics
 
 ### REVIEW-OUT-001: Reviews must be evidence-forward
@@ -531,10 +514,14 @@ azurerm-linter execution-state decision table:
 - Rule: When a conclusion cannot be proven, say so directly in the review rather than compensating with invented certainty.
 
 ### REVIEW-OUT-005: Successful fresh runs must emit the full current template
-- Rule: If the mandatory procedure succeeds for the selected review type, emit the full current prompt-defined review template.
+- Rule: If the mandatory procedure succeeds for the selected review type, emit the full current routed review template.
+- Rule: When the selected review type routes `review-presentation`, the final successful review body must follow `.github/instructions/review-presentation-compliance-contract.instructions.md`.
+- Rule: When the selected review type does not route `review-presentation`, the final successful review body must follow the prompt-defined template for that workflow.
+- Rule: For routed committed and local review, a normal successful review body is valid only when both conditions hold: the evidence and findings were gathered in a fresh run under the current contracts, and the final rendered body exactly matches the current `review-presentation` contract.
+- Rule: If either condition fails, the workflow must fail closed and must not emit a normal review body.
 - Rule: Do not short-circuit to a previous review, a delta-only summary, or wording such as `same findings as before` or `no change from the last review`.
 - Rule: This applies even when the reviewed code, linter findings, or conclusions are unchanged from an earlier invocation.
-- Rule: Current prompt/template/layout requirements are part of the output contract and must be honored on every successful fresh run.
+- Rule: Current routed template/layout requirements are part of the output contract and must be honored on every successful fresh run.
 
 ### REVIEW-OUT-006: Freeze the review before emitting final output
 - Rule: Complete evidence gathering, silent verification, file coverage checks, linter classification, and finding classification before emitting the first character of the normal review output.
@@ -543,12 +530,24 @@ azurerm-linter execution-state decision table:
 - Rule: Do not use user-visible self-correction or second-pass wording inside the normal review output, such as `one more thing`, `actually`, `updating this review`, `adding another issue`, or similar mid-review amendments.
 
 ### REVIEW-OUT-007: Skill verification footer is allowed when skills were actually used
-- Rule: When a review actually loads and uses one or more routed skills, the final review output may append a verification footer after the prompt's last review section.
+- Rule: For normal successful routed committed and local review, the final review output must append a verification footer after the prompt's last review section.
 - Rule: That verification footer is part of the normal successful output contract, not extra narration.
-- Rule: The verification footer must be omitted when no skill was actually used during the review.
-- Rule: The verification footer may contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
+- Rule: For routed committed and local review, the verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill.
+- Rule: A render-only presentation skill may own footer rendering without adding its own `Skill used:` line, as long as it preserves the actual routed review-skill set supplied by the prompt.
 - Rule: Do not infer skill use from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - Rule: If the review body states that a skill was loaded or used, the verification footer should include the matching `Skill used:` line.
+
+### REVIEW-OUT-007A: Normal successful routed reviews use one canonical stage sequence
+- Rule: For routed committed and local review, the normal successful stage sequence is `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, then `review-presentation`, in that exact order.
+- Rule: After preflight succeeds, the prompt must invoke those stages in that exact order and must not skip a later stage merely because an earlier stage appears to have no findings or no visible delta.
+- Rule: When a routed stage has no findings or no additional work, the prompt must still invoke it with the appropriate explicit empty or no-op payload for that stage rather than skipping the stage.
+- Rule: Preflight hard-stops remain allowed before the routed stage sequence begins; once the normal successful routed path starts, missing stages are invalid.
+
+### REVIEW-OUT-007B: Verification footer must be backed by an execution ledger
+- Rule: When a routed review emits a verification footer, the workflow must maintain a current-run execution ledger containing `requiredStages` and `executedStages`.
+- Rule: For the normal successful routed path, `requiredStages` and `executedStages` must match exactly in content and order before the final review body may be emitted.
+- Rule: `verificationFooter.skillsUsed` must be derived mechanically from `executedStages`, preserving order and excluding only the render-only `review-presentation` stage.
+- Rule: If `requiredStages` and `executedStages` do not match exactly, the workflow must hard-stop instead of emitting a normal review body.
 
 ### REVIEW-OUT-008: Overall assessment must align with the final issues state
 - Rule: The `OVERALL ASSESSMENT` section must be derived from the final frozen `ISSUES` section and must not carry forward stale defects that were cleared before the review body was emitted.

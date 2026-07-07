@@ -47,11 +47,25 @@ if ($snapshotFiles.Count -eq 0) {
 
 $schemaPath = Join-Path $PSScriptRoot "schema/history-snapshot.schema.json"
 $snapshots = @()
+$invalidSnapshots = @()
 foreach ($snapshotFile in $snapshotFiles) {
     $content = Get-Content -LiteralPath $snapshotFile.FullName -Raw
-    $isValid = $content | Test-Json -SchemaFile $schemaPath
-    if (-not $isValid) {
-        throw "history snapshot schema validation failed: $($snapshotFile.FullName)"
+    try {
+        $isValid = $content | Test-Json -SchemaFile $schemaPath -ErrorAction Stop
+        if (-not $isValid) {
+            $invalidSnapshots += [pscustomobject]@{
+                path = $snapshotFile.FullName
+                reason = 'schema validation returned false'
+            }
+            continue
+        }
+    }
+    catch {
+        $invalidSnapshots += [pscustomobject]@{
+            path = $snapshotFile.FullName
+            reason = $_.Exception.Message
+        }
+        continue
     }
 
     $snapshot = $content | ConvertFrom-Json
@@ -59,6 +73,10 @@ foreach ($snapshotFile in $snapshotFiles) {
         path = $snapshotFile.FullName
         data = $snapshot
     }
+}
+
+if ($snapshots.Count -eq 0) {
+    throw "no valid regression history snapshots found under $HistoryDirectory"
 }
 
 $orderedSnapshots = @($snapshots | Sort-Object { [DateTime]$_.data.createdUtc })
@@ -118,6 +136,7 @@ if ($previousSnapshot) {
 
 $summary = [ordered]@{
     snapshotCount = $orderedSnapshots.Count
+    invalidSnapshotCount = $invalidSnapshots.Count
     windowCount = $windowSnapshots.Count
     latestSnapshot = [ordered]@{
         snapshotId = $latestSnapshot.data.snapshotId
@@ -151,6 +170,7 @@ $summary = [ordered]@{
     regressions = $regressions
     improvements = $improvements
     latestCoverage = $latestSnapshot.data.suite.targetSkillCoverage
+    invalidSnapshots = $invalidSnapshots
 }
 
 if ($Output -eq "json") {
@@ -160,6 +180,7 @@ if ($Output -eq "json") {
 
 Write-Output "Regression history summary"
 Write-Output "  Snapshot Count   : $($summary.snapshotCount)"
+Write-Output "  Invalid Snapshots: $($summary.invalidSnapshotCount)"
 Write-Output "  Window Count     : $($summary.windowCount)"
 Write-Output "  Latest Snapshot  : $($summary.latestSnapshot.snapshotId)"
 Write-Output "  Latest Avg Score : $($summary.latestSnapshot.metrics.averageOverallScore)"
@@ -192,5 +213,16 @@ if ($summary.improvements.Count -eq 0) {
 else {
     foreach ($improvement in $summary.improvements) {
         Write-Output "  $($improvement.caseId): $($improvement.previousScore) -> $($improvement.latestScore)"
+    }
+}
+
+Write-Output ""
+Write-Output "Invalid Snapshots"
+if ($summary.invalidSnapshots.Count -eq 0) {
+    Write-Output "  None"
+}
+else {
+    foreach ($invalidSnapshot in $summary.invalidSnapshots) {
+        Write-Output "  $($invalidSnapshot.path): $($invalidSnapshot.reason)"
     }
 }

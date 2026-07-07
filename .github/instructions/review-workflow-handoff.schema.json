@@ -13,7 +13,8 @@
     "evidence",
     "reasoning",
     "confidence",
-    "status"
+    "classification",
+    "visible"
   ],
   "properties": {
     "id": {
@@ -90,15 +91,36 @@
         "low"
       ]
     },
-    "status": {
+    "classification": {
       "type": "string",
       "enum": [
-        "candidate",
-        "observation",
-        "confirmed",
-        "downgraded",
-        "dismissed"
+        "issue",
+        "observation"
       ]
+    },
+    "visible": {
+      "type": "boolean"
+    },
+    "issueClasses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ownership-overlap",
+          "mode-gating-symmetry",
+          "destructive-path-gating",
+          "poller-terminal-failure",
+          "validator-doc-parity",
+          "companion-completeness",
+          "list-resource-exception",
+          "identity-list-docs-tests",
+          "patch-residual-state",
+          "optional-state-drift",
+          "acceptance-test-matrix",
+          "docs-example-correctness"
+        ]
+      },
+      "uniqueItems": true
     },
     "ruleReferences": {
       "type": "array",
@@ -113,6 +135,13 @@
       "items": {
         "$ref": "#/$defs/roleNote"
       }
+    },
+    "mergedInto": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "presentation": {
+      "$ref": "#/$defs/presentationHint"
     }
   },
   "$defs": {
@@ -175,6 +204,51 @@
           ]
         },
         "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "presentationHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewType": {
+          "type": "string",
+          "enum": [
+            "change-request",
+            "nitpick",
+            "refactor-suggestion",
+            "thought-or-concern",
+            "positive-feedback",
+            "future-consideration"
+          ]
+        },
+        "impact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestedChange": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correctedCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codeLanguage": {
           "type": "string",
           "minLength": 1
         }

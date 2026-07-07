@@ -1,9 +1,9 @@
 ---
 name: review-advocate
-description: Transitional false-positive-defense pass for code reviews — challenge candidate Issues, defend intentional design, inspect trust boundaries, and filter false positives before review output is frozen. Use when a review workflow has produced candidate Issues.
+description: Workflow false-positive-defense pass for code reviews — challenge existing findings, defend intentional design, inspect trust boundaries, and add evidence-backed advocate commentary before moderation freezes the output.
 ---
 
-# Review Advocate (transitional false-positive-defense gate)
+# Review Advocate (workflow false-positive-defense gate)
 
 ## Canonical sources of truth (contract-driven)
 
@@ -11,11 +11,11 @@ When running the advocate pass, use `.github/instructions/review-advocate-compli
 
 - when the advocate pass is allowed to run
 - what it evaluates and what counts as a valid defense
-- the deterministic `Confirmed`, `Downgraded`, and `Dismissed` outcome mapping
+- how it records evidence-backed defense commentary on existing findings
 - the `REVIEW-ADV-*` rule families
 
 Do not treat this skill as a second independent rule source. The skill describes the method; the contract owns the deterministic rules.
-Do not treat this skill as the permanent owner of final synthesis. In the current workflow it is a transitional false-positive-defense gate that narrows or dismisses weak candidate Issues before frozen output.
+This skill performs false-positive defense commentary before the review is frozen.
 
 ## Mandatory: read the entire skill
 
@@ -27,8 +27,8 @@ Before running an advocate pass, complete this checklist:
 
 - [ ] I have read this skill to EOF.
 - [ ] I have loaded `.github/instructions/review-advocate-compliance-contract.instructions.md` to EOF and applied the relevant `REVIEW-ADV-*` rules.
-- [ ] The review workflow has already produced candidate Issues, whether from the primary pass or any routed skeptic or architect pass (otherwise this skill does not run).
-- [ ] I am evaluating candidate Issues only, not strengths or positive observations.
+- [ ] The review workflow has already produced a schema-conformant findings set or an explicit empty record set from the earlier routed passes.
+- [ ] I am evaluating existing findings only, not strengths or positive observations.
 
 If preflight is incomplete, do not run the advocate pass.
 
@@ -50,8 +50,10 @@ This skill is the reusable second-pass advocate technique for the code-review pr
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 
-It runs as invisible machinery between the earlier review passes and frozen output. It does not produce its own output section; it only adjusts how candidate findings land in `### 🔴 **ISSUES**` and `### 🟡 **OBSERVATIONS**` per the advocate contract.
-It consumes the shared intermediate finding records produced earlier in the workflow and resolves only the records whose `status` is `candidate`. Those records should conform to `.github/instructions/review-workflow-handoff.schema.json`.
+It runs as invisible machinery between the earlier review passes and frozen output. It does not produce its own output section; it only adds advocate commentary to the shared findings set before moderation.
+It consumes the shared intermediate finding records produced earlier in the workflow. Those records should conform to `.github/instructions/review-workflow-handoff.schema.json`.
+It may also receive an explicit empty shared finding set and return a deterministic no-op result while still counting as an executed routed stage.
+It does not merge duplicate findings, combine overlapping records, or rewrite multiple concerns into a single final record.
 
 ## Role
 
@@ -59,10 +61,10 @@ You are the **defense advocate** for the code author. Your job is to:
 
 - understand and articulate WHY the changes make sense
 - find the reasoning behind non-obvious decisions
-- defend against false positives in candidate Issues
-- provide evidence-backed counterpoints to candidate concerns
+- defend against false positives in existing findings
+- provide evidence-backed counterpoints to those concerns
 
-This role is intentionally narrow. It is responsible for current false-positive defense and severity correction, not for becoming the long-term moderator or final synthesis owner.
+This role is intentionally narrow. It is responsible for false-positive defense commentary, not for duplicate merge, cross-record normalization, final classification, or turning several findings into one final record.
 
 Represent the author strongly, but honestly. Your credibility depends on conceding genuine problems.
 
@@ -72,7 +74,7 @@ Represent the author strongly, but honestly. Your credibility depends on concedi
 2. **Find the "why"** — search for design intent in code comments, doc strings, the PR/commit description, surrounding architecture, naming patterns, and test coverage.
 3. **Explain trade-offs** — identify what the author optimized for and what they traded away.
 4. **Inspect trust boundaries** — internal code correctly trusting internal guarantees is good design, not missing validation. Identify where validation or guarantees already exist before accepting a "missing check" finding.
-5. **Re-evaluate severity** — before output is frozen, decide each candidate Issue's outcome under the advocate contract's deterministic mapping.
+5. **Record the defense where it belongs** — before the review is frozen, attach evidence-backed defense commentary to the same finding record through `roleNotes`.
 
 ## Burden of proof
 
@@ -82,19 +84,20 @@ Defenses must be proven with evidence, not asserted:
 - quote comments or docs that explain the design
 - cross-reference similar patterns elsewhere in the codebase
 
-Mark derived assumptions clearly ("based on the surrounding patterns, this appears intentional because...") rather than stating inference as fact. If evidence is inconclusive, choose the lower justified classification per the contract rather than asserting intent as fact.
+Mark derived assumptions clearly ("based on the surrounding patterns, this appears intentional because...") rather than stating inference as fact. If evidence is inconclusive, record the narrowest justified defense note rather than asserting intent as fact.
 
 ## Outcomes
 
-Apply the deterministic outcome mapping defined in `REVIEW-ADV-005`:
+The advocate does not own final outcomes. It contributes:
 
-- **Confirmed** — keep in `### 🔴 **ISSUES**` at original or adjusted severity.
-- **Downgraded** — keep in `### 🔴 **ISSUES**` at reduced severity.
-- **Dismissed** — move to `### 🟡 **OBSERVATIONS**` with a brief `[⚖️ ADVOCATE: <one-line defense>]` note.
+- **Defense note** — an evidence-backed `roleNotes` entry that explains why a finding may be narrower, less severe, or intentionally designed.
+- **Challenge note** — an evidence-backed `roleNotes` entry that questions part of a finding without deleting it.
+- **Supplemental evidence** — additional evidence or reasoning attached to the same shared finding record.
+- **No-op result** — an explicit do-nothing outcome when the routed workflow invokes the advocate pass with an empty findings set.
 
-No candidate finding may be silently dropped: every candidate Issue must resolve to exactly one of these outcomes.
-Preserve the shared handoff fields while making that status transition so later workflow changes can swap transport or role ownership without redefining the finding shape.
+No finding may be silently dropped by the advocate pass.
 
 ## Tone
 
 A senior engineer who wrote this code, explaining it to a skeptical reviewer. Thorough but not defensive. The best defense is understanding, not denial. Frame defenses as explanations ("the reason for this is...", "this handles the case where..."), and acknowledge uncertainty when appropriate.
+<!-- REVIEW-ADV-SKILL-EOF -->

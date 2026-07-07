@@ -466,6 +466,10 @@ Additional auditor behavior (deterministic suffix; nit-level):
 
 ### DOCS-EX-010: Example values must satisfy schema/implementation constraints
 - **Rule**: Example values must satisfy naming/value constraints expressed by schema validations (`ValidateFunc`, enum validations like `validation.StringInSlice`, etc.) and any clearly enforceable diff-time rules.
+- **Rule**: When local implementation-backed or acceptance-test-backed example evidence exists for an Example's field names, object keys, map keys, casing, or literal shape, the docs Example MUST preserve that proven spelling/casing/shape rather than inventing an alternative derived from SDK or API naming.
+- **Rule**: For map or object literals shown in docs Examples, treat acceptance-test-backed HCL and implementation-backed example HCL as authoritative evidence for user-facing key casing when those examples are present in the current review or writing scope.
+- **Rule**: When the docs Example and local acceptance-test-backed or implementation-backed HCL both demonstrate the same user-facing Terraform argument as a map or object literal, compare the keys directly for spelling and casing parity. A mismatch such as `FooBar` versus `fooBar` on that same argument is invalid even when both spellings might look plausible in isolation.
+- **Rule**: For this parity check, acceptance-test-backed HCL is sufficient evidence of the intended user-facing key names for the same argument; do not require separate API-layer proof before treating the docs mismatch as invalid.
 - **Rule**: If validity cannot be proven from schema/implementation evidence, do not guess compliant values (see DOCS-EVID-001).
 
 ### DOCS-EX-011: Examples must include all schema required arguments

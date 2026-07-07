@@ -3,7 +3,14 @@
   "title": "Acceptance-testing guidance inlines one-use fmt.Sprintf helper arguments without flattening reused locals",
   "task": "acceptance-testing",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this case to benchmark the fmt.Sprintf helper-composition rule so one-use helper locals are inlined without creating false positives on reused locals.",
+    "genericCondition": "Sanitized fixture models an acceptance-test cleanup where single-use template/config locals are forwarded once into fmt.Sprintf, but one helper value is legitimately reused and should remain a local.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized acceptance-testing guidance scenario where helper functions return fmt.Sprintf-based Terraform config strings. The correct guidance should inline one-use helper calls like r.template(data) or r.basic(data) directly into fmt.Sprintf, while leaving reused locals alone.",
   "fixture": {

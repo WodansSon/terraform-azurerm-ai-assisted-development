@@ -3,7 +3,14 @@
   "title": "Local code review catches embedded Terraform indentation drift in acceptance tests",
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the example review markdown output to benchmark reviewer handling of embedded Terraform formatting drift inside acceptance-test Go files.",
+    "genericCondition": "Sanitized fixture models a local review where embedded Terraform in a Go acceptance-test heredoc looks aligned at the current tab width but still violates the repository formatting rule because tabs and spaces are mixed.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where an acceptance-test file under `internal/**/*_test.go` contains embedded Terraform that mixes tabs and spaces for indentation. The correct review should flag the embedded Terraform formatting issue, keep the concern scoped to the heredoc, and not rely on test execution to prove the problem.",
   "fixture": {

@@ -3,7 +3,14 @@
   "title": "Committed review honors docs deprecation policy in mixed PR scope",
   "task": "code-review-committed-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the sample review Markdown output and scored result to benchmark mixed committed-review docs deprecation policy handling.",
+    "genericCondition": "The modeled PR updates implementation and docs together. The live resource doc intentionally removes the legacy `minimum_tls_version` field, while the versioned upgrade guide carries the migration note.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized committed-review scenario where a mixed Go-plus-reference-doc PR removes a legacy non-vNext field from live docs while the provider still accepts that field on a transitional non-5.0 path. The correct review must apply `DOCS-DEPR-*` and keep migration guidance in the upgrade guide rather than raising a docs-parity issue.",
   "fixture": {
@@ -12,9 +19,9 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/cdn/cdn_frontdoor_custom_domain_resource.go",
-      "website/docs/r/cdn_frontdoor_custom_domain.html.markdown",
-      "website/docs/guides/5.0-upgrade-guide.html.markdown"
+      "internal/services/example/example_custom_domain_resource.go",
+      "website/docs/r/example_custom_domain.html.markdown",
+      "website/docs/guides/example-upgrade-guide.html.markdown"
     ],
     "notes": "The modeled PR updates implementation and docs together. The live resource doc intentionally removes the legacy `minimum_tls_version` field, while the versioned upgrade guide carries the migration note."
   },

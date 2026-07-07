@@ -1,19 +1,17 @@
 # Sanitized Fixture: Committed Review Keeps Multi-Issue Accuracy On A New Service PR
 
-This fixture is derived from a real committed-review miss pattern, but the final artifact is sanitized and does not retain live PR identity.
+This fixture is synthetic and sanitized for regression benchmarking.
 
 ## Scenario
 
-A committed review covers a new service package with multiple new resources, list resources, tests, and docs.
-
-The change introduces three merge-blocking issues plus one design-risk observation:
+A committed review covers a new service package with multiple new resources, list resources, tests, and docs. The change introduces three merge-blocking issues plus one design-risk observation:
 
 1. One resource update path clears a field through a special-case PUT branch and returns immediately, which silently skips concurrent changes to other updatable fields.
-2. A brand-new public cross-resource ID field is introduced as `scheduler_id` even though provider naming rules require the full referenced resource name, e.g. `durable_task_scheduler_id`.
+2. A brand-new public cross-resource ID field is introduced as `scheduler_id` even though provider naming rules require the full referenced resource name, for example `durable_task_scheduler_id`.
 3. The new resources add repeated generic lifecycle logging such as `Import check`, `Creating`, `Reading`, `Updating`, and `Deleting`.
 4. A retention-policy schema allows duplicate or ambiguous state-specific entries, but the fixture does not provide implementation-backed evidence for the service-side precedence semantics, so that point should remain a non-blocking observation.
 
-The historical failure mode is that review collapses onto the easy lifecycle-logging issue and misses the update-path defect and the public naming issue entirely.
+The modeled failure mode is that review collapses onto the easy lifecycle-logging issue and misses the update-path defect and the public naming issue entirely.
 
 ## Simplified Change Shape
 

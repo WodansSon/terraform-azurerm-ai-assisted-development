@@ -1,63 +1,9 @@
-# Sanitized Fixture: Local Review Catches Create Guard And Identity Callback Regressions
-
-This fixture is synthetic and benchmarks Go create-path review for two provider-specific regressions that are easy to miss together.
-
-## Scenario
-
-A local Go change adds a new create path for a resource under `internal/services/storage/`.
-
-The resource supports Resource Identity, and the create path uses a callback-based Azure helper. The change also performs an existence probe before create.
-
-Two regressions are present at the same time:
-
-- The import-as-exists branch is unconditional, so the provider feature `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` can no longer bypass that guard.
-- The callback-based create helper uses a plain ID-setting callback instead of `sdk.SetIDAndIdentityCallback(...)`, so create-time Resource Identity data is not established when the poller sets the state ID.
-
-## Simplified Code Shape
-
-```go
-func resourceExampleAccountCreate(ctx context.Context, d *pluginsdk.ResourceData, meta interface{}) error {
-    client := meta.(*clients.Client).Storage.ExampleAccountsClient
-    subscriptionId := meta.(*clients.Client).Account.SubscriptionId
-
-    id := parse.NewExampleAccountID(subscriptionId, d.Get("resource_group_name").(string), d.Get("name").(string))
-
-    existing, err := client.Get(ctx, id)
-    if err != nil && !response.WasNotFound(existing.HttpResponse) {
-        return fmt.Errorf("checking for existing %s: %+v", id, err)
-    }
-    if !response.WasNotFound(existing.HttpResponse) {
-        return tf.ImportAsExistsError("azurerm_example_account", id.ID())
-    }
-
-    props := storageaccounts.Account{
-        Properties: &storageaccounts.AccountProperties{
-            PublicNetworkAccess: pointer.To(storageaccounts.PublicNetworkAccessEnabled),
-        },
-    }
-
-    if err := client.AccountsCreateCallbackThenPoll(ctx, id, props, sdk.SetIDCallback(d, id.ID())); err != nil {
-        return fmt.Errorf("creating %s: %+v", id, err)
-    }
-
-    return resourceExampleAccountRead(ctx, d, meta)
+# Sanitized Fixture: Local Review Catches Create Guard And Identity Callback Regressions This fixture is synthetic and benchmarks Go create-path review for two provider-specific regressions that are easy to miss together. ## Scenario A local Go change adds a new create path for a resource under `internal/services/example/`. The resource supports Resource Identity, and the create path uses a callback-based Azure helper. The change also performs an existence probe before create. Two regressions are present at the same time: - The import-as-exists branch is unconditional, so the provider feature `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` can no longer bypass that guard.
+- The callback-based create helper uses a plain ID-setting callback instead of `sdk.SetIDAndIdentityCallback(...)`, so create-time Resource Identity data is not established when the poller sets the state ID. ## Simplified Code Shape ```go
+func resourceExampleAccountCreate(ctx context.Context, d *pluginsdk.ResourceData, meta interface{}) error { client := meta.(*clients.Client).Storage.ExampleAccountsClient subscriptionId := meta.(*clients.Client).Account.SubscriptionId id := parse.NewExampleAccountID(subscriptionId, d.Get("resource_group_name").(string), d.Get("name").(string)) existing, err := client.Get(ctx, id) if err != nil && !response.WasNotFound(existing.HttpResponse) { return fmt.Errorf("checking for existing %s: %+v", id, err) } if !response.WasNotFound(existing.HttpResponse) { return tf.ImportAsExistsError("azurerm_example_account", id.ID()) } props := storageaccounts.Account{ Properties: &storageaccounts.AccountProperties{ PublicNetworkAccess: pointer.To(storageaccounts.PublicNetworkAccessEnabled), }, } if err := client.AccountsCreateCallbackThenPoll(ctx, id, props, sdk.SetIDCallback(d, id.ID())); err != nil { return fmt.Errorf("creating %s: %+v", id, err) } return resourceExampleAccountRead(ctx, d, meta)
 }
-```
-
-## Expected Review Behavior
-
-A correct local code review should:
-
-- activate the Go review scope and the create-path review rule for these patterns
+``` ## Expected Review Behavior A correct local code review should: - activate the Go review scope and the create-path review rule for these patterns
 - flag the missing `SkipImportCheckOnCreateAndAllowOverwritingExistingResources` guard around the import-as-exists branch
 - flag the callback-based create flow for omitting `sdk.SetIDAndIdentityCallback(...)` when the resource supports Resource Identity
-- avoid claiming that callback-based `...CreateCallbackThenPoll(...)` helpers are wrong by default
-
-## Expected Must-Catch Outcomes
-
-- `missing-overwrite-feature-guard`
-- `missing-id-and-identity-callback`
-
-## Expected Must-Not-Flag Outcomes
-
-- `callback-helper-itself-is-wrong`
+- avoid claiming that callback-based `...CreateCallbackThenPoll(...)` helpers are wrong by default ## Expected Must-Catch Outcomes - `missing-overwrite-feature-guard`
+- `missing-id-and-identity-callback` ## Expected Must-Not-Flag Outcomes - `callback-helper-itself-is-wrong`

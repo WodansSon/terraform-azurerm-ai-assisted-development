@@ -4,6 +4,13 @@
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case to benchmark dismissed-versus-downgraded advocate outcomes through the generic local review prompt without adding a direct review-advocate task type.",
+    "genericCondition": "Sanitized fixture models a prompt-orchestration update plus advocate-contract wording where the primary review pass can over-flag one design choice, but a second pass should dismiss that false positive while preserving a narrower wording-drift issue.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where the primary review pass produces multiple candidate Issues and the advocate pass must resolve them deterministically: one false positive is dismissed into Observations with rationale, while one real but less severe problem remains in Issues at reduced severity.",
   "fixture": {
@@ -28,7 +35,7 @@
     {
       "key": "advocate-dismissed-finding-observation",
       "severity": "observation",
-      "description": "A false-positive candidate finding should be dismissed into `OBSERVATIONS` with a `[⚖️ ADVOCATE: ...]` annotation rather than staying in `ISSUES` or disappearing entirely."
+      "description": "A false-positive candidate finding should be dismissed into `OBSERVATIONS` with a `[⚖️ ADVOCATE:...]` annotation rather than staying in `ISSUES` or disappearing entirely."
     },
     {
       "key": "advocate-downgraded-finding-stays-in-issues",

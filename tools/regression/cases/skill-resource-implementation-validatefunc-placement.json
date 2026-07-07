@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance distinguishes inline helper validators from bespoke anonymous ValidateFunc closures",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "maintainer-authored",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Maintainer-authored benchmark scenario.",
+    "whyItMattered": "Use this to keep future implementation guidance from drifting back toward blanket inline-closure advice, while also avoiding churn-only demands for untouched legacy validator placement.",
+    "genericCondition": "Sanitized fixture models a schema-validation placement decision without relying on a live provider PR.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where a changed field uses a long anonymous inline ValidateFunc closure and nearby fields use short helper-based validators. The correct guidance should extract the changed bespoke validator into a service-local validate/ file with matching unit coverage while leaving simple inline helper composition alone and without demanding unrelated legacy cleanup elsewhere.",
   "fixture": {
@@ -12,7 +19,7 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/cdn/example_frontdoor_resource.go"
+      "internal/services/example/example_resource.go"
     ],
     "notes": "Sanitized fixture models a schema-validation placement decision without relying on a live provider PR."
   },
@@ -23,7 +30,7 @@
     {
       "key": "inline-anonymous-validator-overuse",
       "severity": "medium",
-      "file": "internal/services/cdn/example_frontdoor_resource.go",
+      "file": "internal/services/example/example_resource.go",
       "description": "The guidance should move the bespoke anonymous ValidateFunc closure into a file-specific validator under validate/, with matching unit coverage."
     }
   ],

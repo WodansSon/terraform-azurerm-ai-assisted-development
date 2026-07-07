@@ -4,6 +4,13 @@
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise the rule directly.",
+    "whyItMattered": "Use this case as a runner smoke test while real PR-derived fixtures are being authored.",
+    "genericCondition": "Smoke-test case only. Not a substitute for a real sanitized PR-derived fixture.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A synthetic adjudicated case used to verify that the regression harness can score a resource-implementation result deterministically.",
   "fixture": {
@@ -44,5 +51,5 @@
       "Skill used: resource-implementation"
     ]
   },
-  "notes": "Use this case as a runner smoke test while real PR-derived fixtures are being authored."
+  "notes": "Use this case as a runner smoke test while adjudicated fixtures are being authored."
 }

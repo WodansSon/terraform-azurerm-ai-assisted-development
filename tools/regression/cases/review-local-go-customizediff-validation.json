@@ -3,7 +3,14 @@
   "title": "Local code review catches Go validation and test-coverage regressions",
   "task": "code-review-local-changes",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Pair this case with the example review markdown output to benchmark both scoring and output-shape expectations.",
+    "genericCondition": "Sanitized fixture models a real local review scenario without retaining live PR identity.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized local-review scenario where a Go implementation change introduces validation behavior but does not add matching acceptance-test coverage.",
   "fixture": {
@@ -12,10 +19,10 @@
   },
   "scope": {
     "changedFiles": [
-      "internal/services/network/example_gateway_resource.go",
-      "internal/services/network/example_gateway_resource_test.go"
+      "internal/services/example/example_gateway_resource.go",
+      "internal/services/example/example_gateway_resource_test.go"
     ],
-    "notes": "Sanitized fixture models a real local review scenario without retaining live PR identity."
+    "notes": "Sanitized fixture models a local review scenario."
   },
   "expectedRules": [
     "REVIEW-SCOPE-005",
@@ -27,7 +34,7 @@
     {
       "key": "missing-validation-coverage",
       "severity": "high",
-      "file": "internal/services/network/example_gateway_resource_test.go",
+      "file": "internal/services/example/example_gateway_resource_test.go",
       "description": "Validation or CustomizeDiff changes should not ship without appropriate test coverage."
     }
   ],

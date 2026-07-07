@@ -190,7 +190,14 @@ foreach ($sectionName in @('Added', 'Changed', 'Fixed')) {
         }
 
         $groupLastEntryLine = (@($entries | Select-Object -Last 1))[0].lineNumber
-        $blankInsideGroup = @($blankLines | Where-Object { $_ -gt $group.lineNumber -and $_ -lt $groupLastEntryLine })
+        $nextGroup = $null
+        $groupPosition = [array]::IndexOf($groups, $group)
+        if ($groupPosition -ge 0 -and $groupPosition -lt ($groups.Count - 1)) {
+            $nextGroup = $groups[$groupPosition + 1]
+        }
+
+        $groupBoundaryLine = if ($null -ne $nextGroup) { $nextGroup.lineNumber } else { $groupLastEntryLine + 1 }
+        $blankInsideGroup = @($blankLines | Where-Object { $_ -gt $group.lineNumber -and $_ -lt $groupBoundaryLine -and $_ -ne ($groupLastEntryLine + 1) })
         foreach ($blankLine in $blankInsideGroup) {
             $issues.Add(("Line {0}: unexpected blank line inside the ``{1}`` group in the Unreleased ``{2}`` section" -f $blankLine, $group.name, $sectionName))
         }

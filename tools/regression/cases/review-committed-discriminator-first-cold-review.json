@@ -1,0 +1,108 @@
+{
+  "id": "review-committed-discriminator-first-cold-review",
+  "title": "Committed review keeps discriminator ownership, lifecycle, patch, and drift findings separate on first cold review",
+  "task": "code-review-committed-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark scenario designed to exercise discriminator-specific cold-review ordering and multi-finding preservation directly.",
+    "whyItMattered": "Use this adjudicated benchmark to keep first cold-review ordering and mixed implementation-plus-docs finding preservation stable for discriminator-specific resources.",
+    "genericCondition": "Sanitized fixture models a new AAD-only project connection resource that accepts a generic project-connection identifier, reads foreign auth variants into state, updates through a create-style PUT helper even though the SDK exposes PATCH, repopulates omitted optional metadata from the API, and ships a changed reference-doc example whose metadata field casing does not match implementation-backed example evidence.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A sanitized committed-review scenario where a brand-new discriminator-specific managed resource supports five separate first-pass findings: ownership-boundary violation, lifecycle-symmetry violation, PUT-versus-PATCH update-shape observation, optional metadata drift, and a broken docs metadata example. The correct cold review must surface them as separate records, keep the destructive lifecycle finding at critical severity, and order the final visible issues by severity instead of discovery order.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-committed-discriminator-first-cold-review/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_aad_project_connection_resource.go",
+      "internal/services/example/example_aad_project_connection_resource_test.go",
+      "internal/services/example/example_project_connection_id_validation.go",
+      "website/docs/r/example_aad_project_connection.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a new discriminator-specific resource whose generic ID handling allows foreign variants into state, whose lifecycle windows are not ownership-symmetric, whose update path uses a create-style helper despite an SDK patch path, whose read path repopulates omitted optional metadata from the API, and whose changed docs example uses metadata field names that do not match implementation-backed example evidence."
+  },
+  "expectedRules": [
+    "REVIEW-CLASS-001A",
+    "REVIEW-COORD-003A",
+    "REVIEW-COORD-004",
+    "REVIEW-COORD-006B",
+    "DOCS-EX-010"
+  ],
+  "mustCatch": [
+    {
+      "key": "foreign-variant-ownership-boundary",
+      "severity": "high",
+      "description": "The committed review should surface that the discriminator-specific resource can adopt, manage, or delete foreign variants when a generic project-connection identifier or read path accepts them into state."
+    },
+    {
+      "key": "foreign-variant-lifecycle-symmetry",
+      "severity": "critical",
+      "description": "The committed review should surface a separate lifecycle-symmetry issue at critical severity when import or read accepts a foreign variant into state, update rejects it later, and delete still removes it, even when the destructive proof is assembled across separate ownership-boundary and delete-window findings on the same generic path."
+    },
+    {
+      "key": "put-versus-patch-observation-preserved",
+      "severity": "medium",
+      "description": "The committed review should preserve a separate non-blocking PUT-versus-PATCH update-shape concern in `OBSERVATIONS` when the SDK exposes a dedicated update path but current-run evidence does not yet prove a blocking field-loss or service-contract failure."
+    },
+    {
+      "key": "optional-metadata-drift",
+      "severity": "high",
+      "description": "The committed review should surface the omitted-config optional metadata drift risk when the read path repopulates API-owned metadata into an Optional field that the config omitted."
+    },
+    {
+      "key": "docs-metadata-example-casing",
+      "severity": "high",
+      "description": "The committed review should surface a docs example correctness issue when the changed reference-doc metadata example uses field names whose casing or values do not match implementation-backed example evidence, and it should cite the supporting `DOCS-*` rule."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "collapsed-discriminator-summary",
+      "description": "The final review must not collapse ownership, lifecycle, PATCH-shape, and optional-state-drift concerns into a single prose summary that makes separate issue-class coverage unverifiable."
+    },
+    {
+      "key": "observation-dropped-because-blocking-issues-exist",
+      "description": "The final review must not let blocking ownership or lifecycle issues suppress the separate PUT-versus-PATCH observation when the fixture evidence supports both."
+    },
+    {
+      "key": "docs-issue-dropped-because-go-findings-exist",
+      "description": "The final review must not let Go implementation findings suppress a separate evidence-backed docs example correctness issue when the changed reference docs are in scope and the docs contract proves the mismatch."
+    },
+    {
+      "key": "local-link-leak-in-final-body",
+      "description": "The assistant-emitted committed review body must not emit editor-local or absolute-disk file references such as `vscode-file://`, `workbench.html`, `AppData`, or `workspaceStorage` anywhere in repo-controlled markdown output."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "OBSERVATIONS",
+      "ISSUES",
+      "OVERALL ASSESSMENT"
+    ],
+    "mustIncludeMarkers": [
+      "foreign",
+      "import/read/update/delete",
+      "PATCH",
+      "metadata",
+      "DOCS-EX-010"
+    ],
+    "mustNotIncludeMarkers": [
+      "vscode-file://",
+      "workbench.html",
+      "AppData",
+      "workspaceStorage"
+    ]
+  },
+  "notes": "Use this adjudicated case and paired sample review output to benchmark discriminator-specific first-cold-review ordering, severity-sorted visible issues, and preservation of separate ownership, lifecycle, PATCH-shape, optional-state-drift, and docs example correctness findings on the same PR."
+}

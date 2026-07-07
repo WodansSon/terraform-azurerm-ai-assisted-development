@@ -59,7 +59,12 @@ The current contract-driven domains are:
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/review-linter-compliance-contract.instructions.md`
+- `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
+- `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- `.github/instructions/review-skeptic-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
 ## Current High-Signal Implementation Rule
@@ -192,6 +197,8 @@ For new `CHANGELOG.md` entries under `## [Unreleased]`:
 - If only one group appears in a subsection, do not emit the empty group and do not add a separator blank line just for formatting
 - Prefer the user-facing capability tag over `[Internal]` when the change materially affects end-user behavior
 - Use `[Internal]` for repo-only harness, validation, scaffolding, or maintainer workflow changes
+- Treat `User-Priority` bullets as end-user release notes: they should describe what users can expect to notice or rely on, not the internal sequence of prompt, contract, skill, schema, or regression changes that produced that outcome
+- If a `User-Priority` bullet requires repo-internal workflow knowledge to make sense, collapse and rewrite it at a higher level or move it into `Maintainer/Workflow`
 - Do not churn older release sections just to retrofit taxonomy unless that is the explicit task
 - Preserve the repo's current changelog shape: `Unreleased` plus empty `Added`, `Changed`, and `Fixed` headings when those sections have no entries
 
@@ -208,9 +215,14 @@ That command runs the current repo-level maintainer validation flow in one pass:
 - Explicit changelog-decision validation for current branch changes
 - Changelog taxonomy validation for `Unreleased` entries
 - Contract validation
+- Branch-local regression case runnability validation for changed cases and fixtures
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - Regression harness validation and suite scoring
 - Upstream contributor drift detection
+
+If the current branch changes a regression case, fixture, or adjudicated example path under `tools/regression/`, the one-shot validator now expects the matching case to be `adjudicated` and to have a runnable `.result.json` example artifact. Schema-valid but non-runnable `ready` cases are not enough for the branch to validate cleanly.
+
+By default this runnability gate uses the current worktree when uncommitted edits exist, and falls back to branch-diff scope when the worktree is clean. Override that behavior with `-ChangedRegressionScope Worktree`, `-ChangedRegressionScope Branch`, or `-ChangedRegressionScope Combined` when you need a stricter or broader audit.
 
 If the current branch intentionally does not need a changelog entry, make that explicit instead of relying on path-based inference:
 

@@ -3,7 +3,14 @@
   "title": "Resource implementation guidance requires list resources for new resources",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this adjudicated case to keep new-resource implementation guidance aligned with the upstream mandatory list-resource workflow.",
+    "genericCondition": "Sanitized fixture models a new-resource implementation request after the upstream guide-new-resource and guide-list-resource workflow update.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized implementation-guidance scenario where a contributor asks for a brand-new typed resource. The correct guidance must require Resource Identity and a corresponding list resource by default, rather than treating the list resource as optional.",
   "fixture": {

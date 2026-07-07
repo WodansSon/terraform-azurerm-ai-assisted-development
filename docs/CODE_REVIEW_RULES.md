@@ -19,13 +19,15 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are eight main contract files:
+There are ten main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
+- Generic review linter contract: `.github/instructions/review-linter-compliance-contract.instructions.md`
 - Advocate second-pass contract: `.github/instructions/review-advocate-compliance-contract.instructions.md`
 - Skeptic adversarial-pass contract: `.github/instructions/review-skeptic-compliance-contract.instructions.md`
 - Architect direction-pass contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
 - Moderator synthesis-pass contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
+- Presentation render contract: `.github/instructions/review-presentation-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
 - Testing contract: `.github/instructions/testing-compliance-contract.instructions.md`
@@ -38,6 +40,8 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/review-skeptic`
 - `/review-architect`
 - `/review-moderator`
+- `/review-presentation`
+- `/review-coordinator`
 - `/code-review-docs`
 - `/docs-writer`
 - `/resource-implementation`
@@ -45,13 +49,21 @@ The prompts, skills, and routing instructions consume those contracts:
 
 The `review-skeptic` and `review-architect` skills are workflow-governed intermediate passes.
 The generic code review prompts invoke them after the primary review pass as governed intermediate passes.
-They may add evidence-backed candidate Issues or Observations inside the generic code-review workflow, but they do not emit standalone final review sections and any candidate Issues they add still flow through the advocate gate.
+They may add evidence-backed issues or observations inside the generic code-review workflow, but they do not emit standalone final review sections and any findings they add still flow through the shared moderation path.
 
-The `review-advocate` skill is the current transitional false-positive-defense gate.
-The generic code review prompts currently bind the final adjudication owner slot to `review-advocate` when candidate Issues exist after the primary review pass and any routed skeptic or architect passes, while the dedicated advocate contract owns the deterministic `REVIEW-ADV-*` rules that govern `Confirmed`, `Downgraded`, and `Dismissed` outcomes.
+The `review-advocate` skill is the workflow's false-positive-defense commentary pass.
+The generic code review prompts invoke it when findings exist after the primary review pass and any routed skeptic or architect passes, and it records evidence-backed defense notes on those same findings instead of running a separate candidate-outcome state machine.
 
-The `review-moderator` skill is the planned final synthesis role.
-Its contract is defined now so moderator semantics can stabilize early, but the generic code review prompts do not yet bind the final adjudication owner slot to it.
+The `review-moderator` skill is the workflow's final moderation role.
+The generic code review prompts route the full findings set through `review-moderator` after earlier finding-generation and commentary passes complete.
+
+The `review-presentation` skill is the workflow's render-only presentation layer.
+The generic code review prompts route the final frozen review data through `review-presentation` after moderation completes so both prompts share one output template.
+
+The `review-coordinator` skill is the workflow's deterministic coverage-routing layer.
+The generic code review prompts route authoritative changed-file scope through `review-coordinator` before standards loading and finding drafting so active-file bias cannot decide the first review anchor.
+That routing layer now produces a schema-backed internal coverage matrix via `.github/instructions/review-coverage-matrix.schema.json`, names unchanged overlap rows by explicit file path, builds the matrix before standards loading, validates completion after scoped standards load, and must complete before any routed review role can start.
+The matrix now also carries explicit `emittedRecordIds` and `issueClassToRecordIds` fields, and the coordinator owns a post-review linkage-validation phase so the workflow can hard-stop if a reviewer noticed a concern but failed to serialize it into the shared handoff record set before architect, skeptic, advocate, or moderator begin.
 
 The important architectural point is that these contract files are now the normative rule sources.
 
@@ -89,7 +101,7 @@ Some contract rules also include provenance labels to clarify where the rule cam
 - `Inferred maintainer convention`: derived from factual maintainer review behavior
 - `Local safeguard`: added by this repository to keep audits and edits deterministic
 
-Those provenance notes matter because not every useful rule is currently written down in upstream contributor docs.
+Those provenance notes matter because not every useful rule is written down in upstream contributor docs.
 
 ## `REVIEW-*` Rule Areas
 
@@ -99,7 +111,8 @@ These IDs come from `.github/instructions/code-review-compliance-contract.instru
 | ------ | ------- | ------------------------------ |
 | `REVIEW-EVID-*` | Evidence and verification | The review had to prove the claim from the diff, code, docs, or tool output instead of guessing |
 | `REVIEW-CLASS-*` | Finding classification | Why something was reported as an Issue, Observation, or Strength |
-| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How routed review roles exchange candidate findings before final output is frozen |
+| `REVIEW-COORD-*` | Deterministic coverage routing | Which files, lifecycle windows, overlap surfaces, and mandatory issue-class checks had to be inspected before findings could freeze |
+| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How routed review roles exchange immutable findings before final output is frozen |
 | `REVIEW-FILE-*` | File handling and scope coverage | Which changed files had to be considered and how they were classified |
 | `REVIEW-SCOPE-*` | File-type-specific review coverage | Which extra checks applied because of the file type or content |
 | `REVIEW-TEST-*` | Acceptance-test review guidance | How embedded Terraform, ImportStep, or requires-import patterns were evaluated |
@@ -137,8 +150,10 @@ In practice, the review should:
 
 - use authoritative PR scope instead of drifting into unrelated branch-only commits
 - treat an explicit PR number as a prompt to try a direct shell-native HTTPS PR-files request first
-- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative scope, including saved-output artifacts under `workspaceStorage` or `chat-session-resources`
+- prefer a JSON-returning HTTPS request shape for PR files, and never treat terminal spill banners or saved-output wrapper text as the JSON payload itself
+- ignore summary-only PR metadata, browser links, and forbidden spill-file paths as non-authoritative initial scope, including saved-output artifacts under `workspaceStorage` or `chat-session-resources`; once authoritative PR scope is already established from an allowed source, a current-run transient transport artifact may still be used as a buffer without becoming a new source of truth
 - avoid automatic `gh api` fallback and use `gh` only when the user explicitly asks for it
+- fail closed with a specific file-availability error when authoritative PR scope names a non-deleted changed file that is missing from the local committed checkout, instead of degrading that condition into a generic coverage-matrix failure
 
 ### `REVIEW-SCOPE-005`
 
@@ -148,6 +163,35 @@ This means the review applied Go/provider-specific guidance because the change t
 - `internal/**/*_test.go`
 
 It is the rule that tells the auditor to load the scoped Go instructions and skills instead of relying only on the generic review contract.
+
+### `REVIEW-COORD-*`
+
+These rules explain how the review stays deterministic before findings are drafted.
+
+In practice, they require the workflow to:
+
+- build a deterministic coverage matrix before findings freeze
+- represent that matrix as a schema-backed internal artifact rather than prose intent alone
+- load the coverage-matrix schema explicitly before building the matrix
+- sort changed implementation surfaces lexically instead of anchoring on the active editor file
+- inspect lifecycle windows such as Importer, Create, Read, Update, Delete, and CustomizeDiff in a fixed order when those windows exist
+- scan unchanged sibling ownership surfaces when a PR adds a new resource that can overlap an older management surface, and materialize those overlap surfaces as explicit file-path rows
+- start new or materially changed variant-constrained ownership reviews with ownership-boundary and lifecycle-symmetry checks before secondary polish findings such as metadata filtering or test-shape completeness
+- build the matrix early but validate standards-dependent completion only after the relevant scoped guidance is loaded
+- model issue-class completion explicitly, including not-applicable issue classes, instead of inferring that state only from prose
+- treat the router validation sub-phase as the canonical completion gate rather than relying on prompt prose alone
+- block architect, skeptic, advocate, and moderator routing until the coverage matrix is complete
+- fail closed if an evidence-backed concern was discovered but no structured handoff record ID was emitted for it before routed roles begin
+- emit and link a structured handoff record immediately when a mandatory issue-class check yields an evidence-backed concern, instead of relying on later bulk serialization
+- keep the shared review contract as the full authority for that immediate-emission and linkage-validation behavior, with prompts and the coordinator invoking the relevant rule IDs instead of restating the full rule text independently
+- keep ownership-boundary, lifecycle-symmetry, PATCH-or-residual-state, and optional-state-drift concerns as separate findings when current-run evidence supports each one on the same new-resource PR
+- classify mandatory issue-class concerns as `OBSERVATIONS` when the current run proves only broader risk or a non-blocking mismatch, and escalate them to `ISSUES` only when the evidence proves concrete blocking harm or another explicitly blocking rule applies
+- complete mandatory issue-class checks, such as ownership overlap, destructive-path gating symmetry, PATCH or residual-state review, and omitted-config state-drift review, before final output is emitted
+- treat the upstream minimum new-resource acceptance-test matrix as part of the mandatory issue-class review surface for brand-new managed resources with acceptance coverage, so missing `basic`, `requiresImport`, `complete`, or `update` scenarios cannot be silently dropped behind larger findings
+- when changed reference docs are in scope, treat evidence-backed docs example correctness under exact `DOCS-*` rules as a mandatory issue class that must stay visible when current-run evidence proves a real docs problem
+- surface any evidence-backed concern found in those required checks at the justified classification instead of silently dropping it just because another blocking issue was found first
+- validate file-reference policy against the assistant-emitted markdown body the workflow owns, not against any later VS Code or Copilot client href rewriting
+- for brand-new managed resources with acceptance coverage, explicitly inspect the upstream minimum resource test matrix of `basic`, `requiresImport`, `complete`, and `update`, and keep any missing minimum scenario visible at least as an observation unless current-run evidence shows that specific expectation does not apply
 
 ### `REVIEW-SCOPE-005D`
 
@@ -182,44 +226,44 @@ In practice, the review should:
 
 ### `REVIEW-LINT-*`
 
-These rules explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:
+These rules come from `.github/instructions/review-linter-compliance-contract.instructions.md` and explain how `azurerm-linter` should be handled. If you see a `REVIEW-LINT-*` citation, it usually means the review is explaining one of these:
 
 - Whether the linter was applicable
 - The simplified baseline invocation model: one filtered JSON-mode run from the repo root
 - Why the linter section is `Issues found`, `No issues`, `Not applicable`, or `Not run`
 - How linter findings were turned into review Issues
 
-The contract-first model matters here too: the linter execution policy, status mapping, and output-shape requirements now live in the shared review contract, while troubleshooting and companion docs explain the runtime behavior and known failure modes around those rules.
+The contract-first model matters here too: the linter execution policy, status mapping, and output-shape requirements now live in the dedicated review linter contract, while troubleshooting and companion docs explain the runtime behavior and known failure modes around those rules.
 
 ## `REVIEW-ADV-*` Rule Area
 
-These IDs come from `.github/instructions/review-advocate-compliance-contract.instructions.md` and are consumed by `/review-advocate`, which the generic code review prompts invoke as the second-pass advocate quality gate when candidate Issues exist anywhere in the workflow candidate set.
+These IDs come from `.github/instructions/review-advocate-compliance-contract.instructions.md` and are consumed by `/review-advocate`, which the generic code review prompts invoke as the workflow's false-positive-defense commentary pass when findings exist anywhere in the workflow finding set.
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `REVIEW-ADV-*` | Advocate second-pass evaluation | How candidate Issues are challenged, confirmed, downgraded, or dismissed before review output is frozen |
+| `REVIEW-ADV-*` | Advocate second-pass evaluation | How existing findings are challenged with evidence-backed defense commentary before review output is frozen |
 
 In practice, `REVIEW-ADV-*` rules explain things such as:
 
 - when the advocate pass is allowed to run
-- which earlier passes are allowed to feed candidate Issues into the advocate gate
+- which earlier passes are allowed to feed findings into the advocate pass
 - what counts as a valid defense
 - how trust-boundary defenses must be justified
-- why a finding stayed in `ISSUES` at lower severity versus moving to `OBSERVATIONS`
-- why a dismissed finding carries a `[⚖️ ADVOCATE: ...]` annotation instead of disappearing entirely
+- how advocate commentary stays attached to the same finding record through `roleNotes`
+- why advocate commentary informs moderation without deleting the underlying finding directly
 
 ## `REVIEW-HANDOFF-*` Rule Area
 
-These IDs come from `.github/instructions/code-review-compliance-contract.instructions.md` and govern the shared intermediate finding shape used between the primary review pass, routed intermediate passes, and the advocate gate. The concrete runtime schema for that shape lives at `.github/instructions/review-workflow-handoff.schema.json`.
+These IDs come from `.github/instructions/code-review-compliance-contract.instructions.md` and govern the shared intermediate finding shape used between the primary review pass, routed intermediate passes, advocate commentary, and final moderation. The concrete runtime schema for that shape lives at `.github/instructions/review-workflow-handoff.schema.json`.
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How the workflow preserves title, scope, evidence, reasoning, confidence, and status while routed roles add or adjudicate findings |
+| `REVIEW-HANDOFF-*` | Intermediate finding handoff | How the workflow preserves title, scope, evidence, reasoning, confidence, classification, and visibility while routed roles add or comment on findings |
 
 In practice, `REVIEW-HANDOFF-*` rules explain things such as:
 
 - which semantic fields every intermediate finding must preserve
-- which statuses exist before advocate adjudication versus after it
+- how `classification`, `visible`, and duplicate-merge lineage survive across routed passes
 - why routed roles should enrich one record instead of cloning duplicate findings
 - why the workflow can change transport later without redefining role semantics
 - where the concrete JSON schema artifact for the handoff record lives in the installed toolkit
@@ -230,13 +274,13 @@ These IDs come from `.github/instructions/review-skeptic-compliance-contract.ins
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `REVIEW-SKEP-*` | Skeptic adversarial-pass evaluation | How the workflow stress-tests a change-set for missed defects before the advocate pass freezes output |
+| `REVIEW-SKEP-*` | Skeptic adversarial-pass evaluation | How the workflow stress-tests a change-set for missed defects before moderation freezes output |
 
 In practice, `REVIEW-SKEP-*` rules explain things such as:
 
 - when the skeptic pass is allowed to run
 - which attack surfaces it must examine
-- what evidence a skeptic-proposed candidate Issue must carry
+- what evidence a skeptic-proposed issue must carry
 - why skeptic output stays invisible until the normal review sections are finalized
 
 ## `REVIEW-ARCH-*` Rule Area
@@ -245,7 +289,7 @@ These IDs come from `.github/instructions/review-architect-compliance-contract.i
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `REVIEW-ARCH-*` | Architect direction-pass evaluation | How the workflow evaluates design fit, schema direction, and maintainability before the advocate pass freezes output |
+| `REVIEW-ARCH-*` | Architect direction-pass evaluation | How the workflow evaluates design fit, schema direction, and maintainability before final moderation freezes output |
 
 In practice, `REVIEW-ARCH-*` rules explain things such as:
 
@@ -256,18 +300,34 @@ In practice, `REVIEW-ARCH-*` rules explain things such as:
 
 ## `REVIEW-MOD-*` Rule Area
 
-These IDs come from `.github/instructions/review-moderator-compliance-contract.instructions.md` and describe the planned moderator synthesis role that will eventually merge schema-conformant workflow findings once explicit moderator routing exists.
+These IDs come from `.github/instructions/review-moderator-compliance-contract.instructions.md` and describe the moderator synthesis role that merges schema-conformant workflow findings after earlier passes have attached their findings and commentary.
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `REVIEW-MOD-*` | Moderator synthesis-pass evaluation | How the planned moderator role will merge, normalize, and finalize routed findings without re-running an independent review |
+| `REVIEW-MOD-*` | Moderator synthesis-pass evaluation | How the moderator role merges, normalizes, and finalizes routed findings without re-running an independent review |
 
 In practice, `REVIEW-MOD-*` rules explain things such as:
 
 - how duplicate findings should merge into one strongest record
 - how schema-backed workflow records should survive into final moderation
-- why the planned moderator role is distinct from the current advocate gate
-- why staged moderator artifacts do not mean moderator routing is already active
+- how moderator routing consumes advocate commentary without reopening a second defense pass
+- why moderator output stays upstream of final rendering rather than adding a separate reader-visible section
+
+## `REVIEW-PRES-*` Rule Area
+
+These IDs come from `.github/instructions/review-presentation-compliance-contract.instructions.md` and are consumed by `/review-presentation`, which the generic code review prompts invoke as the render-only final step after moderation freezes the review data.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-PRES-*` | Review presentation rendering | How the final review body is rendered from frozen data without changing findings |
+
+In practice, `REVIEW-PRES-*` rules explain things such as:
+
+- why local and committed review share one final output template
+- which section order and heading text are fixed by the presentation layer
+- why the renderer must not add, remove, or reinterpret findings
+- why structured issue and observation findings can render as titled list items with separate `Impact` and `Evidence` blocks once moderator-owned presentation hints exist
+- how footer lines such as `Preflight complete: yes` and `Skill used: ...` are rendered deterministically
 
 ## `DOCS-*` Rule Areas
 

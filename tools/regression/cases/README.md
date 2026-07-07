@@ -30,7 +30,7 @@ Modeled changed-file paths may still use real repository locations when that is 
 
 ## Corpus Growth Rule
 
-Whenever a real prompt or skill run misses an important issue, raises a recurring false positive, or shows a workflow regression, convert that incident into a new case here.
+Whenever an observed prompt or skill run misses an important issue, raises a recurring false positive, or shows a workflow regression, convert that incident into a new case here and capture the origin in the case provenance metadata.
 
 ## Adjudication Rule
 

@@ -41,7 +41,7 @@ The goal is to turn behavioral evaluation from subjective human agreement into r
 - `score-regression-case.ps1`
   - Scores a result document against a case and the configured weights.
 - `run-regression-suite.ps1`
-  - Scores the adjudicated example corpus as a suite and reports direct target-skill coverage.
+  - Scores the adjudicated example corpus as a suite and reports both direct skill-task coverage and routed or companion skill coverage.
 - `run-regression-example.ps1`
   - Displays the fixture and sample output paths for a case and prints the score summary for the paired result.
 - `run-regression-case.ps1`
@@ -131,7 +131,7 @@ AccTest "example-case" "basic" {
 
   test_case {
     task        = "resource-implementation"
-    source_kind = "real-pr"
+    source_kind = "synthetic"
     case_status = "planned"
     notes       = "Optional scope notes."
 
@@ -144,6 +144,14 @@ AccTest "example-case" "basic" {
         name = "example"
       }
     }
+  }
+
+  provenance {
+    origin_kind       = "synthetic-design"
+    origin_summary    = "Replace with the sanitized origin of this benchmark."
+    why_it_mattered   = "Replace with why the original failure mode or risk mattered."
+    generic_condition = "Replace with the abstract condition this benchmark models."
+    notes             = "Optional maintainer-only provenance notes."
   }
 
   rules {
@@ -165,6 +173,8 @@ AccTest "example-case" "basic" {
 ```
 
 The canonical shape treats `test_case { config { ... } }` as real nested HCL.
+
+Runnable benchmark artifacts are now expected to be synthetic-only. Historical source context belongs in the embedded `provenance { ... }` block so origin and rationale stay attached to the case definition without turning live PR identity or current repo shape into a runtime dependency.
 
 Maintainer promotion entry point:
 
@@ -212,7 +222,7 @@ Emit the validation summary as JSON:
 pwsh -NoProfile -File ./tools/regression/validate-regression-artifacts.ps1 -Output json
 ```
 
-Score the adjudicated example corpus and report target-skill coverage:
+Score the adjudicated example corpus and report both direct skill-task coverage and routed or companion skill coverage:
 
 ```powershell
 pwsh -NoProfile -File ./tools/regression/run-regression-suite.ps1
@@ -237,6 +247,14 @@ pwsh -NoProfile -File ./tools/regression/write-regression-history-snapshot.ps1 -
 ```
 
 Summarize the saved regression-history snapshots:
+Generate a provenance report from embedded case metadata:
+
+```powershell
+pwsh -NoProfile -File ./tools/regression/write-regression-provenance-report.ps1 -JsonOutputPath ./tools/regression/results/latest/regression-provenance-report.json -MarkdownOutputPath ./tools/regression/results/latest/regression-provenance-report.md
+```
+
+The provenance report is generated from the canonical case metadata and should be written under `tools/regression/results/latest/`, which is already excluded from source control.
+
 
 ```powershell
 pwsh -NoProfile -File ./tools/regression/summarize-regression-history.ps1
@@ -248,11 +266,18 @@ Emit the history summary as JSON:
 pwsh -NoProfile -File ./tools/regression/summarize-regression-history.ps1 -Output json
 ```
 
-Focus the suite output on the direct target skills only:
+Limit the scored case-result list to the direct skill tasks:
 
 ```powershell
 pwsh -NoProfile -File ./tools/regression/run-regression-suite.ps1 -Task docs-writer,resource-implementation,acceptance-testing -CaseStatus planned,ready,adjudicated
 ```
+
+`run-regression-suite.ps1` now emits two coverage sections:
+
+- `Direct skill task coverage` tracks cases whose top-level `task` is a direct skill task such as `docs-writer`, `resource-implementation`, or `acceptance-testing`.
+- `Routed and companion skill coverage` tracks skills that are exercised indirectly through benchmark markers, for example `Skill used: review-coordinator` or `Skill used: custom-poller-migration`, even when the case task itself is a broader review or implementation flow.
+
+That split matters because many newer workflow skills are not invoked as top-level case tasks. They are validated through routed review cases, moderated outputs, or companion-skill markers instead.
 
 Inspect an adjudicated example end to end:
 

@@ -102,6 +102,14 @@ Render the subsection using grouped top-level bullets plus nested entries:
 
 Within the same taxonomy tag, preserve the original bullet order unless there is a specific reason to reorder.
 
+## User-Priority intent
+
+- `User-Priority` is release-note space for end users, not a maintainer work log.
+- A reader should be able to understand each `User-Priority` bullet without knowing this repository's prompt, contract, skill, schema, or regression-harness internals.
+- Write `User-Priority` bullets at the level of what changed in the shipped experience or what users should expect to notice in the next release.
+- Do not describe `User-Priority` bullets as a sequence of internal hardening steps, validation moves, routing rewrites, or contract refinements unless those details are the only user-visible outcome.
+- If a change is important mainly because it improves internal determinism, validation, scaffolding, or maintainer workflow, it belongs in `Maintainer/Workflow`, usually under `[Internal]`, even when the implementation touched user-facing review surfaces indirectly.
+
 ## Taxonomy selection rules
 
 - Use exactly one taxonomy tag per nested changelog bullet.
@@ -115,11 +123,16 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 
 - Lead with user-visible effect before internal mechanism where possible.
 - Keep the first clause understandable without requiring repository-internal knowledge.
+- For `User-Priority` bullets, prefer plain release-note language such as "reviews now surface critical problems first" or "docs examples are checked more reliably" over repo-internal mechanism language such as "moderator normalization", "handoff schema", "routing ledger", or "coverage-matrix validation".
+- For `User-Priority` bullets, describe the final user-facing outcome first and omit implementation-path detail unless that detail is necessary for the reader to understand the outcome.
+- If a `User-Priority` bullet still sounds like commit history, a design note, or a maintainer retrospective, rewrite it or move it to `Maintainer/Workflow`.
 - Mention file paths only when they materially help the reader understand the scope.
 - Avoid changelog bullets that are accurate but only meaningful to repository maintainers unless the entry is intentionally tagged `[Internal]`.
+- Treat `## [Unreleased]` as release notes, not commit history. If a set of bullets reads like a patch-by-patch implementation log, collapse and rewrite it before concluding the edit.
 - Prefer final outcome language over patch-history language. If several edits all contribute to the same user-visible or maintainer-visible result, collapse them into one stronger bullet instead of preserving each intermediate hardening step as a separate entry.
 - When pruning overlapping bullets, keep the final behavior change and remove the incremental "clarified", "tightened", or "refined" entries that only describe how the repo got there.
 - Use multiple bullets only when the outcomes are genuinely distinct to a reader; do not split one behavioral outcome across several bullets just because multiple files or rule families changed.
+- Do not preserve one bullet per touched prompt, contract, skill, or regression case when those changes all support one final outcome that a release-note reader would naturally describe in one sentence.
 
 ## Structure rules
 
@@ -134,6 +147,7 @@ Within the same taxonomy tag, preserve the original bullet order unless there is
 - Nested entries must use the form `  - **[Taxonomy]** - entry`.
 - Keep the fixed taxonomy order above so readers learn one predictable scan pattern.
 - Before concluding an `Unreleased` edit, scan each group for near-duplicate bullets and merge them when they describe one final outcome with several intermediate edits behind it.
+- Before concluding an `Unreleased` edit, scan each group for "commit history smell": repeated bullets that differ only by implementation step, contract location, or validation hardening. Rewrite those into one outcome-focused bullet before validation.
 
 ## Validation
 

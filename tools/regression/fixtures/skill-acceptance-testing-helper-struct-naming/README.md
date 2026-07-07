@@ -1,63 +1,47 @@
 # Sanitized Fixture: Acceptance-Testing Helper Struct Naming Stays Canonical Across Test Variants
 
-This fixture is derived from a real historical acceptance-test guidance incident, but the final artifact is sanitized and does not retain live upstream file contents.
+This fixture is synthetic and sanitized for regression benchmarking.
 
 ## Scenario
 
-A maintainer asks `acceptance-testing` to fix helper-struct naming drift after acceptance tests and generated identity tests stopped using the same canonical helper type.
-
-Different test variants for the same Terraform surface started using different helper types, while the generated identity test still instantiated a separate `SomethingIdentityResource` helper.
-
-That drift caused `go generate` to rewrite the generated identity file and made Generation Check fail.
+A maintainer asks `acceptance-testing` to fix helper-struct naming drift after acceptance tests and generated identity tests stopped using the same canonical helper type. Different test variants for the same Terraform surface started using different helper types, while the generated identity test still instantiated a separate `SomethingIdentityResource` helper. That drift caused `go generate` to rewrite the generated identity file and made Generation Check fail.
 
 ## Simplified Test Shape
 
 ```go
 func TestAccExampleResource_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
-    r := ExampleResource{}
-
-    data.ResourceTest(t, r, []acceptance.TestStep{
-        {
-            Config: r.basic(data),
-            Check: acceptance.ComposeTestCheckFunc(
-                check.That(data.ResourceName).ExistsInAzure(r),
-            ),
-        },
-    })
+	data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
+	r := ExampleResource{}
+	data.ResourceTest(t, r, []acceptance.TestStep{{
+		Config: r.basic(data),
+		Check: acceptance.ComposeTestCheckFunc(
+			check.That(data.ResourceName).ExistsInAzure(r),
+		),
+	}})
 }
 
 func TestAccExampleResource_listQuery(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
-    r := ExampleListResource{}
-
-    data.ResourceTest(t, r, []acceptance.TestStep{
-        {
-            Config: r.basic(data),
-        },
-    })
+	data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
+	r := ExampleListResource{}
+	data.ResourceTest(t, r, []acceptance.TestStep{{
+		Config: r.basic(data),
+	}})
 }
 
 func TestAccExampleDataSource_basic(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_example", "test")
-    d := ExampleLookupDataSource{}
-
-    data.DataSourceTest(t, []acceptance.TestStep{
-        {
-            Config: d.basic(data),
-        },
-    })
+	data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
+	d := ExampleLookupDataSource{}
+	data.DataSourceTest(t, []acceptance.TestStep{{
+		Config: d.basic(data),
+	}})
 }
 
 func TestAccExampleResourceIdentity_generated(t *testing.T) {
-    data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
-    r := ExampleIdentityResource{}
-
-    data.ResourceTest(t, r, []acceptance.TestStep{
-        {
-            Config: r.basic(data),
-        },
-    })
+	data := acceptance.BuildTestData(t, "azurerm_example_resource", "test")
+	r := ExampleIdentityResource{}
+	data.ResourceTest(t, r, []acceptance.TestStep{{
+		Config: r.basic(data),
+	}})
 }
 ```
 

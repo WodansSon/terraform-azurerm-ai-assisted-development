@@ -16,7 +16,7 @@ AccTest "example-case" "basic" {
 
   test_case {
     task        = "resource-implementation"
-    source_kind = "real-pr"
+    source_kind = "synthetic"
     case_status = "planned"
     notes       = "Optional scope notes."
 
@@ -29,6 +29,14 @@ AccTest "example-case" "basic" {
         name = "example"
       }
     }
+  }
+
+  provenance {
+    origin_kind       = "synthetic-design"
+    origin_summary    = "Replace with the sanitized origin of this benchmark."
+    why_it_mattered   = "Replace with why the original failure mode or risk mattered."
+    generic_condition = "Replace with the abstract condition this benchmark models."
+    notes             = "Optional maintainer-only provenance notes."
   }
 
   rules {
@@ -53,6 +61,7 @@ AccTest "example-case" "basic" {
 
 - `AccTest "case-id" "run-name"` is the canonical top-level block for this DSL.
 - `test_case` holds the benchmark metadata and the test configuration in one normal HCL section instead of hanging them off a synthetic runner block.
+- `provenance` is maintainer metadata embedded in the canonical case source so origin, rationale, and the normalized generic condition stay attached to the runnable benchmark instead of drifting into a separate hand-maintained inventory.
 - The second top-level label carries the run name, so the inner `test_case` and `rules` blocks stay unlabeled.
 - `config` lives under `test_case` and holds real nested HCL blocks instead of wrapping Terraform configuration in a string attribute.
 - `rules` describes what that named config should or should not trigger in the harness result.

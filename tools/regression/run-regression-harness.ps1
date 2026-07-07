@@ -43,7 +43,7 @@ function Remove-LatestOutputs {
         return
     }
 
-    Get-ChildItem -LiteralPath $LatestDirectory -File | Remove-Item -Force
+    Get-ChildItem -LiteralPath $LatestDirectory | Remove-Item -Force -Recurse
 }
 
 $Task = Expand-ListParameter -Value $Task
@@ -59,6 +59,8 @@ $suiteJsonPath = Join-Path $LatestDirectory "regression-suite.json"
 $historySnapshotLatestPath = Join-Path $LatestDirectory "regression-history-snapshot.json"
 $historySummaryTextPath = Join-Path $LatestDirectory "regression-history-summary.txt"
 $historySummaryJsonPath = Join-Path $LatestDirectory "regression-history-summary.json"
+$provenanceTextPath = Join-Path $LatestDirectory "regression-provenance-report.md"
+$provenanceJsonPath = Join-Path $LatestDirectory "regression-provenance-report.json"
 $harnessSummaryJsonPath = Join-Path $LatestDirectory "regression-harness-summary.json"
 
 $sharedArguments = @{}
@@ -95,6 +97,8 @@ $historySummaryText | Set-Content -LiteralPath $historySummaryTextPath
 $historySummaryJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "summarize-regression-history.ps1") -HistoryDirectory $HistoryDirectory -Output json | ConvertFrom-Json
 $historySummaryJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $historySummaryJsonPath
 
+$provenanceJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "write-regression-provenance-report.ps1") @sharedArguments -JsonOutputPath $provenanceJsonPath -MarkdownOutputPath $provenanceTextPath -Output json | ConvertFrom-Json
+
 $summary = [ordered]@{
     validation = [ordered]@{
         path = $validationJsonPath
@@ -115,6 +119,11 @@ $summary = [ordered]@{
         summaryJsonPath = $historySummaryJsonPath
         snapshotId = $historySnapshotJson.snapshotId
         snapshotCount = [int]$historySummaryJson.snapshotCount
+    }
+    provenance = [ordered]@{
+        markdownPath = $provenanceTextPath
+        jsonPath = $provenanceJsonPath
+        caseCount = [int]$provenanceJson.summary.caseCount
     }
     filters = [ordered]@{
         task = @($Task)
@@ -139,8 +148,10 @@ if (-not [string]::IsNullOrWhiteSpace($createdHistorySnapshotPath)) {
     Write-Output "  History Archive  : $createdHistorySnapshotPath"
 }
 Write-Output "  History Summary  : $historySummaryTextPath"
+Write-Output "  Provenance Report: $provenanceTextPath"
 Write-Output ""
 Write-Output "Latest metrics"
 Write-Output "  Cases Selected   : $($summary.suite.selectedCaseCount)"
 Write-Output "  Cases Scored     : $($summary.suite.scoredCaseCount)"
 Write-Output "  Snapshots Saved  : $($summary.history.snapshotCount)"
+Write-Output "  Provenance Cases : $($summary.provenance.caseCount)"

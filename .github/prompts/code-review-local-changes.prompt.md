@@ -53,11 +53,45 @@ Do not emit a preamble that asks permission or waits for approval before running
 
 ## Mandatory procedure
 
-### 0) Load the shared review contract
+### 0) Load the shared review contracts
 - Read and apply `.github/instructions/code-review-compliance-contract.instructions.md` to EOF.
-- EOF marker verification is mandatory: the last non-empty line must be `<!-- REVIEW-CONTRACT-EOF -->`.
-- If the contract is not fully loaded, hard-stop and output exactly this one line and nothing else:
-  - `Cannot run code-review-local-changes: code review contract not fully loaded. Load .github/instructions/code-review-compliance-contract.instructions.md to EOF and re-run this prompt.`
+- Read and apply `.github/instructions/review-linter-compliance-contract.instructions.md` to EOF.
+- EOF marker verification is mandatory for both contracts:
+  - `.github/instructions/code-review-compliance-contract.instructions.md` -> `<!-- REVIEW-CONTRACT-EOF -->`
+  - `.github/instructions/review-linter-compliance-contract.instructions.md` -> `<!-- REVIEW-LINT-CONTRACT-EOF -->`
+- If either contract is not fully loaded, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review contracts not fully loaded. Load .github/instructions/code-review-compliance-contract.instructions.md and .github/instructions/review-linter-compliance-contract.instructions.md to EOF and re-run this prompt.`
+
+### 0A) Load the review coverage matrix schema
+- Read and apply `.github/instructions/review-coverage-matrix.schema.json` to EOF before Step 2A.
+- If the schema is not fully loaded, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review coverage matrix schema not fully loaded. Load .github/instructions/review-coverage-matrix.schema.json to EOF and re-run this prompt.`
+
+### 0B) Load routed workflow and final presentation prerequisites
+- Before Step 1 begins, explicitly load each routed workflow skill and contract that the normal successful review path may require:
+  - `.github/skills/review-coordinator/SKILL.md`
+  - `.github/skills/review-architect/SKILL.md`
+  - `.github/instructions/review-architect-compliance-contract.instructions.md`
+  - `.github/skills/review-skeptic/SKILL.md`
+  - `.github/instructions/review-skeptic-compliance-contract.instructions.md`
+  - `.github/skills/review-advocate/SKILL.md`
+  - `.github/instructions/review-advocate-compliance-contract.instructions.md`
+  - `.github/skills/review-moderator/SKILL.md`
+  - `.github/instructions/review-moderator-compliance-contract.instructions.md`
+  - `.github/skills/review-presentation/SKILL.md`
+  - `.github/instructions/review-presentation-compliance-contract.instructions.md`
+  - `.github/instructions/review-presentation-input.schema.json`
+- For routed workflow skill files in this step, EOF marker verification is mandatory. The last non-empty line must be the matching skill EOF marker comment:
+  - `.github/skills/review-coordinator/SKILL.md` -> `<!-- REVIEW-COORD-SKILL-EOF -->`
+  - `.github/skills/review-architect/SKILL.md` -> `<!-- REVIEW-ARCH-SKILL-EOF -->`
+  - `.github/skills/review-skeptic/SKILL.md` -> `<!-- REVIEW-SKEP-SKILL-EOF -->`
+  - `.github/skills/review-advocate/SKILL.md` -> `<!-- REVIEW-ADV-SKILL-EOF -->`
+  - `.github/skills/review-moderator/SKILL.md` -> `<!-- REVIEW-MOD-SKILL-EOF -->`
+  - `.github/skills/review-presentation/SKILL.md` -> `<!-- REVIEW-PRESENT-SKILL-EOF -->`
+- The presentation schema file `.github/instructions/review-presentation-input.schema.json` does not use a Markdown EOF marker; verify that it is readable end-to-end in the current run.
+- Do not defer routed-skill, routed-contract, or presentation-path availability checks until after findings are drafted or frozen.
+- If any routed workflow skill, routed contract, presentation contract, or presentation schema cannot be loaded to EOF in this preflight phase, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: the routed review workflow is incomplete or stale in this workspace. Refresh the AI toolkit files, then confirm these exact files are present and readable end-to-end: .github/skills/review-coordinator/SKILL.md; .github/skills/review-architect/SKILL.md; .github/instructions/review-architect-compliance-contract.instructions.md; .github/skills/review-skeptic/SKILL.md; .github/instructions/review-skeptic-compliance-contract.instructions.md; .github/skills/review-advocate/SKILL.md; .github/instructions/review-advocate-compliance-contract.instructions.md; .github/skills/review-moderator/SKILL.md; .github/instructions/review-moderator-compliance-contract.instructions.md; .github/skills/review-presentation/SKILL.md; .github/instructions/review-presentation-compliance-contract.instructions.md; .github/instructions/review-presentation-input.schema.json.`
 
 ### 1) Gather the local change-set
 Use `run_in_terminal` with `mode: "sync"`, a concrete `goal`, and a short `timeout` for each command.
@@ -87,6 +121,20 @@ Rules:
 - Do not omit any file that belongs to the selected review scope.
 - Identify files under `vendor/**`, exclude them from actionable review targets, and report only the skipped vendored-file count per `REVIEW-FILE-005`.
 
+### 2A) Build a deterministic coverage plan
+- Invoke the `review-coordinator` skill (`.github/skills/review-coordinator/SKILL.md`), read it to EOF, and have it apply the shared contract's `REVIEW-COORD-*` rules to build the current-run coverage matrix before standards loading or finding drafting.
+- The coverage matrix must have a structured internal representation that conforms to `.github/instructions/review-coverage-matrix.schema.json`.
+- The coverage matrix must enumerate changed implementation files in fixed lexical order, the required lifecycle/control windows for each applicable surface, required overlap surfaces for any brand-new resource, and the mandatory provider issue-class checks for the change-set.
+- For changed implementation files under `internal/**/*.go`, inspect applicable windows in this fixed order: `Importer`, `Create`, `Read`, `Update`, `Delete`, `CustomizeDiff`, explicit validation or mode or ownership helpers, then companion registration, tests, docs, and association surfaces when applicable.
+- When the review scope adds a brand-new resource under `internal/**/*.go`, add overlapping sibling surfaces that can manage the same remote object, existing data sources or list resources that expose the same remote object shape, route or association or referencing surfaces, and explicit mode or ownership validation helpers to the same deterministic matrix even when those files are unchanged.
+- For each unchanged overlap surface added by Step 2A, materialize an explicit coverage row by file path in the structured matrix rather than recording only a category-level note.
+- The active editor file, search result ordering, and local diff wording must not change the initial coverage order.
+- Step 2A is the build phase only: construct the structured matrix and perform the fixed-order control-window routing before findings are drafted.
+- Do not draft findings or start any routed role from this build phase alone; standards-dependent completion validation happens later in Step 3A.
+- Observable proof requirement: when this step runs, `review-coordinator` is an actually-used skill, so the verification footer MUST include a `Skill used: review-coordinator` line before any later routed-skill entries.
+- If the `review-coordinator` skill cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-coordinator skill not fully loaded. Load .github/skills/review-coordinator/SKILL.md to EOF and re-run this prompt.`
+
 ### 3) Load applicable workspace standards
 - Discover repo-level contributor guidance in the current workspace before reading it.
 - Check `CONTRIBUTING.md` and `contributing/README.md`, then read the applicable file(s) that exist.
@@ -94,203 +142,129 @@ Rules:
 - Read `.github/pull_request_template.md` when present.
 - Read any file-scoped instructions or skills that directly govern the changed files.
 - When `internal/**/*.go` or `internal/**/*_test.go` files are in scope, load the implementation and testing instruction set required by `REVIEW-SCOPE-005` before classifying findings.
+- When `internal/**/*_test.go` files are in scope, also read `.github/instructions/testing-compliance-contract.instructions.md` and `.github/instructions/testing-guidelines.instructions.md`, and apply exact `TEST-*` rules to those test files.
 - If the review scope includes `website/docs/**/*.html.markdown`, also read `.github/instructions/docs-compliance-contract.instructions.md` and `.github/instructions/documentation-guidelines.instructions.md`, and apply `DOCS-*` rules only to those docs files.
 - If provider contributor guidance exists in the current workspace or is explicitly fetched as evidence, apply it only where relevant.
 - Use the precedence rules from the shared review contract.
 
+### 3A) Validate deterministic coverage matrix completion
+- Invoke the validation sub-phase of the already-loaded `review-coordinator` skill, using the already-loaded `.github/instructions/review-coverage-matrix.schema.json`, to validate matrix completion after Step 3 has loaded the applicable workspace standards and scoped guidance.
+- Complete the standards-dependent issue-class checks that require loaded contributor guidance, implementation guidance, testing guidance, or docs-contract guidance.
+- Validate that every required row exists, every required lifecycle/control window is present in `completedWindows` or `notApplicableWindows`, every required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, every top-level required issue class is present in `completedIssueClasses` or `notApplicableIssueClasses`, and every unchanged overlap surface remains materialized as an explicit file-path row.
+- Do not proceed to findings or any routed role until the Step 3A validation phase has marked the structured coverage matrix complete.
+- If the structured coverage matrix is incomplete after Step 3A validation, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: deterministic coverage matrix not complete after standards loading. Complete the required review-coordinator rows and re-run this prompt.`
+
 ### 4) Run azurerm-linter when applicable
 - If the reviewed change-set includes files under `internal/**/*.go` or `internal/**/*_test.go`, attempt azurerm-linter and report it in its own section.
 - When this step applies, execute the required repo-root and linter commands directly; do not pause for confirmation.
-- Apply `REVIEW-LINT-002*` through `REVIEW-LINT-005` exactly for linter execution, blocking behavior, and classification.
-- Use one blocking sync linter run with no timeout, stay blocked until the completed result is classifiable, and do not do unrelated review work or user-visible narration while that run is outstanding.
-- Resolve the git repo root with `git rev-parse --show-toplevel`, change to that working directory in a separate command, and run the plain local CLI invocation from there.
-- Run filtered mode using `azurerm-linter -output json` with shell-native stderr suppression and without `--pr`.
-- Do not add wrapper-shell rewrites, composite wrapper lines, inline variable wrappers, helper scripts, `--no-filter` workaround passes, or second linter runs in the normal review path.
+- Apply the linter contract exactly for applicability, repo-root resolution, local-review invocation shape, blocking behavior, classification, and payload population.
 - If no in-scope provider Go files exist, mark the linter section as `Not applicable`.
-- Classify applicability, failures, JSON requirements, and `AZURERM LINTER` output shape exactly as required by `REVIEW-LINT-003*`, `REVIEW-LINT-004`, and `REVIEW-LINT-005`.
+- Do not restate or improvise linter execution rules beyond what the linter contract already defines.
 
-### 5) Produce the review output
-- Review the full in-scope change-set.
-- Findings must follow the shared review contract, including `REVIEW-EVID-*`, `REVIEW-CLASS-*`, and `REVIEW-LINT-*` behavior.
-- Apply the file-type coverage rules from `REVIEW-SCOPE-*` so installer/script, AI customization, manifest, and user-visible content checks are not skipped.
-- Treat vendored files under `vendor/**` as skipped non-actionable files: report only the skipped vendored-file count, and do not raise Issues that require directly editing vendored content.
-- When the selected local diff is vendored-only or vendored-heavy, say so explicitly in the summary or notes so sparse actionable findings are easy to interpret.
-- When `internal/**/*.go` scope adds a brand-new resource, explicitly inspect whether the required companion artifacts from the implementation and testing guidance are present: Resource Identity, list resource, list-resource query tests, and list-resource docs.
-- For singleton or get-only new resources, including singleton child resources whose SDK package may still expose list methods, apply the shared contract's exception-aware list-review rule instead of emitting a generic missing-list-resource finding.
-- When the change adds a new `*_ephemeral.go` implementation, explicitly inspect whether the required companion artifacts are present: `EphemeralResources()` registration, docs under `website/docs/ephemeral-resources/`, and Terraform 1.10-gated tests under `*_ephemeral_test.go`.
-- When the change adds a new provider-defined function under `internal/provider/function/`, explicitly inspect whether the required companion artifacts are present: docs under `website/docs/functions/` and Terraform 1.8-gated tests under `internal/provider/function/*_test.go`.
-- When `internal/**/*_test.go` files are in scope, explicitly inspect embedded Terraform configuration strings and apply the `REVIEW-TEST-*` rules for formatting drift instead of assuming `azurerm-linter` will catch those issues.
-- Keep the review concise but complete.
-- Before any routed role runs, keep the working findings set as internal intermediate records that satisfy `REVIEW-HANDOFF-*` and conform to `.github/instructions/review-workflow-handoff.schema.json`; do not let routed roles exchange free-form unlabeled prose.
-- Before writing the first `#` of the review output, silently iterate on the drafted review until the findings set is final and no additional findings, evidence corrections, or template fixes are needed.
-- Buffer the full review body internally and emit it once only after that silent iteration completes.
-- If one or more routed skills were actually loaded and used during the review, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
-- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used skill, in first-use order.
-- Do not emit a verification footer when no skill was actually used during the review.
+### 5) Primary reviewer pass (binding: review-reviewer)
+- This step is mandatory after Step 3A has validated the coverage matrix and after Step 4 has handled the linter path when applicable.
+- Invoke the `review-reviewer` skill (`.github/skills/review-reviewer/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/code-review-compliance-contract.instructions.md` plus the already-loaded docs, testing, and other scoped guidance relevant to the current run.
+- The `review-reviewer` skill owns full change-set inspection, mandatory issue-class execution, `REVIEW-COORD-003A` first-pass ownership and lifecycle handling where applicable, immediate `REVIEW-HANDOFF-006A` emission, and linkage-state maintenance for the primary review pass.
+- The prompt owns only stage order, hard-stop strings, routed-role invocation, and final output orchestration; it must not restate the primary review method beyond routing this skill.
+- Observable proof requirement: when this step runs, `review-reviewer` is an actually-used skill, so the verification footer MUST include a `Skill used: review-reviewer` line before any later routed-skill entries.
+- If the `review-reviewer` skill cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-reviewer skill not fully loaded. Load .github/skills/review-reviewer/SKILL.md to EOF and re-run this prompt.`
+- On every normal successful routed review path, append a verification footer after `## 🏆 **OVERALL ASSESSMENT**` and after no other text.
+- The verification footer must contain `Preflight complete: yes` followed by one `Skill used: <name>` line for each actually used routed review skill, in canonical routed stage order.
 - Do not infer a skill from file type alone or from loading contracts or instruction files; emit `Skill used:` lines only for skills that were actually loaded and used.
 - If `Repo Guidance` states that a skill was loaded or used, the verification footer must include the matching `Skill used:` line.
+- Maintain a current-run routed-stage execution ledger through Steps 2A-8.
+- For the normal successful routed path, `requiredStages` must be exactly `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, `review-presentation`, in that order.
 - Do not emit any text after the verification footer.
 - After the normal review output begins, do not add second-pass findings, self-corrections, or review-amendment text; restart the silent audit instead if more verification is needed.
+- Before Step 5A begins, invoke the post-review linkage-validation sub-phase required by `REVIEW-COORD-006B` over the frozen current-run findings set and the structured coverage matrix.
+- Treat that router-owned linkage-validation sub-phase as the contract-defined backstop over already-emitted state, not as prompt-local bookkeeping or permission to postpone emission until the end of Step 5.
+- If that router-owned linkage-validation sub-phase fails, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: reviewer discovered evidence-backed concerns that were not serialized into the REVIEW-HANDOFF record set. Materialize the missing handoff records and re-run this prompt.`
 
 ### 5A) Architect evaluation (internal design-direction pass)
-- This step is mandatory after Step 5 has gathered the change-set evidence, even when the primary review pass is otherwise about to conclude with no candidate Issues.
+- This step is mandatory after Step 5 has gathered the change-set evidence, even when the primary review pass is otherwise about to conclude with no findings.
+- Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
 - Invoke the `review-architect` skill (`.github/skills/review-architect/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-architect-compliance-contract.instructions.md` (the `REVIEW-ARCH-*` rules) to evaluate structural fit, naming direction, and maintainability.
-- Any architect finding added at this step must be represented as a `REVIEW-HANDOFF-*` intermediate record that conforms to `.github/instructions/review-workflow-handoff.schema.json`, with `status` set to `observation` or `candidate` as appropriate.
-- This is prompt-governed workflow machinery for the current single-workflow design. It may add Observations or mandatory-source-backed candidate Issues, but it must not emit its own section, freeze outcomes, or change the final review template.
-- Treat the current execution order as a determinism choice owned by the prompt, not as an authority ranking between roles.
+- Any architect finding added at this step must be represented as a `REVIEW-HANDOFF-*` intermediate record that conforms to `.github/instructions/review-workflow-handoff.schema.json`, with `classification` set to `observation` or `issue` as appropriate and `visible=true` unless a later duplicate merge absorbs it.
+- This is prompt-governed workflow machinery for the single-workflow design. It may add observations or mandatory-source-backed issues, but it must not emit its own section, freeze outcomes, or change the final review template.
+- Treat this execution order as a determinism choice owned by the prompt, not as an authority ranking between roles.
 - Observable proof requirement: when this step runs, `review-architect` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-architect` line before any later routed-skill entries.
 - If the `review-architect` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-architect skill or contract not fully loaded. Load .github/skills/review-architect/SKILL.md and .github/instructions/review-architect-compliance-contract.instructions.md to EOF and re-run this prompt.`
 
 ### 5B) Skeptic evaluation (internal adversarial pass)
-- This step is mandatory after the architect pass has completed and before the advocate pass, even when the primary review pass is otherwise about to conclude with no candidate Issues.
+- This step is mandatory after the architect pass has completed and before the advocate pass, even when the primary review pass is otherwise about to conclude with no findings.
+- Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
 - Invoke the `review-skeptic` skill (`.github/skills/review-skeptic/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-skeptic-compliance-contract.instructions.md` (the `REVIEW-SKEP-*` rules) to attack the diff for missed defects and weakly-supported reasoning.
 - Any skeptic finding added or strengthened at this step must use the same schema-backed `REVIEW-HANDOFF-*` intermediate record shape; enrich existing records when the concern already exists.
-- This is prompt-governed workflow machinery for the current single-workflow design. It may add net-new candidate Issues or strengthen existing candidates with new evidence, but it must not emit its own section, freeze outcomes, or change the final review template.
-- Observable proof requirement: when this step runs, `review-skeptic` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-skeptic` line before the final `Skill used: review-advocate` entry when the advocate pass also runs.
+- This is prompt-governed workflow machinery for the single-workflow design. It may add net-new issues or observations or strengthen existing findings with new evidence, but it must not emit its own section, freeze outcomes, or change the final review template.
+- Observable proof requirement: when this step runs, `review-skeptic` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-skeptic` line before any later adjudication or moderation entries.
 - If the `review-skeptic` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-skeptic skill or contract not fully loaded. Load .github/skills/review-skeptic/SKILL.md and .github/instructions/review-skeptic-compliance-contract.instructions.md to EOF and re-run this prompt.`
 
-### 6) Final adjudication owner (current binding: advocate)
-- This step is mandatory whenever Step 5 or any routed intermediate pass produced one or more candidate Issues; it must not be skipped, summarized, deferred, or simulated.
-- The current final adjudication owner for this workflow is `review-advocate`.
-- Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge each candidate Issue.
-- Consume only schema-conformant `REVIEW-HANDOFF-*` intermediate records whose `status` is `candidate`, preserve the other handoff fields, and update `status` to `confirmed`, `downgraded`, or `dismissed` per `REVIEW-ADV-005`.
-- Resolve every candidate Issue from the primary review pass and the routed architect and skeptic passes to exactly one deterministic outcome (`Confirmed`, `Downgraded`, or `Dismissed`) per `REVIEW-ADV-005`, and freeze the review output only after the advocate pass completes.
-- Do not add a separate final-adjudication section to the review body; the current advocate binding is invisible machinery that only adjusts how candidate findings land in `ISSUES` and `OBSERVATIONS` per the routed contract.
-- Observable proof requirement: when this step runs, `review-advocate` is an actually-used skill, so the Step 5 verification footer MUST include a `Skill used: review-advocate` line. Because the advocate pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
+### 6) Advocate commentary pass (binding: advocate)
+- This step is mandatory on every normal successful routed review path after Step 5 and any prior routed intermediate passes; it must not be skipped, summarized, deferred, or simulated.
+- Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
+- The advocate pass for this workflow is `review-advocate`.
+- Invoke the `review-advocate` skill (`.github/skills/review-advocate/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-advocate-compliance-contract.instructions.md` (the `REVIEW-ADV-*` rules) to challenge the existing findings set.
+- If the primary review pass plus the routed architect and skeptic passes produced no findings, invoke the advocate pass with an explicit empty structured finding set and treat the result as a deterministic no-op rather than skipping the stage.
+- Consume the full schema-conformant `REVIEW-HANDOFF-*` intermediate record set, preserve the shared fields, and add advocate `roleNotes`, evidence, or reasoning where the defense is supported.
+- Do not add a separate advocate section to the review body; this routed pass is invisible machinery that only enriches the shared finding set before moderation.
+- Observable proof requirement: because this step now runs on every normal successful routed review path, `review-advocate` is an actually-used skill and the Step 5 verification footer MUST include a `Skill used: review-advocate` line before the final `Skill used: review-moderator` entry.
 - If the `review-advocate` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
   - `Cannot run code-review-local-changes: review-advocate skill or contract not fully loaded. Load .github/skills/review-advocate/SKILL.md and .github/instructions/review-advocate-compliance-contract.instructions.md to EOF and re-run this prompt.`
-- If the primary review pass plus the routed architect and skeptic passes produced no candidate Issues, skip this step and do not emit the `Skill used: review-advocate` marker.
 
-## Output format (use this exact structure)
+### 7) Final moderation owner (binding: moderator)
+- This step is mandatory on every normal successful review path after Step 5 and any routed adjudication steps; it must not be skipped, summarized, deferred, or simulated.
+- Do not start this step unless the structured coverage matrix validated in Step 3A is complete.
+- The final moderation owner for this workflow is `review-moderator`.
+- Invoke the `review-moderator` skill (`.github/skills/review-moderator/SKILL.md`), read it to EOF, and have it load and apply `.github/instructions/review-moderator-compliance-contract.instructions.md` (the `REVIEW-MOD-*` rules) to merge duplicates, normalize surviving records, and produce the final moderated finding set for presentation.
+- Consume the schema-conformant `REVIEW-HANDOFF-*` intermediate record set for the run, including the explicit empty-record-set case, preserve record identity and core semantics when records exist, and use moderation only for duplicate merge, wording normalization, severity normalization, final `classification`, final `visible`, and presentation readiness.
+- Freeze the review findings set only after the moderator pass completes.
+- Do not add a separate final-moderation section to the review body; the moderator binding is invisible machinery that only determines the final visible `ISSUES` and `OBSERVATIONS` set per the routed contract.
+- Observable proof requirement: because this step now runs on every normal successful routed review path, `review-moderator` is an actually-used skill and the Step 5 verification footer MUST include a `Skill used: review-moderator` line. Because the moderator pass runs last, that line MUST be the final `Skill used:` entry and the last non-empty line of the response.
+- If the `review-moderator` skill or its contract cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-moderator skill or contract not fully loaded. Load .github/skills/review-moderator/SKILL.md and .github/instructions/review-moderator-compliance-contract.instructions.md to EOF and re-run this prompt.`
+- If earlier steps produced no schema-conformant intermediate findings, invoke moderator with an explicit empty record set and freeze a deterministic zero-findings result instead of skipping this step.
 
-Output must be rendered Markdown.
+### 8) Final presentation renderer
+- This step is mandatory on the normal successful review path after the findings set is frozen; it must not be skipped, summarized, deferred, or simulated.
+- Explicitly load `.github/instructions/review-presentation-input.schema.json` to EOF in the current run before invoking the presentation skill; do not assume that loading the presentation contract or skill implicitly loaded the schema.
+- Build a presentation payload that conforms to `.github/instructions/review-presentation-input.schema.json`.
+- For local review, populate at minimum: `reviewMode=local`, `changeDescription`, `changeSummaryLines`, `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, `skippedVendoredFiles`, `primaryChangesAnalysis`, `recursionPreventionLines`, `standardsCheckLines`, `linterReport`, `mustFix`, `strengths`, `observations`, `issues`, `immediateRecommendations`, `futureConsiderations`, `overallAssessment`, and required `verificationFooter`.
+- When `verificationFooter` is present, populate `requiredStages` and `executedStages` from the current-run routed-stage execution ledger.
+- For the normal successful routed path, `requiredStages` and `executedStages` must both be exactly `review-coordinator`, `review-reviewer`, `review-architect`, `review-skeptic`, `review-advocate`, `review-moderator`, `review-presentation`, in that order.
+- Derive `verificationFooter.skillsUsed` mechanically from `executedStages`, preserving order and omitting only the render-only `review-presentation` stage.
+- If `requiredStages` and `executedStages` differ in content or order, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: required routed review stages did not all execute in canonical order. Re-run this prompt under the latest workflow files.`
+- Populate `changeDescription` as a concise change-focused title derived from `changeSummaryLines` and `primaryChangesAnalysis`; do not use only a generic placeholder such as `Local Changes` when the current run established a more informative description.
+- When populating `modifiedFiles`, `addedFiles`, `untrackedFiles`, `deletedFiles`, and any file-bearing structured findings, use workspace-repo-relative paths or workspace-repo-relative path-plus-line references only.
+- Do not place editor-local, spill-path, PR-link, or absolute-disk links into the payload, including `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, `/Users/`, or hosted PR URLs.
+- If the frozen payload contains any forbidden local-link marker, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: final payload contains editor-local or absolute-disk file references. Rebuild the payload with workspace-repo-relative file references and re-run this prompt.`
+- Populate `linterReport` and `mustFix` exactly as required by the linter contract and the presentation schema.
+- For `strengths`, structured finding objects remain optional when the payload intentionally uses simple strength bullets.
+- For non-empty `observations` and `issues`, use structured finding objects only. The only allowed plain-string content in those sections is the explicit empty-state payload `- None`.
+- Populate `immediateRecommendations` and `futureConsiderations` only as plain follow-up bullets derived from already-visible issues or observations; do not use those sections as alternate homes for review findings.
+- Treat moderator output as the sole source for visible `ISSUES` and `OBSERVATIONS`: transport only moderated records where `visible=true`, group them only by moderator-owned `classification`, and carry only moderator-owned `presentation` fields into the payload.
+- If a moderator-visible observation or issue does not carry the presentation fields required by the current schema and presentation contract, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: final moderated findings are not presentation-complete under the current review-presentation contract. Rebuild the moderated finding set with structured presentation fields and re-run this prompt.`
+- Do not derive or invent `summary`, `reviewType`, `impact`, `evidence`, `suggestedChange`, `currentCode`, `correctedCode`, `codeLanguage`, or any other rich-display semantics in this prompt.
+- Invoke the `review-presentation` skill (`.github/skills/review-presentation/SKILL.md`), read it to EOF, confirm that `.github/instructions/review-presentation-compliance-contract.instructions.md` and `.github/instructions/review-presentation-input.schema.json` were both explicitly loaded to EOF in the current run, and only then render the final review body.
+- The presentation skill is render-only. It must not change findings, severity, classification, recommendations, or verdict semantics.
+- The presentation skill owns the normal successful review body. After this step begins, emit exactly the rendered review body and nothing else.
+- When `verificationFooter` is present, preserve the supplied routed-skill order and do not add `review-presentation` to `skillsUsed`.
+- If the `review-presentation` skill, contract, or schema cannot be loaded to EOF, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: review-presentation skill, contract, or schema not fully loaded. Load .github/skills/review-presentation/SKILL.md, .github/instructions/review-presentation-compliance-contract.instructions.md, and .github/instructions/review-presentation-input.schema.json to EOF and re-run this prompt.`
+- Before emitting the first character of the final review body, verify all of the following silently from the frozen current-run payload and the assistant-emitted markdown body: that the payload contains no prompt-invented issue or observation semantics beyond moderator-owned `visible`, `classification`, and `presentation`, and that neither the payload nor the assistant-emitted markdown body contains forbidden local-link markers such as `vscode-file://`, `vscode://`, `file://`, `workbench.html`, `AppData`, `workspaceStorage`, `C:\`, or `/Users/`.
+- If any of those checks fail, abort the normal output path, silently rebuild the current-run payload or findings once when possible, and re-run the final presentation step.
+- If exact presentation compliance still cannot be satisfied after that silent retry, hard-stop and output exactly this one line and nothing else:
+  - `Cannot run code-review-local-changes: final review body could not be rendered in exact compliance with the current review-presentation contract. Re-run the current audit and presentation steps under the latest contracts.`
 
-- Do not wrap the review in triple-backtick fences.
-- Do not output text before the review headings.
-- Emit each heading exactly once and in this order.
-- After `## 🏆 **OVERALL ASSESSMENT**`, append the optional verification footer only when one or more skills were actually used.
+## Output format
 
-1. `# 📋 **Code Review**: ${change_description}`
-2. `## 🔄 **CHANGE SUMMARY**`
-3. `## 📁 **FILES CHANGED**`
-4. `## 🎯 **PRIMARY CHANGES ANALYSIS**`
-5. `## 📋 **DETAILED TECHNICAL REVIEW**`
-6. `## ✅ **RECOMMENDATIONS**`
-7. `## 🏆 **OVERALL ASSESSMENT**`
-
-Use this template:
-
-```markdown
-# 📋 **Code Review**: ${change_description}
-
-## 🔄 **CHANGE SUMMARY**
-- **Files Changed**: [number] files ([tracked_additions] tracked new, [untracked_files] untracked, [modifications] modified, [deletions] deleted)
-- **Line Changes**: [insertions] insertions, [deletions] deletions (tracked files only)
-- **Branch**: [current_branch]
-- **Type**: [unstaged local changes/staged changes/untracked files only/mixed local changes]
-- **Scope**: [brief summary of what changed]
-
-## 📁 **FILES CHANGED**
-
-**Modified Files:**
-- `path/to/file`
-
-**Added Files (Tracked):**
-- `path/to/file`
-
-**Untracked Files (New):**
-- `path/to/file`
-
-**Deleted Files:**
-- `path/to/file`
-
-**Skipped Vendored Files:** [count]
-
-## 🎯 **PRIMARY CHANGES ANALYSIS**
-[Brief explanation of the implementation or content changes in scope.]
-
-## 📋 **DETAILED TECHNICAL REVIEW**
-
-### 🔄 **RECURSION PREVENTION**
-- **File Skipped**: `.github/prompts/code-review-local-changes.prompt.md` - Cannot review code review prompt itself to prevent infinite loops
-
-### 🔍 **STANDARDS CHECK**
-- **Contract**: [shared review contract rules applied]
-- **Repo Guidance**: [contributor docs / instructions / skills actually used]
-- **Scope Rules**: [which `REVIEW-SCOPE-*` rules were relevant]
-- **Docs Contract**: [whether `DOCS-*` rules were loaded for `website/docs/**/*.html.markdown` files in scope]
-- **Notes**: [scope-specific guidance that affected severity or classification, including whether the change-set is vendored-only or vendored-heavy]
-
-### 🧰 **AZURERM LINTER**
-- **Version**: [JSON `version`, `n/a`, or `unknown` when the tool could not be interrogated reliably]
-- **Status**: [Issues found/No issues/Not applicable/Not run]
-- **Run Scope**: [filtered local-diff scope or `n/a`]
-- **Issue Count**: [JSON `summary.issue_count`, tool footer such as `Found X issue(s)`, `0`, or `n/a`, when helpful]
-- **Summary**: [result summary or failure reason]
-
-### 🎯 **MUST FIX**
-- `None`
-- [when violations exist, replace `None` with one normalized `CHECKID [file:line](path#Lline): message` entry per bullet when repo-relative path normalization is deterministic; otherwise use `CHECKID path:line: message`]
-
-### 🟢 **STRENGTHS**
-- [Concrete positive findings only]
-
-### 🟡 **OBSERVATIONS**
-- [Non-blocking concerns, uncertainty, or follow-up ideas]
-
-### 🔴 **ISSUES** (only actual problems)
-- [Evidence-backed defects, regressions, or policy violations]
-- [Include azurerm-linter findings from the filtered run]
-
-## ✅ **RECOMMENDATIONS**
-
-### 🎯 **IMMEDIATE**
-- [Blocking or high-value next actions]
-
-### 🔄 **FUTURE CONSIDERATIONS**
-- [Non-blocking follow-up work]
-
-## 🏆 **OVERALL ASSESSMENT**
-[Overall assessment and readiness recommendation.]
-
-Overall assessment rules:
-- The verdict must align with the final `### 🔴 **ISSUES**` section.
-- If `### 🔴 **ISSUES**` contains exactly `- None`, do not say `Not ready to merge` and do not describe unresolved defects.
-- If `### 🔴 **ISSUES**` contains one or more issues, do not say the change is ready to merge.
-- Do not carry forward stale issue text into `## 🏆 **OVERALL ASSESSMENT**` after later evidence clears the issue before the review body is emitted.
-
-Preflight complete: yes
-Skill used: [skill-name]
-Skill used: [skill-name]
-```
-
-Footer rules:
-- Omit the `Preflight complete:` and `Skill used:` lines entirely when no skill was actually used.
-- When the footer is present, `Preflight complete: yes` must appear exactly once before the `Skill used:` lines.
-- Emit one `Skill used:` line per actually used skill, in first-use order.
-- Emit no other text after the footer.
-
-Individual findings should use this structure when expanded:
-
-```markdown
-## ${🔧/❓/⛏️/♻️/🤔/🚀/ℹ️/📌} ${Review Type}: ${Summary}
-* **Priority**: ${🔥/🔴/🟡/🔵/⭐/✅}
-* **File**: ${relative/path/to/file}
-* **Evidence**: [what the diff, file, instruction, or tool output shows]
-* **Impact**: [why it matters]
-* **Suggested Change**: [single deterministic fix when applicable]
-```
-
-Priority system: 🔥 Critical → 🔴 High → 🟡 Medium → 🔵 Low → ⭐ Notable → ✅ Good
-
-Review type emojis:
-- 🔧 Change request
-- ❓ Question
-- ⛏️ Nitpick
-- ♻️ Refactor suggestion
-- 🤔 Thought or concern
-- 🚀 Positive feedback
-- ℹ️ Explanatory note
-- 📌 Future consideration
+- On the normal successful path, the final review body is owned by Step 8's `review-presentation` renderer.
+- Do not duplicate or override that template in this prompt.
+- Prompt-owned hard-stop messages remain prompt-owned.

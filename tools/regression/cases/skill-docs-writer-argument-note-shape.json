@@ -3,7 +3,14 @@
   "title": "Docs-writer guidance fixes canonical argument wording and note placement",
   "task": "docs-writer",
   "caseStatus": "adjudicated",
-  "sourceKind": "real-pr",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from a sanitized real PR or review incident.",
+    "whyItMattered": "Use this as the direct docs-writer skill benchmark for existing-page remediation without scaffold drift.",
+    "genericCondition": "Sanitized fixture models a real docs-writer request against an existing docs page without retaining live PR identity. The modeled changed path stays under `website/docs/` for realistic skill routing, while the fixture content lives under `tools/regression/fixtures/`.",
+    "notes": ""
+  },
   "sanitized": true,
   "description": "A sanitized direct docs-writer scenario where an existing resource page drifts on canonical enum wording and default placement, and the correct output should edit the page in place without inventing unsupported schema claims.",
   "fixture": {
@@ -14,7 +21,7 @@
     "changedFiles": [
       "website/docs/r/example_gateway.html.markdown"
     ],
-    "notes": "Sanitized fixture models a real docs-writer request against an existing docs page without retaining live PR identity. The modeled changed path stays under `website/docs/` for realistic skill routing, while the fixture content lives under `tools/regression/fixtures/`."
+    "notes": "Sanitized fixture models a docs-writer request against an existing docs page. The modeled changed path stays under `website/docs/` for realistic skill routing, while the fixture content lives under `tools/regression/fixtures/`."
   },
   "expectedRules": [
     "DOCS-ARG-*",

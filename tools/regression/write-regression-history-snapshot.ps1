@@ -96,7 +96,13 @@ $averageOverallScore = if ($scoreValues.Count -gt 0) { [Math]::Round((($scoreVal
 $minimumOverallScore = if ($scoreValues.Count -gt 0) { [Math]::Round((($scoreValues | Measure-Object -Minimum).Minimum), 2) } else { 0.0 }
 $maximumOverallScore = if ($scoreValues.Count -gt 0) { [Math]::Round((($scoreValues | Measure-Object -Maximum).Maximum), 2) } else { 0.0 }
 $passRate = if ($scoredCases.Count -gt 0) { [Math]::Round(($passCount / $scoredCases.Count) * 100.0, 2) } else { 0.0 }
-$coveredSkillCount = @($suiteSummary.targetSkillCoverage | Where-Object { $_.status -eq "covered" }).Count
+$skillCoverageEntries = if ($suiteSummary.PSObject.Properties.Name -contains 'skillCoverage') {
+    @($suiteSummary.skillCoverage)
+}
+else {
+    @($suiteSummary.targetSkillCoverage)
+}
+$coveredSkillCount = @($skillCoverageEntries | Where-Object { $_.status -eq "covered" }).Count
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $commitSuffix = if (-not [string]::IsNullOrWhiteSpace($repositorySnapshot.headCommit)) {
