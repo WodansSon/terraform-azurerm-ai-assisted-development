@@ -29,6 +29,7 @@ $skillCoverageTargets = @(
     [pscustomobject]@{ name = 'docs-writer'; matchMode = 'task'; matchValue = 'docs-writer'; section = 'direct' },
     [pscustomobject]@{ name = 'resource-implementation'; matchMode = 'task'; matchValue = 'resource-implementation'; section = 'direct' },
     [pscustomobject]@{ name = 'acceptance-testing'; matchMode = 'task'; matchValue = 'acceptance-testing'; section = 'direct' },
+    [pscustomobject]@{ name = 'pr-description'; matchMode = 'regex'; matchValue = 'Skill used:\s*pr-description'; section = 'routed' },
     [pscustomobject]@{ name = 'review-coordinator'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-coordinator'; section = 'routed' },
     [pscustomobject]@{ name = 'review-architect'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-architect'; section = 'routed' },
     [pscustomobject]@{ name = 'review-skeptic'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-skeptic'; section = 'routed' },

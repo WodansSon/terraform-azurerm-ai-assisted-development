@@ -215,6 +215,7 @@ In this repository, those validator and benchmark surfaces are part of the inten
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/pr-description-compliance-contract.instructions.md`
 - `.github/instructions/review-linter-compliance-contract.instructions.md`
 - `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
@@ -224,6 +225,15 @@ In this repository, those validator and benchmark surfaces are part of the inten
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
 These remain the authoritative rule layers for their domains.
+
+### Structured runtime schemas
+
+- `.github/instructions/pr-description-draft.schema.json`
+- `.github/instructions/review-coverage-matrix.schema.json`
+- `.github/instructions/review-presentation-input.schema.json`
+- `.github/instructions/review-workflow-handoff.schema.json`
+
+Schemas own transport shape only. They must not introduce policy defaults that compete with the normative contracts.
 
 ### Runtime routing files
 
@@ -261,10 +271,12 @@ Target state for these files:
 - `.github/prompts/code-review-local-changes.prompt.md`
 - `.github/prompts/code-review-committed-changes.prompt.md`
 - `.github/prompts/code-review-docs.prompt.md`
+- `.github/prompts/draft-pr-description.prompt.md`
 
 Current classification:
 
 - explicit user-facing review entrypoints
+- one explicit user-facing PR authoring entrypoint
 - compatibility-sensitive
 - should not be removed early in the migration
 
@@ -273,7 +285,7 @@ Near-term target state:
 - keep these prompts working
 - move reusable review logic behind them into contracts and skills where practical
 - keep shrinking duplicated execution prose when the contract already defines the behavior
-- avoid increasing the number of required user-invoked prompts
+- add user-invoked prompts only when they represent a distinct user task that should not be hidden behind automatic routing
 
 ### Runtime skills
 
@@ -281,6 +293,7 @@ Near-term target state:
 - `.github/skills/custom-poller-migration/SKILL.md`
 - `.github/skills/acceptance-testing/SKILL.md`
 - `.github/skills/docs-writer/SKILL.md`
+- `.github/skills/pr-description/SKILL.md`
 - `.github/skills/review-reviewer/SKILL.md`
 - `.github/skills/review-architect/SKILL.md`
 - `.github/skills/review-advocate/SKILL.md`

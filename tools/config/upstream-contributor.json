@@ -264,7 +264,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "84fbc3f16a14c173676df20dfb9d9aeae91b09e48ab9f91dd2ae0a33ffead81e",
+      "baselineSha256": "05d7bb4ea6c10dc5b6e4c6bf6048559c7aafa478b948670015a0508c36627d8e",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]

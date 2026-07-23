@@ -104,6 +104,8 @@ The current direct target-skill scope for the harness is:
 - `resource-implementation`
 - `acceptance-testing`
 
+The harness also treats `draft-pr-description` as a prompt task and records the hidden `pr-description` skill as routed coverage when the output contains `Skill used: pr-description`.
+
 The repo-only `ai-toolkit-maintenance` skill is intentionally excluded from this benchmark surface.
 
 ## Starter Commands

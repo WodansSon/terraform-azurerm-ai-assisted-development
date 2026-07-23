@@ -19,7 +19,7 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are ten main contract files:
+There are eleven main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
 - Generic review linter contract: `.github/instructions/review-linter-compliance-contract.instructions.md`
@@ -28,6 +28,7 @@ There are ten main contract files:
 - Architect direction-pass contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
 - Moderator synthesis-pass contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
 - Presentation render contract: `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- PR description drafting contract: `.github/instructions/pr-description-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
 - Testing contract: `.github/instructions/testing-compliance-contract.instructions.md`
@@ -43,6 +44,7 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/review-presentation`
 - `/review-coordinator`
 - `/code-review-docs`
+- `/draft-pr-description`
 - `/docs-writer`
 - `/resource-implementation`
 - `/acceptance-testing`
@@ -67,7 +69,7 @@ The matrix now also carries explicit `emittedRecordIds` and `issueClassToRecordI
 
 The important architectural point is that these contract files are now the normative rule sources.
 
-Companion guides under `.github/instructions/` still matter, but they are primarily there to provide worked patterns, heuristics, and examples that support the contracts. If a review cites a stable rule ID such as `REVIEW-*`, `DOCS-*`, `IMPL-*`, or `TEST-*`, the authority for that citation lives in a contract file, not in a companion guide.
+Companion guides under `.github/instructions/` still matter, but they are primarily there to provide worked patterns, heuristics, and examples that support the contracts. If a workflow cites a stable rule ID such as `REVIEW-*`, `PRDESC-*`, `DOCS-*`, `IMPL-*`, or `TEST-*`, the authority for that citation lives in a contract file, not in a companion guide.
 
 In practice, that means:
 
@@ -85,13 +87,14 @@ Examples:
 
 - `REVIEW-SCOPE-005`
 - `REVIEW-LINT-002C`
+- `PRDESC-TITLE-001`
 - `DOCS-ARG-001`
 - `IMPL-PATCH-001`
 - `TEST-PATTERN-002`
 
 The parts mean:
 
-- `REVIEW`, `DOCS`, `IMPL`, or `TEST`: which contract the rule came from
+- `REVIEW`, `PRDESC`, `DOCS`, `IMPL`, or `TEST`: which contract the rule came from
 - `AREA`: the category of rule
 - `NUMBER`: the specific rule inside that category
 
@@ -329,6 +332,26 @@ In practice, `REVIEW-PRES-*` rules explain things such as:
 - why structured issue and observation findings can render as titled list items with separate `Impact` and `Evidence` blocks once moderator-owned presentation hints exist
 - how footer lines such as `Preflight complete: yes` and `Skill used: ...` are rendered deterministically
 
+## `PRDESC-*` Rule Areas
+
+These IDs come from `.github/instructions/pr-description-compliance-contract.instructions.md` and are used by `/draft-pr-description` to author, rather than review, an AzureRM pull request title and body.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `PRDESC-PRE-*` | Preflight and repository eligibility | Why the workflow loaded fresh evidence or rejected an unsupported checkout |
+| `PRDESC-BASE-*` | Comparison-base resolution | How existing PR metadata, `upstream/main`, `origin/main`, or local `main` determined the merge base |
+| `PRDESC-SCOPE-*` | Change collection and classification | Which committed, staged, unstaged, and untracked files contributed to the draft and which surfaces were primary or companion |
+| `PRDESC-EVID-*` | Evidence and validation claims | Why test, intent, issue, or completion claims were included, omitted, or left for contributor input |
+| `PRDESC-TITLE-*` | Title selection | Why one AzureRM title shape won under the fixed surface and change-type precedence |
+| `PRDESC-BODY-*` | Template-preserving body drafting | How the resolved-base template was preserved and populated conservatively |
+| `PRDESC-CHECK-*` | Checklist decisions | Why each template checklist item stayed unchecked or was supported as complete |
+| `PRDESC-CHANGELOG-*` | Changelog decisions | Whether maintainer automation-ready changelog lines were warranted and how they were ordered |
+| `PRDESC-ISSUE-*` | Confirmed and advisory issues | How confirmed links remain separate from ranked potential matches |
+| `PRDESC-OUT-*` | Handoff and output | How the schema-backed payload becomes the exact five-section response and verification footer |
+| `PRDESC-FAIL-*` | Hard stops | Which missing authority, ambiguous scope, repository state, or invalid payload prevents rendering |
+
+The hidden `pr-description` skill owns the reusable drafting procedure and emits `.github/instructions/pr-description-draft.schema.json`; the prompt owns exact hard stops, schema validation, and final presentation. Neither consumer redefines the contract rules.
+
 ## `DOCS-*` Rule Areas
 
 These IDs come from `.github/instructions/docs-compliance-contract.instructions.md` and are primarily used by `/code-review-docs` and `/docs-writer` for `website/docs/**/*.html.markdown` pages.
@@ -381,7 +404,7 @@ These IDs come from `.github/instructions/testing-compliance-contract.instructio
 
 When a review includes rule IDs, the quickest way to read them is:
 
-1. Identify the contract family: `REVIEW-*`, `DOCS-*`, `IMPL-*`, or `TEST-*`.
+1. Identify the contract family: `REVIEW-*`, `PRDESC-*`, `DOCS-*`, `IMPL-*`, or `TEST-*`.
 2. Read the area code: for example `SCOPE`, `LINT`, `ARG`, or `EX`.
 3. Treat the citation as the reason the prompt applied a specific rule, not as extra output noise.
 

@@ -9,6 +9,7 @@ function Get-RegressionTestDefinition {
                 "code-review-local-changes",
                 "code-review-committed-changes",
                 "code-review-docs",
+                "draft-pr-description",
                 "docs-writer",
                 "resource-implementation",
                 "acceptance-testing"

@@ -8,9 +8,9 @@
 
 ## Status
 
-- This document is a repo-only proposal.
-- It does not introduce runtime payload by itself.
-- No installer manifest change is required until a prompt file is actually added under `.github/prompts/` and intentionally shipped.
+- Implemented as the shipped `/draft-pr-description` workflow.
+- This document remains the repo-only design record; runtime behavior is owned by the prompt, skill, contract, and schema listed below.
+- The runtime files are intentionally included in `installer/file-manifest.config`.
 
 ## Proposed Name
 
@@ -116,7 +116,7 @@ Use these runtime authorities by domain:
 - PR body shape and section order: `.github/pull_request_template.md` from the resolved base revision.
 - PR title requirements: `contributing/topics/guide-opening-a-pr.md` from the resolved base revision plus the explicit title rules in this proposal.
 - Changelog eligibility and formatting: `contributing/topics/maintainer-merging.md` from the resolved base revision.
-- New Resource and List Resource requirements: `contributing/topics/guide-new-resource.md` and `contributing/topics/guide-list-resource.md` from the resolved base revision.
+- New Resource, Resource Identity, and List Resource requirements: `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` from the resolved base revision.
 - Change evidence: the current branch diff, working tree, explicit current-run command output, user input, and authoritative existing PR metadata when available.
 
 Change evidence can determine what happened, but it must not override contributor workflow policy.
@@ -126,7 +126,7 @@ Change evidence can determine what happened, but it must not override contributo
 ### Preflight
 
 - Verify that the checkout is `hashicorp/terraform-provider-azurerm` or a fork with the same repository name and expected AzureRM structure.
-- Require `.github/pull_request_template.md`, `contributing/README.md`, `contributing/topics/guide-opening-a-pr.md`, `contributing/topics/maintainer-merging.md`, `contributing/topics/guide-new-resource.md`, and `contributing/topics/guide-list-resource.md` in the resolved base revision.
+- Require `.github/pull_request_template.md`, `contributing/README.md`, `contributing/topics/guide-opening-a-pr.md`, `contributing/topics/maintainer-merging.md`, `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` in the resolved base revision.
 - Hard-stop if the current branch is `main` or if no change exists relative to the resolved base.
 - Do not pull, merge, rebase, commit, push, or otherwise change the contributor's worktree or branch.
 

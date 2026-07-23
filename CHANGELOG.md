@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Installer]** - The installed toolkit now includes `/draft-pr-description`, which builds one evidence-based AzureRM pull request title and a template-preserving copy-ready body from committed, staged, unstaged, and non-ignored untracked branch changes without modifying or opening the pull request.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - The one-shot toolkit validator now checks the System Architecture diagram for fixed-width rows, aligned right borders, and padding before vertical borders so visual layout drift fails validation.
+
 ### Changed
 
 ### Fixed

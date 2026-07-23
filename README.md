@@ -277,6 +277,13 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-committed-changes
 ```
 
+### Draft A Pull Request Title And Body
+```
+/draft-pr-description
+```
+
+This prompt inspects the complete current branch change-set, preserves the AzureRM pull request template from the resolved base, and returns one suggested title plus a copy-ready body without changing the branch or opening a pull request.
+
 ### Run The Advocate Second Pass Directly
 ```
 /review-advocate
@@ -443,6 +450,7 @@ As you type, Copilot suggests:
 - **/code-review-committed-changes** - Review commits and PRs for standards
 - **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 - **/code-review-local-changes** - Review uncommitted changes for compliance
+- **/draft-pr-description** - Draft one AzureRM pull request title and a template-preserving copy-ready body from the complete current branch change-set
 
 ### 🧠 Agent Skills
 

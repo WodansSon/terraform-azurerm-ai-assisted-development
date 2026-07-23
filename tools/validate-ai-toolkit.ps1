@@ -27,6 +27,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $changelogTaxonomyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-taxonomy.ps1'
 $changelogConsistencyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-consistency.ps1'
+$architectureLayoutScriptPath = Join-Path $PSScriptRoot 'validate-architecture-layout.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
@@ -450,6 +451,10 @@ try {
         }
 
         & $npxCommand.Source -y markdownlint-cli2 '.github/**/*.md' 'docs/**/*.md' 'CHANGELOG.md' --config '.github/.markdownlint.json'
+    }
+
+    $steps += Invoke-ValidationStep -Name 'architecture-layout' -Detail 'Validate the System Architecture diagram row width, right edge, and border padding.' -Command {
+        & pwsh -NoProfile -File $architectureLayoutScriptPath
     }
 
     $steps += Invoke-ValidationStep -Name 'regression-harness' -Detail 'Run the regression harness validation, suite scoring, and history snapshot flow.' -Skipped:$SkipRegressionHarness -Command {

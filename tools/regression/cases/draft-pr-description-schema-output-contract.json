@@ -1,0 +1,88 @@
+{
+  "id": "draft-pr-description-schema-output-contract",
+  "title": "PR drafting validates its handoff and renders the exact five-section response",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark for the PR drafting schema gate and presentation contract.",
+    "whyItMattered": "The workflow must not render incomplete internal decisions or leak orchestration commentary around the copy-ready body.",
+    "genericCondition": "One sanitized run supplies a complete schema-valid payload and another omits a required payload property.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A valid payload renders exactly five ordered sections and the verification footer; an invalid payload produces only the exact schema hard stop.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-schema-output-contract/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_test.go",
+      "website/docs/r/example_widget.html.markdown"
+    ],
+    "notes": "The valid run models one existing Resource enhancement; the invalid run uses the same evidence but an incomplete internal handoff."
+  },
+  "expectedRules": [
+    "PRDESC-OUT-001",
+    "PRDESC-OUT-002",
+    "PRDESC-OUT-003",
+    "PRDESC-FAIL-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "schema-invalid-payload-hard-stop",
+      "severity": "high",
+      "description": "A payload missing a required schema property hard-stops before any normal section is rendered."
+    },
+    {
+      "key": "exact-five-section-order",
+      "severity": "high",
+      "description": "A valid payload renders the five exact level-two headings in contract order."
+    },
+    {
+      "key": "copy-ready-body-fenced-once",
+      "severity": "medium",
+      "description": "The complete pull request body appears in one Markdown code block and excludes prompt-only evidence and issue-search sections."
+    },
+    {
+      "key": "verification-footer-last",
+      "severity": "medium",
+      "description": "The exact preflight and skill lines are the final response content with nothing after them."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "invalid-payload-partial-output",
+      "description": "A schema-invalid handoff must not emit a title, partial body, evidence notes, or footer."
+    },
+    {
+      "key": "extra-top-level-section",
+      "description": "The normal response must not add alternate titles, orchestration notes, or extra top-level headings."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Suggested PR Title",
+      "Why This Title",
+      "Draft PR Body",
+      "Evidence Notes",
+      "Potential Related Issues"
+    ],
+    "mustIncludeMarkers": [
+      "Cannot run draft-pr-description: pr-description produced a schema-invalid draft payload. Refresh the workflow files and re-run this prompt.",
+      "Preflight complete: yes",
+      "Skill used: pr-description"
+    ],
+    "mustNotIncludeMarkers": [
+      "## Alternate Titles",
+      "## Orchestration Notes"
+    ]
+  },
+  "notes": "The paired Markdown example captures the valid output shape; the exact hard-stop marker covers the invalid run."
+}

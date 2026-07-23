@@ -1,0 +1,83 @@
+{
+  "id": "draft-pr-description-related-issue-matrix",
+  "title": "PR drafting separates confirmed issue linkage from advisory search outcomes",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark matrix for confirmed and potential issue handling.",
+    "whyItMattered": "Search similarity must never become an unsupported issue-closing claim in the copy-ready pull request body.",
+    "genericCondition": "Sanitized runs cover confirmed commit evidence, ranked advisory candidates, successful no-match search, and unavailable search.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A scenario matrix for confirmed issue references, plausible advisory candidates, no matches, and unavailable GitHub search.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-related-issue-matrix/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_test.go"
+    ],
+    "notes": "Each run changes the same example surface while varying only authoritative issue evidence and search availability."
+  },
+  "expectedRules": [
+    "PRDESC-ISSUE-001",
+    "PRDESC-ISSUE-002",
+    "PRDESC-ISSUE-003",
+    "PRDESC-ISSUE-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "confirmed-linkage-needs-authority",
+      "severity": "high",
+      "description": "Only explicit user input, existing pull request text, or a qualifying commit-message reference enters Related Issues as confirmed."
+    },
+    {
+      "key": "plausible-candidates-remain-advisory",
+      "severity": "high",
+      "description": "Plausible issue matches are filtered, ranked, capped, and displayed only in the advisory table."
+    },
+    {
+      "key": "no-match-rendering",
+      "severity": "low",
+      "description": "A successful search with no plausible candidates renders the exact no-results sentence."
+    },
+    {
+      "key": "unavailable-search-nonblocking",
+      "severity": "medium",
+      "description": "Unavailable issue search renders the exact unavailable sentence and does not block title or body drafting."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "advisory-result-auto-closes",
+      "description": "A potential search result must not be inserted into the body as Fixes, Closes, or Resolves."
+    },
+    {
+      "key": "unavailable-search-hard-stop",
+      "description": "Potential issue search unavailability must not stop an otherwise supported draft."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Potential Related Issues"
+    ],
+    "mustIncludeMarkers": [
+      "Issue | Title | Why it may relate",
+      "No potential related issues found.",
+      "Potential related issue search unavailable."
+    ],
+    "mustNotIncludeMarkers": [
+      "Fixes advisory match",
+      "Closes potential match"
+    ]
+  },
+  "notes": "Search candidates use synthetic issue data and are evaluated only for workflow behavior."
+}

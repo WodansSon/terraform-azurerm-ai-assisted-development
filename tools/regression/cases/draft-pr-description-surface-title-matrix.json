@@ -1,0 +1,98 @@
+{
+  "id": "draft-pr-description-surface-title-matrix",
+  "title": "PR drafting selects deterministic titles and changelog entries across AzureRM surface combinations",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark matrix for the initial PR drafting surface-classification contract.",
+    "whyItMattered": "The prompt must choose one stable title while keeping mandatory companion surfaces visible in changelog decisions.",
+    "genericCondition": "Multiple sanitized runs cover new and existing Terraform surfaces plus documentation and contributor-guidance classifications.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A scenario matrix covering new Resource, Data Source, List Resource, enhancement, bug-fix, documentation-only, and contributor-guidance-only title precedence.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-surface-title-matrix/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "contributing/topics/example-guidance.md",
+      "internal/services/example/example_widget_data_source.go",
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_list.go",
+      "website/docs/r/example_widget.html.markdown"
+    ],
+    "notes": "The fixture defines separate synthetic runs; the listed paths are the union of their modeled scopes."
+  },
+  "expectedRules": [
+    "PRDESC-SCOPE-002",
+    "PRDESC-SCOPE-003",
+    "PRDESC-TITLE-001",
+    "PRDESC-TITLE-002",
+    "PRDESC-TITLE-003",
+    "PRDESC-CHANGELOG-002",
+    "PRDESC-CHANGELOG-004"
+  ],
+  "mustCatch": [
+    {
+      "key": "new-resource-implies-list-title",
+      "severity": "medium",
+      "description": "A new Resource plus required List Resource uses the new Resource title while retaining separate feature changelog lines."
+    },
+    {
+      "key": "combined-resource-data-source-title",
+      "severity": "medium",
+      "description": "A new Resource and Data Source sharing one Terraform name use the exact combined title shape."
+    },
+    {
+      "key": "standalone-list-resource-title",
+      "severity": "medium",
+      "description": "List Resource support added to an existing Resource uses the New List Resource title."
+    },
+    {
+      "key": "existing-change-title-precedence",
+      "severity": "medium",
+      "description": "Existing Resource bug fixes and enhancements use concrete surface-first title wording with bug-fix precedence when both apply."
+    },
+    {
+      "key": "docs-and-contributing-titles",
+      "severity": "low",
+      "description": "Documentation-only and contributor-guidance-only runs use Docs and Contributing title forms respectively."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "list-resource-competes-with-new-resource",
+      "description": "A required companion List Resource must not displace or expand the new Resource title."
+    },
+    {
+      "key": "bracketed-title-prefix",
+      "description": "The AzureRM draft must not use this toolkit repository's bracketed title prefixes."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Suggested PR Title",
+      "Draft PR Body"
+    ],
+    "mustIncludeMarkers": [
+      "New Resource: `azurerm_example_widget`",
+      "New (Data Source|Resource) - `azurerm_example_widget`",
+      "New List Resource: `azurerm_example_widget`",
+      "[FEATURE] * **New List Resource**: `azurerm_example_widget`",
+      "Docs:",
+      "Contributing:"
+    ],
+    "mustNotIncludeMarkers": [
+      "[FEATURE:]",
+      "New Resource and List Resource:"
+    ]
+  },
+  "notes": "Run each fixture scenario independently and compare its title and changelog decisions with the matrix expectations."
+}

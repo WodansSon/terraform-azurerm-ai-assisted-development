@@ -28,11 +28,13 @@
 │  │  │   │  │  ├── prompts/                               │  │  │ │
 │  │  │   │  │  │   ├── code-review-local-changes...       │  │  │ │
 │  │  │   │  │  │   ├── code-review-committed-changes...   │  │  │ │
-│  │  │   │  │  │   └── code-review-docs.prompt.md         │  │  │ │
+│  │  │   │  │  │   ├── code-review-docs.prompt.md         │  │  │ │
+│  │  │   │  │  │   └── draft-pr-description.prompt.md     │  │  │ │
 │  │  │   │  │  ├── skills/                                │  │  │ │
 │  │  │   │  │  │   ├── acceptance-testing/SKILL.md        │  │  │ │
 │  │  │   │  │  │   ├── custom-poller-migration/SKILL.md   │  │  │ │
 │  │  │   │  │  │   ├── docs-writer/SKILL.md               │  │  │ │
+│  │  │   │  │  │   ├── pr-description/SKILL.md            │  │  │ │
 │  │  │   │  │  │   ├── resource-implementation/SKILL.md   │  │  │ │
 │  │  │   │  │  │   ├── review-advocate/SKILL.md           │  │  │ │
 │  │  │   │  │  │   ├── review-architect/SKILL.md          │  │  │ │
@@ -43,14 +45,16 @@
 │  │  │   │  │      ├── code-review-compliance-contract... │  │  │ │
 │  │  │   │  │      ├── implementation-compliance-contr... │  │  │ │
 │  │  │   │  │      ├── docs-compliance-contract...        │  │  │ │
+│  │  │   │  │      ├── pr-description-compliance...       │  │  │ │
+│  │  │   │  │      ├── pr-description-draft.schema.json   │  │  │ │
 │  │  │   │  │      ├── review-advocate-compliance...      │  │  │ │
 │  │  │   │  │      ├── review-moderator-compliance...     │  │  │ │
 │  │  │   │  │      ├── review-presentation-compliance...  │  │  │ │
-│  │  │   │  │      ├── review-presentation-input.schema...│  │  │ │
-│  │  │   │  │      ├── review-workflow-handoff.schema.json│  │  │ │
+│  │  │   │  │      ├── review-presentation-input.schem... │  │  │ │
+│  │  │   │  │      ├── review-workflow-handoff.schema...  │  │  │ │
 │  │  │   │  │      ├── testing-compliance-contract...     │  │  │ │
 │  │  │   │  │      ├── ai-skill-routing-*.instructions... │  │  │ │
-│  │  │   │  │      └── [28 runtime instruction/schema files]│  │  │ │
+│  │  │   │  │      └── [31 instruction/schema files]      │  │  │ │
 │  │  │   │  └── .vscode/settings.json                     │  │  │ │
 │  │  │   └────────────────────────────────────────────────┘  │  │ │
 │  │  └───────────────────────────────────────────────────────┘  │ │
@@ -108,42 +112,46 @@
 └────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Installer Copies AI Files from Bundled Payload             │
-│  (offline, no GitHub/raw downloads at runtime):             │
-│                                                             │
-│  ├── .github/copilot-instructions.md                        │
-│  ├── .github/prompts/                                       │
-│  │   ├── code-review-local-changes.prompt.md                │
-│  │   ├── code-review-committed-changes.prompt.md            │
-│  │   └── code-review-docs.prompt.md                         │
-│  ├── .github/skills/                                        │
-│  │   └── */SKILL.md                                         │
-│  ├── .github/instructions/                                  │
-│  │   ├── code-review-compliance-contract.instructions.md    │
-│  │   ├── review-linter-compliance-contract.instructions.md  │
-│  │   ├── implementation-compliance-contract.instructions.md │
-│  │   ├── docs-compliance-contract.instructions.md           │
-│  │   ├── review-advocate-compliance-contract.instructions.md│
-│  │   ├── review-moderator-compliance-contract.instructions.md│
-│  │   ├── review-presentation-compliance-contract.instructions.md│
-│  │   ├── review-presentation-input.schema.json             │
-│  │   ├── review-workflow-handoff.schema.json                │
-│  │   ├── testing-compliance-contract.instructions.md        │
-│  │   ├── ai-skill-routing-*.instructions.md                 │
-│  │   └── [29 instruction/schema files total]                │
-│  ├── .github/skills/                                        │
-│  │   ├── acceptance-testing/SKILL.md                        │
-│  │   ├── custom-poller-migration/SKILL.md                   │
-│  │   ├── docs-writer/SKILL.md                               │
-│  │   ├── resource-implementation/SKILL.md                   │
-│  │   ├── review-advocate/SKILL.md                           │
-│  │   ├── review-architect/SKILL.md                          │
-│  │   ├── review-moderator/SKILL.md                          │
-│  │   ├── review-presentation/SKILL.md                       │
-│  │   └── review-skeptic/SKILL.md                            │
-│  └── .vscode/settings.json                                  │
-└────────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  Installer Copies AI Files from Bundled Payload                  │
+│  (offline, no GitHub/raw downloads at runtime):                  │
+│                                                                  │
+│  ├── .github/copilot-instructions.md                             │
+│  ├── .github/prompts/                                            │
+│  │   ├── code-review-local-changes.prompt.md                     │
+│  │   ├── code-review-committed-changes.prompt.md                 │
+│  │   ├── code-review-docs.prompt.md                              │
+│  │   └── draft-pr-description.prompt.md                          │
+│  ├── .github/skills/                                             │
+│  │   └── */SKILL.md                                              │
+│  ├── .github/instructions/                                       │
+│  │   ├── code-review-compliance-contract.instructions.md         │
+│  │   ├── review-linter-compliance-contract.instructions.md       │
+│  │   ├── implementation-compliance-contract.instructions.md      │
+│  │   ├── docs-compliance-contract.instructions.md                │
+│  │   ├── pr-description-compliance-contract.instructions.md      │
+│  │   ├── pr-description-draft.schema.json                        │
+│  │   ├── review-advocate-compliance-contract.instructions.md     │
+│  │   ├── review-moderator-compliance-contract.instructions.md    │
+│  │   ├── review-presentation-compliance-contract.instructions.md │
+│  │   ├── review-presentation-input.schema.json                   │
+│  │   ├── review-workflow-handoff.schema.json                     │
+│  │   ├── testing-compliance-contract.instructions.md             │
+│  │   ├── ai-skill-routing-*.instructions.md                      │
+│  │   └── [31 instruction/schema files total]                     │
+│  ├── .github/skills/                                             │
+│  │   ├── acceptance-testing/SKILL.md                             │
+│  │   ├── custom-poller-migration/SKILL.md                        │
+│  │   ├── docs-writer/SKILL.md                                    │
+│  │   ├── pr-description/SKILL.md                                 │
+│  │   ├── resource-implementation/SKILL.md                        │
+│  │   ├── review-advocate/SKILL.md                                │
+│  │   ├── review-architect/SKILL.md                               │
+│  │   ├── review-moderator/SKILL.md                               │
+│  │   ├── review-presentation/SKILL.md                            │
+│  │   └── review-skeptic/SKILL.md                                 │
+│  └── .vscode/settings.json                                       │
+└────────────────────────────┬─────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -412,6 +420,7 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── tools/
 │   ├── check-upstream-contributor-drift.ps1
+│   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
 │   ├── validate-changelog-taxonomy.ps1
 │   ├── validate-contracts.ps1
@@ -456,7 +465,8 @@ The repository contains both shipped runtime guidance and repo-only maintainer t
 
 The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
 
-- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, regression harness, and upstream drift.
+- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, regression harness, and upstream drift.
+- `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
 - `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
 - `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.

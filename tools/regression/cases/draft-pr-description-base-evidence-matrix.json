@@ -1,0 +1,92 @@
+{
+  "id": "draft-pr-description-base-evidence-matrix",
+  "title": "PR drafting resolves base scope and treats validation evidence conservatively",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark matrix for comparison-base, preflight, and validation-evidence behavior.",
+    "whyItMattered": "A draft can be materially wrong if existing pull request scope hides local changes or if skipped and stale tests are reported as passing.",
+    "genericCondition": "Sanitized runs combine existing pull request base metadata, local unpushed changes, unavailable authorities, service-scope conflict, and multiple validation evidence states.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A matrix covering authoritative base metadata plus local changes, required base source failure, unrelated service hard stop, and successful, skipped, missing, or stale validation evidence.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-base-evidence-matrix/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_test.go",
+      "internal/services/example/example_gadget_resource.go"
+    ],
+    "notes": "The fixture defines independent runs for base, preflight, scope-conflict, and validation-evidence decisions."
+  },
+  "expectedRules": [
+    "PRDESC-PRE-003",
+    "PRDESC-BASE-001",
+    "PRDESC-BASE-003",
+    "PRDESC-SCOPE-001",
+    "PRDESC-SCOPE-004",
+    "PRDESC-EVID-002",
+    "PRDESC-EVID-003",
+    "PRDESC-FAIL-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "existing-pr-base-keeps-local-changes",
+      "severity": "high",
+      "description": "Existing pull request base metadata selects the base but does not replace committed, staged, unstaged, or untracked local evidence."
+    },
+    {
+      "key": "selected-base-owns-policy",
+      "severity": "high",
+      "description": "The selected base commit supplies the pull request template and contributor policy while the merge base is used only as the diff origin."
+    },
+    {
+      "key": "missing-base-authority-hard-stop",
+      "severity": "high",
+      "description": "A missing required template or contributor guide at the merge base produces the exact named-source hard stop."
+    },
+    {
+      "key": "unrelated-services-hard-stop",
+      "severity": "high",
+      "description": "Unrelated primary changes in two service packages stop drafting before a title is guessed."
+    },
+    {
+      "key": "validation-evidence-state-matrix",
+      "severity": "high",
+      "description": "Only successful current-run applicable validation is reported as passing; skipped, missing, stale, and contradicted evidence remain unchecked and visible as gaps."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "existing-pr-body-replaces-worktree",
+      "description": "Existing pull request text must not erase local unpushed changes from scope."
+    },
+    {
+      "key": "skipped-acceptance-test-passes",
+      "description": "A successful process exit with skipped acceptance tests must not check the local-test item without required environment evidence."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Evidence Notes"
+    ],
+    "mustIncludeMarkers": [
+      "Cannot run draft-pr-description: required base-revision source is missing:",
+      "Cannot run draft-pr-description: unrelated primary changes span multiple service packages.",
+      "No observed current-run local test evidence."
+    ],
+    "mustNotIncludeMarkers": [
+      "Tests passed locally based on the existing pull request body."
+    ]
+  },
+  "notes": "Each scenario is a separate prompt invocation; hard-stop scenarios intentionally do not emit the normal five-section output."
+}
