@@ -17,6 +17,10 @@
   "findings": {
     "caught": [
       "schema-invalid-payload-hard-stop",
+      "existing-pr-evidence-separated-from-base",
+      "strict-changelog-schema-state-matrix",
+      "pull-request-base-schema-conditions",
+      "stable-repository-state-required",
       "exact-five-section-order",
       "copy-ready-body-fenced-once",
       "verification-footer-last"
@@ -25,8 +29,8 @@
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 4,
-    "total": 4
+    "matched": 8,
+    "total": 8
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

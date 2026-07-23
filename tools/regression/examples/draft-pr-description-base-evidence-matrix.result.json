@@ -16,18 +16,26 @@
   },
   "findings": {
     "caught": [
+      "pull-request-trust-state-matrix",
+      "active-pr-local-relation-matrix",
       "existing-pr-base-keeps-local-changes",
       "selected-base-owns-policy",
+      "specialized-policy-loads-conditionally",
       "missing-base-authority-hard-stop",
       "unrelated-services-hard-stop",
-      "validation-evidence-state-matrix"
+      "validation-evidence-state-matrix",
+      "repository-fingerprint-restart-matrix",
+      "exact-targeted-fetch-safeguards",
+      "reviewable-cross-platform-fingerprint-helper",
+      "local-windows-wsl-go-fallback",
+      "repository-effect-labels-precede-commands"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 5,
-    "total": 5
+    "matched": 13,
+    "total": 13
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

@@ -8,7 +8,7 @@
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark for the PR drafting schema gate and presentation contract.",
     "whyItMattered": "The workflow must not render incomplete internal decisions or leak orchestration commentary around the copy-ready body.",
-    "genericCondition": "One sanitized run supplies a complete schema-valid payload and another omits a required payload property.",
+    "genericCondition": "One sanitized run supplies a complete schema-version 1.2 payload with stable repository evidence and separate existing pull request evidence; invalid runs violate required fields, changelog state invariants, or PR/base conditions.",
     "notes": ""
   },
   "sanitized": true,
@@ -26,6 +26,10 @@
     "notes": "The valid run models one existing Resource enhancement; the invalid run uses the same evidence but an incomplete internal handoff."
   },
   "expectedRules": [
+    "PRDESC-PRE-005",
+    "PRDESC-BASE-001",
+    "PRDESC-CHANGELOG-003",
+    "PRDESC-CHANGELOG-005",
     "PRDESC-OUT-001",
     "PRDESC-OUT-002",
     "PRDESC-OUT-003",
@@ -36,6 +40,26 @@
       "key": "schema-invalid-payload-hard-stop",
       "severity": "high",
       "description": "A payload missing a required schema property hard-stops before any normal section is rendered."
+    },
+    {
+      "key": "existing-pr-evidence-separated-from-base",
+      "severity": "high",
+      "description": "A valid schema-version 1.1 payload carries pull request discovery, trust, relation, references, and structured conflicts separately from comparison-base metadata."
+    },
+    {
+      "key": "strict-changelog-schema-state-matrix",
+      "severity": "high",
+      "description": "The schema rejects category and keyword mismatches, recommended decisions without entries, non-recommended or breaking decisions with entries, and non-contract fallback text."
+    },
+    {
+      "key": "pull-request-base-schema-conditions",
+      "severity": "high",
+      "description": "Active branch identity requires a PR base commit, while an existing-PR comparison base requires a pull request number and not-applicable refresh status."
+    },
+    {
+      "key": "stable-repository-state-required",
+      "severity": "high",
+      "description": "A valid schema-version 1.2 payload requires lowercase initial and final SHA-256 fingerprints, stable=true, and a restart count of zero or one."
     },
     {
       "key": "exact-five-section-order",
@@ -61,6 +85,10 @@
     {
       "key": "extra-top-level-section",
       "description": "The normal response must not add alternate titles, orchestration notes, or extra top-level headings."
+    },
+    {
+      "key": "contract-invalid-changelog-payload-renders",
+      "description": "A payload whose changelog category, keyword, status, entry count, or fallback text violates the contract must not pass schema validation."
     }
   ],
   "expectedTools": {
@@ -84,5 +112,5 @@
       "## Orchestration Notes"
     ]
   },
-  "notes": "The paired Markdown example captures the valid output shape; the exact hard-stop marker covers the invalid run."
+  "notes": "The paired Markdown example captures the valid output shape; the valid handoff uses schema version 1.2 and the exact hard-stop marker covers invalid runs."
 }

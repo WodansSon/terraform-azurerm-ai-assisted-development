@@ -7,12 +7,12 @@
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark matrix for confirmed and potential issue handling.",
-    "whyItMattered": "Search similarity must never become an unsupported issue-closing claim in the copy-ready pull request body.",
-    "genericCondition": "Sanitized runs cover confirmed commit evidence, ranked advisory candidates, successful no-match search, and unavailable search.",
+    "whyItMattered": "Authoritative issue references must not be erased by an advisory no-match, while search similarity must never become an unsupported issue-closing claim in the copy-ready pull request body.",
+    "genericCondition": "Sanitized runs cover authoritative existing pull request references, stale-reference conflicts, confirmed commit evidence, bounded concurrent advisory searches, successful no-match search, and unavailable search.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A scenario matrix for confirmed issue references, plausible advisory candidates, no matches, and unavailable GitHub search.",
+  "description": "A scenario matrix for authoritative and conflicted issue references, bounded duplicate and related-issue searches, plausible advisory candidates, no matches, and unavailable GitHub search.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/draft-pr-description-related-issue-matrix/README.md"
@@ -25,12 +25,24 @@
     "notes": "Each run changes the same example surface while varying only authoritative issue evidence and search availability."
   },
   "expectedRules": [
+    "PRDESC-PR-004",
+    "PRDESC-CHECK-002",
     "PRDESC-ISSUE-001",
     "PRDESC-ISSUE-002",
     "PRDESC-ISSUE-003",
     "PRDESC-ISSUE-004"
   ],
   "mustCatch": [
+    {
+      "key": "authoritative-reference-survives-advisory-no-match",
+      "severity": "high",
+      "description": "Confirmed references from active branch identity or exact final-head evidence remain in the body when advisory issue search returns no match."
+    },
+    {
+      "key": "stale-reference-conflict-needs-confirmation",
+      "severity": "high",
+      "description": "When current behavior contradicts an authoritative closing reference, the closing keyword is removed and a structured conflict plus contributor confirmation gap is emitted."
+    },
     {
       "key": "confirmed-linkage-needs-authority",
       "severity": "high",
@@ -50,6 +62,21 @@
       "key": "unavailable-search-nonblocking",
       "severity": "medium",
       "description": "Unavailable issue search renders the exact unavailable sentence and does not block title or body drafting."
+    },
+    {
+      "key": "bounded-concurrent-search-budget",
+      "severity": "medium",
+      "description": "Duplicate search uses at most two exact-surface queries and advisory issue search uses at most four high-signal queries, with each independent batch issued concurrently."
+    },
+    {
+      "key": "feature-skips-error-term-extraction",
+      "severity": "medium",
+      "description": "An ordinary new feature does not extract or search changed error fragments when error behavior is not part of the change."
+    },
+    {
+      "key": "confirmed-reference-fields-have-distinct-meaning",
+      "severity": "medium",
+      "description": "existingPullRequest.confirmedReferences contains trusted-PR source references before conflict resolution, while relatedIssues.confirmedReferences contains final body-approved references from every authoritative source."
     }
   ],
   "mustNotFlag": [
@@ -60,6 +87,14 @@
     {
       "key": "unavailable-search-hard-stop",
       "description": "Potential issue search unavailability must not stop an otherwise supported draft."
+    },
+    {
+      "key": "no-match-erases-authoritative-reference",
+      "description": "A successful advisory no-match must not replace authoritative references with No related issue confirmed."
+    },
+    {
+      "key": "serial-exhaustive-search-expansion",
+      "description": "The workflow must not issue one serial query per changed surface, schema property, and error fragment."
     }
   ],
   "expectedTools": {
@@ -71,6 +106,7 @@
     ],
     "mustIncludeMarkers": [
       "Issue | Title | Why it may relate",
+      "Prior pull request evidence requires contributor confirmation.",
       "No potential related issues found.",
       "Potential related issue search unavailable."
     ],
@@ -79,5 +115,5 @@
       "Closes potential match"
     ]
   },
-  "notes": "Search candidates use synthetic issue data and are evaluated only for workflow behavior."
+  "notes": "Search candidates use synthetic issue data and are evaluated only for workflow behavior. Query count and concurrency are acceptance criteria for tool traces, not inferred from final prose alone."
 }

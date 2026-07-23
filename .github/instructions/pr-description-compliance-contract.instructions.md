@@ -23,6 +23,7 @@ description: "Shared PR description drafting compliance contract used by the dra
 - `contributing/topics/guide-new-resource.md` from the resolved comparison-base revision for new Resource expectations
 - `contributing/topics/guide-resource-identity.md` from the resolved comparison-base revision for Resource Identity requirements and exception disclosure
 - `contributing/topics/guide-list-resource.md` from the resolved comparison-base revision for List Resource requirements
+- `.github/skills/pr-description/scripts/pr-description-fingerprint.go` for the deterministic repository-state fingerprint implementation
 - Current branch diff, working tree, commit messages, and non-ignored untracked files for change evidence
 - This contract for deterministic drafting, fallback, and output requirements not owned by the runtime AzureRM sources
 
@@ -30,7 +31,8 @@ Conflict resolution:
 
 - Repository policy from the resolved base revision outranks change evidence when deciding what the pull request should contain.
 - Explicit current-run evidence outranks older pull request text when the two conflict.
-- Existing pull request metadata supplements local evidence and must not hide unpushed committed, staged, unstaged, or untracked changes.
+- Existing pull request authority is field-specific: verified identity and intended base can be authoritative while current local evidence still owns implementation behavior and can supplement or contradict older body claims.
+- Existing pull request metadata must not hide unpushed committed, staged, unstaged, or untracked changes.
 - The prompt owns exact hard-stop strings and presentation mechanics but must not weaken this contract.
 - The skill owns procedure but must not redefine policy from this contract.
 - The schema owns payload shape only and must not introduce policy defaults.
@@ -38,6 +40,7 @@ Conflict resolution:
 ## Rule IDs
 
 - `PRDESC-PRE-*`: fresh-run and repository eligibility
+- `PRDESC-PR-*`: existing pull request discovery, trust, and field authority
 - `PRDESC-BASE-*`: comparison-base resolution
 - `PRDESC-SCOPE-*`: change collection and surface classification
 - `PRDESC-EVID-*`: evidence and validation claims
@@ -79,17 +82,21 @@ Conflict resolution:
 - **Evidence**:
   - The title, template, changelog, Resource Identity, and List Resource rules are AzureRM-specific
 
-### PRDESC-PRE-003: Require base-revision authorities
+### PRDESC-PRE-003: Load applicable base-revision authorities
 
-- Require these files in the resolved comparison-base revision:
+- Always require these files in the resolved comparison-base revision:
   - `.github/pull_request_template.md`
   - `contributing/README.md`
   - `contributing/topics/guide-opening-a-pr.md`
   - `contributing/topics/maintainer-merging.md`
+- Require these files only after the complete changed-path inventory shows their policy area applies:
   - `contributing/topics/guide-new-resource.md`
+    - Load for a new Resource.
   - `contributing/topics/guide-resource-identity.md`
+    - Load for a new Resource or a changed Resource Identity surface.
   - `contributing/topics/guide-list-resource.md`
-- Load each required authority from the resolved base revision rather than trusting the candidate branch copy.
+    - Load for a new Resource, new List Resource, or changed List Resource surface.
+- Load each applicable authority from the resolved base revision rather than trusting the candidate branch copy.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
@@ -100,39 +107,176 @@ Conflict resolution:
 
 ### PRDESC-PRE-004: Preserve repository state
 
-- Use read-only inspection commands only.
+- Use repository-preserving inspection commands only.
 - Do not pull, merge, rebase, commit, push, checkout, reset, clean, or modify files.
-- A read-only fetch that refreshes the selected remote-tracking base ref is permitted.
+- A targeted fetch that refreshes only the selected remote-tracking base ref is permitted even though it downloads objects and updates remote-tracking metadata.
+- A permitted fetch must not checkout, merge, rebase, reset, commit, modify local `main`, change the index, or change working files.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Drafting must not mutate the contributor's branch or worktree
+
+### PRDESC-PRE-005: Use one stable repository snapshot
+
+- Require `.github/skills/pr-description/scripts/pr-description-fingerprint.go` as a checked-in runtime asset.
+- Compute a `sha256-v1` repository-state fingerprint during initial repository evidence collection and again immediately before payload validation by invoking the checked-in helper. Do not generate or execute an inline fingerprint program.
+- Prefer this direct command when `go` resolves in the current terminal environment:
+
+  ```text
+  go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root {{REPOSITORY_ROOT}}
+  ```
+
+- On local Windows only, when `go` does not resolve in the current terminal but a selected WSL distribution has Go, resolve the Windows repository root with `wslpath` and invoke:
+
+  ```text
+  wsl.exe -d {{WSL_DISTRO}} --cd {{WSL_REPOSITORY_ROOT}} -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'
+  ```
+
+- Do not assume the default WSL distribution lacks Go from a non-interactive PATH miss. Inspect the selected distribution's interactive shell before declaring the helper unavailable.
+- Use the same direct or WSL execution environment for the initial and final fingerprints. Do not compare fingerprints produced by different Git executables or configurations.
+- The helper may use the normal Go build cache outside the repository, but it must not modify repository refs, the index, or working files.
+- Build the fingerprint from these four components in this exact order:
+  - Lowercase full `HEAD` commit SHA.
+  - SHA-256 of the raw byte output from `git diff --cached --binary --full-index --no-ext-diff --no-textconv --no-color HEAD --`.
+  - SHA-256 of the raw byte output from `git diff --binary --full-index --no-ext-diff --no-textconv --no-color --`.
+  - SHA-256 of a manifest for every path returned by `git ls-files --others --exclude-standard -z`.
+- Build the untracked manifest in ordinal repo-relative path order. Length-frame each UTF-8 path, record whether it is a regular file or symbolic link, and include the SHA-256 of raw file bytes or symbolic-link target bytes.
+- Compute the final fingerprint as SHA-256 over this exact UTF-8 manifest, with lowercase hexadecimal component values and LF separators:
+
+  ```text
+  head={{HEAD_SHA}}
+  staged={{STAGED_DIFF_SHA256}}
+  unstaged={{UNSTAGED_DIFF_SHA256}}
+  untracked={{UNTRACKED_MANIFEST_SHA256}}
+  ```
+
+- Hash raw command output before text decoding and do not place component inputs or patch content in the payload.
+- If the final fingerprint differs from the initial fingerprint, discard all repository, pull request, search, classification, and draft evidence and restart the full procedure once.
+- On the restarted run, hard-stop if the fingerprint changes again.
+- Record both fingerprints and the restart count in `repositoryState`; validate their equality before setting `stable=true`.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - `HEAD` equality alone cannot detect staged, unstaged, or untracked changes made during evidence collection
+  - A compact digest prevents mixed-snapshot drafts without adding large patch bodies to the model context
+  - A checked-in standard-library Go helper is reviewable and runs on Windows, macOS, and Linux without PowerShell-specific logic
+
+### PRDESC-PRE-006: Label terminal command effects before execution
+
+- Before every terminal command batch, show its exact command or commands and one of these repository-effect labels:
+  - `[Read-only] {{PURPOSE}}` for commands that do not change repository refs, the index, or working files.
+  - `[Updates remote-tracking ref: {{FULL_REMOTE_TRACKING_REF}} only]` for the one permitted targeted fetch.
+- Treat ordinary `git show`, `git diff`, `git log`, `git merge-base`, `git ls-files`, `git status`, and `git rev-parse` inspection as `[Read-only]`.
+- Label the fingerprint helper `[Read-only]` and disclose that `go run` may update the Go build cache outside the repository.
+- Do not combine a targeted fetch and read-only inspection commands in the same terminal batch.
+- Before a targeted fetch, show the fully resolved command and state the one full `refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}` ref it can update.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Visible repository effects let contributors distinguish ordinary inspection from the one operation that updates remote-tracking metadata
+  - Short checked-in helper invocation is easier to review than an inline fingerprint implementation
+
+## Existing pull request rules
+
+### PRDESC-PR-001: Discover pull request evidence by identity
+
+- Discover pull request evidence in this order:
+  - Active pull request metadata supplied by the editor for the current checkout.
+  - An open pull request with the exact current head repository and branch.
+  - Pull requests associated with the exact current `HEAD` commit across open, closed, and merged states.
+- Fetch a discovered candidate's metadata before assigning trust.
+- Classify exactly one trust level:
+  - `active-branch-identity` when an open pull request has the same head repository and branch as the checkout.
+  - `exact-final-head` when a pull request's final head commit equals current `HEAD`, even when its branch name differs.
+  - `commit-association-only` when current `HEAD` appeared in the pull request history but was not its final head.
+  - `none` when no candidate is found, discovery is unavailable, or identity cannot be verified.
+- Title, body, surface-name, or path similarity alone must not establish authoritative identity.
+- Treat any proposed scope-equivalent historical match as advisory until a separately specified and tested equivalence algorithm exists.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Branch identity covers normal active pull request development with unpushed local commits
+  - Exact final-head identity recovers authoritative historical metadata without trusting broad similarity
+  - Commit association alone can point to a larger or later pull request whose final scope differs
+
+### PRDESC-PR-002: Record the local relation to an active pull request
+
+- For `active-branch-identity`, compare local `HEAD` with the pull request's remote head commit and classify the relation as:
+  - `equal` when both commits are identical.
+  - `ahead` when the remote head is an ancestor of local `HEAD`.
+  - `behind` when local `HEAD` is an ancestor of the remote head.
+  - `diverged` when both commits are available but neither is an ancestor of the other.
+  - `unknown` when the relation cannot be proven from available commit objects.
+- Use `unknown` for every non-active trust level.
+- Keep additional local committed, staged, unstaged, and untracked evidence in scope for every relation.
+- Record `behind`, `diverged`, or `unknown` as an evidence gap because local inspection may not represent the complete remote contribution.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Active pull requests commonly have unpushed local commits and should not lose identity solely because SHAs differ
+  - Behind or diverged histories can make body claims and local scope incomplete in different directions
+
+### PRDESC-PR-003: Apply pull request authority by field
+
+- For `active-branch-identity`:
+  - Treat pull request identity and intended base as authoritative.
+  - Treat body text, confirmed references, and named testing evidence as authoritative unless contradicted by stronger current evidence.
+- For `exact-final-head`:
+  - Treat body text and confirmed references as authoritative historical evidence.
+  - Do not let the historical pull request override the current comparison-base selection or current base-revision policy.
+- For `commit-association-only` or `none`:
+  - Treat discovered metadata as advisory and keep its references out of the copy-ready body.
+- For every trust level:
+  - Current local diff evidence owns current implementation behavior.
+  - Current base-revision repository policy outranks older pull request wording.
+  - Reuse testing claims only when they name commands and results and remain applicable to the current scope under `PRDESC-EVID-002`.
+- `existingPullRequest.confirmedReferences` contains only references sourced from the identity-trusted pull request before current-evidence conflict resolution.
+- `relatedIssues.confirmedReferences` contains the final references approved for the generated body from all authoritative sources after conflict resolution.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Pull request fields have different trust requirements; branch identity does not make every older body statement current
+
+### PRDESC-PR-004: Resolve evidence conflicts explicitly
+
+- Preserve confirmed references from `active-branch-identity` and `exact-final-head` unless current evidence contradicts that the current change still resolves them.
+- Never replace authoritative confirmed references with `No related issue confirmed.` merely because advisory search returns no match.
+- When current behavior contradicts a confirmed reference, remove its closing keyword from the copy-ready body and request contributor confirmation in evidence gaps.
+- Record each material conflict as a structured claim, existing value, current evidence, and resolution in the payload.
+- For `commit-association-only`, mention historical references only as advisory evidence outside the body.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Silent deletion loses authoritative contributor intent while blind preservation can close issues that the current scope no longer resolves
 
 ## Comparison-base rules
 
 ### PRDESC-BASE-001: Resolve the base deterministically
 
 - Select the comparison base in this order:
-  - Current base commit SHA from authoritative existing pull request metadata for the current branch
+  - Current base commit SHA from `active-branch-identity` pull request metadata
   - `upstream/main` when the `upstream` remote and ref exist
   - `origin/main` when the `origin` remote and ref exist
   - Local `main`
 - Do not choose a lower-priority source while a usable higher-priority source exists.
+- Require `existingPullRequest.baseCommit` when `active-branch-identity` selects the base.
+- When `base.source=existing-pr`, require `base.pullRequestNumber` to equal `existingPullRequest.number` and require `base.refreshStatus=not-applicable`.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Existing pull request metadata is the most direct statement of the branch's actual target
+  - An active pull request with verified branch identity is the most direct statement of the branch's actual target
 
 ### PRDESC-BASE-002: Refresh remote-tracking bases conservatively
 
-- When selecting `upstream/main` or `origin/main`, attempt a read-only fetch of that ref.
+- When selecting a remote-tracking base, use this exact fetch shape with an explicit source-to-remote-tracking refspec:
+
+  ```text
+  git fetch --no-tags --no-recurse-submodules --no-write-fetch-head {{REMOTE}} refs/heads/{{BASE_BRANCH}}:refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}
+  ```
+
+- Do not omit `--no-tags`, `--no-recurse-submodules`, or `--no-write-fetch-head`.
+- Describe the operation as refreshing remote-tracking metadata, not as read-only.
 - If the fetch fails and the existing remote-tracking ref remains usable, continue with it.
 - Record the failed refresh and possible staleness as an evidence gap.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - A failed network refresh should not prevent drafting when a local base is available, but staleness must be disclosed
 
-### PRDESC-BASE-003: Diff from the merge base
+### PRDESC-BASE-003: Diff from the common ancestor
 
-- Compute the merge base between the selected base commit or ref and `HEAD`.
+- Find the common ancestor between the selected base commit or ref and `HEAD`.
 - Use the resulting commit as the single tracked-file diff origin.
 - Preserve the selected source, selected commit, merge-base commit, and refresh status in the payload.
 - **Provenance**: Local safeguard.
@@ -143,10 +287,12 @@ Conflict resolution:
 
 ### PRDESC-SCOPE-001: Collect the complete in-progress change-set
 
-- Use one diff from the merge-base commit to the working tree for committed, staged, and unstaged tracked changes.
+- Collect one path-and-status inventory from the common-ancestor commit to the working tree for committed, staged, and unstaged tracked changes.
 - Use `git ls-files --others --exclude-standard` for non-ignored untracked files and inspect those files separately.
 - Preserve added, modified, renamed, copied, and deleted statuses.
 - Do not double-count staged or unstaged tracked changes.
+- Inspect compact patches for every primary or materially changed user-facing surface and the companion evidence needed for registration, Resource Identity, List Resource, documentation, tests, security, and changelog decisions.
+- Do not emit and reread one oversized repository-wide patch when the complete inventory plus targeted patches can prove the same decisions.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - The draft must represent the branch state the contributor is preparing to submit, including local changes
@@ -327,7 +473,11 @@ Conflict resolution:
 
 ### PRDESC-CHECK-002: Check search-dependent items only after successful search
 
-- Check the open-pull-request item only when the search completed and found no open pull request containing an exact changed Terraform surface name in its title or body.
+- Search for duplicate open pull requests with no more than two queries:
+  - The exact primary Terraform surface name.
+  - One independently user-facing secondary Terraform surface when materially changed.
+- Run independent duplicate queries concurrently.
+- Check the open-pull-request item only when every applicable query completed and found no open pull request containing an exact searched Terraform surface name in its title or body.
 - Leave it unchecked when matches exist or search is unavailable.
 - Record matches or unavailable search as evidence notes.
 - **Provenance**: Local safeguard.
@@ -392,6 +542,7 @@ Conflict resolution:
 - Do not append a pull request number placeholder.
 - Use one line per independently classified user-facing surface or change.
 - Use the Oxford comma for lists of three or more properties.
+- Require every `FEATURES` payload entry to begin `[FEATURE]`, every `ENHANCEMENTS` entry to begin `[ENHANCEMENT]`, and every `BUG FIXES` entry to begin `[BUG]`.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
@@ -411,6 +562,7 @@ Conflict resolution:
 - When a breaking change is explicitly confirmed, write `Breaking change; maintainer-managed changelog entry required.`
 - Require impact and upgrade steps in Description.
 - Do not invent an automation keyword for a breaking change.
+- Require zero automation entries and render exactly `Breaking change; maintainer-managed changelog entry required.`.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
@@ -419,7 +571,7 @@ Conflict resolution:
 
 ### PRDESC-ISSUE-001: Add confirmed issue links only from authoritative evidence
 
-- Include a related issue only when explicitly supplied by the user, present in authoritative existing pull request text, or written as `#{{ISSUE_NUMBER}}` or a full GitHub issue URL in a branch commit message.
+- Include a related issue only when explicitly supplied by the user, preserved under `PRDESC-PR-004`, or written as `#{{ISSUE_NUMBER}}` or a full GitHub issue URL in a branch commit message.
 - Otherwise write `No related issue confirmed.` in the body.
 - Do not promote advisory search results into `Fixes`, `Closes`, or `Resolves` references.
 - **Provenance**: Local safeguard.
@@ -428,13 +580,14 @@ Conflict resolution:
 
 ### PRDESC-ISSUE-002: Build potential-issue terms deterministically
 
-- Build terms in this order:
-  - Exact changed Terraform surface names in lexical order
-  - Property named in the generated title
-  - Up to nine other added or behaviorally changed schema properties in lexical order, excluding `id`, `name`, `location`, and `tags`
-  - Up to three changed error-message fragments in lexical order
-- Search open issues in `hashicorp/terraform-provider-azurerm` with quoted exact terms.
-- Search each surface alone, each property with the service package, and each error fragment with the primary surface.
+- Build at most four high-signal queries in this order, omitting any query whose strong term is unavailable or duplicates an earlier query:
+  - Exact primary Terraform surface name.
+  - Primary surface plus one concise principal user-facing behavior.
+  - Primary surface plus one principal materially changed property.
+  - One independently user-facing secondary surface, or for a bug fix one distinctive changed error fragment plus the primary surface.
+- Do not search broad low-signal property names such as `actions` or generic identifiers such as `id`, `name`, `location`, and `tags`.
+- Do not extract or search error fragments for an ordinary new feature or enhancement unless correcting error behavior is itself part of the change.
+- Search open issues in `hashicorp/terraform-provider-azurerm` and run all independent issue queries concurrently.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Ordered exact terms make advisory searches repeatable and constrain noise
@@ -463,7 +616,7 @@ Conflict resolution:
 ### PRDESC-OUT-001: Emit a schema-conformant internal payload
 
 - The skill must emit one payload conforming to `.github/instructions/pr-description-draft.schema.json`.
-- Include resolved base metadata, changed files, classified surfaces, title and governing rule IDs, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search status and candidates.
+- Include stable repository-state fingerprints, existing pull request discovery and trust metadata, resolved base metadata, changed files, classified surfaces, title and governing rule IDs, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search status and candidates.
 - The prompt must validate the payload before presentation.
 - **Provenance**: Local safeguard.
 - **Evidence**:
@@ -512,7 +665,7 @@ Conflict resolution:
 
 ### PRDESC-FAIL-002: Hard-stop when no comparison base exists
 
-- Hard-stop when none of the ordered base sources can be resolved or a merge base cannot be computed.
+- Hard-stop when none of the ordered base sources can be resolved or a common ancestor cannot be found.
 - Ask the contributor to configure `upstream`, provide a usable `origin/main`, or identify the base ref.
 - **Provenance**: Local safeguard.
 - **Evidence**:
@@ -533,5 +686,21 @@ Conflict resolution:
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Rendering a malformed handoff would bypass required evidence and decision fields
+
+### PRDESC-FAIL-005: Hard-stop on repeated repository-state changes
+
+- After one discarded-evidence restart under `PRDESC-PRE-005`, stop when the final fingerprint differs again.
+- Use the prompt-owned exact repository-state-changed hard-stop string.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Repeated concurrent edits prevent the workflow from proving that one coherent repository snapshot owns the draft
+
+### PRDESC-FAIL-006: Hard-stop when the fingerprint helper cannot run
+
+- Stop when the checked-in helper is missing or Go cannot be resolved in the current environment or an explicitly inspected WSL distribution.
+- Use the prompt-owned exact fingerprint-helper-unavailable hard-stop string.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Falling back to generated shell-specific fingerprint code would reintroduce an opaque and inconsistent trust boundary
 
 <!-- PRDESC-CONTRACT-EOF -->

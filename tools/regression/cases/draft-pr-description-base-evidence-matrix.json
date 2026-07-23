@@ -6,13 +6,13 @@
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
-    "originSummary": "Synthetic benchmark matrix for comparison-base, preflight, and validation-evidence behavior.",
-    "whyItMattered": "A draft can be materially wrong if existing pull request scope hides local changes or if skipped and stale tests are reported as passing.",
-    "genericCondition": "Sanitized runs combine existing pull request base metadata, local unpushed changes, unavailable authorities, service-scope conflict, and multiple validation evidence states.",
+    "originSummary": "Synthetic benchmark matrix for pull request identity, comparison-base, preflight, and validation-evidence behavior.",
+    "whyItMattered": "A draft can be materially wrong if pull request authority is assigned by similarity, existing pull request scope hides local changes, or skipped and stale tests are reported as passing.",
+    "genericCondition": "Sanitized runs combine active and historical pull request trust states, local and remote commit relations, conditional base policy, local unpushed changes, service-scope conflict, and multiple validation evidence states.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A matrix covering authoritative base metadata plus local changes, required base source failure, unrelated service hard stop, and successful, skipped, missing, or stale validation evidence.",
+  "description": "A matrix covering identity-aware pull request authority, local commit relations, active pull request base metadata plus local changes, conditional policy failure, unrelated service hard stop, and conservative validation evidence.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/draft-pr-description-base-evidence-matrix/README.md"
@@ -27,15 +27,33 @@
   },
   "expectedRules": [
     "PRDESC-PRE-003",
+    "PRDESC-PRE-005",
+    "PRDESC-PRE-006",
+    "PRDESC-PR-001",
+    "PRDESC-PR-002",
+    "PRDESC-PR-003",
     "PRDESC-BASE-001",
+    "PRDESC-BASE-002",
     "PRDESC-BASE-003",
     "PRDESC-SCOPE-001",
     "PRDESC-SCOPE-004",
     "PRDESC-EVID-002",
     "PRDESC-EVID-003",
-    "PRDESC-FAIL-003"
+    "PRDESC-FAIL-003",
+    "PRDESC-FAIL-005",
+    "PRDESC-FAIL-006"
   ],
   "mustCatch": [
+    {
+      "key": "pull-request-trust-state-matrix",
+      "severity": "high",
+      "description": "Active repository-and-branch identity, exact final-head identity, and commit association receive distinct trust levels; title or path similarity never promotes authority."
+    },
+    {
+      "key": "active-pr-local-relation-matrix",
+      "severity": "high",
+      "description": "An active identity records equal, ahead, behind, diverged, or unknown local relation while retaining all committed and working-tree evidence; behind, diverged, and unknown remain visible gaps."
+    },
     {
       "key": "existing-pr-base-keeps-local-changes",
       "severity": "high",
@@ -44,12 +62,17 @@
     {
       "key": "selected-base-owns-policy",
       "severity": "high",
-      "description": "The selected base commit supplies the pull request template and contributor policy while the merge base is used only as the diff origin."
+      "description": "The selected base commit supplies the pull request template and contributor policy while the common ancestor is used only as the diff origin."
+    },
+    {
+      "key": "specialized-policy-loads-conditionally",
+      "severity": "medium",
+      "description": "The template, opening guide, and changelog guide always load from the selected base, while new-resource, Resource Identity, and List Resource guides load only when classified paths make them applicable."
     },
     {
       "key": "missing-base-authority-hard-stop",
       "severity": "high",
-      "description": "A missing required template or contributor guide at the merge base produces the exact named-source hard stop."
+      "description": "A missing applicable template or contributor guide at the selected base produces the exact named-source hard stop."
     },
     {
       "key": "unrelated-services-hard-stop",
@@ -60,6 +83,31 @@
       "key": "validation-evidence-state-matrix",
       "severity": "high",
       "description": "Only successful current-run applicable validation is reported as passing; skipped, missing, stale, and contradicted evidence remain unchecked and visible as gaps."
+    },
+    {
+      "key": "repository-fingerprint-restart-matrix",
+      "severity": "high",
+      "description": "The workflow fingerprints HEAD, staged and unstaged tracked content, and untracked names and bytes; one mismatch discards all evidence and restarts, while a second mismatch hard-stops."
+    },
+    {
+      "key": "exact-targeted-fetch-safeguards",
+      "severity": "medium",
+      "description": "Remote base refresh uses an explicit source-to-remote-tracking refspec with no-tags, no-recurse-submodules, and no-write-fetch-head."
+    },
+    {
+      "key": "reviewable-cross-platform-fingerprint-helper",
+      "severity": "high",
+      "description": "Fingerprint collection invokes the checked-in standard-library Go helper instead of generated PowerShell, Bash, or inline code, supports direct Go on Windows, macOS, and Linux, and uses the same execution environment for both fingerprints."
+    },
+    {
+      "key": "local-windows-wsl-go-fallback",
+      "severity": "medium",
+      "description": "When direct Go is unavailable in local Windows VS Code, the workflow inspects an explicitly selected WSL distribution's interactive shell and can invoke the helper through wsl.exe with a translated repository path."
+    },
+    {
+      "key": "repository-effect-labels-precede-commands",
+      "severity": "medium",
+      "description": "Every terminal batch shows its exact command under Read-only or the one full remote-tracking-ref update label, and fetch is never mixed with inspection commands."
     }
   ],
   "mustNotFlag": [
@@ -68,8 +116,40 @@
       "description": "Existing pull request text must not erase local unpushed changes from scope."
     },
     {
+      "key": "prior-pr-overrides-current-base",
+      "description": "Exact final-head or commit-association-only prior pull request metadata must not choose the current comparison base or override current base-revision policy."
+    },
+    {
+      "key": "scope-similarity-promotes-authority",
+      "description": "Unspecified scope-equivalence or title similarity must remain advisory rather than becoming authoritative pull request evidence."
+    },
+    {
       "key": "skipped-acceptance-test-passes",
       "description": "A successful process exit with skipped acceptance tests must not check the local-test item without required environment evidence."
+    },
+    {
+      "key": "head-only-stability-check",
+      "description": "Unchanged HEAD must not be treated as stable when staged, unstaged, or untracked evidence changed during the run."
+    },
+    {
+      "key": "targeted-fetch-updates-fetch-head",
+      "description": "A targeted remote base refresh must not omit no-write-fetch-head or use an implicit destination ref."
+    },
+    {
+      "key": "noninteractive-path-miss-proves-wsl-go-absent",
+      "description": "A missing Go result from one non-interactive WSL shell must not be treated as proof that the selected distribution lacks Go."
+    },
+    {
+      "key": "shell-specific-inline-fingerprint-program",
+      "description": "The workflow must not generate a PowerShell or Bash fingerprint implementation at runtime."
+    },
+    {
+      "key": "unlabeled-metadata-changing-command",
+      "description": "A command that updates remote-tracking metadata must not run under a Read-only label or without naming its one destination ref."
+    },
+    {
+      "key": "cross-environment-fingerprint-comparison",
+      "description": "The workflow must not compare an initial fingerprint produced by one Git executable or environment with a final fingerprint produced by another."
     }
   ],
   "expectedTools": {
@@ -82,11 +162,12 @@
     "mustIncludeMarkers": [
       "Cannot run draft-pr-description: required base-revision source is missing:",
       "Cannot run draft-pr-description: unrelated primary changes span multiple service packages.",
+      "Cannot run draft-pr-description: repository state changed repeatedly during evidence collection.",
       "No observed current-run local test evidence."
     ],
     "mustNotIncludeMarkers": [
       "Tests passed locally based on the existing pull request body."
     ]
   },
-  "notes": "Each scenario is a separate prompt invocation; hard-stop scenarios intentionally do not emit the normal five-section output."
+  "notes": "Each scenario is a separate prompt invocation; hard-stop scenarios intentionally do not emit the normal five-section output. Scope-equivalent prior pull request promotion is intentionally deferred."
 }

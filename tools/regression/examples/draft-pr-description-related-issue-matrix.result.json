@@ -16,17 +16,22 @@
   },
   "findings": {
     "caught": [
+      "authoritative-reference-survives-advisory-no-match",
+      "stale-reference-conflict-needs-confirmation",
       "confirmed-linkage-needs-authority",
       "plausible-candidates-remain-advisory",
       "no-match-rendering",
-      "unavailable-search-nonblocking"
+      "unavailable-search-nonblocking",
+      "bounded-concurrent-search-budget",
+      "feature-skips-error-term-extraction",
+      "confirmed-reference-fields-have-distinct-meaning"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 4,
-    "total": 4
+    "matched": 9,
+    "total": 9
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
@@ -43,5 +48,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for confirmed and potential issue handling."
+  "notes": "Example adjudicated result for confirmed references, conflict handling, and bounded concurrent advisory searches."
 }

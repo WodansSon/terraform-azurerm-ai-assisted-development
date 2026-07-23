@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Review]** - `/draft-pr-description` now preserves identity-verified pull request references, rejects inconsistent automation-ready changelog payloads, detects concurrent repository changes with a reviewable cross-platform Go helper, labels every command batch by repository effect, uses repository-preserving targeted fetches, and batches bounded duplicate and issue searches to reduce latency without weakening complete changed-path awareness.
+
+- **Maintainer/Workflow:**
+  - **[Testing]** - CI now runtime-tests the PR-description fingerprint helper on Windows, Linux, and macOS, including staged, unstaged, untracked, UTF-8 path, symbolic-link, and repository-preservation behavior.
+
 ### Fixed
 
 ## [3.7.0] - 2026-07-07

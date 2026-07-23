@@ -6,6 +6,8 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion",
+    "repositoryState",
+    "existingPullRequest",
     "base",
     "changedFiles",
     "classifiedSurfaces",
@@ -19,7 +21,13 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "1.0"
+      "const": "1.2"
+    },
+    "repositoryState": {
+      "$ref": "#/$defs/repositoryState"
+    },
+    "existingPullRequest": {
+      "$ref": "#/$defs/existingPullRequest"
     },
     "base": {
       "$ref": "#/$defs/base"
@@ -78,8 +86,291 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "pattern": "^PRDESC-(PRE|BASE|SCOPE|EVID|TITLE|BODY|CHECK|CHANGELOG|ISSUE|OUT|FAIL)-[0-9]{3}$"
+        "pattern": "^PRDESC-(PRE|PR|BASE|SCOPE|EVID|TITLE|BODY|CHECK|CHANGELOG|ISSUE|OUT|FAIL)-[0-9]{3}$"
       }
+    },
+    "repositoryState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "initialFingerprint",
+        "finalFingerprint",
+        "stable",
+        "restartCount"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256-v1"
+        },
+        "initialFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "finalFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "stable": {
+          "const": true
+        },
+        "restartCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "evidenceConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimType",
+        "claim",
+        "existingValue",
+        "currentEvidence",
+        "resolution"
+      ],
+      "properties": {
+        "claimType": {
+          "type": "string",
+          "enum": [
+            "confirmed-reference",
+            "testing",
+            "description",
+            "base"
+          ]
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "existingValue": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentEvidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "preserved",
+            "overridden-by-current-evidence",
+            "contributor-confirmation-required"
+          ]
+        }
+      }
+    },
+    "existingPullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "discoveryStatus",
+        "trustLevel",
+        "localRelation",
+        "confirmedReferences",
+        "evidenceConflicts",
+        "ruleIds"
+      ],
+      "properties": {
+        "discoveryStatus": {
+          "type": "string",
+          "enum": [
+            "found",
+            "not-found",
+            "unavailable"
+          ]
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed",
+            "merged"
+          ]
+        },
+        "trustLevel": {
+          "type": "string",
+          "enum": [
+            "active-branch-identity",
+            "exact-final-head",
+            "commit-association-only",
+            "none"
+          ]
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remoteHeadCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{7,40}$"
+        },
+        "baseReference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{7,40}$"
+        },
+        "localRelation": {
+          "type": "string",
+          "enum": [
+            "equal",
+            "ahead",
+            "behind",
+            "diverged",
+            "unknown"
+          ]
+        },
+        "confirmedReferences": {
+          "description": "Issue references sourced from the identity-trusted pull request before current-evidence conflict resolution.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidenceConflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceConflict"
+          }
+        },
+        "ruleIds": {
+          "$ref": "#/$defs/ruleIds"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "discoveryStatus": {
+                "const": "found"
+              }
+            },
+            "required": [
+              "discoveryStatus"
+            ]
+          },
+          "then": {
+            "required": [
+              "number",
+              "state",
+              "headRepository",
+              "headBranch",
+              "remoteHeadCommit",
+              "baseReference"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "discoveryStatus": {
+                "enum": [
+                  "not-found",
+                  "unavailable"
+                ]
+              }
+            },
+            "required": [
+              "discoveryStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "trustLevel": {
+                "const": "none"
+              },
+              "localRelation": {
+                "const": "unknown"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "trustLevel": {
+                "const": "active-branch-identity"
+              }
+            },
+            "required": [
+              "trustLevel"
+            ]
+          },
+          "then": {
+            "required": [
+              "baseCommit"
+            ],
+            "properties": {
+              "discoveryStatus": {
+                "const": "found"
+              },
+              "state": {
+                "const": "open"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "trustLevel": {
+                "enum": [
+                  "exact-final-head",
+                  "commit-association-only"
+                ]
+              }
+            },
+            "required": [
+              "trustLevel"
+            ]
+          },
+          "then": {
+            "properties": {
+              "discoveryStatus": {
+                "const": "found"
+              },
+              "localRelation": {
+                "const": "unknown"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "trustLevel": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "trustLevel"
+            ]
+          },
+          "then": {
+            "properties": {
+              "localRelation": {
+                "const": "unknown"
+              }
+            }
+          }
+        }
+      ]
     },
     "base": {
       "type": "object",
@@ -125,7 +416,31 @@
           "type": "integer",
           "minimum": 1
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "existing-pr"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "pullRequestNumber"
+            ],
+            "properties": {
+              "refreshStatus": {
+                "const": "not-applicable"
+              }
+            }
+          }
+        }
+      ]
     },
     "changedFile": {
       "type": "object",
@@ -294,7 +609,66 @@
           "type": "string",
           "pattern": "^\\[(FEATURE|ENHANCEMENT|BUG)\\] \\* .+[^.]$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "FEATURES"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "line": {
+                "pattern": "^\\[FEATURE\\] \\* .+[^.]$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "ENHANCEMENTS"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "line": {
+                "pattern": "^\\[ENHANCEMENT\\] \\* .+[^.]$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "BUG FIXES"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "line": {
+                "pattern": "^\\[BUG\\] \\* .+[^.]$"
+              }
+            }
+          }
+        }
+      ]
     },
     "changelogDecision": {
       "type": "object",
@@ -327,7 +701,75 @@
         "ruleIds": {
           "$ref": "#/$defs/ruleIds"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "recommended"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "renderedContent": {
+                "pattern": "^\\[(FEATURE|ENHANCEMENT|BUG)\\] \\* [^\\r\\n]+[^.\\r\\n](?:\\r?\\n\\[(FEATURE|ENHANCEMENT|BUG)\\] \\* [^\\r\\n]+[^.\\r\\n])*$"
+              },
+              "entries": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not-recommended"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "renderedContent": {
+                "const": "No changelog entry recommended."
+              },
+              "entries": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "breaking-input-required"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "renderedContent": {
+                "const": "Breaking change; maintainer-managed changelog entry required."
+              },
+              "entries": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "issueCandidate": {
       "type": "object",
@@ -385,6 +827,7 @@
           ]
         },
         "confirmedReferences": {
+          "description": "Final issue references approved for the generated body from all authoritative sources after conflict resolution.",
           "type": "array",
           "uniqueItems": true,
           "items": {

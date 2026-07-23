@@ -338,19 +338,20 @@ These IDs come from `.github/instructions/pr-description-compliance-contract.ins
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `PRDESC-PRE-*` | Preflight and repository eligibility | Why the workflow loaded fresh evidence or rejected an unsupported checkout |
-| `PRDESC-BASE-*` | Comparison-base resolution | How existing PR metadata, `upstream/main`, `origin/main`, or local `main` determined the merge base |
+| `PRDESC-PRE-*` | Preflight, command effects, repository eligibility, and snapshot stability | Why the workflow labeled repository effects, used the cross-platform fingerprint helper, restarted after concurrent edits, or rejected an unsupported or repeatedly changing checkout |
+| `PRDESC-PR-*` | Existing pull request evidence | How identity, final-head, commit association, local relation, and field-specific authority determine which PR metadata can be preserved |
+| `PRDESC-BASE-*` | Comparison-base resolution | How active PR metadata, `upstream/main`, `origin/main`, or local `main` determined the common ancestor |
 | `PRDESC-SCOPE-*` | Change collection and classification | Which committed, staged, unstaged, and untracked files contributed to the draft and which surfaces were primary or companion |
 | `PRDESC-EVID-*` | Evidence and validation claims | Why test, intent, issue, or completion claims were included, omitted, or left for contributor input |
 | `PRDESC-TITLE-*` | Title selection | Why one AzureRM title shape won under the fixed surface and change-type precedence |
 | `PRDESC-BODY-*` | Template-preserving body drafting | How the resolved-base template was preserved and populated conservatively |
 | `PRDESC-CHECK-*` | Checklist decisions | Why each template checklist item stayed unchecked or was supported as complete |
-| `PRDESC-CHANGELOG-*` | Changelog decisions | Whether maintainer automation-ready changelog lines were warranted and how they were ordered |
-| `PRDESC-ISSUE-*` | Confirmed and advisory issues | How confirmed links remain separate from ranked potential matches |
+| `PRDESC-CHANGELOG-*` | Changelog decisions | Whether maintainer automation-ready changelog lines were warranted, category-consistent, non-empty when recommended, and correctly ordered |
+| `PRDESC-ISSUE-*` | Confirmed and advisory issues | How authoritative links remain separate from a bounded set of ranked potential matches |
 | `PRDESC-OUT-*` | Handoff and output | How the schema-backed payload becomes the exact five-section response and verification footer |
 | `PRDESC-FAIL-*` | Hard stops | Which missing authority, ambiguous scope, repository state, or invalid payload prevents rendering |
 
-The hidden `pr-description` skill owns the reusable drafting procedure and emits `.github/instructions/pr-description-draft.schema.json`; the prompt owns exact hard stops, schema validation, and final presentation. Neither consumer redefines the contract rules.
+The hidden `pr-description` skill owns the reusable drafting procedure and emits the schema-version `1.2` handoff defined by `.github/instructions/pr-description-draft.schema.json`; the prompt owns exact hard stops, repository fingerprint equality, schema validation, and final presentation. Existing pull request evidence remains separate from comparison-base metadata. Neither consumer redefines the contract rules.
 
 ## `DOCS-*` Rule Areas
 

@@ -95,6 +95,9 @@ Minimum regression coverage must include:
 - Documentation-only and contributor-guidance-only changes.
 - Mixed unrelated service-package changes that require a hard stop.
 - Existing PR base metadata plus local unpushed changes.
+- Active branch identity with equal, ahead, behind, diverged, and unknown local relations.
+- Exact final-head prior PR evidence and intermediate commit association with distinct trust.
+- Authoritative confirmed references, contradicted references, and advisory no-match outcomes.
 - Missing required base-revision template or contributor guidance.
 - Successful, skipped, missing, and stale validation evidence.
 - Confirmed issue linkage, plausible advisory matches, no matches, and unavailable GitHub search.
@@ -116,7 +119,7 @@ Use these runtime authorities by domain:
 - PR body shape and section order: `.github/pull_request_template.md` from the resolved base revision.
 - PR title requirements: `contributing/topics/guide-opening-a-pr.md` from the resolved base revision plus the explicit title rules in this proposal.
 - Changelog eligibility and formatting: `contributing/topics/maintainer-merging.md` from the resolved base revision.
-- New Resource, Resource Identity, and List Resource requirements: `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` from the resolved base revision.
+- New Resource, Resource Identity, and List Resource requirements when classified paths make them applicable: `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` from the resolved base revision.
 - Change evidence: the current branch diff, working tree, explicit current-run command output, user input, and authoritative existing PR metadata when available.
 
 Change evidence can determine what happened, but it must not override contributor workflow policy.
@@ -126,29 +129,70 @@ Change evidence can determine what happened, but it must not override contributo
 ### Preflight
 
 - Verify that the checkout is `hashicorp/terraform-provider-azurerm` or a fork with the same repository name and expected AzureRM structure.
-- Require `.github/pull_request_template.md`, `contributing/README.md`, `contributing/topics/guide-opening-a-pr.md`, `contributing/topics/maintainer-merging.md`, `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` in the resolved base revision.
+- Always require `.github/pull_request_template.md`, `contributing/README.md`, `contributing/topics/guide-opening-a-pr.md`, and `contributing/topics/maintainer-merging.md` in the resolved base revision.
+- Require the new-resource, Resource Identity, and List Resource guides only when the complete changed-path classification makes their policy area applicable.
 - Hard-stop if the current branch is `main` or if no change exists relative to the resolved base.
 - Do not pull, merge, rebase, commit, push, or otherwise change the contributor's worktree or branch.
+- Require the checked-in `.github/skills/pr-description/scripts/pr-description-fingerprint.go` runtime asset.
+
+### Command Effects
+
+- Show every terminal command batch before execution.
+- Label ordinary inspection and fingerprint collection `[Read-only] {{PURPOSE}}` because they do not change repository refs, the index, or working files.
+- Label the targeted fetch `[Updates remote-tracking ref: {{FULL_REMOTE_TRACKING_REF}} only]` and show its fully resolved command.
+- Do not combine a targeted fetch and inspection commands in one terminal batch.
+- Disclose that `go run` may update the Go build cache outside the repository.
+
+### Existing Pull Request Evidence
+
+Discover pull request evidence in this order:
+
+1. Active pull request metadata for the checkout.
+2. An open pull request with the exact head repository and branch.
+3. Pull requests associated with exact current `HEAD` across all states.
+
+Use these trust levels:
+
+- `active-branch-identity`: same head repository and branch. Identity and intended base are authoritative; local committed and working-tree changes remain additional evidence.
+- `exact-final-head`: a prior PR's final head equals current `HEAD`. Body and confirmed references are authoritative prior evidence, but its base does not override current base resolution.
+- `commit-association-only`: current `HEAD` appeared in the PR history but was not its final head. Metadata is advisory.
+- `none`: no identity was proven or discovery was unavailable.
+
+For active branch identity, record whether local `HEAD` is equal, ahead, behind, diverged, or unknown relative to the PR head. Treat authority by field: current local evidence owns implementation behavior, current base policy owns repository requirements, and older testing text is reusable only when it names applicable commands and results.
+
+`existingPullRequest.confirmedReferences` contains only references sourced from the identity-trusted PR before current-evidence conflict resolution. `relatedIssues.confirmedReferences` contains final references approved for the generated body from all authoritative sources after conflict resolution.
+
+Scope-equivalent prior PR promotion is deferred until a separately specified and tested equivalence algorithm exists.
 
 ### Base Resolution
 
 Resolve the comparison base in this order:
 
-1. The current base commit SHA from authoritative existing PR metadata for the current branch.
+1. The current base commit SHA from `active-branch-identity` PR metadata.
 2. `upstream/main` when the `upstream` remote exists.
 3. `origin/main` when it exists.
 4. Local `main`.
 
-- When selecting `upstream/main` or `origin/main`, refresh that remote-tracking ref with a read-only fetch when available.
+- When selecting `upstream/main` or `origin/main`, refresh only that remote-tracking ref with `--no-tags`, `--no-recurse-submodules`, `--no-write-fetch-head`, and an explicit `refs/heads/{{BASE_BRANCH}}:refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}` refspec.
+- Describe fetch accurately: it downloads objects and updates remote-tracking metadata, but does not checkout, merge, rebase, reset, modify local `main`, change the index, or change working files.
 - If the fetch fails, continue with the existing local remote-tracking ref and disclose that it may be stale in `Evidence Notes`.
-- Compute the merge base between the selected base commit or ref and `HEAD`; use that merge-base commit for diff collection.
+- Find the common ancestor between the selected base commit or ref and `HEAD`; use that commit for diff collection. User-visible status should say that this reads history and does not perform a merge.
 
 ### Change Collection
 
-- Use one diff from the merge-base commit to the working tree so committed, staged, and unstaged tracked changes are represented without double-counting.
+- Compute a `sha256-v1` repository-state fingerprint before evidence collection and immediately before payload validation. Cover full `HEAD`, staged and unstaged tracked diff bytes, and ordinal untracked path and byte-content hashes.
+- Invoke the checked-in standard-library Go helper rather than generating a shell-specific inline fingerprint program.
+- Prefer direct `go run` on Windows, macOS, Linux, and Remote-WSL. From local Windows VS Code where direct Go is unavailable, inspect an explicitly selected WSL distribution's interactive shell, translate the repository root with `wslpath`, and invoke the same helper through `wsl.exe`.
+- Do not treat one non-interactive WSL PATH miss as proof that the distribution lacks Go.
+- Use the same direct or WSL execution environment for the initial and final fingerprints because different Git executables or configurations can produce different raw diff bytes.
+- Validate the helper at runtime in CI on `windows-latest`, `ubuntu-latest`, and `macos-latest`. Each runner reports `GOOS` and `GOARCH`, runs the shared behavioral tests, and verifies the CLI leaves repository status unchanged.
+- If the fingerprints differ, discard all evidence and restart once. Hard-stop if the restarted run changes again.
+- Use one path-and-status inventory from the common ancestor to the working tree so committed, staged, and unstaged tracked changes are represented without double-counting.
 - Use `git ls-files --others --exclude-standard` to identify non-ignored untracked files and inspect their contents separately.
 - Preserve added, modified, renamed, copied, and deleted file status.
-- Treat authoritative existing PR metadata as supplemental context for the base commit, PR number, explicit issue references, and existing contributor-provided evidence; do not let PR metadata replace local unpushed changes.
+- Inspect compact patches for every primary or materially changed user-facing surface and only the companion evidence needed for registration, Resource Identity, List Resource, documentation, tests, security, and changelog decisions.
+- Do not emit and reread one oversized repository-wide patch when the complete inventory plus targeted patches can prove the same decisions.
+- Treat verified existing PR metadata according to its trust level and field authority; do not let PR metadata replace local unpushed changes.
 - Ignore generated and vendored files when choosing the dominant title surface unless the PR is specifically an SDK, API, dependency, or generated-code update.
 
 ### Classification And Drafting
@@ -156,10 +200,12 @@ Resolve the comparison base in this order:
 - Classify changed files in lexical path order.
 - Identify new and existing Resources, Data Sources, List Resources, Actions, Ephemeral Resources, Functions, provider features, SDK or API updates, documentation, contributor guidance, tests, and CI or maintenance changes.
 - Treat tests, documentation, Resource Identity, registration, and mandatory List Resource changes as companion surfaces when they support the same primary implementation.
+- Load applicable specialized base-revision guides after path classification.
 - Apply the title decision order defined in `Title Rules`.
-- Render the complete PR body using the base-revision template and the exact body rules below.
-- Search open PRs for each exact Terraform surface name before rendering the PR checklist.
-- Search for potential related issues only after the title and body are drafted.
+- Draft the title and strict changelog decision before advisory searches.
+- Search open PRs with at most the primary exact Terraform surface plus one independently user-facing secondary surface, in one concurrent batch.
+- Search potential related issues with at most four high-signal queries, in one concurrent batch.
+- Render the complete PR body using the base-revision template and the exact body rules below, then validate the schema-version `1.2` payload once.
 - Emit the five output sections in the order defined by `Proposed Output Contract` and do not add other top-level output.
 
 ## AzureRM-Specific Interpretation
@@ -243,7 +289,8 @@ For AzureRM, the prompt should preserve the existing section structure and fill 
 - `Testing`: summarize only validation that can be supported by explicit evidence.
 - `Change Log`: provide a suggested entry only when warranted under `maintainer-merging.md`.
 - Keep all changelog output inside the template's `Change Log` section; do not add a separate maintainer-only recommendation block.
-- `Related Issue(s)`: include only issue references explicitly supplied by the user, present in an existing PR body, or written as `#1234` or a full GitHub issue URL in a commit message. Otherwise write `No related issue confirmed.`
+- `Related Issue(s)`: include only issue references explicitly supplied by the user, preserved from `active-branch-identity` or `exact-final-head` evidence, or written as `#1234` or a full GitHub issue URL in a commit message. Never erase authoritative references because advisory search returns no match.
+- When current behavior contradicts an authoritative closing reference, remove its closing keyword and request contributor confirmation in `Evidence Notes` rather than silently preserving or deleting it.
 - `AI Assistance Disclosure`: always check the AI-assisted box because this prompt drafted the title and body, and state at minimum `AI was used to draft the PR title and description.`
 - `Rollback Plan`: preserve the template's standard rollback text unless the user provides a more specific plan.
 - `Changes to Security Controls`: write `No changes to security controls.` when the diff does not change access control, authentication, authorization, encryption, secret handling, or logging behavior. Use `Needs contributor input.` when the diff touches those areas but impact is not provable.
@@ -259,6 +306,7 @@ Allowed evidence:
 - Current repository template and contributor docs
 - Explicit local command output gathered in the current run
 - Explicit user-provided issue numbers or context
+- Field-appropriate existing PR metadata under the verified trust model
 
 Disallowed evidence:
 
@@ -317,6 +365,10 @@ Formatting rules for the suggested entry:
 - Do not append a `[GH-12345]` style placeholder in the draft body because the automation appends the GitHub pull request number.
 - Emit one line per affected Terraform surface or independently classified user-facing change.
 - Order entries by `[FEATURE]`, `[ENHANCEMENT]`, then `[BUG]`; within each keyword, order new Resource, Data Source, Action, List Resource, provider, dependency, then remaining full Terraform names lexically.
+- Require `FEATURES` to use `[FEATURE]`, `ENHANCEMENTS` to use `[ENHANCEMENT]`, and `BUG FIXES` to use `[BUG]`.
+- Require at least one automation entry for a recommended changelog decision.
+- Require zero entries and exactly `No changelog entry recommended.` for a non-recommended decision.
+- Require zero entries and exactly `Breaking change; maintainer-managed changelog entry required.` when breaking-change input is required.
 
 Use these feature shapes:
 
@@ -369,14 +421,16 @@ The prompt may add short evidence notes below a checklist-adjacent section, but 
 
 - Always use the resolved comparison base and change collection procedure defined in `Deterministic Runtime Procedure`.
 - Include committed, staged, unstaged, and non-ignored untracked changes so the draft reflects the full in-progress branch state the contributor is preparing to submit.
-- If a pull request already exists and authoritative pull request metadata is available, the prompt may use that metadata to preserve explicit issue links and contributor-provided validation evidence.
+- If verified pull request evidence is available, preserve explicit issue links and applicable contributor-provided validation evidence according to its field-specific trust level.
 - The prompt should summarize touched surfaces before drafting the title so the title is anchored to the dominant user-facing change.
 - If the branch contains unrelated primary changes across multiple service packages, apply the hard-stop behavior defined in `Title Rules`.
 
 ## Potential Related Issues
 
-- Build search terms in this order: every exact changed Terraform surface name in lexical order; the property named in the generated title; then up to nine other added or behaviorally changed schema property names in lexical order, excluding generic names such as `id`, `name`, `location`, and `tags`; then up to three changed error-message fragments in lexical order.
-- Search open issues in `hashicorp/terraform-provider-azurerm` using quoted exact terms. Search each Terraform surface name alone, each property name paired with the service package name, and each error fragment paired with the primary Terraform surface name.
+- Build at most four high-signal queries: exact primary surface; primary surface plus the principal behavior; primary surface plus the principal materially changed property; and one independently user-facing secondary surface or, for bug fixes, one distinctive changed error fragment plus the primary surface.
+- Skip unavailable or duplicate terms. Do not search broad properties such as `actions` or generic names such as `id`, `name`, `location`, and `tags`.
+- Do not extract or search error fragments for ordinary new features or enhancements unless correcting error behavior is part of the change.
+- Search open issues in `hashicorp/terraform-provider-azurerm` and issue all independent queries concurrently.
 - Exclude pull requests and deduplicate results across search queries.
 - Add a `Potential Related Issues` section after the draft PR body and evidence notes.
 - For each candidate, include the issue number, title, link, and a brief reason it may relate to the change.
