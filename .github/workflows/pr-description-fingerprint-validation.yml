@@ -4,12 +4,14 @@ on:
   push:
     branches: [ main ]
     paths:
+      - '.gitattributes'
       - '.github/skills/pr-description/scripts/pr-description-fingerprint.go'
       - '.github/skills/pr-description/scripts/pr-description-fingerprint_test.go'
       - '.github/workflows/pr-description-fingerprint-validation.yml'
   pull_request:
     branches: [ main ]
     paths:
+      - '.gitattributes'
       - '.github/skills/pr-description/scripts/pr-description-fingerprint.go'
       - '.github/skills/pr-description/scripts/pr-description-fingerprint_test.go'
       - '.github/workflows/pr-description-fingerprint-validation.yml'
