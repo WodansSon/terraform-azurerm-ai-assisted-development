@@ -1,7 +1,7 @@
 {
   "caseId": "draft-pr-description-related-issue-matrix",
-  "runId": "sample-draft-pr-description-related-issue-matrix-001",
-  "timestampUtc": "2026-07-22T00:00:00Z",
+  "runId": "sample-draft-pr-description-related-issue-matrix-002",
+  "timestampUtc": "2026-07-24T00:00:00Z",
   "task": "draft-pr-description",
   "model": "sample",
   "pass": true,
@@ -16,22 +16,18 @@
   },
   "findings": {
     "caught": [
-      "authoritative-reference-survives-advisory-no-match",
-      "stale-reference-conflict-needs-confirmation",
-      "confirmed-linkage-needs-authority",
-      "plausible-candidates-remain-advisory",
-      "no-match-rendering",
-      "unavailable-search-nonblocking",
-      "bounded-concurrent-search-budget",
-      "feature-skips-error-term-extraction",
-      "confirmed-reference-fields-have-distinct-meaning"
+      "explicit-developer-reference-is-preserved",
+      "current-branch-commit-reference-is-preserved",
+      "missing-reference-uses-exact-fallback",
+      "issue-review-checklist-remains-developer-owned",
+      "github-search-is-skipped"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 9,
-    "total": 9
+    "matched": 5,
+    "total": 5
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
@@ -48,5 +44,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for confirmed references, conflict handling, and bounded concurrent advisory searches."
+  "notes": "Example adjudicated result for explicit-only issue handling without GitHub search."
 }

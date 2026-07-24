@@ -12,9 +12,22 @@ The changelog contains separate New Resource and New List Resource feature lines
 
 ## New Resource, Data Source, And List Resource
 
-The change adds a Resource and Data Source sharing `azurerm_example_widget`, plus the required List Resource.
+The change adds a Resource and Data Source sharing `azurerm_example_widget`, plus the required List Resource. The same coherent service-package change exports `retention_days` from the existing `azurerm_example_widget_policy` Data Source and improves `match_values` validation in the existing `azurerm_example_widget_rule` Resource. Registration, Resource Identity, SDK shim, and profile polling changes only support those user-facing surfaces.
 
 Expected title: `New (Data Source|Resource) - `azurerm_example_widget``.
+
+The changelog contains these exact feature lines:
+
+- `[FEATURE] * **New Resource**: `azurerm_example_widget``
+- `[FEATURE] * **New Data Source**: `azurerm_example_widget``
+- `[FEATURE] * **New List Resource**: `azurerm_example_widget``
+
+The changelog also contains these exact title-subordinate enhancement lines:
+
+- `[ENHANCEMENT] * Data Source: `azurerm_example_widget_policy` - export the `retention_days` attribute`
+- `[ENHANCEMENT] * `azurerm_example_widget_rule` - improve validation for the `match_values` property`
+
+The supporting registration, Resource Identity, SDK shim, and profile polling changes do not receive independent changelog lines.
 
 ## Standalone List Resource
 

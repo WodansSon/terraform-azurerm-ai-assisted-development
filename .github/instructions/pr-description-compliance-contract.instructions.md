@@ -15,354 +15,157 @@ description: "Shared PR description drafting compliance contract used by the dra
 
 ## Canonical sources of truth (precedence)
 
-- Explicit user-provided facts and current-run command output for contributor intent and validation evidence
-- Authoritative existing pull request metadata for the current branch when available
-- `.github/pull_request_template.md` from the resolved comparison-base revision for body shape and section order
-- `contributing/topics/guide-opening-a-pr.md` from the resolved comparison-base revision for pull request title and submission guidance
-- `contributing/topics/maintainer-merging.md` from the resolved comparison-base revision for changelog eligibility and formatting
-- `contributing/topics/guide-new-resource.md` from the resolved comparison-base revision for new Resource expectations
-- `contributing/topics/guide-resource-identity.md` from the resolved comparison-base revision for Resource Identity requirements and exception disclosure
-- `contributing/topics/guide-list-resource.md` from the resolved comparison-base revision for List Resource requirements
-- `.github/skills/pr-description/scripts/pr-description-fingerprint.go` for the deterministic repository-state fingerprint implementation
-- Current branch diff, working tree, commit messages, and non-ignored untracked files for change evidence
-- This contract for deterministic drafting, fallback, and output requirements not owned by the runtime AzureRM sources
+- Explicit developer input for branch intent, issue references, breaking-change impact, and validation evidence
+- Direct Git evidence from the validated current worktree
+- Current branch diff, changed paths, commit messages, and non-ignored untracked files
+- The current worktree's `.github/pull_request_template.md` for body shape and checklist wording
+- This contract for stable AzureRM title, checklist, changelog, evidence, and output rules
 
 Conflict resolution:
 
-- Repository policy from the resolved base revision outranks change evidence when deciding what the pull request should contain.
-- Explicit current-run evidence outranks older pull request text when the two conflict.
-- Existing pull request authority is field-specific: verified identity and intended base can be authoritative while current local evidence still owns implementation behavior and can supplement or contradict older body claims.
-- Existing pull request metadata must not hide unpushed committed, staged, unstaged, or untracked changes.
+- Explicit branch or worktree input outranks the current checkout; otherwise direct Git owns branch identity.
+- Direct Git outranks editor, workspace, source-control, and pull request metadata.
+- Current changed-file evidence owns implementation, documentation, and test-existence claims.
+- Explicit current-run validation output or developer-provided results own test-execution claims.
+- The current template owns body shape; this contract owns how evidence fills that shape.
 - The prompt owns exact hard-stop strings and presentation mechanics but must not weaken this contract.
-- The skill owns procedure but must not redefine policy from this contract.
-- The schema owns payload shape only and must not introduce policy defaults.
+- The skill owns drafting procedure but must not redefine this contract.
+- The schema owns the lean handoff shape only and must not introduce policy defaults.
 
 ## Rule IDs
 
-- `PRDESC-PRE-*`: fresh-run and repository eligibility
-- `PRDESC-PR-*`: existing pull request discovery, trust, and field authority
-- `PRDESC-BASE-*`: comparison-base resolution
+- `PRDESC-PRE-*`: fresh-run, repository, branch, and stability checks
+- `PRDESC-BASE-*`: local comparison-base resolution
 - `PRDESC-SCOPE-*`: change collection and surface classification
 - `PRDESC-EVID-*`: evidence and validation claims
 - `PRDESC-TITLE-*`: title selection and formatting
 - `PRDESC-BODY-*`: template preservation and body content
 - `PRDESC-CHECK-*`: checklist decisions
 - `PRDESC-CHANGELOG-*`: changelog eligibility and rendering
-- `PRDESC-ISSUE-*`: confirmed and potential issue handling
+- `PRDESC-ISSUE-*`: confirmed issue handling
 - `PRDESC-OUT-*`: payload and final output semantics
 - `PRDESC-FAIL-*`: required failure behavior
 
 ## Evidence hierarchy
 
-- Highest: explicit user input and successful command output gathered in the current invocation
-- High: current diff content, changed paths, untracked file content, and authoritative current pull request metadata
+- Highest: explicit developer input and successful current-run command output
+- High: direct Git identity, changed paths, compact diff content, and untracked file content
 - Medium: current branch commit messages and repository structure
-- Policy authority: required base-revision template and contributor guidance
-- Advisory only: open issue and pull request search results
-- Disallowed: guessed intent, assumed test execution, assumed changelog eligibility, assumed issue linkage, and assumed breaking-change impact
+- Template authority: the current worktree's pull request template
+- Disallowed: stale editor branch metadata, guessed intent, assumed test execution, guessed issue linkage, and assumed breaking-change impact
 
 ## Preflight rules
 
-### PRDESC-PRE-001: Start every invocation from current evidence
+### PRDESC-PRE-001: Start from current evidence
 
-- Treat every invocation as a fresh run.
-- Reload the contract, skill, and schema before collecting evidence.
-- Rerun all required repository, base, diff, and search operations.
-- Do not reuse prior-run scope, command output, classifications, title decisions, or draft content.
+- Treat each invocation as a fresh run.
+- Reuse complete evidence within the run and do not repeat commands or reads.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Fresh evidence prevents a draft from omitting branch or worktree changes made after a prior invocation
+  - A fresh local snapshot avoids stale drafts without requiring a repository audit
 
-### PRDESC-PRE-002: Restrict the workflow to AzureRM
+### PRDESC-PRE-002: Restrict drafting to AzureRM
 
-- Require a checkout whose repository name is `terraform-provider-azurerm` and whose structure matches the AzureRM provider.
-- Accept the canonical `hashicorp/terraform-provider-azurerm` repository and forks with the same repository name and expected structure.
-- Do not generalize this workflow to other repositories.
+- Require `terraform-provider-azurerm` or a fork with the same repository name, remotes, and expected provider structure.
+- Reject `main` and empty change-sets.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - The title, template, changelog, Resource Identity, and List Resource rules are AzureRM-specific
+  - The title, template, checklist, and changelog rules are AzureRM-specific
 
-### PRDESC-PRE-003: Load applicable base-revision authorities
+### PRDESC-PRE-003: Trust direct Git branch evidence
 
-- Always require these files in the resolved comparison-base revision:
-  - `.github/pull_request_template.md`
-  - `contributing/README.md`
-  - `contributing/topics/guide-opening-a-pr.md`
-  - `contributing/topics/maintainer-merging.md`
-- Require these files only after the complete changed-path inventory shows their policy area applies:
-  - `contributing/topics/guide-new-resource.md`
-    - Load for a new Resource.
-  - `contributing/topics/guide-resource-identity.md`
-    - Load for a new Resource or a changed Resource Identity surface.
-  - `contributing/topics/guide-list-resource.md`
-    - Load for a new Resource, new List Resource, or changed List Resource surface.
-- Load each applicable authority from the resolved base revision rather than trusting the candidate branch copy.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-resource.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
-
-### PRDESC-PRE-004: Preserve repository state
-
-- Use repository-preserving inspection commands only.
-- Do not pull, merge, rebase, commit, push, checkout, reset, clean, or modify files.
-- A targeted fetch that refreshes only the selected remote-tracking base ref is permitted even though it downloads objects and updates remote-tracking metadata.
-- A permitted fetch must not checkout, merge, rebase, reset, commit, modify local `main`, change the index, or change working files.
+- Use an explicit developer-supplied branch or worktree path when present.
+- Otherwise use `git branch --show-current` from the validated current worktree.
+- Treat conflicting editor, workspace, source-control, and pull request metadata as advisory and non-blocking.
+- Do not search for another checkout unless the developer explicitly selected one.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Drafting must not mutate the contributor's branch or worktree
+  - Editor metadata can lag behind an actual branch switch
 
-### PRDESC-PRE-005: Use one stable repository snapshot
+### PRDESC-PRE-004: Preserve repository state and minimize rounds
 
-- Require `.github/skills/pr-description/scripts/pr-description-fingerprint.go` as a checked-in runtime asset.
-- Compute a `sha256-v1` repository-state fingerprint during initial repository evidence collection and again immediately before payload validation by invoking the checked-in helper. Do not generate or execute an inline fingerprint program.
-- Invoke the helper inside the frozen execution boundary from `PRDESC-PRE-007`. Use this direct command when Git and Go resolve in that terminal, including WSL-native, container, Codespaces, SSH, and remote boundaries:
-
-  ```text
-  go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root {{REPOSITORY_ROOT}}
-  ```
-
-- Only when the frozen boundary intentionally uses the same mounted Windows worktree through a selected WSL distribution, pass the distribution and paths as separate PowerShell arguments. Do not interpolate either path into the Bash command. Resolve and invoke with this shape:
-
-  ```powershell
-  $wslRepositoryRoot = (wsl.exe -d "$wslDistro" -- wslpath -a "$repositoryRoot").Trim()
-  wsl.exe -d "$wslDistro" --cd "$wslRepositoryRoot" -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'
-  ```
-
-- Require `wslpath` to succeed and return a non-empty absolute path before invoking the helper.
-- Do not assume a default WSL distribution or treat one non-interactive PATH miss as proof that a selected distribution lacks Go. Inspect the selected distribution's interactive shell before declaring the helper unavailable.
-- A Git index refresh for a large repository under `/mnt/c` may be slow while Windows-to-WSL synchronization is active. Treat continuing Git progress as active filesystem work; do not classify it as a hang or terminate it solely for being slow.
-- Use the same frozen worktree, Git executable, and execution environment for the initial and final fingerprints. Do not compare fingerprints produced by different checkouts, Git executables, or configurations.
-- The helper must resolve `git rev-parse --show-toplevel` and use that canonical worktree root for every Git command and untracked-path join, even when `--repository-root` names an interior directory.
-- The helper may use the normal Go build cache outside the repository, but it must not modify repository refs, the index, or working files.
-- Build the fingerprint from these four components in this exact order:
-  - Lowercase full `HEAD` commit SHA.
-  - SHA-256 of the raw byte output from `git diff --cached --binary --full-index --no-ext-diff --no-textconv --no-color HEAD --`.
-  - SHA-256 of the raw byte output from `git diff --binary --full-index --no-ext-diff --no-textconv --no-color --`.
-  - SHA-256 of a manifest for every path returned by `git ls-files --others --exclude-standard -z`.
-- Build the untracked manifest in ordinal repo-relative path order. Length-frame each UTF-8 path, record whether it is a regular file or symbolic link, and include the SHA-256 of raw file bytes or symbolic-link target bytes.
-- Compute the final fingerprint as SHA-256 over this exact UTF-8 manifest, with lowercase hexadecimal component values and LF separators:
-
-  ```text
-  head={{HEAD_SHA}}
-  staged={{STAGED_DIFF_SHA256}}
-  unstaged={{UNSTAGED_DIFF_SHA256}}
-  untracked={{UNTRACKED_MANIFEST_SHA256}}
-  ```
-
-- Hash raw command output before text decoding and do not place component inputs or patch content in the payload.
-- If the final fingerprint differs from the initial fingerprint, discard all repository, pull request, search, classification, and draft evidence and restart the full procedure once.
-- On the restarted run, hard-stop if the fingerprint changes again.
-- Record both fingerprints and the restart count in `repositoryState`; validate their equality before setting `stable=true`.
+- Use read-only Git and file inspection only.
+- Do not fetch, pull, merge, rebase, checkout, commit, push, reset, clean, edit files, or run tests.
+- Display exact terminal commands under `[Read-only] {{PURPOSE}}`.
+- Collect repository identity, branch, status, and local-base candidates in one fixed direct-Git batch, then collect the selected merge base, committed paths, working-tree paths, untracked paths, and commit subjects in one fixed direct-Git batch.
+- Issue each fixed Git batch once as the prompt's exact one-line semicolon-separated command string. Do not first issue newline-separated commands, reformat a successful call, or retry a batch in alternate shell syntax.
+- If a fixed Git batch returns incomplete output, hard-stop instead of improvising another command shape.
+- Terminal batches may contain only the literal read-only Git commands required by the prompt. Do not generate PowerShell or shell variables, loops, conditionals, script blocks, here-strings, file reads, string replacement, JSON construction, or schema-validation programs.
+- Use tool-native file reads and searches for template and implementation evidence.
+- Build one complete Phase 2 read plan from the changed-path inventory, then read independent user-facing implementation, test, documentation, registration, Resource Identity, and List Resource evidence in one concurrent tool batch.
+- Read a known changed file directly. Do not search for its path, enumerate test functions merely to prove changed test coverage, list its service directory, or split implementation, test, and documentation reads into successive rounds.
+- Do not reload upstream contributor guides during drafting; this checked-in contract owns their stable drafting rules.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - `HEAD` equality alone cannot detect staged, unstaged, or untracked changes made during evidence collection
-  - A compact digest prevents mixed-snapshot drafts without adding large patch bodies to the model context
-  - A checked-in standard-library Go helper is reviewable and runs on Windows, macOS, and Linux without PowerShell-specific logic
-  - Canonical-root resolution prevents root-relative Git paths from being joined to an interior caller directory
+  - Drafting is a developer shortcut and should not reproduce maintainer audit work
 
-### PRDESC-PRE-006: Label terminal command effects before execution
+### PRDESC-PRE-005: Use a cheap stability guard
 
-- Before every terminal command batch, show its exact command or commands and one of these repository-effect labels:
-  - `[Read-only] {{PURPOSE}}` for commands that do not change repository refs, the index, or working files.
-  - `[Updates remote-tracking ref: {{FULL_REMOTE_TRACKING_REF}} only]` for the one permitted targeted fetch.
-- Treat ordinary `git show`, `git diff`, `git log`, `git merge-base`, `git ls-files`, `git status`, and `git rev-parse` inspection as `[Read-only]`.
-- Label the fingerprint helper `[Read-only]` and disclose that `go run` may update the Go build cache outside the repository.
-- Do not combine a targeted fetch and read-only inspection commands in the same terminal batch.
-- Before a targeted fetch, show the fully resolved command and state the one full `refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}` ref it can update.
+- Capture full `HEAD` and `git status --porcelain=v1 --untracked-files=all` during initial evidence collection.
+- Immediately before rendering, collect those same two values once.
+- Hard-stop when either value differs; do not restart the workflow automatically.
+- Do not hash full diff or untracked-file contents solely to draft a pull request description.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Visible repository effects let contributors distinguish ordinary inspection from the one operation that updates remote-tracking metadata
-  - Short checked-in helper invocation is easier to review than an inline fingerprint implementation
-
-### PRDESC-PRE-007: Discover and freeze one execution boundary
-
-- Discover from the current terminal first. Resolve `git` and `go`, then run `git rev-parse --show-toplevel` when Git is available.
-- Use the current worktree directly when all of these are true:
-  - Its repository name is `terraform-provider-azurerm` and its structure matches AzureRM.
-  - Remote and repository-name evidence identify the canonical repository or a fork with the same repository name.
-  - The expected branch exists and is checked out.
-  - Full `HEAD`, staged state, unstaged state, and non-ignored untracked state can be inspected.
-  - Git and Go can run in that same execution environment.
-- Apply current-environment discovery without regard to whether the terminal is native Windows, macOS, Linux, WSL, a dev container, Codespaces, SSH, or another remote workspace. Do not invoke WSL merely because the host is Windows.
-- Search only when the current environment has no suitable worktree. Search a bounded set of existing roots supplied by the developer or configuration, followed by existing conventional roots under the current environment's home directory: `src`, `github`, and `go/src`, plus `/workspaces` when present.
-- Search only for directories named `terraform-provider-azurerm` within those roots. Do not scan the filesystem root, mounted volumes generally, or unrelated directory trees. Keep search roots configurable and disclose the exact roots and bounded command before searching.
-- Validate every candidate through Git rather than trusting its path or branch name:
-  - Resolve the canonical top-level worktree.
-  - Verify repository identity from repository name, structure, and remotes.
-  - Verify the expected branch is checked out.
-  - Record full `HEAD` and working-tree state.
-  - Compare full `HEAD` with a known source checkout when one exists.
-  - Verify Git and Go in the candidate's execution environment.
-- Prefer the worktree containing the actual staged, unstaged, and untracked changes. A separate clone with the same branch and `HEAD` is not equivalent to a dirty source worktree.
-- Automatically select a discovered candidate only when exactly one candidate is trustworthy and no known dirty source worktree would be substituted. Ask the developer to select when multiple candidates are trustworthy. When none is trustworthy, request an explicit repository path rather than guessing.
-- Treat a mirror as its own worktree. Use it only when the entire run intentionally executes against that mirror; do not combine evidence or fingerprints with another checkout.
-- Treat WSL as an optional execution environment, not a repository-layout assumption:
-  - On native Windows, prefer native Git and Go when they can inspect and fingerprint the suitable current worktree.
-  - Consider WSL only when the current Windows environment cannot run the helper or has no suitable worktree.
-  - Discover distributions without assuming a distribution name. Verify Git and Go in an explicitly selected distribution.
-  - Search bounded roots inside that distribution for a WSL-native checkout before considering Windows-path translation.
-  - Use argument-safe path translation only as a fallback for intentionally running the entire workflow against the same mounted Windows worktree.
-  - Do not assume a drive letter, mount point, or mirror destination.
-- Freeze the selected canonical worktree and execution environment before initial fingerprinting. Repository inspection, initial fingerprinting, pull request discovery, base resolution, evidence collection, final fingerprinting, and payload generation must all use that boundary.
-- Record the frozen boundary in `repositoryState.executionBoundary`. Do not compare or combine fingerprints, Git output, or working-tree evidence from different worktrees or execution environments.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Developer worktrees may be native, mounted, mirrored, containerized, or remote without sharing one synchronization model
-  - Branch and `HEAD` equality do not make a clean clone equivalent to a dirty checkout containing the requested changes
-  - Recording one boundary prevents mixed-environment evidence and cross-checkout fingerprint comparisons
-
-## Existing pull request rules
-
-### PRDESC-PR-001: Discover pull request evidence by identity
-
-- Discover pull request evidence in this order:
-  - Active pull request metadata supplied by the editor for the current checkout.
-  - An open pull request with the exact current head repository and branch.
-  - Pull requests associated with the exact current `HEAD` commit across open, closed, and merged states.
-- Fetch a discovered candidate's metadata before assigning trust.
-- Classify exactly one trust level:
-  - `active-branch-identity` when an open pull request has the same head repository and branch as the checkout.
-  - `exact-final-head` when a pull request's final head commit equals current `HEAD`, even when its branch name differs.
-  - `commit-association-only` when current `HEAD` appeared in the pull request history but was not its final head.
-  - `none` when no candidate is found, discovery is unavailable, or identity cannot be verified.
-- Title, body, surface-name, or path similarity alone must not establish authoritative identity.
-- Treat any proposed scope-equivalent historical match as advisory until a separately specified and tested equivalence algorithm exists.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Branch identity covers normal active pull request development with unpushed local commits
-  - Exact final-head identity recovers authoritative historical metadata without trusting broad similarity
-  - Commit association alone can point to a larger or later pull request whose final scope differs
-
-### PRDESC-PR-002: Record the local relation to an active pull request
-
-- For `active-branch-identity`, compare local `HEAD` with the pull request's remote head commit and classify the relation as:
-  - `equal` when both commits are identical.
-  - `ahead` when the remote head is an ancestor of local `HEAD`.
-  - `behind` when local `HEAD` is an ancestor of the remote head.
-  - `diverged` when both commits are available but neither is an ancestor of the other.
-  - `unknown` when the relation cannot be proven from available commit objects.
-- Use `unknown` for every non-active trust level.
-- Keep additional local committed, staged, unstaged, and untracked evidence in scope for every relation.
-- Record `behind`, `diverged`, or `unknown` as an evidence gap because local inspection may not represent the complete remote contribution.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Active pull requests commonly have unpushed local commits and should not lose identity solely because SHAs differ
-  - Behind or diverged histories can make body claims and local scope incomplete in different directions
-
-### PRDESC-PR-003: Apply pull request authority by field
-
-- For `active-branch-identity`:
-  - Treat pull request identity and intended base as authoritative.
-  - Treat body text, confirmed references, and named testing evidence as authoritative unless contradicted by stronger current evidence.
-- For `exact-final-head`:
-  - Treat body text and confirmed references as authoritative historical evidence.
-  - Do not let the historical pull request override the current comparison-base selection or current base-revision policy.
-- For `commit-association-only` or `none`:
-  - Treat discovered metadata as advisory and keep its references out of the copy-ready body.
-- For every trust level:
-  - Current local diff evidence owns current implementation behavior.
-  - Current base-revision repository policy outranks older pull request wording.
-  - Reuse testing claims only when they name commands and results and remain applicable to the current scope under `PRDESC-EVID-002`.
-- `existingPullRequest.confirmedReferences` contains only references sourced from the identity-trusted pull request before current-evidence conflict resolution.
-- `relatedIssues.confirmedReferences` contains the final references approved for the generated body from all authoritative sources after conflict resolution.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Pull request fields have different trust requirements; branch identity does not make every older body statement current
-
-### PRDESC-PR-004: Resolve evidence conflicts explicitly
-
-- Preserve confirmed references from `active-branch-identity` and `exact-final-head` unless current evidence contradicts that the current change still resolves them.
-- Never replace authoritative confirmed references with `No related issue confirmed.` merely because advisory search returns no match.
-- When current behavior contradicts a confirmed reference, remove its closing keyword from the copy-ready body and request contributor confirmation in evidence gaps.
-- Record each material conflict as a structured claim, existing value, current evidence, and resolution in the payload.
-- For `commit-association-only`, mention historical references only as advisory evidence outside the body.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Silent deletion loses authoritative contributor intent while blind preservation can close issues that the current scope no longer resolves
+  - A branch and status guard catches common concurrent changes without two expensive full-content fingerprints
 
 ## Comparison-base rules
 
-### PRDESC-BASE-001: Resolve the base deterministically
+### PRDESC-BASE-001: Use an existing local base
 
-- Select the comparison base in this order:
-  - Current base commit SHA from `active-branch-identity` pull request metadata
-  - `upstream/main` when the `upstream` remote and ref exist
-  - `origin/main` when the `origin` remote and ref exist
-  - Local `main`
-- Do not choose a lower-priority source while a usable higher-priority source exists.
-- Require `existingPullRequest.baseCommit` when `active-branch-identity` selects the base.
-- When `base.source=existing-pr`, require `base.pullRequestNumber` to equal `existingPullRequest.number` and require `base.refreshStatus=not-applicable`.
+- Select the first usable local ref in this order: `upstream/main`, `origin/main`, local `main`.
+- Do not refresh remote-tracking refs during drafting.
+- Record the selected ref and commit in the lean handoff.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - An active pull request with verified branch identity is the most direct statement of the branch's actual target
+  - A local base is sufficient for a useful draft and avoids network latency or repository metadata changes
 
-### PRDESC-BASE-002: Refresh remote-tracking bases conservatively
+### PRDESC-BASE-002: Diff from the merge base
 
-- When selecting a remote-tracking base, use this exact fetch shape with an explicit source-to-remote-tracking refspec:
-
-  ```text
-  git fetch --no-tags --no-recurse-submodules --no-write-fetch-head {{REMOTE}} refs/heads/{{BASE_BRANCH}}:refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}
-  ```
-
-- Do not omit `--no-tags`, `--no-recurse-submodules`, or `--no-write-fetch-head`.
-- Describe the operation as refreshing remote-tracking metadata, not as read-only.
-- If the fetch fails and the existing remote-tracking ref remains usable, continue with it.
-- Record the failed refresh and possible staleness as an evidence gap.
+- Resolve the common ancestor between the selected local base and `HEAD`.
+- Use it as the tracked change origin for committed, staged, and unstaged work.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - A failed network refresh should not prevent drafting when a local base is available, but staleness must be disclosed
-
-### PRDESC-BASE-003: Diff from the common ancestor
-
-- Find the common ancestor between the selected base commit or ref and `HEAD`.
-- Use the resulting commit as the single tracked-file diff origin.
-- Preserve the selected source, selected commit, merge-base commit, and refresh status in the payload.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Merge-base scope isolates candidate branch work without treating unrelated base advancement as contributor changes
+  - Merge-base scope isolates the current branch change-set
 
 ## Scope rules
 
-### PRDESC-SCOPE-001: Collect the complete in-progress change-set
+### PRDESC-SCOPE-001: Collect the complete local change-set once
 
-- Collect one path-and-status inventory from the common-ancestor commit to the working tree for committed, staged, and unstaged tracked changes.
-- Use `git ls-files --others --exclude-standard` for non-ignored untracked files and inspect those files separately.
-- Preserve added, modified, renamed, copied, and deleted statuses.
-- Do not double-count staged or unstaged tracked changes.
-- Inspect compact patches for every primary or materially changed user-facing surface and the companion evidence needed for registration, Resource Identity, List Resource, documentation, tests, security, and changelog decisions.
-- Do not emit and reread one oversized repository-wide patch when the complete inventory plus targeted patches can prove the same decisions.
+- Combine the selected-base-to-`HEAD` name/status inventory with the `HEAD`-to-working-tree name/status inventory.
+- Include non-ignored untracked files from `git ls-files --others --exclude-standard`.
+- Preserve added, modified, renamed, copied, deleted, and untracked status.
+- Collect current branch commit subjects for explicit issue references and supporting context.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - The draft must represent the branch state the contributor is preparing to submit, including local changes
+  - The draft must include committed and local in-progress changes
 
-### PRDESC-SCOPE-002: Classify surfaces in stable order
+### PRDESC-SCOPE-002: Read only material evidence
 
-- Classify changed paths in lexical order.
-- Recognize new and existing Resources, Data Sources, List Resources, Actions, Ephemeral Resources, Functions, provider features, SDK or API updates, documentation, contributor guidance, tests, CI, and maintenance changes.
-- Record the Terraform name and service package when evidence supports them.
-- **Provenance**: Inferred maintainer convention.
+- Inspect compact implementation evidence for every independently user-facing changed surface, including title-driving new surfaces and title-subordinate changes to existing Resources, Data Sources, Actions, or provider behavior.
+- Inspect only companion registration, tests, documentation, Resource Identity, List Resource, and security evidence needed for body or checklist decisions.
+- Treat matching changed test paths as sufficient evidence that tests were authored. Read test content only when one material coverage claim cannot be resolved from paths and implementation evidence.
+- Search only when the complete changed-path inventory does not identify the owning file or symbol. Do not search for an exact path already present in that inventory.
+- Do not emit or reread one repository-wide patch.
+- **Provenance**: Local safeguard.
 - **Evidence**:
-  - Stable path and surface ordering makes title and changelog choices repeatable
+  - Targeted reads preserve drafting quality without turning the run into code review
 
-### PRDESC-SCOPE-003: Keep companion surfaces subordinate
+### PRDESC-SCOPE-003: Keep companions subordinate
 
-- Treat tests, documentation, Resource Identity, registration, required List Resource support, generated code, and vendored SDK changes as companion surfaces when they support the same primary implementation.
-- Ignore generated and vendored files for dominant title selection unless the pull request primarily updates SDK, API, dependency, or generated code.
+- Treat tests, documentation, registration, Resource Identity, required List Resource support, generated code, and vendored SDK changes as companions when they support one primary change.
+- Do not classify a changed existing Terraform surface as a companion merely because a new surface outranks it for title selection. Preserve distinct user-facing enhancement or bug-fix behavior for the body, PR type, and changelog.
+- Ignore generated and vendored paths for title dominance unless the PR primarily updates SDK, API, dependency, or generated code.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-resource.md`
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
 
-### PRDESC-SCOPE-004: Stop on unrelated primary service changes
+### PRDESC-SCOPE-004: Stop on unrelated primary changes
 
-- When unrelated primary changes span multiple service packages, do not guess which one owns the title.
-- Hard-stop and ask the contributor to identify the primary change or split the branch.
-- Do not stop when multiple surfaces are required companions for one coherent primary implementation.
+- Hard-stop when unrelated primary changes span service packages.
+- Do not stop when multiple surfaces are required companions of one coherent primary implementation.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - One deterministic title cannot accurately represent unrelated primary changes
@@ -371,205 +174,158 @@ Conflict resolution:
 
 ### PRDESC-EVID-001: Make only supported claims
 
-- Support claims with branch diff content, changed paths, required base-revision authorities, explicit current-run command output, authoritative existing pull request metadata, commit messages, or explicit user input.
-- Use the section-specific fallback when evidence is missing.
-- Otherwise write `Needs contributor input.` and add a concise evidence gap.
+- Support claims with changed paths, compact diffs, commit subjects, explicit developer input, current-run command output, or the current template.
+- Use `Needs contributor input.` when a material fact cannot be proven.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Conservative drafting prevents the prompt from representing unverified work as completed
+  - Conservative drafting prevents unsupported contributor claims
 
-### PRDESC-EVID-002: Require current-run validation output
+### PRDESC-EVID-002: Separate test existence from execution
 
-- Do not treat commands mentioned in documentation, comments, commit messages, or pull request text as proof they ran.
-- Claim local validation passed only when the current invocation observes successful output for the named command.
-- Preserve existing pull request testing evidence only when it names the command and result and is not contradicted by the current diff.
+- Determine whether matching tests exist from changed-file and compact test evidence.
+- Claim tests passed only from successful current-run output or explicit developer-provided command and result evidence.
+- Do not treat test files, comments, commit messages, or prior PR text as proof that tests ran.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
 
-### PRDESC-EVID-003: Distinguish skipped acceptance tests from success
+### PRDESC-EVID-003: Keep absent validation visible but non-blocking
 
-- Do not treat a skipped acceptance test as successful validation unless the required Azure environment variables were present and the test actually ran.
-- Report skipped, missing, stale, or contradicted evidence in evidence gaps.
+- When no test result is available, leave execution-dependent checklist items unchecked.
+- State briefly in `Testing` that tests were not run during drafting and summarize matching coverage only when changed-file evidence proves it exists.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - A successful process exit can conceal an acceptance-test skip
+  - Draft generation must remain useful without automatically running acceptance tests
 
 ## Title rules
 
 ### PRDESC-TITLE-001: Select one title by fixed precedence
 
-- Generate exactly one suggested title.
-- Apply this decision order:
-  - New Resource and Data Source sharing the same Terraform name
-  - New Resource, with its required List Resource treated as implied
-  - New standalone Data Source
-  - New List Resource for an existing Resource
-  - New Action, Ephemeral Resource, Function, or provider feature
-  - User-facing bug fix
-  - User-facing enhancement
-  - SDK, API version, or dependency update
-  - Contributor guidance under `contributing/**`
-  - Documentation-only change outside `contributing/**`
-  - CI or maintenance-only change
-- Supporting and companion surfaces do not compete with the primary surface.
+- Apply this order: new Resource plus same-name Data Source, new Resource, new standalone Data Source, new List Resource, new Action or provider feature, bug fix, enhancement, SDK/API/dependency update, contributor guidance, documentation, CI or maintenance.
+- Supporting surfaces do not compete with the primary surface.
 - **Provenance**: Inferred maintainer convention.
 - **Evidence**:
-  - The ordering follows AzureRM's surface-oriented contribution and changelog model
+  - Stable precedence makes the title repeatable
 
-### PRDESC-TITLE-002: Use exact new-surface title shapes
+### PRDESC-TITLE-002: Use exact new-surface shapes
 
-- Use ``New (Data Source|Resource) - `{{RESOURCE_NAME}}``` when one Terraform name introduces both a Resource and Data Source.
+- Use ``New (Data Source|Resource) - `{{RESOURCE_NAME}}``` for one Terraform name introducing both surfaces.
+- Treat `(Data Source|Resource)` as literal title text. Do not render `New Resource and Data Source -`, `New Data Source and Resource -`, or another natural-language variant.
 - Use ``New Resource: `{{RESOURCE_NAME}}``` for a new Resource.
-- Use ``New Data Source: `{{DATA_SOURCE_NAME}}``` for a standalone new Data Source.
+- Use ``New Data Source: `{{DATA_SOURCE_NAME}}``` for a standalone Data Source.
 - Use ``New List Resource: `{{RESOURCE_NAME}}``` for List Resource support added to an existing Resource.
-- Do not add `List Resource` to a new Resource title when the List Resource is its required companion.
+- Do not add `List Resource` to a new Resource title when it is a required companion.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
 
 ### PRDESC-TITLE-003: Make existing-surface titles concrete
 
-- Name the affected Terraform surface explicitly.
-- Prefer change-focused wording that can also serve as a squash-merge or changelog theme.
-- Use concrete forms such as `add support for`, `improve validation for`, and `correctly populate`.
-- Prefix existing Data Source changes with `Data Source:` and existing List Resource changes with `List Resource:` when needed for clarity.
-- Use `Contributing:` only when the primary change is under `contributing/**`.
-- Use `Docs:` for documentation-only changes outside `contributing/**`.
-- Do not use bracketed title prefixes unless the resolved-base repository guidance explicitly requires them.
+- Name the affected Terraform surface and use concrete wording such as `add support for`, `improve validation for`, or `correctly populate`.
+- Use `Data Source:`, `List Resource:`, `Contributing:`, or `Docs:` when needed for clarity.
+- Do not use bracketed prefixes unless repository guidance requires them.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
 
-### PRDESC-TITLE-004: Reject vague title forms
+### PRDESC-TITLE-004: Reject vague titles
 
-- Do not use titles equivalent to `fix bug`, `fixes #1234`, `new resource`, or `upgrade sdk`.
-- Do not use broad property lists without naming their owning surface.
-- Mark the meaningful-title checklist item only after the selected title satisfies all applicable title rules.
+- Reject titles equivalent to `fix bug`, `fixes #1234`, `new resource`, or `upgrade sdk`.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
 
 ## Body rules
 
-### PRDESC-BODY-001: Preserve the resolved-base template
+### PRDESC-BODY-001: Preserve the current template
 
-- Render the complete pull request body from `.github/pull_request_template.md` loaded from the selected base commit.
-- Preserve every heading, HTML comment, checklist item, and section in its original order.
+- Start from the current worktree's `.github/pull_request_template.md`.
+- Preserve every template line verbatim unless that line is an evidence-populated response area, an example or claim placeholder being replaced, or a checklist marker changing only from `[ ]` to `[x]`.
+- Do not rewrite, shorten, normalize, or repair template prose, links, URLs, comments, headings, checklist text, the Community Note, the rollback plan, or the final note.
 - Replace examples and placeholders that could be mistaken for contributor claims.
-- Do not add prompt-only title reasoning, evidence notes, or potential issue tables inside the copy-ready body.
+- Before rendering, compare immutable template lines with the already-loaded template and restore any mismatch in memory.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - The resolved-base template is the repository-owned body contract for the target pull request
+  - The checked-out template is the body the developer will submit against
+  - `https://github.com/hashicorp/terraform-provider-azurerm/blob/main/.github/pull_request_template.md`
 
-### PRDESC-BODY-002: Fill description from evidence
+### PRDESC-BODY-002: Explain what and why
 
-- Explain both the observable change and its evidence-supported reason.
-- For explicitly confirmed breaking changes, include impact and upgrade steps.
-- Do not infer intent that is absent from the diff, pull request metadata, commit messages, or user input.
+- Describe the observable change, primary Terraform surfaces, material companion behavior, and evidence-supported reason.
+- Include breaking impact and upgrade steps only when explicitly confirmed.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
 
-### PRDESC-BODY-003: Preserve standard sections conservatively
+### PRDESC-BODY-003: Fill standard sections conservatively
 
-- Preserve `Community Note` as supplied by the template.
-- Fill `Changes to existing Resource / Data Source` only for existing implementation surfaces.
-- Summarize only supported validation in `Testing`.
-- Preserve the standard `Rollback Plan` unless the user provides a more specific plan.
-- Write `No changes to security controls.` when the diff does not affect access control, authentication, authorization, encryption, secret handling, or logging behavior.
-- Write `Needs contributor input.` for `Changes to Security Controls` when those areas are touched but impact is not provable.
+- Preserve the Community Note and rollback plan.
+- Populate existing-surface, testing, changelog, related issue, and security sections from evidence.
+- Write `No changes to security controls.` when compact evidence does not touch access control, authentication, authorization, encryption, secret handling, or logging behavior.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - These fallbacks distinguish verified absence from unresolved contributor intent
+  - Standard fallbacks keep the copy-ready body complete without invented claims
 
-### PRDESC-BODY-004: Disclose AI assistance
+### PRDESC-BODY-004: Include minimal AI disclosure
 
-- Always check the template's AI-assisted option because this workflow drafts the title and body.
-- State at minimum `AI was used to draft the PR title and description.`
+- Check the template's `AI Assisted` option.
+- State exactly `AI was used to draft the PR title and description.` unless the developer supplies broader wording.
+- Do not claim AI generated implementation, tests, or documentation without explicit evidence.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Invocation of this workflow is direct AI assistance
-
-### PRDESC-BODY-005: Explain Resource Identity exceptions
-
-- For a new Resource without Resource Identity or its required List Resource, require evidence that an upstream-documented exception applies.
-- Explain the supported reason in the Description and record any unresolved exception evidence as a gap.
-- Do not represent a missing mandatory companion as complete without that explanation.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
+  - Invoking this workflow is direct AI assistance
 
 ## Checklist rules
 
-### PRDESC-CHECK-001: Default checklist claims to unchecked
+### PRDESC-CHECK-001: Leave developer acknowledgements unchecked
 
-- Leave checklist items unchecked unless the current invocation has direct evidence for completion.
-- Always leave contributor acknowledgement of following guidelines unchecked.
-- Always leave confirmation that the contributor checked whether changes close open issues unchecked.
+- Leave contributor-guideline acknowledgement, duplicate PR review, and issue review unchecked.
+- Do not run searches merely to check those items.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Repository inspection cannot prove contributor acknowledgement or review
+  - Repository evidence cannot prove personal review or acknowledgement
 
-### PRDESC-CHECK-002: Check search-dependent items only after successful search
+### PRDESC-CHECK-002: Check description and documentation from content
 
-- Search for duplicate open pull requests with no more than two queries:
-  - The exact primary Terraform surface name.
-  - One independently user-facing secondary Terraform surface when materially changed.
-- Run independent duplicate queries concurrently.
-- Check the open-pull-request item only when every applicable query completed and found no open pull request containing an exact searched Terraform surface name in its title or body.
-- Leave it unchecked when matches exist or search is unavailable.
-- Record matches or unavailable search as evidence notes.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Search completion and exact-name absence are the only observable support for this item
-
-### PRDESC-CHECK-003: Check documentation coverage only when complete
-
-- Check documentation-required items only when the diff contains documentation for every new or changed user-facing Terraform surface.
-- Identify each missing document as an evidence gap.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-resource.md`
-
-### PRDESC-CHECK-004: Check test claims only from applicable passing evidence
-
-- Check local-test and test-coverage items only when applicable tests exist and current-run output proves the relevant tests passed.
-- Apply `PRDESC-EVID-003` to acceptance tests.
-- Check the combined tests-and-documentation item only when both are complete for every changed Resource or Data Source.
+- Check the meaningful-description item after the generated description names what changed and why.
+- Check documentation items only when every applicable user-facing surface has matching changed documentation.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
 
-### PRDESC-CHECK-005: Handle state migration and pull request type explicitly
+### PRDESC-CHECK-003: Check authored tests separately from passing tests
 
-- Check the state-migration-only item only for a state-migration-only diff plus explicit user confirmation or authoritative existing pull request evidence naming tested provider versions.
-- Check every applicable pull request type among `Bug Fix`, `New Feature`, and `Enhancement` from the changelog classification.
+- Check authored-test items when matching changed test coverage exists.
+- Check test-passed items only under `PRDESC-EVID-002`.
+- Do not leave a combined authored-tests-and-docs item unchecked solely because tests were not run when both changed surfaces exist.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`
+
+### PRDESC-CHECK-004: Set pull request type from classified behavior
+
+- Check every applicable type among `Bug Fix`, `New Feature`, and `Enhancement`.
 - Check `Breaking Change` only when explicitly confirmed.
 - Always check `AI Assisted`.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Pull request type is derived from classified behavior; migration execution and breaking impact require explicit evidence
+  - Type follows classified behavior while breaking impact requires explicit evidence
 
 ## Changelog rules
 
-### PRDESC-CHANGELOG-001: Keep changelog work in the pull request body
+### PRDESC-CHANGELOG-001: Recommend body content, not a repository edit
 
-- Do not tell contributors to edit `CHANGELOG.md` as part of normal pull request preparation.
-- Put any recommendation only in the template's `Change Log` section.
-- Use `No changelog entry recommended.` when no entry is warranted.
+- Put recommendations only in the template's `Change Log` section.
+- Do not tell the contributor to edit `CHANGELOG.md`.
+- Use `No changelog entry recommended.` for test-only, refactoring-only, documentation-only, or deprecation-only changes.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
 
-### PRDESC-CHANGELOG-002: Apply eligibility categories
+### PRDESC-CHANGELOG-002: Apply user-facing categories
 
-- Recommend no entry for unit-test-only, acceptance-test-only, refactoring-only, documentation-only, or deprecation-only changes.
 - Classify new Resources, Data Sources, Actions, and List Resources as `FEATURES`.
-- Classify new properties, new functionality, and SDK or API upgrades as `ENHANCEMENTS`.
+- Classify new properties, functionality, and SDK/API upgrades as `ENHANCEMENTS`.
 - Classify user-facing bug fixes as `BUG FIXES`.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
@@ -578,171 +334,103 @@ Conflict resolution:
 ### PRDESC-CHANGELOG-003: Render automation-ready entries
 
 - Map `FEATURES` to `[FEATURE]`, `ENHANCEMENTS` to `[ENHANCEMENT]`, and `BUG FIXES` to `[BUG]`.
-- Start each entry with the keyword followed by `* `.
-- Use the full Resource or Data Source name and lower-case change wording after its surface prefix.
-- Do not end the sentence with a period.
-- Do not append a pull request number placeholder.
-- Use one line per independently classified user-facing surface or change.
-- Use the Oxford comma for lists of three or more properties.
-- Require every `FEATURES` payload entry to begin `[FEATURE]`, every `ENHANCEMENTS` entry to begin `[ENHANCEMENT]`, and every `BUG FIXES` entry to begin `[BUG]`.
+- Start each line with the keyword followed by `* `, name full Terraform surfaces, use lower-case change wording, omit a final period, and use the Oxford comma.
+- Render new surfaces exactly as `[FEATURE] * **New Resource**: `{{RESOURCE_NAME}}``, `[FEATURE] * **New Data Source**: `{{DATA_SOURCE_NAME}}``, `[FEATURE] * **New Action**: `{{ACTION_NAME}}``, or `[FEATURE] * **New List Resource**: `{{RESOURCE_NAME}}``.
+- Give each new Resource, Data Source, Action, and required List Resource its own feature line, including when multiple surfaces share one Terraform name.
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
 
-### PRDESC-CHANGELOG-004: Preserve feature companions and stable ordering
+### PRDESC-CHANGELOG-004: Do not invent breaking automation
 
-- Give a required List Resource its own `[FEATURE] * **New List Resource**` entry even when implied by the new Resource title.
-- Order entries by `[FEATURE]`, `[ENHANCEMENT]`, then `[BUG]`.
-- Within each keyword, order new Resource, Data Source, Action, List Resource, provider, dependency, then remaining full Terraform names lexically.
+- For an explicitly confirmed breaking change, render `Breaking change; maintainer-managed changelog entry required.`
 - **Provenance**: Published upstream standard.
 - **Evidence**:
   - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`
 
-### PRDESC-CHANGELOG-005: Do not invent breaking-change automation
+### PRDESC-CHANGELOG-005: Keep companion implementation subordinate
 
-- When a breaking change is explicitly confirmed, write `Breaking change; maintainer-managed changelog entry required.`
-- Require impact and upgrade steps in Description.
-- Do not invent an automation keyword for a breaking change.
-- Require zero automation entries and render exactly `Breaking change; maintainer-managed changelog entry required.`.
-- **Provenance**: Published upstream standard.
+- Do not give polling, SDK shim, registration, Resource Identity, generated-code, vendoring, test, or documentation work an independent changelog line when it only supports a primary user-facing change.
+- Include a companion change only when compact evidence proves distinct user-facing behavior not already represented by the primary surface entries.
+- Preserve one entry for each title-subordinate existing Resource, Data Source, Action, or provider change whose implementation evidence proves distinct user-facing enhancement or bug-fix behavior.
+- **Provenance**: Local safeguard.
 - **Evidence**:
-  - `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`
+  - Changelog recommendations should describe independently visible user behavior rather than implementation mechanics
 
 ## Issue rules
 
-### PRDESC-ISSUE-001: Add confirmed issue links only from authoritative evidence
+### PRDESC-ISSUE-001: Include only confirmed references
 
-- Include a related issue only when explicitly supplied by the user, preserved under `PRDESC-PR-004`, or written as `#{{ISSUE_NUMBER}}` or a full GitHub issue URL in a branch commit message.
-- Otherwise write `No related issue confirmed.` in the body.
-- Do not promote advisory search results into `Fixes`, `Closes`, or `Resolves` references.
+- Include related issues only from explicit developer input or `#{{ISSUE_NUMBER}}` or full GitHub issue URLs in current-branch commit messages.
+- Otherwise write `No related issue confirmed.`
+- Do not search for or infer potential issues during drafting.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Search similarity does not prove that a change fully resolves an issue
-
-### PRDESC-ISSUE-002: Build potential-issue terms deterministically
-
-- Build at most four high-signal queries in this order, omitting any query whose strong term is unavailable or duplicates an earlier query:
-  - Exact primary Terraform surface name.
-  - Primary surface plus one concise principal user-facing behavior.
-  - Primary surface plus one principal materially changed property.
-  - One independently user-facing secondary surface, or for a bug fix one distinctive changed error fragment plus the primary surface.
-- Do not search broad low-signal property names such as `actions` or generic identifiers such as `id`, `name`, `location`, and `tags`.
-- Do not extract or search error fragments for an ordinary new feature or enhancement unless correcting error behavior is itself part of the change.
-- Search open issues in `hashicorp/terraform-provider-azurerm` and run all independent issue queries concurrently.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Ordered exact terms make advisory searches repeatable and constrain noise
-
-### PRDESC-ISSUE-003: Filter and rank advisory candidates
-
-- Exclude pull requests and deduplicate issue results.
-- Include a candidate only when it contains an exact Terraform surface name or at least two exact property, service, behavior, or error identifiers from the diff.
-- Rank exact surface matches first, property matches second, and behavior or error matches third; break ties by issue number ascending.
-- Return at most five candidates.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Multi-identifier filtering limits plausible but weakly related issue matches
-
-### PRDESC-ISSUE-004: Keep issue search non-blocking
-
-- Render `No potential related issues found.` after a successful search with no plausible matches.
-- Render `Potential related issue search unavailable.` when search cannot run.
-- Continue drafting when potential-issue search is unavailable.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Advisory search availability must not block a locally evidenced pull request draft
+  - Search similarity does not prove issue resolution and is unnecessary for a drafting shortcut
 
 ## Output rules
 
-### PRDESC-OUT-001: Emit a schema-conformant internal payload
+### PRDESC-OUT-001: Emit one lean payload
 
-- The skill must emit one payload conforming to `.github/instructions/pr-description-draft.schema.json`.
-- Include stable repository-state fingerprints, existing pull request discovery and trust metadata, resolved base metadata, changed files, classified surfaces, title and governing rule IDs, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search status and candidates.
-- The prompt must validate the payload before presentation.
+- Emit one object conforming to `.github/instructions/pr-description-draft.schema.json`.
+- Include repository identity, one title, one title explanation, the complete body, and concise evidence notes.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - A structured handoff prevents drafting procedure and presentation from silently diverging
+  - A small payload preserves deterministic presentation without carrying audit-only state
 
-### PRDESC-OUT-002: Render exactly five top-level sections
+### PRDESC-OUT-002: Render four sections
 
-- Render these exact level-two headings in order:
-  - `Suggested PR Title`
-  - `Why This Title`
-  - `Draft PR Body`
-  - `Evidence Notes`
-  - `Potential Related Issues`
-- Put the one title in a plain-text code block.
-- Keep `Why This Title` to one evidence-based sentence.
-- Put the complete copy-ready body in one `markdown` code block.
-- Render evidence gaps as concise bullets or `No unresolved evidence gaps.`.
-- Render potential issues as `Issue | Title | Why it may relate`, the no-results sentence, or the unavailable sentence.
+- Render `Suggested PR Title`, `Why This Title`, `Draft PR Body`, and `Evidence Notes` in that order.
+- Put the title in a text code block and the complete body in one Markdown code block.
+- Do not render potential issue search results or process narration.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Stable output separates copy-ready content from advisory evidence and issue candidates
+  - The output stays focused on content the developer can use
 
 ### PRDESC-OUT-003: End with the verification footer
 
-- After `Potential Related Issues`, append these exact lines:
-
-  ```text
-  Preflight complete: yes
-  Skill used: pr-description
-  ```
-
-- Emit no alternate titles, draft commentary, or text after the footer.
+- End with exactly `Preflight complete: yes` and `Skill used: pr-description`.
+- Emit nothing after the footer.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - The footer gives observable proof that the required workflow loaded and ran
+  - The footer proves the routed workflow completed
 
 ## Failure rules
 
-### PRDESC-FAIL-001: Hard-stop on ineligible repository state
+### PRDESC-FAIL-001: Stop on ineligible repository state
 
-- Hard-stop for the wrong repository, a missing AzureRM structure, the `main` branch, or an empty complete change-set.
-- Name a missing required base-revision authority exactly.
+- Hard-stop for the wrong repository, missing AzureRM structure, `main`, or an empty change-set.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - These states cannot produce an eligible, evidence-based candidate pull request draft
+  - These states cannot produce an eligible branch draft
 
-### PRDESC-FAIL-002: Hard-stop when no comparison base exists
+### PRDESC-FAIL-002: Stop when no local comparison base exists
 
-- Hard-stop when none of the ordered base sources can be resolved or a common ancestor cannot be found.
-- Ask the contributor to configure `upstream`, provide a usable `origin/main`, or identify the base ref.
+- Hard-stop when `upstream/main`, `origin/main`, and local `main` are all unusable or no merge base exists.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Scope cannot be classified without a deterministic comparison origin
+  - Scope cannot be classified without a local comparison origin
 
-### PRDESC-FAIL-003: Hard-stop on unrelated primary changes
+### PRDESC-FAIL-003: Stop on unrelated primary changes
 
-- Apply `PRDESC-SCOPE-004` before title or body rendering.
-- Name the conflicting service packages or primary surfaces when evidence supports them.
+- Apply `PRDESC-SCOPE-004` before drafting.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - The prompt must not conceal branch-splitting or primary-change ambiguity
+  - The workflow must not hide branch-splitting ambiguity
 
-### PRDESC-FAIL-004: Hard-stop on invalid structured handoff
+### PRDESC-FAIL-004: Stop on repository changes during drafting
 
-- Do not render any normal output when the skill payload fails schema validation.
-- Use the prompt-owned exact schema-invalid hard-stop string.
+- Stop when final `HEAD` or porcelain status differs from initial evidence.
+- Do not discard and restart automatically.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Rendering a malformed handoff would bypass required evidence and decision fields
+  - A changed local snapshot should be retried by the developer rather than doubling workflow time
 
-### PRDESC-FAIL-005: Hard-stop on repeated repository-state changes
+### PRDESC-FAIL-005: Stop on invalid handoff
 
-- After one discarded-evidence restart under `PRDESC-PRE-005`, stop when the final fingerprint differs again.
-- Use the prompt-owned exact repository-state-changed hard-stop string.
+- Do not render partial output when the lean payload fails schema validation.
 - **Provenance**: Local safeguard.
 - **Evidence**:
-  - Repeated concurrent edits prevent the workflow from proving that one coherent repository snapshot owns the draft
-
-### PRDESC-FAIL-006: Hard-stop when the fingerprint helper cannot run
-
-- Stop when the checked-in helper is missing or no single validated execution boundary can provide Git, Go, and the worktree containing the requested changes.
-- Use the prompt-owned exact execution-boundary hard-stop string.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Falling back to generated shell-specific fingerprint code would reintroduce an opaque and inconsistent trust boundary
+  - Validation prevents malformed copy-ready output
 
 <!-- PRDESC-CONTRACT-EOF -->

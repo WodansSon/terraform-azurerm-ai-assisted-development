@@ -101,6 +101,17 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/frequently-asked-questions.md` says contributors should generally rebase or merge from `main` only once a maintainer has taken a look through the PR and explicitly requested it
   - That guidance is relevant when local maintainer workflow or AI suggestions discuss how contributors should resolve merge conflicts on open PRs
 
+### MAINT-UPSTREAM-005: Review upstream pull request template drift against the drafting workflow
+
+- Rule: Track HashiCorp's `.github/pull_request_template.md` as a non-catalog upstream maintenance source with an explicit canonical reference URL.
+- Rule: When its hash changes, review heading order, checklist wording, required disclosure sections, and section semantics against the mapped `PRDESC-*` rules before updating the tracked baseline.
+- Rule: Update the PR description contract first when drafting policy changes. Update the skill when procedure changes, the schema when handoff shape changes, and regression fixtures when expected output changes.
+- Rule: Do not make `/draft-pr-description` fetch the remote template; runtime continues to read the current checkout's template only.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - `https://github.com/hashicorp/terraform-provider-azurerm/blob/main/.github/pull_request_template.md`
+  - Template structure can change independently from contributor-topic documentation and can invalidate local checklist or body-population assumptions
+
 - Classify the change first:
   - Decide whether the file belongs in shipped runtime payload or repo-only maintenance tooling.
   - Leave repo-only files out of `installer/file-manifest.config`.
@@ -120,6 +131,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Treat `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing` as the canonical remote contributor-doc root when comparing local references to upstream docs from this installer repo.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` to detect when tracked upstream docs have changed since the local baseline.
   - Let the drift checker derive local mappings dynamically from exact upstream topic references already present in repo files and rule evidence blocks.
+  - Let non-catalog sources such as the upstream pull request template declare a canonical `referenceUrl`; derive their local file and rule mappings from exact references rather than hard-coded ownership.
   - Use AI semantic matching after that deterministic pass to assess uncovered, changed, renamed, or merged upstream topics that do not already have explicit local links.
   - Do not add heuristic mapping rules to the script. If exact references are missing, let the drift checker surface that as a maintainer review event.
   - Treat the drift checker as the deterministic detection stage only; if it reports changed sources or rule issues, perform an AI-assisted semantic review before editing local guidance.

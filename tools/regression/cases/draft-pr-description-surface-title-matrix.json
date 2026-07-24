@@ -20,9 +20,12 @@
   "scope": {
     "changedFiles": [
       "contributing/topics/example-guidance.md",
+      "internal/services/example/custompollers/example_widget_profile_operation_poller.go",
       "internal/services/example/example_widget_data_source.go",
+      "internal/services/example/example_widget_policy_data_source.go",
       "internal/services/example/example_widget_resource.go",
       "internal/services/example/example_widget_resource_list.go",
+      "internal/services/example/example_widget_rule_resource.go",
       "website/docs/r/example_widget.html.markdown"
     ],
     "notes": "The fixture defines separate synthetic runs; the listed paths are the union of their modeled scopes."
@@ -34,7 +37,8 @@
     "PRDESC-TITLE-002",
     "PRDESC-TITLE-003",
     "PRDESC-CHANGELOG-002",
-    "PRDESC-CHANGELOG-004"
+    "PRDESC-CHANGELOG-003",
+    "PRDESC-CHANGELOG-005"
   ],
   "mustCatch": [
     {
@@ -46,6 +50,21 @@
       "key": "combined-resource-data-source-title",
       "severity": "medium",
       "description": "A new Resource and Data Source sharing one Terraform name use the exact combined title shape."
+    },
+    {
+      "key": "canonical-new-surface-changelog-lines",
+      "severity": "medium",
+      "description": "New Resource, Data Source, and List Resource entries use their exact automation-ready surface forms even when they share one Terraform name."
+    },
+    {
+      "key": "supporting-companion-changelog-suppression",
+      "severity": "medium",
+      "description": "Registration, Resource Identity, SDK shim, and polling companions do not receive independent changelog entries without distinct user-facing impact."
+    },
+    {
+      "key": "mixed-feature-enhancement-retention",
+      "severity": "high",
+      "description": "A title driven by new surfaces retains distinct enhancement entries for changed existing Resources and Data Sources in the same coherent service-package change."
     },
     {
       "key": "standalone-list-resource-title",
@@ -71,6 +90,14 @@
     {
       "key": "bracketed-title-prefix",
       "description": "The AzureRM draft must not use this toolkit repository's bracketed title prefixes."
+    },
+    {
+      "key": "natural-language-combined-title",
+      "description": "The combined title must preserve the literal `(Data Source|Resource)` text instead of rewriting it as a natural-language conjunction."
+    },
+    {
+      "key": "supporting-companion-changelog-entry",
+      "description": "Supporting-only polling or plumbing work must not be promoted to an independent changelog entry."
     }
   ],
   "expectedTools": {
@@ -83,15 +110,22 @@
     ],
     "mustIncludeMarkers": [
       "New Resource: `azurerm_example_widget`",
-      "New (Data Source|Resource) - `azurerm_example_widget`",
+      "New \\(Data Source\\|Resource\\) - `azurerm_example_widget`",
       "New List Resource: `azurerm_example_widget`",
-      "[FEATURE] * **New List Resource**: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New Resource\\*\\*: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New Data Source\\*\\*: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New List Resource\\*\\*: `azurerm_example_widget`",
+      "\\[ENHANCEMENT\\] \\* Data Source: `azurerm_example_widget_policy` - export the `retention_days` attribute",
+      "\\[ENHANCEMENT\\] \\* `azurerm_example_widget_rule` - improve validation for the `match_values` property",
       "Docs:",
       "Contributing:"
     ],
     "mustNotIncludeMarkers": [
       "[FEATURE:]",
-      "New Resource and List Resource:"
+      "New Resource and List Resource:",
+      "New Resource and Data Source - `azurerm_example_widget`",
+      "`azurerm_example_widget` - support for managing",
+      "\\[ENHANCEMENT\\] \\* `azurerm_example_widget_profile` - improve .* polling"
     ]
   },
   "notes": "Run each fixture scenario independently and compare its title and changelog decisions with the matrix expectations."

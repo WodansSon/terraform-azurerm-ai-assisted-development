@@ -338,20 +338,19 @@ These IDs come from `.github/instructions/pr-description-compliance-contract.ins
 
 | Prefix | Meaning | What it usually tells the user |
 | ------ | ------- | ------------------------------ |
-| `PRDESC-PRE-*` | Preflight, command effects, repository eligibility, and snapshot stability | Why the workflow labeled repository effects, used the cross-platform fingerprint helper, restarted after concurrent edits, or rejected an unsupported or repeatedly changing checkout |
-| `PRDESC-PR-*` | Existing pull request evidence | How identity, final-head, commit association, local relation, and field-specific authority determine which PR metadata can be preserved |
-| `PRDESC-BASE-*` | Comparison-base resolution | How active PR metadata, `upstream/main`, `origin/main`, or local `main` determined the common ancestor |
-| `PRDESC-SCOPE-*` | Change collection and classification | Which committed, staged, unstaged, and untracked files contributed to the draft and which surfaces were primary or companion |
+| `PRDESC-PRE-*` | Preflight, repository eligibility, and stability | Why direct Git selected the branch, commands stayed read-only, or a changing checkout stopped drafting |
+| `PRDESC-BASE-*` | Local comparison-base resolution | How existing `upstream/main`, `origin/main`, or local `main` determined the common ancestor without a fetch |
+| `PRDESC-SCOPE-*` | Change collection and classification | Which committed, staged, unstaged, and untracked files contributed to the draft and which surfaces were title-driving, title-subordinate user-facing changes, or implementation companions |
 | `PRDESC-EVID-*` | Evidence and validation claims | Why test, intent, issue, or completion claims were included, omitted, or left for contributor input |
 | `PRDESC-TITLE-*` | Title selection | Why one AzureRM title shape won under the fixed surface and change-type precedence |
-| `PRDESC-BODY-*` | Template-preserving body drafting | How the resolved-base template was preserved and populated conservatively |
+| `PRDESC-BODY-*` | Template-preserving body drafting | How immutable template prose, URLs, comments, headings, and checklist text stayed verbatim while designated response areas were populated conservatively |
 | `PRDESC-CHECK-*` | Checklist decisions | Why each template checklist item stayed unchecked or was supported as complete |
-| `PRDESC-CHANGELOG-*` | Changelog decisions | Whether maintainer automation-ready changelog lines were warranted, category-consistent, non-empty when recommended, and correctly ordered |
-| `PRDESC-ISSUE-*` | Confirmed and advisory issues | How authoritative links remain separate from a bounded set of ranked potential matches |
-| `PRDESC-OUT-*` | Handoff and output | How the schema-backed payload becomes the exact five-section response and verification footer |
-| `PRDESC-FAIL-*` | Hard stops | Which missing authority, ambiguous scope, repository state, or invalid payload prevents rendering |
+| `PRDESC-CHANGELOG-*` | Changelog decisions | Whether maintainer automation-ready feature, enhancement, and bug-fix lines were warranted while implementation-only companions stayed subordinate |
+| `PRDESC-ISSUE-*` | Confirmed issues | How explicit developer or current-branch commit references enter the body without a search |
+| `PRDESC-OUT-*` | Handoff and output | How the lean schema-backed payload becomes the exact four-section response and verification footer |
+| `PRDESC-FAIL-*` | Hard stops | Which ineligible repository, missing local base, ambiguous scope, changed state, or invalid payload prevents rendering |
 
-The hidden `pr-description` skill owns the reusable drafting procedure and emits the schema-version `1.3` handoff defined by `.github/instructions/pr-description-draft.schema.json`; the prompt owns capability-driven worktree discovery, exact hard stops, repository fingerprint equality, schema validation, and final presentation. The handoff freezes one canonical worktree and execution environment, while existing pull request evidence remains separate from comparison-base metadata. Neither consumer redefines the contract rules.
+The hidden `pr-description` skill owns the reusable drafting procedure and emits the lean schema-version `2.0` handoff defined by `.github/instructions/pr-description-draft.schema.json`; the prompt owns fixed direct-Git evidence collection, exact hard stops, the final `HEAD` and status comparison, in-memory schema conformance, and presentation. The normal path intentionally omits generated terminal programs, fetches, GitHub searches, policy reloads, full-content fingerprints, and alternate-environment discovery. Neither consumer redefines the contract rules.
 
 ## `DOCS-*` Rule Areas
 

@@ -1,499 +1,192 @@
-# PR Description Prompt Proposal
-
-## Purpose
-
-- Define a shipped prompt that runs inside `hashicorp/terraform-provider-azurerm` or a contributor's fork of that repository.
-- Generate a suggested pull request title and a draft pull request body from the current branch diff.
-- Keep the output aligned to the AzureRM contributor workflow instead of this source repository's local workflow.
+# PR Description Prompt Design
 
 ## Status
 
-- Implemented as the shipped `/draft-pr-description` workflow.
-- This document remains the repo-only design record; runtime behavior is owned by the prompt, skill, contract, and schema listed below.
-- The runtime files are intentionally included in `installer/file-manifest.config`.
+This document is the repo-only design record for `/draft-pr-description`.
 
-## Proposed Name
-
-- Preferred: `draft-pr-description`
-- Acceptable: `prepare-pr-description`
-- Avoid: `code-review-create-pr-description`
-
-Reasoning:
-
-- The behavior is authoring, not auditing.
-- Keeping it separate from review prompts avoids mixing review-only workflow rules into a drafting flow.
-
-## Proposed Runtime Architecture
-
-Use one explicit prompt entrypoint backed by one workflow skill, one normative contract, and one structured handoff schema.
-
-### Runtime Files
+Runtime behavior is owned by:
 
 - `.github/prompts/draft-pr-description.prompt.md`
-	- The only documented user-facing entrypoint: `/draft-pr-description`.
-	- Owns fresh-run behavior, prerequisite loading, stage order, authorized read-only tool execution, exact hard-stop messages, schema validation, and final response rendering.
-	- Must load the contract, skill, and schema to EOF before collecting change evidence.
 - `.github/skills/pr-description/SKILL.md`
-	- Owns the reusable method for resolving and classifying scope, applying the contract, drafting title and body content, making checklist and changelog decisions, and producing the structured handoff payload.
-	- Must not redefine normative title, evidence, checklist, changelog, or output rules that belong in the contract.
-	- Must not be documented as a second user entrypoint.
 - `.github/instructions/pr-description-compliance-contract.instructions.md`
-	- The single normative source for `PRDESC-*` rules.
-	- Defines precedence, evidence requirements, scope and base resolution, classification, title selection, template preservation, checklist decisions, changelog decisions, issue search, failure behavior, and output semantics.
-	- Declares both the prompt and skill as consumers with `Requires EOF Load: yes`.
 - `.github/instructions/pr-description-draft.schema.json`
-	- Defines the internal payload passed from the skill-owned drafting method to prompt-owned presentation.
-	- Must include resolved base metadata, classified surfaces, the title and governing rule IDs, the complete draft body, checklist decisions, changelog decisions, evidence gaps, and related-issue search status and candidates.
-	- The prompt must hard-stop before rendering if the payload does not conform to this schema.
-
-### Ownership Boundaries
-
-- The prompt owns invocation, orchestration, hard stops, payload validation, and presentation.
-- The skill owns the reusable drafting procedure and emits a schema-conformant payload; it does not own final Markdown presentation.
-- The contract owns all requirements that need stable rule IDs or must remain consistent across prompt and skill revisions.
-- The schema owns payload shape only; it must not introduce policy defaults or duplicate contract prose.
-- Upstream AzureRM files loaded from the resolved base remain the runtime repository-policy authorities described in `Canonical Sources Of Truth`.
-
-Use the `PRDESC-<AREA>-<NNN>` rule ID format with these initial areas:
-
-- `PRE` for preflight and repository eligibility.
-- `BASE` for comparison-base resolution.
-- `SCOPE` for change collection and surface classification.
-- `EVID` for evidence and validation claims.
-- `TITLE` for title selection and formatting.
-- `BODY` for template preservation and body content.
-- `CHECK` for checklist decisions.
-- `CHANGELOG` for changelog eligibility and rendering.
-- `ISSUE` for confirmed and potential issue handling.
-- `OUT` for final output semantics.
-- `FAIL` for exact hard-stop behavior.
 
-### Intentionally Omitted Layers
+## Product Goal
 
-- Do not add `ai-skill-routing-pr-description.instructions.md` in the first version. The explicit prompt already loads the skill and contract, and this workflow has no meaningful file-path `applyTo` scope. An unscoped router would add always-on instructions without improving determinism.
-- Do not add a separate companion rule file. Stable rules belong in the compliance contract, while reusable procedure belongs in the skill.
-- Do not split presentation into another skill. The five-section response is small enough for the prompt to render directly from the schema-conformant payload.
-- Add companion guidance later only if worked examples become too large for the skill; any companion must defer authority to the contract.
+`/draft-pr-description` is a developer shortcut. It should turn the checked-out AzureRM branch into a solid copy-ready title and body faster than a developer could write them manually.
 
-### Implementation Change Set
+The workflow is not a code review, maintainer audit, duplicate detector, issue-discovery service, or transactional repository snapshot system.
 
-When moving this proposal into runtime payload:
+## Performance Budget
 
-- Add the four runtime files above to `installer/file-manifest.config` under their matching sections.
-- Add `/draft-pr-description` to the prompt tables and examples in `README.md` and `installer/README.md`.
-- Update `docs/ARCHITECTURE.md` and `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md` to list the new prompt, skill, contract, and schema.
-- Update `docs/CODE_REVIEW_RULES.md` to document the new `PRDESC-*` contract family even though the workflow authors rather than reviews a PR description.
-- Add a user-visible `CHANGELOG.md` entry because the shipped toolkit gains a new prompt capability.
-- Add adjudicated regression cases and runnable result artifacts before treating the implementation as complete.
+The normal path should target:
 
-Minimum regression coverage must include:
-
-- New Resource plus mandatory List Resource.
-- New Resource, Data Source, and mandatory List Resource sharing one Terraform name.
-- Standalone List Resource for an existing Resource.
-- Existing Resource enhancement and bug fix title precedence.
-- Documentation-only and contributor-guidance-only changes.
-- Mixed unrelated service-package changes that require a hard stop.
-- Existing PR base metadata plus local unpushed changes.
-- Active branch identity with equal, ahead, behind, diverged, and unknown local relations.
-- Exact final-head prior PR evidence and intermediate commit association with distinct trust.
-- Authoritative confirmed references, contradicted references, and advisory no-match outcomes.
-- Missing required base-revision template or contributor guidance.
-- Successful, skipped, missing, and stale validation evidence.
-- Confirmed issue linkage, plausible advisory matches, no matches, and unavailable GitHub search.
-- Schema-invalid skill payload and exact hard-stop output.
-- Exact five-section output plus the required verification footer.
-
-## Runtime Scope
-
-- The prompt runs in the `hashicorp/terraform-provider-azurerm` repository where the contributor is preparing the pull request.
-- The prompt should assume the current branch is the candidate pull request branch.
-- The prompt should inspect committed, staged, unstaged, and non-ignored untracked changes relative to the resolved pull request base.
-- The prompt should generate a suggested title plus a draft body, not open or update a pull request automatically unless a later workflow explicitly adds that capability.
-- The first version should be AzureRM-specific and should not try to generalize across other repositories.
-
-## Canonical Sources Of Truth
-
-Use these runtime authorities by domain:
-
-- PR body shape and section order: `.github/pull_request_template.md` from the resolved base revision.
-- PR title requirements: `contributing/topics/guide-opening-a-pr.md` from the resolved base revision plus the explicit title rules in this proposal.
-- Changelog eligibility and formatting: `contributing/topics/maintainer-merging.md` from the resolved base revision.
-- New Resource, Resource Identity, and List Resource requirements when classified paths make them applicable: `contributing/topics/guide-new-resource.md`, `contributing/topics/guide-resource-identity.md`, and `contributing/topics/guide-list-resource.md` from the resolved base revision.
-- Change evidence: the current branch diff, working tree, explicit current-run command output, user input, and authoritative existing PR metadata when available.
-
-Change evidence can determine what happened, but it must not override contributor workflow policy.
-
-## Deterministic Runtime Procedure
-
-### Preflight
-
-- Verify that the checkout is `hashicorp/terraform-provider-azurerm` or a fork with the same repository name and expected AzureRM structure.
-- Always require `.github/pull_request_template.md`, `contributing/README.md`, `contributing/topics/guide-opening-a-pr.md`, and `contributing/topics/maintainer-merging.md` in the resolved base revision.
-- Require the new-resource, Resource Identity, and List Resource guides only when the complete changed-path classification makes their policy area applicable.
-- Hard-stop if the current branch is `main` or if no change exists relative to the resolved base.
-- Do not pull, merge, rebase, commit, push, or otherwise change the contributor's worktree or branch.
-- Require the checked-in `.github/skills/pr-description/scripts/pr-description-fingerprint.go` runtime asset.
-
-### Command Effects
-
-- Show every terminal command batch before execution.
-- Label ordinary inspection and fingerprint collection `[Read-only] {{PURPOSE}}` because they do not change repository refs, the index, or working files.
-- Label the targeted fetch `[Updates remote-tracking ref: {{FULL_REMOTE_TRACKING_REF}} only]` and show its fully resolved command.
-- Do not combine a targeted fetch and inspection commands in one terminal batch.
-- Disclose that `go run` may update the Go build cache outside the repository.
-
-### Existing Pull Request Evidence
-
-Discover pull request evidence in this order:
-
-1. Active pull request metadata for the checkout.
-2. An open pull request with the exact head repository and branch.
-3. Pull requests associated with exact current `HEAD` across all states.
-
-Use these trust levels:
-
-- `active-branch-identity`: same head repository and branch. Identity and intended base are authoritative; local committed and working-tree changes remain additional evidence.
-- `exact-final-head`: a prior PR's final head equals current `HEAD`. Body and confirmed references are authoritative prior evidence, but its base does not override current base resolution.
-- `commit-association-only`: current `HEAD` appeared in the PR history but was not its final head. Metadata is advisory.
-- `none`: no identity was proven or discovery was unavailable.
-
-For active branch identity, record whether local `HEAD` is equal, ahead, behind, diverged, or unknown relative to the PR head. Treat authority by field: current local evidence owns implementation behavior, current base policy owns repository requirements, and older testing text is reusable only when it names applicable commands and results.
-
-`existingPullRequest.confirmedReferences` contains only references sourced from the identity-trusted PR before current-evidence conflict resolution. `relatedIssues.confirmedReferences` contains final references approved for the generated body from all authoritative sources after conflict resolution.
-
-Scope-equivalent prior PR promotion is deferred until a separately specified and tested equivalence algorithm exists.
-
-### Base Resolution
-
-Resolve the comparison base in this order:
-
-1. The current base commit SHA from `active-branch-identity` PR metadata.
-2. `upstream/main` when the `upstream` remote exists.
-3. `origin/main` when it exists.
-4. Local `main`.
-
-- When selecting `upstream/main` or `origin/main`, refresh only that remote-tracking ref with `--no-tags`, `--no-recurse-submodules`, `--no-write-fetch-head`, and an explicit `refs/heads/{{BASE_BRANCH}}:refs/remotes/{{REMOTE}}/{{BASE_BRANCH}}` refspec.
-- Describe fetch accurately: it downloads objects and updates remote-tracking metadata, but does not checkout, merge, rebase, reset, modify local `main`, change the index, or change working files.
-- If the fetch fails, continue with the existing local remote-tracking ref and disclose that it may be stale in `Evidence Notes`.
-- Find the common ancestor between the selected base commit or ref and `HEAD`; use that commit for diff collection. User-visible status should say that this reads history and does not perform a merge.
-
-### Change Collection
-
-- Compute a `sha256-v1` repository-state fingerprint before evidence collection and immediately before payload validation. Cover full `HEAD`, staged and unstaged tracked diff bytes, and ordinal untracked path and byte-content hashes.
-- Invoke the checked-in standard-library Go helper rather than generating a shell-specific inline fingerprint program.
-- Discover Git, Go, and `git rev-parse --show-toplevel` in the current terminal first, independent of operating system or remote-workspace type. Use a suitable current worktree directly and freeze that environment before collecting evidence.
-- When the current environment has no suitable worktree, search only developer-configured roots and existing conventional roots (`~/src`, `~/github`, `~/go/src`, and `/workspaces`). Validate repository identity, expected checked-out branch, full `HEAD`, dirty state, Git, and Go for every candidate; ask the developer to choose when multiple candidates are trustworthy and request a path when none are.
-- Never substitute a same-branch and same-`HEAD` clean clone for a dirty source checkout. The selected worktree must contain the actual staged, unstaged, and untracked changes being drafted.
-- Treat WSL as an optional environment. Prefer a validated WSL-native checkout when native Windows cannot provide the required boundary; use argument-safe path translation only as a fallback for intentionally running the entire workflow against the same mounted Windows worktree.
-- The helper canonicalizes an interior `--repository-root` through `git rev-parse --show-toplevel` before hashing or joining root-relative untracked paths.
-- Do not treat one non-interactive WSL PATH miss as proof that the distribution lacks Go.
-- Do not treat a progressing Git index refresh under `/mnt/c` as a hang. Large repositories can be slow while Windows-to-WSL filesystem synchronization is active, and that latency is not evidence of a portability defect.
-- Use the same frozen worktree and execution environment for repository inspection, initial and final fingerprints, evidence collection, and payload generation because different checkouts, Git executables, or configurations can produce different evidence and raw diff bytes.
-- Validate the helper at runtime in CI on `windows-latest`, `ubuntu-latest`, and `macos-latest`. Each runner reports `GOOS` and `GOARCH`, runs `gofmt`, `go vet`, the shared behavioral tests, and verifies the CLI leaves repository status unchanged.
-- If the fingerprints differ, discard all evidence and restart once. Hard-stop if the restarted run changes again.
-- Use one path-and-status inventory from the common ancestor to the working tree so committed, staged, and unstaged tracked changes are represented without double-counting.
-- Use `git ls-files --others --exclude-standard` to identify non-ignored untracked files and inspect their contents separately.
-- Preserve added, modified, renamed, copied, and deleted file status.
-- Inspect compact patches for every primary or materially changed user-facing surface and only the companion evidence needed for registration, Resource Identity, List Resource, documentation, tests, security, and changelog decisions.
-- Do not emit and reread one oversized repository-wide patch when the complete inventory plus targeted patches can prove the same decisions.
-- Treat verified existing PR metadata according to its trust level and field authority; do not let PR metadata replace local unpushed changes.
-- Ignore generated and vendored files when choosing the dominant title surface unless the PR is specifically an SDK, API, dependency, or generated-code update.
-
-### Classification And Drafting
-
-- Classify changed files in lexical path order.
-- Identify new and existing Resources, Data Sources, List Resources, Actions, Ephemeral Resources, Functions, provider features, SDK or API updates, documentation, contributor guidance, tests, and CI or maintenance changes.
-- Treat tests, documentation, Resource Identity, registration, and mandatory List Resource changes as companion surfaces when they support the same primary implementation.
-- Load applicable specialized base-revision guides after path classification.
-- Apply the title decision order defined in `Title Rules`.
-- Draft the title and strict changelog decision before advisory searches.
-- Search open PRs with at most the primary exact Terraform surface plus one independently user-facing secondary surface, in one concurrent batch.
-- Search potential related issues with at most four high-signal queries, in one concurrent batch.
-- Render the complete PR body using the base-revision template and the exact body rules below, then validate the schema-version `1.3` payload once.
-- Emit the five output sections in the order defined by `Proposed Output Contract` and do not add other top-level output.
-
-## AzureRM-Specific Interpretation
-
-- The AzureRM upstream repo owns the pull request workflow contract.
-- This source repository should ship prompt logic that adapts to the consumer repo's files instead of hardcoding this repo's local PR title conventions.
-- For AzureRM specifically, title generation should follow the contributor guidance in `guide-opening-a-pr.md`, not the bracket-prefix style used by this source repository's local template.
-- For the changelog section specifically, recommendation logic should follow `maintainer-merging.md`.
-
-## Title Rules
-
-The first version should generate exactly one title suggestion. Alternative title suggestions can be added later if user feedback shows they would be useful.
-
-Required behavior:
-
-- Make the title concrete and change-focused.
-- Prefer the same core wording that would make sense as the squash merge commit title.
-- Prefer wording that could plausibly match the eventual changelog entry theme.
-- Name the affected surface explicitly.
-- Use the `Contributing:` title prefix when the primary change is under `contributing/**`; do not use it for changes outside that path.
-- Treat a List Resource as an implied required companion when it is added with a new Resource; do not add `List Resource` to the title in that case.
-- Use `New List Resource:` when adding List Resource support to an existing Resource.
-- When the same Terraform name introduces both a new Resource and a new Data Source, use the exact prefix `New (Data Source|Resource) -` followed by the Terraform name in backticks.
-
-Use this title decision order:
-
-1. A new Resource and Data Source with the same Terraform name.
-2. A new Resource, with its mandatory List Resource treated as implied.
-3. A new standalone Data Source.
-4. A new List Resource for an existing Resource.
-5. A new Action, Ephemeral Resource, Function, or provider feature.
-6. A user-facing bug fix.
-7. A user-facing enhancement.
-8. An SDK, API version, or dependency update.
-9. Changes under `contributing/**`.
-10. Documentation-only changes outside `contributing/**`.
-11. CI or maintenance-only changes.
-
-- Supporting tests, documentation, registration, Resource Identity, generated code, and vendored SDK changes do not compete with the primary surface for title ownership.
-- When the diff contains unrelated primary changes across multiple service packages, stop and ask the contributor to identify the primary change or split the branch rather than guessing.
-
-For AzureRM, preferred title patterns include:
+- 60 to 90 seconds on a typical changed branch.
+- Four primary model/tool phases.
+- No more than 10 model iterations under ordinary conditions.
+- No more than 15 tool calls under ordinary conditions.
+- Two canonical one-line direct-Git repository evidence batches, each issued once.
+- One concurrent targeted-read batch.
+- One final repository stability command batch.
 
-- ``azurerm_resource_name - add support for the `field_name` property``
-- ``azurerm_resource_name - improve validation for the `field_name` property``
-- ``azurerm_resource_name - correctly populate the `field_name` attribute``
-- ``Data Source: azurerm_data_source_name - export the `field_name` attribute``
-- ``List Resource: azurerm_resource_name - add support for filtering by `field_name```
-- ``New Resource: `azurerm_resource_name```
-- ``New (Data Source|Resource) - `azurerm_resource_name```
-- ``New List Resource: `azurerm_resource_name```
-- ``New Data Source: `azurerm_data_source_name```
-- ``Docs: Fix incorrect import example for azurerm_resource_name``
-- ``dependencies: service_name - update API version to `YYYY-MM-DD```
-- ``Contributing: add list resource guidance for sub-resources``
-
-The prompt should avoid titles like:
-
-- ``fix bug``
-- ``fixes #1234``
-- ``new resource``
-- ``upgrade sdk``
-- overly broad property lists without naming the surface they belong to
-
-The prompt should not use bracketed title prefixes such as `[BUG:]` or `[ENHANCEMENT:]` when running in AzureRM unless the consumer repository explicitly requires that format in its own runtime guidance.
-
-## Body Rules
-
-The body should be rendered against the pull request template loaded from the resolved base revision.
-
-- Preserve every template heading, HTML comment, checklist item, and section in its original order for the first version.
-- Do not add `Suggested PR Title`, `Why This Title`, `Evidence Notes`, or `Potential Related Issues` inside the copy-ready PR body.
-- Replace example placeholders such as `Fixes #0000` and sample changelog entries; do not leave template examples that could be mistaken for contributor claims.
-
-For AzureRM, the prompt should preserve the existing section structure and fill only sections it can support with evidence:
-
-- `Community Note`: preserve as-is from the template.
-- `Description`: explain what changed and why.
-- `PR Checklist`: leave checklist state conservative unless direct evidence supports a checked item.
-- `Changes to existing Resource / Data Source`: fill when the diff touches existing implementation surfaces.
-- `Testing`: summarize only validation that can be supported by explicit evidence.
-- `Change Log`: provide a suggested entry only when warranted under `maintainer-merging.md`.
-- Keep all changelog output inside the template's `Change Log` section; do not add a separate maintainer-only recommendation block.
-- `Related Issue(s)`: include only issue references explicitly supplied by the user, preserved from `active-branch-identity` or `exact-final-head` evidence, or written as `#1234` or a full GitHub issue URL in a commit message. Never erase authoritative references because advisory search returns no match.
-- When current behavior contradicts an authoritative closing reference, remove its closing keyword and request contributor confirmation in `Evidence Notes` rather than silently preserving or deleting it.
-- `AI Assistance Disclosure`: always check the AI-assisted box because this prompt drafted the title and body, and state at minimum `AI was used to draft the PR title and description.`
-- `Rollback Plan`: preserve the template's standard rollback text unless the user provides a more specific plan.
-- `Changes to Security Controls`: write `No changes to security controls.` when the diff does not change access control, authentication, authorization, encryption, secret handling, or logging behavior. Use `Needs contributor input.` when the diff touches those areas but impact is not provable.
-
-## Evidence Rules
-
-The prompt must not invent facts.
-
-Allowed evidence:
+Environmental Git performance can exceed the wall-clock target, but the workflow must not add network or audit work to that cost.
 
-- Branch diff content
-- Changed file paths
-- Current repository template and contributor docs
-- Explicit local command output gathered in the current run
-- Explicit user-provided issue numbers or context
-- Field-appropriate existing PR metadata under the verified trust model
-
-Disallowed evidence:
-
-- Guessed intent not supported by code or user input
-- Assumed test execution
-- Assumed changelog eligibility
-- Assumed issue linkage
-- Assumed breaking-change impact
-
-If evidence is missing, use the exact section-specific fallback defined in `Body Rules`. When no section-specific fallback exists, write `Needs contributor input.` and identify the missing fact in `Evidence Notes`.
-
-- Do not treat a command mentioned in documentation, comments, commit messages, or an existing PR body as proof that it ran successfully.
-- Current-run successful command output is required before claiming local validation passed.
-- Existing PR testing evidence may be preserved only when it explicitly names the command and result and is not contradicted by the current diff.
-
-## Changelog Decision Rules
-
-The `Change Log` section should be based on `hashicorp/terraform-provider-azurerm/contributing/topics/maintainer-merging.md`.
-
-Required interpretation:
-
-- Contributors should not be told to update `CHANGELOG.md` directly as part of normal pull request preparation.
-- The section in the pull request body should describe the recommended changelog entry, if any, for maintainers to use during merge.
-- Not every pull request should produce a changelog entry.
-
-For AzureRM, the prompt should recommend no changelog entry when the change is primarily:
-
-- unit test only
-- acceptance test only
-- refactoring only
-- documentation only
-- deprecation only
-
-When a changelog entry is warranted, the prompt should classify it into one of the maintainer categories:
-
-- `FEATURES`: new resources, data sources, actions, or list resources
-- `ENHANCEMENTS`: new properties, new functionality, or SDK and API upgrades
-- `BUG FIXES`: bug fixes
-
-When a changelog entry is warranted, the prompt should prefix the suggested changelog line with the matching automation keyword:
-
-- `FEATURES` -> `[FEATURE]`
-- `ENHANCEMENTS` -> `[ENHANCEMENT]`
-- `BUG FIXES` -> `[BUG]`
-
-Formatting rules for the suggested entry:
-
-- Use the maintainer automation format, not the final rendered `CHANGELOG.md` line format.
-- Start the suggested line with the automation keyword such as `[BUG]`, `[ENHANCEMENT]`, or `[FEATURE]`.
-- Follow the keyword with `* ` and then the changelog sentence.
-- Start with lower-case wording after the surface name prefix.
-- Do not end the sentence with a period.
-- Use the full resource or data source name.
-- Use complete sentence style such as `add support for`, `improve validation for`, or `correctly populate`.
-- Use an Oxford comma when listing three or more properties.
-- Do not append a `[GH-12345]` style placeholder in the draft body because the automation appends the GitHub pull request number.
-- Emit one line per affected Terraform surface or independently classified user-facing change.
-- Order entries by `[FEATURE]`, `[ENHANCEMENT]`, then `[BUG]`; within each keyword, order new Resource, Data Source, Action, List Resource, provider, dependency, then remaining full Terraform names lexically.
-- Require `FEATURES` to use `[FEATURE]`, `ENHANCEMENTS` to use `[ENHANCEMENT]`, and `BUG FIXES` to use `[BUG]`.
-- Require at least one automation entry for a recommended changelog decision.
-- Require zero entries and exactly `No changelog entry recommended.` for a non-recommended decision.
-- Require zero entries and exactly `Breaking change; maintainer-managed changelog entry required.` when breaking-change input is required.
-
-Use these feature shapes:
-
-```text
-[FEATURE] * **New Resource**: `azurerm_resource_name`
-[FEATURE] * **New Data Source**: `azurerm_data_source_name`
-[FEATURE] * **New Action**: `azurerm_action_name`
-[FEATURE] * **New List Resource**: `azurerm_resource_name`
-```
-
-- A mandatory List Resource still receives its own feature changelog line even though it is implied by a new Resource in the PR title.
-- When a breaking change is explicitly confirmed, check `Breaking Change`, require impact and upgrade steps in `Description`, and write `Breaking change; maintainer-managed changelog entry required.` instead of inventing an automation keyword.
-
-Suggested rendering shape for AzureRM:
-
-```markdown
-## Change Log
-
-[ENHANCEMENT] * `azurerm_resource_name` - add support for the `new_property` property
-```
-
-Suggested rendering when no entry is warranted:
-
-```markdown
-## Change Log
-
-No changelog entry recommended.
-```
-
-## Checklist Rules
-
-Checklist items should default to unchecked unless the prompt has explicit evidence.
-
-- `I have followed the guidelines`: always leave unchecked because repository inspection cannot prove contributor acknowledgement.
-- `I have checked to ensure there aren't other open Pull Requests`: check only when the open-PR search completed and found no other PR containing an exact changed Terraform surface name in its title or body.
-- `I have checked if my changes close any open issues`: always leave unchecked because advisory issue search cannot prove the contributor reviewed whether an issue is fully resolved.
-- `I have updated/added Documentation as required`: check only when the diff contains documentation for every new or changed user-facing Terraform surface; otherwise leave unchecked and identify each missing document in `Evidence Notes`.
-- `I have used a meaningful PR title`: check after the generated title passes all `Title Rules`.
-- `I have added an explanation of what my changes do and why`: check when `Description` states both the observable change and its evidence-supported reason.
-- `I have written new tests ... & updated any relevant documentation`: check only when the diff contains applicable test coverage and documentation for every changed Resource or Data Source.
-- `I have successfully run tests with my changes locally`: check only when the current run contains successful output for the relevant tests. A skipped acceptance test is not successful validation unless the required Azure environment variables were present.
-- `For changes that include a state migration only`: check only for a state-migration-only diff and explicit user confirmation or authoritative existing PR evidence that the migration was manually tested between named provider versions; otherwise leave unchecked.
-- `My submission includes Test coverage ... and the tests pass`: check only when applicable test files are present and current-run output proves the relevant tests passed.
-- PR type: check every applicable one of `Bug Fix`, `New Feature`, and `Enhancement` from the changelog classification; check `Breaking Change` only when explicitly confirmed under `Changelog Decision Rules`.
-- `AI Assisted`: always check because using this prompt is itself AI assistance.
-
-The prompt may add short evidence notes below a checklist-adjacent section, but it should not fabricate completed work.
-
-## Diff And Scope Rules
-
-- Always use the resolved comparison base and change collection procedure defined in `Deterministic Runtime Procedure`.
-- Include committed, staged, unstaged, and non-ignored untracked changes so the draft reflects the full in-progress branch state the contributor is preparing to submit.
-- If verified pull request evidence is available, preserve explicit issue links and applicable contributor-provided validation evidence according to its field-specific trust level.
-- The prompt should summarize touched surfaces before drafting the title so the title is anchored to the dominant user-facing change.
-- If the branch contains unrelated primary changes across multiple service packages, apply the hard-stop behavior defined in `Title Rules`.
-
-## Potential Related Issues
-
-- Build at most four high-signal queries: exact primary surface; primary surface plus the principal behavior; primary surface plus the principal materially changed property; and one independently user-facing secondary surface or, for bug fixes, one distinctive changed error fragment plus the primary surface.
-- Skip unavailable or duplicate terms. Do not search broad properties such as `actions` or generic names such as `id`, `name`, `location`, and `tags`.
-- Do not extract or search error fragments for ordinary new features or enhancements unless correcting error behavior is part of the change.
-- Search open issues in `hashicorp/terraform-provider-azurerm` and issue all independent queries concurrently.
-- Exclude pull requests and deduplicate results across search queries.
-- Add a `Potential Related Issues` section after the draft PR body and evidence notes.
-- For each candidate, include the issue number, title, link, and a brief reason it may relate to the change.
-- Treat every result as advisory and require the developer to validate whether the change fully addresses the issue.
-- Do not automatically add `Fixes`, `Closes`, or `Resolves` references to the draft PR body.
-- Include a candidate only when it contains an exact Terraform surface name or at least two exact property, service, behavior, or error identifiers from the diff.
-- Rank exact surface-name matches first, then property matches, then behavior or error matches; break ties by issue number ascending.
-- Return at most five candidates using this exact table shape: `Issue | Title | Why it may relate`.
-- If no plausible matches are found, state `No potential related issues found.`
-- If GitHub issue search is unavailable, state `Potential related issue search unavailable.` and continue generating the title and body.
-
-## Failure Behavior
-
-If a required runtime source is missing:
-
-- Wrong repository or missing AzureRM structure: hard-stop and explain that the prompt only supports `terraform-provider-azurerm`.
-- Missing PR template or required contributor guidance in the resolved base: hard-stop and name the missing file.
-- Missing comparison base: hard-stop and ask the contributor to configure the upstream remote or identify the base ref.
-- Empty diff: hard-stop and state that no PR description can be drafted because no changes were found.
-
-## Proposed Output Contract
-
-The prompt should return these top-level parts in order:
-
-1. `Suggested PR Title`
-2. `Why This Title`
-3. `Draft PR Body`
-4. `Evidence Notes`
-5. `Potential Related Issues`
-
-Formatting requirements:
-
-- Render each top-level part as an exact level-two Markdown heading, for example `## Suggested PR Title`.
-- Put the single suggested title in a plain-text code block.
-- Keep `Why This Title` to one evidence-based sentence.
-- Put the complete copy-ready PR body in one `markdown` code block.
-- Render `Evidence Notes` as concise bullets, or `No unresolved evidence gaps.` when empty.
-- Render `Potential Related Issues` as the required table, the no-results sentence, or the unavailable sentence.
-- After `Potential Related Issues`, append this exact verification footer and no other text:
-
-```text
-Preflight complete: yes
-Skill used: pr-description
-```
-
-- Do not emit alternate titles, draft commentary, or any text after the verification footer.
-
-`Evidence Notes` should be brief and should call out any unresolved contributor-input gaps, such as:
-
-- missing issue numbers
-- no observed local test evidence
-- uncertain changelog eligibility because the branch mixes user-facing and maintenance-only changes
-
-## Non-Goals
-
-- Running acceptance tests automatically as part of drafting
-- Marking checklist items complete without evidence
-- Editing `CHANGELOG.md` in the consumer repository
-- Automatically adding issue-closing references to the draft PR body
-- Opening or updating the pull request automatically in the first version
-- Replacing the code-review prompts
+## Runtime Ownership
+
+### Prompt
+
+The prompt owns:
+
+- Four-phase orchestration.
+- Read-only command transparency.
+- Current-worktree selection and exact hard stops.
+- Two canonical one-line direct-Git evidence batches with no alternate-syntax retries, plus one cheap final stability check.
+- In-memory lean-schema conformance without terminal payload construction.
+- Four-section final presentation.
+
+### Contract
+
+The contract owns stable AzureRM rules for:
+
+- Branch and repository evidence precedence.
+- Local comparison-base selection.
+- Complete local changed-path scope.
+- Targeted evidence reads.
+- Title selection.
+- Template population.
+- Checklist decisions.
+- Changelog recommendations.
+- Confirmed issue references.
+- Minimal AI disclosure.
+
+The contract carries rules derived from upstream contributor guidance so every developer invocation does not reload those guides.
+
+### Skill
+
+The hidden skill owns:
+
+- Surface classification.
+- Primary and companion treatment.
+- One title decision.
+- Template-preserving body drafting.
+- Checklist, changelog, related issue, security, and evidence-note decisions.
+- One lean schema handoff.
+
+### Schema
+
+Schema version `2.0` contains only:
+
+- Repository worktree, branch, `HEAD`, local base reference, and merge base.
+- One title.
+- One title explanation.
+- One complete body.
+- Evidence notes.
+
+Audit-only state does not belong in the handoff.
+
+## Workflow
+
+### Load And Inspect
+
+- Load the contract, skill, and lean schema concurrently.
+- Validate the current `terraform-provider-azurerm` worktree.
+- Use an explicit developer branch or worktree path when supplied.
+- Otherwise trust direct `git branch --show-current` over editor or pull request metadata.
+- In one canonical semicolon-separated direct-Git batch, collect repository root, remotes, branch, full `HEAD`, initial porcelain status, and local base candidates.
+- In one canonical semicolon-separated direct-Git batch after selecting the base, collect merge base, committed paths, working-tree paths, non-ignored untracked paths, and current branch commit subjects.
+- Issue each batch once; hard-stop on incomplete output instead of retrying with newlines, script blocks, or alternate shell syntax.
+- Do not generate PowerShell or shell programs for repository evidence, template transformation, payload construction, or schema validation.
+
+### Read Relevant Evidence
+
+- Read the current pull request template once.
+- Classify the complete changed-path inventory.
+- In one concurrent batch, inspect compact evidence for applicable:
+  - Every independently user-facing changed implementation surface, including existing surfaces that do not drive the title.
+  - Registration or feature wiring.
+  - Tests.
+  - Documentation.
+  - Resource Identity.
+  - List Resource support.
+  - Security-sensitive behavior.
+- Build that direct-read plan from the complete changed-path inventory before opening files. Do not search for known paths, list an already identified service directory, or enumerate test functions merely to prove authored coverage.
+- Do not emit or reread a repository-wide patch.
+
+### Draft Once
+
+- Route the compact evidence to the hidden skill once.
+- Generate one title and one complete template-preserving body.
+- Keep test existence separate from test execution.
+- Include related issues only from explicit developer input or current-branch commit subjects.
+- Include the minimal AI disclosure because the workflow drafted the title and body.
+
+### Check And Render
+
+- Re-read only full `HEAD` and porcelain status.
+- Hard-stop once when either changed; do not restart automatically.
+- Check the lean payload against the loaded schema in memory without reconstructing it in a terminal command.
+- Render title, title explanation, body, evidence notes, and the verification footer.
+
+## Deliberate Non-Goals
+
+The normal workflow does not:
+
+- Fetch or refresh remote-tracking refs.
+- Search for active, closed, or historical pull requests.
+- Search for duplicate pull requests.
+- Search for potential related issues.
+- Reload upstream contributor guides.
+- Run tests.
+- Run a linter or code review.
+- Scan conventional development roots or WSL distributions.
+- Hash full staged, unstaged, and untracked contents twice.
+- Restart automatically when repository state changes.
+- Offer a separate audit mode.
+
+## Output Requirements
+
+The response contains exactly:
+
+- `Suggested PR Title`
+- `Why This Title`
+- `Draft PR Body`
+- `Evidence Notes`
+- `Preflight complete: yes`
+- `Skill used: pr-description`
+
+The copy-ready body preserves the current template and includes:
+
+- Verbatim immutable template lines, including Community Note prose and URLs.
+- Evidence-based description.
+- Conservative checklist states.
+- Testing evidence or a concise not-run statement.
+- Automation-ready changelog recommendation when warranted.
+- Confirmed related issue references or `No related issue confirmed.`
+- Minimal AI disclosure.
+- Rollback and security-control sections.
+
+## Validation Strategy
+
+The adjudicated regression suite protects:
+
+- Direct Git branch precedence over stale editor metadata.
+- Two one-shot canonical direct-Git evidence batches and local-only base selection.
+- Complete committed and working-tree scope.
+- Targeted material reads.
+- Authored tests versus executed tests.
+- Cheap final stability checks without restart.
+- No fetch, GitHub search, policy reload, full fingerprint, or WSL scan.
+- Exact combined-title syntax, canonical new-surface changelog lines, title-subordinate existing-surface enhancement retention, and companion-only changelog suppression across AzureRM surface combinations.
+- No generated repository-evidence, template-transformation, payload-construction, or terminal schema-validation scripts.
+- No alternate-syntax Git retries, exact-known-path searches, service-directory rediscovery, or unnecessary test-function enumeration.
+- Verbatim immutable template prose, URLs, comments, headings, checklist text, rollback text, and final-note preservation.
+- Explicit-only issue references.
+- Lean schema version `2.0` and exact four-section output.
+
+## Upstream Maintenance
+
+- `tools/check-upstream-contributor-drift.ps1` tracks the PR-opening and maintainer-merging guides that support local `PRDESC-*` policy.
+- It also tracks HashiCorp's `.github/pull_request_template.md` as a non-catalog source.
+- Exact evidence references dynamically map template drift to the owning local rules; the detector does not hard-code PR-description ownership.
+- A template change triggers maintainer semantic review of headings, checklist wording, disclosure requirements, contract rules, skill procedure, schema shape, and regression fixtures before the baseline is refreshed.
+- Runtime drafting never fetches the remote template and continues to use the template in the developer's current checkout.

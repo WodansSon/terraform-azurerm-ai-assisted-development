@@ -35,6 +35,10 @@ if (-not $manifest.catalog.contributorTreeUrl) {
     throw "manifest catalog does not contain contributorTreeUrl"
 }
 
+if (-not $manifest.catalog.topicContentsApiUrl) {
+    throw "manifest catalog does not contain topicContentsApiUrl"
+}
+
 $githubMarkdownRoot = Join-Path $repoRoot ".github"
 $docsMarkdownRoot = Join-Path $repoRoot "docs"
 $markdownRoots = @($githubMarkdownRoot, $docsMarkdownRoot)
@@ -103,14 +107,34 @@ function Convert-ToCanonicalUpstreamTopicUrl {
 function Get-UpstreamTopicPaths {
     param(
         [Parameter(Mandatory = $true)]
-        [string] $ReadmeRawUrl
+        [string] $ContentsApiUrl
     )
 
-    $readme = (Invoke-WebRequest -UseBasicParsing -Uri $ReadmeRawUrl).Content
-    [regex]::Matches($readme, 'topics/[^)\s]+\.md') |
-        ForEach-Object { Convert-ToCanonicalUpstreamTopicUrl -Reference $_.Value } |
-        Where-Object { $null -ne $_ } |
-        Sort-Object -Unique
+    $pendingUrls = [System.Collections.Generic.Queue[string]]::new()
+    $pendingUrls.Enqueue($ContentsApiUrl)
+    $topicPaths = @()
+    $headers = @{ Accept = "application/vnd.github+json"; "User-Agent" = "terraform-azurerm-ai-toolkit-drift-checker" }
+
+    while ($pendingUrls.Count -gt 0) {
+        $response = Invoke-RestMethod -Uri $pendingUrls.Dequeue() -Headers $headers
+        $entries = @($response)
+
+        foreach ($entry in $entries) {
+            if ($entry.type -eq "dir") {
+                $pendingUrls.Enqueue($entry.url)
+                continue
+            }
+
+            if ($entry.type -eq "file" -and $entry.path -match '^contributing/topics/(.+\.md)$') {
+                $topicPath = Convert-ToCanonicalUpstreamTopicUrl -Reference $entry.path
+                if ($null -ne $topicPath) {
+                    $topicPaths += $topicPath
+                }
+            }
+        }
+    }
+
+    $topicPaths | Sort-Object -Unique
 }
 
 function Get-TrackedTopicMetadata {
@@ -274,6 +298,7 @@ function Get-SourceDriftResults {
                 title = $source.title
                 domain = $source.domain
                 rawUrl = $source.rawUrl
+                referenceUrl = $source.referenceUrl
                 baselineSha256 = $source.baselineSha256
                 currentSha256 = $currentHash
                 status = if ($currentHash -eq $source.baselineSha256) { "unchanged" } else { "changed" }
@@ -286,6 +311,7 @@ function Get-SourceDriftResults {
                 title = $source.title
                 domain = $source.domain
                 rawUrl = $source.rawUrl
+                referenceUrl = $source.referenceUrl
                 baselineSha256 = $source.baselineSha256
                 currentSha256 = $null
                 status = "fetch-failed"
@@ -298,7 +324,7 @@ function Get-SourceDriftResults {
     $results
 }
 
-$upstreamTopicPaths = Get-UpstreamTopicPaths -ReadmeRawUrl $manifest.catalog.readmeRawUrl
+$upstreamTopicPaths = Get-UpstreamTopicPaths -ContentsApiUrl $manifest.catalog.topicContentsApiUrl
 $trackedTopicMetadata = Get-TrackedTopicMetadata -Sources @($manifest.sources) -TopicBaseRawUrlPrefix $manifest.catalog.topicBaseRawUrlPrefix
 $trackedTopicPaths = @($trackedTopicMetadata.path | Sort-Object -Unique)
 $markdownFiles = @(& {
@@ -519,12 +545,37 @@ $sourceResults = Get-SourceDriftResults -Sources @($manifest.sources) | ForEach-
         $fileReferenceEntry = $localTopicFileReferencesByPath | Where-Object { $_.topicPath -eq $topicPath } | Select-Object -First 1
         $ruleReferenceEntry = $ruleReferencesByTopicPath | Where-Object { $_.topicPath -eq $topicPath } | Select-Object -First 1
     }
+    elseif (-not [string]::IsNullOrWhiteSpace($source.referenceUrl)) {
+        $referenceUrls = @($source.referenceUrl, $source.rawUrl) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+        $referencedFiles = @($markdownFiles | Where-Object {
+            $text = Get-Content -LiteralPath $_.FullName -Raw
+            @($referenceUrls | Where-Object { $text.Contains($_) }).Count -gt 0
+        } | ForEach-Object { Convert-ToRepoRelativePath -FullPath $_.FullName } | Sort-Object -Unique)
+        $referencedRules = @($ruleInventory | Where-Object {
+            $evidenceText = $_.evidenceLines -join "`n"
+            @($referenceUrls | Where-Object { $evidenceText.Contains($_) }).Count -gt 0
+        } | ForEach-Object {
+            [pscustomobject]@{
+                file = $_.file
+                ruleId = $_.ruleId
+                startLine = $_.startLine
+            }
+        } | Sort-Object file, ruleId)
+
+        if ($referencedFiles.Count -gt 0) {
+            $fileReferenceEntry = [pscustomobject]@{ files = $referencedFiles }
+        }
+        if ($referencedRules.Count -gt 0) {
+            $ruleReferenceEntry = [pscustomobject]@{ rules = $referencedRules }
+        }
+    }
 
     [pscustomobject]@{
         id = $source.id
         title = $source.title
         domain = $source.domain
         rawUrl = $source.rawUrl
+        referenceUrl = $source.referenceUrl
         topicPath = $topicPath
         baselineSha256 = $source.baselineSha256
         currentSha256 = $source.currentSha256
@@ -538,8 +589,14 @@ $sourceResults = Get-SourceDriftResults -Sources @($manifest.sources) | ForEach-
 
 $changed = @($sourceResults | Where-Object { $_.status -eq "changed" })
 $failed = @($sourceResults | Where-Object { $_.status -eq "fetch-failed" })
+$unmappedReferenceSources = @($sourceResults | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_.referenceUrl) -and
+    $_.dynamicReferencedFiles.Count -eq 0 -and
+    $_.dynamicReferencedRules.Count -eq 0
+})
+$sourceReferenceIssueCount = $unmappedReferenceSources.Count
 $catalogIssueCount = $uncoveredUpstreamTopicPaths.Count + $staleTrackedTopicPaths.Count + $staleLocalTopicReferencePaths.Count + $trackedTopicPathsWithoutExplicitLocalReferences.Count
-$semanticReviewRequired = ($changed.Count -gt 0 -or $failed.Count -gt 0 -or $ruleIssues.Count -gt 0 -or $catalogIssueCount -gt 0 -or $dynamicallyMappedUntrackedTopicPaths.Count -gt 0)
+$semanticReviewRequired = ($changed.Count -gt 0 -or $failed.Count -gt 0 -or $ruleIssues.Count -gt 0 -or $sourceReferenceIssueCount -gt 0 -or $catalogIssueCount -gt 0 -or $dynamicallyMappedUntrackedTopicPaths.Count -gt 0)
 
 if ($OutputFormat -eq "Json") {
     [pscustomobject]@{
@@ -548,7 +605,7 @@ if ($OutputFormat -eq "Json") {
         performsSemanticComparison = $false
         usesHeuristics = $false
         semanticReviewRequired = $semanticReviewRequired
-        semanticReviewGuidance = 'This script uses pure logic only: upstream topic discovery, tracked-source hash comparison, explicit local topic-reference discovery, and rule evidence validation. It canonicalizes local references against the remote contributor-doc root `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing`. It does not use heuristics or AI to infer semantic mappings inside the detector. Exact-reference aggregation only proves links that are already explicitly present in repo content. If `changedCount`, `catalogIssueCount`, `ruleIssueCount`, `trackedTopicPathsWithoutExplicitLocalReferences`, or `dynamicallyMappedUntrackedTopicPaths` is non-zero, follow up with an AI-assisted semantic maintainer review to decide whether uncovered or changed upstream topics should map to local guidance, whether new tracked sources are needed, and whether provenance or evidence updates are required.'
+        semanticReviewGuidance = 'This script uses pure logic only: upstream topic discovery, tracked-source hash comparison, explicit local reference discovery, and rule evidence validation. It canonicalizes contributor-topic references against the remote contributor-doc root and maps non-catalog sources through exact manifest-declared reference URLs. It does not use heuristics or AI to infer semantic mappings inside the detector. Exact-reference aggregation only proves links that are already explicitly present in repo content. If `changedCount`, `sourceReferenceIssueCount`, `catalogIssueCount`, `ruleIssueCount`, `trackedTopicPathsWithoutExplicitLocalReferences`, or `dynamicallyMappedUntrackedTopicPaths` is non-zero, follow up with an AI-assisted semantic maintainer review to decide whether uncovered or changed upstream sources should change local guidance, whether new tracked sources are needed, and whether provenance or evidence updates are required.'
         diagnostics = [pscustomobject]@{
             markdownFileCount = $markdownFiles.Count
             markdownFilePathCount = $markdownFilePaths.Count
@@ -562,10 +619,13 @@ if ($OutputFormat -eq "Json") {
         changedCount = $changed.Count
         failedCount = $failed.Count
         ruleIssueCount = $ruleIssues.Count
+        sourceReferenceIssueCount = $sourceReferenceIssueCount
         catalogIssueCount = $catalogIssueCount
         catalog = [pscustomobject]@{
             contributorTreeUrl = $contributorTreeUrl
             readmeRawUrl = $manifest.catalog.readmeRawUrl
+            topicContentsApiUrl = $manifest.catalog.topicContentsApiUrl
+            discoveryMode = "github-contents-api"
             upstreamTopicPaths = $upstreamTopicPaths
             trackedTopicPaths = $trackedTopicPaths
             dynamicallyReferencedTrackedTopicPaths = $dynamicallyReferencedTrackedTopicPaths
@@ -580,6 +640,7 @@ if ($OutputFormat -eq "Json") {
         rulesByFile = $rulesByFile
         ruleIssuesByFile = $ruleIssuesByFile
         ruleIssues = $ruleIssues
+        unmappedReferenceSources = $unmappedReferenceSources
         sources = $sourceResults
     } | ConvertTo-Json -Depth 7
 }
@@ -593,11 +654,12 @@ else {
     Write-Host "Changed: $($changed.Count)"
     Write-Host "Fetch Failed: $($failed.Count)"
     Write-Host "Rule Issues: $($ruleIssues.Count)"
+    Write-Host "Source Reference Issues: $sourceReferenceIssueCount"
     Write-Host "Catalog Issues: $catalogIssueCount"
     Write-Host "Semantic Review Required: $semanticReviewRequired"
     Write-Host ("Diagnostics: markdown files={0}, markdown paths={1}, local topic refs={2}, local topic groups={3}, rule inventory={4}, dynamic rule refs={5}, rule topic groups={6}" -f $markdownFiles.Count, $markdownFilePaths.Count, $localTopicFileReferences.Count, $localTopicFileReferencesByPath.Count, $ruleInventory.Count, $dynamicRuleTopicReferences.Count, $ruleReferencesByTopicPath.Count)
     Write-Host ("Canonical Contributor Root: {0}" -f $contributorTreeUrl)
-    Write-Host "Note: This script uses pure logic only. It compares tracked source hashes, discovers current upstream topics from the upstream contributor index, and canonicalizes local references against the remote contributor-doc root before grouping them. Exact-reference aggregation proves existing explicit links only; AI semantic review is still required for uncovered, changed, merged, or renamed upstream topics."
+    Write-Host "Note: This script uses pure logic only. It compares tracked source hashes, discovers current upstream topics, canonicalizes contributor-topic references, and maps non-catalog sources through exact manifest-declared reference URLs. Exact-reference aggregation proves existing explicit links only; AI semantic review is still required for uncovered, changed, merged, renamed, or structurally revised upstream sources."
     Write-Host ""
 
     Write-Host "Catalog Coverage Summary"
@@ -629,12 +691,20 @@ else {
         Write-Host ("  stale-local-topic-reference             : {0}" -f $path)
     }
 
+    foreach ($source in $unmappedReferenceSources) {
+        Write-Host ("  unmapped-source-reference               : {0} ({1})" -f $source.id, $source.referenceUrl)
+    }
+
     Write-Host ""
 
     foreach ($result in $sourceResults) {
         Write-Host ("[{0}] {1}" -f $result.status.ToUpperInvariant(), $result.title)
         Write-Host ("  domain: {0}" -f $result.domain)
         Write-Host ("  source: {0}" -f $result.rawUrl)
+
+        if ($result.referenceUrl) {
+            Write-Host ("  reference: {0}" -f $result.referenceUrl)
+        }
 
         if ($result.topicPath) {
             Write-Host ("  topic : {0}" -f $result.topicPath)
@@ -685,7 +755,7 @@ else {
 
     if ($semanticReviewRequired) {
         Write-Host "Recommended Next Step"
-        Write-Host "  Run an AI-assisted semantic maintainer review to decide whether newly uncovered upstream topics, changed tracked sources, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, or stale local references require updates to local guidance, evidence, or tracked-source baselines."
+        Write-Host "  Run an AI-assisted semantic maintainer review to decide whether changed tracked sources, non-catalog sources without exact local references, newly uncovered upstream topics, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, or stale local references require updates to local guidance, evidence, or tracked-source baselines."
         Write-Host ""
     }
 }
@@ -694,7 +764,7 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 
-if ($FailOnDrift -and ($changed.Count -gt 0 -or $catalogIssueCount -gt 0 -or $ruleIssues.Count -gt 0 -or $dynamicallyMappedUntrackedTopicPaths.Count -gt 0)) {
+if ($FailOnDrift -and ($changed.Count -gt 0 -or $catalogIssueCount -gt 0 -or $ruleIssues.Count -gt 0 -or $sourceReferenceIssueCount -gt 0 -or $dynamicallyMappedUntrackedTopicPaths.Count -gt 0)) {
     exit 2
 }
 

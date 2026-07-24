@@ -1,100 +1,71 @@
 {
   "id": "draft-pr-description-related-issue-matrix",
-  "title": "PR drafting separates confirmed issue linkage from advisory search outcomes",
+  "title": "PR drafting includes only explicitly confirmed issue references",
   "task": "draft-pr-description",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
-    "originSummary": "Synthetic benchmark matrix for confirmed and potential issue handling.",
-    "whyItMattered": "Authoritative issue references must not be erased by an advisory no-match, while search similarity must never become an unsupported issue-closing claim in the copy-ready pull request body.",
-    "genericCondition": "Sanitized runs cover authoritative existing pull request references, stale-reference conflicts, confirmed commit evidence, bounded concurrent advisory searches, successful no-match search, and unavailable search.",
+    "originSummary": "Synthetic benchmark for no-search related issue handling.",
+    "whyItMattered": "Issue searches added latency without proving that a change resolves an issue.",
+    "genericCondition": "Sanitized runs cover explicit developer references, current-branch commit references, and the no-reference fallback without GitHub search.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A scenario matrix for authoritative and conflicted issue references, bounded duplicate and related-issue searches, plausible advisory candidates, no matches, and unavailable GitHub search.",
+  "description": "A matrix for confirmed issue references and the exact no-reference fallback in the streamlined workflow.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/draft-pr-description-related-issue-matrix/README.md"
   },
   "scope": {
     "changedFiles": [
-      "internal/services/example/example_widget_resource.go",
-      "internal/services/example/example_widget_resource_test.go"
+      "internal/services/example/example_widget_resource.go"
     ],
-    "notes": "Each run changes the same example surface while varying only authoritative issue evidence and search availability."
+    "notes": "Each run varies only explicit developer input and current-branch commit subjects."
   },
   "expectedRules": [
-    "PRDESC-PR-004",
-    "PRDESC-CHECK-002",
-    "PRDESC-ISSUE-001",
-    "PRDESC-ISSUE-002",
-    "PRDESC-ISSUE-003",
-    "PRDESC-ISSUE-004"
+    "PRDESC-CHECK-001",
+    "PRDESC-ISSUE-001"
   ],
   "mustCatch": [
     {
-      "key": "authoritative-reference-survives-advisory-no-match",
+      "key": "explicit-developer-reference-is-preserved",
       "severity": "high",
-      "description": "Confirmed references from active branch identity or exact final-head evidence remain in the body when advisory issue search returns no match."
+      "description": "An issue reference explicitly supplied for the current invocation is preserved with its closing keyword."
     },
     {
-      "key": "stale-reference-conflict-needs-confirmation",
+      "key": "current-branch-commit-reference-is-preserved",
       "severity": "high",
-      "description": "When current behavior contradicts an authoritative closing reference, the closing keyword is removed and a structured conflict plus contributor confirmation gap is emitted."
+      "description": "A qualifying issue reference in a current-branch commit subject is preserved."
     },
     {
-      "key": "confirmed-linkage-needs-authority",
+      "key": "missing-reference-uses-exact-fallback",
+      "severity": "medium",
+      "description": "When neither source contains an issue reference, the body renders No related issue confirmed."
+    },
+    {
+      "key": "issue-review-checklist-remains-developer-owned",
+      "severity": "medium",
+      "description": "The issue-review checklist acknowledgement remains unchecked because drafting cannot prove the developer reviewed open issues."
+    },
+    {
+      "key": "github-search-is-skipped",
       "severity": "high",
-      "description": "Only explicit user input, existing pull request text, or a qualifying commit-message reference enters Related Issues as confirmed."
-    },
-    {
-      "key": "plausible-candidates-remain-advisory",
-      "severity": "high",
-      "description": "Plausible issue matches are filtered, ranked, capped, and displayed only in the advisory table."
-    },
-    {
-      "key": "no-match-rendering",
-      "severity": "low",
-      "description": "A successful search with no plausible candidates renders the exact no-results sentence."
-    },
-    {
-      "key": "unavailable-search-nonblocking",
-      "severity": "medium",
-      "description": "Unavailable issue search renders the exact unavailable sentence and does not block title or body drafting."
-    },
-    {
-      "key": "bounded-concurrent-search-budget",
-      "severity": "medium",
-      "description": "Duplicate search uses at most two exact-surface queries and advisory issue search uses at most four high-signal queries, with each independent batch issued concurrently."
-    },
-    {
-      "key": "feature-skips-error-term-extraction",
-      "severity": "medium",
-      "description": "An ordinary new feature does not extract or search changed error fragments when error behavior is not part of the change."
-    },
-    {
-      "key": "confirmed-reference-fields-have-distinct-meaning",
-      "severity": "medium",
-      "description": "existingPullRequest.confirmedReferences contains trusted-PR source references before conflict resolution, while relatedIssues.confirmedReferences contains final body-approved references from every authoritative source."
+      "description": "No duplicate pull request or potential issue search runs and no search section is rendered."
     }
   ],
   "mustNotFlag": [
     {
-      "key": "advisory-result-auto-closes",
-      "description": "A potential search result must not be inserted into the body as Fixes, Closes, or Resolves."
+      "key": "inferred-issue-auto-closes",
+      "description": "Path, title, or behavior similarity must not create a closing reference."
     },
     {
-      "key": "unavailable-search-hard-stop",
-      "description": "Potential issue search unavailability must not stop an otherwise supported draft."
+      "key": "potential-issue-search-section",
+      "description": "The streamlined output must not render Potential Related Issues."
     },
     {
-      "key": "no-match-erases-authoritative-reference",
-      "description": "A successful advisory no-match must not replace authoritative references with No related issue confirmed."
-    },
-    {
-      "key": "serial-exhaustive-search-expansion",
-      "description": "The workflow must not issue one serial query per changed surface, schema property, and error fragment."
+      "key": "search-unavailability-evidence-gap",
+      "description": "A deliberately skipped search must not become an evidence gap."
     }
   ],
   "expectedTools": {
@@ -102,18 +73,16 @@
   },
   "outputChecks": {
     "mustHaveSections": [
-      "Potential Related Issues"
+      "Draft PR Body"
     ],
     "mustIncludeMarkers": [
-      "Issue | Title | Why it may relate",
-      "Prior pull request evidence requires contributor confirmation.",
-      "No potential related issues found.",
-      "Potential related issue search unavailable."
+      "Fixes #12345",
+      "No related issue confirmed."
     ],
     "mustNotIncludeMarkers": [
-      "Fixes advisory match",
-      "Closes potential match"
+      "Potential Related Issues",
+      "Potential related issue search unavailable."
     ]
   },
-  "notes": "Search candidates use synthetic issue data and are evaluated only for workflow behavior. Query count and concurrency are acceptance criteria for tool traces, not inferred from final prose alone."
+  "notes": "Issue scenarios are independent; no GitHub tools are expected."
 }

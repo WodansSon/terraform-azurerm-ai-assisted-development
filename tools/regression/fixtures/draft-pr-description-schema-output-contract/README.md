@@ -1,35 +1,14 @@
-# Sanitized Fixture: PR Description Schema And Output Contract
+# Sanitized Fixture: Lean Schema And Output
 
-This fixture is synthetic and sanitized.
+The valid handoff uses `schemaVersion=2.0` and contains only:
 
-## Valid Payload
+- Repository worktree, branch, `HEAD`, local base reference, and merge base.
+- One title and one title explanation.
+- One complete template-preserving body.
+- Concise evidence notes.
 
-The modeled `pr-description` payload uses `schemaVersion=1.3` and includes one frozen execution boundary with environment, canonical worktree, selection method, Git and Go executables, repository identity, branch, full `HEAD`, known source `HEAD`, dirty-state summary, candidate count, and bounded search roots. It also includes stable initial and final repository fingerprints, separate `existingPullRequest` discovery, trust, local relation, confirmed references, and structured conflict data plus all required base metadata, changed files, classified surfaces, title decision, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search state.
+Immutable template lines remain verbatim. The Community Note retains `https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/`; only response areas, claim placeholders, and checkbox markers may change.
 
-The `existingPullRequest` object does not select the comparison base unless its trust level is `active-branch-identity`. Exact final-head prior evidence remains separate from current base resolution.
+The rendered response contains four ordered sections followed by the exact verification footer. It does not contain a potential issue section or orchestration commentary.
 
-The prompt validates it and renders exactly these headings in order:
-
-- `Suggested PR Title`
-- `Why This Title`
-- `Draft PR Body`
-- `Evidence Notes`
-- `Potential Related Issues`
-
-The response ends with `Preflight complete: yes` and `Skill used: pr-description`.
-
-## Invalid Payloads
-
-The invalid runs cover:
-
-- Missing `checklistDecisions`.
-- `FEATURES` paired with a `[BUG]` line.
-- `recommended` with no entries.
-- `not-recommended` or `breaking-input-required` with entries.
-- Non-contract fallback text.
-- Active branch identity without `baseCommit`.
-- An `existing-pr` base without `pullRequestNumber` or with a refresh status other than `not-applicable`.
-- Missing or malformed repository-state fingerprints.
-- Missing or incomplete execution-boundary evidence.
-
-Schema validation fails before rendering. The response contains only the prompt-owned schema-invalid hard-stop sentence.
+Invalid runs omit one required field and hard-stop before rendering partial content.

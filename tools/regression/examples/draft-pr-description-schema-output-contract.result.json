@@ -1,7 +1,7 @@
 {
   "caseId": "draft-pr-description-schema-output-contract",
-  "runId": "sample-draft-pr-description-schema-output-contract-001",
-  "timestampUtc": "2026-07-22T00:00:00Z",
+  "runId": "sample-draft-pr-description-schema-output-contract-002",
+  "timestampUtc": "2026-07-24T00:00:00Z",
   "task": "draft-pr-description",
   "model": "sample",
   "pass": true,
@@ -17,21 +17,19 @@
   "findings": {
     "caught": [
       "schema-invalid-payload-hard-stop",
-      "existing-pr-evidence-separated-from-base",
-      "strict-changelog-schema-state-matrix",
-      "pull-request-base-schema-conditions",
-      "stable-repository-state-required",
-      "frozen-execution-boundary-required",
-      "exact-five-section-order",
+      "lean-schema-version-2-payload",
+      "repository-identity-fields-required",
+      "exact-four-section-order",
       "copy-ready-body-fenced-once",
-      "verification-footer-last"
+      "verification-footer-last",
+      "immutable-template-lines-verbatim"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 9,
-    "total": 9
+    "matched": 7,
+    "total": 7
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
@@ -48,5 +46,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for schema gating and exact response rendering."
+  "notes": "Example adjudicated result for lean schema gating and four-section output."
 }

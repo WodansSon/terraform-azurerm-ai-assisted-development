@@ -1,18 +1,18 @@
 {
   "id": "draft-pr-description-schema-output-contract",
-  "title": "PR drafting validates its handoff and renders the exact five-section response",
+  "title": "PR drafting validates a lean handoff and renders four focused sections",
   "task": "draft-pr-description",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
-    "originSummary": "Synthetic benchmark for the PR drafting schema gate and presentation contract.",
-    "whyItMattered": "The workflow must not render incomplete internal decisions or leak orchestration commentary around the copy-ready body.",
-    "genericCondition": "One sanitized run supplies a complete schema-version 1.3 payload with a frozen execution boundary, stable repository evidence, and separate existing pull request evidence; invalid runs violate required fields, changelog state invariants, or PR/base conditions.",
+    "originSummary": "Synthetic benchmark for the streamlined schema and presentation contract.",
+    "whyItMattered": "The shortcut needs a small validation gate without carrying audit-only repository, search, or policy state through every model iteration.",
+    "genericCondition": "One sanitized run supplies a complete schema-version 2.0 payload; invalid runs omit one of the six lean fields.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A valid payload renders exactly five ordered sections and the verification footer; an invalid payload produces only the exact schema hard stop.",
+  "description": "A valid payload renders exactly four ordered sections and the footer; an invalid payload emits only the schema hard stop.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/draft-pr-description-schema-output-contract/README.md"
@@ -23,82 +23,68 @@
       "internal/services/example/example_widget_resource_test.go",
       "website/docs/r/example_widget.html.markdown"
     ],
-    "notes": "The valid run models one existing Resource enhancement; the invalid run uses the same evidence but an incomplete internal handoff."
+    "notes": "The valid run models one existing Resource enhancement with matching tests and docs."
   },
   "expectedRules": [
-    "PRDESC-PRE-005",
-    "PRDESC-PRE-007",
-    "PRDESC-BASE-001",
-    "PRDESC-CHANGELOG-003",
-    "PRDESC-CHANGELOG-005",
+    "PRDESC-BODY-001",
     "PRDESC-OUT-001",
     "PRDESC-OUT-002",
     "PRDESC-OUT-003",
-    "PRDESC-FAIL-004"
+    "PRDESC-FAIL-005"
   ],
   "mustCatch": [
     {
       "key": "schema-invalid-payload-hard-stop",
       "severity": "high",
-      "description": "A payload missing a required schema property hard-stops before any normal section is rendered."
+      "description": "A payload missing any lean required property hard-stops before partial output."
     },
     {
-      "key": "existing-pr-evidence-separated-from-base",
+      "key": "lean-schema-version-2-payload",
       "severity": "high",
-      "description": "A valid schema-version 1.1 payload carries pull request discovery, trust, relation, references, and structured conflicts separately from comparison-base metadata."
+      "description": "A valid payload contains only schemaVersion, repository, title, whyThisTitle, draftBody, and evidenceNotes."
     },
     {
-      "key": "strict-changelog-schema-state-matrix",
+      "key": "repository-identity-fields-required",
       "severity": "high",
-      "description": "The schema rejects category and keyword mismatches, recommended decisions without entries, non-recommended or breaking decisions with entries, and non-contract fallback text."
+      "description": "The repository object records worktree root, branch, full HEAD, local base reference, and merge base."
     },
     {
-      "key": "pull-request-base-schema-conditions",
+      "key": "exact-four-section-order",
       "severity": "high",
-      "description": "Active branch identity requires a PR base commit, while an existing-PR comparison base requires a pull request number and not-applicable refresh status."
-    },
-    {
-      "key": "stable-repository-state-required",
-      "severity": "high",
-      "description": "A valid schema-version 1.3 payload requires lowercase initial and final SHA-256 fingerprints, stable=true, and a restart count of zero or one."
-    },
-    {
-      "key": "frozen-execution-boundary-required",
-      "severity": "high",
-      "description": "A valid schema-version 1.3 payload records one environment, canonical worktree, selection method, Git and Go executables, repository identity, branch, full HEAD, known source HEAD, dirty-state summary, candidate count, and bounded search roots."
-    },
-    {
-      "key": "exact-five-section-order",
-      "severity": "high",
-      "description": "A valid payload renders the five exact level-two headings in contract order."
+      "description": "A valid payload renders Suggested PR Title, Why This Title, Draft PR Body, and Evidence Notes in order."
     },
     {
       "key": "copy-ready-body-fenced-once",
       "severity": "medium",
-      "description": "The complete pull request body appears in one Markdown code block and excludes prompt-only evidence and issue-search sections."
+      "description": "The complete body appears in one Markdown code block without process or search sections."
     },
     {
       "key": "verification-footer-last",
       "severity": "medium",
-      "description": "The exact preflight and skill lines are the final response content with nothing after them."
+      "description": "The exact preflight and skill lines are final."
+    },
+    {
+      "key": "immutable-template-lines-verbatim",
+      "severity": "high",
+      "description": "Template prose, URLs, comments, headings, checklist text, Community Note content, rollback text, and the final note remain byte-for-byte unchanged outside designated populated areas."
     }
   ],
   "mustNotFlag": [
     {
       "key": "invalid-payload-partial-output",
-      "description": "A schema-invalid handoff must not emit a title, partial body, evidence notes, or footer."
+      "description": "A schema-invalid handoff must not emit partial output."
+    },
+    {
+      "key": "audit-only-schema-fields",
+      "description": "The lean payload must not require fingerprints, restart counts, pull request discovery, candidate searches, checklist records, or changelog records."
     },
     {
       "key": "extra-top-level-section",
-      "description": "The normal response must not add alternate titles, orchestration notes, or extra top-level headings."
+      "description": "The normal response must not add alternate titles, orchestration notes, or potential issue sections."
     },
     {
-      "key": "contract-invalid-changelog-payload-renders",
-      "description": "A payload whose changelog category, keyword, status, entry count, or fallback text violates the contract must not pass schema validation."
-    },
-    {
-      "key": "missing-execution-boundary-renders",
-      "description": "A payload without the frozen worktree and execution-environment boundary must not pass schema validation or render a draft."
+      "key": "template-url-rewrite",
+      "description": "The drafting workflow must not shorten, normalize, or otherwise rewrite a URL copied from the current pull request template."
     }
   ],
   "expectedTools": {
@@ -109,18 +95,20 @@
       "Suggested PR Title",
       "Why This Title",
       "Draft PR Body",
-      "Evidence Notes",
-      "Potential Related Issues"
+      "Evidence Notes"
     ],
     "mustIncludeMarkers": [
       "Cannot run draft-pr-description: pr-description produced a schema-invalid draft payload. Refresh the workflow files and re-run this prompt.",
+      "https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/",
       "Preflight complete: yes",
       "Skill used: pr-description"
     ],
     "mustNotIncludeMarkers": [
+      "Potential Related Issues",
       "## Alternate Titles",
-      "## Orchestration Notes"
+      "## Orchestration Notes",
+      "add-reactions-to-prs-issues-comments"
     ]
   },
-  "notes": "The paired Markdown example captures the valid output shape; the valid handoff uses schema version 1.3 and the exact hard-stop marker covers invalid runs."
+  "notes": "The paired Markdown example captures the streamlined valid output shape."
 }

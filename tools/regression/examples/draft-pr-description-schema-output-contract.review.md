@@ -6,14 +6,16 @@ azurerm_example_widget - add support for the `retention_days` property
 
 ## Why This Title
 
-The diff adds the `retention_days` property to the existing `azurerm_example_widget` Resource, so the existing-surface enhancement rule owns the title.
+The changed Resource adds the user-facing `retention_days` property, so the existing-surface enhancement rule owns the title.
 
 ## Draft PR Body
 
 ```markdown
 ## Community Note
 
-Please vote on this pull request by adding a reaction to the original pull request comment.
+<!-- Please leave the community note as is. -->
+* Please vote on this PR by adding a :thumbsup: [reaction](https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/) to the original PR to help the community and maintainers prioritize for review
+* Please do not leave comments along the lines of "+1", "me too" or "any updates", they generate extra noise for PR followers and do not help prioritize for review
 
 ## Description
 
@@ -21,7 +23,7 @@ Adds support for configuring `retention_days` on `azurerm_example_widget` so the
 
 ## Testing
 
-Needs contributor input.
+Tests were not run during this drafting invocation. Matching test coverage is included in the change-set.
 
 ## Change Log
 
@@ -40,12 +42,7 @@ AI was used to draft the PR title and description.
 
 ## Evidence Notes
 
-- No observed current-run local test evidence.
-- No related issue was confirmed.
-
-## Potential Related Issues
-
-No potential related issues found.
+- Tests were not run during this drafting invocation.
 
 Preflight complete: yes
 Skill used: pr-description

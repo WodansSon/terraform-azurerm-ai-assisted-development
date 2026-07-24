@@ -18,6 +18,9 @@
     "caught": [
       "new-resource-implies-list-title",
       "combined-resource-data-source-title",
+      "canonical-new-surface-changelog-lines",
+      "supporting-companion-changelog-suppression",
+      "mixed-feature-enhancement-retention",
       "standalone-list-resource-title",
       "existing-change-title-precedence",
       "docs-and-contributing-titles"
@@ -26,8 +29,8 @@
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 5,
-    "total": 5
+    "matched": 8,
+    "total": 8
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

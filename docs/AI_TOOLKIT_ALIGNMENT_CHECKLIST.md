@@ -46,9 +46,11 @@ When local AI guidance is meant to align with the upstream HashiCorp contributor
 
 - `tools/config/upstream-contributor.json`
 
-That file stores tracked upstream contributor source baselines under `hashicorp/terraform-provider-azurerm/contributing/topics/`.
+That file stores tracked upstream contributor source baselines under `hashicorp/terraform-provider-azurerm/contributing/topics/` and the upstream `.github/pull_request_template.md` baseline used by PR-description maintenance.
 
 Tracked-source baselines live in that file, but local topic-to-file and topic-to-rule relationships should be derived dynamically by the drift checker from exact upstream topic references already present in repo files and rule evidence blocks.
+
+Non-catalog sources declare a canonical `referenceUrl`. Their local file and rule relationships are also derived from exact references, without hard-coded source-to-contract mappings.
 
 Use `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing` as the canonical remote contributor-doc root when comparing local installer-repo references to upstream docs.
 
@@ -284,6 +286,8 @@ The drift checker is intentionally deterministic. It detects upstream source cha
 The same applies to topic-catalog drift: if the report shows uncovered upstream topics, dynamically mapped untracked topics, stale tracked topics, or stale local topic references, treat that as a maintainer review event and decide whether the manifest or local guidance needs to change.
 
 If the drift check reports upstream changes, review the mapped local consumers in `tools/config/upstream-contributor.json` and update any conflicting local rules while preserving verified local tribal knowledge that still does not conflict with upstream guidance.
+
+When the upstream pull request template changes, review the mapped `PRDESC-*` rules plus the PR-description skill, lean schema, and regression fixtures before refreshing its baseline. The runtime drafting workflow must continue reading the current checkout template rather than fetching the remote template.
 
 When rule-level mappings exist, use the drift report to review the current provenance label and evidence bullets for each mapped rule ID before changing the rule text.
 

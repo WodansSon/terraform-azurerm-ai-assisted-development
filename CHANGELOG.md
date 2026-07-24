@@ -18,15 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **User-Priority:**
-  - **[Review]** - `/draft-pr-description` now preserves identity-verified pull request references, rejects inconsistent automation-ready changelog payloads, detects concurrent repository changes with a reviewable cross-platform Go helper, labels every command batch by repository effect, uses repository-preserving targeted fetches, and batches bounded duplicate and issue searches to reduce latency without weakening complete changed-path awareness.
+  - **[Review]** - `/draft-pr-description` now produces a copy-ready AzureRM title and body through one fast local workflow: it trusts the checked-out Git branch, collects complete local scope through one-shot canonical direct-Git commands, builds one direct-read plan from changed paths, reads every independently user-facing changed surface, preserves immutable template prose and URLs plus exact AzureRM title, feature, and title-subordinate enhancement forms, suppresses implementation-only changelog entries, checks its lean handoff in memory, and skips alternate-syntax retries, known-path searches, unnecessary test enumeration, generated terminal scripts, network refreshes, GitHub searches, policy reloads, full-content fingerprints, and audit-only payload state.
 
 - **Maintainer/Workflow:**
-  - **[Testing]** - CI now runtime-tests the PR-description fingerprint helper on Windows, Linux, and macOS, including staged, unstaged, untracked, UTF-8 path, symbolic-link, and repository-preservation behavior.
-
-### Fixed
-
-- **User-Priority:**
-  - **[Review]** - `/draft-pr-description` now discovers Git, Go, and the changed AzureRM worktree from the current environment before using bounded configurable search or optional WSL fallback, asks rather than guessing when multiple checkouts match, freezes one execution boundary for the full run, and retains canonical-root and spaced-path fingerprint safety.
+  - **[Internal]** - Upstream contributor drift detection now recursively discovers HashiCorp contributor topics from the `/contributing/topics` directory, tracks the pull request template as a separate non-catalog source, and dynamically maps exact evidence references to affected local rules so new topics, template changes, and checklist changes trigger semantic review before baselines are refreshed.
 
 ## [3.7.0] - 2026-07-07
 
