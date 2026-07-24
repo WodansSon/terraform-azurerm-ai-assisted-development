@@ -8,6 +8,10 @@ description: Migration patterns and upgrade procedures for the Terraform AzureRM
 
 Migration patterns and upgrade procedures for the Terraform AzureRM provider including implementation approach transitions, breaking changes, and version compatibility.
 
+This file is companion guidance. It provides worked examples and migration heuristics and defers compliance authority to the API version migration compliance contract:
+
+- `.github/instructions/api-version-migration-compliance-contract.instructions.md` (see its `Canonical sources of truth (precedence)` and `Detailed companion guidance`).
+
 
 <a id="🔄-implementation-approach-migration"></a>
 

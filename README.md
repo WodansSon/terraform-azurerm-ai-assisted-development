@@ -443,6 +443,7 @@ As you type, Copilot suggests:
 - **/code-review-committed-changes** - Review commits and PRs for standards
 - **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 - **/code-review-local-changes** - Review uncommitted changes for compliance
+- **/update-api-version** - Phase-gated ARM API version bump for a Resource Provider (readiness checks, scoped code migration, build validation, and a risk summary), invoked as `/update-api-version {{SERVICE}}/{{FROM_API_VERSION}} {{SERVICE}}/{{TARGET_API_VERSION}}`
 
 ### 🧠 Agent Skills
 

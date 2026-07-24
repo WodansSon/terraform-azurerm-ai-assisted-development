@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Added an explicit `/update-api-version` prompt (invoked as `/update-api-version {{SERVICE}}/{{FROM_API_VERSION}} {{SERVICE}}/{{TARGET_API_VERSION}}`) plus the `api-version-migration-compliance-contract.instructions.md` contract, so a developer can kick off an ARM API version bump through readiness checks, scoped code migration, build validation, and a risk summary while the final risk call and PR submission stay engineer-owned.
+
 ### Changed
 
 ### Fixed

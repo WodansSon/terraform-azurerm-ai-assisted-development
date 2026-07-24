@@ -8,6 +8,10 @@ description: API evolution and versioning patterns for the Terraform AzureRM pro
 
 API evolution and versioning patterns for the Terraform AzureRM provider including handling Azure API changes, backward compatibility, and migration strategies.
 
+This file is companion guidance. It provides worked examples and version-handling heuristics and defers compliance authority to the API version migration compliance contract:
+
+- `.github/instructions/api-version-migration-compliance-contract.instructions.md` (see its `Canonical sources of truth (precedence)` and `Detailed companion guidance`).
+
 
 <a id="azure-api-version-management"></a>
 

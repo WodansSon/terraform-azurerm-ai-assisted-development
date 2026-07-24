@@ -322,6 +322,7 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── ai-skill-routing-resource-implementation.instructions.md
 │   │   ├── ai-skill-routing-tests.instructions.md
 │   │   ├── api-evolution-patterns.instructions.md
+│   │   ├── api-version-migration-compliance-contract.instructions.md
 │   │   ├── azure-patterns.instructions.md
 │   │   ├── code-clarity-enforcement.instructions.md
 │   │   ├── code-review-compliance-contract.instructions.md
@@ -351,6 +352,7 @@ terraform-azurerm-ai-assisted-development/
 │   │   └── instruction_improvement.md
 │   │
 │   ├── prompts/
+│   │   ├── update-api-version.prompt.md
 │   │   ├── code-review-local-changes.prompt.md
 │   │   ├── code-review-committed-changes.prompt.md
 │   │   └── code-review-docs.prompt.md
