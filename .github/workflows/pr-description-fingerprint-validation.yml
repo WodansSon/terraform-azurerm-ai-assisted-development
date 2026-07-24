@@ -55,6 +55,9 @@ jobs:
             throw 'Fingerprint helper files are not gofmt-clean.'
           }
 
+      - name: Run static analysis
+        run: go vet .github/skills/pr-description/scripts/pr-description-fingerprint.go .github/skills/pr-description/scripts/pr-description-fingerprint_test.go
+
       - name: Run behavioral tests
         run: go test -v .github/skills/pr-description/scripts/pr-description-fingerprint.go .github/skills/pr-description/scripts/pr-description-fingerprint_test.go
 

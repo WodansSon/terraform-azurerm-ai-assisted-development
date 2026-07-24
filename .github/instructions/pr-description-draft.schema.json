@@ -21,7 +21,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "1.2"
+      "const": "1.3"
     },
     "repositoryState": {
       "$ref": "#/$defs/repositoryState"
@@ -93,6 +93,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "executionBoundary",
         "algorithm",
         "initialFingerprint",
         "finalFingerprint",
@@ -100,6 +101,9 @@
         "restartCount"
       ],
       "properties": {
+        "executionBoundary": {
+          "$ref": "#/$defs/executionBoundary"
+        },
         "algorithm": {
           "const": "sha256-v1"
         },
@@ -118,6 +122,111 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1
+        }
+      }
+    },
+    "executionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environmentKind",
+        "environmentLabel",
+        "worktreeRoot",
+        "selectionMethod",
+        "gitExecutable",
+        "goExecutable",
+        "repositoryName",
+        "branch",
+        "head",
+        "knownSourceHead",
+        "workingTreeState",
+        "candidateCount",
+        "searchRoots"
+      ],
+      "properties": {
+        "environmentKind": {
+          "type": "string",
+          "enum": [
+            "current-terminal",
+            "wsl-distribution"
+          ]
+        },
+        "environmentLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worktreeRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectionMethod": {
+          "type": "string",
+          "enum": [
+            "current-worktree",
+            "bounded-search",
+            "developer-selection",
+            "wsl-native-discovery",
+            "translated-current-worktree"
+          ]
+        },
+        "gitExecutable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goExecutable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repositoryName": {
+          "const": "terraform-provider-azurerm"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$"
+        },
+        "knownSourceHead": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40,64}$"
+        },
+        "workingTreeState": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hasStaged",
+            "hasUnstaged",
+            "untrackedCount"
+          ],
+          "properties": {
+            "hasStaged": {
+              "type": "boolean"
+            },
+            "hasUnstaged": {
+              "type": "boolean"
+            },
+            "untrackedCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "searchRoots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },

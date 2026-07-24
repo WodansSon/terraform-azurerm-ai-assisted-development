@@ -21,6 +21,7 @@
       "strict-changelog-schema-state-matrix",
       "pull-request-base-schema-conditions",
       "stable-repository-state-required",
+      "frozen-execution-boundary-required",
       "exact-five-section-order",
       "copy-ready-body-fenced-once",
       "verification-footer-last"
@@ -29,8 +30,8 @@
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 8,
-    "total": 8
+    "matched": 9,
+    "total": 9
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

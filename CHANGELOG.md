@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **User-Priority:**
+  - **[Review]** - `/draft-pr-description` now discovers Git, Go, and the changed AzureRM worktree from the current environment before using bounded configurable search or optional WSL fallback, asks rather than guessing when multiple checkouts match, freezes one execution boundary for the full run, and retains canonical-root and spaced-path fingerprint safety.
+
 ## [3.7.0] - 2026-07-07
 
 ### Added

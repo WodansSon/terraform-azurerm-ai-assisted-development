@@ -119,20 +119,24 @@ Conflict resolution:
 
 - Require `.github/skills/pr-description/scripts/pr-description-fingerprint.go` as a checked-in runtime asset.
 - Compute a `sha256-v1` repository-state fingerprint during initial repository evidence collection and again immediately before payload validation by invoking the checked-in helper. Do not generate or execute an inline fingerprint program.
-- Prefer this direct command when `go` resolves in the current terminal environment:
+- Invoke the helper inside the frozen execution boundary from `PRDESC-PRE-007`. Use this direct command when Git and Go resolve in that terminal, including WSL-native, container, Codespaces, SSH, and remote boundaries:
 
   ```text
   go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root {{REPOSITORY_ROOT}}
   ```
 
-- On local Windows only, when `go` does not resolve in the current terminal but a selected WSL distribution has Go, resolve the Windows repository root with `wslpath` and invoke:
+- Only when the frozen boundary intentionally uses the same mounted Windows worktree through a selected WSL distribution, pass the distribution and paths as separate PowerShell arguments. Do not interpolate either path into the Bash command. Resolve and invoke with this shape:
 
-  ```text
-  wsl.exe -d {{WSL_DISTRO}} --cd {{WSL_REPOSITORY_ROOT}} -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'
+  ```powershell
+  $wslRepositoryRoot = (wsl.exe -d "$wslDistro" -- wslpath -a "$repositoryRoot").Trim()
+  wsl.exe -d "$wslDistro" --cd "$wslRepositoryRoot" -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'
   ```
 
-- Do not assume the default WSL distribution lacks Go from a non-interactive PATH miss. Inspect the selected distribution's interactive shell before declaring the helper unavailable.
-- Use the same direct or WSL execution environment for the initial and final fingerprints. Do not compare fingerprints produced by different Git executables or configurations.
+- Require `wslpath` to succeed and return a non-empty absolute path before invoking the helper.
+- Do not assume a default WSL distribution or treat one non-interactive PATH miss as proof that a selected distribution lacks Go. Inspect the selected distribution's interactive shell before declaring the helper unavailable.
+- A Git index refresh for a large repository under `/mnt/c` may be slow while Windows-to-WSL synchronization is active. Treat continuing Git progress as active filesystem work; do not classify it as a hang or terminate it solely for being slow.
+- Use the same frozen worktree, Git executable, and execution environment for the initial and final fingerprints. Do not compare fingerprints produced by different checkouts, Git executables, or configurations.
+- The helper must resolve `git rev-parse --show-toplevel` and use that canonical worktree root for every Git command and untracked-path join, even when `--repository-root` names an interior directory.
 - The helper may use the normal Go build cache outside the repository, but it must not modify repository refs, the index, or working files.
 - Build the fingerprint from these four components in this exact order:
   - Lowercase full `HEAD` commit SHA.
@@ -158,6 +162,7 @@ Conflict resolution:
   - `HEAD` equality alone cannot detect staged, unstaged, or untracked changes made during evidence collection
   - A compact digest prevents mixed-snapshot drafts without adding large patch bodies to the model context
   - A checked-in standard-library Go helper is reviewable and runs on Windows, macOS, and Linux without PowerShell-specific logic
+  - Canonical-root resolution prevents root-relative Git paths from being joined to an interior caller directory
 
 ### PRDESC-PRE-006: Label terminal command effects before execution
 
@@ -172,6 +177,43 @@ Conflict resolution:
 - **Evidence**:
   - Visible repository effects let contributors distinguish ordinary inspection from the one operation that updates remote-tracking metadata
   - Short checked-in helper invocation is easier to review than an inline fingerprint implementation
+
+### PRDESC-PRE-007: Discover and freeze one execution boundary
+
+- Discover from the current terminal first. Resolve `git` and `go`, then run `git rev-parse --show-toplevel` when Git is available.
+- Use the current worktree directly when all of these are true:
+  - Its repository name is `terraform-provider-azurerm` and its structure matches AzureRM.
+  - Remote and repository-name evidence identify the canonical repository or a fork with the same repository name.
+  - The expected branch exists and is checked out.
+  - Full `HEAD`, staged state, unstaged state, and non-ignored untracked state can be inspected.
+  - Git and Go can run in that same execution environment.
+- Apply current-environment discovery without regard to whether the terminal is native Windows, macOS, Linux, WSL, a dev container, Codespaces, SSH, or another remote workspace. Do not invoke WSL merely because the host is Windows.
+- Search only when the current environment has no suitable worktree. Search a bounded set of existing roots supplied by the developer or configuration, followed by existing conventional roots under the current environment's home directory: `src`, `github`, and `go/src`, plus `/workspaces` when present.
+- Search only for directories named `terraform-provider-azurerm` within those roots. Do not scan the filesystem root, mounted volumes generally, or unrelated directory trees. Keep search roots configurable and disclose the exact roots and bounded command before searching.
+- Validate every candidate through Git rather than trusting its path or branch name:
+  - Resolve the canonical top-level worktree.
+  - Verify repository identity from repository name, structure, and remotes.
+  - Verify the expected branch is checked out.
+  - Record full `HEAD` and working-tree state.
+  - Compare full `HEAD` with a known source checkout when one exists.
+  - Verify Git and Go in the candidate's execution environment.
+- Prefer the worktree containing the actual staged, unstaged, and untracked changes. A separate clone with the same branch and `HEAD` is not equivalent to a dirty source worktree.
+- Automatically select a discovered candidate only when exactly one candidate is trustworthy and no known dirty source worktree would be substituted. Ask the developer to select when multiple candidates are trustworthy. When none is trustworthy, request an explicit repository path rather than guessing.
+- Treat a mirror as its own worktree. Use it only when the entire run intentionally executes against that mirror; do not combine evidence or fingerprints with another checkout.
+- Treat WSL as an optional execution environment, not a repository-layout assumption:
+  - On native Windows, prefer native Git and Go when they can inspect and fingerprint the suitable current worktree.
+  - Consider WSL only when the current Windows environment cannot run the helper or has no suitable worktree.
+  - Discover distributions without assuming a distribution name. Verify Git and Go in an explicitly selected distribution.
+  - Search bounded roots inside that distribution for a WSL-native checkout before considering Windows-path translation.
+  - Use argument-safe path translation only as a fallback for intentionally running the entire workflow against the same mounted Windows worktree.
+  - Do not assume a drive letter, mount point, or mirror destination.
+- Freeze the selected canonical worktree and execution environment before initial fingerprinting. Repository inspection, initial fingerprinting, pull request discovery, base resolution, evidence collection, final fingerprinting, and payload generation must all use that boundary.
+- Record the frozen boundary in `repositoryState.executionBoundary`. Do not compare or combine fingerprints, Git output, or working-tree evidence from different worktrees or execution environments.
+- **Provenance**: Local safeguard.
+- **Evidence**:
+  - Developer worktrees may be native, mounted, mirrored, containerized, or remote without sharing one synchronization model
+  - Branch and `HEAD` equality do not make a clean clone equivalent to a dirty checkout containing the requested changes
+  - Recording one boundary prevents mixed-environment evidence and cross-checkout fingerprint comparisons
 
 ## Existing pull request rules
 
@@ -697,8 +739,8 @@ Conflict resolution:
 
 ### PRDESC-FAIL-006: Hard-stop when the fingerprint helper cannot run
 
-- Stop when the checked-in helper is missing or Go cannot be resolved in the current environment or an explicitly inspected WSL distribution.
-- Use the prompt-owned exact fingerprint-helper-unavailable hard-stop string.
+- Stop when the checked-in helper is missing or no single validated execution boundary can provide Git, Go, and the worktree containing the requested changes.
+- Use the prompt-owned exact execution-boundary hard-stop string.
 - **Provenance**: Local safeguard.
 - **Evidence**:
   - Falling back to generated shell-specific fingerprint code would reintroduce an opaque and inconsistent trust boundary

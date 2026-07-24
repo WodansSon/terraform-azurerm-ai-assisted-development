@@ -182,10 +182,15 @@ Resolve the comparison base in this order:
 
 - Compute a `sha256-v1` repository-state fingerprint before evidence collection and immediately before payload validation. Cover full `HEAD`, staged and unstaged tracked diff bytes, and ordinal untracked path and byte-content hashes.
 - Invoke the checked-in standard-library Go helper rather than generating a shell-specific inline fingerprint program.
-- Prefer direct `go run` on Windows, macOS, Linux, and Remote-WSL. From local Windows VS Code where direct Go is unavailable, inspect an explicitly selected WSL distribution's interactive shell, translate the repository root with `wslpath`, and invoke the same helper through `wsl.exe`.
+- Discover Git, Go, and `git rev-parse --show-toplevel` in the current terminal first, independent of operating system or remote-workspace type. Use a suitable current worktree directly and freeze that environment before collecting evidence.
+- When the current environment has no suitable worktree, search only developer-configured roots and existing conventional roots (`~/src`, `~/github`, `~/go/src`, and `/workspaces`). Validate repository identity, expected checked-out branch, full `HEAD`, dirty state, Git, and Go for every candidate; ask the developer to choose when multiple candidates are trustworthy and request a path when none are.
+- Never substitute a same-branch and same-`HEAD` clean clone for a dirty source checkout. The selected worktree must contain the actual staged, unstaged, and untracked changes being drafted.
+- Treat WSL as an optional environment. Prefer a validated WSL-native checkout when native Windows cannot provide the required boundary; use argument-safe path translation only as a fallback for intentionally running the entire workflow against the same mounted Windows worktree.
+- The helper canonicalizes an interior `--repository-root` through `git rev-parse --show-toplevel` before hashing or joining root-relative untracked paths.
 - Do not treat one non-interactive WSL PATH miss as proof that the distribution lacks Go.
-- Use the same direct or WSL execution environment for the initial and final fingerprints because different Git executables or configurations can produce different raw diff bytes.
-- Validate the helper at runtime in CI on `windows-latest`, `ubuntu-latest`, and `macos-latest`. Each runner reports `GOOS` and `GOARCH`, runs the shared behavioral tests, and verifies the CLI leaves repository status unchanged.
+- Do not treat a progressing Git index refresh under `/mnt/c` as a hang. Large repositories can be slow while Windows-to-WSL filesystem synchronization is active, and that latency is not evidence of a portability defect.
+- Use the same frozen worktree and execution environment for repository inspection, initial and final fingerprints, evidence collection, and payload generation because different checkouts, Git executables, or configurations can produce different evidence and raw diff bytes.
+- Validate the helper at runtime in CI on `windows-latest`, `ubuntu-latest`, and `macos-latest`. Each runner reports `GOOS` and `GOARCH`, runs `gofmt`, `go vet`, the shared behavioral tests, and verifies the CLI leaves repository status unchanged.
 - If the fingerprints differ, discard all evidence and restart once. Hard-stop if the restarted run changes again.
 - Use one path-and-status inventory from the common ancestor to the working tree so committed, staged, and unstaged tracked changes are represented without double-counting.
 - Use `git ls-files --others --exclude-standard` to identify non-ignored untracked files and inspect their contents separately.
@@ -205,7 +210,7 @@ Resolve the comparison base in this order:
 - Draft the title and strict changelog decision before advisory searches.
 - Search open PRs with at most the primary exact Terraform surface plus one independently user-facing secondary surface, in one concurrent batch.
 - Search potential related issues with at most four high-signal queries, in one concurrent batch.
-- Render the complete PR body using the base-revision template and the exact body rules below, then validate the schema-version `1.2` payload once.
+- Render the complete PR body using the base-revision template and the exact body rules below, then validate the schema-version `1.3` payload once.
 - Emit the five output sections in the order defined by `Proposed Output Contract` and do not add other top-level output.
 
 ## AzureRM-Specific Interpretation

@@ -458,7 +458,7 @@ The repository contains both shipped runtime guidance and repo-only maintainer t
 
 - Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
 - Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
-- The shipped `pr-description` skill includes a checked-in standard-library Go fingerprint helper. It runs directly where Go is available and can run through an explicitly selected WSL distribution from local Windows VS Code without requiring PowerShell on macOS or Linux.
+- The shipped `pr-description` workflow discovers and freezes one validated worktree and execution environment before collecting evidence. Its checked-in standard-library Go fingerprint helper runs directly in native, WSL, container, Codespaces, SSH, and remote terminals; argument-safe Windows-to-WSL path translation remains an optional fallback for intentionally using the same mounted worktree.
 - The helper's adjacent Go test and `.github/workflows/pr-description-fingerprint-validation.yml` are repo-only validation assets. CI runs the same behavioral tests on Windows, Linux, and macOS while the installer ships only the runtime helper.
 - Repo-only maintenance surfaces stay in this repository and are not installed into target repos.
 - Repo-only surfaces include maintainer skills such as `ai-toolkit-maintenance` and `changelog-maintenance`, the `docs/` architecture and alignment references, and the validation and regression tooling under `tools/`.

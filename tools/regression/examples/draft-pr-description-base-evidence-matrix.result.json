@@ -28,14 +28,24 @@
       "exact-targeted-fetch-safeguards",
       "reviewable-cross-platform-fingerprint-helper",
       "local-windows-wsl-go-fallback",
-      "repository-effect-labels-precede-commands"
+      "repository-effect-labels-precede-commands",
+      "fingerprint-canonical-repository-root",
+      "wsl-paths-remain-process-arguments",
+      "current-environment-capability-first",
+      "bounded-configurable-repository-search",
+      "candidate-identity-and-state-validation",
+      "dirty-source-worktree-not-substituted",
+      "candidate-ambiguity-requires-selection",
+      "no-candidate-requests-explicit-path",
+      "wsl-native-discovery-precedes-translation",
+      "single-frozen-execution-boundary"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 13,
-    "total": 13
+    "matched": 23,
+    "total": 23
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

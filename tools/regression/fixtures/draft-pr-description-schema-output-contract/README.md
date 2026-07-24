@@ -4,7 +4,7 @@ This fixture is synthetic and sanitized.
 
 ## Valid Payload
 
-The modeled `pr-description` payload uses `schemaVersion=1.2` and includes stable initial and final repository fingerprints, separate `existingPullRequest` discovery, trust, local relation, confirmed references, and structured conflict data plus all required base metadata, changed files, classified surfaces, title decision, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search state.
+The modeled `pr-description` payload uses `schemaVersion=1.3` and includes one frozen execution boundary with environment, canonical worktree, selection method, Git and Go executables, repository identity, branch, full `HEAD`, known source `HEAD`, dirty-state summary, candidate count, and bounded search roots. It also includes stable initial and final repository fingerprints, separate `existingPullRequest` discovery, trust, local relation, confirmed references, and structured conflict data plus all required base metadata, changed files, classified surfaces, title decision, complete body, checklist decisions, changelog decision, evidence gaps, and issue-search state.
 
 The `existingPullRequest` object does not select the comparison base unless its trust level is `active-branch-identity`. Exact final-head prior evidence remains separate from current base resolution.
 
@@ -30,5 +30,6 @@ The invalid runs cover:
 - Active branch identity without `baseCommit`.
 - An `existing-pr` base without `pullRequestNumber` or with a refresh status other than `not-applicable`.
 - Missing or malformed repository-state fingerprints.
+- Missing or incomplete execution-boundary evidence.
 
 Schema validation fails before rendering. The response contains only the prompt-owned schema-invalid hard-stop sentence.

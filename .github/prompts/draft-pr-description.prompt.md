@@ -56,25 +56,50 @@ description: "Draft an AzureRM pull request title and copy-ready body from the c
 - If any prerequisite is absent, unreadable, or not fully loaded, hard-stop with exactly:
   - `Cannot run draft-pr-description: required workflow files are missing, incomplete, or stale. Confirm the PR description contract, skill, and schema are installed and readable to EOF.`
 
-### Verify repository eligibility
+### Discover and freeze the execution boundary
 
-- Apply `PRDESC-PRE-*`.
-- Confirm the repository name is `terraform-provider-azurerm` and the expected AzureRM structure exists.
-- Determine the current branch.
-- If the repository is ineligible, hard-stop with exactly:
-  - `Cannot run draft-pr-description: this prompt only supports hashicorp/terraform-provider-azurerm or a fork with the same repository name and expected AzureRM structure.`
-- If the current branch is `main`, hard-stop with exactly:
+- Apply `PRDESC-PRE-*`, especially `PRDESC-PRE-007`, before collecting pull request or branch evidence.
+- Inspect the current terminal first under `[Read-only] Current environment and worktree discovery`:
+  - Resolve the current `git` and `go` executables without assuming an operating system or shell.
+  - When Git resolves, run `git rev-parse --show-toplevel` and use its canonical result for validation.
+  - Resolve repository name and structure, remotes, checked-out branch, full `HEAD`, staged state, unstaged state, and non-ignored untracked count.
+- Use the current worktree directly when repository identity, expected branch, Git, and Go all validate. This applies equally to native Windows, macOS, Linux, WSL, dev containers, Codespaces, SSH, and remote workspaces.
+- Determine the expected branch from explicit user input first, then the active checkout or editor repository context. Never infer it from a candidate directory name. If the expected branch cannot be established, ask the developer to identify it before searching.
+- If the current environment has a validated AzureRM worktree but lacks Go, preserve that worktree as the known source. Do not substitute another same-branch or same-`HEAD` clone when the known source has staged, unstaged, or untracked changes.
+- Search only when the current environment has no suitable worktree:
+  - Use explicit repository paths and configurable search roots supplied by the developer or workspace first.
+  - Add only existing conventional roots in the current environment: `~/src`, `~/github`, `~/go/src`, and `/workspaces`.
+  - Deduplicate canonical roots and search only for directories named `terraform-provider-azurerm` beneath those roots.
+  - Do not scan the filesystem root, arbitrary drives, all mounts, or unrelated directory trees.
+  - Display every exact bounded search command and root under `[Read-only] Bounded repository discovery`.
+- Validate every candidate under `[Read-only] Repository candidate validation` by resolving its canonical top level, repository name and AzureRM structure, remotes, checked-out branch, full `HEAD`, staged state, unstaged state, untracked count, Git executable, and Go executable.
+- When a source checkout is already known, compare full `HEAD` and dirty state. Same branch and `HEAD` do not make a clean candidate equivalent to a dirty source checkout.
+- Select automatically only when exactly one candidate is trustworthy and it does not substitute for a known dirty source worktree.
+- When multiple candidates are trustworthy, do not choose by path order, recency, branch name, or `HEAD`. Ask the developer to select one canonical worktree and show each candidate's environment, path, branch, full `HEAD`, and dirty-state summary.
+- When no candidate is trustworthy, request an explicit repository path and explain which capability or identity check was missing. Do not guess.
+- On native Windows, consider WSL only after current-terminal and bounded current-OS discovery cannot provide one boundary with both the suitable worktree and helper capability:
+  - Discover registered distributions without assuming a name.
+  - Verify Git and Go in the explicitly selected distribution.
+  - Search its developer-supplied and conventional roots using the same bounded candidate rules, preferring a validated WSL-native worktree.
+  - If the known Windows worktree contains the actual changes and WSL can access that same worktree, path translation may be offered as a fallback. Keep repository paths out of the fixed Bash command and preserve argument boundaries.
+  - Do not assume `/mnt/c`, a drive letter, a mount point, or a mirror destination.
+- If no environment can provide Git, Go, and one validated worktree containing the requested changes, hard-stop with exactly:
+  - `Cannot run draft-pr-description: no execution environment provides Git, Go, and one validated terraform-provider-azurerm worktree for the requested branch. Select or provide the repository path that contains the changes, then re-run this prompt.`
+- Confirm the selected branch is not `main`. If it is, hard-stop with exactly:
   - `Cannot run draft-pr-description: the current branch is main. Switch to the candidate pull request branch and re-run this prompt.`
+- Freeze and record the selected execution environment, canonical worktree, selection method, Git and Go executables, repository name, branch, full `HEAD`, known source `HEAD` when available, working-tree state, candidate count, and bounded search roots in `repositoryState.executionBoundary`.
+- Reuse that exact boundary for every remaining command. Do not collect pull request, base, diff, test, fingerprint, or payload evidence from another environment or checkout.
 
 ### Discover existing pull request evidence
 
-- Collect repository root, repository identity, current branch, remotes, and working-tree status in one `[Read-only]` repository-inspection batch.
+- Collect repository identity, current branch, remotes, and working-tree status from the frozen boundary in one `[Read-only]` repository-inspection batch.
 - Compute the initial `sha256-v1` repository-state fingerprint with the checked-in helper from `PRDESC-PRE-005` in a separate `[Read-only] Repository fingerprint` batch.
-- Prefer `go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root {{REPOSITORY_ROOT}}` when `go` resolves in the current terminal.
-- On local Windows only, if direct Go is unavailable, inspect registered WSL distributions and the selected distribution's interactive Go environment. Resolve the repository path with `wslpath`, then invoke the helper with:
-  - `wsl.exe -d {{WSL_DISTRO}} --cd {{WSL_REPOSITORY_ROOT}} -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'`
-- If neither direct Go nor Go in an explicitly inspected WSL distribution is available, hard-stop with exactly:
-  - `Cannot run draft-pr-description: the repository fingerprint helper requires Go in the current environment or an explicitly selected WSL distribution. Install Go or reopen the repository in its Go-enabled environment, then re-run this prompt.`
+- In a current-terminal boundary, invoke `go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root {{FROZEN_WORKTREE_ROOT}}` with the resolved Go executable.
+- In a WSL boundary intentionally using the same mounted Windows worktree, pass the selected distribution and paths as separate PowerShell arguments; do not construct a Bash command by interpolating repository paths. Resolve and invoke with:
+  - `$wslRepositoryRoot = (wsl.exe -d "$wslDistro" -- wslpath -a "$repositoryRoot").Trim()`
+  - `wsl.exe -d "$wslDistro" --cd "$wslRepositoryRoot" -- bash -ic 'go run .github/skills/pr-description/scripts/pr-description-fingerprint.go --repository-root .'`
+- Require `wslpath` to succeed and return a non-empty absolute path. Display the resolved, quoted arguments under the `[Read-only] Repository fingerprint` label before invoking the helper.
+- When Git reports continuing index-refresh progress for a large repository under `/mnt/c`, keep waiting. Do not treat slow Windows-to-WSL filesystem synchronization as a helper portability failure or terminate a progressing command.
 - Apply `PRDESC-PR-*` in one discovery batch:
   - Inspect active pull request metadata.
   - When active metadata is absent or does not match the checkout, search for an open pull request with the exact head repository and branch.

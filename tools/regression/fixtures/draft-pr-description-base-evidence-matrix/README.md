@@ -17,13 +17,29 @@ Authoritative metadata provides a base commit. The branch also has an unstaged e
 
 The prompt loads the template and contributor guidance from the selected base commit. It uses the common ancestor only to collect the candidate change-set.
 
+## Execution-Boundary Discovery
+
+- A suitable current terminal worktree resolves Git and Go, validates AzureRM repository identity and the expected checked-out branch, and is selected directly across native, WSL, container, Codespaces, SSH, and remote environments.
+- An unsuitable current environment triggers a search of explicit configurable roots and existing `~/src`, `~/github`, `~/go/src`, and `/workspaces` roots only. Each candidate is validated through Git, remotes, AzureRM structure, expected branch, full `HEAD`, dirty state, and helper capability.
+- One run has a dirty source checkout and a clean clone with the same branch and `HEAD`. The clean clone is not equivalent and cannot replace the source changes.
+- One run has two trustworthy candidates. The workflow lists both environments, canonical roots, branches, full `HEAD` values, and dirty-state summaries and asks the developer to select one.
+- One run has no trustworthy candidates. The workflow requests an explicit repository path and reports the failed capability or identity checks without scanning more broadly.
+- Native Windows uses native Git and Go when suitable. A separate run lacks native helper capability, discovers an explicitly selected WSL distribution, validates Git and Go there, searches bounded WSL roots for a native checkout, and considers path translation only as a fallback for intentionally using the same mounted Windows worktree.
+- Once selected, one canonical worktree and execution environment own repository inspection, initial and final fingerprints, pull request and base evidence, change collection, and payload generation.
+
 ## Repository State Stability
 
 The initial fingerprint covers `HEAD`, staged tracked content, unstaged tracked content, and ordinal untracked path and byte-content hashes. Separate runs mutate each working-tree component while keeping `HEAD` unchanged.
 
-Fingerprint collection invokes the checked-in `.github/skills/pr-description/scripts/pr-description-fingerprint.go` helper. Windows, macOS, Linux, and Remote-WSL runs use direct `go run` when Go resolves in the current environment. A local Windows run without direct Go inspects an explicitly selected WSL distribution's interactive shell, translates the repository root with `wslpath`, and invokes the same helper through `wsl.exe`. A non-interactive PATH miss alone does not prove WSL Go is absent.
+Fingerprint collection invokes the checked-in `.github/skills/pr-description/scripts/pr-description-fingerprint.go` helper inside the frozen execution boundary. Native, WSL, container, Codespaces, SSH, and remote terminals use direct `go run` when Git and Go resolve there. Optional mounted-worktree translation inspects an explicitly selected WSL distribution and does not treat one non-interactive PATH miss as proof that Go is absent.
 
-Initial and final fingerprints use the same direct or WSL execution environment. The workflow does not compare digests produced by different Git executables or configurations.
+The helper resolves Git's absolute top-level worktree before hashing. An invocation from an interior directory produces the same fingerprint as the repository root and still detects root-level untracked files.
+
+The mounted-worktree fallback passes the distro, Windows repository path, and translated WSL path as separate quoted PowerShell arguments. Repository paths are not interpolated into the fixed Bash helper command, including when a path contains spaces.
+
+A large repository under `/mnt/c` can spend substantial time refreshing the Git index while Windows-to-WSL filesystem synchronization is active. Continuing progress means the command remains active and is not terminated or classified as a helper portability failure.
+
+Initial and final fingerprints use the same frozen worktree and execution environment. The workflow does not compare digests produced by different checkouts, Git executables, or configurations.
 
 The workflow does not generate PowerShell, Bash, or other inline fingerprint programs. The helper may update Go's build cache outside the repository but does not modify repository refs, the index, or working files.
 

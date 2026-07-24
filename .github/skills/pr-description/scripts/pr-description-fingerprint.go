@@ -49,9 +49,14 @@ func fingerprint(repositoryRoot string) (fingerprintResult, error) {
 		return fingerprintResult{}, fmt.Errorf("resolving repository root: %w", err)
 	}
 
-	insideWorktree, err := runGitOutput(repositoryPath, "rev-parse", "--is-inside-work-tree")
-	if err != nil || strings.TrimSpace(string(insideWorktree)) != "true" {
+	repositoryRootOutput, err := runGitOutput(repositoryPath, "rev-parse", "--show-toplevel")
+	if err != nil {
 		return fingerprintResult{}, fmt.Errorf("repository root is not a Git worktree: %s", repositoryPath)
+	}
+
+	repositoryPath = filepath.Clean(filepath.FromSlash(strings.TrimSpace(string(repositoryRootOutput))))
+	if repositoryPath == "." || repositoryPath == "" {
+		return fingerprintResult{}, errors.New("Git returned an empty repository root")
 	}
 
 	headOutput, err := runGitOutput(repositoryPath, "rev-parse", "HEAD")

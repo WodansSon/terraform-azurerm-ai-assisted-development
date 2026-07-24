@@ -27,6 +27,7 @@ Before applying the method:
 
 Consume the current-run evidence assembled by the prompt:
 
+- Frozen execution-boundary evidence: environment kind and label, canonical worktree, selection method, Git and Go executables, repository identity, expected checked-out branch, full `HEAD`, known source `HEAD`, dirty-state summary, candidate count, and bounded search roots
 - Initial and final `sha256-v1` repository-state fingerprints and restart count
 - Existing pull request discovery status, verified trust level, remote head, local relation, confirmed references, and evidence conflicts
 - Resolved base source, selected commit, merge-base commit, and refresh status
@@ -41,6 +42,7 @@ Consume the current-run evidence assembled by the prompt:
 - Open pull request search status and results
 
 Do not run mutating commands or modify repository files. Do not reimplement the repository fingerprint in shell-specific inline code.
+Do not replace, rediscover, or combine the frozen worktree and execution environment. Return control to the prompt when boundary evidence is missing or inconsistent.
 
 ## Drafting procedure
 
@@ -126,7 +128,7 @@ Do not run mutating commands or modify repository files. Do not reimplement the 
 
 Emit one object conforming to `.github/instructions/pr-description-draft.schema.json`.
 
-- Use `schemaVersion=1.2`.
+- Use `schemaVersion=1.3`.
 - Include every required top-level property.
 - Include `repositoryState` only after initial and final fingerprints match; set `stable=true` and preserve whether one restart occurred.
 - Keep `existingPullRequest` separate from `base`; historical pull request evidence must not silently choose the current comparison base.

@@ -76,6 +76,51 @@ func TestFingerprintDetectsUntrackedSymlinkTarget(t *testing.T) {
 	}
 }
 
+func TestFingerprintCanonicalizesInteriorRepositoryPath(t *testing.T) {
+	repositoryPath := newTestRepository(t)
+	interiorPath := filepath.Join(repositoryPath, "nested", "directory")
+	if err := os.MkdirAll(interiorPath, 0o755); err != nil {
+		t.Fatalf("creating interior directory: %v", err)
+	}
+
+	writeTestFile(t, repositoryPath, "root-level-untracked.txt", "first")
+	rootFingerprint := requireFingerprint(t, repositoryPath)
+	interiorFingerprint := requireFingerprint(t, interiorPath)
+	if interiorFingerprint != rootFingerprint {
+		t.Fatal("interior path did not resolve to the canonical repository root")
+	}
+
+	writeTestFile(t, repositoryPath, "root-level-untracked.txt", "second")
+	changedFingerprint := requireFingerprint(t, interiorPath)
+	if changedFingerprint == interiorFingerprint {
+		t.Fatal("interior path did not detect a root-level untracked change")
+	}
+}
+
+func TestFingerprintUsesDeterministicUntrackedOrdering(t *testing.T) {
+	repositoryPath := newTestRepository(t)
+	firstPath := filepath.Join(repositoryPath, "first.txt")
+	secondPath := filepath.Join(repositoryPath, "second.txt")
+
+	writeTestFile(t, repositoryPath, "second.txt", "second")
+	writeTestFile(t, repositoryPath, "first.txt", "first")
+	firstFingerprint := requireFingerprint(t, repositoryPath)
+
+	if err := os.Remove(firstPath); err != nil {
+		t.Fatalf("removing first untracked file: %v", err)
+	}
+	if err := os.Remove(secondPath); err != nil {
+		t.Fatalf("removing second untracked file: %v", err)
+	}
+	writeTestFile(t, repositoryPath, "first.txt", "first")
+	writeTestFile(t, repositoryPath, "second.txt", "second")
+	secondFingerprint := requireFingerprint(t, repositoryPath)
+
+	if secondFingerprint != firstFingerprint {
+		t.Fatal("untracked file creation order changed the fingerprint")
+	}
+}
+
 func TestFingerprintRejectsNonRepository(t *testing.T) {
 	_, err := fingerprint(t.TempDir())
 	if err == nil {
@@ -109,7 +154,10 @@ func requireFingerprint(t *testing.T, repositoryPath string) string {
 func newTestRepository(t *testing.T) string {
 	t.Helper()
 
-	repositoryPath := t.TempDir()
+	repositoryPath := filepath.Join(t.TempDir(), "repository with spaces")
+	if err := os.MkdirAll(repositoryPath, 0o755); err != nil {
+		t.Fatalf("creating test repository: %v", err)
+	}
 	runTestGit(t, repositoryPath, "init", "--quiet")
 	runTestGit(t, repositoryPath, "config", "user.email", "fingerprint@example.invalid")
 	runTestGit(t, repositoryPath, "config", "user.name", "Fingerprint Test")

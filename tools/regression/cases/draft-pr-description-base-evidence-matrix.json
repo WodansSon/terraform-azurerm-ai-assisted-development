@@ -29,6 +29,7 @@
     "PRDESC-PRE-003",
     "PRDESC-PRE-005",
     "PRDESC-PRE-006",
+    "PRDESC-PRE-007",
     "PRDESC-PR-001",
     "PRDESC-PR-002",
     "PRDESC-PR-003",
@@ -102,12 +103,62 @@
     {
       "key": "local-windows-wsl-go-fallback",
       "severity": "medium",
-      "description": "When direct Go is unavailable in local Windows VS Code, the workflow inspects an explicitly selected WSL distribution's interactive shell and can invoke the helper through wsl.exe with a translated repository path."
+      "description": "When native Windows cannot provide one suitable worktree with Git and Go, the workflow can inspect an explicitly selected WSL distribution, prefer a validated WSL-native checkout, or invoke the helper against the same mounted worktree through argument-safe translation."
     },
     {
       "key": "repository-effect-labels-precede-commands",
       "severity": "medium",
       "description": "Every terminal batch shows its exact command under Read-only or the one full remote-tracking-ref update label, and fetch is never mixed with inspection commands."
+    },
+    {
+      "key": "fingerprint-canonical-repository-root",
+      "severity": "high",
+      "description": "The helper resolves Git's absolute top-level worktree with git rev-parse --show-toplevel and uses it for all commands and untracked-path joins, so an interior repository-root argument cannot omit or misjoin root-level evidence."
+    },
+    {
+      "key": "wsl-paths-remain-process-arguments",
+      "severity": "medium",
+      "description": "The Windows fallback passes the repository path separately to wslpath and the translated path separately to wsl.exe --cd, preserving spaces without interpolating either path into Bash code."
+    },
+    {
+      "key": "current-environment-capability-first",
+      "severity": "high",
+      "description": "A suitable current worktree with Git and Go is selected directly on native, WSL, container, Codespaces, SSH, and remote terminals without invoking a host-specific fallback."
+    },
+    {
+      "key": "bounded-configurable-repository-search",
+      "severity": "high",
+      "description": "Repository discovery runs only after current-worktree validation fails and searches disclosed developer-configured roots plus existing conventional roots without scanning the whole filesystem."
+    },
+    {
+      "key": "candidate-identity-and-state-validation",
+      "severity": "high",
+      "description": "Every candidate is validated by canonical Git root, repository structure and remotes, expected checked-out branch, full HEAD, dirty state, and Git and Go capability rather than directory or branch name alone."
+    },
+    {
+      "key": "dirty-source-worktree-not-substituted",
+      "severity": "high",
+      "description": "A clean clone with the same branch and HEAD is not substituted for a known source checkout with staged, unstaged, or untracked changes."
+    },
+    {
+      "key": "candidate-ambiguity-requires-selection",
+      "severity": "high",
+      "description": "Multiple trustworthy candidates produce a developer selection request containing environment, canonical path, branch, full HEAD, and dirty-state summaries rather than an automatic path-order choice."
+    },
+    {
+      "key": "no-candidate-requests-explicit-path",
+      "severity": "medium",
+      "description": "When no candidate satisfies identity, branch, state, and capability checks, the workflow requests an explicit repository path and names the missing checks instead of guessing."
+    },
+    {
+      "key": "wsl-native-discovery-precedes-translation",
+      "severity": "medium",
+      "description": "Native Windows uses native Git and Go when suitable; optional WSL fallback verifies an explicitly selected distribution and searches bounded roots for a WSL-native checkout before offering argument-safe translation of the same Windows worktree."
+    },
+    {
+      "key": "single-frozen-execution-boundary",
+      "severity": "high",
+      "description": "Repository inspection, fingerprints, pull request evidence, base resolution, diff collection, and payload generation reuse one recorded canonical worktree and execution environment."
     }
   ],
   "mustNotFlag": [
@@ -150,6 +201,38 @@
     {
       "key": "cross-environment-fingerprint-comparison",
       "description": "The workflow must not compare an initial fingerprint produced by one Git executable or environment with a final fingerprint produced by another."
+    },
+    {
+      "key": "interior-path-used-as-untracked-root",
+      "description": "The helper must not join Git root-relative untracked paths to an interior directory supplied by the caller."
+    },
+    {
+      "key": "wsl-path-interpolated-into-shell-command",
+      "description": "Windows or WSL repository paths must not be spliced into one shell command string where spaces or shell characters can change argument boundaries."
+    },
+    {
+      "key": "progressing-wsl-index-refresh-terminated",
+      "description": "A slow but progressing Git index refresh under /mnt/c must not be treated as a portability failure or terminated solely because Windows-to-WSL filesystem synchronization is slow."
+    },
+    {
+      "key": "windows-host-implies-wsl",
+      "description": "A Windows host must not trigger WSL when native Git and Go can use the suitable current worktree."
+    },
+    {
+      "key": "directory-or-branch-name-proves-candidate",
+      "description": "A matching directory name or branch name alone must not make a repository candidate trustworthy."
+    },
+    {
+      "key": "same-head-clean-clone-equivalent-to-dirty-source",
+      "description": "Branch and HEAD equality must not erase staged, unstaged, or untracked differences between checkouts."
+    },
+    {
+      "key": "unbounded-filesystem-repository-scan",
+      "description": "Repository discovery must not recursively scan filesystem roots, arbitrary drives, or all mounted volumes."
+    },
+    {
+      "key": "mixed-worktree-or-environment-evidence",
+      "description": "The workflow must not inspect one checkout, fingerprint another, or generate the payload from a different execution environment."
     }
   ],
   "expectedTools": {

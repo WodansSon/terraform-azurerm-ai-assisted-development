@@ -8,7 +8,7 @@
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark for the PR drafting schema gate and presentation contract.",
     "whyItMattered": "The workflow must not render incomplete internal decisions or leak orchestration commentary around the copy-ready body.",
-    "genericCondition": "One sanitized run supplies a complete schema-version 1.2 payload with stable repository evidence and separate existing pull request evidence; invalid runs violate required fields, changelog state invariants, or PR/base conditions.",
+    "genericCondition": "One sanitized run supplies a complete schema-version 1.3 payload with a frozen execution boundary, stable repository evidence, and separate existing pull request evidence; invalid runs violate required fields, changelog state invariants, or PR/base conditions.",
     "notes": ""
   },
   "sanitized": true,
@@ -27,6 +27,7 @@
   },
   "expectedRules": [
     "PRDESC-PRE-005",
+    "PRDESC-PRE-007",
     "PRDESC-BASE-001",
     "PRDESC-CHANGELOG-003",
     "PRDESC-CHANGELOG-005",
@@ -59,7 +60,12 @@
     {
       "key": "stable-repository-state-required",
       "severity": "high",
-      "description": "A valid schema-version 1.2 payload requires lowercase initial and final SHA-256 fingerprints, stable=true, and a restart count of zero or one."
+      "description": "A valid schema-version 1.3 payload requires lowercase initial and final SHA-256 fingerprints, stable=true, and a restart count of zero or one."
+    },
+    {
+      "key": "frozen-execution-boundary-required",
+      "severity": "high",
+      "description": "A valid schema-version 1.3 payload records one environment, canonical worktree, selection method, Git and Go executables, repository identity, branch, full HEAD, known source HEAD, dirty-state summary, candidate count, and bounded search roots."
     },
     {
       "key": "exact-five-section-order",
@@ -89,6 +95,10 @@
     {
       "key": "contract-invalid-changelog-payload-renders",
       "description": "A payload whose changelog category, keyword, status, entry count, or fallback text violates the contract must not pass schema validation."
+    },
+    {
+      "key": "missing-execution-boundary-renders",
+      "description": "A payload without the frozen worktree and execution-environment boundary must not pass schema validation or render a draft."
     }
   ],
   "expectedTools": {
@@ -112,5 +122,5 @@
       "## Orchestration Notes"
     ]
   },
-  "notes": "The paired Markdown example captures the valid output shape; the valid handoff uses schema version 1.2 and the exact hard-stop marker covers invalid runs."
+  "notes": "The paired Markdown example captures the valid output shape; the valid handoff uses schema version 1.3 and the exact hard-stop marker covers invalid runs."
 }

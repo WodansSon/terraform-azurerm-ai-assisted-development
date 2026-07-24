@@ -351,7 +351,7 @@ These IDs come from `.github/instructions/pr-description-compliance-contract.ins
 | `PRDESC-OUT-*` | Handoff and output | How the schema-backed payload becomes the exact five-section response and verification footer |
 | `PRDESC-FAIL-*` | Hard stops | Which missing authority, ambiguous scope, repository state, or invalid payload prevents rendering |
 
-The hidden `pr-description` skill owns the reusable drafting procedure and emits the schema-version `1.2` handoff defined by `.github/instructions/pr-description-draft.schema.json`; the prompt owns exact hard stops, repository fingerprint equality, schema validation, and final presentation. Existing pull request evidence remains separate from comparison-base metadata. Neither consumer redefines the contract rules.
+The hidden `pr-description` skill owns the reusable drafting procedure and emits the schema-version `1.3` handoff defined by `.github/instructions/pr-description-draft.schema.json`; the prompt owns capability-driven worktree discovery, exact hard stops, repository fingerprint equality, schema validation, and final presentation. The handoff freezes one canonical worktree and execution environment, while existing pull request evidence remains separate from comparison-base metadata. Neither consumer redefines the contract rules.
 
 ## `DOCS-*` Rule Areas
 
