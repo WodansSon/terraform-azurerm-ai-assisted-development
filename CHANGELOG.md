@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **[Implementation]** - Write-only attribute guidance now follows HashiCorp's accepted schema pattern by making the original and write-only fields conflict symmetrically, requiring the write-only field and its version trigger together, and validating configured trigger versions as positive integers.
   - **[Internal]** - Upstream contributor drift detection now recursively discovers HashiCorp contributor topics from the `/contributing/topics` directory, tracks the pull request template as a separate non-catalog source, and dynamically maps exact evidence references to affected local rules so new topics, template changes, and checklist changes trigger semantic review before baselines are refreshed.
 
+### Fixed
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Fixed clean `main` toolkit validation to accept an empty changed-path collection when no branch-local regression cases need runnability checks.
+
 ## [3.7.0] - 2026-07-07
 
 ### Added

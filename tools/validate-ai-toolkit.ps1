@@ -311,6 +311,7 @@ function Get-ChangedRegressionCases {
         [string]$RepoRoot,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [string[]]$ChangedPaths
     )
 
