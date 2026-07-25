@@ -17,20 +17,32 @@
   "findings": {
     "caught": [
       "new-resource-implies-list-title",
+      "material-behavior-inventory-complete",
+      "residual-state-removal-behavior-preserved",
+      "clear-semantics-owner-read",
+      "behavior-outline-is-not-code-review",
       "combined-resource-data-source-title",
       "canonical-new-surface-changelog-lines",
       "supporting-companion-changelog-suppression",
       "mixed-feature-enhancement-retention",
+      "existing-surface-changelog-lines-separated",
       "standalone-list-resource-title",
       "existing-change-title-precedence",
+      "existing-lifecycle-correction-category",
+      "pre-existing-compatibility-not-invented",
+      "ownership-guard-lifecycle-specificity",
+      "cross-surface-lifecycle-attribution",
+      "atomic-lifecycle-claim-model",
+      "operation-scope-not-widened",
+      "canonical-existing-owner-formatting",
       "docs-and-contributing-titles"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 8,
-    "total": 8
+    "matched": 20,
+    "total": 20
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

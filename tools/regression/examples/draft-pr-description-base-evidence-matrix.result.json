@@ -22,11 +22,15 @@
       "single-invocation-per-fixed-git-batch",
       "single-direct-read-evidence-plan",
       "local-base-without-refresh",
+      "stale-base-recovers-coherent-local-tip-stack",
+      "mainline-merge-second-parent-recovery",
+      "bounded-recovery-preserves-mixed-branch-stop",
       "complete-local-change-scope",
       "targeted-material-evidence-only",
       "authored-tests-separate-from-test-execution",
       "cheap-head-and-status-stability-guard",
       "unrelated-primary-scope-hard-stop",
+      "cross-package-dependency-is-coherent",
       "exact-read-only-command-labels",
       "four-phase-execution-budget"
     ],
@@ -34,8 +38,8 @@
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 13,
-    "total": 13
+    "matched": 17,
+    "total": 17
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

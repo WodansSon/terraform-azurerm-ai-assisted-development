@@ -8,11 +8,11 @@
     "originKind": "synthetic-design",
     "originSummary": "Synthetic benchmark for the streamlined local PR drafting workflow.",
     "whyItMattered": "A PR drafting shortcut must preserve local branch accuracy and useful output without network refreshes, repository-wide auditing, or repeated fingerprints.",
-    "genericCondition": "Sanitized runs cover direct Git branch authority, two fixed direct-Git evidence batches, local base selection, complete local scope, targeted reads, conservative tests, in-memory schema conformance, and one cheap final stability guard.",
+    "genericCondition": "Sanitized runs cover direct Git branch authority, the ordinary two-batch local path, merge-aware and linear bounded stale-base recovery, complete local scope, targeted reads, conservative tests, in-memory schema conformance, and one cheap final stability guard.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A matrix covering the fast local evidence path, stale editor metadata, authored tests versus executed tests, scope conflicts, and repository stability.",
+  "description": "A matrix covering the fast local evidence path, stale editor metadata, stale fork bases, authored tests versus executed tests, scope conflicts, and repository stability.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/draft-pr-description-base-evidence-matrix/README.md"
@@ -31,6 +31,7 @@
     "PRDESC-PRE-005",
     "PRDESC-BASE-001",
     "PRDESC-BASE-002",
+    "PRDESC-BASE-003",
     "PRDESC-SCOPE-001",
     "PRDESC-SCOPE-002",
     "PRDESC-SCOPE-004",
@@ -71,6 +72,21 @@
       "description": "The first usable upstream/main, origin/main, or local main ref is used without fetch or remote-tracking metadata changes."
     },
     {
+      "key": "stale-base-recovers-coherent-local-tip-stack",
+      "severity": "high",
+      "description": "A stale named main ref that inflates scope with incorporated provider history triggers one local first-parent metadata pass and one candidate scope pass; a strictly narrower coherent net scope continues drafting."
+    },
+    {
+      "key": "mainline-merge-second-parent-recovery",
+      "severity": "high",
+      "description": "When contributor work surrounds a clear mainline integration merge, recovery uses the newest merge's second parent as its sole candidate and retains contributor changes from both sides without including incorporated mainline enhancements."
+    },
+    {
+      "key": "bounded-recovery-preserves-mixed-branch-stop",
+      "severity": "high",
+      "description": "Recovery uses at most one candidate; an ambiguous boundary retains the original scope and leaves the later evidence-based intent classifier responsible for any hard stop."
+    },
+    {
       "key": "complete-local-change-scope",
       "severity": "high",
       "description": "Committed, staged, unstaged, and non-ignored untracked paths remain in one merge-base-to-working-tree inventory."
@@ -93,7 +109,12 @@
     {
       "key": "unrelated-primary-scope-hard-stop",
       "severity": "high",
-      "description": "Unrelated primary service-package changes stop drafting before a title is guessed."
+      "description": "Two independent user-facing change intents with no dependency evidence stop drafting after material reads and before a title is guessed."
+    },
+    {
+      "key": "cross-package-dependency-is-coherent",
+      "severity": "high",
+      "description": "A shared helper and directly connected Resource consumers across service packages remain one coherent intent and continue drafting with every user-facing surface preserved."
     },
     {
       "key": "exact-read-only-command-labels",
@@ -146,6 +167,22 @@
     {
       "key": "known-path-search-or-test-enumeration",
       "description": "Phase 2 must not search for exact changed paths or enumerate test functions when changed paths already prove file ownership and authored coverage."
+    },
+    {
+      "key": "stale-local-main-false-mixed-stop",
+      "description": "A coherent contributor feature must not hard-stop merely because a stale local main ref includes incorporated upstream commits in the initial scope."
+    },
+    {
+      "key": "service-package-count-is-not-intent",
+      "description": "Multiple service packages, paths, files, or Terraform surfaces alone must not trigger the unrelated-change hard stop."
+    },
+    {
+      "key": "unbounded-or-network-base-recovery",
+      "description": "Stale-base recovery must not fetch, query GitHub, inspect per-commit patches, test multiple candidate origins, or loop until a coherent scope appears."
+    },
+    {
+      "key": "incorporated-mainline-enhancement-in-draft",
+      "description": "An unrelated existing-Resource enhancement reachable only through the integrated mainline parent must not appear in the description, PR type, or changelog."
     }
   ],
   "expectedTools": {
@@ -156,7 +193,7 @@
       "Evidence Notes"
     ],
     "mustIncludeMarkers": [
-      "Cannot run draft-pr-description: unrelated primary changes span multiple service packages.",
+      "Cannot run draft-pr-description: multiple independent change intents remain after dependency analysis.",
       "Cannot run draft-pr-description: repository state changed during drafting.",
       "Tests were not run during this drafting invocation."
     ],
@@ -167,7 +204,11 @@
       "\\$payload = \\[ordered\\]",
       "& \\{ \\$template = Get-Content",
       "Repository identity and base candidates retry",
-      "search for exact changed paths"
+      "search for exact changed paths",
+      "git fetch",
+      "github pull request",
+      "unrelated primary changes span multiple service packages",
+      "azurerm_example_account_connection"
     ]
   },
   "notes": "The fast path is the only supported path; there is no audit mode."
