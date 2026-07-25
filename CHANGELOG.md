@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [3.8.0] - 2026-07-25
+
+### Added
+
 - **User-Priority:**
   - **[Installer]** - The installed toolkit now includes `/draft-pr-description` (BETA), which builds one evidence-based AzureRM pull request title and a template-preserving copy-ready body from committed, staged, unstaged, and non-ignored untracked branch changes without modifying or opening the pull request.
 
@@ -750,7 +758,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.7.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.8.0...HEAD
+[3.8.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.8.0
 [3.7.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.7.0
 [3.6.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.6.0
 [3.5.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.5.0
