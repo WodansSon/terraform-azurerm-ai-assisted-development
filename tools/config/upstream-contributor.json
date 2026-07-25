@@ -4,6 +4,7 @@
   "catalog": {
     "contributorTreeUrl": "https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing",
     "readmeRawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/README.md",
+    "topicContentsApiUrl": "https://api.github.com/repos/hashicorp/terraform-provider-azurerm/contents/contributing/topics?ref=main",
     "topicBaseRawUrlPrefix": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/"
   },
   "sources": [
@@ -87,6 +88,17 @@
       "baselineSha256": "e157cac522cd8d20cab9997ff8a5dbec1a49aec314dcdbab168794fb679ea6b9",
       "reviewNotes": [
         "Review PR-process expectations, testing expectations, and contributor-facing submission guidance."
+      ]
+    },
+    {
+      "id": "pull-request-template",
+      "domain": "pr-process",
+      "title": "AzureRM Pull Request Template",
+      "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/.github/pull_request_template.md",
+      "referenceUrl": "https://github.com/hashicorp/terraform-provider-azurerm/blob/main/.github/pull_request_template.md",
+      "baselineSha256": "7b7bc0e9b551a1f4b0b6047b715449f0f91e0615fc3cd99e113bbff27d6ae4a7",
+      "reviewNotes": [
+        "Review template headings, checklist wording, required disclosure sections, and section order against the PR description contract, skill, schema, and regression fixtures."
       ]
     },
     {
@@ -254,7 +266,7 @@
       "domain": "schema-design",
       "title": "Guide: Adding a new Write-Only Attribute",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-write-only-attribute.md",
-      "baselineSha256": "f6bdedf9aa739beef92c3d676028b0e35f8eeacb9dd14d731ef9d1ccd084e94e",
+      "baselineSha256": "80c0b391cee17c52af85e3dd290cf3ca2613aa685375d8f28b60b4a979ea601c",
       "reviewNotes": [
         "Primary upstream source for write-only attribute schema, trigger fields, CRUD helpers, Terraform version gating, tests, and docs."
       ]
@@ -264,7 +276,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "84fbc3f16a14c173676df20dfb9d9aeae91b09e48ab9f91dd2ae0a33ffead81e",
+      "baselineSha256": "05d7bb4ea6c10dc5b6e4c6bf6048559c7aafa478b948670015a0508c36627d8e",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]

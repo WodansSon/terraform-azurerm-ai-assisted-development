@@ -1,0 +1,71 @@
+{
+  "id": "review-local-write-only-schema-contract",
+  "title": "Local review catches invalid write-only schema relationships",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Derived from the upstream-accepted write-only attribute schema pattern.",
+    "whyItMattered": "Write-only schema can become impossible to configure when the write-only field conflicts with its required version trigger, while allowing trigger version zero prevents reliable update tracking.",
+    "genericCondition": "A changed Plugin SDK resource adds a write-only counterpart and version trigger but targets the wrong ConflictsWith field and omits positive trigger validation.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A synthetic local-review scenario where a changed Go resource uses the formerly incorrect write-only schema shape. The correct review must apply IMPL-SCHEMA-017, flag the wrong conflict target and missing positive version validation, and leave the already symmetric RequiredWith relationship alone.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-write-only-schema-contract/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_service_resource.go"
+    ],
+    "notes": "The fixture isolates write-only schema review; CRUD handling, lifecycle tests, and documentation are explicitly established as correct context."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "IMPL-SCHEMA-017"
+  ],
+  "mustCatch": [
+    {
+      "key": "write-only-conflicts-with-version-trigger",
+      "severity": "high",
+      "file": "internal/services/example/example_service_resource.go",
+      "description": "The write-only field incorrectly conflicts with its required version trigger instead of the original sensitive field, making valid write-only configuration impossible and allowing both value sources together."
+    },
+    {
+      "key": "write-only-version-allows-zero",
+      "severity": "medium",
+      "file": "internal/services/example/example_service_resource.go",
+      "description": "The write-only version trigger must use validation.IntAtLeast(1) so a configured zero cannot undermine Plugin SDK v2 change tracking."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "symmetric-requiredwith-is-correct",
+      "description": "Do not report the RequiredWith relationship as missing or incorrect because the write-only field and version trigger already require each other symmetrically."
+    },
+    {
+      "key": "correct-lifecycle-handling-outside-schema-diff",
+      "description": "Do not invent CRUD, state, test, or documentation issues when the fixture explicitly establishes those companion paths as correct and unchanged."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "IMPL-SCHEMA-017",
+      "ConflictsWith",
+      "validation.IntAtLeast(1)"
+    ]
+  },
+  "notes": "Pair this case with the example result and review output to benchmark the upstream-backed write-only schema rule through the generic local-review workflow."
+}

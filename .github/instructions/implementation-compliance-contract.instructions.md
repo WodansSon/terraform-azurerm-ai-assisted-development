@@ -331,6 +331,18 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-naming.md` under `Singular and Plural Block Property Naming Conventions`
   - That guidance says configured blocks should generally use singular names, while primitive lists and computed multi-value collections should generally use plural names
 
+### IMPL-SCHEMA-017: Write-only attributes must use symmetric schema relationships and a positive version trigger
+- Rule: Add a write-only attribute only for a sensitive user-supplied scalar property that is not `ForceNew`, not `Computed`, not a block, map, or unsupported nested collection, and not part of a data source or provider schema.
+- Rule: When `<name>_wo` supplements an existing sensitive `<name>` field, set `ConflictsWith: []string{"<name>_wo"}` on `<name>` and `ConflictsWith: []string{"<name>"}` on `<name>_wo` so the two value sources cannot be configured together.
+- Rule: Pair `<name>_wo` with an optional integer `<name>_wo_version` trigger. Set `RequiredWith: []string{"<name>_wo_version"}` on `<name>_wo` and `RequiredWith: []string{"<name>_wo"}` on `<name>_wo_version` so either field requires the other.
+- Rule: Set `ValidateFunc: validation.IntAtLeast(1)` on `<name>_wo_version`; Plugin SDK v2 persists an omitted optional integer as `0`, so allowing users to configure `0` prevents reliable change tracking.
+- Rule: Retrieve the write-only value with `pluginsdk.GetWriteOnly(...)` during create and when the version trigger changes during update, and preserve the configured version trigger in state during read to avoid a permanent diff.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-write-only-attribute.md` under `Updating the Resource Schema`
+  - That guidance uses symmetric `ConflictsWith` relationships between the original sensitive field and its write-only counterpart, symmetric `RequiredWith` relationships between the write-only field and its version trigger, and `validation.IntAtLeast(1)` on the version trigger
+  - The same guide uses `pluginsdk.GetWriteOnly(...)` in create and trigger-gated update paths and persists the version trigger during read
+
 ## PATCH and residual state
 
 ### IMPL-PATCH-001: Explicitly disable features in PATCH flows

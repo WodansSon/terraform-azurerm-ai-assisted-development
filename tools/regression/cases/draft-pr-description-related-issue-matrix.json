@@ -1,0 +1,88 @@
+{
+  "id": "draft-pr-description-related-issue-matrix",
+  "title": "PR drafting includes only explicitly confirmed issue references",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark for no-search related issue handling.",
+    "whyItMattered": "Issue searches added latency without proving that a change resolves an issue.",
+    "genericCondition": "Sanitized runs cover explicit developer references, current-branch commit references, and the no-reference fallback without GitHub search.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A matrix for confirmed issue references and the exact no-reference fallback in the streamlined workflow.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-related-issue-matrix/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go"
+    ],
+    "notes": "Each run varies only explicit developer input and current-branch commit subjects."
+  },
+  "expectedRules": [
+    "PRDESC-CHECK-001",
+    "PRDESC-ISSUE-001"
+  ],
+  "mustCatch": [
+    {
+      "key": "explicit-developer-reference-is-preserved",
+      "severity": "high",
+      "description": "An issue reference explicitly supplied for the current invocation is preserved with its closing keyword."
+    },
+    {
+      "key": "current-branch-commit-reference-is-preserved",
+      "severity": "high",
+      "description": "A qualifying issue reference in a current-branch commit subject is preserved."
+    },
+    {
+      "key": "missing-reference-uses-exact-fallback",
+      "severity": "medium",
+      "description": "When neither source contains an issue reference, the body renders No related issue confirmed."
+    },
+    {
+      "key": "issue-review-checklist-remains-developer-owned",
+      "severity": "medium",
+      "description": "The issue-review checklist acknowledgement remains unchecked because drafting cannot prove the developer reviewed open issues."
+    },
+    {
+      "key": "github-search-is-skipped",
+      "severity": "high",
+      "description": "No duplicate pull request or potential issue search runs and no search section is rendered."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "inferred-issue-auto-closes",
+      "description": "Path, title, or behavior similarity must not create a closing reference."
+    },
+    {
+      "key": "potential-issue-search-section",
+      "description": "The streamlined output must not render Potential Related Issues."
+    },
+    {
+      "key": "search-unavailability-evidence-gap",
+      "description": "A deliberately skipped search must not become an evidence gap."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Draft PR Body"
+    ],
+    "mustIncludeMarkers": [
+      "Fixes #12345",
+      "No related issue confirmed."
+    ],
+    "mustNotIncludeMarkers": [
+      "Potential Related Issues",
+      "Potential related issue search unavailable."
+    ]
+  },
+  "notes": "Issue scenarios are independent; no GitHub tools are expected."
+}

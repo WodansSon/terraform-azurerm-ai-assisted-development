@@ -9,9 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Installer]** - The installed toolkit now includes `/draft-pr-description` (BETA), which builds one evidence-based AzureRM pull request title and a template-preserving copy-ready body from committed, staged, unstaged, and non-ignored untracked branch changes without modifying or opening the pull request.
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - The one-shot toolkit validator now checks the System Architecture diagram for fixed-width rows, aligned right borders, and padding before vertical borders, and rejects source-relative, non-HTTPS, or raw-content links copied from the pull request template so visual layout and rendered-link drift fail validation.
+
 ### Changed
 
-### Fixed
+- **User-Priority:**
+  - **[Review]** - `/draft-pr-description` (BETA) now produces a copy-ready AzureRM title and body through one fast local workflow: it trusts the checked-out Git branch, collects complete local scope through one-shot canonical direct-Git commands, excludes incorporated provider history from stale fork refs and mainline integration merges, keeps cross-service Resources and shared helpers together when direct dependency evidence proves one change intent, builds one direct-read plan from changed paths, represents every material user-facing scope, lifecycle, ownership, computed-output, list, state, and API-retained removal behavior once without turning drafting into code review, preserves exact owners and lifecycle paths when compressing retries, waits, guards, validation, clearing, and normalization into prose, preserves immutable template prose and URLs plus exact AzureRM title and feature forms, keeps existing Resource and Data Source changelog entries separately owned, suppresses implementation-only changelog entries, checks its lean handoff in memory, and skips alternate-syntax retries, known-path searches, unnecessary test enumeration, generated terminal scripts, network refreshes, GitHub searches, policy reloads, full-content fingerprints, and audit-only payload state.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Write-only attribute guidance now follows HashiCorp's accepted schema pattern by making the original and write-only fields conflict symmetrically, requiring the write-only field and its version trigger together, and validating configured trigger versions as positive integers.
+  - **[Internal]** - Upstream contributor drift detection now recursively discovers HashiCorp contributor topics from the `/contributing/topics` directory, tracks the pull request template as a separate non-catalog source, and dynamically maps exact evidence references to affected local rules so new topics, template changes, and checklist changes trigger semantic review before baselines are refreshed.
 
 ## [3.7.0] - 2026-07-07
 

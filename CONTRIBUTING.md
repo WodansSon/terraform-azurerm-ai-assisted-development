@@ -61,6 +61,12 @@ If you update bootstrap behavior or messaging, keep it consistent across PowerSh
 - Avoid adding new concepts/flags unless they are clearly justified.
 - Keep a community-friendly tone in prompts and documentation.
 
+### Links copied outside their source file
+
+- Markdown copied into or rendered as a pull request, issue, generated response, or another context outside its source file must use absolute HTTPS links. Source-relative links are not valid in those copied contexts.
+- Human-facing links to files in this repository must use GitHub `blob` or `tree` URLs, not `raw.githubusercontent.com` content URLs.
+- Fragment-only links and correctly resolved relative links remain valid in ordinary checked-in Markdown that is rendered from its source file.
+
 ## Code of Conduct
 
 Be respectful, constructive, and helpful. We're all here to improve Terraform development.

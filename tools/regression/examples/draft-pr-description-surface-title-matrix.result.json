@@ -1,0 +1,63 @@
+{
+  "caseId": "draft-pr-description-surface-title-matrix",
+  "runId": "sample-draft-pr-description-surface-title-matrix-001",
+  "timestampUtc": "2026-07-22T00:00:00Z",
+  "task": "draft-pr-description",
+  "model": "sample",
+  "pass": true,
+  "overallScore": 100,
+  "scores": {
+    "mustCatchRecall": 100,
+    "falsePositiveControl": 100,
+    "severityCorrectness": 100,
+    "scopeAndToolCorrectness": 100,
+    "outputCompliance": 100,
+    "determinism": 100
+  },
+  "findings": {
+    "caught": [
+      "new-resource-implies-list-title",
+      "material-behavior-inventory-complete",
+      "residual-state-removal-behavior-preserved",
+      "clear-semantics-owner-read",
+      "behavior-outline-is-not-code-review",
+      "combined-resource-data-source-title",
+      "canonical-new-surface-changelog-lines",
+      "supporting-companion-changelog-suppression",
+      "mixed-feature-enhancement-retention",
+      "existing-surface-changelog-lines-separated",
+      "standalone-list-resource-title",
+      "existing-change-title-precedence",
+      "existing-lifecycle-correction-category",
+      "pre-existing-compatibility-not-invented",
+      "ownership-guard-lifecycle-specificity",
+      "cross-surface-lifecycle-attribution",
+      "atomic-lifecycle-claim-model",
+      "operation-scope-not-widened",
+      "canonical-existing-owner-formatting",
+      "docs-and-contributing-titles"
+    ],
+    "missed": [],
+    "falsePositives": []
+  },
+  "severityChecks": {
+    "matched": 20,
+    "total": 20
+  },
+  "scopeChecks": {
+    "ruleFamiliesAppliedCorrectly": true,
+    "toolingBehaviorCorrect": true
+  },
+  "toolExecution": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "requiredSectionsPresent": true,
+    "requiredMarkersPresent": true,
+    "forbiddenMarkersAbsent": true
+  },
+  "determinismChecks": {
+    "materiallyEquivalentAcrossRuns": true
+  },
+  "notes": "Example adjudicated result for the PR drafting surface and title matrix."
+}

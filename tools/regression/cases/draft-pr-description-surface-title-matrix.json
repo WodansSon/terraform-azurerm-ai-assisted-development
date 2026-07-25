@@ -1,0 +1,243 @@
+{
+  "id": "draft-pr-description-surface-title-matrix",
+  "title": "PR drafting selects deterministic titles and changelog entries across AzureRM surface combinations",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark matrix for the initial PR drafting surface-classification contract.",
+    "whyItMattered": "The prompt must choose one stable title while keeping mandatory companion surfaces visible in changelog decisions.",
+    "genericCondition": "Multiple sanitized runs cover new and existing Terraform surfaces plus documentation and contributor-guidance classifications.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A scenario matrix covering new Resource, Data Source, List Resource, enhancement, bug-fix, documentation-only, and contributor-guidance-only title precedence.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-surface-title-matrix/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "contributing/topics/example-guidance.md",
+      "internal/services/example/azuresdkhacks/example_widget_policy_payload.go",
+      "internal/services/example/custompollers/example_widget_a_operation_poller.go",
+      "internal/services/example/example_widget_data_source.go",
+      "internal/services/example/example_widget_legacy_resource.go",
+      "internal/services/example/example_widget_policy_data_source.go",
+      "internal/services/example/example_widget_policy_resource.go",
+      "internal/services/example/example_widget_a_resource.go",
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_list.go",
+      "internal/services/example/example_widget_b_resource.go",
+      "internal/services/example/example_widget_rule_resource.go",
+      "website/docs/r/example_widget.html.markdown"
+    ],
+    "notes": "The fixture defines separate synthetic runs; the listed paths are the union of their modeled scopes."
+  },
+  "expectedRules": [
+    "PRDESC-SCOPE-002",
+    "PRDESC-SCOPE-003",
+    "PRDESC-BODY-002",
+    "PRDESC-TITLE-001",
+    "PRDESC-TITLE-002",
+    "PRDESC-TITLE-003",
+    "PRDESC-CHANGELOG-002",
+    "PRDESC-CHANGELOG-003",
+    "PRDESC-CHANGELOG-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "new-resource-implies-list-title",
+      "severity": "medium",
+      "description": "A new Resource plus required List Resource uses the new Resource title while retaining separate feature changelog lines."
+    },
+    {
+      "key": "material-behavior-inventory-complete",
+      "severity": "high",
+      "description": "The description retains every proven user-facing discriminator guard, meaningful computed output, list scope, and state-normalization behavior once instead of replacing them with supporting implementation details."
+    },
+    {
+      "key": "residual-state-removal-behavior-preserved",
+      "severity": "high",
+      "description": "When an update actively clears multiple independently configured values that the API would otherwise retain, the description names every retained-value family without narrating serialization or polling mechanics."
+    },
+    {
+      "key": "clear-semantics-owner-read",
+      "severity": "high",
+      "description": "The evidence plan reads compact clear-path logic in a changed custom request marshaller that owns omit-versus-clear behavior, while keeping marshalling mechanics subordinate in the draft."
+    },
+    {
+      "key": "behavior-outline-is-not-code-review",
+      "severity": "high",
+      "description": "The description strictly outlines changed behavior without correctness judgments, defect findings, missing-test speculation, recommendations, or field-by-field CRUD narration."
+    },
+    {
+      "key": "combined-resource-data-source-title",
+      "severity": "medium",
+      "description": "A new Resource and Data Source sharing one Terraform name use the exact combined title shape."
+    },
+    {
+      "key": "canonical-new-surface-changelog-lines",
+      "severity": "medium",
+      "description": "New Resource, Data Source, and List Resource entries use their exact automation-ready surface forms even when they share one Terraform name."
+    },
+    {
+      "key": "supporting-companion-changelog-suppression",
+      "severity": "medium",
+      "description": "Registration, Resource Identity, SDK shim, and polling companions do not receive independent changelog entries without distinct user-facing impact."
+    },
+    {
+      "key": "mixed-feature-enhancement-retention",
+      "severity": "high",
+      "description": "A title driven by new surfaces retains distinct enhancement entries for changed existing Resources and Data Sources in the same coherent service-package change."
+    },
+    {
+      "key": "existing-surface-changelog-lines-separated",
+      "severity": "high",
+      "description": "Existing Resource and Data Source behavior receives separate owner-specific changelog lines even when both surface kinds share one Terraform name."
+    },
+    {
+      "key": "standalone-list-resource-title",
+      "severity": "medium",
+      "description": "List Resource support added to an existing Resource uses the New List Resource title."
+    },
+    {
+      "key": "existing-change-title-precedence",
+      "severity": "medium",
+      "description": "Existing Resource bug fixes and enhancements use concrete surface-first title wording with bug-fix precedence when both apply."
+    },
+    {
+      "key": "existing-lifecycle-correction-category",
+      "severity": "high",
+      "description": "A proven correction to premature lifecycle success on an existing Resource renders as a BUG line and checks Bug Fix, while implementation-only polling remains subordinate."
+    },
+    {
+      "key": "pre-existing-compatibility-not-invented",
+      "severity": "high",
+      "description": "A new object flowing through an existing consumer's unchanged schema and ID association path is not presented as a newly enabled compatibility enhancement."
+    },
+    {
+      "key": "ownership-guard-lifecycle-specificity",
+      "severity": "high",
+      "description": "An importer-only ownership guard is described as preventing import or adoption and is not generalized into rejecting the object across all Resource lifecycle operations."
+    },
+    {
+      "key": "cross-surface-lifecycle-attribution",
+      "severity": "high",
+      "description": "Compact prose keeps one sibling Resource's create retry separate from another sibling's readiness and terminal-state waiting instead of assigning every behavior to both surfaces."
+    },
+    {
+      "key": "atomic-lifecycle-claim-model",
+      "severity": "high",
+      "description": "Each material lifecycle behavior is represented by its owner, exact operation paths, behavior kind, and observable outcome before prose or changelog compression."
+    },
+    {
+      "key": "operation-scope-not-widened",
+      "severity": "high",
+      "description": "A retry proven only for Resource A's create path is not transferred to Resource B or widened to update and delete when those paths only add waiting behavior."
+    },
+    {
+      "key": "canonical-existing-owner-formatting",
+      "severity": "medium",
+      "description": "Existing Resource and Data Source changelog owner tokens use exact undecorated automation-ready formatting with only Terraform names in code spans."
+    },
+    {
+      "key": "docs-and-contributing-titles",
+      "severity": "low",
+      "description": "Documentation-only and contributor-guidance-only runs use Docs and Contributing title forms respectively."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "list-resource-competes-with-new-resource",
+      "description": "A required companion List Resource must not displace or expand the new Resource title."
+    },
+    {
+      "key": "bracketed-title-prefix",
+      "description": "The AzureRM draft must not use this toolkit repository's bracketed title prefixes."
+    },
+    {
+      "key": "natural-language-combined-title",
+      "description": "The combined title must preserve the literal `(Data Source|Resource)` text instead of rewriting it as a natural-language conjunction."
+    },
+    {
+      "key": "supporting-companion-changelog-entry",
+      "description": "Supporting-only polling or plumbing work must not be promoted to an independent changelog entry."
+    },
+    {
+      "key": "plumbing-displaces-user-behavior",
+      "description": "Client wiring, registration, helper reuse, generated code, or vendoring must not displace proven material user-facing behavior in the description."
+    },
+    {
+      "key": "description-becomes-code-review",
+      "description": "Drafting must not report defects, grade correctness, identify missing work, recommend fixes, or narrate implementation exhaustively."
+    },
+    {
+      "key": "combined-existing-surface-changelog-line",
+      "description": "Resource and Data Source behavior that shares one Terraform name must not be combined under one surface identifier."
+    },
+    {
+      "key": "inferred-pre-existing-compatibility",
+      "description": "The draft must not claim that an existing consumer newly supports the new object type when no changed enabling implementation proves that behavior."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Suggested PR Title",
+      "Draft PR Body"
+    ],
+    "mustIncludeMarkers": [
+      "New Resource: `azurerm_example_widget`",
+      "New \\(Data Source\\|Resource\\) - `azurerm_example_widget`",
+      "New List Resource: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New Resource\\*\\*: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New Data Source\\*\\*: `azurerm_example_widget`",
+      "\\[FEATURE\\] \\* \\*\\*New List Resource\\*\\*: `azurerm_example_widget`",
+      "\\[ENHANCEMENT\\] \\* Data Source: `azurerm_example_widget_policy` - export the `retention_days` attribute",
+      "\\[ENHANCEMENT\\] \\* `azurerm_example_widget_rule` - improve validation for the `match_values` property",
+      "\\[ENHANCEMENT\\] \\* `azurerm_example_widget_legacy` - prevent importing objects owned by `azurerm_example_widget`",
+      "\\[BUG\\] \\* `azurerm_example_widget` - wait for creation to reach a terminal provisioning state before returning",
+      "\\[BUG\\] \\* `azurerm_example_widget_a` - retry transient in-progress creates and wait for terminal provisioning",
+      "\\[BUG\\] \\* `azurerm_example_widget_b` - wait for create, update, and delete operations to reach readiness or terminal states",
+      "- \\[x\\] Bug Fix",
+      "Docs:",
+      "Contributing:",
+      "clear removed cache configuration and origin override settings"
+      ,"rejects an API object whose discriminator no longer matches"
+      ,"`authentication_type`"
+      ,"across all projects in one parent account or within one selected project"
+      ,"preserve configured metadata keys"
+      ,"removing cache configuration and origin override settings clears both families' previous service-side values"
+      ,"prevents importing or adopting objects owned by `azurerm_example_widget`"
+      ,"`azurerm_example_widget_a` creation retries a transient in-progress conflict"
+      ,"`azurerm_example_widget_b` create, update, and delete operations wait for readiness or terminal states"
+    ],
+    "mustNotIncludeMarkers": [
+      "[FEATURE:]",
+      "New Resource and List Resource:",
+      "New Resource and Data Source - `azurerm_example_widget`",
+      "`azurerm_example_widget` - support for managing",
+      "\\[ENHANCEMENT\\] \\* `azurerm_example_widget_a` - improve .* polling"
+      ,"\\[ENHANCEMENT\\] \\* `azurerm_example_widget` - improve creation polling"
+      ,"building the client"
+      ,"registering the resource"
+      ,"missing test"
+      ,"should be changed"
+      ,"`azurerm_example_widget_policy` - export the `retention_days` attribute and clear"
+      ,"null payload fields"
+      ,"`azurerm_example_widget_b` - newly supports `azurerm_example_widget`"
+      ,"`azurerm_example_widget_legacy` - prevent objects owned by `azurerm_example_widget` from being managed"
+      ,"Resource A and Resource B operations both retry and wait"
+      ,"both sibling Resources now retry"
+      ,"`azurerm_example_widget_b` - retry"
+      ,"`azurerm_example_widget_a` - retry create, update, and delete"
+      ,"`azurerm_example_widget_a` - retry operations that remain in progress"
+      ,"\\*\\*Data Source: `azurerm_example_widget_policy`\\*\\*"
+    ]
+  },
+  "notes": "Run each fixture scenario independently and compare its title and changelog decisions with the matrix expectations."
+}

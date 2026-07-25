@@ -4,7 +4,7 @@ param(
 
     [string] $Title,
 
-    [ValidateSet("code-review-local-changes", "code-review-committed-changes", "code-review-docs", "docs-writer", "resource-implementation", "acceptance-testing")]
+    [ValidateSet("code-review-local-changes", "code-review-committed-changes", "code-review-docs", "draft-pr-description", "docs-writer", "resource-implementation", "acceptance-testing")]
     [string] $Task = "resource-implementation",
 
     [string] $SpecDirectory = (Join-Path $PSScriptRoot "test"),

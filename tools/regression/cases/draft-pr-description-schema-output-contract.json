@@ -1,0 +1,115 @@
+{
+  "id": "draft-pr-description-schema-output-contract",
+  "title": "PR drafting validates a lean handoff and renders four focused sections",
+  "task": "draft-pr-description",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "synthetic-design",
+    "originSummary": "Synthetic benchmark for the streamlined schema and presentation contract.",
+    "whyItMattered": "The shortcut needs a small validation gate without carrying audit-only repository, search, or policy state through every model iteration.",
+    "genericCondition": "One sanitized run supplies a complete schema-version 2.0 payload; invalid runs omit one of the six lean fields.",
+    "notes": ""
+  },
+  "sanitized": true,
+  "description": "A valid payload renders exactly four ordered sections and the footer; an invalid payload emits only the schema hard stop.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/draft-pr-description-schema-output-contract/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_test.go",
+      "website/docs/r/example_widget.html.markdown"
+    ],
+    "notes": "The valid run models one existing Resource enhancement with matching tests and docs."
+  },
+  "expectedRules": [
+    "PRDESC-BODY-001",
+    "PRDESC-OUT-001",
+    "PRDESC-OUT-002",
+    "PRDESC-OUT-003",
+    "PRDESC-FAIL-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "schema-invalid-payload-hard-stop",
+      "severity": "high",
+      "description": "A payload missing any lean required property hard-stops before partial output."
+    },
+    {
+      "key": "lean-schema-version-2-payload",
+      "severity": "high",
+      "description": "A valid payload contains only schemaVersion, repository, title, whyThisTitle, draftBody, and evidenceNotes."
+    },
+    {
+      "key": "repository-identity-fields-required",
+      "severity": "high",
+      "description": "The repository object records worktree root, branch, full HEAD, local base reference, and merge base."
+    },
+    {
+      "key": "exact-four-section-order",
+      "severity": "high",
+      "description": "A valid payload renders Suggested PR Title, Why This Title, Draft PR Body, and Evidence Notes in order."
+    },
+    {
+      "key": "copy-ready-body-fenced-once",
+      "severity": "medium",
+      "description": "The complete body appears in one Markdown code block without process or search sections."
+    },
+    {
+      "key": "verification-footer-last",
+      "severity": "medium",
+      "description": "The exact preflight and skill lines are final."
+    },
+    {
+      "key": "immutable-template-lines-verbatim",
+      "severity": "high",
+      "description": "Template prose, URLs, comments, headings, checklist text, Community Note content, rollback text, and the final note remain byte-for-byte unchanged outside designated populated areas."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "invalid-payload-partial-output",
+      "description": "A schema-invalid handoff must not emit partial output."
+    },
+    {
+      "key": "audit-only-schema-fields",
+      "description": "The lean payload must not require fingerprints, restart counts, pull request discovery, candidate searches, checklist records, or changelog records."
+    },
+    {
+      "key": "extra-top-level-section",
+      "description": "The normal response must not add alternate titles, orchestration notes, or potential issue sections."
+    },
+    {
+      "key": "template-url-rewrite",
+      "description": "The drafting workflow must not shorten, normalize, or otherwise rewrite a URL copied from the current pull request template."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "not-applicable"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "Suggested PR Title",
+      "Why This Title",
+      "Draft PR Body",
+      "Evidence Notes"
+    ],
+    "mustIncludeMarkers": [
+      "Cannot run draft-pr-description: pr-description produced a schema-invalid draft payload. Refresh the workflow files and re-run this prompt.",
+      "https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/",
+      "Preflight complete: yes",
+      "Skill used: pr-description"
+    ],
+    "mustNotIncludeMarkers": [
+      "Potential Related Issues",
+      "## Alternate Titles",
+      "## Orchestration Notes",
+      "https://github.com/issues/comments/",
+      "add-reactions-to-prs-issues-comments"
+    ]
+  },
+  "notes": "The paired Markdown example captures the streamlined valid output shape."
+}

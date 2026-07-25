@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/.github/instructions/pr-description-draft.schema.json",
+  "title": "PR Description Draft Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repository",
+    "title",
+    "whyThisTitle",
+    "draftBody",
+    "evidenceNotes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "2.0"
+    },
+    "repository": {
+      "$ref": "#/$defs/repository"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "whyThisTitle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "draftBody": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidenceNotes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worktreeRoot",
+        "branch",
+        "head",
+        "baseReference",
+        "mergeBase"
+      ],
+      "properties": {
+        "worktreeRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$"
+        },
+        "baseReference": {
+          "type": "string",
+          "enum": [
+            "upstream/main",
+            "origin/main",
+            "main"
+          ]
+        },
+        "mergeBase": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$"
+        }
+      }
+    }
+  }
+}
