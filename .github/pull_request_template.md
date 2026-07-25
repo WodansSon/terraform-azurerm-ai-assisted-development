@@ -78,7 +78,7 @@ If responses to this pull request are/will be generated using AI, disclose this 
 
 ## Checklist
 
-- [ ] Followed [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] Followed [CONTRIBUTING.md](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/CONTRIBUTING.md)
 - [ ] Used a meaningful PR title
 - [ ] Updated docs/examples where needed
 - [ ] Applied appropriate labels (examples: `breaking-change`, `ai-assisted`, `ai-assisted-review`, `ai-prompts`, `ai-instructions`, `ai-skills`, `bash`, `powershell`, `waiting-response`, `blocked`, `dependencies`, `github_actions`)

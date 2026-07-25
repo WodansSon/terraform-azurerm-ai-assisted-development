@@ -423,6 +423,7 @@ terraform-azurerm-ai-assisted-development/
 │   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
 │   ├── validate-changelog-taxonomy.ps1
+│   ├── validate-copied-markdown-links.ps1
 │   ├── validate-contracts.ps1
 │   ├── verify-bundle-checksum.ps1
 │   ├── config/
@@ -466,8 +467,9 @@ The repository contains both shipped runtime guidance and repo-only maintainer t
 
 The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
 
-- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, regression harness, and upstream drift.
+- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
+- `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
 - `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
 - `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.
