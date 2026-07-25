@@ -266,7 +266,7 @@
       "domain": "schema-design",
       "title": "Guide: Adding a new Write-Only Attribute",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-write-only-attribute.md",
-      "baselineSha256": "f6bdedf9aa739beef92c3d676028b0e35f8eeacb9dd14d731ef9d1ccd084e94e",
+      "baselineSha256": "80c0b391cee17c52af85e3dd290cf3ca2613aa685375d8f28b60b4a979ea601c",
       "reviewNotes": [
         "Primary upstream source for write-only attribute schema, trigger fields, CRUD helpers, Terraform version gating, tests, and docs."
       ]

@@ -1093,8 +1093,34 @@ func validateAdvancedConfiguration(ctx context.Context, diff *pluginsdk.Resource
 - Resource identity tests are generator-driven. Add the `go:generate` resource-identity test comment near the imports and map every ID segment through either `-properties` or `-compare-values`; if the resource ID omits `subscription_id`, use `-no-subscription-id`.
 - Resource identity generation currently does not support composite resource IDs or custom IDs outside `commonids` and `go-azure-sdk`, and numeric ID segment names can produce incorrect snake_case field names.
 - Write-only attributes are appropriate only for sensitive scalar resource attributes that are not `ForceNew`, not `Computed`, and not nested in unsupported collection shapes.
-- Pair each write-only field with a non-write-only trigger field such as `<name>_wo_version`, wire `ConflictsWith` and `RequiredWith` both ways, use `pluginsdk.GetWriteOnly(...)` in create and update, and persist the trigger field in state during read to avoid permanent diffs.
+- Set `ConflictsWith` symmetrically between the original sensitive field and its write-only counterpart.
+- Set `RequiredWith` symmetrically between the write-only field and its `<name>_wo_version` trigger, and validate the trigger with `validation.IntAtLeast(1)` so Plugin SDK v2's persisted zero value cannot be configured as a version.
+- Use `pluginsdk.GetWriteOnly(...)` in create and when the trigger changes during update, and persist the trigger field in state during read to avoid permanent diffs.
 - Gate write-only tests on Terraform `1.11+` and prefer the shared `acceptance.WriteOnlyKeyVaultSecretTemplate` test helper for secret-backed values.
+
+```go
+"password": {
+    Type:          pluginsdk.TypeString,
+    Optional:      true,
+    Sensitive:     true,
+    ConflictsWith: []string{"password_wo"},
+},
+
+"password_wo": {
+    Type:          pluginsdk.TypeString,
+    Optional:      true,
+    WriteOnly:     true,
+    RequiredWith:  []string{"password_wo_version"},
+    ConflictsWith: []string{"password"},
+},
+
+"password_wo_version": {
+    Type:         pluginsdk.TypeInt,
+    Optional:     true,
+    RequiredWith: []string{"password_wo"},
+    ValidateFunc: validation.IntAtLeast(1),
+},
+```
 <a id="🔍-field-naming-standards"></a>
 
 ## 🔍 Field Naming Standards
