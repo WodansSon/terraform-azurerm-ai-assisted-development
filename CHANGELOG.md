@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - The release guide now separates pre-release confirmation, changelog approval, direct-to-`main` release preparation, tag-triggered publication, and post-release verification so completed checks are not repeated and approval gates are explicit.
+
 ### Fixed
 
 ## [3.8.0] - 2026-07-25
