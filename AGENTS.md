@@ -42,6 +42,20 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Verify the staged installer only through its standalone `-Version` command and require it to report `0.0.1`. Do not pass a repository target or install AI files during the dry run.
 - Treat the active source checkout, persistent user-profile installer, and existing provider working copies as protected state. Do not change branches or write to any of them without explicit maintainer approval for that exact operation.
 
+## Teams Release Announcements
+
+- Build release announcements from the published version's changelog section and verified release URL. Do not invent features or use unreleased notes.
+- Write the complete announcement to `docs/teams_release.md`, replacing the previous generated announcement. Use Markdown so the maintainer can copy the rendered preview into Teams.
+- Treat `docs/teams_release.md` as local generated output. Ensure `/docs/teams_release.md` is present in this clone's `.git/info/exclude`; do not add the generated file or its exclusion to the shared `.gitignore`.
+- Never stage or commit `docs/teams_release.md`.
+- Write for toolkit users and AzureRM contributors. Include only user-facing review, documentation, implementation, testing, and skill behavior from the published changelog.
+- Exclude maintainer-only workflows, repository validation, regression-harness mechanics, CI behavior, release validation, checksums, provenance, and publication mechanics.
+- Open with `**Released:** \`vX.Y.Z\` of the Terraform AzureRM AI-Assisted Development toolkit`.
+- Follow the lead with two or three narrative paragraphs that explain the release's primary themes, practical impact, and important secondary theme. Use the explanatory maintainer voice rather than a terse release checklist.
+- Add `**Other highlights in** \`vX.Y.Z\`**:**` followed by four to six concise bullets covering distinct supporting changes.
+- End with `Release: [https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/vX.Y.Z](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/vX.Y.Z)`.
+- Prefer user and contributor outcomes over internal file, contract, prompt, schema, or workflow implementation details.
+
 ## Edit Gate
 
 Before editing AI-toolkit files for a surfaced issue, identify all of the following:
