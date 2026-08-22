@@ -18,10 +18,17 @@ param(
 
     # Historical name; when set, skips all Bash/WSL cross-checking.
     [Parameter(Mandatory = $false)]
-    [switch]$SkipWsl
+    [switch]$SkipWsl,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$RequireBash
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($SkipWsl -and $RequireBash) {
+    throw 'SkipWsl and RequireBash cannot be used together'
+}
 
 function Copy-ItemSafe {
     param(
@@ -91,6 +98,7 @@ Write-Host "PASS: PowerShell checksum validation succeeded" -ForegroundColor Gre
 $psHash = $result.Hash
 
 if (-not $SkipWsl) {
+    $bashVerified = $false
     $bashScript = 'set -euo pipefail
 root="$1"
 
@@ -137,14 +145,13 @@ rm -f "${tmp}"'
 
                 if ($wslHash -and $psHash -and ($wslHash.ToLowerInvariant() -eq $psHash.ToLowerInvariant())) {
                     Write-Host "PASS: WSL/Bash checksum matches PowerShell" -ForegroundColor Green
+                    $bashVerified = $true
                 } else {
-                    Write-Host "WARN: WSL/Bash checksum did not match PowerShell" -ForegroundColor Yellow
-                    Write-Host "  WSL : $wslHash" -ForegroundColor Yellow
-                    Write-Host "  PS  : $psHash" -ForegroundColor Yellow
+                    throw "WSL/Bash checksum did not match PowerShell`n  WSL : $wslHash`n  PS  : $psHash"
                 }
             }
             catch {
-                Write-Host "WARN: WSL checksum cross-check failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                throw "WSL/Bash checksum cross-check failed: $($_.Exception.Message)"
             }
         }
     } else {
@@ -156,15 +163,18 @@ rm -f "${tmp}"'
 
                 if ($bashHash -and $psHash -and ($bashHash.ToLowerInvariant() -eq $psHash.ToLowerInvariant())) {
                     Write-Host "PASS: Bash checksum matches PowerShell" -ForegroundColor Green
+                    $bashVerified = $true
                 } else {
-                    Write-Host "WARN: Bash checksum did not match PowerShell" -ForegroundColor Yellow
-                    Write-Host "  Bash: $bashHash" -ForegroundColor Yellow
-                    Write-Host "  PS  : $psHash" -ForegroundColor Yellow
+                    throw "Bash checksum did not match PowerShell`n  Bash: $bashHash`n  PS  : $psHash"
                 }
             }
             catch {
-                Write-Host "WARN: Bash checksum cross-check failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                throw "Bash checksum cross-check failed: $($_.Exception.Message)"
             }
         }
+    }
+
+    if ($RequireBash -and -not $bashVerified) {
+        throw 'Bash checksum verification was required but no Bash runtime was available'
     }
 }

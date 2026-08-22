@@ -13,11 +13,19 @@ param(
 
     [switch]$SkipWsl,
 
-    [switch]$Force
+    [switch]$RequireBashChecksum,
+
+    [switch]$Force,
+
+    [switch]$ValidateOutputRootOnly
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($SkipWsl -and $RequireBashChecksum) {
+    throw 'SkipWsl and RequireBashChecksum cannot be used together'
+}
 
 function Copy-ItemSafe {
     param(
@@ -112,11 +120,74 @@ function Resolve-ShortCommit {
     return $resolved
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+function Resolve-NormalizedFullPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Length -gt $pathRoot.Length) {
+        return $fullPath.TrimEnd([char[]]@(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar
+        ))
+    }
+
+    return $fullPath
+}
+
+function Test-IsSameOrChildPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CandidatePath,
+
+        [Parameter(Mandatory)]
+        [string]$RootPath
+    )
+
+    $comparison = if ([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+
+    if ([string]::Equals($CandidatePath, $RootPath, $comparison)) {
+        return $true
+    }
+
+    $rootPrefix = $RootPath + [System.IO.Path]::DirectorySeparatorChar
+    return $CandidatePath.StartsWith($rootPrefix, $comparison)
+}
+
+$repoRoot = Resolve-NormalizedFullPath -Path (Split-Path -Parent $PSScriptRoot)
 $installerSourceRoot = Join-Path $repoRoot 'installer'
 $manifestPath = Join-Path $installerSourceRoot 'file-manifest.config'
 $verifyScriptPath = Join-Path $PSScriptRoot 'verify-bundle-checksum.ps1'
 $validationModulePath = Join-Path $installerSourceRoot 'modules/powershell/ValidationEngine.psm1'
+
+if (-not $OutputRoot) {
+    $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'azurerm-ai-release-dry-run'
+}
+
+$OutputRoot = Resolve-NormalizedFullPath -Path $OutputRoot
+$persistentInstallerRoot = Resolve-NormalizedFullPath -Path (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) '.terraform-azurerm-ai-installer')
+
+if (Test-IsSameOrChildPath -CandidatePath $OutputRoot -RootPath $repoRoot) {
+    throw "OutputRoot must be outside the AI source repository: $repoRoot"
+}
+
+if (Test-IsSameOrChildPath -CandidatePath $OutputRoot -RootPath $persistentInstallerRoot) {
+    throw "OutputRoot must not use the persistent user-profile installer: $persistentInstallerRoot"
+}
+
+if ($ValidateOutputRootOnly) {
+    Write-Output 'Release bundle output boundary validation passed'
+    Write-Output ("  Output Root : {0}" -f $OutputRoot)
+    return
+}
 
 if (-not $Commit) {
     $Commit = Resolve-ShortCommit -RepoRoot $repoRoot
@@ -125,10 +196,6 @@ if (-not $Commit) {
 $Commit = $Commit.Trim().ToLowerInvariant()
 if ($Commit -notmatch '^[0-9a-f]{7,40}$') {
     throw 'commit must be a 7-40 character hexadecimal git sha'
-}
-
-if (-not $OutputRoot) {
-    $OutputRoot = Join-Path $repoRoot 'release-dry-run'
 }
 
 $stageName = ('v{0}-{1}' -f $Version, $Commit) -replace '[^0-9A-Za-z._-]', '_'
@@ -172,11 +239,24 @@ if (-not $checksumResult.Valid) {
 }
 
 if (-not $SkipVerifyChecksum) {
-    & $verifyScriptPath -InstallerRoot $installerRoot -SkipWsl:$SkipWsl
+    & $verifyScriptPath -InstallerRoot $installerRoot -SkipWsl:$SkipWsl -RequireBash:$RequireBashChecksum
     if ($LASTEXITCODE -ne 0) {
         throw 'installer bundle checksum verification failed'
     }
 }
+
+$installerScriptPath = Join-Path $installerRoot 'install-copilot-setup.ps1'
+$versionOutput = @(& pwsh -NoProfile -File $installerScriptPath -Version *>&1)
+if ($LASTEXITCODE -ne 0) {
+    throw "staged installer version command failed: $($versionOutput -join [Environment]::NewLine)"
+}
+
+$versionPattern = '(?mi)^\s*Version\s*:\s*{0}\s*$' -f [regex]::Escape($Version)
+if (($versionOutput | Out-String) -notmatch $versionPattern) {
+    throw "staged installer did not report version $Version"
+}
+
+Write-Host ("PASS: Staged installer reports version {0}" -f $Version) -ForegroundColor Green
 
 Push-Location $stageRoot
 try {
@@ -233,8 +313,9 @@ try {
     }
 
     Write-Host ''
-    Write-Host 'Next step:' -ForegroundColor Cyan
-    Write-Host ('  & "{0}" -RepoDirectory "<path-to-terraform-provider-azurerm>"' -f (Join-Path $installerRoot 'install-copilot-setup.ps1')) -ForegroundColor White
+    Write-Host 'Dry-run checks completed:' -ForegroundColor Cyan
+    Write-Host '  - staged bundle checksum validated' -ForegroundColor White
+    Write-Host ('  - staged installer reported version {0}' -f $Version) -ForegroundColor White
 }
 finally {
     Pop-Location

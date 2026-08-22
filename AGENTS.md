@@ -33,6 +33,15 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Shipped runtime guidance belongs only in files intentionally included by `installer/file-manifest.config`.
 - Repo-only maintainer workflow guidance must stay outside the shipped payload by default.
 
+## Release Validation Safety
+
+- Treat this repository as source-only during release validation.
+- Never run `installer/install-copilot-setup.ps1 -Bootstrap` or `installer/install-copilot-setup.sh -bootstrap` as a release check. Bootstrap overwrites the persistent user-profile installer and belongs only to an explicitly requested contributor workflow.
+- Stage release dry-run output in an external temporary directory, never inside this repository or the persistent user-profile installer.
+- Use reserved version `0.0.1` for release dry runs and require successful checksum validation from both PowerShell and Bash-capable CI before release preparation.
+- Verify the staged installer only through its standalone `-Version` command and require it to report `0.0.1`. Do not pass a repository target or install AI files during the dry run.
+- Treat the active source checkout, persistent user-profile installer, and existing provider working copies as protected state. Do not change branches or write to any of them without explicit maintainer approval for that exact operation.
+
 ## Edit Gate
 
 Before editing AI-toolkit files for a surfaced issue, identify all of the following:

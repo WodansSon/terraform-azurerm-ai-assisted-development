@@ -220,6 +220,7 @@ That command runs the current repo-level maintainer validation flow in one pass:
 - Branch-local regression case runnability validation for changed cases and fixtures
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - System Architecture diagram width, right-edge, and border-padding validation
+- Release dry-run output boundary validation for the source repository and persistent user-profile installer
 - Absolute HTTPS link validation for Markdown copied from the pull request template
 - Regression harness validation and suite scoring
 - Upstream contributor drift detection
@@ -301,6 +302,8 @@ Practical recovery step:
 - Reload the VS Code window so the YAML language service rebuilds diagnostics from the current on-disk files
 
 ### 8. Bootstrap payload matches expectations
+
+Release validation does not use bootstrap. Treat this repository as source-only and stage a reserved-version `0.0.1` dry-run bundle under an external temporary root. The dry run has exactly two outcomes: PowerShell and Bash checksum agreement, and staged-installer `-Version` output equal to `0.0.1`. Attempted Bash mismatches and execution failures must fail rather than warn. Do not pass a repository target or install AI files during this check. The one-shot validator checks that the bundle builder rejects output roots inside this repository and under the persistent user-profile installer.
 
 When the runtime payload changes, confirm bootstrap/install copies the expected runtime files from the manifest and does not accidentally include maintenance tooling.
 
