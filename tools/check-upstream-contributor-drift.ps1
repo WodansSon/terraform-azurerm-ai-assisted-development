@@ -39,6 +39,51 @@ if (-not $manifest.catalog.topicContentsApiUrl) {
     throw "manifest catalog does not contain topicContentsApiUrl"
 }
 
+function Format-DriftStatusLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Status,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Name,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Detail
+    )
+
+    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
+
+    return ("{0,-11}{1,-52}: {2}" -f $statusLabel, $Name, $Detail)
+}
+
+function Start-DriftStage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Name
+    )
+
+    if ($OutputFormat -eq "Text") {
+        Write-Host (Format-DriftStatusLine -Status "running" -Name ("upstream-drift/{0}" -f $Name) -Detail "IN PROGRESS")
+    }
+
+    return (Get-Date)
+}
+
+function Complete-DriftStage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Name,
+
+        [Parameter(Mandatory = $true)]
+        [datetime] $Started
+    )
+
+    if ($OutputFormat -eq "Text") {
+        $durationSeconds = [Math]::Round(((Get-Date) - $Started).TotalSeconds, 2)
+        Write-Host (Format-DriftStatusLine -Status "passed" -Name ("upstream-drift/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+    }
+}
+
 $githubMarkdownRoot = Join-Path $repoRoot ".github"
 $docsMarkdownRoot = Join-Path $repoRoot "docs"
 $markdownRoots = @($githubMarkdownRoot, $docsMarkdownRoot)
@@ -324,7 +369,11 @@ function Get-SourceDriftResults {
     $results
 }
 
+$stageStarted = Start-DriftStage -Name "discover-upstream-topics"
 $upstreamTopicPaths = Get-UpstreamTopicPaths -ContentsApiUrl $manifest.catalog.topicContentsApiUrl
+Complete-DriftStage -Name "discover-upstream-topics" -Started $stageStarted
+
+$stageStarted = Start-DriftStage -Name "scan-local-guidance"
 $trackedTopicMetadata = Get-TrackedTopicMetadata -Sources @($manifest.sources) -TopicBaseRawUrlPrefix $manifest.catalog.topicBaseRawUrlPrefix
 $trackedTopicPaths = @($trackedTopicMetadata.path | Sort-Object -Unique)
 $markdownFiles = @(& {
@@ -468,7 +517,9 @@ $ruleReferencesByTopicPath = @($dynamicRuleTopicReferences | ForEach-Object {
         rules = @($_.Group | Sort-Object file, ruleId)
     }
 })
+Complete-DriftStage -Name "scan-local-guidance" -Started $stageStarted
 
+$stageStarted = Start-DriftStage -Name "evaluate-catalog-and-rules"
 $untrackedUpstreamTopicPaths = @($upstreamTopicPaths | Where-Object { $trackedTopicPaths -notcontains $_ } | Sort-Object -Unique)
 $dynamicallyReferencedTrackedTopicPaths = @($trackedTopicPaths | Where-Object { $allLocalTopicReferencePaths -contains $_ } | Sort-Object -Unique)
 $trackedTopicPathsWithoutExplicitLocalReferences = @($trackedTopicPaths | Where-Object { $allLocalTopicReferencePaths -notcontains $_ } | Sort-Object -Unique)
@@ -530,7 +581,9 @@ $ruleIssuesByFile = @($ruleIssues | Group-Object file | Sort-Object Name | ForEa
         rules = @($_.Group | Sort-Object ruleId)
     }
 })
+Complete-DriftStage -Name "evaluate-catalog-and-rules" -Started $stageStarted
 
+$stageStarted = Start-DriftStage -Name "fetch-and-map-tracked-sources"
 $sourceResults = Get-SourceDriftResults -Sources @($manifest.sources) | ForEach-Object {
     $source = $_
     $topicPath = $null
@@ -586,6 +639,7 @@ $sourceResults = Get-SourceDriftResults -Sources @($manifest.sources) | ForEach-
         error = $source.error
     }
 }
+Complete-DriftStage -Name "fetch-and-map-tracked-sources" -Started $stageStarted
 
 $changed = @($sourceResults | Where-Object { $_.status -eq "changed" })
 $failed = @($sourceResults | Where-Object { $_.status -eq "fetch-failed" })

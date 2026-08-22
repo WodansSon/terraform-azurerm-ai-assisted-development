@@ -221,17 +221,18 @@ If evidence is missing for a behavior-changing claim, do not guess.
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks
   - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined
 
-### IMPL-SCHEMA-005: Keep custom schema validation service-local and readable
-- Rule: Reuse shared validators such as `commonids.Validate...`, `validation.StringInSlice(...)`, `validation.All(...)`, or other established helpers when they already model the constraint.
-- Rule: Keep helper composition inline in the schema only when the validation remains short, field-local, and immediately readable at the schema call site.
-- Rule: When introducing a new bespoke validator, or materially updating an existing bespoke validator, extract the validation into that service's `validate/` folder instead of embedding that logic in an anonymous inline `ValidateFunc` closure.
-- Rule: Name validator files for the validated subject where practical, for example `validate/{{VALIDATOR_SUBJECT}}.go`, and add the matching unit test file such as `validate/{{VALIDATOR_SUBJECT}}_test.go`.
-- Rule: Anonymous inline `ValidateFunc` closures are acceptable only for narrow one-off checks whose full logic is still trivially readable where they are declared. If the closure is reused, materially longer than a short helper composition, or obscures the schema shape, move it into a named validator file under `validate/` when that validator is new or materially updated.
+### IMPL-SCHEMA-005: Prefer inline composition; extract only genuinely complex bespoke validation
+- Rule: Reuse and compose established validators such as `commonids.Validate...`, `validation.StringInSlice(...)`, `validation.All(...)`, `validation.Any(...)`, and other shared helpers directly in the schema when they collectively express the field constraint.
+- Rule: Prefer inline helper composition even when it uses nested combinators. Do not create a custom wrapper function, a service-local `validate/` file, or a wrapper-only unit test merely to move an understandable composition away from the schema.
+- Rule: Move validation into the same service's `validate/` folder only when the constraint requires genuinely complex bespoke logic that cannot remain clear through composition of established helpers, for example substantial custom control flow, loops, or multi-stage checks.
+- Rule: Name genuinely complex validator files for the validated subject where practical, for example `validate/{{VALIDATOR_SUBJECT}}.go`, and add the matching unit test file such as `validate/{{VALIDATOR_SUBJECT}}_test.go`.
+- Rule: Do not leave genuinely complex bespoke validation in a long anonymous inline `ValidateFunc` closure. Conversely, do not treat nested helper composition as bespoke logic solely because it spans several lines.
 - Rule: Existing legacy validator placement or legacy inline validation outside the changed scope is not, by itself, a migration issue that requires churn-only refactoring.
-- **Provenance**: Local safeguard.
+- **Provenance**: Inferred maintainer convention.
 - **Evidence**:
-  - Current workspace regression fixtures already model service-local validator files under `internal/services/<service>/validate/` with matching test files such as `validate/hostname.go` and `validate/hostname_test.go`
-  - Current workspace contributor guidance in `.github/copilot-instructions.md` documents service-local validation artifacts as part of the standard service layout
+  - Accepted maintainer review precedent in `https://github.com/hashicorp/terraform-provider-azurerm/pull/33023#discussion_r3779746650` requested replacing a custom validator and its unit test with inline `validation.All(...)` and `validation.Any(...)` composition
+  - Merged upstream implementation in `https://github.com/hashicorp/terraform-provider-azurerm/commit/e4dbe7e66af3ea58f7919b77c3d13b9da924ea97` applies that inline composition after maintainer approval
+  - Current workspace regression fixtures retain service-local validator files with matching unit tests for genuinely complex bespoke logic while protecting readable inline helper composition
 
 ### IMPL-SCHEMA-006: Normalize resource IDs before setting them into state
 - Rule: Always parse resource IDs through their typed parser before persisting them into Terraform state when the value came from API output or other external input that may vary in static-segment casing.

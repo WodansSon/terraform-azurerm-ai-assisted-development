@@ -323,9 +323,10 @@ return fmt.Errorf("account_tier can't be %s", tier)
 - Follow Go standards: lowercase, no punctuation
 
 **Schema Validation Placement:**
-- Reuse shared validators inline when they already express the field constraint clearly
-- For new or materially updated bespoke schema validators, put them in the same service's `validate/` folder as a file-specific validator, for example `validate/{{VALIDATOR_SUBJECT}}.go`, with a matching unit test such as `validate/{{VALIDATOR_SUBJECT}}_test.go`
-- Reserve anonymous inline `ValidateFunc` closures for short one-off checks that stay immediately readable at the schema site
+- Reuse and compose established validators inline when they express the field constraint, including nested `validation.All(...)` and `validation.Any(...)` compositions
+- Do not create a custom wrapper function, `validate/` file, or wrapper-only unit test merely to move an understandable helper composition away from the schema
+- For genuinely complex bespoke validation that requires substantial custom control flow, loops, or multi-stage checks, use the same service's `validate/` folder with a file named for the validated subject and a matching unit test
+- Do not leave genuinely complex custom validation in a long anonymous inline `ValidateFunc` closure
 
 **Resource Lifecycle:**
 - Implement proper CRUD operations

@@ -1,0 +1,61 @@
+{
+  "id": "review-local-validator-placement-precedence",
+  "title": "Local review preserves inline validator composition and flags only complex custom logic",
+  "task": "code-review-local-changes",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "real-pr",
+    "originSummary": "Sanitized benchmark derived from accepted maintainer review in hashicorp/terraform-provider-azurerm PR #33023.",
+    "whyItMattered": "The local reviewer must follow the accepted preference for inline composition of established validators without losing the validate-package exception for genuinely complex custom logic.",
+    "genericCondition": "Sanitized fixture models a local Go review containing both understandable nested helper composition and a genuinely complex anonymous custom parser.",
+    "notes": "Accepted review: https://github.com/hashicorp/terraform-provider-azurerm/pull/33023#discussion_r3779746650; merged commit: https://github.com/hashicorp/terraform-provider-azurerm/commit/e4dbe7e66af3ea58f7919b77c3d13b9da924ea97"
+  },
+  "sanitized": true,
+  "description": "A sanitized local-review scenario where nested validation.All/validation.Any composition should remain inline while a separate complex anonymous parser should move into the service-local validate package with unit coverage.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-local-validator-placement-precedence/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_resource.go"
+    ],
+    "notes": "Sanitized fixture models a local validator-placement review without retaining live resource identity."
+  },
+  "expectedRules": [
+    "REVIEW-SCOPE-005",
+    "IMPL-SCHEMA-005"
+  ],
+  "mustCatch": [
+    {
+      "key": "complex-inline-validator-needs-validate-file",
+      "severity": "medium",
+      "file": "internal/services/example/example_resource.go",
+      "description": "The local review should flag the genuinely complex anonymous routing-expression parser and require a subject-specific validate file with matching unit coverage."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "nested-helper-composition-needs-wrapper",
+      "description": "The local review must not request a custom wrapper, validate file, or wrapper-only unit test for understandable nested validation.All/validation.Any composition."
+    }
+  ],
+  "expectedTools": {
+    "azurermLinter": "run"
+  },
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "FILES CHANGED",
+      "AZURERM LINTER",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "IMPL-SCHEMA-005",
+      "path_match",
+      "routing_expression"
+    ]
+  },
+  "notes": "Use this paired case to prevent the local reviewer from reviving wrapper-only validator extraction while retaining the complex-validation exception."
+}

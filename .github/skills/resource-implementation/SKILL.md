@@ -158,7 +158,8 @@ return fmt.Errorf("creating %s: %+v", id, err)
    - Avoid ambiguous collection-shaped schemas where multiple entries can describe the same conceptual slot.
    - Use singular names for configured object blocks and plural names for primitive or computed multi-value collections.
    - Use consistent validation and error message formats.
-   - Reuse shared validators first, keep short helper composition inline, and for new or materially updated bespoke `ValidateFunc` logic move it into the same service's `validate/` folder as a file-specific validator with matching unit coverage instead of relying on long anonymous inline closures.
+   - Reuse and compose established validators directly in the schema, including nested `validation.All(...)` and `validation.Any(...)`; do not create a wrapper function, `validate/` file, or wrapper-only unit test merely to relocate understandable helper composition.
+   - Move only genuinely complex bespoke `ValidateFunc` logic that requires substantial custom control flow, loops, parsing, or multi-stage checks into the same service's `validate/` folder with matching unit coverage, rather than leaving it in a long anonymous inline closure.
    - Do not spend scope churning untouched legacy validator placement unless the task is already modifying that validator.
    - When `CustomizeDiff` traverses nested `cty.Value` data from `GetRawConfig()`, guard `LengthInt()`, `AsValueSlice()`, and `AsValueMap()` with `IsKnown()` first and defer validation for unknown values, following `IMPL-SCHEMA-013`.
    - Treat read-side ID handling as case-insensitive by parsing import input, stored IDs, and Azure-returned IDs through the shared typed parser instead of comparing raw strings.

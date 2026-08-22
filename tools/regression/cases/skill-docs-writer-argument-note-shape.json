@@ -1,18 +1,18 @@
 {
   "id": "skill-docs-writer-argument-note-shape",
-  "title": "Docs-writer guidance fixes canonical argument wording and note placement",
+  "title": "Docs-writer preserves required argument sentences and splits only supplemental detail",
   "task": "docs-writer",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
     "originKind": "synthetic-design",
     "originSummary": "Derived from a sanitized real PR or review incident.",
-    "whyItMattered": "Use this as the direct docs-writer skill benchmark for existing-page remediation without scaffold drift.",
-    "genericCondition": "Sanitized fixture models a real docs-writer request against an existing docs page without retaining live PR identity. The modeled changed path stays under `website/docs/` for realistic skill routing, while the fixture content lives under `tools/regression/fixtures/`.",
+    "whyItMattered": "Use this as the direct docs-writer benchmark for semantic concision: required definition, enum, default, and ForceNew sentences remain in the bullet while actual supplemental detail moves to a note.",
+    "genericCondition": "Sanitized fixture models a docs-writer request against an existing resource page whose argument bullet combines required standard semantics with one supplemental caveat.",
     "notes": ""
   },
   "sanitized": true,
-  "description": "A sanitized direct docs-writer scenario where an existing resource page drifts on canonical enum wording and default placement, and the correct output should edit the page in place without inventing unsupported schema claims.",
+  "description": "A sanitized direct docs-writer scenario where an existing resource argument has four required standard sentences plus one supplemental caveat. The correct output should preserve the required sentences and move only the caveat into an adjacent note.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/skill-docs-writer-argument-note-shape/README.md"
@@ -41,6 +41,12 @@
       "severity": "medium",
       "file": "website/docs/r/example_gateway.html.markdown",
       "description": "The docs-writer response should keep the default value inline in the argument bullet rather than moving it into a detached note."
+    },
+    {
+      "key": "supplemental-caveat-note-split",
+      "severity": "medium",
+      "file": "website/docs/r/example_gateway.html.markdown",
+      "description": "The docs-writer response should move the supplemental selection caveat into an adjacent informational note while preserving required standard semantics in the bullet."
     }
   ],
   "mustNotFlag": [
@@ -51,6 +57,10 @@
     {
       "key": "scaffold-existing-page",
       "description": "The response must not treat scaffolding as the default remediation for an existing docs page."
+    },
+    {
+      "key": "four-standard-sentences-over-limit",
+      "description": "The response must not treat the definition, Possible values, Defaults to, and ForceNew sentences as excessive merely because together they total four sentences."
     }
   ],
   "expectedTools": {},
@@ -60,5 +70,5 @@
       "Skill used: docs-writer"
     ]
   },
-  "notes": "Use this as the direct docs-writer skill benchmark for existing-page remediation without scaffold drift."
+  "notes": "Use this as the direct docs-writer benchmark for semantic concision without sentence-count false positives."
 }

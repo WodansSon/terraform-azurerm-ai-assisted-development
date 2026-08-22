@@ -233,7 +233,7 @@ if ($OutputFormat -eq 'Json') {
 }
 else {
     Write-Output 'Changelog taxonomy validation summary'
-    Write-Output ("  Status            : {0}" -f $result.status)
+    Write-Output ("  Status            : {0}" -f $result.status.ToUpperInvariant())
     Write-Output ("  Changelog Path    : {0}" -f $result.changelogPath)
     Write-Output ("  Section           : {0}" -f $result.section)
     Write-Output ("  Bullets Checked   : {0}" -f $result.bulletsChecked)

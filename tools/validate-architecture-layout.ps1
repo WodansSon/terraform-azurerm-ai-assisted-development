@@ -100,7 +100,7 @@ if ($OutputFormat -eq 'Json') {
 }
 else {
     Write-Output 'Architecture layout validation summary'
-    Write-Output ("  Status               : {0}" -f $result.status)
+    Write-Output ("  Status               : {0}" -f $result.status.ToUpperInvariant())
     Write-Output ("  Architecture Path    : {0}" -f $result.architecturePath)
     Write-Output ("  Expected Row Width   : {0}" -f $result.expectedWidth)
     Write-Output ("  Validated Rows       : {0}" -f $result.validatedRowCount)

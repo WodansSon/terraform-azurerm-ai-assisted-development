@@ -230,7 +230,7 @@ Internal multi-pass audit (mandatory):
     - Block shape + subsection placement/order (`DOCS-SHAPE-001/002/003/004/005`)
     - Nested field ordering inside each block subsection (`DOCS-SHAPE-006`, `DOCS-ATTR-005`)
     - Bullet conciseness + note splitting (`DOCS-ARG-011`, `DOCS-NOTE-*`)
-    - Trigger (mandatory; prevents misses): in resource docs, if any argument bullet contains more than 2 sentences OR mixes definition text with validation-style constraints (length/charset/regex/start/end rules) OR contains both a long constraints clause and the ForceNew sentence, you MUST treat it as a `DOCS-ARG-011` failure and split the constraints into an inline note under the bullet.
+    - Trigger (mandatory; prevents false positives and misses): evaluate argument-bullet concision by content, not sentence count. Keep the field definition and applicable standard `Possible values`, range/constraint, `Defaults to`, and ForceNew sentences in the bullet. Treat `DOCS-ARG-011` as failed only when you can identify specific supplemental caveats, setup instructions, rationale, examples, external guidance, conditional requirements, or extended explanation that should move to an inline note; do not emit an Issue solely because required standard semantics produce more than two sentences.
     - Data source rule (mandatory): in data source docs, if a field bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
     - List-resource rule (mandatory): in list-resource docs, if a query-argument bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
     - Ephemeral-resource rule (mandatory): in ephemeral-resource docs, if an argument or attribute bullet contains extended caveats or a field-level note block, you MUST treat it as a contract failure and require the text to be reduced to a short explanation of what the field is.
@@ -335,7 +335,7 @@ Skill footer rule (mandatory; prevents duplicate sections):
 - **Frontmatter**: Pass/Fail + missing keys (if any)
 - **Section Order**: Pass/Fail + missing sections (if any)
 - **Argument Ordering**: Pass/Fail (resource/data source/ephemeral docs: ID segments first per contract ordering, `location` next when present, remaining required alphabetical, then optional alphabetical, `tags` last; list-resource docs: query arguments alphabetical; function docs: arguments follow signature order)
-- **Argument Bullet Conciseness**: Pass/Fail (resource docs: long bullets split into inline notes per `DOCS-ARG-011`; data source, list-resource, ephemeral-resource, and function docs: entries stay short and field-definitional)
+- **Argument Bullet Conciseness**: Pass/Fail (resource docs: identified supplemental content split into inline notes per `DOCS-ARG-011`; data source, list-resource, ephemeral-resource, and function docs: entries stay concise and field-definitional)
 - **Nested Block Field Ordering**: Pass/Fail (nested args: required alpha then optional alpha, `tags` last via `DOCS-SHAPE-006`; nested attrs: `id` first then alpha via `DOCS-ATTR-005`)
 - **Schema Shape**: Pass/Fail (docs describe blocks vs inline fields consistently with schema)
 - **Attributes Coverage**: Pass/Fail (`id` first, computed attrs present, remaining alphabetical; no other exceptions)

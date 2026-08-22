@@ -390,6 +390,8 @@ That top-level runner executes the stable harness flow in order:
 - History snapshot capture
 - History summary generation
 
+In text mode, the runner reports each internal stage with uppercase `[RUNNING]`, `[PASSED]`, or `[FAILED]` statuses. These tagged milestones are also relayed by `tools/validate-ai-toolkit.ps1`, making progress visible while the complete harness output remains buffered for the final validation summary. JSON output contains only the machine-readable result.
+
 This keeps the day-to-day harness UX to one command while preserving the lower-level scripts for debugging, CI composition, and targeted troubleshooting.
 
 ## Single-Case Orchestrator

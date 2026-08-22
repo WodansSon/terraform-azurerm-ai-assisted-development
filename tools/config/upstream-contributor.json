@@ -96,7 +96,7 @@
       "title": "AzureRM Pull Request Template",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/.github/pull_request_template.md",
       "referenceUrl": "https://github.com/hashicorp/terraform-provider-azurerm/blob/main/.github/pull_request_template.md",
-      "baselineSha256": "7b7bc0e9b551a1f4b0b6047b715449f0f91e0615fc3cd99e113bbff27d6ae4a7",
+      "baselineSha256": "6c02f86d32b41354f7800d3d210611d7b225e1b46e022cf8157543f41d05d4f0",
       "reviewNotes": [
         "Review template headings, checklist wording, required disclosure sections, and section order against the PR description contract, skill, schema, and regression fixtures."
       ]
@@ -116,7 +116,7 @@
       "domain": "implementation",
       "title": "Schema Design Considerations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/schema-design-considerations.md",
-      "baselineSha256": "9ffcde32590e75172c57a66c7de7b4f8194148ddd801f92fead0b8ab3bc60cb9",
+      "baselineSha256": "1b1b12cfb8962cde476e15a68e84f89595c9eee0a273ab51800aaafe7a4dfa30",
       "reviewNotes": [
         "Covers schema-shape choices, Enabled/None patterns, validation expectations, and preview-field rules."
       ]
@@ -186,7 +186,7 @@
       "domain": "api-versioning",
       "title": "Guide: ARM API Versions",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-api-version.md",
-      "baselineSha256": "ee707bc3142b2d5b5313299c1c46f4995326f990eb947422a8c1dd224627ef99",
+      "baselineSha256": "7cf7f0b75da21f9f867b13bec8e32c649e076385fcc56e63c98a3ba77989a4b3",
       "reviewNotes": [
         "Primary upstream source for stable-versus-preview ARM API selection, preview-api exception criteria, and preview linter expectations."
       ]
@@ -196,9 +196,9 @@
       "domain": "breaking-changes-and-deprecations",
       "title": "Guide: Breaking Changes and Deprecations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md",
-      "baselineSha256": "8c2d5dac53f416f621dd0d8e5563f3568803960c221dfc414a61d62a9c8874cd",
+      "baselineSha256": "4a171e794e0b9c0a4614142a74d0ffe3e4dccd20185ad2704522a1007030ee08",
       "reviewNotes": [
-        "Primary upstream source for breaking-change handling, FivePointOh feature-flag staging, upgrade-guide expectations, and deprecation cleanup."
+        "Primary upstream source for breaking-change handling, SixPointOh feature-flag staging, upgrade-guide expectations, and deprecation cleanup."
       ]
     },
     {
@@ -206,7 +206,7 @@
       "domain": "implementation-and-framework-list",
       "title": "Guide: List Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-list-resource.md",
-      "baselineSha256": "38068aec9b25abb1d579b669653bb444ea5b48555fc3d865c24d7aff0e191e8f",
+      "baselineSha256": "6642bc6593814ff787ff7377ad14b11bfbacdc0502d2d5e823398607d84c3dff",
       "reviewNotes": [
         "Primary upstream source for framework list resources, identity prerequisites, flatten reuse, TF 1.14 query tests, and list-resource docs."
       ]
@@ -236,7 +236,7 @@
       "domain": "implementation",
       "title": "Guide: Extending a Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-resource.md",
-      "baselineSha256": "2f7df0f0eb82b191715669fba8845191dc06d46d378211cb4ee58615ef944ad5",
+      "baselineSha256": "d303bf8fa3e04787a3efe70dedb54ffb829cfb0f3a6497065c2f9011bd33de36",
       "reviewNotes": [
         "Primary upstream source for extending existing resources with schema, CRUD, tests, docs, and default-value breaking-change review."
       ]
@@ -276,7 +276,7 @@
       "domain": "schema-design",
       "title": "Guide: Resource Identity",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-resource-identity.md",
-      "baselineSha256": "05d7bb4ea6c10dc5b6e4c6bf6048559c7aafa478b948670015a0508c36627d8e",
+      "baselineSha256": "f88eb64456a0d6f8d2badc7a7e137af0d477155f6b71e5d0c425427d2c40913b",
       "reviewNotes": [
         "Primary upstream source for resource identity schema, SetResourceIdentityData usage, generated tests, and current generator limitations."
       ]
@@ -297,7 +297,7 @@
       "domain": "migration",
       "title": "Guide: State Migrations",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-state-migrations.md",
-      "baselineSha256": "ea11aa133905df4b595bf0758c2d9651a52f6c1fbdc0566076a7392ce3dce602",
+      "baselineSha256": "96ab647f6bb85a2fd8cad89f023e4cc3f14aa997233183df2a55941dcf8df2a7",
       "reviewNotes": [
         "Primary upstream source for migration file conventions, stripped schema copies, ResourceWithStateMigration wiring, and manual migration testing."
       ]

@@ -1,8 +1,8 @@
 {
-  "caseId": "skill-docs-writer-argument-note-shape",
-  "runId": "sample-docswriter-001",
-  "timestampUtc": "2026-05-02T00:00:00Z",
-  "task": "docs-writer",
+  "caseId": "review-docs-argument-semantic-concision",
+  "runId": "sample-docs-semantic-concision-001",
+  "timestampUtc": "2026-08-22T00:00:00Z",
+  "task": "code-review-docs",
   "model": "sample",
   "pass": true,
   "overallScore": 100,
@@ -16,16 +16,14 @@
   },
   "findings": {
     "caught": [
-      "canonical-enum-phrasing",
-      "inline-default-placement",
-      "supplemental-caveat-note-split"
+      "supplemental-caveat-needs-note"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 3,
-    "total": 3
+    "matched": 1,
+    "total": 1
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
@@ -39,5 +37,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for semantic argument-bullet concision in the direct docs-writer workflow."
+  "notes": "Example adjudicated result for semantic argument-bullet concision in docs review."
 }
