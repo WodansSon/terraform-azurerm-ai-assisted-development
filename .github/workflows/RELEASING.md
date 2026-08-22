@@ -54,9 +54,7 @@ pwsh -NoProfile -File ./tools/validate-changelog-taxonomy.ps1
 pwsh -NoProfile -File ./tools/validate-changelog-consistency.ps1
 ```
 
-Make the versioned changelog cut in `CHANGELOG.md` before asking for release approval. Move the current `Unreleased` notes into a new section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape:
-
-When you are actually cutting the release, move those `Unreleased` notes into a new versioned changelog section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape:
+The dry-run checks in the previous phase validate the release candidate without changing `CHANGELOG.md`, creating a release commit, or publishing anything. After those checks pass, begin the actual release preparation by moving the current `Unreleased` notes into a new section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape; make this versioned changelog cut before asking for release approval.
 
 ```markdown
 ## [1.0.0] - 2025-10-21
