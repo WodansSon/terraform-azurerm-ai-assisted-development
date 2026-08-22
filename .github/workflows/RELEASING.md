@@ -13,14 +13,23 @@ The established release path has four distinct phases:
 
 Do not collapse these phases into one checklist. In particular, pre-release checks happen before the changelog release cut, and pushing the version tag is the action that starts public release publication.
 
+### Release validation boundary
+
+This repository is the source of the AI infrastructure. Release validation MUST preserve these boundaries:
+
+- Do not run `installer/install-copilot-setup.ps1 -Bootstrap` or `installer/install-copilot-setup.sh -bootstrap`. Bootstrap is a contributor workflow that overwrites the persistent user-profile installer; it is not a release validation step.
+- Do not stage dry-run output anywhere inside this source repository or under the persistent user-profile installer. `tools/build-release-bundle_dry_run.ps1` defaults to an external temporary directory and rejects those protected roots.
+- Run only the staged installer's standalone `-Version` command during the dry run. Do not pass `-RepoDirectory`, `-repo-directory`, or any installation target; the dry run does not install AI files.
+- Do not checkout, pull, or otherwise change the active source-repository branch during release validation without explicit maintainer approval.
+
 ### 1. Confirm pre-release checks are complete
 
 Before starting release preparation, confirm that the maintainer has completed the pre-release checks against the current `main` release candidate:
 
 - the full one-shot validation passed
-- the bootstrap installer path was smoke-tested
-- a release-shaped dry-run bundle was built and its checksum verified
-- one install smoke from that dry-run bundle passed against a local `terraform-provider-azurerm` checkout
+- a reserved-version `0.0.1` release bundle was built under an external temporary fake user directory
+- the staged bundle checksum passed PowerShell validation and matched the Bash implementation
+- the staged installer reported version `0.0.1`
 
 The normal one-shot validation command is:
 
@@ -31,10 +40,12 @@ pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
 The normal dry-run bundle command is:
 
 ```powershell
-pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version X.Y.Z -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
+pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 0.0.1 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -SkipWsl -Force
 ```
 
-The bootstrap check confirms the contributor path. The dry-run release bundle confirms the release-artifact path without publishing anything publicly.
+This Windows command validates the release-shaped package and checksum with PowerShell without invoking WSL. The non-Windows installer-validation jobs MUST pass `-RequireBash`, which recomputes the staged payload checksum with Bash and fails on an unavailable runtime, execution error, or mismatch. Do not consider the checksum gate complete unless both the Windows PowerShell job and a non-Windows Bash-required job pass for the release candidate.
+
+Version `0.0.1` is the reserved dry-run sentinel: the project is already beyond the `0.x` release line, and it differs from the in-repo `0.0.0` placeholder so the dry run proves that version stamping occurred. The dry-run bundle confirms the release-artifact, checksum, and version-reporting paths without publishing anything publicly or modifying the source repository or persistent user-profile installer.
 
 When assisting with a release, ask whether these checks are already complete. If the maintainer confirms that they are complete, do not rerun or restart the pre-release phase. Proceed to release-structure and changelog validation.
 
@@ -244,7 +255,7 @@ The release tag is also the source of truth for installer bundle version stampin
 This is the detailed reference for the dry-run bundle check in pre-release phase 1. Complete it before starting the changelog release cut:
 
 ```powershell
-pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
+pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 0.0.1 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
 ```
 
 That dry run:
@@ -252,9 +263,10 @@ That dry run:
 - stages the same installer layout as the release workflow
 - stamps `VERSION`, `commit`, and `aii.checksum`
 - verifies the staged bundle checksum
+- runs the staged PowerShell installer with `-Version` and requires it to report `0.0.1`
 - creates the same ZIP and TAR.GZ installer archives without publishing them
 
-After the dry run succeeds, run one installer smoke from the staged bundle against a local `terraform-provider-azurerm` checkout.
+Checksum and version reporting are the only purposes of this pre-release dry run. It is complete only when PowerShell validation succeeds, the Bash-computed hash matches, and the staged installer reports `0.0.1`. Use `-RequireBashChecksum` on a Bash-capable environment to make that cross-check mandatory; on Windows without a permitted Bash runtime, use `-SkipWsl` and rely on the required non-Windows CI job for the Bash half.
 
 Use a throwaway test tag only if you specifically need to validate the GitHub release workflow itself rather than the bundle contents.
 
@@ -288,8 +300,8 @@ After creating a release:
 
 Important distinction:
 
-- the bootstrap install is still the pre-release maintainer smoke for the contributor path
-- the dry-run release bundle is the pre-release maintainer smoke for the release-artifact path
+- bootstrap is a contributor-only workflow and is excluded from release validation because it overwrites the persistent user-profile installer
+- the externally staged reserved `0.0.1` bundle is the pre-release checksum and version-reporting smoke for the release-artifact path on PowerShell and Bash
 - the published release-bundle install smoke remains a post-release verification step against the real public artifact
 
 ## Rollback Process

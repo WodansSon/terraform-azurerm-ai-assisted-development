@@ -31,6 +31,7 @@ $architectureLayoutScriptPath = Join-Path $PSScriptRoot 'validate-architecture-l
 $copiedMarkdownLinksScriptPath = Join-Path $PSScriptRoot 'validate-copied-markdown-links.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
+$releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
 
 $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
@@ -513,6 +514,34 @@ try {
 
     $steps += Invoke-ValidationStep -Name 'architecture-layout' -Detail 'Validate the System Architecture diagram row width, right edge, and border padding.' -Command {
         & pwsh -NoProfile -File $architectureLayoutScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'release-boundaries' -Detail 'Validate that release dry-run output defaults outside the AI source repository and rejects source-tree or persistent-installer roots.' -Command {
+        $defaultOutput = @(& pwsh -NoProfile -File $releaseBundleScriptPath -Version '0.0.0-validation' -ValidateOutputRootOnly 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "default release output boundary validation failed: $($defaultOutput -join [Environment]::NewLine)"
+        }
+
+        $sourceProbePath = Join-Path $repoRoot '.release-boundary-validation-probe'
+        if (Test-Path -LiteralPath $sourceProbePath) {
+            throw "release boundary probe path already exists: $sourceProbePath"
+        }
+
+        $sourceOutput = @(& pwsh -NoProfile -File $releaseBundleScriptPath -Version '0.0.0-validation' -OutputRoot $sourceProbePath -ValidateOutputRootOnly 2>&1)
+        if ($LASTEXITCODE -eq 0 -or ($sourceOutput | Out-String) -notmatch 'outside the AI source repository') {
+            throw 'release bundle builder did not reject an OutputRoot inside the AI source repository'
+        }
+        if (Test-Path -LiteralPath $sourceProbePath) {
+            throw "release boundary validation wrote inside the AI source repository: $sourceProbePath"
+        }
+
+        $persistentInstallerRoot = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) '.terraform-azurerm-ai-installer'
+        $profileOutput = @(& pwsh -NoProfile -File $releaseBundleScriptPath -Version '0.0.0-validation' -OutputRoot $persistentInstallerRoot -ValidateOutputRootOnly 2>&1)
+        if ($LASTEXITCODE -eq 0 -or ($profileOutput | Out-String) -notmatch 'must not use the persistent user-profile installer') {
+            throw 'release bundle builder did not reject the persistent user-profile installer as OutputRoot'
+        }
+
+        $global:LASTEXITCODE = 0
     }
 
     $steps += Invoke-ValidationStep -Name 'copied-markdown-links' -Detail 'Validate that links copied from the pull request template remain valid outside their source file.' -Command {

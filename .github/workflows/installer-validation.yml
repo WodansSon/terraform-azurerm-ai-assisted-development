@@ -7,6 +7,7 @@ on:
       - 'installer/**'
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
+      - 'tools/build-release-bundle_dry_run.ps1'
       - 'tools/verify-bundle-checksum.ps1'
       - '.github/workflows/installer-validation.yml'
   pull_request:
@@ -15,6 +16,7 @@ on:
       - 'installer/**'
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
+      - 'tools/build-release-bundle_dry_run.ps1'
       - 'tools/verify-bundle-checksum.ps1'
       - '.github/workflows/installer-validation.yml'
 
@@ -125,7 +127,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: pwsh
         run: |
-          pwsh -NoProfile -File ./tools/verify-bundle-checksum.ps1 -StageFromRepo
+          pwsh -NoProfile -File ./tools/verify-bundle-checksum.ps1 -StageFromRepo -RequireBash
 
   validate-bash:
     name: Validate Bash Scripts
