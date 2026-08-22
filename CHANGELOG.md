@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [3.9.0] - 2026-08-22
+
+### Added
+
+### Changed
+
 - **User-Priority:**
   - **[Docs]** - Documentation reviews and writing now evaluate argument-description concision by content rather than sentence count, preserving required possible-value, default, and ForceNew wording while moving only supplemental detail into notes.
 
@@ -767,7 +775,8 @@ This project was originally submitted as [PR #29907](https://github.com/hashicor
 - **Minor version (0.X.0)**: New features, new instruction modules, significant enhancements
 - **Patch version (0.0.X)**: Bug fixes, documentation updates, minor improvements
 
-[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.8.0...HEAD
+[Unreleased]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/compare/v3.9.0...HEAD
+[3.9.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.9.0
 [3.8.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.8.0
 [3.7.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.7.0
 [3.6.0]: https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases/tag/v3.6.0
