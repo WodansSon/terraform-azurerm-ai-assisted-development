@@ -1,0 +1,68 @@
+{
+  "id": "review-docs-argument-semantic-concision",
+  "title": "Docs review evaluates argument concision by content instead of sentence count",
+  "task": "code-review-docs",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "maintainer-authored",
+    "originSummary": "Sanitized benchmark derived from a maintainer-reported docs-review false positive.",
+    "whyItMattered": "The reviewer treated four upstream-required semantic sentences as a DOCS-ARG-011 failure solely because they exceeded a local two-sentence cap.",
+    "genericCondition": "Sanitized fixture models a resource argument bullet containing required definition, enum, default, and ForceNew sentences plus one genuinely supplemental caveat.",
+    "notes": "The benchmark retains no live pull request, resource, contributor, or coworker identity."
+  },
+  "sanitized": true,
+  "description": "A sanitized docs-review scenario where four required standard sentences are compliant, but an additional supplemental caveat should move to an adjacent note. The review must flag only the caveat and must not use sentence count as evidence.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/review-docs-argument-semantic-concision/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "website/docs/r/example_gateway.html.markdown"
+    ],
+    "notes": "Sanitized fixture models a resource docs review without retaining live incident identity."
+  },
+  "expectedRules": [
+    "DOCS-ARG-003",
+    "DOCS-ARG-004",
+    "DOCS-ARG-005",
+    "DOCS-ARG-008",
+    "DOCS-ARG-009",
+    "DOCS-ARG-011",
+    "DOCS-NOTE-003"
+  ],
+  "mustCatch": [
+    {
+      "key": "supplemental-caveat-needs-note",
+      "severity": "medium",
+      "file": "website/docs/r/example_gateway.html.markdown",
+      "description": "The docs review should identify the supplemental selection caveat as non-core content and require it to move into an adjacent informational note."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "four-required-sentences-exceed-cap",
+      "description": "The review must not flag the definition, Possible values, Defaults to, and ForceNew sentences merely because their combined count is four."
+    },
+    {
+      "key": "move-required-semantics-to-note",
+      "description": "The review must not move enum, default, or ForceNew semantics out of the argument bullet."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "CHANGE SUMMARY",
+      "DETAILED TECHNICAL REVIEW",
+      "ISSUES"
+    ],
+    "mustIncludeMarkers": [
+      "DOCS-ARG-011",
+      "Possible values are",
+      "Defaults to",
+      "Changing this forces a new resource to be created"
+    ]
+  },
+  "notes": "Use this case to prevent sentence-count-only DOCS-ARG-011 findings while retaining upstream concision and note placement."
+}

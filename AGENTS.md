@@ -18,6 +18,8 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Before proposing workflow-contract or prompt fixes for pasted editor-local links, distinguish between runtime-rendered link rewriting and actual payload/body path generation defects.
 - When evaluating generated PR-description output during live testing, assess factual support, surface and lifecycle attribution, scope completeness, and HashiCorp template and changelog compliance. Do not turn that evaluation into an independent code review, adjudicate implementation correctness, or reconstruct historical behavior beyond what is necessary to identify unsupported or misattributed draft claims.
 - Do not convert diagnosis or wording discussion into code edits unless the user explicitly asks to make the change.
+- Ask clarification and approval questions through natural conversational dialogue. Do not use multiple-choice questions or question widgets.
+- Treat a terminal with an active command as exclusively owned by that execution until it completes. Never issue another command into the same terminal; use a separate terminal for concurrent diagnostics.
 - Before proposing or making an edit, restate the shared invariant or architectural behavior that is actually being fixed.
 - Prefer fixes that generalize across all applicable reviews, prompts, contracts, or skills instead of fixes that only help the surfaced example.
 - If a proposed fix only helps the current PR, resource, service, or example, stop and call out that it is likely drift.

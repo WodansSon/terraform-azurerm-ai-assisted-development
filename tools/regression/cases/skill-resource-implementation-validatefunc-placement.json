@@ -1,18 +1,18 @@
 {
   "id": "skill-resource-implementation-validatefunc-placement",
-  "title": "Resource implementation guidance distinguishes inline helper validators from bespoke anonymous ValidateFunc closures",
+  "title": "Resource implementation guidance prefers nested helper composition over custom validator wrappers",
   "task": "resource-implementation",
   "caseStatus": "adjudicated",
   "sourceKind": "synthetic",
   "provenance": {
-    "originKind": "synthetic-design",
-    "originSummary": "Maintainer-authored benchmark scenario.",
-    "whyItMattered": "Use this to keep future implementation guidance from drifting back toward blanket inline-closure advice, while also avoiding churn-only demands for untouched legacy validator placement.",
-    "genericCondition": "Sanitized fixture models a schema-validation placement decision without relying on a live provider PR.",
-    "notes": ""
+    "originKind": "real-pr",
+    "originSummary": "Sanitized benchmark derived from accepted maintainer review in hashicorp/terraform-provider-azurerm PR #33023.",
+    "whyItMattered": "A maintainer explicitly preferred inline validation.All/validation.Any composition over a custom validator plus unit test; the accepted implementation establishes the placement precedent while genuinely complex bespoke logic remains the validate-package exception.",
+    "genericCondition": "Sanitized fixture models the boundary between understandable nested helper composition and genuinely complex custom validation.",
+    "notes": "Accepted review: https://github.com/hashicorp/terraform-provider-azurerm/pull/33023#discussion_r3779746650; merged commit: https://github.com/hashicorp/terraform-provider-azurerm/commit/e4dbe7e66af3ea58f7919b77c3d13b9da924ea97"
   },
   "sanitized": true,
-  "description": "A sanitized implementation-guidance scenario where a changed field uses a long anonymous inline ValidateFunc closure and nearby fields use short helper-based validators. The correct guidance should extract the changed bespoke validator into a service-local validate/ file with matching unit coverage while leaving simple inline helper composition alone and without demanding unrelated legacy cleanup elsewhere.",
+  "description": "A sanitized implementation-guidance scenario where one changed field uses understandable nested validation.All/validation.Any composition and another uses genuinely complex anonymous custom parsing. The correct guidance should preserve the established-helper composition inline, extract only the complex bespoke validator into a service-local validate/ file with matching unit coverage, and avoid unrelated legacy cleanup.",
   "fixture": {
     "mode": "files",
     "path": "tools/regression/fixtures/skill-resource-implementation-validatefunc-placement/README.md"
@@ -21,7 +21,7 @@
     "changedFiles": [
       "internal/services/example/example_resource.go"
     ],
-    "notes": "Sanitized fixture models a schema-validation placement decision without relying on a live provider PR."
+    "notes": "Sanitized fixture generalizes an accepted upstream validator-placement precedent."
   },
   "expectedRules": [
     "IMPL-SCHEMA-005"
@@ -31,13 +31,13 @@
       "key": "inline-anonymous-validator-overuse",
       "severity": "medium",
       "file": "internal/services/example/example_resource.go",
-      "description": "The guidance should move the bespoke anonymous ValidateFunc closure into a file-specific validator under validate/, with matching unit coverage."
+      "description": "The guidance should move the genuinely complex anonymous custom parser into a subject-specific validator under validate/, with matching unit coverage."
     }
   ],
   "mustNotFlag": [
     {
-      "key": "simple-inline-helper-composition",
-      "description": "The guidance must not require simple helper-based validators such as validation.StringInSlice or commonids.Validate... to move out of the schema."
+      "key": "nested-inline-helper-composition",
+      "description": "The guidance must not replace understandable nested validation.All/validation.Any composition with a custom validator wrapper, validate file, or wrapper-only unit test."
     },
     {
       "key": "invent-validate-package",
@@ -60,5 +60,5 @@
       "Skill used: resource-implementation"
     ]
   },
-  "notes": "Use this to keep future implementation guidance from drifting back toward blanket inline-closure advice, while also avoiding churn-only demands for untouched legacy validator placement."
+  "notes": "Use this to preserve the accepted inline-composition precedent while retaining validate files for genuinely complex bespoke validation and avoiding unrelated legacy churn."
 }

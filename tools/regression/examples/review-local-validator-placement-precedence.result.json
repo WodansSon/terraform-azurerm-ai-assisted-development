@@ -1,8 +1,8 @@
 {
-  "caseId": "skill-docs-writer-argument-note-shape",
-  "runId": "sample-docswriter-001",
-  "timestampUtc": "2026-05-02T00:00:00Z",
-  "task": "docs-writer",
+  "caseId": "review-local-validator-placement-precedence",
+  "runId": "sample-local-validator-placement-001",
+  "timestampUtc": "2026-08-22T00:00:00Z",
+  "task": "code-review-local-changes",
   "model": "sample",
   "pass": true,
   "overallScore": 100,
@@ -16,22 +16,22 @@
   },
   "findings": {
     "caught": [
-      "canonical-enum-phrasing",
-      "inline-default-placement",
-      "supplemental-caveat-note-split"
+      "complex-inline-validator-needs-validate-file"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 3,
-    "total": 3
+    "matched": 1,
+    "total": 1
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,
     "toolingBehaviorCorrect": true
   },
-  "toolExecution": {},
+  "toolExecution": {
+    "azurermLinter": "run"
+  },
   "outputChecks": {
     "requiredSectionsPresent": true,
     "requiredMarkersPresent": true
@@ -39,5 +39,5 @@
   "determinismChecks": {
     "materiallyEquivalentAcrossRuns": true
   },
-  "notes": "Example adjudicated result for semantic argument-bullet concision in the direct docs-writer workflow."
+  "notes": "Example adjudicated result for local reviewer validator-placement precedence."
 }

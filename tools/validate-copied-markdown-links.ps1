@@ -72,7 +72,7 @@ if ($OutputFormat -eq 'Json') {
 }
 else {
     Write-Output 'Copied Markdown link validation summary'
-    Write-Output ("  Status          : {0}" -f $result.status)
+    Write-Output ("  Status          : {0}" -f $result.status.ToUpperInvariant())
     Write-Output ("  Files Checked   : {0}" -f $result.validatedFileCount)
     Write-Output ("  Links Checked   : {0}" -f $result.validatedLinkCount)
     Write-Output ("  Issue Count     : {0}" -f $result.issueCount)

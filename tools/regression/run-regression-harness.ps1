@@ -46,6 +46,58 @@ function Remove-LatestOutputs {
     Get-ChildItem -LiteralPath $LatestDirectory | Remove-Item -Force -Recurse
 }
 
+function Format-HarnessStatusLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Status,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Name,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Detail
+    )
+
+    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
+
+    return ("{0,-11}{1,-52}: {2}" -f $statusLabel, $Name, $Detail)
+}
+
+function Invoke-HarnessStage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Name,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock] $Command
+    )
+
+    if ($Output -eq "text") {
+        Write-Host (Format-HarnessStatusLine -Status "running" -Name ("regression-harness/{0}" -f $Name) -Detail "IN PROGRESS")
+    }
+
+    $started = Get-Date
+
+    try {
+        $result = & $Command
+    }
+    catch {
+        if ($Output -eq "text") {
+            $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
+            Write-Host (Format-HarnessStatusLine -Status "failed" -Name ("regression-harness/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+        }
+
+        throw
+    }
+
+    if ($Output -eq "text") {
+        $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
+        Write-Host (Format-HarnessStatusLine -Status "passed" -Name ("regression-harness/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+    }
+
+    return $result
+}
+
 $Task = Expand-ListParameter -Value $Task
 $CaseStatus = Expand-ListParameter -Value $CaseStatus
 
@@ -71,13 +123,19 @@ if ($CaseStatus.Count -gt 0) {
     $sharedArguments.CaseStatus = $CaseStatus
 }
 
-$validationJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "validate-regression-artifacts.ps1") -Output json | ConvertFrom-Json
+$validationJson = Invoke-HarnessStage -Name "validate-artifacts" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "validate-regression-artifacts.ps1") -Output json | ConvertFrom-Json
+}
 $validationJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $validationJsonPath
 
-$suiteText = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "run-regression-suite.ps1") @sharedArguments
+$suiteText = Invoke-HarnessStage -Name "render-suite-text" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "run-regression-suite.ps1") @sharedArguments
+}
 $suiteText | Set-Content -LiteralPath $suiteTextPath
 
-$suiteJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "run-regression-suite.ps1") @sharedArguments -Output json | ConvertFrom-Json
+$suiteJson = Invoke-HarnessStage -Name "render-suite-json" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "run-regression-suite.ps1") @sharedArguments -Output json | ConvertFrom-Json
+}
 $suiteJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $suiteJsonPath
 
 $existingHistoryFiles = @()
@@ -85,19 +143,27 @@ if (Test-Path -LiteralPath $HistoryDirectory) {
     $existingHistoryFiles = @(Get-ChildItem -LiteralPath $HistoryDirectory -Filter *.json | ForEach-Object { $_.FullName })
 }
 
-$historySnapshotJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "write-regression-history-snapshot.ps1") @sharedArguments -HistoryDirectory $HistoryDirectory -Output json | ConvertFrom-Json
+$historySnapshotJson = Invoke-HarnessStage -Name "write-history-snapshot" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "write-regression-history-snapshot.ps1") @sharedArguments -HistoryDirectory $HistoryDirectory -Output json | ConvertFrom-Json
+}
 $historySnapshotJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $historySnapshotLatestPath
 
 $newHistoryFiles = @(Get-ChildItem -LiteralPath $HistoryDirectory -Filter *.json | Where-Object { $existingHistoryFiles -notcontains $_.FullName } | Sort-Object Name)
 $createdHistorySnapshotPath = if ($newHistoryFiles.Count -gt 0) { $newHistoryFiles[-1].FullName } else { $null }
 
-$historySummaryText = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "summarize-regression-history.ps1") -HistoryDirectory $HistoryDirectory
+$historySummaryText = Invoke-HarnessStage -Name "summarize-history-text" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "summarize-regression-history.ps1") -HistoryDirectory $HistoryDirectory
+}
 $historySummaryText | Set-Content -LiteralPath $historySummaryTextPath
 
-$historySummaryJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "summarize-regression-history.ps1") -HistoryDirectory $HistoryDirectory -Output json | ConvertFrom-Json
+$historySummaryJson = Invoke-HarnessStage -Name "summarize-history-json" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "summarize-regression-history.ps1") -HistoryDirectory $HistoryDirectory -Output json | ConvertFrom-Json
+}
 $historySummaryJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $historySummaryJsonPath
 
-$provenanceJson = & pwsh -NoProfile -File (Join-Path $PSScriptRoot "write-regression-provenance-report.ps1") @sharedArguments -JsonOutputPath $provenanceJsonPath -MarkdownOutputPath $provenanceTextPath -Output json | ConvertFrom-Json
+$provenanceJson = Invoke-HarnessStage -Name "write-provenance-report" -Command {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot "write-regression-provenance-report.ps1") @sharedArguments -JsonOutputPath $provenanceJsonPath -MarkdownOutputPath $provenanceTextPath -Output json | ConvertFrom-Json
+}
 
 $summary = [ordered]@{
     validation = [ordered]@{
@@ -131,7 +197,9 @@ $summary = [ordered]@{
     }
 }
 
-$summary | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $harnessSummaryJsonPath
+Invoke-HarnessStage -Name "write-summary" -Command {
+    $summary | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $harnessSummaryJsonPath
+}
 
 if ($Output -eq "json") {
     $summary | ConvertTo-Json -Depth 20

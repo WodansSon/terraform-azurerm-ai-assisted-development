@@ -680,11 +680,12 @@ Additional auditor behavior (deterministic suffix; nit-level):
   - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md`
   - Contract rule `DOCS-NOTE-009` for data source field-level note prohibition
 
-### DOCS-ARG-011: Argument bullet length cap
-- **Rule**: Each argument bullet description MUST be a crisp definition of the field (prefer 1 sentence; 2 sentences maximum).
-- **Rule**: Do not move core argument semantics into a note purely for brevity when they fit cleanly in the bullet. In particular, keep `Possible values are ...` and `Defaults to ...` in the bullet unless doing so would make the bullet unwieldy.
-- **Rule**: In resource docs, additional caveats, conditional requirements, setup instructions, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
+### DOCS-ARG-011: Argument bullet concision is semantic, not numeric
+- **Rule**: Each argument bullet description MUST remain concise and field-definitional, but sentence count alone is not a compliance criterion.
+- **Rule**: Keep core argument semantics in the bullet when applicable: the field definition, `Possible values are ...`, `Defaults to ...`, and the standard ForceNew sentence. These required standard sentences do not make a bullet non-compliant merely because their combined count exceeds two sentences.
+- **Rule**: In resource docs, supplemental caveats, conditional requirements, setup instructions, rationale, examples, external guidance, or multi-paragraph explanations MUST be moved into an inline note under the argument (see DOCS-ARG-008 and DOCS-NOTE-003).
 - **Rule**: In data source docs, field-level note blocks are prohibited (see DOCS-NOTE-009); keep the bullet concise, short, and focused on what the field is.
+- **Auditor behavior**: Do not emit an Issue based only on the number of sentences. A `DOCS-ARG-011` Issue MUST identify the specific non-core content that makes the bullet excessive and should move to a note or be removed.
 - **Placement**: In resource docs, the note block MUST appear immediately under the argument bullet it applies to (do not move this content into a separate “Notes” section, and do not leave it embedded in the bullet).
 - **Marker**: In resource docs, use `-> **Note:**` for informational setup/background. Use `~> **Note:**` when the note describes a conditional requirement/conflict that affects valid configuration.
 
@@ -694,10 +695,11 @@ Example (rewrite long bullet to bullet + note):
 - After (compliant):
   - ``* `foo_id` - (Optional) The ID of the related resource.``
   - `-> **Note:** If you are using a managed DNS service, you may need to delegate your DNS zone; otherwise validate by creating the required DNS records manually.`
-- **Provenance**: Local safeguard.
+- **Provenance**: Published upstream standard.
 - **Evidence**:
-  - Added to keep argument bullets short and deterministic across `/code-review-docs` and `/docs-writer`
-  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` keeps core semantics in the bullet and moves only excess caveats into notes
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions` requires concise descriptions and directs additional detail into notes
+  - That same guidance requires standard sentences for constrained possible values, defaults, and ForceNew behavior, and its examples show multiple required semantic sentences remaining in argument bullets
+  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` keeps core semantics in the bullet and moves only supplemental caveats into notes
 
 ### DOCS-ARG-009: ForceNew sentence placement
 - **Scope**: resources only.

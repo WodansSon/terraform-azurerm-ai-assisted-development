@@ -50,10 +50,16 @@ function Invoke-ValidationStep {
 
         [string]$Detail,
 
-        [switch]$Skipped
+        [switch]$Skipped,
+
+        [switch]$RelayStatusOutput
     )
 
     if ($Skipped) {
+        if ($OutputFormat -eq 'Text') {
+            Write-Host (Format-StatusLine -Status 'skipped' -Name $Name -Detail 'SKIPPED')
+        }
+
         return [pscustomobject]@{
             name = $Name
             status = 'skipped'
@@ -65,13 +71,23 @@ function Invoke-ValidationStep {
         }
     }
 
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-StatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+    }
+
     $started = Get-Date
     $outputLines = @()
     $exitCode = 0
 
     try {
         $global:LASTEXITCODE = 0
-        $outputLines = & $Command 2>&1
+        $outputLines = @(& $Command 2>&1 | ForEach-Object {
+            if ($RelayStatusOutput -and $OutputFormat -eq 'Text' -and ([string]$_) -match '^\[(RUNNING|PASSED|FAILED|SKIPPED)\]') {
+                Write-Host ("  {0}" -f $_)
+            }
+
+            Write-Output $_
+        })
         $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     }
     catch {
@@ -81,10 +97,15 @@ function Invoke-ValidationStep {
 
     $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
     $outputText = ($outputLines | Out-String).Trim()
+    $status = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-StatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+    }
 
     return [pscustomobject]@{
         name = $Name
-        status = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
+        status = $status
         success = ($exitCode -eq 0)
         exitCode = $exitCode
         durationSeconds = $durationSeconds
@@ -108,6 +129,37 @@ function Get-TextMatchValue {
     }
 
     return $match.Groups[1].Value
+}
+
+function Write-TextSectionHeader {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Title
+    )
+
+    $separator = '-' * 51
+
+    Write-Output ''
+    Write-Output $separator
+    Write-Output $Title.ToUpperInvariant()
+    Write-Output $separator
+}
+
+function Format-StatusLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Status,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Detail
+    )
+
+    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
+
+    return ("{0,-11}{1,-30}: {2}" -f $statusLabel, $Name, $Detail)
 }
 
 function Invoke-GitCommand {
@@ -369,6 +421,10 @@ function Get-ChangedRegressionCases {
 
 Push-Location $repoRoot
 try {
+    if ($OutputFormat -eq 'Text') {
+        Write-TextSectionHeader -Title 'AI toolkit validation'
+    }
+
     $steps = @()
 
     $steps += Invoke-ValidationStep -Name 'changelog' -Detail 'Confirm the current branch has an explicit changelog decision: either CHANGELOG.md is updated or a maintainer explicitly marks the branch as changelog-not-required.' -Skipped:$SkipChangelog -Command {
@@ -463,7 +519,7 @@ try {
         & pwsh -NoProfile -File $copiedMarkdownLinksScriptPath
     }
 
-    $steps += Invoke-ValidationStep -Name 'regression-harness' -Detail 'Run the regression harness validation, suite scoring, and history snapshot flow.' -Skipped:$SkipRegressionHarness -Command {
+    $steps += Invoke-ValidationStep -Name 'regression-harness' -Detail 'Run the regression harness validation, suite scoring, and history snapshot flow.' -Skipped:$SkipRegressionHarness -RelayStatusOutput -Command {
         & pwsh -NoProfile -File $regressionHarnessScriptPath
     }
 
@@ -478,7 +534,7 @@ try {
         $driftArguments += '-FailOnDrift'
     }
 
-    $steps += Invoke-ValidationStep -Name 'upstream-drift' -Detail 'Check tracked upstream contributor guidance drift and explicit topic coverage.' -Skipped:$SkipUpstreamDrift -Command {
+    $steps += Invoke-ValidationStep -Name 'upstream-drift' -Detail 'Check tracked upstream contributor guidance drift and explicit topic coverage.' -Skipped:$SkipUpstreamDrift -RelayStatusOutput -Command {
         & pwsh @driftArguments
     }
 
@@ -529,32 +585,30 @@ try {
         $summary | ConvertTo-Json -Depth 10
     }
     else {
-        Write-Output 'AI toolkit validation summary'
-        Write-Output "  Overall Status   : $($summary.overallStatus)"
+        Write-TextSectionHeader -Title 'AI toolkit validation summary'
+        Write-Output "  Overall Status   : $($summary.overallStatus.ToUpperInvariant())"
         Write-Output "  Repository Root  : $repoRoot"
-        Write-Output ''
-        Write-Output 'Validation steps'
+
+        Write-TextSectionHeader -Title 'Validation steps'
+        Write-Output ("  {0,-32} {1,-10} {2,10}" -f 'STEP', 'STATUS', 'DURATION')
+        Write-Output ("  {0,-32} {1,-10} {2,10}" -f ('-' * 32), ('-' * 10), ('-' * 10))
         foreach ($step in $steps) {
-            Write-Output "  $($step.name): $($step.status) ($($step.durationSeconds)s)"
-            if (-not [string]::IsNullOrWhiteSpace($step.detail)) {
-                Write-Output "    $($step.detail)"
-            }
+            Write-Output ("  {0,-32} {1,-10} {2,10}" -f $step.name, $step.status.ToUpperInvariant(), ("{0}s" -f $step.durationSeconds))
         }
 
-        Write-Output ''
-        Write-Output 'Highlights'
+        Write-TextSectionHeader -Title 'Highlights'
         if ($null -ne $summary.highlights.changelogStatus) {
-            Write-Output "  Changelog Status         : $($summary.highlights.changelogStatus)"
+            Write-Output "  Changelog Status         : $($summary.highlights.changelogStatus.ToUpperInvariant())"
         }
         $changelogTaxonomyStep = @($steps | Where-Object { $_.name -eq 'changelog-taxonomy' })[0]
         if ($null -ne $changelogTaxonomyStep) {
-            Write-Output "  Changelog Taxonomy       : $($changelogTaxonomyStep.status)"
+            Write-Output "  Changelog Taxonomy       : $($changelogTaxonomyStep.status.ToUpperInvariant())"
         }
         if ($null -ne $summary.highlights.changelogConsistencyStatus) {
-            Write-Output "  Changelog Consistency    : $($summary.highlights.changelogConsistencyStatus)"
+            Write-Output "  Changelog Consistency    : $($summary.highlights.changelogConsistencyStatus.ToUpperInvariant())"
         }
         if ($null -ne $summary.highlights.changedRegressionCasesStatus) {
-            Write-Output "  Changed Regression Cases : $($summary.highlights.changedRegressionCasesStatus)"
+            Write-Output "  Changed Regression Cases : $($summary.highlights.changedRegressionCasesStatus.ToUpperInvariant())"
         }
         if ($null -ne $summary.highlights.regressionCasesSelected) {
             Write-Output "  Regression Cases Selected : $($summary.highlights.regressionCasesSelected)"
@@ -573,15 +627,19 @@ try {
         }
 
         if (-not $overallSuccess) {
-            Write-Output ''
-            Write-Output 'Failures'
+            Write-TextSectionHeader -Title 'Failures'
             foreach ($failedStep in @($steps | Where-Object { -not $_.success })) {
-                Write-Output "  [$($failedStep.name)] exit=$($failedStep.exitCode)"
+                Write-Output ("  {0}" -f (Format-StatusLine -Status 'failed' -Name $failedStep.name -Detail ("exit code {0}" -f $failedStep.exitCode)))
+                if (-not [string]::IsNullOrWhiteSpace($failedStep.detail)) {
+                    Write-Output "    $($failedStep.detail)"
+                }
                 if (-not [string]::IsNullOrWhiteSpace($failedStep.output)) {
                     Write-Output $failedStep.output
                 }
             }
         }
+
+        Write-Output ''
     }
 
     if (-not $overallSuccess) {

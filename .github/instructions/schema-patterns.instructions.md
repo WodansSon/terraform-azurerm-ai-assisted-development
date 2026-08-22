@@ -304,15 +304,32 @@ Before suggesting any empty/exists checks or validation logic for fields, the AI
 
 ### Validation Placement
 
-- Reuse existing validators inline when they already express the constraint clearly, for example `commonids.Validate...`, `validation.StringInSlice(...)`, or a short `validation.All(...)` composition.
-- When new or materially updated validation logic becomes bespoke, reused, or hard to scan inline, move it into the same service's `validate/` folder using a file named for the validated subject.
-- Add the matching unit test file under that same `validate/` folder when you introduce a new bespoke validator or materially update an existing one.
-- Treat anonymous inline `ValidateFunc` closures as a narrow exception for short one-off checks. If the closure needs several branches, loops, or regex/substring checks, it is usually clearer as a named helper under `validate/`.
+- Reuse and compose established validators inline when they express the constraint, for example `commonids.Validate...`, `validation.StringInSlice(...)`, or nested `validation.All(...)` and `validation.Any(...)` composition.
+- Do not create a custom wrapper function, `validate/` file, or wrapper-only unit test merely because understandable helper composition spans several lines or uses nested combinators.
+- Move validation into the same service's `validate/` folder only when it requires genuinely complex bespoke logic, such as substantial custom control flow, loops, custom parsing, or multi-stage checks that cannot remain clear through established helper composition.
+- Add a matching unit test file under that same `validate/` folder for genuinely complex bespoke validation.
+- Do not leave genuinely complex custom validation in a long anonymous inline `ValidateFunc` closure.
 - Do not treat untouched legacy validator placement as a standalone cleanup requirement.
 
 ### Custom Validation Functions
 
-Prefer service-local named helpers under `validate/` for bespoke validation:
+Prefer inline composition when established helpers express the complete constraint:
+
+```go
+"{{FIELD_NAME}}": {
+    Type:     pluginsdk.TypeString,
+    Required: true,
+    ValidateFunc: validation.All(
+        validation.StringIsNotEmpty,
+        validation.Any(
+            validation.StringDoesNotStartWithOneOf("/"),
+            validation.StringInSlice([]string{"/"}, false),
+        ),
+    ),
+}
+```
+
+Use service-local named helpers under `validate/` for genuinely complex bespoke validation:
 
 ```go
 // Azure resource name validation
@@ -366,7 +383,7 @@ func ValidateSQLResourceName(v interface{}, k string) (warnings []string, errors
 }
 ```
 
-Avoid embedding the same logic inline when it would hide the schema shape:
+Avoid embedding genuinely complex custom logic inline when it would hide the schema shape:
 
 ```go
 // AVOID - bespoke validation hidden inside the schema
@@ -389,7 +406,7 @@ Avoid embedding the same logic inline when it would hide the schema shape:
 "{{FIELD_NAME}}": {
     Type:         pluginsdk.TypeString,
     Required:     true,
-    ValidateFunc: validate{{VALIDATOR_NAME}},
+    ValidateFunc: validate.{{VALIDATOR_NAME}},
 }
 ```
 
@@ -734,19 +751,19 @@ func ExpandMonitoringConfiguration(input []interface{}) *azureapi.MonitoringConf
 }
 ```
 
-### FivePointOh Feature Flag Patterns
+### SixPointOh Feature Flag Patterns
 
 **Breaking Changes and Deprecation Management:**
 
-The `FivePointOh` feature flag system allows controlled introduction of breaking changes during development of major provider versions. This system is essential for managing deprecations and breaking changes in a controlled way.
+The `SixPointOh` feature flag system allows controlled introduction of breaking changes during development of major provider versions. This system is essential for managing deprecations and breaking changes in a controlled way.
 
 **Key Functions:**
 ```go
 import "github.com/hashicorp/terraform-provider-azurerm/internal/features"
 
-// Check if running in 5.0 mode
-if features.FivePointOh() {
-    // Breaking change behavior for 5.0
+// Check if running in 6.0 mode
+if features.SixPointOh() {
+    // Breaking change behavior for 6.0
 }
 ```
 
@@ -767,11 +784,11 @@ func resourceServiceSchema() map[string]*pluginsdk.Schema {
     }
 
     // Add deprecated fields conditionally - placed after main schema
-    if !features.FivePointOh() {
+    if !features.SixPointOh() {
         schema["legacy_field"] = &pluginsdk.Schema{
             Type:       pluginsdk.TypeString,
             Optional:   true,
-            Deprecated: "This field will be removed in v5.0. Use `new_field` instead.",
+            Deprecated: "This field will be removed in v6.0. Use `new_field` instead.",
         }
     }
 
@@ -796,11 +813,11 @@ func (r ServiceNameResource) Arguments() map[string]*pluginsdk.Schema {
     }
 
     // Add deprecated fields conditionally - placed after main schema
-    if !features.FivePointOh() {
+    if !features.SixPointOh() {
         arguments["legacy_field"] = &pluginsdk.Schema{
             Type:       pluginsdk.TypeString,
             Optional:   true,
-            Deprecated: "This field will be removed in v5.0. Use `new_field` instead.",
+            Deprecated: "This field will be removed in v6.0. Use `new_field` instead.",
         }
     }
 
@@ -816,8 +833,8 @@ func resourceServiceNameCreate(ctx context.Context, d *pluginsdk.ResourceData, m
         Name: d.Get("name").(string),
     }
 
-    // Use new field in 5.0, legacy field in 4.x
-    if features.FivePointOh() {
+    // Use new field in 6.0, legacy field in 5.x
+    if features.SixPointOh() {
         if newField := d.Get("new_field").(string); newField != "" {
             properties.NewProperty = pointer.To(newField)
         }
@@ -840,8 +857,8 @@ func resourceServiceNameRead(ctx context.Context, d *pluginsdk.ResourceData, met
     d.Set("name", resp.Properties.Name)
     d.Set("new_field", pointer.From(resp.Properties.NewProperty))
 
-    // Only set legacy field in 4.x mode
-    if !features.FivePointOh() {
+    // Only set legacy field in 5.x mode
+    if !features.SixPointOh() {
         d.Set("legacy_field", pointer.From(resp.Properties.LegacyProperty))
     }
 
@@ -873,8 +890,8 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
                 Name: model.Name,
             }
 
-            // Use new field in 5.0, legacy field in 4.x
-            if features.FivePointOh() {
+            // Use new field in 6.0, legacy field in 5.x
+            if features.SixPointOh() {
                 if model.NewField != "" {
                     properties.NewProperty = pointer.To(model.NewField)
                 }
@@ -890,19 +907,19 @@ func (r ServiceNameResource) Create() sdk.ResourceFunc {
 }
 ```
 
-**Testing with FivePointOh:**
+**Testing with SixPointOh:**
 ```go
 // Test both 4.x and 5.0 behaviors
 func TestAccResource_deprecationBehavior(t *testing.T) {
-    // Skip test when using deprecated functionality in 5.0 mode
-    if features.FivePointOh() {
-        t.Skip("Test skipped in 5.0 mode: `legacy_field` was deprecated and removed in v5.0")
+    // Skip test when using deprecated functionality in 6.0 mode
+    if features.SixPointOh() {
+        t.Skip("Test skipped in 6.0 mode: `legacy_field` was deprecated and removed in v6.0")
     }
 
     data := acceptance.BuildTestData(t, "azurerm_resource", "test")
     r := ResourceResource{}
 
-    // Test current behavior (4.x mode)
+    // Test current behavior (5.x mode)
     data.ResourceTest(t, r, []acceptance.TestStep{
         {
             Config: r.withLegacyField(data),
@@ -923,7 +940,7 @@ resource "azurerm_resource" "test" {
   resource_group_name = azurerm_resource_group.test.name
   location            = azurerm_resource_group.test.location
 
-  # Legacy field - will show deprecation warning in 5.0 mode
+    # Legacy field - will show deprecation warning in 5.x mode
   legacy_field = "test"
 }
 `, data.RandomInteger)
@@ -931,9 +948,11 @@ resource "azurerm_resource" "test" {
 ```
 
 **Important Considerations:**
-- **Environment Variable**: The `ARM_FIVEPOINTZERO_BETA` environment variable enables 5.0 mode for testing
+- **Schema override shape**: Define the desired 6.0 schema first, then restore the current 5.x definition inside one `if !features.SixPointOh()` block; do not use inline anonymous functions to switch defaults, validation, or other schema behavior
+- **Compatibility tests**: Update normal test configurations to the 6.0 surface and keep one compatibility configuration that uses the legacy property outside 6.0 mode
+- **Environment Variable**: The `ARM_SIXPOINTZERO_BETA` environment variable enables 6.0 mode for testing
 - **Development Only**: This flag is for development and testing - NOT for production use
-- **State Changes**: Enabling 5.0 mode may cause irreversible state changes
+- **State Changes**: Enabling 6.0 mode may cause irreversible state changes
 - **Documentation**: Always document the migration path in breaking change guides
 
 **📚 Official Breaking Change Reference:**

@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Docs]** - Documentation reviews and writing now evaluate argument-description concision by content rather than sentence count, preserving required possible-value, default, and ForceNew wording while moving only supplemental detail into notes.
+
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Breaking-change guidance now follows the AzureRM provider's current `SixPointOh` feature flag, v6.0 deprecation target, compatibility-test pattern, and beta environment variable.
+  - **[Implementation]** - Schema validation guidance now follows accepted HashiCorp review precedent by keeping understandable compositions of established helpers inline and reserving service-local validator files with unit tests for genuinely complex bespoke logic.
+  - **[Internal]** - The one-shot toolkit validator now opens with a divider-framed execution header, consistently uppercases human-readable statuses, relays aligned regression-harness and upstream-drift substeps, renders compact validation tables, and separates its text output from surrounding shell prompts while preserving lowercase JSON status contracts and buffered failure details.
+  - **[Internal]** - The release guide now separates pre-release confirmation, changelog approval, direct-to-`main` release preparation, tag-triggered publication, and post-release verification so completed checks are not repeated and approval gates are explicit.
+
 ### Fixed
 
 ## [3.8.0] - 2026-07-25

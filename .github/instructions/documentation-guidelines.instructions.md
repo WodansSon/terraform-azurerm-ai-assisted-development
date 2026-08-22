@@ -996,7 +996,7 @@ The following arguments are supported:
 ### Deprecation and Breaking Change Documentation
 
 **Deprecated Field Documentation:**
-When fields are deprecated using the provider's "next major version" feature flag system (for example `FivePointOh` today), follow HashiCorp's standard practice:
+When fields are deprecated using the provider's "next major version" feature flag system (for example `SixPointOh` today), follow HashiCorp's standard practice:
 
 **Remove deprecated fields from documentation** - Users will receive deprecation warnings directly from the resource implementation when they use deprecated fields. Documentation should only show the current, supported fields.
 
@@ -1016,7 +1016,7 @@ When fields are deprecated using the provider's "next major version" feature fla
 - **Major version docs**: Clean up all legacy references and focus on current API
 - **Upgrade guides**: Migration instructions belong in upgrade guides, not resource docs
 
-**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - FivePointOh Feature Flag Patterns](./schema-patterns.instructions.md#fivepointoh-feature-flag-patterns)
+**For complete deprecation patterns and next-major feature flag usage, see:** [Schema Patterns - SixPointOh Feature Flag Patterns](./schema-patterns.instructions.md#sixpointoh-feature-flag-patterns)
 
 ### Cross-Implementation Documentation Consistency
 
@@ -1100,7 +1100,7 @@ Use caution note blocks when providing critical information on potential irrever
 ## 📚 Related Implementation Guidance (On-Demand)
 
 ### **Advanced Patterns**
-- 📐 **Schema Patterns**: [schema-patterns.instructions.md](./schema-patterns.instructions.md) - Schema design and validation (includes deprecation patterns with FivePointOh)
+- 📐 **Schema Patterns**: [schema-patterns.instructions.md](./schema-patterns.instructions.md) - Schema design and validation (includes deprecation patterns with SixPointOh)
 
 ### **Quality & Compliance**
 - 📋 **Code Clarity**: [code-clarity-enforcement.instructions.md](./code-clarity-enforcement.instructions.md) - Comment and code quality standards

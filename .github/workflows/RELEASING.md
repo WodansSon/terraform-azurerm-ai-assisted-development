@@ -4,11 +4,57 @@ This document describes how to create a new release of the Terraform AzureRM AI-
 
 ## Release Process
 
-### 1. Finalize the `Unreleased` changelog entry on your branch
+The established release path has four distinct phases:
 
-Before opening the release PR, make sure the current `## [Unreleased]` section in `CHANGELOG.md` reads like final release notes rather than patch-history notes and still follows the current grouped taxonomy structure.
+- **Pre-release checks** prove that the current `main` content is ready to release.
+- **Release preparation** creates and obtains approval for the versioned changelog cut.
+- **Publication** commits the approved changelog to `main` and pushes the version tag.
+- **Post-release verification** validates the published release, assets, provenance, and installation path.
 
-When you are actually cutting the release, move those `Unreleased` notes into a new versioned changelog section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape:
+Do not collapse these phases into one checklist. In particular, pre-release checks happen before the changelog release cut, and pushing the version tag is the action that starts public release publication.
+
+### 1. Confirm pre-release checks are complete
+
+Before starting release preparation, confirm that the maintainer has completed the pre-release checks against the current `main` release candidate:
+
+- the full one-shot validation passed
+- the bootstrap installer path was smoke-tested
+- a release-shaped dry-run bundle was built and its checksum verified
+- one install smoke from that dry-run bundle passed against a local `terraform-provider-azurerm` checkout
+
+The normal one-shot validation command is:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
+```
+
+The normal dry-run bundle command is:
+
+```powershell
+pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version X.Y.Z -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
+```
+
+The bootstrap check confirms the contributor path. The dry-run release bundle confirms the release-artifact path without publishing anything publicly.
+
+When assisting with a release, ask whether these checks are already complete. If the maintainer confirms that they are complete, do not rerun or restart the pre-release phase. Proceed to release-structure and changelog validation.
+
+### 2. Validate the release structure and draft the changelog cut
+
+Before editing the changelog:
+
+- confirm the worktree is clean and local `main` matches `origin/main`
+- confirm the intended version does not already have a local tag, remote tag, or GitHub release
+- confirm the version increment matches the repository's versioning strategy
+- validate the current changelog taxonomy and footer structure
+
+Use:
+
+```powershell
+pwsh -NoProfile -File ./tools/validate-changelog-taxonomy.ps1
+pwsh -NoProfile -File ./tools/validate-changelog-consistency.ps1
+```
+
+The dry-run checks in the previous phase validate the release candidate without changing `CHANGELOG.md`, creating a release commit, or publishing anything. After those checks pass, begin the actual release preparation by moving the current `Unreleased` notes into a new section with the header pattern `## [X.Y.Z] - YYYY-MM-DD`, using the same grouped taxonomy shape; make this versioned changelog cut before asking for release approval.
 
 ```markdown
 ## [1.0.0] - 2025-10-21
@@ -37,65 +83,51 @@ Maintainer conventions for the changelog cut:
 
 - after moving the release notes into the new versioned section, restore an empty `## [Unreleased]` section at the top with empty `### Added`, `### Changed`, and `### Fixed` headings
 - update the footer reference block so the new release section has a `[X.Y.Z]` link entry and `[Unreleased]` compares from the newly latest released version
-- commit that changelog-only release cut on `main` before creating the tag
-- use the established commit-subject pattern `Prepare X.Y.Z changelog`, for example `Prepare X.Y.Z changelog`
-- create and push the `vX.Y.Z` tag only after that changelog commit is present on `main`
+- preserve the approved release-note wording unless the maintainer explicitly asks for release-note edits
+- validate the resulting taxonomy, release heading, footer links, and Markdown structure
+- show the maintainer the actual changelog diff and ask for explicit approval
+- do not commit, push, or tag until the maintainer approves the edited changelog
 
-### 2. Validate the branch before opening the PR
+### 3. Commit the approved changelog cut directly to `main`
 
-Before opening the release PR, run the normal maintainer validation flow from the branch:
+The established release procedure commits the changelog-only release cut directly to validated `main`. A `release/*` branch and release pull request are not required.
 
-```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
-```
+After the maintainer approves the changelog diff:
 
-Recommended pre-PR maintainer smoke:
+- confirm that `CHANGELOG.md` is the only changed file
+- commit the approved cut on `main`
+- use the exact established commit-subject pattern `Prepare X.Y.Z changelog`
+- push `main`
+- verify that local `main` and `origin/main` point to the same release-preparation commit
 
-- run a bootstrap install from the working tree so the user-profile installer is refreshed from the branch
-- confirm the branch still installs correctly through the bootstrap path
-- build a release-shaped installer bundle locally with `tools/build-release-bundle_dry_run.ps1`
-- run one install smoke from that dry-run bundle before cutting any public release
-
-The bootstrap check confirms the contributor path, while the dry-run release bundle confirms the release-artifact path without publishing anything publicly.
-
-Example dry-run bundle command:
+Example:
 
 ```powershell
-pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force
+git add -- CHANGELOG.md
+git commit -m "Prepare X.Y.Z changelog"
+git push origin main
 ```
 
-Maintainer note:
+Do not manually edit `installer/VERSION`. The release workflow stamps the bundled version from the tag.
 
-- the standalone installer version commands (`-Version` in PowerShell and `--version` in Bash) read stamped bundle metadata rather than recomputing provenance at runtime
-- a plain source checkout can therefore show `Unavailable` for the support metadata block, because those fields are stamped only during bootstrap or release-bundle assembly
-- validate support output from the bootstrapped installer copy or the dry-run/release-shaped bundle, not from a raw source checkout
+### 4. Publish the release by pushing the tag
 
-### 3. Open and merge the release PR to `main`
+Pushing the version tag is the actual publication trigger. Create the annotated tag only after the approved changelog commit is present on both local and remote `main`.
 
-The normal workflow is PR-based.
-
-- open a pull request with the finalized changelog and release-ready changes
-- review and merge that PR into `main`
-- do not tag the release from an unmerged feature branch
-
-Release tags should be created from the merged `main` state.
-
-### 4. Create and push the tag from `main`
-
-After the release PR is merged, update your local `main` and create the release tag from that merged state:
+Verify that the tag does not already exist, create it at the release-preparation commit, verify its target, and push it:
 
 ```bash
 git checkout main
 git pull --ff-only origin main
 
-# Create the tag (must follow v*.*.* pattern)
-git tag -a v1.0.0 -m "Release v1.0.0"
-
-# Push the tag to GitHub
-git push origin v1.0.0
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git rev-list -n 1 vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-### 5. GitHub Actions Automatic Build
+Do not move or recreate a published version tag. If the publication workflow fails, diagnose the workflow before deciding whether rollback is necessary.
+
+### 5. GitHub Actions automatic publication
 
 The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically:
 
@@ -119,7 +151,7 @@ Important distinction:
 
 That means maintainers do not manually edit `installer/VERSION` as part of the release process. The published release bundle is what gets the stamped release version.
 
-### 6. Verify the Release
+### 6. Verify the published release
 
 Visit: `https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/releases`
 
@@ -137,7 +169,7 @@ Check that:
 - [ ] Release notes include `gh attestation verify` examples
 - [ ] Changelog is properly extracted
 
-### 7. Verify Release Provenance
+### 7. Verify release provenance
 
 For a pinned asset, verify the attestation against the canonical repository and release workflow:
 
@@ -207,9 +239,9 @@ Follow [Semantic Versioning](https://semver.org/):
 
 The release tag is also the source of truth for installer bundle version stamping.
 
-## Testing a Release
+## Pre-Release Bundle Check Reference
 
-Before creating an official release, build and test a local release-shaped bundle first:
+This is the detailed reference for the dry-run bundle check in pre-release phase 1. Complete it before starting the changelog release cut:
 
 ```powershell
 pwsh -NoProfile -File ./tools/build-release-bundle_dry_run.ps1 -Version 9.9.9 -OutputRoot "$env:TEMP\azurerm-ai-release-dry-run" -Force

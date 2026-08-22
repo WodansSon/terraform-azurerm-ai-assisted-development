@@ -130,7 +130,7 @@ if ($OutputFormat -eq 'Json') {
 }
 else {
     Write-Output 'Changelog consistency validation summary'
-    Write-Output ("  Status               : {0}" -f $result.status)
+    Write-Output ("  Status               : {0}" -f $result.status.ToUpperInvariant())
     Write-Output ("  Changelog Path       : {0}" -f $result.changelogPath)
     Write-Output ("  Latest Release       : {0}" -f $(if ($null -ne $latestRelease) { $latestRelease } else { 'n/a' }))
     Write-Output ("  Release Headings     : {0}" -f $result.releaseHeadingCount)
