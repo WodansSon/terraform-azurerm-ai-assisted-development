@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-Priority:**
+  - **[Review]** - Added `/stage-pending-pr-review` (BETA), an opt-in post-review workflow where human reviewers can challenge AI findings, request evidence-backed revisions or omissions, and propose missed concerns without losing the original audit, then approve an exact set of independently resolvable GitHub inline comments for verified unsubmitted staging with a separate copy-ready request-changes summary.
+
 ### Changed
 
 ### Fixed

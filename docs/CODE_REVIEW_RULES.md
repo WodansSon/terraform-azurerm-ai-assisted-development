@@ -19,7 +19,7 @@ The IDs are there to make the review explainable and deterministic. They are ref
 
 ## Where The Rules Live
 
-There are eleven main contract files:
+There are twelve main contract files:
 
 - Generic code review contract: `.github/instructions/code-review-compliance-contract.instructions.md`
 - Generic review linter contract: `.github/instructions/review-linter-compliance-contract.instructions.md`
@@ -28,6 +28,7 @@ There are eleven main contract files:
 - Architect direction-pass contract: `.github/instructions/review-architect-compliance-contract.instructions.md`
 - Moderator synthesis-pass contract: `.github/instructions/review-moderator-compliance-contract.instructions.md`
 - Presentation render contract: `.github/instructions/review-presentation-compliance-contract.instructions.md`
+- Pending-review staging contract: `.github/instructions/review-staging-compliance-contract.instructions.md`
 - PR description drafting contract: `.github/instructions/pr-description-compliance-contract.instructions.md`
 - Docs review contract: `.github/instructions/docs-compliance-contract.instructions.md`
 - Implementation contract: `.github/instructions/implementation-compliance-contract.instructions.md`
@@ -43,11 +44,30 @@ The prompts, skills, and routing instructions consume those contracts:
 - `/review-moderator`
 - `/review-presentation`
 - `/review-coordinator`
+- `/stage-pending-pr-review` (BETA)
 - `/code-review-docs`
 - `/draft-pr-description`
 - `/docs-writer`
 - `/resource-implementation`
 - `/acceptance-testing`
+
+### Pending Review Staging (BETA)
+
+The `review-staging` skill powers `/stage-pending-pr-review` as a separate BETA opt-in workflow after committed review findings are frozen.
+It preserves the original audit as immutable provenance while the human reviewer can challenge findings, request evidence-backed revisions or omissions, and propose concerns the AI may have missed.
+Targeted validation records each disposition in a separate staging ledger, after which the workflow previews one immutable inline-comment plan, requires explicit approval, creates only an unsubmitted GitHub pending review with an empty top-level body, verifies its state and comment coverage, and leaves any later submission to a new explicit user instruction.
+The committed-review prompt remains audit-only and does not invoke staging automatically.
+
+The user workflow is:
+
+1. Run `/code-review-committed-changes` and let the audit finish successfully.
+2. Challenge findings, request wording or classification changes, withdraw unsupported findings, or identify possible missed issues in the same chat.
+3. Allow targeted evidence checks to settle every challenge while preserving the original audit unchanged.
+4. Run `/stage-pending-pr-review` when the staging candidate set is satisfactory.
+5. Inspect the exact comment bodies, anchors, file coverage, PR head, and separate request-changes summary, then explicitly approve that exact plan.
+6. Inspect or edit the resulting `PENDING` review manually in GitHub. A new explicit instruction is required to submit it.
+
+Because this workflow is in BETA, users should inspect every proposed and staged comment. The workflow and output shape may change as real-world usage is evaluated.
 
 The `review-skeptic` and `review-architect` skills are workflow-governed intermediate passes.
 The generic code review prompts invoke them after the primary review pass as governed intermediate passes.
@@ -331,6 +351,29 @@ In practice, `REVIEW-PRES-*` rules explain things such as:
 - why the renderer must not add, remove, or reinterpret findings
 - why structured issue and observation findings can render as titled list items with separate `Impact` and `Evidence` blocks once moderator-owned presentation hints exist
 - how footer lines such as `Preflight complete: yes` and `Skill used: ...` are rendered deterministically
+
+## `REVIEW-STAGE-*` Rule Area
+
+These IDs come from `.github/instructions/review-staging-compliance-contract.instructions.md` and are consumed by `/stage-pending-pr-review` through the `review-staging` skill.
+
+| Prefix | Meaning | What it usually tells the user |
+| ------ | ------- | ------------------------------ |
+| `REVIEW-STAGE-*` | Pending-review staging | How frozen committed-review findings become independently resolvable inline comments without submitting a GitHub review |
+
+In practice, `REVIEW-STAGE-*` rules explain:
+
+- how the original frozen findings remain intact while a separate durable ledger records human disputes, revisions, withdrawals, reclassifications, and validated missed findings
+- why challenge validation stays targeted to the concern raised instead of silently restarting broad audit discovery
+- how unsupported concerns can remain as non-blocking questions without being asserted as proven defects
+- why staging cannot independently discover unrelated findings or mutate the frozen baseline after moderation
+- why every comment needs one validated diff location and one correction path, while an applicable raw contributor-document reference is included only when it can be verified
+- why an inapplicable, malformed, or unverifiable candidate reference is omitted before preview instead of blocking the comment or being replaced with unrelated guidance
+- when a genuinely cross-path finding may use one consolidated thread
+- why uncertain findings remain non-blocking questions
+- how current provider 5.x (`!features.SixPointOh()`) and vNext 6.0 (`features.SixPointOh()`) behavior must be distinguished
+- why the user must approve the exact plan in a separate turn before one atomic pending-review creation request
+- how `PENDING` state, empty review body, absent submission timestamp, comment count, and file coverage are verified afterward
+- why the copy-ready `REQUEST_CHANGES` summary is returned separately and never submitted automatically
 
 ## `PRDESC-*` Rule Areas
 

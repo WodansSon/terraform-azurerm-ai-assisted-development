@@ -33,6 +33,13 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Shipped runtime guidance belongs only in files intentionally included by `installer/file-manifest.config`.
 - Repo-only maintainer workflow guidance must stay outside the shipped payload by default.
 
+## Pending Review Staging Safety
+
+- Keep committed and local review workflows audit-only; GitHub review staging must use the separate opt-in staging workflow.
+- Preserve the frozen audit as immutable provenance while targeted human challenges and proposed missed findings update a separate evidence-backed staging state.
+- Require approval of the exact validated comment plan before creating a pending review with an empty top-level body and no submission event.
+- Never submit, approve, comment, or request changes from the staging workflow; submission requires a new explicit user instruction.
+
 ## Release Validation Safety
 
 - Treat this repository as source-only during release validation.

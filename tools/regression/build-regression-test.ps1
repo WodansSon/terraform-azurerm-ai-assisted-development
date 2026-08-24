@@ -5,7 +5,7 @@ param(
 
     [string] $Title,
 
-    [ValidateSet("code-review-local-changes", "code-review-committed-changes", "code-review-docs", "draft-pr-description", "docs-writer", "resource-implementation", "acceptance-testing")]
+    [ValidateSet("code-review-local-changes", "code-review-committed-changes", "code-review-docs", "draft-pr-description", "stage-pending-pr-review", "docs-writer", "resource-implementation", "acceptance-testing")]
     [string] $Task,
 
     [string] $Description,
@@ -496,6 +496,8 @@ function Read-TaskValue {
         "code-review-local-changes",
         "code-review-committed-changes",
         "code-review-docs",
+        "draft-pr-description",
+        "stage-pending-pr-review",
         "docs-writer",
         "resource-implementation",
         "acceptance-testing"
@@ -692,6 +694,12 @@ function Get-TaskProfile {
             expectedRules = @("DOCS-ARG-*", "DOCS-NOTE-*", "DOCS-WORD-*")
             expectedTools = [ordered]@{}
             outputChecks = [ordered]@{ mustHaveSections = @("CHANGE SUMMARY", "DETAILED TECHNICAL REVIEW", "ISSUES") }
+            includeSampleOutput = $true
+        }
+        "stage-pending-pr-review" = [ordered]@{
+            expectedRules = @("REVIEW-STAGE-APPROVAL-*", "REVIEW-STAGE-API-*", "REVIEW-STAGE-VERIFY-*")
+            expectedTools = [ordered]@{}
+            outputChecks = [ordered]@{ mustIncludeMarkers = @("state: `PENDING`", "Skill used: review-staging") }
             includeSampleOutput = $true
         }
         "docs-writer" = [ordered]@{

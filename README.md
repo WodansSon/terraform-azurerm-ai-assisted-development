@@ -277,6 +277,22 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-committed-changes
 ```
 
+### Stage A Pending PR Review (BETA)
+
+> [!WARNING]
+> This workflow is in BETA. Inspect every proposed and staged comment before submitting the review. Its workflow and output shape may change as real-world usage is evaluated.
+
+1. Run `/code-review-committed-changes` to produce the frozen audit baseline.
+2. Challenge findings, request revisions or removals, and identify possible missed issues in the same chat.
+3. When the findings are settled, run `/stage-pending-pr-review`.
+4. Inspect the exact comment bodies, anchors, file coverage, PR head, and separate request-changes summary.
+5. Explicitly approve that exact preview to create one unsubmitted `PENDING` GitHub review with an empty top-level body.
+6. Inspect or edit the pending comments manually in GitHub. Submitting the review requires a new explicit instruction.
+
+The original audit remains immutable while accepted challenges and validated human-raised findings are recorded in a separate staging state. Invoking the prompt does not itself approve a GitHub mutation.
+
+Contributor-guide references are optional enrichment. A staged comment includes exactly one reference at the bottom only when relevant guidance and its section can be verified; otherwise the workflow omits the reference without blocking the comment or forcing unrelated guidance.
+
 ### Draft A Pull Request Title And Body
 ```
 /draft-pr-description
@@ -448,6 +464,7 @@ As you type, Copilot suggests:
 ### 🤖 AI Prompts
 
 - **/code-review-committed-changes** - Review commits and PRs for standards
+- **/stage-pending-pr-review (BETA)** - Adjudicate frozen committed-review findings and, after exact-plan approval, stage an unsubmitted pending GitHub review
 - **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 - **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/draft-pr-description** - Draft one AzureRM pull request title and a template-preserving copy-ready body from the complete current branch change-set
