@@ -294,6 +294,16 @@ That future design is expected to include:
 - structured outputs from each role
 - a moderator or adjudicator that merges, filters, and normalizes the final findings
 
+### Evaluated Direction: External Review Feedback Validation
+
+Historical pull request feedback from TeraSight was evaluated as a possible source of additional review guidance. The dataset contained 17,889 review comments across 1,809 pull requests. Its strongest recurring patterns aligned with guidance and regression coverage already present in this toolkit, including acceptance-test coverage, Optional+Computed handling, pointer helpers, contextual errors, documentation wording, and resource ID normalization.
+
+The evaluation did not identify an actionable missing rule. Broader pattern clusters also contained enough classifier spillover and context-specific or contradictory feedback that direct model training, runtime retrieval, or automatic guidance updates would risk turning repeated but unverified comments into policy. Comment frequency, authorship, thread resolution, and pull request outcome do not independently prove technical correctness.
+
+No external-feedback ingestion workflow is currently planned. TeraSight remains useful as an independent validation source for confirming toolkit priorities, selecting regression scenarios, and detecting future guidance drift. Reconsider integration only when later analysis identifies a coherent, evidence-backed gap that is not already represented in the toolkit; any resulting guidance change must still be maintainer-approved, placed in the authoritative contract or skill, and protected by regression coverage.
+
+Pending-review staging remains separate from this evaluated direction. Staging inspects existing pull request feedback only to prevent duplicate comments and does not treat that feedback as authoritative guidance.
+
 ### Desired Migration Property
 
 The desired future change is:
