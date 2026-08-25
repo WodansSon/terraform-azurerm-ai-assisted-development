@@ -1,1 +1,4 @@
 *.go text eol=lf
+.github/**/*.md text eol=lf
+.github/**/*.json text eol=lf
+.vscode/*.json text eol=lf

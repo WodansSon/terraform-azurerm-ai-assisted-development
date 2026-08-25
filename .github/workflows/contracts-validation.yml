@@ -13,8 +13,10 @@ on:
       - 'tools/config/upstream-contributor.json'
       - 'tools/check-upstream-contributor-drift.ps1'
       - 'tools/validate-ai-toolkit.ps1'
+      - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/validate-copied-markdown-links.ps1'
       - 'tools/validate-contracts.ps1'
+      - '.gitattributes'
       - '.github/workflows/contracts-validation.yml'
   pull_request:
     branches: [ main ]
@@ -28,8 +30,10 @@ on:
       - 'tools/config/upstream-contributor.json'
       - 'tools/check-upstream-contributor-drift.ps1'
       - 'tools/validate-ai-toolkit.ps1'
+      - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/validate-copied-markdown-links.ps1'
       - 'tools/validate-contracts.ps1'
+      - '.gitattributes'
       - '.github/workflows/contracts-validation.yml'
   workflow_dispatch:
 
