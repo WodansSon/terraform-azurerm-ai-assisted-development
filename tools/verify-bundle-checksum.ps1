@@ -42,11 +42,28 @@ function Copy-ItemSafe {
         throw "Required path not found: $Path"
     }
 
+    $destinationParent = Split-Path -Parent $Destination
+    if ($destinationParent) {
+        New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+    }
+
     Copy-Item -Path $Path -Destination $Destination -Recurse -Force
+}
+
+function Get-ManifestEntries {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ManifestPath
+    )
+
+    return @(Get-Content -LiteralPath $ManifestPath | ForEach-Object { $_.Trim() } | Where-Object {
+        $_ -and -not $_.StartsWith('#') -and -not $_.StartsWith('[')
+    })
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $sourceInstaller = Join-Path $repoRoot 'installer'
+$runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 
 if ($StageFromRepo) {
     $tempRoot = if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -58,7 +75,13 @@ if ($StageFromRepo) {
     Copy-ItemSafe -Path (Join-Path $sourceInstaller 'file-manifest.config') -Destination $stagingRoot
     Copy-ItemSafe -Path (Join-Path $sourceInstaller 'VERSION') -Destination $stagingRoot
     Copy-ItemSafe -Path (Join-Path $sourceInstaller 'modules') -Destination (Join-Path $stagingRoot 'modules')
-    Copy-ItemSafe -Path (Join-Path $sourceInstaller 'aii') -Destination (Join-Path $stagingRoot 'aii')
+
+    $manifestPath = Join-Path $sourceInstaller 'file-manifest.config'
+    foreach ($relativePath in Get-ManifestEntries -ManifestPath $manifestPath) {
+        Copy-ItemSafe `
+            -Path (Join-Path $repoRoot $relativePath) `
+            -Destination (Join-Path (Join-Path $stagingRoot 'aii') $relativePath)
+    }
 
     $InstallerRoot = $stagingRoot
 }
@@ -68,6 +91,10 @@ if (-not $InstallerRoot) {
 }
 
 $InstallerRoot = (Resolve-Path $InstallerRoot).Path
+
+& $runtimeLineEndingsScriptPath `
+    -RuntimeRoot (Join-Path $InstallerRoot 'aii') `
+    -ManifestPath (Join-Path $InstallerRoot 'file-manifest.config')
 
 $modulePath = Join-Path $InstallerRoot (Join-Path 'modules' (Join-Path 'powershell' 'ValidationEngine.psm1'))
 if (-not (Test-Path $modulePath)) {
