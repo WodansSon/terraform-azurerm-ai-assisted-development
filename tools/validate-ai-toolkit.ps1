@@ -31,7 +31,9 @@ $architectureLayoutScriptPath = Join-Path $PSScriptRoot 'validate-architecture-l
 $copiedMarkdownLinksScriptPath = Join-Path $PSScriptRoot 'validate-copied-markdown-links.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
+$manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
+$runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
 
 $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
@@ -463,6 +465,10 @@ try {
 
     $steps += Invoke-ValidationStep -Name 'changelog-consistency' -Detail 'Validate release footer links and the Unreleased compare link against the changelog release headings.' -Skipped:$SkipChangelog -Command {
         & pwsh -NoProfile -File $changelogConsistencyScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'runtime-line-endings' -Detail 'Require LF line endings in manifest-managed AI Markdown and JSON files.' -Command {
+        & $runtimeLineEndingsScriptPath -RuntimeRoot $repoRoot -ManifestPath $manifestPath
     }
 
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {

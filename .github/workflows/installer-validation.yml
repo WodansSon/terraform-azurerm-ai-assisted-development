@@ -8,7 +8,9 @@ on:
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
       - 'tools/build-release-bundle_dry_run.ps1'
+      - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/verify-bundle-checksum.ps1'
+      - '.gitattributes'
       - '.github/workflows/installer-validation.yml'
   pull_request:
     branches: [ main ]
@@ -17,7 +19,9 @@ on:
       - 'tools/PSAnalyzer/**'
       - 'tools/BashAnalyzer/**'
       - 'tools/build-release-bundle_dry_run.ps1'
+      - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/verify-bundle-checksum.ps1'
+      - '.gitattributes'
       - '.github/workflows/installer-validation.yml'
 
 jobs:
