@@ -15,9 +15,16 @@
 - Unsupported human-proposed issue: Rejected as unsupported and preserved only in the challenge ledger.
 - Plausible but unproven human concern:
 
-  **Question (non-blocking):** Could the service apply a different precedence rule when both routing fields are present?
+  Could the service apply a different precedence rule when both routing fields are present?
 
   It is not included in the request-changes summary as an established blocker.
+
+## Existing Feedback Outcomes
+
+- Incomplete thread pages, replies, review bodies, discussion comments, or thread state: `Cannot run stage-pending-pr-review: existing pull request feedback could not be fully retrieved and compared. Nothing was staged.`
+- New equivalent feedback after approval: approval discarded; replacement preview required.
+- Partial or empty feedback response: not accepted as a complete no-duplicate result.
+- A stale approved duplicate is never published.
 
 ## Anchor Outcomes
 
@@ -41,5 +48,5 @@
 - Review must remain `PENDING` with an empty body and null `submitted_at`.
 - Commit, count, coverage, anchors, and bodies must equal the approved plan.
 - Verification mismatch: report only; no repair or submission.
-- Human reviewers may inspect and edit the pending review manually.
-- Any later submission requires a new explicit instruction.
+- Human reviewers inspect and optionally edit the pending review, then submit it manually in GitHub.
+- Any later automated submission requires a new explicit instruction outside this workflow.

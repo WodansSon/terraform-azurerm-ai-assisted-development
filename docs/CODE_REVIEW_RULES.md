@@ -54,18 +54,34 @@ The prompts, skills, and routing instructions consume those contracts:
 ### Pending Review Staging (BETA)
 
 The `review-staging` skill powers `/stage-pending-pr-review` as a separate BETA opt-in workflow after committed review findings are frozen.
-It preserves the original audit as immutable provenance while the human reviewer can challenge findings, request evidence-backed revisions or omissions, and propose concerns the AI may have missed.
-Targeted validation records each disposition in a separate staging ledger, after which the workflow previews one immutable inline-comment plan, requires explicit approval, creates only an unsubmitted GitHub pending review with an empty top-level body, verifies its state and comment coverage, and leaves any later submission to a new explicit user instruction.
+Invoking the prompt opens a staging session, initializes its candidate findings from the frozen audit, compares every candidate with complete existing review threads, review bodies, and top-level discussion, and immediately renders the remaining preview when the invocation contains no challenge. It preserves that audit as immutable provenance while the human reviewer can challenge findings, request evidence-backed revisions or omissions, and propose concerns the AI may have missed.
+Targeted validation records each disposition in a separate staging ledger, after which the workflow previews one immutable inline-comment plan, requires explicit approval, creates only an unsubmitted GitHub pending review with an empty top-level body, verifies its state and comment coverage, and leaves submission to the human reviewer in GitHub.
 The committed-review prompt remains audit-only and does not invoke staging automatically.
+
+```mermaid
+flowchart LR
+	A[Run committed review] --> B[Invoke staging command]
+	B --> C[Suppress existing feedback]
+	C --> D[Inspect immediate preview]
+	D --> E[Challenge or add findings]
+	E --> I[Inspect exact or replacement plan]
+	I --> F[Explicitly approve]
+	F --> G[Create pending review]
+	G --> H[Inspect and submit manually]
+```
 
 The user workflow is:
 
 1. Run `/code-review-committed-changes` and let the audit finish successfully.
-2. Challenge findings, request wording or classification changes, withdraw unsupported findings, or identify possible missed issues in the same chat.
-3. Allow targeted evidence checks to settle every challenge while preserving the original audit unchanged.
-4. Run `/stage-pending-pr-review` when the staging candidate set is satisfactory.
+2. Run `/stage-pending-pr-review` in the same chat to initialize the staging session, suppress materially equivalent feedback already present on the pull request, and immediately render the remaining preview.
+3. Inspect the suppression evidence and challenge findings, request wording or classification changes, withdraw unsupported findings, or identify possible missed issues when the preview needs adjustment.
+4. Allow targeted evidence checks to settle every challenge while preserving the original audit unchanged, then inspect the replacement preview.
 5. Inspect the exact comment bodies, anchors, file coverage, PR head, and separate request-changes summary, then explicitly approve that exact plan.
-6. Inspect or edit the resulting `PENDING` review manually in GitHub. A new explicit instruction is required to submit it.
+6. Inspect or edit the resulting `PENDING` review and submit it manually in GitHub when satisfied.
+
+Each previewed comment uses a chat-only `Comment N`, `File`, `Line`, and `Review Comment` preamble, followed by the verbatim Markdown body that will be added to GitHub. The body reads like a considerate maintainer's comment: it starts with an evidence-backed observation, prefers a collaborative question when natural, allows a direct courteous request when a question would sound artificial, offers a directly applicable GitHub suggestion only when the exact replacement is proven, and ends with the verified contributor-document reference when one applies. The reviewer approaches contributors respectfully, probes politely when context may be missing, presents a concrete solution, and listens during adjudication without adding greetings or farewells to every inline comment. Raw API side values remain in the internal plan rather than the human preview; removed-line anchors are identified plainly.
+
+The existing-feedback gate compares concerns semantically rather than by exact wording. Open, resolved, and outdated inline threads, suggestion-only comments, submitted review bodies, and top-level discussion can suppress a duplicate staging candidate while leaving the frozen audit unchanged. Incomplete feedback history fails closed, and new equivalent feedback posted after approval invalidates the plan before mutation.
 
 Because this workflow is in BETA, users should inspect every proposed and staged comment. The workflow and output shape may change as real-world usage is evaluated.
 
@@ -373,7 +389,7 @@ In practice, `REVIEW-STAGE-*` rules explain:
 - how current provider 5.x (`!features.SixPointOh()`) and vNext 6.0 (`features.SixPointOh()`) behavior must be distinguished
 - why the user must approve the exact plan in a separate turn before one atomic pending-review creation request
 - how `PENDING` state, empty review body, absent submission timestamp, comment count, and file coverage are verified afterward
-- why the copy-ready `REQUEST_CHANGES` summary is returned separately and never submitted automatically
+- why the copy-ready Request Changes Summary is returned separately and never submitted automatically
 
 ## `PRDESC-*` Rule Areas
 

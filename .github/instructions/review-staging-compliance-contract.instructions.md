@@ -29,6 +29,8 @@ Use these sources with the following roles:
   - Authoritative for the immutable pre-approval staging-plan shape.
 - Current pull request metadata and diff
   - Authoritative for repository identity, head commit, changed paths, and commentable locations.
+- Existing pull request review threads, review bodies, and top-level discussion
+  - Authoritative for feedback already raised on the pull request and whether a staging candidate would duplicate it.
 - Applicable current contributor documentation
   - Authoritative for any contributor-document reference included in an inline comment.
 - GitHub REST API documentation for pull request reviews
@@ -39,6 +41,7 @@ Conflict resolution:
 - This contract is authoritative for staging safety, approval, comment mapping, GitHub mutation boundaries, verification, and output.
 - The shared code review contract remains authoritative for the immutable audit baseline and its original finding meaning and classification.
 - This contract is authoritative for post-review challenge dispositions and the derived staging candidate set; that state may retain, revise, withdraw, reclassify, or add a finding only through the evidence-backed challenge rules below.
+- This contract is authoritative for suppressing staging candidates already covered by materially equivalent pull request feedback; suppression never mutates the frozen audit baseline.
 - The committed-review workflow remains audit-only and must not create or submit GitHub review content.
 - When current pull request metadata conflicts with frozen finding scope or commit identity, fail closed without creating a review.
 
@@ -50,6 +53,7 @@ Areas:
 
 - INPUT = accepted frozen input and immutable plan construction
 - CHALLENGE = human challenge and missed-finding adjudication
+- FEEDBACK = existing pull request feedback deduplication
 - MAP = finding-to-thread mapping
 - COMMENT = inline comment content
 - VERSION = provider-version behavior wording
@@ -64,6 +68,7 @@ Use evidence in this order:
 
 - Frozen moderated findings from the completed committed review
 - Current authoritative pull request metadata and diff
+- Complete existing pull request review threads, review bodies, and top-level discussion
 - Current workspace contributor documentation and the exact section cited by each finding
 - GitHub review API responses for the created review and its comments
 
@@ -91,7 +96,7 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 ### REVIEW-STAGE-INPUT-003: Pull request identity and head commit are immutable
 
-- Rule: Resolve one authoritative repository owner, repository name, pull request number, and current head commit before building the staging plan.
+- Rule: Resolve one authoritative repository owner, repository name, pull request number, current pull request title, and current head commit before building the staging plan.
 - Rule: Frozen finding paths must belong to that pull request's changed-file set.
 - Rule: Bind the staging plan to the current pull request head commit and re-read that head immediately before mutation.
 - Rule: If the head commit, pull request identity, or changed-file scope differs from the validated plan, discard approval and rebuild the plan before asking again.
@@ -102,6 +107,7 @@ Do not stage a comment when required finding evidence or a commentable location 
 - Rule: Build the plan only after every recorded challenge has a final disposition and the adjudication state is `settled`.
 - Rule: Validate every comment body, included contributor reference, path, line, side, and covered-path mapping before approval.
 - Rule: Validate every target as commentable in the current pull request diff before approval.
+- Rule: Validate the complete existing-feedback check for every otherwise active candidate before approval.
 - Rule: Do not create a partial plan or silently omit an eligible finding because one target cannot be staged.
 
 ## Human challenge and missed-finding adjudication
@@ -110,6 +116,9 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 - Rule: Keep the frozen audit baseline and the post-review adjudication ledger as separate state layers throughout the conversation.
 - Rule: The baseline preserves every original visible finding exactly as reviewed; the adjudication ledger records user challenges, targeted validation, dispositions, and the current staging candidate set.
+- Rule: Invocation of `/stage-pending-pr-review` opens the staging session and initializes the adjudication ledger from the eligible frozen audit baseline before any candidate changes are accepted.
+- Rule: After the staging session opens, change the staging candidate set only through challenges processed by `/stage-pending-pr-review` or suppression under `REVIEW-STAGE-FEEDBACK-*`; do not infer adjudicated dispositions from ordinary discussion that occurred before invocation.
+- Rule: When the invocation includes a challenge or proposed missed finding, process it as the staging session's first challenge after initialization.
 - Rule: Do not overwrite the baseline when a staging candidate is revised, withdrawn, reclassified, or superseded.
 - Rule: If conversational state is unavailable, require the user to supply the frozen review plus any prior challenge history; do not reconstruct missing dispositions from memory or guesswork.
 
@@ -138,16 +147,47 @@ Do not stage a comment when required finding evidence or a commentable location 
 ### REVIEW-STAGE-CHALLENGE-005: Challenges settle before preview
 
 - Rule: Keep the adjudication state `open` while any challenge is unresolved or while the user is still requesting review changes.
+- Rule: When a staging session opens without a challenge or proposed missed finding, settle the unchanged initialized candidate set and render the complete staging preview in the same invocation without requiring a separate preview request.
+- Rule: When the staging invocation includes a challenge or proposed missed finding, keep adjudication open while processing that input; do not render an approvable preview until every challenge has a final disposition and the user asks to proceed.
+- Rule: Do not stop a bare invocation after only listing candidate findings or asking the user to request the staging preview.
 - Rule: After each disposition, show the current candidate findings and preserved withdrawn findings so the human reviewer can challenge further or request the staging preview.
 - Rule: Do not build an approvable preview until the user indicates challenge adjudication is complete or asks to proceed to staging.
 - Rule: A challenge raised after preview invalidates that preview and any approval, returns the state to `open`, and requires a new settled plan and approval.
 - Rule: If no active candidate findings remain after adjudication, return the settled empty state and do not create an empty pending review.
 
+## Existing pull request feedback deduplication
+
+### REVIEW-STAGE-FEEDBACK-001: Retrieve complete existing feedback before preview
+
+- Rule: Before building a staging plan, retrieve every existing inline review thread with all replies and its open, resolved, or outdated state, every submitted review body, and every top-level pull request discussion comment, following pagination to completion.
+- Rule: Compare every otherwise active staging candidate against that complete feedback set using the underlying concern, affected code or documentation, consequence, and correction path; exact wording is not required for equivalence.
+- Rule: Treat suggestion-only comments as substantive feedback when the suggested replacement or surrounding thread establishes the same concern and correction.
+- Rule: Do not limit duplicate detection to the authenticated reviewer, unresolved threads, current diff anchors, or comments created after the frozen audit.
+
+### REVIEW-STAGE-FEEDBACK-002: Suppress materially equivalent existing feedback
+
+- Rule: When existing feedback already raises a materially equivalent concern, set the staging finding disposition to `suppressed`, create no new inline comment for it, and preserve the frozen audit finding unchanged.
+- Rule: Record the matched feedback URL, author, feedback kind, thread state when applicable, and an evidence-backed equivalence rationale in the staging plan.
+- Rule: Suppress equivalent open, resolved, or outdated threads and equivalent review-body or top-level comments; do not repeat feedback merely because its original anchor moved or the thread was resolved.
+- Rule: Keep a candidate only when current-head evidence proves a materially distinct concern or recurrence not covered by the existing feedback, and record why the earlier feedback is not equivalent.
+- Rule: If every candidate is suppressed, report that no new review feedback remains and do not create an empty pending review.
+
+### REVIEW-STAGE-FEEDBACK-003: Incomplete feedback history fails closed
+
+- Rule: If any required feedback surface, pagination, thread replies, or thread state cannot be retrieved, fail closed before preview without creating a review.
+- Rule: Do not treat an empty or partial API response as proof that no equivalent feedback exists.
+
+### REVIEW-STAGE-FEEDBACK-004: Recheck feedback after approval
+
+- Rule: Immediately before mutation, retrieve the complete existing feedback set again and repeat the equivalence check against every approved comment.
+- Rule: New or changed feedback that duplicates, supersedes, or materially changes an approved comment invalidates approval and requires a replacement settled preview.
+- Rule: Never publish a now-duplicate comment from a stale approved plan.
+
 ## Finding-to-thread mapping
 
 ### REVIEW-STAGE-MAP-001: Use one thread per actionable location
 
-- Rule: Create one inline comment for each independent actionable file and location in the settled staging candidate set so each thread can be resolved separately.
+- Rule: Create one inline comment for each independent actionable file and location in the settled unsuppressed staging candidate set so each thread can be resolved separately.
 - Rule: When one finding identifies independent corrections in multiple files or locations, create separate comments rather than one broad thread.
 - Rule: Do not duplicate the same correction at multiple nearby lines in one file.
 
@@ -160,13 +200,13 @@ Do not stage a comment when required finding evidence or a commentable location 
 ### REVIEW-STAGE-MAP-003: Uncertain findings are non-blocking questions
 
 - Rule: When a settled finding is explicitly uncertain or lacks high confidence, preserve it as a non-blocking question rather than an asserted defect.
-- Rule: Begin that comment with `**Question (non-blocking):**` and ask one concrete question grounded in the frozen evidence.
+- Rule: Ask one concrete question grounded in the frozen evidence and use wording that makes the uncertainty clear without adding workflow labels to the contributor-facing comment.
 - Rule: Do not turn uncertainty into a blocking request through stronger staging language.
 
 ### REVIEW-STAGE-MAP-004: Re-anchor only to an approved commentable line
 
 - Rule: When the ideal code line is unchanged or otherwise not commentable, choose the strongest commentable changed line in the same relevant hunk or path only when the comment body can identify the actual affected code unambiguously.
-- Rule: Preview the actual anchor path, line, side, and body before approval; do not silently substitute a nearby line during mutation.
+- Rule: Keep the actual anchor path, line, and side in the immutable plan, and preview the path, line, and exact body before approval; do not silently substitute a nearby line during mutation.
 - Rule: Any re-anchoring after preview invalidates approval and requires a replacement preview.
 - Rule: If no commentable anchor can preserve the finding accurately, fail closed rather than creating a misleading thread.
 
@@ -174,9 +214,16 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 ### REVIEW-STAGE-COMMENT-001: Every comment is self-contained
 
-- Rule: Every inline comment must state the concrete problem, its effect, and one suggested change or code example.
-- Rule: Use the labels `**Problem:**`, `**Effect:**`, and `**Suggested change:**` for actionable findings.
-- Rule: For a non-blocking question, use `**Question (non-blocking):**`, `**Why it matters:**`, and `**Suggested change if confirmed:**`.
+- Rule: Write every inline comment as concise, natural prose that a considerate human maintainer could leave directly on the pull request.
+- Rule: Start from an evidence-backed observation and explain the consequence when it materially helps the contributor.
+- Rule: Prefer a collaborative question such as `Could we ...?`, `Would it make sense to ...?`, or `Am I reading this correctly?` when it sounds natural; allow a direct but courteous request when forcing a question would sound artificial.
+- Rule: Keep confirmed findings technically clear and do not manufacture uncertainty merely to soften a blocking comment.
+- Rule: Prefer respectful qualifiers such as `It looks like` when they invite correction without obscuring verified evidence.
+- Rule: Do not use audit-style labels such as `Problem`, `Effect`, `Suggested change`, `Question (non-blocking)`, or `Why it matters` in contributor-facing comments.
+- Rule: Do not use blame, commands, condescension, or minimizing words such as `obviously`, `simply`, or `just`.
+- Rule: Frame feedback around observable code behavior, leave room for context the reviewer may have missed, offer a practical next step, and incorporate author clarification during adjudication; keep inline comments focused instead of adding formulaic greetings or sign-offs.
+- Rule: When the exact replacement is proven and directly applicable to the approved diff anchor, include it as one fenced `suggestion` block so the contributor can apply it from GitHub.
+- Rule: When an exact replacement cannot be proven or applied safely at that anchor, use a normal fenced code block only when an illustrative example materially clarifies the request; otherwise use prose.
 - Rule: Keep one deterministic correction path; do not offer competing alternatives unless the settled finding itself requires a choice from the author.
 
 ### REVIEW-STAGE-COMMENT-002: Applicable verified contributor guidance is optional
@@ -212,15 +259,18 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 ### REVIEW-STAGE-APPROVAL-001: Preview precedes approval
 
-- Rule: Before any mutation, show the user the pull request, bound head commit, challenge dispositions, settled candidate findings, exact comment count, file coverage, consolidation decisions, full inline comment bodies, and the separate copy-ready `REQUEST_CHANGES` summary.
+- Rule: Before any mutation, show the user the pull request, bound head commit, challenge dispositions, existing-feedback checks and suppressed findings with matched URLs, settled candidate findings, exact comment count, file coverage, consolidation decisions, full inline comment bodies, and the separate copy-ready Request Changes Summary.
+- Rule: Render each planned comment in the chat preview with the heading `### Comment N`, followed by `**File:** \`path\``, `**Line:** \`line\``, and `**Review Comment:**`, then place the exact contributor-facing Markdown body in a fenced `markdown` block.
+- Rule: Treat the numbered heading, file, line, and `Review Comment` label as chat-only preview metadata; send only the fenced Markdown content as the GitHub comment body.
+- Rule: Do not display raw `RIGHT` or `LEFT` API side values in the human preview. Append ` (removed line)` to the displayed line only when the approved anchor targets the removed side of the diff.
 - Rule: State that the top-level review body will be empty and the review will remain pending.
-- Rule: Ask the user in natural conversational text whether to stage that exact plan, then stop and wait for the answer.
+- Rule: Ask `**Stage this exact pending review on \`owner/repository#number\`: "pull request title"?**` using the authoritative repository identity and current pull request title, then stop and wait for the answer.
 
 ### REVIEW-STAGE-APPROVAL-002: Approval applies only to the exact plan
 
 - Rule: Do not treat invocation of the staging prompt, approval of the earlier audit, or a general request to review the pull request as approval to create the pending review.
 - Rule: Proceed only after a new explicit affirmative response to the displayed staging plan.
-- Rule: Any new challenge or change to the adjudication ledger, pull request head, comment count, file coverage, comment body, target location, reference, or summary invalidates approval and requires a new settled preview and approval.
+- Rule: Any new challenge or change to the adjudication ledger, existing pull request feedback, pull request title, pull request head, comment count, file coverage, comment body, target location, reference, or summary invalidates approval and requires a new settled preview and approval.
 
 ## GitHub mutation boundary
 
@@ -236,7 +286,8 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 - Rule: Never call the review submission endpoint, approve, request changes, or submit a general comment in this workflow.
 - Rule: Never infer submission approval from approval to stage the pending review.
-- Rule: A later submission requires a new explicit user instruction after manual inspection and is a separate action outside this staging workflow.
+- Rule: Direct the human reviewer to inspect, optionally edit, and submit the pending review manually in GitHub when satisfied.
+- Rule: Any later automated submission requires a new explicit user instruction after manual inspection and is a separate action outside this staging workflow.
 
 ### REVIEW-STAGE-API-003: Existing pending reviews fail closed
 
@@ -284,9 +335,14 @@ Do not stage a comment when required finding evidence or a commentable location 
 
 ### REVIEW-STAGE-OUTPUT-002: Keep the request-changes summary separate
 
-- Rule: Return the same copy-ready `REQUEST_CHANGES` summary that the user approved in a separate Markdown code block.
-- Rule: Derive the summary only from blocking findings in the settled staging candidate set, including validated human-added findings, and do not present withdrawn or uncertain findings as established blockers.
+- Rule: Return the same copy-ready Request Changes Summary that the user approved in a separate Markdown code block.
+- Rule: Begin the summary with one brief, natural acknowledgment matched to verified context: thank the contributor for opening or submitting the pull request on a first review, thank them for pushing updates or working through earlier feedback on a proven follow-up, and use a neutral acknowledgment such as thanking them for working on the change when the interaction history is unclear.
+- Rule: Use follow-up wording only when the current conversation or authoritative pull request history proves the earlier review and subsequent contributor activity; never invent prior feedback, pushed changes, or another review pass to make the summary sound personal.
+- Rule: Adapt the acknowledgment to the actual interaction instead of repeating one fixed sentence, and keep it concise rather than effusive or formulaic.
+- Rule: Derive substantive change requests only from unsuppressed blocking findings in the settled staging candidate set, including validated human-added findings, and phrase them as clear collaborative requests.
+- Rule: Do not present withdrawn or uncertain findings as established blockers; when useful, mention uncertain findings only as non-blocking questions after the blocking requests.
+- Rule: When no blocking findings remain, state that plainly after the acknowledgment and mention any non-blocking questions without implying that changes are required.
 - Rule: Do not post or submit that summary automatically.
-- Rule: End by stating that submission requires a new explicit instruction.
+- Rule: End by directing the human reviewer to inspect the staged comments and submit the review manually in GitHub when satisfied.
 
 <!-- REVIEW-STAGE-CONTRACT-EOF -->

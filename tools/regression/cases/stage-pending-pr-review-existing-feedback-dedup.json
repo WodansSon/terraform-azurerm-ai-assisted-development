@@ -1,0 +1,132 @@
+{
+  "id": "stage-pending-pr-review-existing-feedback-dedup",
+  "title": "Pending review staging suppresses feedback already raised on the pull request",
+  "task": "stage-pending-pr-review",
+  "caseStatus": "adjudicated",
+  "sourceKind": "synthetic",
+  "provenance": {
+    "originKind": "real-pr",
+    "originSummary": "Sanitized from a live staging run that repeated two exact suggestions already posted by another reviewer.",
+    "whyItMattered": "Repeated review comments create noise, split one concern across competing threads, and make maintainers appear inattentive to existing contributor discussion.",
+    "genericCondition": "A frozen audit contains concerns that are materially equivalent to existing inline threads, submitted review bodies, or top-level pull request discussion, while at least one genuinely new concern remains.",
+    "notes": "The fixture uses generic paths and synthetic identifiers; no real pull request or service name is retained."
+  },
+  "sanitized": true,
+  "description": "A staging run retrieves complete existing feedback, suppresses exact and semantic duplicates across feedback surfaces, and previews only genuinely new feedback.",
+  "fixture": {
+    "mode": "files",
+    "path": "tools/regression/fixtures/stage-pending-pr-review-existing-feedback-dedup/README.md"
+  },
+  "scope": {
+    "changedFiles": [
+      "internal/services/example/example_widget_resource.go",
+      "internal/services/example/example_widget_resource_test.go",
+      "website/docs/r/example_widget.html.markdown"
+    ],
+    "notes": "The synthetic pull request exposes complete paginated review-thread, review-body, and discussion-comment history."
+  },
+  "expectedRules": [
+    "REVIEW-STAGE-FEEDBACK-001",
+    "REVIEW-STAGE-FEEDBACK-002",
+    "REVIEW-STAGE-FEEDBACK-004",
+    "REVIEW-STAGE-INPUT-004",
+    "REVIEW-STAGE-APPROVAL-001",
+    "REVIEW-STAGE-APPROVAL-002",
+    "REVIEW-STAGE-VERIFY-002",
+    "REVIEW-STAGE-OUTPUT-002"
+  ],
+  "mustCatch": [
+    {
+      "key": "complete-existing-feedback-retrieved",
+      "severity": "high",
+      "description": "The workflow retrieves all review threads with replies and state, submitted review bodies, and top-level discussion comments before preview."
+    },
+    {
+      "key": "suggestion-only-duplicate-suppressed",
+      "severity": "high",
+      "description": "An exact suggestion-only thread is recognized as substantive equivalent feedback and suppresses the duplicate staging candidate."
+    },
+    {
+      "key": "resolved-semantic-duplicate-suppressed",
+      "severity": "high",
+      "description": "A resolved thread with different wording but the same concern and correction suppresses the equivalent candidate."
+    },
+    {
+      "key": "review-body-duplicate-suppressed",
+      "severity": "high",
+      "description": "Equivalent feedback in a submitted review body suppresses a candidate even without an inline anchor."
+    },
+    {
+      "key": "frozen-baseline-preserved",
+      "severity": "high",
+      "description": "Suppression changes only staging eligibility and leaves every frozen audit finding unchanged."
+    },
+    {
+      "key": "unique-finding-remains",
+      "severity": "high",
+      "description": "A genuinely new concern remains eligible and produces exactly one staged inline comment."
+    },
+    {
+      "key": "summary-excludes-suppressed-findings",
+      "severity": "high",
+      "description": "The Request Changes Summary contains only the unsuppressed blocking finding."
+    },
+    {
+      "key": "feedback-rechecked-before-mutation",
+      "severity": "high",
+      "description": "The complete existing-feedback comparison is repeated after approval and before atomic creation."
+    }
+  ],
+  "mustNotFlag": [
+    {
+      "key": "exact-wording-required",
+      "description": "Duplicate detection must not require matching prose when the concern and correction path are materially equivalent."
+    },
+    {
+      "key": "resolved-thread-ignored",
+      "description": "Resolved or outdated equivalent feedback must not be ignored merely because its thread state changed."
+    },
+    {
+      "key": "suppression-deletes-audit-finding",
+      "description": "Suppressing staged feedback must not remove or rewrite the immutable audit baseline."
+    },
+    {
+      "key": "all-findings-suppressed",
+      "description": "The distinct delete-path finding must not be suppressed by unrelated existing feedback."
+    }
+  ],
+  "expectedTools": {},
+  "outputChecks": {
+    "mustHaveSections": [
+      "Existing Feedback Gate",
+      "Suppressed Findings",
+      "Pending Review Preview",
+      "Inline Comments",
+      "Request Changes Summary",
+      "Verified Pending Review"
+    ],
+    "mustIncludeMarkers": [
+      "Review threads complete: `yes`",
+      "Review bodies complete: `yes`",
+      "Discussion comments complete: `yes`",
+      "Disposition: `suppressed`",
+      "https://github.com/example/provider/pull/42#discussion_r100",
+      "https://github.com/example/provider/pull/42#discussion_r101",
+      "https://github.com/example/provider/pull/42#pullrequestreview-200",
+      "Immutable audit baseline: `4` findings preserved",
+      "Comment count: `1`",
+      "Could we keep this assignment behind the existing-version guard instead?",
+      "Existing feedback recheck before mutation: complete and unchanged",
+      "State: `PENDING`",
+      "Skill used: review-staging"
+    ],
+    "mustNotIncludeMarkers": [
+      "Would it make sense to use `errors.New` here?",
+      "Could we clarify whether this is an API-returned default?",
+      "Could we add focused update coverage for `network_mode`?",
+      "Comment count: `4`",
+      "Review submitted"
+    ]
+  },
+  "notes": "This adjudicated case protects the existing-feedback deduplication gate across inline threads, review bodies, and staging revalidation."
+}

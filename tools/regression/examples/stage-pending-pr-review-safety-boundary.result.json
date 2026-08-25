@@ -17,6 +17,9 @@
   "findings": {
     "caught": [
       "immutable-baseline-and-separate-ledger",
+      "invocation-initializes-staging-session",
+      "preinvocation-discussion-is-not-adjudicated",
+      "bare-invocation-renders-complete-preview",
       "supported-human-dispute-withdraws-finding",
       "validated-human-missed-issue-added",
       "exact-plan-preview-before-mutation",
@@ -28,14 +31,15 @@
       "pending-only-empty-body-payload",
       "pending-state-and-coverage-verified",
       "review-url-and-separate-summary-returned",
-      "submission-requires-new-instruction"
+      "summary-acknowledgment-matches-review-history",
+      "manual-submission-remains-human-controlled"
     ],
     "missed": [],
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 13,
-    "total": 13
+    "matched": 17,
+    "total": 17
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

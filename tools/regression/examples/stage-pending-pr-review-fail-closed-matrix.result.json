@@ -24,6 +24,8 @@
       "uncommentable-anchor-fails-closed",
       "reanchor-requires-new-preview",
       "changed-head-invalidates-approval",
+      "incomplete-feedback-history-hard-stop",
+      "new-duplicate-feedback-invalidates-approval",
       "existing-pending-review-blocks-create",
       "nonempty-review-body-rejected",
       "event-field-rejected",
@@ -39,8 +41,8 @@
     "falsePositives": []
   },
   "severityChecks": {
-    "matched": 18,
-    "total": 18
+    "matched": 20,
+    "total": 20
   },
   "scopeChecks": {
     "ruleFamiliesAppliedCorrectly": true,

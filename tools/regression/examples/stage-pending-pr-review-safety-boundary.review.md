@@ -1,3 +1,13 @@
+## Staging Session Opened
+
+- Invocation: `/stage-pending-pr-review`
+- Immutable audit baseline loaded: `3` findings
+- Staging candidate ledger: initialized from the frozen baseline
+- Informal pre-invocation discussion: not imported as an adjudicated disposition
+- Bare invocation: complete preview rendered without another user request
+- GitHub mutation: none; explicit approval still required
+- Reviewer response: challenged the initial preview with the test-coverage dispute and proposed delete-path concern below
+
 ## Challenge Adjudication
 
 - Immutable audit baseline: `3` findings preserved
@@ -30,48 +40,70 @@ The first finding is one indivisible schema-to-expand invariant. Its thread is a
 
 ## Inline Comments
 
-### `internal/services/example/example_widget_helpers.go:88` (`RIGHT`)
+The numbered headings and placement fields below are chat-only preview metadata. Only each fenced Markdown body will be added to GitHub.
 
-**Problem:** The schema limits `legacy_mode` to current provider 5.x (`!features.SixPointOh()`), but this expansion path still reads it for vNext 6.0 (`features.SixPointOh()`). This one invariant spans `internal/services/example/example_widget_resource.go` and `internal/services/example/example_widget_helpers.go`.
+### Comment 1
 
-**Effect:** A vNext 6.0 configuration can reach behavior for an argument that its schema no longer exposes, leaving the version branches asymmetric.
+**File:** `internal/services/example/example_widget_helpers.go`
 
-**Suggested change:** Guard the legacy expansion with `!features.SixPointOh()` and keep the vNext 6.0 payload path independent of `legacy_mode`.
+**Line:** `88`
 
-**Reference:** [guide-breaking-changes.md (Breaking Schema Changes and Deprecations)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md)
-
-### `internal/services/example/example_widget_resource.go:144` (`RIGHT`)
-
-**Problem:** The delete path sends current provider 5.x (`!features.SixPointOh()`) legacy cleanup data when running in vNext 6.0 (`features.SixPointOh()`), even though that argument is removed from the vNext surface.
-
-**Effect:** Destroying the resource under vNext 6.0 can send an obsolete field and fail to remove the remote object cleanly.
-
-**Suggested change:** Guard the legacy delete cleanup with `!features.SixPointOh()` and omit that field from the vNext 6.0 delete request.
-
-**Reference:** [guide-breaking-changes.md (Breaking Schema Changes and Deprecations)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md)
-
-### `website/docs/r/example_widget.html.markdown:70` (`RIGHT`)
-
-**Question (non-blocking):** Is `Enabled` a Terraform provider default for `mode`, or is it only the value returned by the API when configuration omits the argument?
-
-**Why it matters:** Documenting an API-returned value as a provider default can lead users to rely on behavior Terraform does not actually configure.
-
-**Suggested change if confirmed:** Keep `Defaults to \`Enabled\`.` only if the schema sets that default; otherwise describe the observed behavior without calling it a Terraform default.
-
-**Reference:** [reference-documentation-standards.md (Arguments > Descriptions)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-documentation-standards.md)
-
-## REQUEST_CHANGES Summary
+**Review Comment:**
 
 ```markdown
-Please address the blocking inline findings before this change is merged:
+It looks like the schema limits `legacy_mode` to current provider 5.x (`!features.SixPointOh()`), but this expansion path still reads it for vNext 6.0 (`features.SixPointOh()`). A vNext configuration could therefore reach behavior for an argument that its schema no longer exposes. Could we keep the `legacy_mode` handling behind `!features.SixPointOh()` so the expansion path stays aligned with the schema? This applies across `internal/services/example/example_widget_resource.go` and `internal/services/example/example_widget_helpers.go`.
 
-- Keep `legacy_mode` handling limited to current provider 5.x (`!features.SixPointOh()`) so the vNext 6.0 (`features.SixPointOh()`) payload path matches its schema.
-- Gate delete-time legacy cleanup to current provider 5.x so vNext 6.0 does not send an obsolete field.
+**Reference:** [guide-breaking-changes.md (Breaking Schema Changes and Deprecations)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md)
+```
+
+### Comment 2
+
+**File:** `internal/services/example/example_widget_resource.go`
+
+**Line:** `144`
+
+**Review Comment:**
+
+````markdown
+It looks like this delete path is still sending the current provider 5.x (`!features.SixPointOh()`) legacy cleanup field when vNext 6.0 (`features.SixPointOh()`) is enabled, even though that field is no longer part of the v6 schema. Could we keep this assignment behind the existing-version guard instead?
+
+```suggestion
+if !features.SixPointOh() {
+	request.LegacyMode = pointer.To(legacyMode)
+}
+```
+
+**Reference:** [guide-breaking-changes.md (Breaking Schema Changes and Deprecations)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md)
+````
+
+### Comment 3
+
+**File:** `website/docs/r/example_widget.html.markdown`
+
+**Line:** `70`
+
+**Review Comment:**
+
+```markdown
+Am I reading this correctly that `Enabled` is configured as the Terraform schema default for `mode`, rather than only being returned by the API when the argument is omitted? If this is API behavior instead, could we avoid describing it as a Terraform default so users do not assume Terraform explicitly configures it?
+
+**Reference:** [reference-documentation-standards.md (Arguments > Descriptions)](https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-documentation-standards.md)
+```
+
+## Request Changes Summary
+
+```markdown
+Thanks for pushing those updates. I gave this another look and found two remaining blocking concerns:
+
+- Could we keep `legacy_mode` handling limited to current provider 5.x (`!features.SixPointOh()`) so the vNext 6.0 (`features.SixPointOh()`) payload path matches its schema?
+- Could we gate delete-time legacy cleanup to current provider 5.x so vNext 6.0 does not send an obsolete field?
+
+I also left a non-blocking documentation question for clarification.
 ```
 
 The pending review will use an empty top-level body and will not be submitted.
 
-Stage this exact pending review now?
+**Stage this exact pending review on `example/provider#42`: "Add Example Widget support"?**
 
 ---
 
@@ -90,15 +122,17 @@ After the user replies with a new explicit approval, the unchanged plan is reval
   - `internal/services/example/example_widget_resource.go`
   - `website/docs/r/example_widget.html.markdown`
 
-Nothing was submitted. Submitting this pending review requires a new explicit user instruction.
+Nothing was submitted. Inspect or edit the pending comments, then submit the review manually in GitHub when satisfied.
 
-## REQUEST_CHANGES Summary
+## Request Changes Summary
 
 ```markdown
-Please address the blocking inline findings before this change is merged:
+Thanks for pushing those updates. I gave this another look and found two remaining blocking concerns:
 
-- Keep `legacy_mode` handling limited to current provider 5.x (`!features.SixPointOh()`) so the vNext 6.0 (`features.SixPointOh()`) payload path matches its schema.
-- Gate delete-time legacy cleanup to current provider 5.x so vNext 6.0 does not send an obsolete field.
+- Could we keep `legacy_mode` handling limited to current provider 5.x (`!features.SixPointOh()`) so the vNext 6.0 (`features.SixPointOh()`) payload path matches its schema?
+- Could we gate delete-time legacy cleanup to current provider 5.x so vNext 6.0 does not send an obsolete field?
+
+I also left a non-blocking documentation question for clarification.
 ```
 
 Skill used: review-staging

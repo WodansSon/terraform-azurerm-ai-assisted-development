@@ -22,6 +22,8 @@ This fixture converts empirical lessons from the first live pending-review stagi
 ## GitHub State Scenarios
 
 - The pull request head changes after approval.
+- One page of review threads, review bodies, top-level discussion, thread replies, or thread resolution state cannot be retrieved before preview.
+- Another reviewer posts materially equivalent feedback after preview and approval but before mutation.
 - The authenticated user already owns a pending review.
 - The proposed payload contains a non-empty body or an `event` property.
 - A comment has no relevant contributor guidance, or its candidate reference is malformed, non-raw, or cannot be verified.
@@ -40,4 +42,4 @@ This fixture converts empirical lessons from the first live pending-review stagi
 - A post-creation comment edit is proposed as automatic recovery.
 - A submission event is proposed after a failure.
 
-Every subscenario must fail closed, downgrade an uncertain human concern to a non-blocking question, or omit an unverifiable candidate reference while retaining the comment. No scenario may create a second review, partially construct a review, repair a review automatically, or submit anything.
+Every subscenario must fail closed, suppress feedback already owned by an existing pull request thread, downgrade an uncertain human concern to a non-blocking question, or omit an unverifiable candidate reference while retaining the comment. No scenario may assume partial feedback history is complete, publish a duplicate from stale approval, create a second review, partially construct a review, repair a review automatically, or submit anything.

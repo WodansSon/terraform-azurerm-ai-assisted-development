@@ -51,6 +51,11 @@ If any required file cannot be fully loaded, stop without creating or changing G
 ### Adjudicate human challenges
 
 - Resume the current conversation's adjudication ledger when one exists; never recreate it from only the latest user message.
+- Treat invocation of `/stage-pending-pr-review` as opening the staging session and initializing the adjudication ledger from the frozen baseline.
+- Do not infer adjudicated dispositions from ordinary discussion that occurred before the staging session opened.
+- When the invocation contains a challenge or proposed missed concern, process it as the first staging challenge after initialization and keep adjudication open until every challenge is resolved.
+- Otherwise, settle the unchanged initialized candidate set and build the complete preview in the same invocation.
+- Do not stop a bare invocation after only showing candidate findings or asking the user to request the staging preview.
 - Accept targeted user input that:
   - disputes an existing finding or its classification, confidence, wording, effect, correction, scope, or inclusion
   - identifies a potential issue or observation the audit may have missed
@@ -73,6 +78,17 @@ If any required file cannot be fully loaded, stop without creating or changing G
 - If the user challenges a preview, invalidate it and any prior approval, return to `state=open`, adjudicate the challenge, and generate a replacement preview only after the state settles again.
 - If no active findings remain, report the settled empty state and stop without creating a pending review.
 
+### Suppress duplicate existing feedback
+
+- Retrieve all existing inline review threads with every reply and open, resolved, or outdated state, all submitted review bodies, and all top-level pull request discussion comments; follow pagination to completion.
+- Compare every otherwise active candidate using its underlying concern, affected surface, consequence, and correction path rather than exact wording alone.
+- Treat a suggestion-only thread as equivalent when its replacement establishes the same concern and correction.
+- For materially equivalent feedback, preserve the frozen finding, set the staging disposition to `suppressed`, record the feedback URL, author, kind, state, and equivalence rationale, and create no new comment.
+- Suppress equivalent feedback regardless of author or whether the thread is open, resolved, or outdated.
+- Keep a candidate only when current-head evidence proves a distinct concern or recurrence not covered by the prior feedback, and record that distinction.
+- If any feedback surface is incomplete, stop before preview rather than assuming no duplicate exists.
+- If every candidate is suppressed, report that no new feedback remains and do not build or create an empty review.
+
 ### Map settled findings to comments
 
 - Apply `REVIEW-STAGE-MAP-*` to active retained, revised, reclassified, and added findings only.
@@ -88,15 +104,14 @@ If any required file cannot be fully loaded, stop without creating or changing G
 
 ### Build comment bodies
 
-- For actionable findings, render exactly one concise paragraph or block under each of these labels:
-  - `**Problem:**`
-  - `**Effect:**`
-  - `**Suggested change:**`
-- For uncertain findings, render:
-  - `**Question (non-blocking):**`
-  - `**Why it matters:**`
-  - `**Suggested change if confirmed:**`
-- Include one focused code example only when it makes the correction materially clearer.
+- Write concise, natural review prose that begins with an evidence-backed observation.
+- Prefer a collaborative question when it sounds natural, but use a direct courteous request when forcing a question would sound artificial; do not weaken or manufacture uncertainty around a confirmed finding.
+- Use respectful qualifiers such as `It looks like` when they invite correction without weakening verified evidence.
+- Do not use audit-style labels, blame, commands, condescension, or minimizing words such as `obviously`, `simply`, or `just`.
+- Apply the contributor-facing tone and focus requirements in `REVIEW-STAGE-COMMENT-001` without restating or extending them.
+- For uncertain findings, ask one concrete question and make the uncertainty clear in the prose without adding workflow labels.
+- Include one fenced `suggestion` block only when the exact replacement is proven and directly applicable at the approved diff anchor.
+- Otherwise include a normal code block only when an illustrative example materially clarifies the request; use prose when no safe exact or illustrative code is available.
 - If the finding spans multiple code paths, identify the covered paths in the problem or question text.
 - Apply `REVIEW-STAGE-VERSION-001` whenever `SixPointOh` or version-gated provider behavior is relevant.
 - Verify the actual feature predicate from current pull request evidence and never invent `features.FivePointOh()` for a `features.SixPointOh()` branch.
@@ -110,14 +125,17 @@ If any required file cannot be fully loaded, stop without creating or changing G
 ### Build and validate the immutable plan
 
 - Create one in-memory object conforming to `.github/instructions/review-staging-plan.schema.json`.
-- Set `schemaVersion` to `1.0`, `sourceReview.mode` to `committed`, `sourceReview.frozen` to `true`, and `reviewBody` to the empty string.
+- Set `schemaVersion` to `1.1`, `sourceReview.mode` to `committed`, `sourceReview.frozen` to `true`, and `reviewBody` to the empty string.
 - Populate `sourceReview.findings` from the immutable original snapshots.
 - Set `adjudication.state` to `settled` and populate its complete challenge and finding ledgers.
+- Populate `existingFeedback` with the checked head commit, complete-source flags, and one evidence-backed check for every otherwise active candidate.
 - Verify every comment `findingId` resolves to one active adjudicated finding and that every active finding maps to the required independently resolvable comment or justified consolidated thread.
 - Set `expectedCommentCount` to the exact number of planned comments.
 - Set `expectedFileCoverage` to the sorted unique set of comment anchor paths.
-- Build `requestChangesSummary` only from blocking findings in the settled staging candidate set, including validated human-added findings. Exclude withdrawn and uncertain findings from asserted blocking language.
-- If no blocking issues exist, use the copy-ready summary `No blocking changes are requested. The pending review contains non-blocking questions for manual consideration.`
+- Select a brief acknowledgment for `requestChangesSummary` from verified current-conversation or authoritative pull request review and commit history: first-review wording for a first pass, follow-up wording only after proven earlier feedback and contributor updates, or a neutral thank-you when history is unclear.
+- Keep that acknowledgment natural and specific to the interaction without inventing prior reviews, pushed changes, or addressed feedback.
+- Build the substantive requests only from blocking findings in the settled staging candidate set, including validated human-added findings. Exclude withdrawn findings and mention uncertain findings only as non-blocking questions.
+- If no blocking issues exist, follow the acknowledgment by stating that no blocking changes remain and identify any non-blocking questions for manual consideration.
 - Validate field presence, allowed values, count equality, file coverage, finding coverage, comment content, included references, and diff locations.
 - Do not add an `event` field to the staging plan or API payload.
 
@@ -128,24 +146,29 @@ If any required file cannot be fully loaded, stop without creating or changing G
   - full bound head commit
   - every challenge disposition and rationale
   - the settled retained, revised, reclassified, withdrawn, and added finding state
+  - every existing-feedback check and each suppressed finding with its matched feedback URL
   - exact comment count
   - exact file coverage
   - any consolidated finding and all paths it covers
-  - every complete inline comment body with its path, line, and side
-  - the separate copy-ready `REQUEST_CHANGES` summary
+  - every complete inline comment as `### Comment N`, `**File:**`, `**Line:**`, and `**Review Comment:**`, followed by the exact contributor-facing body in a fenced `markdown` block
+  - the separate copy-ready Request Changes Summary
   - confirmation that the top-level review body will be empty and no review will be submitted
-- Ask in natural conversational text whether to stage that exact pending review.
+- Keep `side` in the immutable plan but omit raw `RIGHT` and `LEFT` values from the human preview; mark only a removed-line anchor as ` (removed line)` after its displayed line number.
+- Make clear that the numbered heading and placement fields are chat-only metadata and only the fenced Markdown body will be added to GitHub.
+- Ask `**Stage this exact pending review on \`owner/repository#number\`: "pull request title"?**` using the authoritative repository identity and current pull request title.
 - Stop and wait. Do not call a mutating tool in the same turn as the preview.
 - Treat only a new explicit affirmative answer as approval.
 - Treat a dispute, proposed missed issue, wording change, omission request, or other review change as a challenge rather than approval.
 
 ### Revalidate after approval
 
-- Re-read the pull request head commit immediately after approval and before mutation.
+- Re-read the pull request title and head commit immediately after approval and before mutation.
+- Retrieve the complete existing feedback set again and repeat the duplicate check immediately before mutation.
+- If new or changed feedback duplicates or supersedes an approved comment, discard approval and render a replacement preview without that duplicate.
 - Reconfirm the authenticated user has no existing pending review.
 - Reconfirm the baseline snapshots and complete adjudication ledger match the approved plan.
 - Reconfirm every planned path, line, side, body, and included contributor reference matches the approved plan.
-- If any value changed, discard approval, rebuild the preview, and ask again.
+- If the title or any approved value changed, discard approval, rebuild the preview, and ask again.
 
 ### Create the pending review atomically
 
@@ -178,9 +201,9 @@ If any required file cannot be fully loaded, stop without creating or changing G
 
 - Return the pending-review URL, verified state, comment count, and file coverage.
 - State explicitly that nothing was submitted.
-- Return the approved `REQUEST_CHANGES` summary in a separate Markdown code block.
-- Tell the human reviewer they may inspect and manually edit pending comments on GitHub before deciding whether to submit.
-- State that submitting the review requires a new explicit user instruction.
+- Return the approved Request Changes Summary in a separate Markdown code block.
+- Tell the human reviewer to inspect and optionally edit the pending comments, then submit the review manually in GitHub when satisfied.
+- State that this workflow never submits the review; any later automated submission would require a new explicit user instruction outside this workflow.
 
 ## Output verification
 

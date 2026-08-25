@@ -54,6 +54,21 @@
       "description": "All original frozen findings remain preserved while challenge dispositions update a separate staging candidate ledger."
     },
     {
+      "key": "invocation-initializes-staging-session",
+      "severity": "high",
+      "description": "Invoking the staging prompt opens the staging session and initializes its candidate ledger from the frozen baseline before processing candidate changes."
+    },
+    {
+      "key": "preinvocation-discussion-is-not-adjudicated",
+      "severity": "high",
+      "description": "Ordinary discussion before prompt invocation is not silently imported as an adjudicated disposition."
+    },
+    {
+      "key": "bare-invocation-renders-complete-preview",
+      "severity": "high",
+      "description": "A bare staging invocation settles the unchanged candidates and renders the complete approvable preview in the same turn instead of stopping at a candidate summary."
+    },
+    {
       "key": "supported-human-dispute-withdraws-finding",
       "severity": "high",
       "description": "Targeted validation accepts the human's test-coverage challenge and withdraws that issue from staged comments without deleting it from the baseline."
@@ -86,7 +101,7 @@
     {
       "key": "self-contained-comments-with-raw-references",
       "severity": "high",
-      "description": "Every comment states the problem or question, effect, one suggested change, and one applicable raw GitHub contributor-document reference."
+      "description": "Every preview separates chat-only file and line metadata from exact respectful GitHub Markdown that contains an evidence-based observation, a natural question or courteous request, one concrete correction path, and one applicable raw GitHub contributor-document reference."
     },
     {
       "key": "version-predicates-are-explicit",
@@ -109,9 +124,14 @@
       "description": "The final response returns the pending-review URL and the approved request-changes summary in a separate copy-ready block."
     },
     {
-      "key": "submission-requires-new-instruction",
+      "key": "summary-acknowledgment-matches-review-history",
+      "severity": "medium",
+      "description": "The request-changes summary naturally thanks the contributor for proven follow-up updates while keeping remaining blocking requests explicit."
+    },
+    {
+      "key": "manual-submission-remains-human-controlled",
       "severity": "high",
-      "description": "The workflow states that nothing was submitted and that later submission requires a new explicit user instruction."
+      "description": "The workflow states that nothing was submitted and directs the human reviewer to inspect and submit manually in GitHub."
     }
   ],
   "mustNotFlag": [
@@ -126,6 +146,10 @@
     {
       "key": "prompt-invocation-counts-as-approval",
       "description": "Invoking the staging prompt must not count as approval to mutate GitHub."
+    },
+    {
+      "key": "bare-invocation-stops-at-candidates",
+      "description": "A bare staging invocation must not stop after listing candidate findings or require a second request to render the preview."
     },
     {
       "key": "automatic-request-changes-event",
@@ -146,35 +170,59 @@
     {
       "key": "uncertain-finding-as-blocker",
       "description": "The uncertain documentation finding must not appear as a blocking request in the inline comment or request-changes summary."
+    },
+    {
+      "key": "invented-followup-history",
+      "description": "The summary must not claim prior feedback, pushed updates, or another review pass unless authoritative context proves that history."
     }
   ],
   "expectedTools": {},
   "outputChecks": {
     "mustHaveSections": [
+      "Staging Session Opened",
       "Challenge Adjudication",
       "Pending Review Preview",
       "Inline Comments",
-      "REQUEST_CHANGES Summary",
+      "Request Changes Summary",
       "Verified Pending Review"
     ],
     "mustIncludeMarkers": [
+      "Staging candidate ledger: initialized from the frozen baseline",
+      "Informal pre-invocation discussion: not imported as an adjudicated disposition",
+      "Bare invocation: complete preview rendered without another user request",
       "Immutable audit baseline: `3` findings preserved",
       "Disposition: `accepted`",
       "Result: original test finding `withdrawn`",
       "Origin: `human`",
-      "Stage this exact pending review now?",
-      "**Question (non-blocking):**",
+      "Stage this exact pending review on `example/provider#42`: \"Add Example Widget support\"?",
+      "### Comment 1",
+      "**File:** `internal/services/example/example_widget_helpers.go`",
+      "**Line:** `88`",
+      "**Review Comment:**",
+      "It looks like this delete path is still sending",
+      "Could we keep this assignment behind the existing-version guard instead?",
+      "```suggestion",
+      "Am I reading this correctly that `Enabled` is configured as the Terraform schema default",
       "current provider 5.x (`!features.SixPointOh()`)",
       "vNext 6.0 (`features.SixPointOh()`)",
       "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-breaking-changes.md",
       "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-documentation-standards.md",
+      "Thanks for pushing those updates. I gave this another look and found two remaining blocking concerns:",
+      "I also left a non-blocking documentation question for clarification.",
       "State: `PENDING`",
       "Submitted at: `null`",
       "Nothing was submitted",
+      "submit the review manually in GitHub",
       "Skill used: review-staging"
     ],
     "mustNotIncludeMarkers": [
       "Draft inline review comments",
+      "**Problem:**",
+      "**Effect:**",
+      "**Suggested change:**",
+      "**Question (non-blocking):**",
+      "(`RIGHT`)",
+      "(`LEFT`)",
       "Frozen baseline: rewritten",
       "Broad audit restarted",
       "POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/events",
