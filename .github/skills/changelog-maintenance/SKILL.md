@@ -1,6 +1,6 @@
 ---
 name: changelog-maintenance
-description: Maintain this repository's changelog taxonomy, entry wording, and release-section structure. Use when adding or editing CHANGELOG.md entries, preparing a release section, or normalizing changelog entries to the repo taxonomy.
+description: Maintain the Interactive Toolkit release changelog and the Hosted Toolkit source-deployment changelog, including taxonomy, wording, and history structure. Use when adding or editing changelog entries or preparing an Interactive Toolkit release section.
 ---
 
 # Changelog Maintenance
@@ -12,7 +12,8 @@ This skill is for maintainers of this repository only.
 Use it when:
 
 - adding or updating `CHANGELOG.md` entries for current branch changes
-- preparing a release section from `Unreleased`
+- adding or updating `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` entries for Hosted Toolkit changes
+- preparing an Interactive Toolkit release section from `Unreleased`
 - applying or correcting changelog taxonomy prefixes
 - checking whether changelog wording is user-facing enough
 - keeping the repo changelog shape consistent over time
@@ -23,7 +24,9 @@ This skill is intentionally repo-only. It is not part of the shipped runtime too
 
 When maintaining the changelog in this repository, use these sources in this order:
 
+- `tools/toolkit-ownership.json`
 - `CHANGELOG.md`
+- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md`
 - `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md`
 - `.github/pull_request_template.md`
 - `tools/validate-ai-toolkit.ps1`
@@ -43,8 +46,19 @@ Before editing `CHANGELOG.md` with this skill, complete this checklist:
 - [ ] I have identified whether the change is user-facing or repo-internal.
 - [ ] I have identified the correct taxonomy prefix for each new or changed bullet.
 - [ ] I have identified whether this is an `Unreleased` update or a release-prep move.
+- [ ] I have identified whether the change belongs to the Interactive Toolkit, Hosted Toolkit, both toolkits, or repository maintenance.
 
 If preflight is incomplete, do not proceed with changelog work.
+
+## Toolkit changelog ownership
+
+- Root `CHANGELOG.md` belongs to the Interactive Toolkit and uses the taxonomy and grouping rules below.
+- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` belongs to the Hosted Toolkit and uses its independent Keep a Changelog structure.
+- Changes affecting both products require independent entries or explicit waivers for both changelogs.
+- Repository-maintenance-only changes require neither product changelog by default.
+- Keep Hosted Toolkit history under `Unreleased`; do not add a version file or versioned release section while it uses direct source deployment.
+
+The taxonomy, release preparation, and versioned footer rules below apply to root `CHANGELOG.md`. The Hosted Toolkit changelog remains an unversioned history of source-deployed changes.
 
 ## Approved taxonomy
 
@@ -166,7 +180,13 @@ pwsh -NoProfile -File ./tools/validate-changelog-consistency.ps1
 Preferred one-shot validation:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
+pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
+```
+
+For a Hosted Toolkit changelog change, also run:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
 ```
 
 ## Output expectation

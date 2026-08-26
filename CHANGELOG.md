@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Maintainer/Workflow:**
+  - **[Internal]** - Defined the repository's two-toolkit architecture, an explicit Hosted Experiment MVP handoff, and changed-path validation dispatch so the versioned Interactive Toolkit and source-deployed Hosted experiment remain independently owned and validated across single-toolkit, mixed, shared, repository-maintenance, and unclassified changes.
+
 ### Fixed
 
 ## [3.9.1] - 2026-08-24

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "pattern": "docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md",
+      "ownership": "hosted"
+    },
+    {
+      "pattern": "hosted_copilot/**",
+      "ownership": "hosted"
+    },
+    {
+      "pattern": ".github/.markdownlint.json",
+      "ownership": "shared"
+    },
+    {
+      "pattern": ".github/workflows/**",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/Validate-ChangedToolkits.ps1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/Test-ChangedToolkitRouting.ps1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/toolkit-ownership.json",
+      "ownership": "shared"
+    },
+    {
+      "pattern": ".gitattributes",
+      "ownership": "shared"
+    },
+    {
+      "pattern": ".gitignore",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "README.md",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "CONTRIBUTING.md",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "docs/ARCHITECTURE.md",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "AGENTS.md",
+      "ownership": "repository-maintenance"
+    },
+    {
+      "pattern": ".github/skills/ai-toolkit-maintenance/SKILL.md",
+      "ownership": "repository-maintenance"
+    },
+    {
+      "pattern": ".github/skills/changelog-maintenance/SKILL.md",
+      "ownership": "repository-maintenance"
+    },
+    {
+      "pattern": "LICENSE",
+      "ownership": "repository-maintenance"
+    },
+    {
+      "pattern": "docs/teams_release.md",
+      "ownership": "repository-maintenance"
+    },
+    {
+      "pattern": ".github/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": ".vscode/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": "installer/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": "plugins/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": "tools/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": "docs/**",
+      "ownership": "interactive"
+    },
+    {
+      "pattern": "CHANGELOG.md",
+      "ownership": "interactive"
+    }
+  ]
+}

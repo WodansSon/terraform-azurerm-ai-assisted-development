@@ -1,10 +1,10 @@
-# AI Toolkit Alignment Checklist
+# Interactive Toolkit Alignment Checklist
 
-This checklist is for maintainers of this repository.
+This checklist is for maintainers of the Interactive Toolkit in this repository. Hosted Toolkit architecture and validation are owned by `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` and `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1`.
 
 Use it when you want to answer questions like:
 
-- Is the AI toolkit up to date?
+- Is the Interactive Toolkit up to date?
 - Did we wire a new contract family completely?
 - Does bootstrap/install include the right runtime payload?
 - Did we update the docs that explain the current rule model?
@@ -206,13 +206,19 @@ For new `CHANGELOG.md` entries under `## [Unreleased]`:
 
 ### 7. Validation passes
 
-Preferred one-shot maintainer validation:
+Preferred change-aware repository validation:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
+pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
 ```
 
-That command runs the current repo-level maintainer validation flow in one pass:
+Preferred complete Interactive Toolkit validation:
+
+```powershell
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1
+```
+
+The Interactive Toolkit command runs its complete maintainer validation flow in one pass:
 
 - Explicit changelog-decision validation for current branch changes
 - Changelog taxonomy validation for `Unreleased` entries
@@ -234,25 +240,25 @@ By default this runnability gate uses the current worktree when uncommitted edit
 If the current branch intentionally does not need a changelog entry, make that explicit instead of relying on path-based inference:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -ChangelogNotRequired -ChangelogReason "Repo-only maintenance change with no release-note impact"
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -ChangelogNotRequired -ChangelogReason "Interactive Toolkit change with no release-note impact"
 ```
 
 When you need the machine-readable summary:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -OutputFormat Json
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -OutputFormat Json
 ```
 
 If you intentionally want the summary without failing on unresolved upstream drift:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowDrift
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowDrift
 ```
 
 If you want CI-style behavior that still fails on changed tracked sources or rule issues but tolerates the currently known uncovered topic catalog gaps:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues
 ```
 
 The lower-level commands remain available for debugging and targeted re-runs.
