@@ -1,6 +1,6 @@
 ---
 name: ai-toolkit-maintenance
-description: Maintain this repository's AI toolkit scaffolding and alignment. Use when checking contract/consumer alignment, deciding whether files belong in the shipped bundle, updating the installer manifest, or validating repo-only AI guidance changes.
+description: Maintain this repository's Interactive Toolkit, Hosted Toolkit, shared scaffolding, and alignment. Use when checking contract/consumer alignment, deciding runtime ownership, updating an installer manifest, or validating repo-only AI guidance changes.
 ---
 
 # AI Toolkit Maintenance
@@ -9,7 +9,7 @@ description: Maintain this repository's AI toolkit scaffolding and alignment. Us
 
 This skill is for maintainers of this repository only.
 
-Use it when working on the AI toolkit infrastructure in this repo, especially when:
+Use it when working on toolkit infrastructure in this repo, especially when:
 
 - checking whether the toolkit is up to date
 - checking upstream contributor drift and interpreting whether local AI guidance still aligns
@@ -22,11 +22,20 @@ Use it when working on the AI toolkit infrastructure in this repo, especially wh
 
 This skill is intentionally repo-only. It is not part of the shipped runtime toolkit and should not be added to `installer/file-manifest.config`.
 
+The repository contains two independently owned products:
+
+- **Interactive Toolkit:** The existing VS Code-oriented runtime and installer
+- **Hosted Toolkit:** The isolated GitHub Copilot code-review product under `hosted_copilot/`
+
+Use `tools/Validate-ChangedToolkits.ps1` to classify changed ownership before choosing profile-specific maintenance checks. Do not use the Interactive Toolkit validator as a substitute for Hosted Toolkit validation.
+
 ## Canonical sources of truth
 
 When doing AI-toolkit maintenance in this repository, use these sources in this order:
 
 - `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md`
+- `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md`
+- `tools/toolkit-ownership.json`
 - `tools/config/upstream-contributor.json`
 - `CONTRIBUTING.md`
 - `.github/pull_request_template.md`
@@ -50,7 +59,9 @@ Before making AI-toolkit maintenance changes with this skill, complete this chec
 - [ ] I have identified whether upstream HashiCorp contributor docs under `contributing/topics/` are part of the change I am making.
 - [ ] If upstream contributor alignment is in scope, I will run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` before concluding the toolkit is current.
 - [ ] I have identified whether the target change is runtime payload or repo-maintenance-only.
+- [ ] I have classified the changed paths as Interactive Toolkit, Hosted Toolkit, shared, or repository maintenance.
 - [ ] I have identified whether the change also requires updates to `installer/file-manifest.config`, `docs/CODE_REVIEW_RULES.md`, or `CHANGELOG.md`.
+- [ ] I have identified whether the Interactive Toolkit changelog, Hosted Toolkit changelog, both changelogs, or neither changelog applies.
 
 If preflight is incomplete, do not proceed with toolkit-maintenance work.
 
@@ -138,9 +149,11 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - When a tracked upstream doc changes, review the dynamically discovered local references and remove any conflicting local rules while preserving verified tribal knowledge that still does not conflict.
 
 - Run the repo maintenance checks:
-  - Prefer `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` for the one-shot maintainer validation flow.
-  - Use `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues` when CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
-  - Treat the one-shot validator as including an explicit branch-local changelog decision: update `CHANGELOG.md`, or rerun with `-ChangelogNotRequired -ChangelogReason "..."` when no release-note entry is warranted.
+  - Prefer `pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1` for change-aware repository validation.
+  - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1` for complete direct validation of the Interactive Toolkit.
+  - Use `pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1` for complete direct validation of the Hosted Toolkit.
+  - Treat the dispatcher as owning independent changelog decisions; a waiver for one toolkit does not satisfy the other toolkit.
+  - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues` when Interactive Toolkit CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.
   - Run `pwsh -NoProfile -File ./tools/validate-contracts.ps1` after contract or consumer changes.
   - Run `npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.markdownlint.json` after Markdown-based AI-toolkit changes.

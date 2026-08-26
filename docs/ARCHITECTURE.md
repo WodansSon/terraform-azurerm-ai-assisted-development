@@ -420,6 +420,10 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── tools/
 │   ├── check-upstream-contributor-drift.ps1
+│   ├── Test-ChangedToolkitRouting.ps1
+│   ├── toolkit-ownership.json
+│   ├── Validate-ChangedToolkits.ps1
+│   ├── Validate-InteractiveToolkit.ps1
 │   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
 │   ├── validate-changelog-taxonomy.ps1
@@ -444,6 +448,12 @@ terraform-azurerm-ai-assisted-development/
 │       ├── scaffold-regression-result.ps1
 │       └── score-regression-case.ps1
 │
+├── hosted_copilot/
+│   └── tools/
+│       └── hosted-copilot/
+│           ├── CHANGELOG.md
+│           └── Test-HostedToolkit.ps1
+│
 ├── .vscode/
 │   └── settings.json
 │
@@ -455,7 +465,7 @@ terraform-azurerm-ai-assisted-development/
 
 ### Runtime Payload Vs. Repo-Only Maintenance
 
-The repository contains both shipped runtime guidance and repo-only maintainer tooling.
+The repository contains the shipped Interactive Toolkit runtime, preliminary Hosted Toolkit maintenance scaffolding, and shared repo-only maintainer tooling.
 
 - Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
 - Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
@@ -468,6 +478,11 @@ The repository contains both shipped runtime guidance and repo-only maintainer t
 The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
 
 - `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
+- `tools/Validate-InteractiveToolkit.ps1`: canonical Interactive Toolkit validation entrypoint that currently delegates to the existing implementation.
+- `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1`: phase-aware Hosted Toolkit validation for design authority, changelog structure, isolation, and runtime prerequisites.
+- `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.
+- `tools/toolkit-ownership.json`: ordered ownership map used by the changed-path dispatcher.
+- `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.

@@ -1,12 +1,17 @@
 # Hosted GitHub Copilot Code Review Architecture:
 
-This document defines the proposed architecture for a compact AzureRM compliance profile designed specifically for hosted GitHub Copilot code review.
+This document defines the proposed architecture for a compact AzureRM compliance toolkit designed specifically for hosted GitHub Copilot code review.
 
-The hosted solution is a separate product profile. It is not a reduced installation mode of the normal Terraform AzureRM AI-Assisted Development toolkit.
+**This Repository Uses Two Canonical Product Names:**
+
+- **Interactive Toolkit:** The existing VS Code-oriented toolkit with prompts, routed skills, contracts, interactive workflows, the Interactive Toolkit installer, and the existing regression harness
+- **Hosted Toolkit:** The proposed compact GitHub Copilot code-review toolkit owned beneath `hosted_copilot/`
+
+The Hosted Toolkit is a separate product profile. It is not a reduced installation mode of the Interactive Toolkit.
 
 ## Summary:
 
-The hosted profile is necessary because GitHub Copilot code review cumulatively loads applicable repository guidance, and a live test failed while adding the system message after the hosted Copilot runtime reported a `110K`-token maximum.
+The Hosted Toolkit is necessary because GitHub Copilot code review cumulatively loads applicable repository guidance, and a live test failed while adding the system message after the hosted Copilot runtime reported a `110K`-token maximum.
 
 **[GitHub's Hosted Code Review Documentation](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review) and [Repository Custom-Instructions Documentation](https://docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot) Establish That:**
 
@@ -27,7 +32,7 @@ This proves that the hosted GitHub Copilot runtime supplied and enforced a `110K
 
 GitHub and Microsoft Learn currently do not publish that numeric limit or define its accounting boundary. This architecture therefore treats the `110K` value as captured runtime behavior, not as a documented total model context-window limit or a stable public product guarantee.
 
-**Measurement of the Normal Toolkit Explains That Result:**
+**Measurement of the Interactive Toolkit Explains That Result:**
 
 - An implementation Go file can match about `318 KB` of repository-wide and Go-scoped instruction content.
 - A Go acceptance-test file can match about `375 KB` because both general Go and test instructions apply.
@@ -35,7 +40,7 @@ GitHub and Microsoft Learn currently do not publish that numeric limit or define
 - Relevant skills and explicitly referenced guidance can add further instruction material to the assembled prompt.
 - The pull request diff, nearby code, existing review discussion, tool output, reasoning, and final comments also consume review resources, but neither the captured log nor a public source found during this design work establishes whether they count against the same `110K` prompt limit.
 
-The normal toolkit's many broad `applyTo` files work for its interactive routed workflows but are unsuitable for hosted review when GitHub combines every matching file. The hosted solution must therefore use a separately maintained, compact instruction set rather than load or trim the normal runtime dynamically.
+The Interactive Toolkit's many broad `applyTo` files work for its routed workflows but are unsuitable for hosted review when GitHub combines every matching file. The Hosted Toolkit must therefore use a separately maintained, compact instruction set rather than load or trim the Interactive Toolkit runtime dynamically.
 
 **The Resulting Design Is a Fully Isolated, Copy-Ready `hosted_copilot/` Overlay With:**
 
@@ -43,47 +48,48 @@ The normal toolkit's many broad `applyTo` files work for its interactive routed 
 - Compact contracts derived from HashiCorp contributor guidance
 - Mandatory confirmed maintainer conventions, including the Oxford comma requirement for all documentation
 - Hosted-only generation, validation, regression, manifest, and installation tooling
-- No runtime or installer dependency on the normal toolkit
+- No runtime or installer dependency on the Interactive Toolkit
 
 ## Status:
 
 - Design discussion only.
-- No hosted runtime assets are implemented in this repository.
+- No Hosted Toolkit runtime assets are implemented in this repository.
+- Initial design-phase maintainer tooling is implemented: the Hosted Toolkit changelog, phase-aware validator, explicit ownership map, changed-toolkit dispatcher, and routing self-test.
 - The target implementation will be authored under `hosted_copilot/` in this repository as a copy-ready overlay for the provider fork.
 - This document is repo-only maintainer guidance and must not be added to `installer/file-manifest.config`.
 
 ## Isolation Invariant:
 
-The hosted solution must remain fully isolated from the normal toolkit implementation.
+The Hosted Toolkit must remain fully isolated from the Interactive Toolkit implementation.
 
-- Hosted runtime files must not be added to the normal toolkit installer manifest.
-- The normal installer must not install, update, remove, or validate hosted-review files.
+- Hosted Toolkit runtime files must not be added to the Interactive Toolkit installer manifest.
+- The Interactive Toolkit installer must not install, update, remove, or validate Hosted Toolkit files.
 - All hosted source rules, scripts, validators, regression fixtures, documentation, and runtime files must live under `hosted_copilot/` in this repository.
 - Paths beneath `hosted_copilot/` must mirror their final paths in the target repository.
-- Installing the hosted solution means copying the contents of `hosted_copilot/` into the target repository root.
-- Hosted generators, validators, regression fixtures, release artifacts, and versioning must remain independent.
-- Hosted runtime instructions must not import, load, or depend on normal toolkit contracts, prompts, skills, schemas, or companion guidance.
-- The hosted implementation may use this repository as migration evidence while its initial rules are curated, but it must own the resulting rules after migration.
+- Installing the Hosted Toolkit means copying the contents of `hosted_copilot/` into the target repository root.
+- Hosted generators, validators, regression fixtures, deployment state, and provenance must remain independent.
+- Hosted Toolkit runtime instructions must not import, load, or depend on Interactive Toolkit contracts, prompts, skills, schemas, or companion guidance.
+- The Hosted Toolkit implementation may use this repository as migration evidence while its initial rules are curated, but it must own the resulting rules after migration.
 - Later rule sharing must be an explicit, human-reviewed port between independent implementations, never a runtime include or automatic synchronization dependency.
-- A failure or release in one profile must not block, mutate, or silently alter the other profile.
+- Activity in one toolkit must not block, mutate, or silently alter the other toolkit.
 
-This separation exists because the two profiles have different execution models, context limits, trust boundaries, workflows, and release risks.
+This separation exists because the two profiles have different execution models, context limits, trust boundaries, workflows, and distribution risks.
 
 ## Problem Statement:
 
-The normal toolkit was designed for interactive VS Code workflows with explicit prompts, routed skills, contract loading, structured handoffs, regression-backed role passes, and human adjudication.
+The Interactive Toolkit was designed for VS Code workflows with explicit prompts, routed skills, contract loading, structured handoffs, regression-backed role passes, and human adjudication.
 
-Hosted GitHub Copilot code review combines all applicable repository guidance. Installing the normal toolkit in a provider fork caused hosted review to fail with `Prompt too big after adding system message` while the hosted Copilot runtime reported `MaxPromptTokens=110000`.
+Hosted GitHub Copilot code review combines all applicable repository guidance. Installing the Interactive Toolkit in a provider fork caused hosted review to fail with `Prompt too big after adding system message` while the hosted Copilot runtime reported `MaxPromptTokens=110000`.
 
 **The Current Source Payload Demonstrates Why:**
 
 - `.github/copilot-instructions.md` contains about `20 KB` and is treated as repository-wide guidance by hosted GitHub review.
-- A normal `internal/**/*.go` review can match about `318 KB` of current repository-wide and Go-scoped instruction content before code, tool output, skills, or the pull request diff are considered.
+- An Interactive Toolkit `internal/**/*.go` review can match about `318 KB` of current repository-wide and Go-scoped instruction content before code, tool output, skills, or the pull request diff are considered.
 - An `internal/**/*_test.go` review can match about `375 KB` because both general Go and test-specific instructions apply.
 - A `website/docs/**/*.html.markdown` review can match about `140 KB` before the documentation change and supporting implementation evidence are considered.
 - Multiple files with the same broad `applyTo` pattern are cumulative on GitHub; splitting guidance into many files does not reduce context when every file still matches.
 
-The hosted profile must therefore be designed around a strict system-and-instruction guidance budget rather than produced by copying the normal toolkit and removing a few files.
+The Hosted Toolkit must therefore be designed around a strict system-and-instruction guidance budget rather than produced by copying the Interactive Toolkit and removing a few files.
 
 ## First-Party Hosted Behavior:
 
@@ -102,7 +108,7 @@ The hosted profile must therefore be designed around a strict system-and-instruc
 - Re-reviews can repeat earlier feedback, including feedback that humans resolved or dismissed.
 - Public GitHub and Microsoft Learn documentation does not currently publish the captured `110K` prompt limit or specify which prompt components count toward it.
 
-These constraints mean the hosted profile cannot reproduce the normal toolkit's frozen audit, challenge, moderation, presentation, or pending-review staging lifecycle.
+These constraints mean the Hosted Toolkit cannot reproduce the Interactive Toolkit's frozen audit, challenge, moderation, presentation, or pending-review staging lifecycle.
 
 ## Design Goals:
 
@@ -119,15 +125,56 @@ These constraints mean the hosted profile cannot reproduce the normal toolkit's 
 
 ## Non-Goals:
 
-- Reproducing the normal toolkit's multi-role review workflow.
+- Reproducing the Interactive Toolkit's multi-role review workflow.
 - Porting the pending-review staging or human challenge workflow.
 - Drafting pull request descriptions.
 - Implementing resource or documentation changes.
-- Loading every normal toolkit rule into hosted review.
+- Loading every Interactive Toolkit rule into hosted review.
 - Treating historical pull request comments as authoritative training data.
 - Automatically converting changed contributor prose into new compliance requirements.
 
-## Hosted Package Layout:
+## Experiment MVP Handoff:
+
+The first implementation milestone is a controlled experiment, not production adoption.
+
+**Experiment Objective:**
+
+Prove that a compact Hosted Toolkit can complete useful AzureRM pull request reviews within the observed hosted prompt boundary and can outperform or complement contributor-guidance-only review on identical fixtures without introducing unacceptable false positives.
+
+**Current Experiment Scaffold:**
+
+- Implemented: Hosted changelog, phase-aware Hosted validator, toolkit ownership map, changed-toolkit dispatcher, routing self-test, and architecture authority
+- Not yet implemented: Hosted runtime instructions, review skill, package manifest, direct deployment script, controlled fixture execution, and scored experiment results
+- Repository-only: The changed-toolkit dispatcher protects maintenance boundaries but is not an experiment success criterion
+
+**Required Experiment Artifacts:**
+
+- Compact repository-wide, Go, test, and documentation instructions under `hosted_copilot/.github/`
+- One review-focused Hosted skill under `hosted_copilot/.github/skills/code-review/`
+- `package-manifest.json` containing the exact source-to-target deployment paths and source hashes
+- `Install-HostedCopilot.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
+- `Test-HostedToolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
+- A controlled fixture matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
+
+**Experiment Acceptance Criteria:**
+
+- The installer can preview and deploy the overlay from this checkout into the target fork without replacing unrelated files
+- Hosted review completes on implementation, acceptance-test, and documentation surfaces without the captured prompt-size failure
+- Every paired comparison uses identical fixture commits and review effort
+- Results record expected findings, misses, duplicate comments, unexpected findings, and observed model metadata
+- The experiment produces enough repeated evidence to decide whether to adopt, revise, or stop the Hosted Toolkit direction
+
+**Deferred Until an Adoption Decision:**
+
+- Normalized rule databases and deterministic instruction generation
+- Automated upstream contributor synchronization
+- A production regression harness beyond the controlled experiment fixture matrix
+- Hosted-specific CI rollout and long-term operational monitoring
+- Any versioned release, archive, or publication workflow
+
+During the experiment, Hosted runtime instructions may be curated directly and frozen by source commit. If the experiment supports adoption, normalized rule sources and deterministic generation become adoption gates before the Hosted Toolkit is treated as an enduring maintained product.
+
+## Target Hosted Package Layout:
 
 `hosted_copilot/` is both the authoritative ownership boundary and the copy-ready repository overlay:
 
@@ -144,6 +191,7 @@ hosted_copilot/
         SKILL.md
   tools/
     hosted-copilot/
+      CHANGELOG.md
       rules/
         upstream-rules.yaml
         maintainer-conventions.yaml
@@ -153,7 +201,7 @@ hosted_copilot/
       Install-HostedCopilot.ps1
       Sync-ContributorGuidance.ps1
       Build-HostedInstructions.ps1
-      Test-HostedInstructions.ps1
+      Test-HostedToolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
 ```
@@ -161,12 +209,13 @@ hosted_copilot/
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
 - `tools/hosted-copilot/rules/` owns normalized rule records and provenance.
 - `tools/hosted-copilot/` owns synchronization, generation, validation, and regression support.
+- `tools/hosted-copilot/CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/hosted-copilot/package-manifest.json` owns the exact set of paths installed and updated by the hosted package.
 - `tools/hosted-copilot/Install-HostedCopilot.ps1` owns safe deployment into a target repository.
-- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed hosted profile and its maintenance commands.
-- Generated instruction files are written directly beneath `hosted_copilot/.github/` and must not be edited manually.
+- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit and its maintenance commands.
+- Experiment instruction files are frozen by source commit. After adoption, generated instruction files are written directly beneath `hosted_copilot/.github/` and must not be edited manually.
 
-Nothing under `hosted_copilot/` is normal toolkit runtime payload.
+Nothing under `hosted_copilot/` is Interactive Toolkit runtime payload.
 
 ## Copy-Ready Hosted Runtime:
 
@@ -186,15 +235,18 @@ Nothing under `hosted_copilot/` is normal toolkit runtime payload.
 
 No path rewriting or second packaging layer is required. The relative path of every file beneath `hosted_copilot/` is its destination path in the target repository.
 
-Files with the same names or roles in the normal toolkit are not shared dependencies. The normal installer must ignore the complete `hosted_copilot/` tree.
+Files with the same names or roles in the Interactive Toolkit are not shared dependencies. The Interactive Toolkit installer must ignore the complete `hosted_copilot/` tree.
 
 ### Hosted Deployment:
 
 The overlay remains manually copyable, but `Install-HostedCopilot.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
 
+The Hosted Toolkit is deployed directly from the current source checkout into a target fork. It does not use a separate release bundle, archive, or version file. Reproducibility comes from the source Git commit plus manifest-owned source and destination hashes.
+
 **The Hosted Installer Must:**
 
 - Resolve every source and destination from `package-manifest.json`
+- Accept the target fork directory explicitly and read source files from the current repository checkout
 - Support a dry-run mode that reports additions, updates, collisions, and unchanged files without writing
 - Copy hidden paths such as `.github/` correctly
 - Create missing directories without replacing unrelated directory contents
@@ -204,7 +256,8 @@ The overlay remains manually copyable, but `Install-HostedCopilot.ps1` is the re
 - Require explicit approval before replacing a colliding or locally modified file
 - Preserve unrelated `.github/`, `tools/`, and `docs/` content
 - Verify copied content against source hashes after installation
-- Avoid calling, importing, or modifying the normal toolkit installer and manifest
+- Record the source Git commit when available and the verified file hashes in deployment output or installed state
+- Avoid calling, importing, or modifying the Interactive Toolkit installer and manifest
 
 Manual copying must follow the same ownership boundary. It must merge directories rather than replace them and must not overwrite existing files without review.
 
@@ -294,9 +347,9 @@ The generator and validation pipeline must reject generated hosted-guidance outp
 
 ## Rule Source Model:
 
-The hosted profile must maintain normalized rules under `hosted_copilot/tools/hosted-copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
+The Hosted Toolkit must maintain normalized rules under `hosted_copilot/tools/hosted-copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
 
-The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the normal toolkit installer layout.
+The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the Interactive Toolkit installer layout.
 
 ### Provenance Classes:
 
@@ -333,17 +386,17 @@ The Oxford comma rule is the reference case for this distinction.
 - Evidence: direct HashiCorp maintainer clarification and consistent examples throughout contributor documentation.
 - Runtime placement: hosted documentation contract.
 
-The hosted profile must not weaken this rule because the contributor standards demonstrate rather than explicitly state it.
+The Hosted Toolkit must not weaken this rule because the contributor standards demonstrate rather than explicitly state it.
 
 ## Candidate Migration Policy:
 
-The current normal toolkit contains useful migration evidence but is not the hosted runtime source.
+The current Interactive Toolkit contains useful migration evidence but is not the Hosted Toolkit runtime source.
 
 **Initial Candidate Groups:**
 
 - Published upstream rules are baseline candidates.
 - Confirmed and inferred maintainer conventions are tribal-knowledge candidates.
-- Local safeguards require individual review because many protect normal toolkit orchestration and do not apply to hosted review.
+- Local safeguards require individual review because many protect Interactive Toolkit orchestration and do not apply to hosted review.
 - Rules without provenance require classification only when selected for hosted migration.
 
 **Selection Should Favor Rules That Are:**
@@ -355,7 +408,7 @@ The current normal toolkit contains useful migration evidence but is not the hos
 - Applicable across the provider rather than one historical resource
 - Not already enforced more reliably by deterministic tooling
 
-Do not migrate normal toolkit role machinery, transport schemas, prompt mechanics, or presentation requirements.
+Do not migrate Interactive Toolkit role machinery, transport schemas, prompt mechanics, or presentation requirements.
 
 ## Maintenance Pipeline:
 
@@ -389,7 +442,7 @@ Rules that can be checked reliably without model reasoning should use scripts, l
 - Provenance and evidence completeness
 - Tracked-source digest changes
 - Duplicate stable rule IDs
-- Forbidden dependencies on normal toolkit files
+- Forbidden dependencies on Interactive Toolkit files
 - Required frontmatter and supported hosted paths
 - Formatting checks with established low false-positive behavior
 
@@ -412,7 +465,7 @@ These controls reduce accidental or malicious policy weakening but do not make h
 
 ## Hosted Review Output:
 
-The hosted profile should optimize for native inline comments.
+The Hosted Toolkit should optimize for native inline comments.
 
 **Each Finding Should Contain:**
 
@@ -422,7 +475,7 @@ The hosted profile should optimize for native inline comments.
 - The stable hosted rule ID
 - A source link only when it materially helps the contributor understand the requirement
 
-The review should not emit normal toolkit handoff records, frozen finding sets, moderation metadata, or pending-review plans.
+The review should not emit Interactive Toolkit handoff records, frozen finding sets, moderation metadata, or pending-review plans.
 
 Because hosted Copilot cannot interact with human replies as a continuation of the review, challenges and adjudication remain human review activities outside this profile.
 
@@ -440,14 +493,14 @@ Regression evaluation should measure duplicate-comment behavior explicitly.
 
 ## Validation and Regression:
 
-The hosted project should own a separate validation and regression system.
+The Hosted Toolkit should own a separate validation and regression system.
 
 **Minimum Validation:**
 
 - Source-rule schema validation
 - Generated-output reproducibility
 - Per-surface token-budget enforcement
-- No references to normal toolkit runtime paths
+- No references to Interactive Toolkit runtime paths
 - Supported hosted frontmatter and glob validation
 - Markdown lint
 - Source-drift reporting
@@ -481,7 +534,7 @@ PR-title labels such as `[AI Toolkit][gpt-5.6-sol-xhigh]` are manually maintaine
 
 **[GitHub's Review-Request Documentation](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review#choosing-a-review-effort-level) Explains How the Effective Review Effort Is Selected:**
 
-- For a manual review on GitHub.com, the person requesting Copilot review selects `Lite` or `Balanced` under Copilot in the pull request's **Reviewers** section.
+- For a manual review on GitHub.com, the person requesting Copilot review selects `Lite` or `Balanced` under **Copilot** in the pull request's **Reviewers** section.
 - For automatic reviews, an organization owner or repository administrator can set the default review effort.
 - A repository administrator can override the organization default for that repository.
 - The pull request overview produced after review identifies the effort level used for that run.
@@ -503,9 +556,9 @@ GitHub does not provide an organization or repository setting for selecting a de
 **The Configuration Paths Are:**
 
 - **Organization Default:** Open the organization's **Settings**, select **Copilot**, then select `Lite` or `Balanced` next to **Review effort level**, as described in [Configuring review effort level for an organization](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review#configuring-review-effort-level-for-an-organization).
-- **Repository or personal-fork setting:** Open the repository's **Settings**, select **Copilot**, then select `Lite` or `Balanced` next to **Review effort level**, as described in [Configuring review effort level for a repository](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review#configuring-review-effort-level-for-a-repository).
+- **Repository or Personal-Fork Setting:** Open the repository's **Settings**, select **Copilot**, then select `Lite` or `Balanced` next to **Review effort level**, as described in [Configuring review effort level for a repository](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review#configuring-review-effort-level-for-a-repository).
 
-A fork's **permissions** and **settings** are independent of its **upstream repository**. Access to one does not grant administrative access to the other, and being named in `CODEOWNERS` does not grant repository permissions.
+A fork's permissions and settings are independent of its upstream repository. Access to one does not grant administrative access to the other, and being named in `CODEOWNERS` does not grant repository permissions.
 
 This effort setting affects all automatic Copilot reviews. A person requesting a manual review selects the effort for that request in the pull request's **Reviewers** section. **In both cases, GitHub retains control of the underlying LLM model routing.**
 
@@ -549,7 +602,56 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 - `missed_findings`
 - `comparison_status`
 
-This metadata belongs to the hosted-only regression system and must not be added to the normal toolkit regression schema.
+This metadata belongs to the Hosted Toolkit regression system and must not be added to the Interactive Toolkit regression schema.
+
+### Repository Validation Dispatch:
+
+Profile validators must remain deterministic and validate their complete owned profile when called directly. They must not inspect the changed-file set and silently exit or route execution to a different product profile. Temporary delegation between compatibility entrypoints for the same profile is allowed during command migration.
+
+**The Repository Uses `tools/Validate-ChangedToolkits.ps1` for Change-Aware Local and CI Validation:**
+
+| Changed Ownership | Required Validation |
+| --- | --- |
+| Interactive Toolkit only | Run `tools/Validate-InteractiveToolkit.ps1` |
+| Hosted Toolkit only | Run `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1` |
+| Both toolkits | Run both profile validators and report both results |
+| Repository maintenance only | Run shared repository checks without requiring either product validator or product changelog |
+| Shared path | Run both profile validators plus applicable shared checks |
+| Unclassified path | Fail closed and require an explicit ownership decision |
+
+**The Ordered Ownership Map in `tools/toolkit-ownership.json` Classifies:**
+
+- Interactive Toolkit runtime paths owned by `installer/file-manifest.config`, its installer, regression harness, and Interactive Toolkit maintenance surfaces
+- The complete `hosted_copilot/**` tree and this architecture document as Hosted Toolkit paths
+- `AGENTS.md` and other explicitly designated maintainer-only files as repository maintenance
+- Shared configuration and dispatcher files that can affect both toolkits as shared paths
+
+**When Both Toolkits Change, the Dispatcher Must:**
+
+- Run both validators even if the first validator fails
+- Preserve separate validation results and diagnostics for each toolkit
+- Fail the combined check if either required validator fails
+- Require independent changelog decisions for both toolkits
+- Avoid creating a deployment dependency between the toolkits
+
+During migration, `tools/Validate-InteractiveToolkit.ps1` delegates to the existing `tools/validate-ai-toolkit.ps1` implementation. After the implementation moves to the canonical entrypoint, the existing path should remain as a compatibility wrapper until all documented and CI callers migrate.
+
+### Deployment and Changelog Ownership:
+
+**The Two Toolkits Have Independent Changelog and Distribution Models:**
+
+- Root `CHANGELOG.md` and `installer/VERSION` belong to the Interactive Toolkit
+- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` tracks Hosted Toolkit development and deployment history
+- The Hosted Toolkit has no separate `VERSION`, release bundle, archive, or publication workflow under the current source-deployment model
+- Repository-maintenance-only changes require neither product changelog by default
+- Interactive Toolkit changes require an Interactive Toolkit changelog update or an explicit Interactive Toolkit waiver
+- Hosted Toolkit changes require a Hosted Toolkit changelog update or an explicit Hosted Toolkit waiver
+- Mixed changes require independent decisions for both changelogs
+- Shared changes require both changelog decisions when they affect both product runtimes or deployment behavior
+
+The dispatcher accepts separate waiver inputs: `-InteractiveChangelogNotRequired` with `-InteractiveChangelogReason` and `-HostedChangelogNotRequired` with `-HostedChangelogReason`. A waiver for one toolkit must never satisfy the other toolkit's changelog gate.
+
+Combined validation is a repository convenience, not a combined distribution gate. The Interactive Toolkit remains versioned, packaged, and released; the Hosted Toolkit remains directly deployed, independently validated, and recoverable from its source commit and manifest hashes.
 
 ## Rollout Direction:
 
@@ -565,7 +667,7 @@ This metadata belongs to the hosted-only regression system and must not be added
 - Select the smallest useful upstream baseline.
 - Inventory confirmed and inferred maintainer conventions.
 - Classify selected unprovenanced rules.
-- Exclude normal toolkit orchestration safeguards.
+- Exclude Interactive Toolkit orchestration safeguards.
 - Record mandatory documentation gaps explicitly.
 
 ### Generation and Validation:
@@ -574,6 +676,9 @@ This metadata belongs to the hosted-only regression system and must not be added
 - Implement the PowerShell drift, generation, and validation commands.
 - Generate the isolated hosted runtime profile.
 - Add token-budget and dependency-boundary checks.
+- Maintain `Test-HostedToolkit.ps1`, Hosted Toolkit changelog validation, and phase-aware runtime gates as the Hosted Toolkit develops.
+- Maintain the repository-level changed-toolkit dispatcher, explicit ownership map, and routing self-test.
+- Migrate the Interactive Toolkit validator implementation to its canonical entrypoint while preserving the existing compatibility entrypoint.
 
 ### Hosted Evaluation:
 
@@ -610,13 +715,15 @@ This metadata belongs to the hosted-only regression system and must not be added
 
 **The Design Is Ready for Implementation When:**
 
-- The hosted and normal toolkit ownership boundaries are explicit
-- No hosted runtime dependency points into the normal toolkit
+- The Hosted Toolkit and Interactive Toolkit ownership boundaries are explicit
+- No Hosted Toolkit runtime dependency points into the Interactive Toolkit
+- The changed-toolkit dispatcher handles Interactive-only, Hosted-only, shared, mixed, repository-maintenance, and unknown paths deterministically
+- Interactive Toolkit and Hosted Toolkit changelog decisions and distribution models remain independent
 - Each review surface has an approved token budget
 - Selected rules have requirement strength, provenance, evidence, and runtime decisions
 - The Oxford comma and other mandatory tribal requirements are preserved
 - Source drift cannot silently rewrite rule meaning
-- Hosted installation can preview and detect collisions without invoking the normal installer
+- Hosted Toolkit installation can preview and detect collisions without invoking the Interactive Toolkit installer
 - Hosted policy paths require human ownership review
 - Hosted comparative results identify model-confounded and unknown-model runs instead of attributing every difference to instructions
 - The target regression corpus can distinguish useful findings from false positives
