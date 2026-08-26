@@ -25,6 +25,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - If a proposed fix only helps the current PR, resource, service, or example, stop and call out that it is likely drift.
 - Do not introduce real resource or service names into shared policy or shared prompt wording unless the behavior truly depends on that concrete example.
 - Prefer removing duplicated meaning over adding more wording when the same behavior already has an authoritative owner.
+- Start prose in every Markdown bullet with a capital letter. If a bullet begins with inline code or another Markdown marker, preserve the literal or marker syntax, but capitalize the first visible prose word when applicable.
 
 ## Ownership Discipline
 
