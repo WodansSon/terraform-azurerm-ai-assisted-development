@@ -1,14 +1,14 @@
-# Hosted GitHub Copilot Code Review Architecture
+# Hosted GitHub Copilot Code Review Architecture:
 
 This document defines the proposed architecture for a compact AzureRM compliance profile designed specifically for hosted GitHub Copilot code review.
 
 The hosted solution is a separate product profile. It is not a reduced installation mode of the normal Terraform AzureRM AI-Assisted Development toolkit.
 
-## Summary
+## Summary:
 
-The hosted profile is necessary because GitHub Copilot code review cumulatively loads applicable repository guidance, and a live test failed while adding the system message after the hosted Copilot runtime reported a 110K-token maximum.
+The hosted profile is necessary because GitHub Copilot code review cumulatively loads applicable repository guidance, and a live test failed while adding the system message after the hosted Copilot runtime reported a `110K`-token maximum.
 
-[GitHub's hosted code review documentation](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review) and [repository custom-instructions documentation](https://docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot) establish that:
+**[GitHub's Hosted Code Review Documentation](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review) and [Repository Custom-Instructions Documentation](https://docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot) Establish That:**
 
 - `.github/copilot-instructions.md` is repository-wide guidance for hosted review.
 - Every path-specific `.github/instructions/**/*.instructions.md` file matching a reviewed file is also applied.
@@ -16,43 +16,43 @@ The hosted profile is necessary because GitHub Copilot code review cumulatively 
 - Hosted review can additionally use `AGENTS.md`, relevant agent skills, MCP context, repository evidence, and an ephemeral GitHub Actions environment.
 - Instructions and skills are read from the pull request head branch.
 
-A captured debug log from a live review of `<owner>/terraform-provider-azurerm` PR `<number>` provides direct runtime evidence:
+**A Captured Debug Log from a Live Review of `<owner>/terraform-provider-azurerm` PR `<number>` Provides Direct Runtime Evidence:**
 
 ```text
 MaxPromptTokens=110000
 Error: Prompt too big after adding system message
 ```
 
-This proves that the hosted GitHub Copilot runtime supplied and enforced a 110K maximum prompt size and that prompt construction exceeded it when the system message was added. The repository did not configure this value. The log does not prove that the 110K allowance is reserved exclusively for the system message and referenced instruction files, nor does it identify every component already present in the prompt at that stage.
+This proves that the hosted GitHub Copilot runtime supplied and enforced a `110K` maximum prompt size and that prompt construction exceeded it when the system message was added. The repository did not configure this value. The log does not prove that the `110K` allowance is reserved exclusively for the system message and referenced instruction files, nor does it identify every component already present in the prompt at that stage.
 
-GitHub and Microsoft Learn currently do not publish that numeric limit or define its accounting boundary. This architecture therefore treats the 110K value as captured runtime behavior, not as a documented total model context-window limit or a stable public product guarantee.
+GitHub and Microsoft Learn currently do not publish that numeric limit or define its accounting boundary. This architecture therefore treats the `110K` value as captured runtime behavior, not as a documented total model context-window limit or a stable public product guarantee.
 
-Measurement of the normal toolkit explains that result:
+**Measurement of the Normal Toolkit Explains That Result:**
 
-- An implementation Go file can match about 318 KB of repository-wide and Go-scoped instruction content.
-- A Go acceptance-test file can match about 375 KB because both general Go and test instructions apply.
-- A provider documentation file can match about 140 KB before the changed file and supporting evidence are loaded.
+- An implementation Go file can match about `318 KB` of repository-wide and Go-scoped instruction content.
+- A Go acceptance-test file can match about `375 KB` because both general Go and test instructions apply.
+- A provider documentation file can match about `140 KB` before the changed file and supporting evidence are loaded.
 - Relevant skills and explicitly referenced guidance can add further instruction material to the assembled prompt.
-- The pull request diff, nearby code, existing review discussion, tool output, reasoning, and final comments also consume review resources, but neither the captured log nor a public source found during this design work establishes whether they count against the same 110K prompt limit.
+- The pull request diff, nearby code, existing review discussion, tool output, reasoning, and final comments also consume review resources, but neither the captured log nor a public source found during this design work establishes whether they count against the same `110K` prompt limit.
 
 The normal toolkit's many broad `applyTo` files work for its interactive routed workflows but are unsuitable for hosted review when GitHub combines every matching file. The hosted solution must therefore use a separately maintained, compact instruction set rather than load or trim the normal runtime dynamically.
 
-The resulting design is a fully isolated, copy-ready `hosted_copilot/` overlay with:
+**The Resulting Design Is a Fully Isolated, Copy-Ready `hosted_copilot/` Overlay With:**
 
-- a maximum 25K-token engineering budget for hosted system and instruction guidance on any review surface
-- compact contracts derived from HashiCorp contributor guidance
-- mandatory confirmed maintainer conventions, including the Oxford comma requirement for all documentation
-- hosted-only generation, validation, regression, manifest, and installation tooling
-- no runtime or installer dependency on the normal toolkit
+- A maximum `25K`-token engineering budget for hosted system and instruction guidance on any review surface
+- Compact contracts derived from HashiCorp contributor guidance
+- Mandatory confirmed maintainer conventions, including the Oxford comma requirement for all documentation
+- Hosted-only generation, validation, regression, manifest, and installation tooling
+- No runtime or installer dependency on the normal toolkit
 
-## Status
+## Status:
 
 - Design discussion only.
 - No hosted runtime assets are implemented in this repository.
 - The target implementation will be authored under `hosted_copilot/` in this repository as a copy-ready overlay for the provider fork.
 - This document is repo-only maintainer guidance and must not be added to `installer/file-manifest.config`.
 
-## Isolation Invariant
+## Isolation Invariant:
 
 The hosted solution must remain fully isolated from the normal toolkit implementation.
 
@@ -69,25 +69,25 @@ The hosted solution must remain fully isolated from the normal toolkit implement
 
 This separation exists because the two profiles have different execution models, context limits, trust boundaries, workflows, and release risks.
 
-## Problem Statement
+## Problem Statement:
 
 The normal toolkit was designed for interactive VS Code workflows with explicit prompts, routed skills, contract loading, structured handoffs, regression-backed role passes, and human adjudication.
 
 Hosted GitHub Copilot code review combines all applicable repository guidance. Installing the normal toolkit in a provider fork caused hosted review to fail with `Prompt too big after adding system message` while the hosted Copilot runtime reported `MaxPromptTokens=110000`.
 
-The current source payload demonstrates why:
+**The Current Source Payload Demonstrates Why:**
 
-- `.github/copilot-instructions.md` contains about 20 KB and is treated as repository-wide guidance by hosted GitHub review.
-- A normal `internal/**/*.go` review can match about 318 KB of current repository-wide and Go-scoped instruction content before code, tool output, skills, or the pull request diff are considered.
-- An `internal/**/*_test.go` review can match about 375 KB because both general Go and test-specific instructions apply.
-- A `website/docs/**/*.html.markdown` review can match about 140 KB before the documentation change and supporting implementation evidence are considered.
+- `.github/copilot-instructions.md` contains about `20 KB` and is treated as repository-wide guidance by hosted GitHub review.
+- A normal `internal/**/*.go` review can match about `318 KB` of current repository-wide and Go-scoped instruction content before code, tool output, skills, or the pull request diff are considered.
+- An `internal/**/*_test.go` review can match about `375 KB` because both general Go and test-specific instructions apply.
+- A `website/docs/**/*.html.markdown` review can match about `140 KB` before the documentation change and supporting implementation evidence are considered.
 - Multiple files with the same broad `applyTo` pattern are cumulative on GitHub; splitting guidance into many files does not reduce context when every file still matches.
 
 The hosted profile must therefore be designed around a strict system-and-instruction guidance budget rather than produced by copying the normal toolkit and removing a few files.
 
-## First-Party Hosted Behavior
+## First-Party Hosted Behavior:
 
-The architecture relies on the following hosted GitHub Copilot code review behavior:
+**The Architecture Relies on the Following Hosted GitHub Copilot Code Review Behavior:**
 
 - `.github/copilot-instructions.md` supplies repository-wide review guidance.
 - `.github/instructions/**/*.instructions.md` supplies path-specific guidance for matching files.
@@ -100,11 +100,11 @@ The architecture relies on the following hosted GitHub Copilot code review behav
 - Copilot submits comment-only reviews and does not approve, request changes, or block merging.
 - Human replies to Copilot review comments are not visible to Copilot as an interactive continuation.
 - Re-reviews can repeat earlier feedback, including feedback that humans resolved or dismissed.
-- Public GitHub and Microsoft Learn documentation does not currently publish the captured 110K prompt limit or specify which prompt components count toward it.
+- Public GitHub and Microsoft Learn documentation does not currently publish the captured `110K` prompt limit or specify which prompt components count toward it.
 
 These constraints mean the hosted profile cannot reproduce the normal toolkit's frozen audit, challenge, moderation, presentation, or pending-review staging lifecycle.
 
-## Design Goals
+## Design Goals:
 
 - Keep hosted system and instruction guidance comfortably below the observed prompt-construction failure boundary.
 - Apply documented HashiCorp contributor requirements.
@@ -117,7 +117,7 @@ These constraints mean the hosted profile cannot reproduce the normal toolkit's 
 - Keep generated runtime files reproducible and reviewable.
 - Protect hosted instructions from unreviewed pull request changes.
 
-## Non-Goals
+## Non-Goals:
 
 - Reproducing the normal toolkit's multi-role review workflow.
 - Porting the pending-review staging or human challenge workflow.
@@ -127,7 +127,7 @@ These constraints mean the hosted profile cannot reproduce the normal toolkit's 
 - Treating historical pull request comments as authoritative training data.
 - Automatically converting changed contributor prose into new compliance requirements.
 
-## Hosted Package Layout
+## Hosted Package Layout:
 
 `hosted_copilot/` is both the authoritative ownership boundary and the copy-ready repository overlay:
 
@@ -168,9 +168,9 @@ hosted_copilot/
 
 Nothing under `hosted_copilot/` is normal toolkit runtime payload.
 
-## Copy-Ready Hosted Runtime
+## Copy-Ready Hosted Runtime:
 
-GitHub discovers hosted review customizations only from supported root `.github/` paths. Copying the contents of `hosted_copilot/` into the target repository places the runtime files at those required paths:
+**GitHub Discovers Hosted Review Customizations Only from Supported Root `.github/` Paths. Copying the Contents of `hosted_copilot/` into the Target Repository Places the Runtime Files at Those Required Paths:**
 
 ```text
 .github/
@@ -188,41 +188,41 @@ No path rewriting or second packaging layer is required. The relative path of ev
 
 Files with the same names or roles in the normal toolkit are not shared dependencies. The normal installer must ignore the complete `hosted_copilot/` tree.
 
-### Hosted Deployment
+### Hosted Deployment:
 
 The overlay remains manually copyable, but `Install-HostedCopilot.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
 
-The hosted installer must:
+**The Hosted Installer Must:**
 
-- resolve every source and destination from `package-manifest.json`
-- support a dry-run mode that reports additions, updates, collisions, and unchanged files without writing
-- copy hidden paths such as `.github/` correctly
-- create missing directories without replacing unrelated directory contents
-- detect an existing destination file before writing
-- update only files already owned by the hosted package and listed in the manifest
-- fail closed when an unowned destination path already exists, including `.github/copilot-instructions.md`
-- require explicit approval before replacing a colliding or locally modified file
-- preserve unrelated `.github/`, `tools/`, and `docs/` content
-- verify copied content against source hashes after installation
-- avoid calling, importing, or modifying the normal toolkit installer and manifest
+- Resolve every source and destination from `package-manifest.json`
+- Support a dry-run mode that reports additions, updates, collisions, and unchanged files without writing
+- Copy hidden paths such as `.github/` correctly
+- Create missing directories without replacing unrelated directory contents
+- Detect an existing destination file before writing
+- Update only files already owned by the hosted package and listed in the manifest
+- Fail closed when an unowned destination path already exists, including `.github/copilot-instructions.md`
+- Require explicit approval before replacing a colliding or locally modified file
+- Preserve unrelated `.github/`, `tools/`, and `docs/` content
+- Verify copied content against source hashes after installation
+- Avoid calling, importing, or modifying the normal toolkit installer and manifest
 
 Manual copying must follow the same ownership boundary. It must merge directories rather than replace them and must not overwrite existing files without review.
 
-### Repository-Wide Instructions
+### Repository-Wide Instructions:
 
 `.github/copilot-instructions.md` should contain only guidance that every hosted review needs:
 
-- repository purpose and high-level layout
-- the review evidence hierarchy
-- the instruction that findings must identify an actionable defect
-- the instruction to avoid materially duplicate existing review feedback
-- the required concise inline-comment shape
-- the trust rule for changes to hosted customization files
-- pointers to deterministic validation commands when available
+- Repository purpose and high-level layout
+- The review evidence hierarchy
+- The instruction that findings must identify an actionable defect
+- The instruction to avoid materially duplicate existing review feedback
+- The required concise inline-comment shape
+- The trust rule for changes to hosted customization files
+- Pointers to deterministic validation commands when available
 
 It must not contain detailed implementation, testing, or documentation rules.
 
-### Go Instructions
+### Go Instructions:
 
 `.github/instructions/azurerm-go.instructions.md` should apply to `internal/**/*.go` and contain a compact set of high-value implementation rules.
 
@@ -232,7 +232,7 @@ It must not contain detailed implementation, testing, or documentation rules.
 - Prefer one atomic requirement per stable rule ID.
 - Keep shared Go guidance compact enough that loading it alongside test guidance remains safe.
 
-### Test Instructions
+### Test Instructions:
 
 `.github/instructions/azurerm-tests.instructions.md` should apply to `internal/**/*_test.go` and supplement the compact Go contract.
 
@@ -240,7 +240,7 @@ It must not contain detailed implementation, testing, or documentation rules.
 - Preserve mandatory testing conventions supported by contributor guidance or maintained provider precedent.
 - Avoid duplicating general Go requirements already present in the Go instructions.
 
-### Documentation Instructions
+### Documentation Instructions:
 
 `.github/instructions/azurerm-docs.instructions.md` should apply to `website/docs/**/*.html.markdown`.
 
@@ -250,79 +250,79 @@ It must not contain detailed implementation, testing, or documentation rules.
 - Preserve schema and implementation evidence requirements for field validity, examples, ordering, defaults, and lifecycle claims.
 - Keep lengthy provenance evidence outside the runtime contract unless a dispute requires it.
 
-### Review Skill
+### Review Skill:
 
 `.github/skills/code-review/SKILL.md` should define the small hosted review procedure:
 
-- classify changed files by review surface
-- inspect the diff and the nearest evidence required to validate a concern
-- use configured GitHub context to inspect existing review feedback when available
-- suppress materially equivalent comments
-- emit only actionable, line-addressable findings
-- keep each comment concise and identify the applicable rule ID
-- avoid broad summaries, role handoffs, moderation records, or presentation schemas
+- Classify changed files by review surface
+- Inspect the diff and the nearest evidence required to validate a concern
+- Use configured GitHub context to inspect existing review feedback when available
+- Suppress materially equivalent comments
+- Emit only actionable, line-addressable findings
+- Keep each comment concise and identify the applicable rule ID
+- Avoid broad summaries, role handoffs, moderation records, or presentation schemas
 
 Mandatory compliance rules must remain in path-specific instructions because hosted skill selection is relevance-based and should not be the sole enforcement dependency.
 
-## Hosted Guidance Budget
+## Hosted Guidance Budget:
 
-The 110K value is a captured GitHub Copilot runtime limit, not a repository setting or a documented total model context window. The debug log proves that adding the system message caused the assembled prompt to exceed that maximum. It does not prove that only the system message and referenced instruction files count toward the maximum. Public GitHub and Microsoft Learn documentation reviewed for this design does not define that accounting boundary.
+The `110K` value is a captured GitHub Copilot runtime limit, not a repository setting or a documented total model context window. The debug log proves that adding the system message caused the assembled prompt to exceed that maximum. It does not prove that only the system message and referenced instruction files count toward the maximum. Public GitHub and Microsoft Learn documentation reviewed for this design does not define that accounting boundary.
 
-The 25K limit below is this project's conservative engineering budget for hosted guidance that may be assembled into that prompt. It is not an estimate of total review token usage and does not assert that pull request diffs, tool results, reasoning, or generated comments count against the same product limit.
+The `25K` limit below is this project's conservative engineering budget for hosted guidance that may be assembled into that prompt. It is not an estimate of total review token usage and does not assert that pull request diffs, tool results, reasoning, or generated comments count against the same product limit.
 
-Initial design budgets:
+**Initial Design Budgets:**
 
 | Surface | Maximum instruction budget |
 | --- | ---: |
-| Repository-wide guidance | 2K tokens |
-| Shared Go contract | 8K tokens |
-| Test supplement | 4K tokens |
-| Documentation contract | 8K tokens |
-| Review skill | 3K tokens |
-| Maximum combined hosted guidance for one review | 25K tokens |
+| Repository-wide guidance | `2K tokens` |
+| Shared Go contract | `8K tokens` |
+| Test supplement | `4K tokens` |
+| Documentation contract | `8K tokens` |
+| Review skill | `3K tokens` |
+| Maximum combined hosted guidance for one review | `25K tokens` |
 
-Separately from the hosted-guidance budget, a useful review still needs capacity for:
+**Separately from the Hosted-Guidance Budget, a Useful Review Still Needs Capacity for:**
 
-- platform and tool instructions
-- pull request diff
-- nearby implementation evidence
-- existing review discussion
-- tool and MCP output
-- reasoning and final inline comments
+- Platform and tool instructions
+- Pull request diff
+- Nearby implementation evidence
+- Existing review discussion
+- Tool and MCP output
+- Reasoning and final inline comments
 
 The generator and validation pipeline must reject generated hosted-guidance output that exceeds its surface budget. It cannot validate GitHub's unpublished total runtime context accounting.
 
-## Rule Source Model
+## Rule Source Model:
 
 The hosted profile must maintain normalized rules under `hosted_copilot/tools/hosted-copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
 
 The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the normal toolkit installer layout.
 
-### Provenance Classes
+### Provenance Classes:
 
 - `Published upstream standard`: explicitly stated by HashiCorp contributor guidance.
 - `Confirmed maintainer convention`: mandatory behavior directly confirmed by HashiCorp maintainers but not explicitly stated in contributor guidance.
 - `Inferred maintainer convention`: supported by repeated accepted review guidance or consistent established provider practice, without direct confirmation.
 - `Hosted safeguard`: local protection required for stable hosted-review behavior rather than an upstream contributor requirement.
 
-### Independent Rule Dimensions
+### Independent Rule Dimensions:
 
-Provenance must not determine enforcement strength. Each rule should record separate fields:
+**Provenance Must Not Determine Enforcement Strength. Each Rule Should Record Separate Fields:**
 
-- stable rule ID
-- review surface
-- atomic requirement text
-- requirement level, such as `mandatory` or `advisory`
-- provenance class
-- evidence references
-- whether an upstream documentation gap exists
-- runtime inclusion decision
-- deterministic or model-based enforcement method
-- last semantic review date
+- Stable rule ID
+- Review surface
+- Atomic requirement text
+- Requirement level, such as `mandatory` or `advisory`
+- Provenance class
+- Evidence references
+- Whether an upstream documentation gap exists
+- Runtime inclusion decision
+- Deterministic or model-based enforcement method
+- Last semantic review date
 
 A mandatory tribal requirement remains mandatory even though it is not explicitly documented.
 
-### Oxford Comma Requirement
+### Oxford Comma Requirement:
 
 The Oxford comma rule is the reference case for this distinction.
 
@@ -335,29 +335,29 @@ The Oxford comma rule is the reference case for this distinction.
 
 The hosted profile must not weaken this rule because the contributor standards demonstrate rather than explicitly state it.
 
-## Candidate Migration Policy
+## Candidate Migration Policy:
 
 The current normal toolkit contains useful migration evidence but is not the hosted runtime source.
 
-Initial candidate groups:
+**Initial Candidate Groups:**
 
 - Published upstream rules are baseline candidates.
 - Confirmed and inferred maintainer conventions are tribal-knowledge candidates.
 - Local safeguards require individual review because many protect normal toolkit orchestration and do not apply to hosted review.
 - Rules without provenance require classification only when selected for hosted migration.
 
-Selection should favor rules that are:
+**Selection Should Favor Rules That Are:**
 
-- mandatory or high-impact
-- supported by durable evidence
-- likely to identify actionable defects
-- concise enough for hosted execution
-- applicable across the provider rather than one historical resource
-- not already enforced more reliably by deterministic tooling
+- Mandatory or high-impact
+- Supported by durable evidence
+- Likely to identify actionable defects
+- Concise enough for hosted execution
+- Applicable across the provider rather than one historical resource
+- Not already enforced more reliably by deterministic tooling
 
 Do not migrate normal toolkit role machinery, transport schemas, prompt mechanics, or presentation requirements.
 
-## Maintenance Pipeline
+## Maintenance Pipeline:
 
 The hosted source-maintenance flow should be deterministic until semantic judgment is required.
 
@@ -377,29 +377,29 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 
 The script owns synchronization, validation, and rendering. It does not own semantic interpretation.
 
-## Deterministic Enforcement
+## Deterministic Enforcement:
 
 Rules that can be checked reliably without model reasoning should use scripts, linters, or CI.
 
-Examples include:
+**Examples Include:**
 
-- generated-file freshness
-- token-budget limits
-- rule schema validation
-- provenance and evidence completeness
-- tracked-source digest changes
-- duplicate stable rule IDs
-- forbidden dependencies on normal toolkit files
-- required frontmatter and supported hosted paths
-- formatting checks with established low false-positive behavior
+- Generated-file freshness
+- Token-budget limits
+- Rule schema validation
+- Provenance and evidence completeness
+- Tracked-source digest changes
+- Duplicate stable rule IDs
+- Forbidden dependencies on normal toolkit files
+- Required frontmatter and supported hosted paths
+- Formatting checks with established low false-positive behavior
 
 Semantic checks remain in the compact runtime contracts.
 
-## Head-Branch Trust Boundary
+## Head-Branch Trust Boundary:
 
 Hosted GitHub review reads repository instructions, agent instructions, and skills from the pull request head branch. A contributor can therefore change the guidance used to review the same pull request.
 
-Required protections:
+**Required Protections:**
 
 - Add hosted instruction, skill, rule-source, generator, and validation paths to `CODEOWNERS`.
 - Require human approval for every change to those paths.
@@ -410,27 +410,27 @@ Required protections:
 
 These controls reduce accidental or malicious policy weakening but do not make head-branch instructions an immutable authority.
 
-## Hosted Review Output
+## Hosted Review Output:
 
 The hosted profile should optimize for native inline comments.
 
-Each finding should contain:
+**Each Finding Should Contain:**
 
-- the concrete problem
-- the observable effect or risk
-- a specific correction
-- the stable hosted rule ID
-- a source link only when it materially helps the contributor understand the requirement
+- The concrete problem
+- The observable effect or risk
+- A specific correction
+- The stable hosted rule ID
+- A source link only when it materially helps the contributor understand the requirement
 
 The review should not emit normal toolkit handoff records, frozen finding sets, moderation metadata, or pending-review plans.
 
 Because hosted Copilot cannot interact with human replies as a continuation of the review, challenges and adjudication remain human review activities outside this profile.
 
-## Existing Feedback
+## Existing Feedback:
 
 The hosted review skill should inspect existing pull request feedback through GitHub context when available and suppress materially equivalent comments.
 
-This is a best-effort safeguard rather than a platform guarantee:
+**This Is a Best-Effort Safeguard Rather than a Platform Guarantee:**
 
 - GitHub documents that re-reviews may repeat resolved or downvoted feedback.
 - MCP and agentic context use may vary by review.
@@ -438,44 +438,129 @@ This is a best-effort safeguard rather than a platform guarantee:
 
 Regression evaluation should measure duplicate-comment behavior explicitly.
 
-## Validation and Regression
+## Validation and Regression:
 
 The hosted project should own a separate validation and regression system.
 
-Minimum validation:
+**Minimum Validation:**
 
-- source-rule schema validation
-- generated-output reproducibility
-- per-surface token-budget enforcement
-- no references to normal toolkit runtime paths
-- supported hosted frontmatter and glob validation
+- Source-rule schema validation
+- Generated-output reproducibility
+- Per-surface token-budget enforcement
+- No references to normal toolkit runtime paths
+- Supported hosted frontmatter and glob validation
 - Markdown lint
-- source-drift reporting
-- policy-file CODEOWNERS coverage
+- Source-drift reporting
+- Policy-file CODEOWNERS coverage
 
-Minimum regression corpus:
+**Minimum Regression Corpus:**
 
-- known implementation defects
-- known acceptance-test defects
-- known documentation defects
-- mandatory tribal-rule violations, including Oxford comma cases
-- clean changes that should produce no comment
-- duplicate existing-review feedback
-- large pull requests that exercise context limits
-- pull requests that modify hosted customization files
+- Known implementation defects
+- Known acceptance-test defects
+- Known documentation defects
+- Mandatory tribal-rule violations, including Oxford comma cases
+- Clean changes that should produce no comment
+- Duplicate existing-review feedback
+- Large pull requests that exercise context limits
+- Pull requests that modify hosted customization files
 
 Hosted evaluation must score both defect recall and false positives. A smaller contract is successful only if it remains useful and defensible under the hosted budget.
 
-## Rollout Direction
+### Controlled Comparative Evaluation:
 
-### Design and Inventory
+**The Historical Hosted-Review Experiments Compared Two Instruction Profiles:**
+
+- `Contribution Guide`: contributor documentation plus a focused review skill
+- `AI Toolkit`: the adapted toolkit instruction and skill package
+
+Six paired fixtures used the same head branch, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-fixture reuse, but they cannot isolate instruction-profile effectiveness from model capability.
+
+PR-title labels such as `[AI Toolkit][gpt-5.6-sol-xhigh]` are manually maintained experiment metadata. They are useful historical evidence but are not authoritative runtime attribution unless corroborated by a debug log or another product-generated record.
+
+[GitHub's model usage documentation](https://docs.github.com/en/copilot/concepts/agents/code-review#model-usage) states that Copilot code review uses a product-controlled mix of models and that model switching is not supported. [GitHub's review effort documentation](https://docs.github.com/en/copilot/concepts/agents/code-review#review-effort-level) identifies `Lite` and `Balanced` as the supported user-facing control and explains that `Balanced` routes reviews to a higher-reasoning model. The hosted test design must therefore control review effort and record the underlying model as observed metadata when it is available.
+
+**[GitHub's Review-Request Documentation](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review#choosing-a-review-effort-level) Explains How the Effective Review Effort Is Selected:**
+
+- For a manual review on GitHub.com, the person requesting Copilot review selects `Lite` or `Balanced` under Copilot in the pull request's **Reviewers** section.
+- For automatic reviews, an organization owner or repository administrator can set the default review effort.
+- A repository administrator can override the organization default for that repository.
+- The pull request overview produced after review identifies the effort level used for that run.
+
+Review effort is a request or repository-policy control; it is not a direct model selector. A user with read-only repository access cannot configure the automatic-review default, although they may be able to choose an effort when manually requesting a review if repository policy and their Copilot access permit it.
+
+#### Owner and Administrator Controls:
+
+GitHub does not provide an organization or repository setting for selecting a default LLM for Copilot code review. Organization and repository owners must not treat the Copilot **Models** settings as a code-review model selector; GitHub's model usage documentation states that those settings control Copilot Chat and that code review may use other product-selected models.
+
+**The Word "Owner" Has Two Distinct Meanings in This Configuration:**
+
+| Repository Ownership | Who Controls the Automatic-Review Effort | Effective Behavior |
+| --- | --- | --- |
+| **Personal-Account Fork** | The personal account owner, acting as repository administrator | Sets `Lite` or `Balanced` in the fork's repository settings; there is no organization default |
+| **Organization-Owned Fork** | The organization owner sets the organization default; a repository administrator can set a fork-specific override | The repository setting overrides the organization default |
+| **Repository Where the User Has `READ` Access Only** | Neither role is available to that user | The user can inspect committed files but cannot change the automatic-review default |
+
+**The Configuration Paths Are:**
+
+- **Organization Default:** Open the organization's **Settings**, select **Copilot**, then select `Lite` or `Balanced` next to **Review effort level**, as described in [Configuring review effort level for an organization](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review#configuring-review-effort-level-for-an-organization).
+- **Repository or personal-fork setting:** Open the repository's **Settings**, select **Copilot**, then select `Lite` or `Balanced` next to **Review effort level**, as described in [Configuring review effort level for a repository](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review#configuring-review-effort-level-for-a-repository).
+
+A fork's **permissions** and **settings** are independent of its **upstream repository**. Access to one does not grant administrative access to the other, and being named in `CODEOWNERS` does not grant repository permissions.
+
+This effort setting affects all automatic Copilot reviews. A person requesting a manual review selects the effort for that request in the pull request's **Reviewers** section. **In both cases, GitHub retains control of the underlying LLM model routing.**
+
+**For Each Comparison:**
+
+- Keep one immutable base branch per instruction profile
+- Apply the same fixture commit and verify an identical changed-file set and diff hash against each profile base
+- Use the same review effort, repository settings, MCP configuration, memory setting, and review trigger
+- Request paired reviews within the same test window to reduce product-version drift
+- Run multiple independent review attempts for each profile because model output is nondeterministic
+- Capture the instruction-profile commit, fixture commit, diff hash, review effort, timestamp, and hosted-review runtime version
+- Capture model name and reasoning level when product-generated logs expose them
+- Record a title-supplied model label separately with evidence source `pr_title`
+- Use `unknown` when model identity is unavailable rather than inferring it
+- Classify a direct pair as model-confounded when model or reasoning evidence differs
+- Score expected findings, unexpected findings, duplicate findings, and missed findings without using the profile label during adjudication
+
+**Comparative Reports Must Separate:**
+
+- Same-model and same-reasoning comparisons, which can support a direct instruction-profile conclusion
+- Unknown-model comparisons, which can support aggregate observations only after repeated paired runs
+- Known cross-model comparisons, which remain historical evidence but cannot establish that one instruction profile is more effective
+
+**The Hosted Regression Record Should Include:**
+
+- `instruction_profile`
+- `instruction_profile_commit`
+- `fixture_id`
+- `fixture_commit`
+- `diff_hash`
+- `review_effort`
+- `model_name`
+- `reasoning_level`
+- `model_evidence_source`
+- `hosted_review_runtime_version`
+- `reviewed_at`
+- `expected_findings`
+- `actual_findings`
+- `duplicate_findings`
+- `unexpected_findings`
+- `missed_findings`
+- `comparison_status`
+
+This metadata belongs to the hosted-only regression system and must not be added to the normal toolkit regression schema.
+
+## Rollout Direction:
+
+### Design and Inventory:
 
 - Inventory customization files in the target provider fork.
 - Measure the exact hosted payload currently loaded for implementation, tests, and documentation.
 - Identify the target repository and ownership model for hosted source rules and generated files.
 - Confirm CODEOWNERS and required-check capabilities.
 
-### Rule Curation
+### Rule Curation:
 
 - Select the smallest useful upstream baseline.
 - Inventory confirmed and inferred maintainer conventions.
@@ -483,21 +568,23 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 - Exclude normal toolkit orchestration safeguards.
 - Record mandatory documentation gaps explicitly.
 
-### Generation and Validation
+### Generation and Validation:
 
 - Define the normalized rule schema.
 - Implement the PowerShell drift, generation, and validation commands.
 - Generate the isolated hosted runtime profile.
 - Add token-budget and dependency-boundary checks.
 
-### Hosted Evaluation
+### Hosted Evaluation:
 
 - Test the profile on controlled pull requests in the fork.
 - Compare findings against known expected issues.
+- Run paired profile comparisons using identical fixture commits and review effort.
+- Capture model and reasoning evidence when available and mark mismatched pairs as confounded.
 - Measure context use, duplicate feedback, false positives, and missed defects.
 - Reduce or refine rules before expanding the profile.
 
-### Protected Adoption
+### Protected Adoption:
 
 - Generate runtime instructions directly under `hosted_copilot/.github/`.
 - Run `Install-HostedCopilot.ps1` in dry-run mode against the target repository.
@@ -508,7 +595,7 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 - Enable hosted Copilot review with custom instructions.
 - Monitor live reviews and update normalized rules through the isolated maintenance process.
 
-## Open Design Decisions
+## Open Design Decisions:
 
 - The exact manifest schema for ownership, source hashes, and previously installed hashes.
 - The explicit approval mechanism for first-install collisions and locally modified package-owned files.
@@ -516,18 +603,20 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 - Which deterministic provider checks can run within hosted review without consuming excessive setup time or context.
 - Whether organization-level instructions are available for immutable trust-boundary guidance.
 - The initial rule count and exact token budget for each surface after measurement in the target repository.
+- The number of independent paired runs required before an unknown-model aggregate comparison is considered stable.
 - How live hosted review outcomes are captured for regression without treating comments as automatically correct guidance.
 
-## Success Criteria
+## Success Criteria:
 
-The design is ready for implementation when:
+**The Design Is Ready for Implementation When:**
 
-- the hosted and normal toolkit ownership boundaries are explicit
-- no hosted runtime dependency points into the normal toolkit
-- each review surface has an approved token budget
-- selected rules have requirement strength, provenance, evidence, and runtime decisions
-- the Oxford comma and other mandatory tribal requirements are preserved
-- source drift cannot silently rewrite rule meaning
-- hosted installation can preview and detect collisions without invoking the normal installer
-- hosted policy paths require human ownership review
-- the target regression corpus can distinguish useful findings from false positives
+- The hosted and normal toolkit ownership boundaries are explicit
+- No hosted runtime dependency points into the normal toolkit
+- Each review surface has an approved token budget
+- Selected rules have requirement strength, provenance, evidence, and runtime decisions
+- The Oxford comma and other mandatory tribal requirements are preserved
+- Source drift cannot silently rewrite rule meaning
+- Hosted installation can preview and detect collisions without invoking the normal installer
+- Hosted policy paths require human ownership review
+- Hosted comparative results identify model-confounded and unknown-model runs instead of attributing every difference to instructions
+- The target regression corpus can distinguish useful findings from false positives
