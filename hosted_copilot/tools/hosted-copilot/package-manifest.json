@@ -9,6 +9,11 @@
       "hash": "68624d1bb96e3423416f8b660300f31bf34bcc7bb7c76cf5be8cae336c5a4f14"
     },
     {
+      "sourcePath": ".github/instructions/azurerm-go.instructions.md",
+      "targetPath": ".github/instructions/azurerm-go.instructions.md",
+      "hash": "4884ed645b9cc53dc69b3d53b9e16e3ad29317eef61964389f78f0c022f7ea0b"
+    },
+    {
       "sourcePath": ".github/instructions/azurerm-docs.instructions.md",
       "targetPath": ".github/instructions/azurerm-docs.instructions.md",
       "hash": "09795f96c3bc230c33a830697136be64710dbd36dc09e70c53894e698461d401"
@@ -21,7 +26,7 @@
     {
       "sourcePath": "docs/HOSTED_COPILOT_CODE_REVIEW.md",
       "targetPath": "docs/HOSTED_COPILOT_CODE_REVIEW.md",
-      "hash": "807b4965578cc89a47cfc26a4559a0bca3af8b58b7272555781b5068a8c04d66"
+      "hash": "8de31a93611e1de10768f92ba8805dec0bb92b011a98eb2f738975034fe03b6d"
     }
   ]
 }

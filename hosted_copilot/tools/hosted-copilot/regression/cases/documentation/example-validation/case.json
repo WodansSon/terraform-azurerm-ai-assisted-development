@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "documentation-phase-one",
+  "id": "documentation-example-validation",
   "surface": "documentation",
   "targetPath": "website/docs/r/hosted_fixture.html.markdown",
-  "beforePath": "before.html.markdown",
-  "afterPath": "after.html.markdown",
+  "beforePath": "before/hosted_fixture.html.markdown",
+  "afterPath": "after/hosted_fixture.html.markdown",
   "expectedFindings": [
     {
       "ruleId": "DOCS-EX-010",
