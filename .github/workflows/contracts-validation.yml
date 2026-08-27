@@ -10,8 +10,14 @@ on:
       - '.github/skills/**'
       - 'CONTRIBUTING.md'
       - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
+      - 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
+      - 'hosted_copilot/**'
+      - 'tools/Test-ChangedToolkitRouting.ps1'
+      - 'tools/Validate-ChangedToolkits.ps1'
+      - 'tools/Validate-InteractiveToolkit.ps1'
       - 'tools/config/upstream-contributor.json'
       - 'tools/check-upstream-contributor-drift.ps1'
+      - 'tools/toolkit-ownership.json'
       - 'tools/validate-ai-toolkit.ps1'
       - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/validate-copied-markdown-links.ps1'
@@ -27,8 +33,14 @@ on:
       - '.github/skills/**'
       - 'CONTRIBUTING.md'
       - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
+      - 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
+      - 'hosted_copilot/**'
+      - 'tools/Test-ChangedToolkitRouting.ps1'
+      - 'tools/Validate-ChangedToolkits.ps1'
+      - 'tools/Validate-InteractiveToolkit.ps1'
       - 'tools/config/upstream-contributor.json'
       - 'tools/check-upstream-contributor-drift.ps1'
+      - 'tools/toolkit-ownership.json'
       - 'tools/validate-ai-toolkit.ps1'
       - 'tools/validate-runtime-line-endings.ps1'
       - 'tools/validate-copied-markdown-links.ps1'
@@ -52,4 +64,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./tools/validate-ai-toolkit.ps1 -SkipRegressionHarness -AllowCatalogIssues
+          ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness
