@@ -13,8 +13,15 @@ $architecturePath = Join-Path $repoRoot 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITE
 $changelogPath = Join-Path $PSScriptRoot 'CHANGELOG.md'
 $forbiddenVersionPath = Join-Path $PSScriptRoot 'VERSION'
 $packageManifestPath = Join-Path $PSScriptRoot 'package-manifest.json'
+$installerPath = Join-Path $PSScriptRoot 'Install-HostedCopilot.ps1'
 $interactiveManifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $hostedRuntimePath = Join-Path $hostedRoot '.github'
+$repositoryInstructionsPath = Join-Path $hostedRuntimePath 'copilot-instructions.md'
+$documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
+$reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
+$userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
+$documentationFixturePath = Join-Path $PSScriptRoot 'regression/fixtures/documentation-phase-one'
+$tokenEstimator = 'utf8-byte-upper-bound-v1'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -131,6 +138,24 @@ function Add-ValidationIssue {
     Add-CheckResult -Name $Name -Passed $false -Detail $Issue
 }
 
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Get-Utf8ByteCount {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    return [System.Text.Encoding]::UTF8.GetByteCount((Get-Content -LiteralPath $Path -Raw))
+}
+
 $runtimeStarted = (Test-Path -LiteralPath $hostedRuntimePath) -or (Test-Path -LiteralPath $packageManifestPath)
 $phase = if ($runtimeStarted) { 'runtime' } else { 'design' }
 $purpose = 'experiment-support'
@@ -141,6 +166,7 @@ if ($OutputFormat -eq 'Text') {
     Write-Output ("  Purpose     : {0}" -f $purpose.ToUpperInvariant())
     Write-Output ("  Deployment  : {0}" -f $deploymentModel.ToUpperInvariant())
     Write-Output ("  Phase       : {0}" -f $phase.ToUpperInvariant())
+    Write-Output ("  Token Guard : {0}" -f $tokenEstimator.ToUpperInvariant())
     Write-Output ''
 }
 
@@ -190,11 +216,24 @@ else {
     Add-CheckResult -Name 'deployment-model' -Passed $true -Detail 'Hosted Toolkit uses direct source deployment without a separate version file or release bundle.'
 }
 
+$manifestConfig = $null
 if (Test-Path -LiteralPath $packageManifestPath) {
     Start-ValidationCheck -Name 'package-manifest'
     try {
-        $null = Get-Content -LiteralPath $packageManifestPath -Raw | ConvertFrom-Json
-        Add-CheckResult -Name 'package-manifest' -Passed $true -Detail 'Hosted Toolkit package manifest is valid JSON.'
+        $manifestConfig = Get-Content -LiteralPath $packageManifestPath -Raw | ConvertFrom-Json
+        if ($manifestConfig.schemaVersion -ne 1) {
+            throw "unsupported schemaVersion $($manifestConfig.schemaVersion)"
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$manifestConfig.packageIdentity)) {
+            throw 'packageIdentity is empty'
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$manifestConfig.installedStatePath)) {
+            throw 'installedStatePath is empty'
+        }
+        if (@($manifestConfig.files).Count -eq 0) {
+            throw 'files is empty'
+        }
+        Add-CheckResult -Name 'package-manifest' -Passed $true -Detail 'Hosted Toolkit package manifest schema is valid.'
     }
     catch {
         Add-ValidationIssue -Name 'package-manifest' -Issue "Hosted Toolkit package manifest is not valid JSON: $($_.Exception.Message)"
@@ -206,6 +245,205 @@ elseif ($runtimeStarted) {
 }
 else {
     Add-SkippedCheck -Name 'package-manifest' -Detail 'No package manifest is required during the design phase.'
+}
+
+if ($runtimeStarted) {
+    Start-ValidationCheck -Name 'runtime-layout'
+    $requiredRuntimePaths = @(
+        $repositoryInstructionsPath,
+        $documentationInstructionsPath,
+        $reviewSkillPath,
+        $userDocumentationPath,
+        $installerPath
+    )
+    $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($missingRuntimePaths.Count -eq 0) {
+        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Phase One runtime, installer, and user documentation paths exist.'
+    }
+    else {
+        Add-ValidationIssue -Name 'runtime-layout' -Issue ("Required Phase One paths are missing: {0}" -f ($missingRuntimePaths -join ', '))
+    }
+
+    Start-ValidationCheck -Name 'instruction-frontmatter'
+    if (Test-Path -LiteralPath $documentationInstructionsPath -PathType Leaf) {
+        $instructionContent = Get-Content -LiteralPath $documentationInstructionsPath -Raw
+        $frontmatterValid = $instructionContent -match '(?s)\A---\r?\n(?<frontmatter>.*?)\r?\n---\r?\n'
+        if ($frontmatterValid) {
+            $frontmatter = $matches['frontmatter']
+            $frontmatterValid = $frontmatter -match '(?m)^description:\s*".+"\s*$' -and $frontmatter -match '(?m)^applyTo:\s*"website/docs/\*\*/\*.html\.markdown"\s*$'
+        }
+        if ($frontmatterValid) {
+            Add-CheckResult -Name 'instruction-frontmatter' -Passed $true -Detail 'Documentation instructions use the exact Phase One applyTo pattern and a description.'
+        }
+        else {
+            Add-ValidationIssue -Name 'instruction-frontmatter' -Issue 'Documentation instruction frontmatter is invalid or does not use applyTo "website/docs/**/*.html.markdown"'
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'instruction-frontmatter' -Issue "Documentation instructions were not found at $documentationInstructionsPath"
+    }
+
+    Start-ValidationCheck -Name 'skill-metadata'
+    if (Test-Path -LiteralPath $reviewSkillPath -PathType Leaf) {
+        $skillContent = Get-Content -LiteralPath $reviewSkillPath -Raw
+        $skillMetadataValid = $skillContent -match '(?s)\A---\r?\n(?<frontmatter>.*?)\r?\n---\r?\n'
+        if ($skillMetadataValid) {
+            $skillFrontmatter = $matches['frontmatter']
+            $skillMetadataValid = $skillFrontmatter -match '(?m)^name:\s*code-review\s*$' -and $skillFrontmatter -match '(?m)^description:\s*".*review.*"\s*$'
+        }
+        if ($skillMetadataValid) {
+            Add-CheckResult -Name 'skill-metadata' -Passed $true -Detail 'Review skill metadata has the required name and review-focused description.'
+        }
+        else {
+            Add-ValidationIssue -Name 'skill-metadata' -Issue 'Review skill metadata must define name code-review and a review-focused description'
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'skill-metadata' -Issue "Review skill was not found at $reviewSkillPath"
+    }
+
+    if ($null -ne $manifestConfig) {
+        Start-ValidationCheck -Name 'manifest-coverage'
+        $requiredOwnedPaths = @(
+            '.github/copilot-instructions.md',
+            '.github/instructions/azurerm-docs.instructions.md',
+            '.github/skills/code-review/SKILL.md',
+            'docs/HOSTED_COPILOT_CODE_REVIEW.md'
+        )
+        $manifestSourcePaths = @($manifestConfig.files | ForEach-Object { ([string]$_.sourcePath).Replace('\', '/') })
+        $manifestTargetPaths = @($manifestConfig.files | ForEach-Object { ([string]$_.targetPath).Replace('\', '/') })
+        $missingOwnedPaths = @($requiredOwnedPaths | Where-Object { $_ -notin $manifestSourcePaths -or $_ -notin $manifestTargetPaths })
+        $unexpectedOwnedPaths = @($manifestSourcePaths | Where-Object { $_ -notin $requiredOwnedPaths })
+        $duplicateTargets = @($manifestTargetPaths | Group-Object | Where-Object Count -gt 1)
+        if ($missingOwnedPaths.Count -eq 0 -and $unexpectedOwnedPaths.Count -eq 0 -and $duplicateTargets.Count -eq 0) {
+            Add-CheckResult -Name 'manifest-coverage' -Passed $true -Detail 'Manifest owns exactly the four Phase One deployable files.'
+        }
+        else {
+            Add-ValidationIssue -Name 'manifest-coverage' -Issue ("Manifest coverage mismatch: missing={0}; unexpected={1}; duplicateTargets={2}" -f ($missingOwnedPaths -join ', '), ($unexpectedOwnedPaths -join ', '), $duplicateTargets.Count)
+        }
+
+        Start-ValidationCheck -Name 'manifest-hashes'
+        $hashIssues = New-Object 'System.Collections.Generic.List[string]'
+        foreach ($file in @($manifestConfig.files)) {
+            $sourceRelativePath = ([string]$file.sourcePath).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot $sourceRelativePath))
+            $hostedPrefix = $hostedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+            if (-not $sourcePath.StartsWith($hostedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $hashIssues.Add("sourcePath escapes hosted_copilot: $($file.sourcePath)")
+                continue
+            }
+            if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+                $hashIssues.Add("sourcePath is missing: $($file.sourcePath)")
+                continue
+            }
+            $actualHash = Get-Sha256Hash -Path $sourcePath
+            if ($actualHash -ne ([string]$file.hash).ToLowerInvariant()) {
+                $hashIssues.Add("hash mismatch: $($file.sourcePath)")
+            }
+        }
+        if ($hashIssues.Count -eq 0) {
+            Add-CheckResult -Name 'manifest-hashes' -Passed $true -Detail 'Every manifest hash matches its Hosted source file.'
+        }
+        else {
+            Add-ValidationIssue -Name 'manifest-hashes' -Issue ($hashIssues -join '; ')
+        }
+    }
+    else {
+        Add-SkippedCheck -Name 'manifest-coverage' -Detail 'Manifest coverage requires a valid package manifest.'
+        Add-SkippedCheck -Name 'manifest-hashes' -Detail 'Manifest hash validation requires a valid package manifest.'
+    }
+
+    Start-ValidationCheck -Name 'guidance-budgets'
+    if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
+        $repositoryBytes = Get-Utf8ByteCount -Path $repositoryInstructionsPath
+        $documentationBytes = Get-Utf8ByteCount -Path $documentationInstructionsPath
+        $skillBytes = Get-Utf8ByteCount -Path $reviewSkillPath
+        $combinedBytes = $repositoryBytes + $documentationBytes + $skillBytes
+        $budgetPassed = $repositoryBytes -le 2000 -and $documentationBytes -le 8000 -and $skillBytes -le 3000 -and $combinedBytes -le 25000
+        $budgetDetail = "$tokenEstimator bytes: repository=$repositoryBytes/2000; documentation=$documentationBytes/8000; skill=$skillBytes/3000; combined=$combinedBytes/25000"
+        if ($budgetPassed) {
+            Add-CheckResult -Name 'guidance-budgets' -Passed $true -Detail $budgetDetail
+        }
+        else {
+            Add-ValidationIssue -Name 'guidance-budgets' -Issue "Hosted guidance exceeds its conservative budget: $budgetDetail"
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'guidance-budgets' -Issue 'Hosted guidance budgets require all Phase One runtime guidance files'
+    }
+
+    Start-ValidationCheck -Name 'installer-dry-run'
+    if ((Test-Path -LiteralPath $installerPath -PathType Leaf) -and $null -ne $manifestConfig) {
+        $tempRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("hosted-toolkit-validation-" + [guid]::NewGuid().ToString('N'))
+        try {
+            $null = New-Item -ItemType Directory -Path $tempRepo
+            $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+            if ($null -eq $gitCommand) {
+                throw 'git was not found on PATH'
+            }
+            & $gitCommand.Source -C $tempRepo init --quiet
+            if ($LASTEXITCODE -ne 0) {
+                throw 'temporary Git repository initialization failed'
+            }
+            $dryRunOutput = @(& pwsh -NoProfile -File $installerPath -RepoDirectory $tempRepo -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw (($dryRunOutput | Out-String).Trim())
+            }
+            $dryRunResult = ($dryRunOutput | Out-String) | ConvertFrom-Json
+            if (-not $dryRunResult.success -or $dryRunResult.mode -ne 'dry-run') {
+                throw 'installer did not report a successful dry run'
+            }
+            if (@(Get-ChildItem -LiteralPath $tempRepo -Force | Where-Object Name -ne '.git').Count -ne 0) {
+                throw 'installer dry run wrote files to the target repository'
+            }
+            Add-CheckResult -Name 'installer-dry-run' -Passed $true -Detail 'Installer dry run planned Phase One additions without writing to a temporary target.'
+        }
+        catch {
+            Add-ValidationIssue -Name 'installer-dry-run' -Issue "Hosted installer dry run failed: $($_.Exception.Message)"
+        }
+        finally {
+            if (Test-Path -LiteralPath $tempRepo) {
+                Remove-Item -LiteralPath $tempRepo -Recurse -Force
+            }
+            $global:LASTEXITCODE = 0
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'installer-dry-run' -Issue 'Installer dry-run validation requires the installer and a valid package manifest'
+    }
+
+    Start-ValidationCheck -Name 'documentation-fixture'
+    $fixtureConfigPath = Join-Path $documentationFixturePath 'fixture.json'
+    try {
+        $fixtureConfig = Get-Content -LiteralPath $fixtureConfigPath -Raw | ConvertFrom-Json
+        $beforePath = Join-Path $documentationFixturePath ([string]$fixtureConfig.beforePath)
+        $afterPath = Join-Path $documentationFixturePath ([string]$fixtureConfig.afterPath)
+        $expectedRuleIds = @($fixtureConfig.expectedFindings | ForEach-Object { [string]$_.ruleId })
+        $documentationRuleContent = Get-Content -LiteralPath $documentationInstructionsPath -Raw
+        if ($fixtureConfig.schemaVersion -ne 1 -or $fixtureConfig.surface -ne 'documentation') {
+            throw 'fixture schemaVersion or surface is invalid'
+        }
+        if (-not (Test-Path -LiteralPath $beforePath) -or -not (Test-Path -LiteralPath $afterPath)) {
+            throw 'fixture beforePath or afterPath is missing'
+        }
+        if ($expectedRuleIds.Count -eq 0) {
+            throw 'fixture expectedFindings is empty'
+        }
+        foreach ($ruleId in $expectedRuleIds) {
+            if ($documentationRuleContent -notmatch [regex]::Escape("[$ruleId]")) {
+                throw "fixture references unknown Hosted documentation rule $ruleId"
+            }
+        }
+        Add-CheckResult -Name 'documentation-fixture' -Passed $true -Detail "Controlled documentation fixture defines $($expectedRuleIds.Count) expected findings backed by Hosted rule IDs."
+    }
+    catch {
+        Add-ValidationIssue -Name 'documentation-fixture' -Issue "Controlled documentation fixture is invalid: $($_.Exception.Message)"
+    }
+}
+else {
+    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'documentation-fixture')) {
+        Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
+    }
 }
 
 Start-ValidationCheck -Name 'isolation'
@@ -274,6 +512,7 @@ $result = [ordered]@{
     purpose = $purpose
     deploymentModel = $deploymentModel
     phase = $phase
+    tokenEstimator = $tokenEstimator
     repoRoot = $repoRoot
     hostedRoot = $hostedRoot
     checks = @($checks.ToArray())
@@ -290,6 +529,7 @@ else {
     Write-Output ("  Purpose     : {0}" -f $result.purpose.ToUpperInvariant())
     Write-Output ("  Deployment  : {0}" -f $result.deploymentModel.ToUpperInvariant())
     Write-Output ("  Phase       : {0}" -f $result.phase.ToUpperInvariant())
+    Write-Output ("  Token Guard : {0}" -f $result.tokenEstimator.ToUpperInvariant())
     Write-Output ("  Hosted Root : {0}" -f $result.hostedRoot)
     Write-Output ("  Issue Count : {0}" -f $result.issueCount)
 

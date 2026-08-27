@@ -162,7 +162,7 @@ Use the architecture's conservative engineering budgets:
 
 The Hosted validator must measure each runtime file and every applicable combined surface. A test file loads repository-wide, Go, test, and potentially relevant skill guidance; the combined check must reflect cumulative loading rather than validating each file in isolation.
 
-Token measurement is an engineering guardrail, not a claim about GitHub's unpublished prompt-accounting implementation. Record the tokenizer and version used by the validator when that implementation is selected.
+Token measurement is an engineering guardrail, not a claim about GitHub's unpublished prompt-accounting implementation. Phase One uses `utf8-byte-upper-bound-v1`: the UTF-8 byte count of each guidance file is treated as a conservative upper bound and compared directly with the token budget. The validator reports that estimator by name in text and JSON output.
 
 ## Implementation Sequence:
 
@@ -218,9 +218,19 @@ The initial schema must support:
 - File ownership by the Hosted package
 - A stable package identity for installed-state comparison
 
+Phase One fixes these camel-case manifest properties:
+
+- `schemaVersion`
+- `packageIdentity`
+- `installedStatePath`
+- `files`
+- `sourcePath`, `targetPath`, and `hash` for every entry in `files`
+
+The generated installed-state record uses `schemaVersion`, `packageIdentity`, `commit`, `manifestHash`, and `files`. Each installed file records its `targetPath` and verified `hash`.
+
 The manifest must not include the implementation guide, Hosted changelog, experiment fixtures, or other maintainer-only files unless the target repository needs them to operate or maintain the installed Hosted Toolkit.
 
-Finalize the exact JSON property names before implementing the installer and validator. The installer and validator must consume one shared schema rather than defining parallel interpretations.
+The installer and validator consume this shared schema rather than defining parallel interpretations.
 
 ## Installer Requirements:
 
@@ -328,4 +338,4 @@ Hosted-only concepts with no Interactive equivalent, including the installed-sta
 
 Do not carry Interactive-only version, build-fingerprint, release-bundle, or archive terminology into the Hosted Toolkit. The Hosted Toolkit remains unversioned and source deployed.
 
-With this naming convention established, the immediate next step is Phase One: implement the documentation vertical slice. Define only the remaining Hosted-specific schema fields needed by that implementation, and require the installer and validator to consume the same manifest schema.
+With this naming convention established, the local Phase One package is implemented. The immediate next step is to review the installer dry-run against the writable test fork, approve the exact deployment plan, and run the controlled documentation review. No target-repository deployment is authorized by this implementation milestone alone.
