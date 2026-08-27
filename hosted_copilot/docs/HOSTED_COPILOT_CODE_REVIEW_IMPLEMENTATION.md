@@ -162,7 +162,7 @@ Use the architecture's conservative engineering budgets:
 
 The Hosted validator must measure each runtime file and every applicable combined surface. A test file loads repository-wide, Go, test, and potentially relevant skill guidance; the combined check must reflect cumulative loading rather than validating each file in isolation.
 
-Token measurement is an engineering guardrail, not a claim about GitHub's unpublished prompt-accounting implementation. Phase One uses `utf8-byte-upper-bound-v1`: the UTF-8 byte count of each guidance file is treated as a conservative upper bound and compared directly with the token budget. The validator reports that estimator by name in text and JSON output.
+Token measurement is an engineering guardrail, not a claim about GitHub's unpublished prompt-accounting implementation. The validator uses `character-quarter-estimate-25pct-v1`, based on Microsoft Learn's documented approximation that [one token is approximately four characters in English](https://learn.microsoft.com/azure/azure-functions/functions-bindings-openai-embeddings-input#usage). It calculates the raw estimate as `ceiling(character count / 4)`, applies 25% safety headroom as a local safeguard, and compares the guarded estimate with each budget. Microsoft also documents that [the specific tokenization method varies by LLM](https://learn.microsoft.com/dotnet/ai/conceptual/understanding-tokens), so text and JSON output report the estimator by name plus the raw and guarded values. This method has no external package dependency and does not claim to reproduce GitHub's undisclosed model tokenizer.
 
 ## Implementation Sequence:
 

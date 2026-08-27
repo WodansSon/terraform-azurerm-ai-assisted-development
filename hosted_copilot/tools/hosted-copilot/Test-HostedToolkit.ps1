@@ -22,7 +22,7 @@ $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azur
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
 $regressionCasesPath = Join-Path $PSScriptRoot 'regression/cases'
-$tokenEstimator = 'utf8-byte-upper-bound-v1'
+$tokenEstimator = 'character-quarter-estimate-25pct-v1'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -148,13 +148,21 @@ function Get-Sha256Hash {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Get-Utf8ByteCount {
+function Get-TokenEstimate {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
     )
 
-    return [System.Text.Encoding]::UTF8.GetByteCount((Get-Content -LiteralPath $Path -Raw))
+    $characterCount = (Get-Content -LiteralPath $Path -Raw).Length
+    $estimatedTokens = [Math]::Ceiling($characterCount / 4)
+    $guardedTokens = [Math]::Ceiling($estimatedTokens * 1.25)
+
+    return [pscustomobject]@{
+        characterCount = $characterCount
+        estimatedTokens = $estimatedTokens
+        guardedTokens = $guardedTokens
+    }
 }
 
 $runtimeStarted = (Test-Path -LiteralPath $hostedRuntimePath) -or (Test-Path -LiteralPath $packageManifestPath)
@@ -366,14 +374,16 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'guidance-budgets'
     if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
-        $repositoryBytes = Get-Utf8ByteCount -Path $repositoryInstructionsPath
-        $goBytes = Get-Utf8ByteCount -Path $goInstructionsPath
-        $documentationBytes = Get-Utf8ByteCount -Path $documentationInstructionsPath
-        $skillBytes = Get-Utf8ByteCount -Path $reviewSkillPath
-        $goCombinedBytes = $repositoryBytes + $goBytes + $skillBytes
-        $documentationCombinedBytes = $repositoryBytes + $documentationBytes + $skillBytes
-        $budgetPassed = $repositoryBytes -le 2000 -and $goBytes -le 8000 -and $documentationBytes -le 8000 -and $skillBytes -le 3000 -and $goCombinedBytes -le 25000 -and $documentationCombinedBytes -le 25000
-        $budgetDetail = "$tokenEstimator bytes: repository=$repositoryBytes/2000; go=$goBytes/8000; documentation=$documentationBytes/8000; skill=$skillBytes/3000; go-combined=$goCombinedBytes/25000; documentation-combined=$documentationCombinedBytes/25000"
+        $repositoryEstimate = Get-TokenEstimate -Path $repositoryInstructionsPath
+        $goEstimate = Get-TokenEstimate -Path $goInstructionsPath
+        $documentationEstimate = Get-TokenEstimate -Path $documentationInstructionsPath
+        $skillEstimate = Get-TokenEstimate -Path $reviewSkillPath
+        $goCombinedEstimate = $repositoryEstimate.estimatedTokens + $goEstimate.estimatedTokens + $skillEstimate.estimatedTokens
+        $goCombinedGuarded = $repositoryEstimate.guardedTokens + $goEstimate.guardedTokens + $skillEstimate.guardedTokens
+        $documentationCombinedEstimate = $repositoryEstimate.estimatedTokens + $documentationEstimate.estimatedTokens + $skillEstimate.estimatedTokens
+        $documentationCombinedGuarded = $repositoryEstimate.guardedTokens + $documentationEstimate.guardedTokens + $skillEstimate.guardedTokens
+        $budgetPassed = $repositoryEstimate.guardedTokens -le 2000 -and $goEstimate.guardedTokens -le 8000 -and $documentationEstimate.guardedTokens -le 8000 -and $skillEstimate.guardedTokens -le 3000 -and $goCombinedGuarded -le 25000 -and $documentationCombinedGuarded -le 25000
+        $budgetDetail = "$tokenEstimator estimated/guarded tokens: repository=$($repositoryEstimate.estimatedTokens)/$($repositoryEstimate.guardedTokens)/2000; go=$($goEstimate.estimatedTokens)/$($goEstimate.guardedTokens)/8000; documentation=$($documentationEstimate.estimatedTokens)/$($documentationEstimate.guardedTokens)/8000; skill=$($skillEstimate.estimatedTokens)/$($skillEstimate.guardedTokens)/3000; go-combined=$goCombinedEstimate/$goCombinedGuarded/25000; documentation-combined=$documentationCombinedEstimate/$documentationCombinedGuarded/25000"
         if ($budgetPassed) {
             Add-CheckResult -Name 'guidance-budgets' -Passed $true -Detail $budgetDetail
         }

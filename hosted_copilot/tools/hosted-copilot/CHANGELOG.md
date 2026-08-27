@@ -16,5 +16,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Aligned Hosted validation output with the Interactive Toolkit one-shot execution-state contract by reporting phase, live check states, durations, skipped design gates, structured summaries, and presentation-free JSON.
+- Replaced the UTF-8 byte token upper bound with a dependency-free four-characters-per-token estimate and 25% safety headroom.
 
 ### Fixed
