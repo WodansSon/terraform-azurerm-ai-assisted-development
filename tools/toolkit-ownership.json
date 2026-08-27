@@ -70,6 +70,10 @@
       "ownership": "repository-maintenance"
     },
     {
+      "pattern": ".github/CODEOWNERS",
+      "ownership": "repository-maintenance"
+    },
+    {
       "pattern": ".github/**",
       "ownership": "interactive"
     },

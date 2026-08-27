@@ -49,6 +49,12 @@ $cases = @(
         repositoryChecks = $true
     },
     [pscustomobject]@{
+        name = 'codeowners'
+        paths = @('.github/CODEOWNERS')
+        validators = @()
+        repositoryChecks = $true
+    },
+    [pscustomobject]@{
         name = 'repository-maintenance-skills'
         paths = @(
             '.github/skills/ai-toolkit-maintenance/SKILL.md',
