@@ -11,7 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User-Priority:**
+  - **[Docs]** - Documentation reviews and writing now require four-backtick outer fences when examples contain nested fenced code blocks, matching upstream reference documentation standards.
+
 ### Fixed
+
+- **Maintainer/Workflow:**
+  - **[Internal]** - Upstream contributor drift checks now authenticate GitHub Contents API requests in CI, avoiding unauthenticated rate-limit failures.
 
 ## [3.9.1] - 2026-08-24
 

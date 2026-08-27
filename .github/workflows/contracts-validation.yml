@@ -49,5 +49,7 @@ jobs:
           fetch-depth: 0
       - name: Run AI toolkit validator
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./tools/validate-ai-toolkit.ps1 -SkipRegressionHarness -AllowCatalogIssues
