@@ -146,7 +146,7 @@
       "domain": "documentation",
       "title": "Provider Documentation Standards",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/reference-documentation-standards.md",
-      "baselineSha256": "32ff2e25698e68e19cc2eebf757f96d0044b99bfe31f5edc4bfca08059a14296",
+      "baselineSha256": "5a32d98fb9f70461e216cd89a1a8347aa8684c508897a0402df3e2c711391843",
       "reviewNotes": [
         "Primary upstream source for examples, code fences, argument ordering, attribute ordering, and note formatting."
       ]
@@ -156,7 +156,7 @@
       "domain": "implementation-and-testing",
       "title": "Guide: New Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-resource.md",
-      "baselineSha256": "d15f3472c5be32d4bfb46ca350c5a3124538cea8ee1f2b55dd034f105bf1637f",
+      "baselineSha256": "3ed25d9bcfe71aea8c836c97c6434cc64909099f9210b7723401ccd206cfd2c8",
       "reviewNotes": [
         "Useful when upstream changes the staged workflow for new resources, including acceptance-test, docs, and PR expectations."
       ]
@@ -236,7 +236,7 @@
       "domain": "implementation",
       "title": "Guide: Extending a Resource",
       "rawUrl": "https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/topics/guide-new-fields-to-resource.md",
-      "baselineSha256": "d303bf8fa3e04787a3efe70dedb54ffb829cfb0f3a6497065c2f9011bd33de36",
+      "baselineSha256": "d93a2f2014c89d70932cd112006161b694e6fd3ab51e8d2f7eb4c59f92cdf333",
       "reviewNotes": [
         "Primary upstream source for extending existing resources with schema, CRUD, tests, docs, and default-value breaking-change review."
       ]

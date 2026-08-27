@@ -159,6 +159,16 @@ function Get-UpstreamTopicPaths {
     $pendingUrls.Enqueue($ContentsApiUrl)
     $topicPaths = @()
     $headers = @{ Accept = "application/vnd.github+json"; "User-Agent" = "terraform-azurerm-ai-toolkit-drift-checker" }
+    $token = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        $env:GITHUB_TOKEN
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+        $env:GH_TOKEN
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $headers.Authorization = "Bearer $token"
+    }
 
     while ($pendingUrls.Count -gt 0) {
         $response = Invoke-RestMethod -Uri $pendingUrls.Dequeue() -Headers $headers
