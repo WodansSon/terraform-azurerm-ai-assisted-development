@@ -244,6 +244,13 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Code fences should use the most specific language that matches the snippet.
 - **Rule**: Terraform configuration snippets MUST use `hcl` fences; do not use `terraform` fences for HCL configuration.
 
+### DOCS-FMT-004: Outer fences must contain nested code fences safely
+- **Rule**: A code block containing a nested triple-backtick code block MUST use four backticks for its outer opening and closing fences.
+- **Provenance**: Published upstream standard.
+- **Evidence**:
+  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`
+  - That guidance requires four backticks around an outer code block that contains nested code blocks
+
 ---
 
 ## Import (resources)
