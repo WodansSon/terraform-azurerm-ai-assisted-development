@@ -338,4 +338,4 @@ Hosted-only concepts with no Interactive equivalent, including the installed-sta
 
 Do not carry Interactive-only version, build-fingerprint, release-bundle, or archive terminology into the Hosted Toolkit. The Hosted Toolkit remains unversioned and source deployed.
 
-With this naming convention established, the local Phase One documentation package and Phase Two Go package are implemented. The next implementation step is Phase Three: add the acceptance-test supplement and controlled test fixtures without duplicating shared Go rules. Controlled deployment and Hosted evaluation remain separate approval steps; no target-repository deployment is authorized by these implementation milestones alone.
+With this naming convention established, the local Phase One documentation package, Phase Two Go package, and Phase Three acceptance-test package are implemented. The next step is Phase Four: deploy the approved source package into the writable test fork and run controlled Hosted evaluation. Deployment and Hosted evaluation remain separate approval steps; no target-repository deployment is authorized by these implementation milestones alone.

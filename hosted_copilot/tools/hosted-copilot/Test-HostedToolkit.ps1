@@ -18,6 +18,7 @@ $interactiveManifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $hostedRuntimePath = Join-Path $hostedRoot '.github'
 $repositoryInstructionsPath = Join-Path $hostedRuntimePath 'copilot-instructions.md'
 $goInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-go.instructions.md'
+$testInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-tests.instructions.md'
 $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
@@ -261,6 +262,7 @@ if ($runtimeStarted) {
     $requiredRuntimePaths = @(
         $repositoryInstructionsPath,
         $goInstructionsPath,
+        $testInstructionsPath,
         $documentationInstructionsPath,
         $reviewSkillPath,
         $userDocumentationPath,
@@ -268,15 +270,16 @@ if ($runtimeStarted) {
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
     if ($missingRuntimePaths.Count -eq 0) {
-        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Phase One runtime, installer, and user documentation paths exist.'
+        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime, installer, and user documentation paths exist.'
     }
     else {
-        Add-ValidationIssue -Name 'runtime-layout' -Issue ("Required Phase One paths are missing: {0}" -f ($missingRuntimePaths -join ', '))
+        Add-ValidationIssue -Name 'runtime-layout' -Issue ("Required Hosted runtime paths are missing: {0}" -f ($missingRuntimePaths -join ', '))
     }
 
     Start-ValidationCheck -Name 'instruction-frontmatter'
     $instructionExpectations = @(
         @{ Path = $goInstructionsPath; ApplyTo = 'internal/**/*.go'; Name = 'Go' },
+        @{ Path = $testInstructionsPath; ApplyTo = 'internal/**/*_test.go'; Name = 'Test' },
         @{ Path = $documentationInstructionsPath; ApplyTo = 'website/docs/**/*.html.markdown'; Name = 'Documentation' }
     )
     $frontmatterIssues = New-Object 'System.Collections.Generic.List[string]'
@@ -297,10 +300,42 @@ if ($runtimeStarted) {
         }
     }
     if ($frontmatterIssues.Count -eq 0) {
-        Add-CheckResult -Name 'instruction-frontmatter' -Passed $true -Detail 'Go and documentation instructions use their exact applyTo patterns and define descriptions.'
+        Add-CheckResult -Name 'instruction-frontmatter' -Passed $true -Detail 'Go, test, and documentation instructions use their exact applyTo patterns and define descriptions.'
     }
     else {
         Add-ValidationIssue -Name 'instruction-frontmatter' -Issue ($frontmatterIssues -join '; ')
+    }
+
+    Start-ValidationCheck -Name 'instruction-boundaries'
+    if ((Test-Path -LiteralPath $goInstructionsPath -PathType Leaf) -and (Test-Path -LiteralPath $testInstructionsPath -PathType Leaf)) {
+        $goInstructionContent = Get-Content -LiteralPath $goInstructionsPath -Raw
+        $testInstructionContent = Get-Content -LiteralPath $testInstructionsPath -Raw
+        $goRuleIds = @([regex]::Matches($goInstructionContent, '\[(?<id>IMPL-[A-Z0-9-]+)\]') | ForEach-Object { $_.Groups['id'].Value })
+        $testRuleIds = @([regex]::Matches($testInstructionContent, '\[(?<id>TEST-[A-Z0-9-]+)\]') | ForEach-Object { $_.Groups['id'].Value })
+        $duplicateRuleIds = @((@($goRuleIds) + @($testRuleIds)) | Group-Object | Where-Object Count -gt 1)
+        $boundaryIssues = New-Object 'System.Collections.Generic.List[string]'
+        if ($testInstructionContent -match '\[IMPL-') {
+            $boundaryIssues.Add('test instructions contain shared IMPL rule IDs')
+        }
+        if ($goInstructionContent -match '\[TEST-') {
+            $boundaryIssues.Add('Go instructions contain test-specific TEST rule IDs')
+        }
+        if ($duplicateRuleIds.Count -gt 0) {
+            $boundaryIssues.Add("duplicate stable rule IDs: $(@($duplicateRuleIds.Name) -join ', ')")
+        }
+        if ($goRuleIds.Count -eq 0 -or $testRuleIds.Count -eq 0) {
+            $boundaryIssues.Add('Go or test instructions do not define stable rules')
+        }
+
+        if ($boundaryIssues.Count -eq 0) {
+            Add-CheckResult -Name 'instruction-boundaries' -Passed $true -Detail "Go and test rule namespaces are exclusive and contain $($goRuleIds.Count + $testRuleIds.Count) unique stable IDs."
+        }
+        else {
+            Add-ValidationIssue -Name 'instruction-boundaries' -Issue ($boundaryIssues -join '; ')
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'instruction-boundaries' -Issue 'Instruction boundary validation requires Go and test instructions'
     }
 
     Start-ValidationCheck -Name 'skill-metadata'
@@ -373,17 +408,20 @@ if ($runtimeStarted) {
     }
 
     Start-ValidationCheck -Name 'guidance-budgets'
-    if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
+    if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $testInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
         $repositoryEstimate = Get-TokenEstimate -Path $repositoryInstructionsPath
         $goEstimate = Get-TokenEstimate -Path $goInstructionsPath
+        $testEstimate = Get-TokenEstimate -Path $testInstructionsPath
         $documentationEstimate = Get-TokenEstimate -Path $documentationInstructionsPath
         $skillEstimate = Get-TokenEstimate -Path $reviewSkillPath
         $goCombinedEstimate = $repositoryEstimate.estimatedTokens + $goEstimate.estimatedTokens + $skillEstimate.estimatedTokens
         $goCombinedGuarded = $repositoryEstimate.guardedTokens + $goEstimate.guardedTokens + $skillEstimate.guardedTokens
+        $testCombinedEstimate = $repositoryEstimate.estimatedTokens + $goEstimate.estimatedTokens + $testEstimate.estimatedTokens + $skillEstimate.estimatedTokens
+        $testCombinedGuarded = $repositoryEstimate.guardedTokens + $goEstimate.guardedTokens + $testEstimate.guardedTokens + $skillEstimate.guardedTokens
         $documentationCombinedEstimate = $repositoryEstimate.estimatedTokens + $documentationEstimate.estimatedTokens + $skillEstimate.estimatedTokens
         $documentationCombinedGuarded = $repositoryEstimate.guardedTokens + $documentationEstimate.guardedTokens + $skillEstimate.guardedTokens
-        $budgetPassed = $repositoryEstimate.guardedTokens -le 2000 -and $goEstimate.guardedTokens -le 8000 -and $documentationEstimate.guardedTokens -le 8000 -and $skillEstimate.guardedTokens -le 3000 -and $goCombinedGuarded -le 25000 -and $documentationCombinedGuarded -le 25000
-        $budgetDetail = "$tokenEstimator estimated/guarded tokens: repository=$($repositoryEstimate.estimatedTokens)/$($repositoryEstimate.guardedTokens)/2000; go=$($goEstimate.estimatedTokens)/$($goEstimate.guardedTokens)/8000; documentation=$($documentationEstimate.estimatedTokens)/$($documentationEstimate.guardedTokens)/8000; skill=$($skillEstimate.estimatedTokens)/$($skillEstimate.guardedTokens)/3000; go-combined=$goCombinedEstimate/$goCombinedGuarded/25000; documentation-combined=$documentationCombinedEstimate/$documentationCombinedGuarded/25000"
+        $budgetPassed = $repositoryEstimate.guardedTokens -le 2000 -and $goEstimate.guardedTokens -le 8000 -and $testEstimate.guardedTokens -le 4000 -and $documentationEstimate.guardedTokens -le 8000 -and $skillEstimate.guardedTokens -le 3000 -and $goCombinedGuarded -le 25000 -and $testCombinedGuarded -le 25000 -and $documentationCombinedGuarded -le 25000
+        $budgetDetail = "$tokenEstimator estimated/guarded tokens: repository=$($repositoryEstimate.estimatedTokens)/$($repositoryEstimate.guardedTokens)/2000; go=$($goEstimate.estimatedTokens)/$($goEstimate.guardedTokens)/8000; test=$($testEstimate.estimatedTokens)/$($testEstimate.guardedTokens)/4000; documentation=$($documentationEstimate.estimatedTokens)/$($documentationEstimate.guardedTokens)/8000; skill=$($skillEstimate.estimatedTokens)/$($skillEstimate.guardedTokens)/3000; go-combined=$goCombinedEstimate/$goCombinedGuarded/25000; test-combined=$testCombinedEstimate/$testCombinedGuarded/25000; documentation-combined=$documentationCombinedEstimate/$documentationCombinedGuarded/25000"
         if ($budgetPassed) {
             Add-CheckResult -Name 'guidance-budgets' -Passed $true -Detail $budgetDetail
         }
@@ -392,7 +430,7 @@ if ($runtimeStarted) {
         }
     }
     else {
-        Add-ValidationIssue -Name 'guidance-budgets' -Issue 'Hosted guidance budgets require all Phase One runtime guidance files'
+        Add-ValidationIssue -Name 'guidance-budgets' -Issue 'Hosted guidance budgets require all runtime guidance files'
     }
 
     Start-ValidationCheck -Name 'installer-dry-run'
@@ -419,7 +457,7 @@ if ($runtimeStarted) {
             if (@(Get-ChildItem -LiteralPath $tempRepo -Force | Where-Object Name -ne '.git').Count -ne 0) {
                 throw 'installer dry run wrote files to the target repository'
             }
-            Add-CheckResult -Name 'installer-dry-run' -Passed $true -Detail 'Installer dry run planned Phase One additions without writing to a temporary target.'
+            Add-CheckResult -Name 'installer-dry-run' -Passed $true -Detail 'Installer dry run planned Hosted additions without writing to a temporary target.'
         }
         catch {
             Add-ValidationIssue -Name 'installer-dry-run' -Issue "Hosted installer dry run failed: $($_.Exception.Message)"
@@ -449,6 +487,7 @@ if ($runtimeStarted) {
         $surfaceInstructionPaths = @{
             documentation = $documentationInstructionsPath
             implementation = $goInstructionsPath
+            testing = $testInstructionsPath
         }
         $caseIds = @{}
         $expectedFindingCount = 0
@@ -472,7 +511,7 @@ if ($runtimeStarted) {
             }
 
             $targetPath = ([string]$caseConfig.targetPath).Replace('\', '/')
-            if (($surface -eq 'documentation' -and $targetPath -notmatch '^website/docs/.+\.html\.markdown$') -or ($surface -eq 'implementation' -and $targetPath -notmatch '^internal/.+\.go$')) {
+            if (($surface -eq 'documentation' -and $targetPath -notmatch '^website/docs/.+\.html\.markdown$') -or ($surface -eq 'implementation' -and $targetPath -notmatch '^internal/.+\.go$') -or ($surface -eq 'testing' -and $targetPath -notmatch '^internal/.+_test\.go$')) {
                 throw "case $caseId targetPath does not match its $surface surface: $targetPath"
             }
 
@@ -518,7 +557,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'regression-cases')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'regression-cases')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }
