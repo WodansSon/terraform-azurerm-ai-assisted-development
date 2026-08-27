@@ -9,7 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - Defined the preliminary Hosted Toolkit architecture, Experiment MVP handoff, and design-phase validation, including isolated overlay ownership, compact instruction budgets, controlled comparative evaluation, direct source deployment, explicit changed-path ownership, and mixed-toolkit dispatch while deferring production machinery until an adoption decision.
+- Added the Hosted implementation guide with the first-party GitHub repository shape, phased Experiment MVP sequence, deployment and validation requirements, curated maintainer-convention intake, and explicit terminology shared with the Interactive Toolkit.
 
 ### Changed
+
+- Aligned Hosted validation output with the Interactive Toolkit one-shot execution-state contract by reporting phase, live check states, durations, skipped design gates, structured summaries, and presentation-free JSON.
 
 ### Fixed
