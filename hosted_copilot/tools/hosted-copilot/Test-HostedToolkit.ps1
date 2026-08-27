@@ -17,10 +17,11 @@ $installerPath = Join-Path $PSScriptRoot 'Install-HostedCopilot.ps1'
 $interactiveManifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $hostedRuntimePath = Join-Path $hostedRoot '.github'
 $repositoryInstructionsPath = Join-Path $hostedRuntimePath 'copilot-instructions.md'
+$goInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-go.instructions.md'
 $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
-$documentationFixturePath = Join-Path $PSScriptRoot 'regression/fixtures/documentation-phase-one'
+$regressionCasesPath = Join-Path $PSScriptRoot 'regression/cases'
 $tokenEstimator = 'utf8-byte-upper-bound-v1'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -251,6 +252,7 @@ if ($runtimeStarted) {
     Start-ValidationCheck -Name 'runtime-layout'
     $requiredRuntimePaths = @(
         $repositoryInstructionsPath,
+        $goInstructionsPath,
         $documentationInstructionsPath,
         $reviewSkillPath,
         $userDocumentationPath,
@@ -265,22 +267,32 @@ if ($runtimeStarted) {
     }
 
     Start-ValidationCheck -Name 'instruction-frontmatter'
-    if (Test-Path -LiteralPath $documentationInstructionsPath -PathType Leaf) {
-        $instructionContent = Get-Content -LiteralPath $documentationInstructionsPath -Raw
-        $frontmatterValid = $instructionContent -match '(?s)\A---\r?\n(?<frontmatter>.*?)\r?\n---\r?\n'
-        if ($frontmatterValid) {
-            $frontmatter = $matches['frontmatter']
-            $frontmatterValid = $frontmatter -match '(?m)^description:\s*".+"\s*$' -and $frontmatter -match '(?m)^applyTo:\s*"website/docs/\*\*/\*.html\.markdown"\s*$'
+    $instructionExpectations = @(
+        @{ Path = $goInstructionsPath; ApplyTo = 'internal/**/*.go'; Name = 'Go' },
+        @{ Path = $documentationInstructionsPath; ApplyTo = 'website/docs/**/*.html.markdown'; Name = 'Documentation' }
+    )
+    $frontmatterIssues = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($expectation in $instructionExpectations) {
+        if (-not (Test-Path -LiteralPath $expectation.Path -PathType Leaf)) {
+            $frontmatterIssues.Add("$($expectation.Name) instructions are missing")
+            continue
         }
-        if ($frontmatterValid) {
-            Add-CheckResult -Name 'instruction-frontmatter' -Passed $true -Detail 'Documentation instructions use the exact Phase One applyTo pattern and a description.'
+        $instructionContent = Get-Content -LiteralPath $expectation.Path -Raw
+        if ($instructionContent -notmatch '(?s)\A---\r?\n(?<frontmatter>.*?)\r?\n---\r?\n') {
+            $frontmatterIssues.Add("$($expectation.Name) instruction frontmatter is invalid")
+            continue
         }
-        else {
-            Add-ValidationIssue -Name 'instruction-frontmatter' -Issue 'Documentation instruction frontmatter is invalid or does not use applyTo "website/docs/**/*.html.markdown"'
+        $frontmatter = $matches['frontmatter']
+        $escapedApplyTo = [regex]::Escape($expectation.ApplyTo)
+        if ($frontmatter -notmatch '(?m)^description:\s*".+"\s*$' -or $frontmatter -notmatch "(?m)^applyTo:\s*`"$escapedApplyTo`"\s*$") {
+            $frontmatterIssues.Add("$($expectation.Name) instructions do not define description and applyTo $($expectation.ApplyTo)")
         }
     }
+    if ($frontmatterIssues.Count -eq 0) {
+        Add-CheckResult -Name 'instruction-frontmatter' -Passed $true -Detail 'Go and documentation instructions use their exact applyTo patterns and define descriptions.'
+    }
     else {
-        Add-ValidationIssue -Name 'instruction-frontmatter' -Issue "Documentation instructions were not found at $documentationInstructionsPath"
+        Add-ValidationIssue -Name 'instruction-frontmatter' -Issue ($frontmatterIssues -join '; ')
     }
 
     Start-ValidationCheck -Name 'skill-metadata'
@@ -305,18 +317,17 @@ if ($runtimeStarted) {
     if ($null -ne $manifestConfig) {
         Start-ValidationCheck -Name 'manifest-coverage'
         $requiredOwnedPaths = @(
-            '.github/copilot-instructions.md',
-            '.github/instructions/azurerm-docs.instructions.md',
-            '.github/skills/code-review/SKILL.md',
-            'docs/HOSTED_COPILOT_CODE_REVIEW.md'
-        )
+            Get-ChildItem -LiteralPath $hostedRuntimePath -Recurse -File | ForEach-Object {
+                [System.IO.Path]::GetRelativePath($hostedRoot, $_.FullName).Replace('\', '/')
+            }
+        ) + @('docs/HOSTED_COPILOT_CODE_REVIEW.md')
         $manifestSourcePaths = @($manifestConfig.files | ForEach-Object { ([string]$_.sourcePath).Replace('\', '/') })
         $manifestTargetPaths = @($manifestConfig.files | ForEach-Object { ([string]$_.targetPath).Replace('\', '/') })
         $missingOwnedPaths = @($requiredOwnedPaths | Where-Object { $_ -notin $manifestSourcePaths -or $_ -notin $manifestTargetPaths })
         $unexpectedOwnedPaths = @($manifestSourcePaths | Where-Object { $_ -notin $requiredOwnedPaths })
         $duplicateTargets = @($manifestTargetPaths | Group-Object | Where-Object Count -gt 1)
         if ($missingOwnedPaths.Count -eq 0 -and $unexpectedOwnedPaths.Count -eq 0 -and $duplicateTargets.Count -eq 0) {
-            Add-CheckResult -Name 'manifest-coverage' -Passed $true -Detail 'Manifest owns exactly the four Phase One deployable files.'
+            Add-CheckResult -Name 'manifest-coverage' -Passed $true -Detail "Manifest owns all $($requiredOwnedPaths.Count) deployable runtime and user-documentation files."
         }
         else {
             Add-ValidationIssue -Name 'manifest-coverage' -Issue ("Manifest coverage mismatch: missing={0}; unexpected={1}; duplicateTargets={2}" -f ($missingOwnedPaths -join ', '), ($unexpectedOwnedPaths -join ', '), $duplicateTargets.Count)
@@ -354,13 +365,15 @@ if ($runtimeStarted) {
     }
 
     Start-ValidationCheck -Name 'guidance-budgets'
-    if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
+    if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
         $repositoryBytes = Get-Utf8ByteCount -Path $repositoryInstructionsPath
+        $goBytes = Get-Utf8ByteCount -Path $goInstructionsPath
         $documentationBytes = Get-Utf8ByteCount -Path $documentationInstructionsPath
         $skillBytes = Get-Utf8ByteCount -Path $reviewSkillPath
-        $combinedBytes = $repositoryBytes + $documentationBytes + $skillBytes
-        $budgetPassed = $repositoryBytes -le 2000 -and $documentationBytes -le 8000 -and $skillBytes -le 3000 -and $combinedBytes -le 25000
-        $budgetDetail = "$tokenEstimator bytes: repository=$repositoryBytes/2000; documentation=$documentationBytes/8000; skill=$skillBytes/3000; combined=$combinedBytes/25000"
+        $goCombinedBytes = $repositoryBytes + $goBytes + $skillBytes
+        $documentationCombinedBytes = $repositoryBytes + $documentationBytes + $skillBytes
+        $budgetPassed = $repositoryBytes -le 2000 -and $goBytes -le 8000 -and $documentationBytes -le 8000 -and $skillBytes -le 3000 -and $goCombinedBytes -le 25000 -and $documentationCombinedBytes -le 25000
+        $budgetDetail = "$tokenEstimator bytes: repository=$repositoryBytes/2000; go=$goBytes/8000; documentation=$documentationBytes/8000; skill=$skillBytes/3000; go-combined=$goCombinedBytes/25000; documentation-combined=$documentationCombinedBytes/25000"
         if ($budgetPassed) {
             Add-CheckResult -Name 'guidance-budgets' -Passed $true -Detail $budgetDetail
         }
@@ -412,36 +425,90 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'installer-dry-run' -Issue 'Installer dry-run validation requires the installer and a valid package manifest'
     }
 
-    Start-ValidationCheck -Name 'documentation-fixture'
-    $fixtureConfigPath = Join-Path $documentationFixturePath 'fixture.json'
+    Start-ValidationCheck -Name 'regression-cases'
     try {
-        $fixtureConfig = Get-Content -LiteralPath $fixtureConfigPath -Raw | ConvertFrom-Json
-        $beforePath = Join-Path $documentationFixturePath ([string]$fixtureConfig.beforePath)
-        $afterPath = Join-Path $documentationFixturePath ([string]$fixtureConfig.afterPath)
-        $expectedRuleIds = @($fixtureConfig.expectedFindings | ForEach-Object { [string]$_.ruleId })
-        $documentationRuleContent = Get-Content -LiteralPath $documentationInstructionsPath -Raw
-        if ($fixtureConfig.schemaVersion -ne 1 -or $fixtureConfig.surface -ne 'documentation') {
-            throw 'fixture schemaVersion or surface is invalid'
+        if (-not (Test-Path -LiteralPath $regressionCasesPath -PathType Container)) {
+            throw "regression cases directory is missing: $regressionCasesPath"
         }
-        if (-not (Test-Path -LiteralPath $beforePath) -or -not (Test-Path -LiteralPath $afterPath)) {
-            throw 'fixture beforePath or afterPath is missing'
+
+        $caseConfigPaths = @(Get-ChildItem -LiteralPath $regressionCasesPath -Filter 'case.json' -Recurse -File)
+        if ($caseConfigPaths.Count -eq 0) {
+            throw 'no regression case.json files were found'
         }
-        if ($expectedRuleIds.Count -eq 0) {
-            throw 'fixture expectedFindings is empty'
+
+        $surfaceInstructionPaths = @{
+            documentation = $documentationInstructionsPath
+            implementation = $goInstructionsPath
         }
-        foreach ($ruleId in $expectedRuleIds) {
-            if ($documentationRuleContent -notmatch [regex]::Escape("[$ruleId]")) {
-                throw "fixture references unknown Hosted documentation rule $ruleId"
+        $caseIds = @{}
+        $expectedFindingCount = 0
+
+        foreach ($caseConfigPath in $caseConfigPaths) {
+            $caseRoot = Split-Path -Parent $caseConfigPath.FullName
+            $caseConfig = Get-Content -LiteralPath $caseConfigPath.FullName -Raw | ConvertFrom-Json
+            $caseId = [string]$caseConfig.id
+            $surface = [string]$caseConfig.surface
+
+            if ($caseConfig.schemaVersion -ne 1 -or [string]::IsNullOrWhiteSpace($caseId)) {
+                throw "case schemaVersion or id is invalid: $($caseConfigPath.FullName)"
             }
+            if ($caseIds.ContainsKey($caseId)) {
+                throw "duplicate regression case id: $caseId"
+            }
+            $caseIds[$caseId] = $true
+
+            if (-not $surfaceInstructionPaths.ContainsKey($surface)) {
+                throw "case $caseId uses unsupported surface: $surface"
+            }
+
+            $targetPath = ([string]$caseConfig.targetPath).Replace('\', '/')
+            if (($surface -eq 'documentation' -and $targetPath -notmatch '^website/docs/.+\.html\.markdown$') -or ($surface -eq 'implementation' -and $targetPath -notmatch '^internal/.+\.go$')) {
+                throw "case $caseId targetPath does not match its $surface surface: $targetPath"
+            }
+
+            $beforePath = [System.IO.Path]::GetFullPath((Join-Path $caseRoot ([string]$caseConfig.beforePath)))
+            $afterPath = [System.IO.Path]::GetFullPath((Join-Path $caseRoot ([string]$caseConfig.afterPath)))
+            $caseRootPrefix = $caseRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+            if (-not $beforePath.StartsWith($caseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or -not $afterPath.StartsWith($caseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "case $caseId snapshot path escapes its case directory"
+            }
+            if (-not (Test-Path -LiteralPath $beforePath -PathType Leaf) -or -not (Test-Path -LiteralPath $afterPath -PathType Leaf)) {
+                throw "case $caseId beforePath or afterPath is missing"
+            }
+
+            $expectedFindings = @($caseConfig.expectedFindings)
+            if ($expectedFindings.Count -eq 0) {
+                throw "case $caseId expectedFindings is empty"
+            }
+
+            $beforeContent = Get-Content -LiteralPath $beforePath -Raw
+            $afterContent = Get-Content -LiteralPath $afterPath -Raw
+            $ruleContent = Get-Content -LiteralPath $surfaceInstructionPaths[$surface] -Raw
+            foreach ($expectedFinding in $expectedFindings) {
+                $ruleId = [string]$expectedFinding.ruleId
+                $matchText = [string]$expectedFinding.match
+                if ([string]::IsNullOrWhiteSpace($ruleId) -or [string]::IsNullOrWhiteSpace($matchText) -or [string]::IsNullOrWhiteSpace([string]$expectedFinding.reason)) {
+                    throw "case $caseId contains an incomplete expected finding"
+                }
+                if (-not $ruleContent.Contains("[$ruleId]")) {
+                    throw "case $caseId references unknown Hosted $surface rule $ruleId"
+                }
+                if (-not $afterContent.Contains($matchText) -or $beforeContent.Contains($matchText)) {
+                    throw "case $caseId expected match must appear only in the after snapshot: $matchText"
+                }
+            }
+
+            $expectedFindingCount += $expectedFindings.Count
         }
-        Add-CheckResult -Name 'documentation-fixture' -Passed $true -Detail "Controlled documentation fixture defines $($expectedRuleIds.Count) expected findings backed by Hosted rule IDs."
+
+        Add-CheckResult -Name 'regression-cases' -Passed $true -Detail "Discovered $($caseConfigPaths.Count) surface-owned regression cases with $expectedFindingCount expected findings."
     }
     catch {
-        Add-ValidationIssue -Name 'documentation-fixture' -Issue "Controlled documentation fixture is invalid: $($_.Exception.Message)"
+        Add-ValidationIssue -Name 'regression-cases' -Issue "Controlled regression cases are invalid: $($_.Exception.Message)"
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'documentation-fixture')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'regression-cases')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

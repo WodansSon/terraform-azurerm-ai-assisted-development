@@ -5,6 +5,7 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 ## Installed Files:
 
 - `.github/copilot-instructions.md` defines the finding threshold, evidence order, feedback shape, and customization trust boundary used for every review.
+- `.github/instructions/azurerm-go.instructions.md` defines Go implementation review rules for `internal/**/*.go`.
 - `.github/instructions/azurerm-docs.instructions.md` defines documentation review rules for `website/docs/**/*.html.markdown`.
 - `.github/skills/code-review/SKILL.md` defines the compact review procedure GitHub may load when relevant.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` provides this operating reference.
@@ -39,7 +40,7 @@ Validate the Hosted source package with:
 pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, hashes, frontmatter, guidance budgets, installer dry-run safety, and fixture integrity.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, hashes, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and fixture integrity.
 
 ## Repository Settings:
 
