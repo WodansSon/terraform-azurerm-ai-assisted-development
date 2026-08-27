@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added the Hosted implementation guide with the first-party GitHub repository shape, phased Experiment MVP sequence, deployment and validation requirements, curated maintainer-convention intake, and explicit terminology shared with the Interactive Toolkit.
 - Added the Phase One documentation review package with compact repository and documentation instructions, a review skill, manifest-owned source deployment, installed-state tracking, user guidance, and a controlled documentation fixture.
 - Added the Phase Two Go review package with compact implementation rules, manifest ownership, cumulative guidance budgets, and controlled PATCH-state and resource-ID fixtures.
+- Added the Phase Three acceptance-test review package with compact test-specific rules, cumulative Go-plus-test budget validation, and controlled callback-deadline and embedded-Terraform fixtures.
 
 ### Changed
 

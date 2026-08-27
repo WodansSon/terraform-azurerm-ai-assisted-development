@@ -6,6 +6,7 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 
 - `.github/copilot-instructions.md` defines the finding threshold, evidence order, feedback shape, and customization trust boundary used for every review.
 - `.github/instructions/azurerm-go.instructions.md` defines Go implementation review rules for `internal/**/*.go`.
+- `.github/instructions/azurerm-tests.instructions.md` supplements the Go rules with acceptance-test review requirements for `internal/**/*_test.go`.
 - `.github/instructions/azurerm-docs.instructions.md` defines documentation review rules for `website/docs/**/*.html.markdown`.
 - `.github/skills/code-review/SKILL.md` defines the compact review procedure GitHub may load when relevant.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` provides this operating reference.
