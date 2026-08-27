@@ -222,6 +222,7 @@ In this repository, those validator and benchmark surfaces are part of the inten
 - `.github/instructions/review-moderator-compliance-contract.instructions.md`
 - `.github/instructions/review-presentation-compliance-contract.instructions.md`
 - `.github/instructions/review-skeptic-compliance-contract.instructions.md`
+- `.github/instructions/review-staging-compliance-contract.instructions.md`
 - `.github/instructions/testing-compliance-contract.instructions.md`
 
 These remain the authoritative rule layers for their domains.
@@ -231,6 +232,7 @@ These remain the authoritative rule layers for their domains.
 - `.github/instructions/pr-description-draft.schema.json`
 - `.github/instructions/review-coverage-matrix.schema.json`
 - `.github/instructions/review-presentation-input.schema.json`
+- `.github/instructions/review-staging-plan.schema.json`
 - `.github/instructions/review-workflow-handoff.schema.json`
 
 Schemas own transport shape only. They must not introduce policy defaults that compete with the normative contracts.
@@ -272,11 +274,12 @@ Target state for these files:
 - `.github/prompts/code-review-committed-changes.prompt.md`
 - `.github/prompts/code-review-docs.prompt.md`
 - `.github/prompts/draft-pr-description.prompt.md`
+- `.github/prompts/stage-pending-pr-review.prompt.md`
 
 Current classification:
 
 - explicit user-facing review entrypoints
-- one explicit user-facing PR authoring entrypoint
+- two explicit user-facing PR authoring or staging entrypoints
 - compatibility-sensitive
 - should not be removed early in the migration
 
@@ -286,6 +289,7 @@ Near-term target state:
 - move reusable review logic behind them into contracts and skills where practical
 - keep shrinking duplicated execution prose when the contract already defines the behavior
 - add user-invoked prompts only when they represent a distinct user task that should not be hidden behind automatic routing
+- keep pending-review staging separate from audit because it requires an explicit mutation approval boundary
 
 ### Runtime skills
 
@@ -300,6 +304,7 @@ Near-term target state:
 - `.github/skills/review-moderator/SKILL.md`
 - `.github/skills/review-presentation/SKILL.md`
 - `.github/skills/review-skeptic/SKILL.md`
+- `.github/skills/review-staging/SKILL.md`
 
 Current classification:
 
@@ -342,10 +347,14 @@ Current review architecture direction:
 - keep shared successful-review presentation in a render-only skill-plus-contract layer instead of duplicating body templates in multiple prompts
 - keep PR-scope logic, linter status mapping, and review-rule authority in the contracts
 - keep troubleshooting and reference docs aligned with that contract-first review model
+- keep `/code-review-committed-changes` audit-only and route optional GitHub pending-review creation through `/stage-pending-pr-review` only after findings are frozen
+- preserve frozen audit output as immutable provenance while post-review human challenges and proposed missed findings update a separate evidence-backed staging ledger
+- require the staging skill to preview and validate an immutable plan before explicit approval, then verify that the created review remains pending and unsubmitted
 
 Near-term rule:
 
 - keep the three existing review prompts as compatibility entrypoints
+- treat pending-review staging as a distinct post-audit user task rather than another audit entrypoint
 - do not require users to chain multiple prompt invocations to finish one review task
 - do not attempt to hide prompt orchestration inside instructions
 

@@ -277,6 +277,22 @@ AI Chat: "Create a new Azure CDN Front Door Profile resource using typed impleme
 /code-review-committed-changes
 ```
 
+### Stage A Pending PR Review (BETA)
+
+> [!WARNING]
+> This workflow is in BETA. Inspect every proposed and staged comment before submitting the review. Its workflow and output shape may change as real-world usage is evaluated.
+
+1. Run `/code-review-committed-changes` to produce the frozen audit baseline.
+2. Run `/stage-pending-pr-review` in the same chat to initialize the staging session, suppress findings already covered by existing pull request feedback, and immediately render the complete preview from the remaining frozen findings.
+3. Inspect the existing-feedback dispositions, exact comment bodies, anchors, file coverage, PR head, and separate request-changes summary; challenge findings, request revisions or removals, or identify possible missed issues when the preview needs adjustment.
+4. Inspect the replacement preview after any challenge is settled.
+5. Explicitly approve that exact preview to create one unsubmitted `PENDING` GitHub review with an empty top-level body.
+6. Inspect or edit the pending comments, then submit the review manually in GitHub when satisfied.
+
+The original audit remains immutable while accepted challenges, validated human-raised findings, and candidates suppressed because equivalent feedback already exists on the pull request are recorded in a separate staging state owned by `/stage-pending-pr-review`. Invoking the prompt opens that staging state but does not itself approve a GitHub mutation.
+
+Contributor-guide references are optional enrichment. A staged comment includes exactly one reference at the bottom only when relevant guidance and its section can be verified; otherwise the workflow omits the reference without blocking the comment or forcing unrelated guidance.
+
 ### Draft A Pull Request Title And Body
 ```
 /draft-pr-description
@@ -448,6 +464,7 @@ As you type, Copilot suggests:
 ### 🤖 AI Prompts
 
 - **/code-review-committed-changes** - Review commits and PRs for standards
+- **/stage-pending-pr-review (BETA)** - Adjudicate frozen committed-review findings and, after exact-plan approval, stage an unsubmitted pending GitHub review
 - **/code-review-docs** - Review a `website/docs/**` page for docs standards + schema parity
 - **/code-review-local-changes** - Review uncommitted changes for compliance
 - **/draft-pr-description** - Draft one AzureRM pull request title and a template-preserving copy-ready body from the complete current branch change-set

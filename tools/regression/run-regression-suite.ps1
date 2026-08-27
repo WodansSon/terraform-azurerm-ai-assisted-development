@@ -36,6 +36,7 @@ $skillCoverageTargets = @(
     [pscustomobject]@{ name = 'review-advocate'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-advocate'; section = 'routed' },
     [pscustomobject]@{ name = 'review-moderator'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-moderator'; section = 'routed' },
     [pscustomobject]@{ name = 'review-presentation'; matchMode = 'regex'; matchValue = 'review-presentation-compliance-contract\.instructions\.md'; section = 'routed' },
+    [pscustomobject]@{ name = 'review-staging'; matchMode = 'regex'; matchValue = 'Skill used:\s*review-staging'; section = 'routed' },
     [pscustomobject]@{ name = 'custom-poller-migration'; matchMode = 'regex'; matchValue = 'Skill used:\s*custom-poller-migration'; section = 'routed' }
 )
 

@@ -441,11 +441,12 @@ The installer sets up a complete AI development environment:
 Simply use slash commands to invoke the prompts directly:
 
 | Slash Command | Prompt File | Description |
-|---------------|-------------|-------------|
+| ------------- | ----------- | ----------- |
 | `/code-review-local-changes` | `code-review-local-changes.prompt.md` | Review your uncommitted changes, while reporting the count of skipped non-actionable vendored files under `vendor/**` |
 | `/code-review-committed-changes` | `code-review-committed-changes.prompt.md` | Review committed changes, while reporting the count of skipped non-actionable vendored files under `vendor/**` |
 | `/code-review-docs` | `code-review-docs.prompt.md` | Review a `website/docs/**` page for docs standards + schema parity (includes deterministic checks like `hcl` example fences, self-contained resource examples, existing-object lookup data source examples, list-resource query examples, ephemeral-resource docs shape, function docs shape, import ID shape, and timeout readability) |
 | `/draft-pr-description` | `draft-pr-description.prompt.md` | Draft one AzureRM pull request title and a template-preserving copy-ready body from the complete current branch change-set |
+| `/stage-pending-pr-review` | `stage-pending-pr-review.prompt.md` | **BETA:** Adjudicate frozen committed-review findings and stage an unsubmitted pending GitHub review only after exact-plan approval |
 
 **Example Usage:**
 ```
@@ -453,16 +454,25 @@ Simply use slash commands to invoke the prompts directly:
 /code-review-committed-changes
 /code-review-docs
 /draft-pr-description
+/stage-pending-pr-review
 ```
 
 #### Available Prompts
 
 | Prompt File | Purpose | Usage |
-|-------------|---------|-------|
+| ----------- | ------- | ----- |
 | `code-review-local-changes.prompt.md` | **Review uncommitted changes** with Terraform provider best practices | Use before committing to get expert feedback on your local changes; vendored files under `vendor/**` are counted and treated as non-actionable review scope |
 | `code-review-committed-changes.prompt.md` | **Review committed changes** for pull request feedback | Use to review git commits with detailed technical analysis; vendored files under `vendor/**` are counted and treated as non-actionable review scope |
 | `code-review-docs.prompt.md` | **Review a docs page** for required sections and schema parity | Open a file under `website/docs/**` and run to get patch-ready fixes (examples must use `hcl`, resource examples must be self-contained, data source examples must reflect existing-object lookups, list-resource pages must use list query examples and the correct list-resource doc shape, ephemeral-resource pages must use the `Ephemeral:` workflow, function pages must use the `Function:` workflow, include correct import IDs, and document readable timeouts) |
 | `draft-pr-description.prompt.md` | **Draft an AzureRM pull request title and body** from current branch evidence | Run on a candidate branch to receive one suggested title, a complete copy-ready body, evidence gaps, and advisory related-issue candidates without modifying or opening the pull request |
+| `stage-pending-pr-review.prompt.md` | **BETA: Challenge and stage a pending PR review** | Run after `/code-review-committed-changes` to suppress findings already covered by existing pull request feedback, preview the remaining frozen findings, settle any challenges, and explicitly approve creation of one unsubmitted pending review |
+
+> [!WARNING]
+> `/stage-pending-pr-review` is in BETA. Inspect every proposed and staged comment before manually submitting the review in GitHub. The workflow never submits the review.
+
+The BETA workflow is: run `/code-review-committed-changes`, invoke `/stage-pending-pr-review` in the same chat to compare candidates with complete existing pull request feedback and render the remaining preview immediately, challenge or supplement its candidate findings when needed, inspect the resulting exact preview, and explicitly approve only that plan. The workflow rechecks existing feedback before mutation, then verifies the pending review and returns its URL plus a separate request-changes summary for the reviewer to use when manually submitting in GitHub.
+
+Contributor-guide references are optional enrichment. A staged comment includes exactly one reference at the bottom only when relevant guidance and its section can be verified; otherwise the workflow omits the reference without blocking the comment or forcing unrelated guidance.
 
 ## 🎛️ Command Reference
 
@@ -471,7 +481,7 @@ Simply use slash commands to invoke the prompts directly:
 **Windows (PowerShell):**
 
 | Command | Description | Available On |
-|---------|-------------|--------------|
+| --------- | ------------- | -------------- |
 | `\.\install-copilot-setup.ps1 -Bootstrap` | **Copy installer to user profile from cloned repo** | When cloned locally |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -RepoDirectory "C:\path\to\terraform-provider-azurerm"` | **Install AI infrastructure** (run from anywhere after setup) | Feature branches |
 | `& "$env:USERPROFILE\.terraform-azurerm-ai-installer\install-copilot-setup.ps1" -Verify -RepoDirectory "C:\path\to\terraform-provider-azurerm"` | **Check installation status** (run from anywhere after setup) | Any branch |
@@ -482,7 +492,7 @@ Simply use slash commands to invoke the prompts directly:
 **macOS/Linux (Bash):**
 
 | Command | Description | Available On |
-|---------|-------------|--------------|
+| --------- | ------------- | -------------- |
 | `./install-copilot-setup.sh -bootstrap` | **Copy installer to user profile from cloned repo** | When cloned locally |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -repo-directory "/path/to/terraform-provider-azurerm"` | **Install AI infrastructure** (run from anywhere after bootstrap) | Feature branches |
 | `~/.terraform-azurerm-ai-installer/install-copilot-setup.sh -verify -repo-directory "/path/to/terraform-provider-azurerm"` | **Check installation status** (run from anywhere after bootstrap) | Any branch |
@@ -545,14 +555,14 @@ Simply use slash commands to invoke the prompts directly:
 **Windows (PowerShell):**
 
 | Parameter | Description | Required When | Example |
-|-----------|-------------|---------------|---------|
+| --------- | ----------- | ------------- | ------- |
 | `-RepoDirectory` | **Specify repository path** | **Install/Clean** from user profile, or to **verify a target repo** | `-RepoDirectory "C:\path\to\terraform-provider-azurerm"` |
 | `-LocalPath` | **Copy AI files from a local directory** (source override; instead of bundled payload) | Contributor/dev installs | `-LocalPath "C:\dev\terraform-azurerm-ai-assisted-development"` |
 
 **macOS/Linux (Bash):**
 
 | Parameter | Description | Required When | Example |
-|-----------|-------------|---------------|---------|
+| --------- | ----------- | ------------- | ------- |
 | `-repo-directory` | **Specify repository path** | **Install/Clean** from user profile, or to **verify a target repo** | `-repo-directory "/path/to/terraform-provider-azurerm"` |
 | `-local-path` | **Copy AI files from a local directory** (source override; instead of bundled payload) | Contributor/dev installs | `-local-path "/path/to/terraform-azurerm-ai-assisted-development"` |
 
