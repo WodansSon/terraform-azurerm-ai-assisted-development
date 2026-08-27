@@ -18,6 +18,50 @@ $hostedRuntimePath = Join-Path $hostedRoot '.github'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
+$checkStartTimes = @{}
+
+function Write-TextSectionHeader {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Title
+    )
+
+    $separator = '-' * 51
+
+    Write-Output ''
+    Write-Output $separator
+    Write-Output $Title.ToUpperInvariant()
+    Write-Output $separator
+}
+
+function Format-StatusLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Status,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Detail
+    )
+
+    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
+
+    return ("{0,-11}{1,-30}: {2}" -f $statusLabel, $Name, $Detail)
+}
+
+function Start-ValidationCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $checkStartTimes[$Name] = Get-Date
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-StatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+    }
+}
 
 function Add-CheckResult {
     param(
@@ -31,11 +75,47 @@ function Add-CheckResult {
         [string]$Detail
     )
 
+    $durationSeconds = 0
+    if ($checkStartTimes.ContainsKey($Name)) {
+        $durationSeconds = [Math]::Round(((Get-Date) - $checkStartTimes[$Name]).TotalSeconds, 2)
+        $checkStartTimes.Remove($Name)
+    }
+
+    $status = if ($Passed) { 'passed' } else { 'failed' }
+
     $checks.Add([pscustomobject]@{
         name = $Name
-        status = if ($Passed) { 'passed' } else { 'failed' }
+        status = $status
+        success = $Passed
+        durationSeconds = $durationSeconds
         detail = $Detail
     })
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-StatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+    }
+}
+
+function Add-SkippedCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Detail
+    )
+
+    $checks.Add([pscustomobject]@{
+        name = $Name
+        status = 'skipped'
+        success = $true
+        durationSeconds = 0
+        detail = $Detail
+    })
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-StatusLine -Status 'skipped' -Name $Name -Detail 'NOT APPLICABLE')
+    }
 }
 
 function Add-ValidationIssue {
@@ -56,6 +136,15 @@ $phase = if ($runtimeStarted) { 'runtime' } else { 'design' }
 $purpose = 'experiment-support'
 $deploymentModel = 'source-checkout'
 
+if ($OutputFormat -eq 'Text') {
+    Write-TextSectionHeader -Title 'Hosted toolkit validation'
+    Write-Output ("  Purpose     : {0}" -f $purpose.ToUpperInvariant())
+    Write-Output ("  Deployment  : {0}" -f $deploymentModel.ToUpperInvariant())
+    Write-Output ("  Phase       : {0}" -f $phase.ToUpperInvariant())
+    Write-Output ''
+}
+
+Start-ValidationCheck -Name 'architecture'
 if (Test-Path -LiteralPath $architecturePath) {
     Add-CheckResult -Name 'architecture' -Passed $true -Detail 'Hosted Toolkit architecture document exists.'
 }
@@ -63,6 +152,7 @@ else {
     Add-ValidationIssue -Name 'architecture' -Issue "Hosted Toolkit architecture document was not found at $architecturePath"
 }
 
+Start-ValidationCheck -Name 'changelog'
 if (Test-Path -LiteralPath $changelogPath) {
     $changelogContent = Get-Content -LiteralPath $changelogPath -Raw
     $unreleasedMatch = [regex]::Match($changelogContent, '(?ms)^## \[Unreleased\]\s*(?<body>.*?)(?=^## \[|\z)')
@@ -92,6 +182,7 @@ else {
     Add-ValidationIssue -Name 'changelog' -Issue "Hosted Toolkit changelog was not found at $changelogPath"
 }
 
+Start-ValidationCheck -Name 'deployment-model'
 if (Test-Path -LiteralPath $forbiddenVersionPath) {
     Add-ValidationIssue -Name 'deployment-model' -Issue 'Hosted Toolkit is deployed directly from this source repository and must not define tools/hosted-copilot/VERSION'
 }
@@ -100,6 +191,7 @@ else {
 }
 
 if (Test-Path -LiteralPath $packageManifestPath) {
+    Start-ValidationCheck -Name 'package-manifest'
     try {
         $null = Get-Content -LiteralPath $packageManifestPath -Raw | ConvertFrom-Json
         Add-CheckResult -Name 'package-manifest' -Passed $true -Detail 'Hosted Toolkit package manifest is valid JSON.'
@@ -109,12 +201,14 @@ if (Test-Path -LiteralPath $packageManifestPath) {
     }
 }
 elseif ($runtimeStarted) {
+    Start-ValidationCheck -Name 'package-manifest'
     Add-ValidationIssue -Name 'package-manifest' -Issue 'Hosted Toolkit runtime assets exist, but tools/hosted-copilot/package-manifest.json is missing'
 }
 else {
-    Add-CheckResult -Name 'package-manifest' -Passed $true -Detail 'No package manifest is required during the design phase.'
+    Add-SkippedCheck -Name 'package-manifest' -Detail 'No package manifest is required during the design phase.'
 }
 
+Start-ValidationCheck -Name 'isolation'
 if (Test-Path -LiteralPath $interactiveManifestPath) {
     $interactiveManifestReferences = @(Get-Content -LiteralPath $interactiveManifestPath | Where-Object { $_ -match 'hosted_copilot' })
     if ($interactiveManifestReferences.Count -eq 0) {
@@ -129,6 +223,7 @@ else {
 }
 
 if (Test-Path -LiteralPath $architecturePath) {
+    Start-ValidationCheck -Name 'architecture-style'
     $architectureLines = Get-Content -LiteralPath $architecturePath
     $badHeadings = @($architectureLines | Where-Object { $_ -cmatch '^#{1,6}\s+.*[^:]$' })
     $badBullets = @($architectureLines | Where-Object { $_ -cmatch '^\s*-\s+[a-z]' })
@@ -141,6 +236,9 @@ if (Test-Path -LiteralPath $architecturePath) {
         Add-ValidationIssue -Name 'architecture-style' -Issue ("Architecture style issues: headings={0}, lowercase bullets={1}, unbolded labels={2}" -f $badHeadings.Count, $badBullets.Count, $badLabels.Count)
     }
 }
+else {
+    Add-SkippedCheck -Name 'architecture-style' -Detail 'Architecture style validation requires the architecture document.'
+}
 
 $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
 if ($null -eq $npxCommand) {
@@ -148,9 +246,11 @@ if ($null -eq $npxCommand) {
 }
 
 if ($null -eq $npxCommand) {
+    Start-ValidationCheck -Name 'markdown'
     Add-ValidationIssue -Name 'markdown' -Issue 'npx was not found on PATH'
 }
 else {
+    Start-ValidationCheck -Name 'markdown'
     Push-Location $repoRoot
     try {
         $global:LASTEXITCODE = 0
@@ -185,18 +285,29 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 10
 }
 else {
-    Write-Output 'Hosted Toolkit validation summary'
+    Write-TextSectionHeader -Title 'Hosted toolkit validation summary'
     Write-Output ("  Status      : {0}" -f $result.status.ToUpperInvariant())
     Write-Output ("  Purpose     : {0}" -f $result.purpose.ToUpperInvariant())
     Write-Output ("  Deployment  : {0}" -f $result.deploymentModel.ToUpperInvariant())
     Write-Output ("  Phase       : {0}" -f $result.phase.ToUpperInvariant())
     Write-Output ("  Hosted Root : {0}" -f $result.hostedRoot)
     Write-Output ("  Issue Count : {0}" -f $result.issueCount)
-    Write-Output ''
 
+    Write-TextSectionHeader -Title 'Validation checks'
+    Write-Output ("  {0,-32} {1,-10} {2,10}" -f 'CHECK', 'STATUS', 'DURATION')
+    Write-Output ("  {0,-32} {1,-10} {2,10}" -f ('-' * 32), ('-' * 10), ('-' * 10))
     foreach ($check in $checks) {
-        Write-Output ("  [{0}] {1}: {2}" -f $check.status.ToUpperInvariant(), $check.name, $check.detail)
+        Write-Output ("  {0,-32} {1,-10} {2,10}" -f $check.name, $check.status.ToUpperInvariant(), ("{0}s" -f $check.durationSeconds))
     }
+
+    if ($issues.Count -gt 0) {
+        Write-TextSectionHeader -Title 'Failures'
+        foreach ($check in @($checks | Where-Object { -not $_.success })) {
+            Write-Output ("  {0}" -f (Format-StatusLine -Status 'failed' -Name $check.name -Detail $check.detail))
+        }
+    }
+
+    Write-Output ''
 }
 
 if ($issues.Count -gt 0) {
