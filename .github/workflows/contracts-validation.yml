@@ -3,50 +3,8 @@ name: Validate AI Toolkit
 on:
   push:
     branches: [ main ]
-    paths:
-      - '.github/instructions/**'
-      - '.github/prompts/**'
-      - '.github/pull_request_template.md'
-      - '.github/skills/**'
-      - 'CONTRIBUTING.md'
-      - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
-      - 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
-      - 'hosted_copilot/**'
-      - 'tools/Test-ChangedToolkitRouting.ps1'
-      - 'tools/Validate-ChangedToolkits.ps1'
-      - 'tools/Validate-InteractiveToolkit.ps1'
-      - 'tools/config/upstream-contributor.json'
-      - 'tools/check-upstream-contributor-drift.ps1'
-      - 'tools/toolkit-ownership.json'
-      - 'tools/validate-ai-toolkit.ps1'
-      - 'tools/validate-runtime-line-endings.ps1'
-      - 'tools/validate-copied-markdown-links.ps1'
-      - 'tools/validate-contracts.ps1'
-      - '.gitattributes'
-      - '.github/workflows/contracts-validation.yml'
   pull_request:
     branches: [ main ]
-    paths:
-      - '.github/instructions/**'
-      - '.github/prompts/**'
-      - '.github/pull_request_template.md'
-      - '.github/skills/**'
-      - 'CONTRIBUTING.md'
-      - 'docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md'
-      - 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
-      - 'hosted_copilot/**'
-      - 'tools/Test-ChangedToolkitRouting.ps1'
-      - 'tools/Validate-ChangedToolkits.ps1'
-      - 'tools/Validate-InteractiveToolkit.ps1'
-      - 'tools/config/upstream-contributor.json'
-      - 'tools/check-upstream-contributor-drift.ps1'
-      - 'tools/toolkit-ownership.json'
-      - 'tools/validate-ai-toolkit.ps1'
-      - 'tools/validate-runtime-line-endings.ps1'
-      - 'tools/validate-copied-markdown-links.ps1'
-      - 'tools/validate-contracts.ps1'
-      - '.gitattributes'
-      - '.github/workflows/contracts-validation.yml'
   workflow_dispatch:
 
 jobs:
@@ -62,6 +20,46 @@ jobs:
       - name: Run AI toolkit validator
         shell: pwsh
         env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness
+            exit $LASTEXITCODE
+          }
+
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $before = $env:GITHUB_EVENT_BEFORE
+            if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+$') {
+              $before = "$env:GITHUB_SHA^"
+            }
+
+            $changedPaths = @(git diff --name-only "$before..$env:GITHUB_SHA")
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+
+            ./tools/Validate-ChangedToolkits.ps1 -ChangedPaths $changedPaths -SkipInteractiveRegressionHarness
+            exit $LASTEXITCODE
+          }
+
+          $validationFailed = $false
+
+          & pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipRegressionHarness
+          if ($LASTEXITCODE -ne 0) {
+            $validationFailed = $true
+          }
+
+          & pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
+          if ($LASTEXITCODE -ne 0) {
+            $validationFailed = $true
+          }
+
+          & pwsh -NoProfile -File ./tools/Test-ChangedToolkitRouting.ps1
+          if ($LASTEXITCODE -ne 0) {
+            $validationFailed = $true
+          }
+
+          if ($validationFailed) {
+            exit 1
+          }
