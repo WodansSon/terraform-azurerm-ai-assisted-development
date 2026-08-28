@@ -420,6 +420,8 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── tools/
 │   ├── check-upstream-contributor-drift.ps1
+│   ├── Get-PRReady.ps1
+│   ├── Test-PRReady.ps1
 │   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
 │   ├── validate-changelog-taxonomy.ps1
@@ -467,7 +469,9 @@ The repository contains both shipped runtime guidance and repo-only maintainer t
 
 The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
 
-- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
+- `tools/Get-PRReady.ps1`: repo-only reporting of the current HashiCorp AzureRM Project readiness value, contributor, and timestamps for a pull request.
+- `tools/Test-PRReady.ps1`: deterministic offline regression coverage for project-readiness argument handling, help, output, and errors.
+- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, project-readiness behavior, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
