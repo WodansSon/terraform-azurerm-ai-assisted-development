@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Maintainer/Workflow:**
-  - **[Internal]** - Added a repo-only utility for reporting the current GitHub Project readiness value, actor, and timestamps for an AzureRM pull request.
+  - **[Internal]** - Added the repo-only `Get-PRReady.ps1` utility for reporting the current GitHub Project readiness value, actor, and timestamps for an AzureRM pull request.
 
 ### Changed
 
