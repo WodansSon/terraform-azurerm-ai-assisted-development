@@ -225,6 +225,23 @@ tar -xzf /tmp/terraform-azurerm-ai-installer.tar.gz -C ~/.terraform-azurerm-ai-i
 
 For detailed installation options, see **[installer/README.md](installer/README.md)**
 
+## Maintainer Utilities
+
+### Project Readiness Attribution
+
+Clone this repository and run the utility from its root directory:
+
+```powershell
+git clone https://github.com/WodansSon/terraform-azurerm-ai-assisted-development.git
+Set-Location .\terraform-azurerm-ai-assisted-development
+pwsh -NoProfile -File .\tools\Get-PRReady.ps1 12345
+```
+
+Run the following command for authentication requirements and limitations:
+
+```powershell
+pwsh -NoProfile -File .\tools\Get-PRReady.ps1 -Help
+```
 
 ## ⚠️ Important: Development Workflow
 

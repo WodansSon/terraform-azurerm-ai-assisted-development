@@ -35,6 +35,7 @@ $manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
 $runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
+$projectReadyTestScriptPath = Join-Path $PSScriptRoot 'Test-PRReady.ps1'
 
 $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
 if ($null -eq $npxCommand) {
@@ -473,6 +474,10 @@ try {
 
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {
         & pwsh -NoProfile -File $contractsScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'project-ready-utility' -Detail 'Run deterministic argument, help, output, and error regression tests for the AzureRM project readiness utility.' -Command {
+        & pwsh -NoProfile -File $projectReadyTestScriptPath
     }
 
     $steps += Invoke-ValidationStep -Name 'changed-regression-cases' -Detail 'Confirm branch-local regression case changes are runnable with adjudicated example results, not merely schema-valid.' -Command {
