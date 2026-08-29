@@ -64,10 +64,10 @@ The Hosted Toolkit must remain fully isolated from the Interactive Toolkit imple
 
 - Hosted Toolkit runtime files must not be added to the Interactive Toolkit installer manifest.
 - The Interactive Toolkit installer must not install, update, remove, or validate Hosted Toolkit files.
-- All hosted source rules, scripts, validators, regression fixtures, documentation, and runtime files must live under `hosted_copilot/` in this repository.
+- All hosted source rules, scripts, validators, regression test artifacts, documentation, and runtime files must live under `hosted_copilot/` in this repository.
 - Paths beneath `hosted_copilot/` must mirror their final paths in the target repository.
 - Installing the Hosted Toolkit means copying the contents of `hosted_copilot/` into the target repository root.
-- Hosted generators, validators, regression fixtures, deployment state, and provenance must remain independent.
+- Hosted generators, validators, regression test artifacts, deployment state, and provenance must remain independent.
 - Hosted Toolkit runtime instructions must not import, load, or depend on Interactive Toolkit contracts, prompts, skills, schemas, or companion guidance.
 - The Hosted Toolkit implementation may use this repository as migration evidence while its initial rules are curated, but it must own the resulting rules after migration.
 - Later rule sharing must be an explicit, human-reviewed port between independent implementations, never a runtime include or automatic synchronization dependency.
@@ -139,12 +139,12 @@ The first implementation milestone is a controlled experiment, not production ad
 
 **Experiment Objective:**
 
-Prove that a compact Hosted Toolkit can complete useful AzureRM pull request reviews within the observed hosted prompt boundary and can outperform or complement contributor-guidance-only review on identical fixtures without introducing unacceptable false positives.
+Prove that a compact Hosted Toolkit can complete useful AzureRM pull request reviews within the observed hosted prompt boundary and can outperform or complement contributor-guidance-only review on identical test cases without introducing unacceptable false positives.
 
 **Current Experiment Scaffold:**
 
 - Implemented: Hosted changelog, phase-aware Hosted validator, toolkit ownership map, changed-toolkit dispatcher, routing self-test, and architecture authority
-- Not yet implemented: Hosted runtime instructions, review skill, package manifest, direct deployment script, controlled fixture execution, and scored experiment results
+- Not yet implemented: Hosted runtime instructions, review skill, package manifest, direct deployment script, controlled test-case execution, and scored experiment results
 - Repository-only: The changed-toolkit dispatcher protects maintenance boundaries but is not an experiment success criterion
 
 **Required Experiment Artifacts:**
@@ -154,13 +154,13 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - `package-manifest.json` containing the exact source-to-target deployment paths and source hashes
 - `Install-HostedCopilot.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
 - `Test-HostedToolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
-- A controlled fixture matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
+- A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
 
 **Experiment Acceptance Criteria:**
 
 - The installer can preview and deploy the overlay from this checkout into the target fork without replacing unrelated files
 - Hosted review completes on implementation, acceptance-test, and documentation surfaces without the captured prompt-size failure
-- Every paired comparison uses identical fixture commits and review effort
+- Every paired comparison uses identical test changes and review effort
 - Results record expected findings, misses, duplicate comments, unexpected findings, and observed model metadata
 - The experiment produces enough repeated evidence to decide whether to adopt, revise, or stop the Hosted Toolkit direction
 
@@ -168,7 +168,7 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 
 - Normalized rule databases and deterministic instruction generation
 - Automated upstream contributor synchronization
-- A production regression harness beyond the controlled experiment fixture matrix
+- A production regression harness beyond the controlled experiment test-case matrix
 - Hosted-specific CI rollout and long-term operational monitoring
 - Any versioned release, archive, or publication workflow
 
@@ -526,7 +526,7 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 - `Contribution Guide`: contributor documentation plus a focused review skill
 - `AI Toolkit`: the adapted toolkit instruction and skill package
 
-Six paired fixtures used the same head branch, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-fixture reuse, but they cannot isolate instruction-profile effectiveness from model capability.
+Six paired test cases used the same head branch, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-case reuse, but they cannot isolate instruction-profile effectiveness from model capability.
 
 PR-title labels such as `[AI Toolkit][gpt-5.6-sol-xhigh]` are manually maintained experiment metadata. They are useful historical evidence but are not authoritative runtime attribution unless corroborated by a debug log or another product-generated record.
 
@@ -565,11 +565,11 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 **For Each Comparison:**
 
 - Keep one immutable base branch per instruction profile
-- Apply the same fixture commit and verify an identical changed-file set and diff hash against each profile base
+- Apply the same canonical test change and verify an identical changed-file set and diff hash against `control-base` and `hosted-base`; the resulting commits have different SHAs because their parents differ
 - Use the same review effort, repository settings, MCP configuration, memory setting, and review trigger
 - Request paired reviews within the same test window to reduce product-version drift
 - Run multiple independent review attempts for each profile because model output is nondeterministic
-- Capture the instruction-profile commit, fixture commit, diff hash, review effort, timestamp, and hosted-review runtime version
+- Capture the instruction-profile commit, test-change commit, diff hash, review effort, timestamp, and hosted-review runtime version
 - Capture model name and reasoning level when product-generated logs expose them
 - Record a title-supplied model label separately with evidence source `pr_title`
 - Use `unknown` when model identity is unavailable rather than inferring it
@@ -684,7 +684,7 @@ Combined validation is a repository convenience, not a combined distribution gat
 
 - Test the profile on controlled pull requests in the fork.
 - Compare findings against known expected issues.
-- Run paired profile comparisons using identical fixture commits and review effort.
+- Run paired profile comparisons using identical test changes and review effort.
 - Capture model and reasoning evidence when available and mark mismatched pairs as confounded.
 - Measure context use, duplicate feedback, false positives, and missed defects.
 - Reduce or refine rules before expanding the profile.

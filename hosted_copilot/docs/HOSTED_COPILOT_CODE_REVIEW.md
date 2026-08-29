@@ -41,7 +41,7 @@ Validate the Hosted source package with:
 pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, hashes, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and fixture integrity.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, hashes, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity.
 
 ## Repository Settings:
 

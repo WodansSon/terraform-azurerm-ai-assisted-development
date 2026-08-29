@@ -63,7 +63,7 @@ The Experiment MVP implements only the assets required to test whether compact H
 - A package manifest for exact deployment ownership
 - A source-checkout deployment script with dry-run support
 - Hosted structure, isolation, and token-budget validation
-- Controlled fixtures and result records for paired reviews
+- Controlled test cases and result records for paired reviews
 - User-facing Hosted setup and maintenance documentation
 
 **Defer Until Adoption:**
@@ -176,19 +176,19 @@ Create the smallest deployable review package:
 - Initial package manifest
 - Hosted installer dry-run
 - Hosted validation for layout, isolation, frontmatter, and documentation-surface budget
-- One controlled documentation fixture with expected findings
+- One controlled documentation test case with expected findings
 
 This phase proves head-branch discovery, path matching, skill relevance, deployment, token measurement, and result capture on the best-bounded review surface.
 
 ### Phase Two: Go Review Surface:
 
-Add compact Go instructions and controlled implementation fixtures. Include only rules with clear defect impact and evidence support.
+Add compact Go instructions and controlled implementation test cases. Include only rules with clear defect impact and evidence support.
 
 Extend validation to calculate the repository-wide plus Go plus review-skill budget.
 
 ### Phase Three: Acceptance-Test Surface:
 
-Add the test supplement and acceptance-test fixtures. Verify that test reviews load both Go and test instructions without duplicated rule meaning.
+Add the test supplement and controlled acceptance-test cases. Verify that test reviews load both Go and test instructions without duplicated rule meaning.
 
 Extend validation to calculate the repository-wide plus Go plus test plus review-skill budget.
 
@@ -196,12 +196,87 @@ Extend validation to calculate the repository-wide plus Go plus test plus review
 
 Deploy from the current source checkout into the writable test fork and run paired reviews:
 
-- Use identical fixture commits and diffs.
+- Use identical test changes and verify identical changed-file sets and diff hashes.
 - Use the same review effort for each pair.
 - Record the source commit and manifest hashes.
 - Record observed model metadata and its evidence source when available.
 - Mark comparisons with different or unknown models as confounded.
 - Record expected findings, misses, duplicates, and unexpected findings.
+
+#### Paired Branch And Pull Request Topology:
+
+Pin one upstream `main` commit for the experiment. Create immutable control and Hosted base branches from that same commit. Install and commit the Hosted overlay only on the Hosted base. For every case and run, open one control test pull request against the control base and one Hosted test pull request against the Hosted base. Both pull requests must contain the same planned test change.
+
+| Experiment Path | Starting Point | Contents | Pull Request Target |
+| --- | --- | --- | --- |
+| Control base | Pinned fork `main` | No Hosted overlay | None; unchanged comparison baseline |
+| Hosted base | Same pinned fork `main` | Hosted overlay and installed-state record | None; unchanged comparison baseline |
+| Control test PR | `control-base` | Planned test change only | `control-base` |
+| Hosted test PR | `hosted-base` | Same planned test change only | `hosted-base` |
+
+```mermaid
+%%{init: {"theme":"dark","themeVariables":{"fontFamily":"Segoe UI, Arial, sans-serif","fontSize":"14px","background":"#111418","primaryTextColor":"#e6edf3","lineColor":"#9da7b3"},"flowchart":{"htmlLabels":true,"wrappingWidth":600}}}%%
+flowchart TB
+  main["Local fork from HashiCorp's AzureRM Repository <b>main</b>"]
+  controlBase["Create <b>control-base</b> branch"]
+  hostedBase["Create <b>hosted-base</b> branch with <b>Hosted AI</b>"]
+  controlPr["<b>Open test pull request</b>"]
+  hostedPr["<b>Open the same test pull request</b>"]
+  review["<b>Request GitHub Copilot review in both branches</b>"]
+  compare["<b>Compare the review results:</b> Expected findings, misses, duplicates, and unexpected findings"]
+
+  main --> controlBase
+  main --> hostedBase
+  controlBase --> controlPr
+  hostedBase --> hostedPr
+  controlPr --> review
+  hostedPr --> review
+  review --> compare
+
+  classDef source fill:#142b1a,stroke:#3fb950,stroke-width:1px,color:#e6edf3
+  classDef prerequisite fill:#332a16,stroke:#d29922,stroke-width:1px,color:#f0f3f6
+  classDef control fill:#17283a,stroke:#6cb6ff,stroke-width:1px,color:#e6edf3
+  classDef hosted fill:#17283a,stroke:#6cb6ff,stroke-width:1px,color:#e6edf3
+  classDef action fill:#332a16,stroke:#d29922,stroke-width:1px,color:#f0f3f6
+  classDef result fill:#261f3d,stroke:#a78bfa,stroke-width:1px,color:#f0f3f6
+
+  class main source
+  class controlBase,hostedBase prerequisite
+  class controlPr control
+  class hostedPr hosted
+  class review action
+  class compare result
+  linkStyle default stroke:#9da7b3,stroke-width:2px
+```
+
+GitHub requires every pull request to have a source branch. For each pair, create one temporary source branch from `control-base` and one from `hosted-base`, for example `control-documentation-example-01` and `hosted-documentation-example-01`. These source branches are the Git mechanism behind the two test pull requests, not additional experiment environments, and can be deleted after evidence capture.
+
+The control and Hosted test-change commits cannot have the same Git commit SHA because they have different parent commits. Equality means that both temporary source branches apply the same test change and that each pull request, measured against its corresponding base branch, has the same changed-file set and diff hash. The Hosted overlay must be inherited from `hosted-base`; it must not appear in the Hosted test pull request diff.
+
+Before requesting either review:
+
+- Verify `control-base` and `hosted-base` start from the same pinned upstream commit.
+- Verify `control-base` contains no Hosted package files.
+- Verify `hosted-base` contains the manifest-owned files and installed-state record from the approved source commit.
+- Verify each temporary source branch changes only the test-case paths expected for its case.
+- Verify the paired pull request diffs have identical changed-file sets and diff hashes.
+- Open the control pull request against `control-base` and the Hosted pull request against `hosted-base`.
+- Keep `control-base` and `hosted-base` unchanged for every repeated run in the comparison set.
+- Apply the same review effort, repository settings, MCP configuration, memory setting, and review trigger.
+- Request both reviews within the same test window.
+
+#### Phase Four Automation Contract:
+
+The Phase Four orchestration scripts should make the topology and comparison gates deterministic. They should:
+
+- Accept the pinned upstream commit, test case, run identifier, and review effort as explicit inputs.
+- Create or verify immutable `control-base` and `hosted-base` branches without rewriting existing experiment history.
+- Deploy the Hosted overlay only to `hosted-base` through `Install-HostedCopilot.ps1`.
+- Create paired temporary source branches and apply one canonical test change to both.
+- Refuse to continue when changed-file sets or diff hashes differ.
+- Push both base branches and both temporary source branches, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
+- Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
+- Keep review invocation and result capture separate from deployment approval.
 
 Historical pull request titles are contextual evidence only. They do not select the Hosted review model and must not be treated as authoritative runtime metadata.
 
@@ -228,7 +303,7 @@ Phase One fixes these camel-case manifest properties:
 
 The generated installed-state record uses `schemaVersion`, `packageIdentity`, `commit`, `manifestHash`, and `files`. Each installed file records its `targetPath` and verified `hash`.
 
-The manifest must not include the implementation guide, Hosted changelog, experiment fixtures, or other maintainer-only files unless the target repository needs them to operate or maintain the installed Hosted Toolkit.
+The manifest must not include the implementation guide, Hosted changelog, experiment test artifacts, or other maintainer-only files unless the target repository needs them to operate or maintain the installed Hosted Toolkit.
 
 The installer and validator consume this shared schema rather than defining parallel interpretations.
 
@@ -269,7 +344,7 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Per-file and cumulative token budgets
 - Installer dry-run behavior against a temporary target
 - Markdown validity
-- Controlled fixture schema and result completeness
+- Controlled test-case schema and result completeness
 
 The validator must continue to distinguish design phase from runtime phase. Runtime gates become mandatory when `.github/` runtime assets or `package-manifest.json` appear.
 
@@ -306,7 +381,7 @@ The Experiment MVP is complete only when:
 - Every runtime path is first-party supported and manifest owned.
 - The installer can preview and deploy without modifying unrelated target files.
 - The Hosted validator passes all cumulative guidance budgets.
-- Controlled comparisons use identical fixture diffs and review effort.
+- Controlled comparisons use identical test-change diffs and review effort.
 - Results distinguish useful findings, misses, duplicates, false positives, and model-confounded runs.
 - The evidence supports an explicit decision to adopt, revise, or stop the Hosted Toolkit direction.
 
