@@ -21,3 +21,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Documented the Phase Four paired-branch topology, identical-diff gate, review controls, and future orchestration responsibilities for comparing control and Hosted pull request reviews.
 
 ### Fixed
+
+- Added deterministic Mermaid rendering validation with Mermaid CLI `11.16.0` and supported Puppeteer `24.15.0` instead of relying on deprecated diagnostic dependencies.

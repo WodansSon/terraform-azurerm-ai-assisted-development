@@ -24,6 +24,8 @@ $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
 $regressionCasesPath = Join-Path $PSScriptRoot 'regression/cases'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
+$mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
+$puppeteerPackage = 'puppeteer@24.15.0'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -620,6 +622,54 @@ else {
     }
     else {
         Add-ValidationIssue -Name 'markdown' -Issue ("Hosted Toolkit Markdown failed markdownlint: {0}" -f (($markdownOutput | Out-String).Trim()))
+    }
+}
+
+if ($null -eq $npxCommand) {
+    Start-ValidationCheck -Name 'mermaid'
+    Add-ValidationIssue -Name 'mermaid' -Issue 'npx was not found on PATH'
+}
+else {
+    Start-ValidationCheck -Name 'mermaid'
+    $mermaidTempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("hosted-mermaid-validation-{0}" -f [Guid]::NewGuid().ToString('N'))
+
+    try {
+        New-Item -ItemType Directory -Path $mermaidTempPath | Out-Null
+        $markdownPaths = @(
+            Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse
+            Get-Item -LiteralPath $architecturePath
+        )
+        $mermaidBlockCount = 0
+
+        foreach ($markdownPath in $markdownPaths) {
+            $markdownContent = Get-Content -LiteralPath $markdownPath.FullName -Raw
+            $mermaidMatches = [regex]::Matches($markdownContent, '(?ms)^```mermaid\s*\r?\n(.*?)^```\s*$')
+
+            foreach ($mermaidMatch in $mermaidMatches) {
+                $mermaidBlockCount++
+                $inputPath = Join-Path $mermaidTempPath ("diagram-{0}.mmd" -f $mermaidBlockCount)
+                $outputPath = Join-Path $mermaidTempPath ("diagram-{0}.svg" -f $mermaidBlockCount)
+                Set-Content -LiteralPath $inputPath -Value $mermaidMatch.Groups[1].Value -Encoding utf8NoBOM
+
+                $global:LASTEXITCODE = 0
+                $mermaidOutput = @(& $npxCommand.Source -y --prefer-offline -p $mermaidCliPackage -p $puppeteerPackage mmdc -i $inputPath -o $outputPath -b transparent 2>&1)
+                $mermaidExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+                if ($mermaidExitCode -ne 0) {
+                    throw "Mermaid rendering failed for $($markdownPath.FullName): $((($mermaidOutput | Out-String).Trim()))"
+                }
+                if (-not (Test-Path -LiteralPath $outputPath) -or (Get-Item -LiteralPath $outputPath).Length -eq 0) {
+                    throw "Mermaid rendering produced no SVG content for $($markdownPath.FullName)"
+                }
+            }
+        }
+
+        Add-CheckResult -Name 'mermaid' -Passed $true -Detail "Rendered $mermaidBlockCount Mermaid diagrams with $mermaidCliPackage and $puppeteerPackage."
+    }
+    catch {
+        Add-ValidationIssue -Name 'mermaid' -Issue "Hosted Toolkit Mermaid validation failed: $($_.Exception.Message)"
+    }
+    finally {
+        Remove-Item -LiteralPath $mermaidTempPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

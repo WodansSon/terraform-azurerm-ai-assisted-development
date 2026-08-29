@@ -201,33 +201,31 @@ Deploy from the current source checkout into the writable test fork and run pair
 - Record the source commit and manifest hashes.
 - Record observed model metadata and its evidence source when available.
 - Mark comparisons with different or unknown models as confounded.
-- Record expected findings, misses, duplicates, and unexpected findings.
+- Record expected findings, misses, duplicates, false positives, and unexpected findings.
 
 #### Paired Branch And Pull Request Topology:
 
-Pin one upstream `main` commit for the experiment. Create immutable control and Hosted base branches from that same commit. Install and commit the Hosted overlay only on the Hosted base. For every case and run, open one control test pull request against the control base and one Hosted test pull request against the Hosted base. Both pull requests must contain the same planned test change.
+Pin the fork's current `main` commit as the control baseline for the experiment. Create `hosted-base` from that exact commit, then install and commit the Hosted overlay only on `hosted-base`. For every case and run, open one control test pull request against fork `main` and one Hosted test pull request against `hosted-base`. Both pull requests must contain the same planned test change.
 
 | Experiment Path | Starting Point | Contents | Pull Request Target |
 | --- | --- | --- | --- |
-| Control base | Pinned fork `main` | No Hosted overlay | None; unchanged comparison baseline |
-| Hosted base | Same pinned fork `main` | Hosted overlay and installed-state record | None; unchanged comparison baseline |
-| Control test PR | `control-base` | Planned test change only | `control-base` |
+| Control baseline | Pinned fork `main` | No Hosted overlay | `main` |
+| Hosted base | Same pinned fork `main` | Hosted overlay and installed-state record | None; unchanged Hosted baseline |
+| Control test PR | Fork `main` | Planned test change only | `main` |
 | Hosted test PR | `hosted-base` | Same planned test change only | `hosted-base` |
 
 ```mermaid
 %%{init: {"theme":"dark","themeVariables":{"fontFamily":"Segoe UI, Arial, sans-serif","fontSize":"14px","background":"#111418","primaryTextColor":"#e6edf3","lineColor":"#9da7b3"},"flowchart":{"htmlLabels":true,"wrappingWidth":600}}}%%
 flowchart TB
   main["Local fork from HashiCorp's AzureRM Repository <b>main</b>"]
-  controlBase["Create <b>control-base</b> branch"]
   hostedBase["Create <b>hosted-base</b> branch with <b>Hosted AI</b>"]
   controlPr["<b>Open test pull request</b>"]
   hostedPr["<b>Open the same test pull request</b>"]
-  review["<b>Request GitHub Copilot review in both branches</b>"]
-  compare["<b>Compare the review results:</b> Expected findings, misses, duplicates, and unexpected findings"]
+  review["<b>Request GitHub Copilot review on both pull requests</b>"]
+  compare["<b>Compare the review results:</b> Expected <b>findings</b>, <b>misses</b>, <b>duplicates</b>, <b>false positives</b>, and <b>unexpected</b> findings"]
 
-  main --> controlBase
+  main --> controlPr
   main --> hostedBase
-  controlBase --> controlPr
   hostedBase --> hostedPr
   controlPr --> review
   hostedPr --> review
@@ -241,7 +239,7 @@ flowchart TB
   classDef result fill:#261f3d,stroke:#a78bfa,stroke-width:1px,color:#f0f3f6
 
   class main source
-  class controlBase,hostedBase prerequisite
+  class hostedBase prerequisite
   class controlPr control
   class hostedPr hosted
   class review action
@@ -249,19 +247,19 @@ flowchart TB
   linkStyle default stroke:#9da7b3,stroke-width:2px
 ```
 
-GitHub requires every pull request to have a source branch. For each pair, create one temporary source branch from `control-base` and one from `hosted-base`, for example `control-documentation-example-01` and `hosted-documentation-example-01`. These source branches are the Git mechanism behind the two test pull requests, not additional experiment environments, and can be deleted after evidence capture.
+GitHub requires every pull request to have a source branch. For each pair, create one temporary source branch from fork `main` and one from `hosted-base`, for example `control-documentation-example-01` and `hosted-documentation-example-01`. These source branches are the Git mechanism behind the two test pull requests, not additional experiment environments, and can be deleted after evidence capture.
 
 The control and Hosted test-change commits cannot have the same Git commit SHA because they have different parent commits. Equality means that both temporary source branches apply the same test change and that each pull request, measured against its corresponding base branch, has the same changed-file set and diff hash. The Hosted overlay must be inherited from `hosted-base`; it must not appear in the Hosted test pull request diff.
 
 Before requesting either review:
 
-- Verify `control-base` and `hosted-base` start from the same pinned upstream commit.
-- Verify `control-base` contains no Hosted package files.
+- Verify fork `main` remains at the pinned upstream commit used to create `hosted-base`.
+- Verify fork `main` contains no Hosted package files.
 - Verify `hosted-base` contains the manifest-owned files and installed-state record from the approved source commit.
 - Verify each temporary source branch changes only the test-case paths expected for its case.
 - Verify the paired pull request diffs have identical changed-file sets and diff hashes.
-- Open the control pull request against `control-base` and the Hosted pull request against `hosted-base`.
-- Keep `control-base` and `hosted-base` unchanged for every repeated run in the comparison set.
+- Open the control pull request against fork `main` and the Hosted pull request against `hosted-base`.
+- Keep fork `main` and `hosted-base` unchanged for every repeated run in the comparison set.
 - Apply the same review effort, repository settings, MCP configuration, memory setting, and review trigger.
 - Request both reviews within the same test window.
 
@@ -270,11 +268,11 @@ Before requesting either review:
 The Phase Four orchestration scripts should make the topology and comparison gates deterministic. They should:
 
 - Accept the pinned upstream commit, test case, run identifier, and review effort as explicit inputs.
-- Create or verify immutable `control-base` and `hosted-base` branches without rewriting existing experiment history.
+- Verify fork `main` remains at the pinned control commit and create or verify immutable `hosted-base` without rewriting existing experiment history.
 - Deploy the Hosted overlay only to `hosted-base` through `Install-HostedCopilot.ps1`.
 - Create paired temporary source branches and apply one canonical test change to both.
 - Refuse to continue when changed-file sets or diff hashes differ.
-- Push both base branches and both temporary source branches, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
+- Push `hosted-base` and both temporary source branches, then open the control pull request against fork `main` and the Hosted pull request against `hosted-base` only after the pair passes validation.
 - Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
 - Keep review invocation and result capture separate from deployment approval.
 
@@ -344,6 +342,7 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Per-file and cumulative token budgets
 - Installer dry-run behavior against a temporary target
 - Markdown validity
+- Mermaid rendering with explicitly pinned, supported Mermaid CLI and Puppeteer versions
 - Controlled test-case schema and result completeness
 
 The validator must continue to distinguish design phase from runtime phase. Runtime gates become mandatory when `.github/` runtime assets or `package-manifest.json` appear.
