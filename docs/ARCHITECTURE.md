@@ -420,7 +420,9 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── tools/
 │   ├── check-upstream-contributor-drift.ps1
+│   ├── Get-PRReady.ps1
 │   ├── Test-ChangedToolkitRouting.ps1
+│   ├── Test-PRReady.ps1
 │   ├── toolkit-ownership.json
 │   ├── Validate-ChangedToolkits.ps1
 │   ├── Validate-InteractiveToolkit.ps1
@@ -477,7 +479,9 @@ The repository contains the shipped Interactive Toolkit runtime, preliminary Hos
 
 The current repository architecture includes deterministic validation and benchmark tooling alongside the runtime payload:
 
-- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
+- `tools/Get-PRReady.ps1`: repo-only reporting of the current HashiCorp AzureRM Project readiness value, contributor, and timestamps for a pull request.
+- `tools/Test-PRReady.ps1`: deterministic offline regression coverage for project-readiness argument handling, help, output, and errors.
+- `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, project-readiness behavior, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
 - `tools/Validate-InteractiveToolkit.ps1`: canonical Interactive Toolkit validation entrypoint that currently delegates to the existing implementation.
 - `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1`: phase-aware Hosted Toolkit validation for design authority, changelog structure, isolation, and runtime prerequisites.
 - `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.

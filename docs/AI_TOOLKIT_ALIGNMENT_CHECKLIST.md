@@ -223,6 +223,7 @@ The Interactive Toolkit command runs its complete maintainer validation flow in 
 - Explicit changelog-decision validation for current branch changes
 - Changelog taxonomy validation for `Unreleased` entries
 - Contract validation
+- Deterministic argument, help, output, and error regression tests for `Get-PRReady.ps1`
 - Branch-local regression case runnability validation for changed cases and fixtures
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - System Architecture diagram width, right-edge, and border-padding validation
