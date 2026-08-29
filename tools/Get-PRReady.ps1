@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [string]$PullRequestNumber,
+    [string[]]$PullRequestNumber,
 
     [Alias('h')]
     [switch]$Help,
@@ -43,12 +43,15 @@ function Show-Help {
 
   SYNOPSIS:
 
-    Reports which contributor set the current readiness value for an AzureRM provider pull request.
+    Reports which contributor set the current readiness value for one or more AzureRM provider pull requests.
 
   USAGE:
 
     - .\tools\Get-PRReady.ps1 12345
         Query the current readiness attribution for a pull request.
+
+    - .\tools\Get-PRReady.ps1 12345,23456,34567
+        Query multiple pull requests in order using a comma-separated list.
 
     - .\tools\Get-PRReady.ps1 -Help
         Show this menu without calling GitHub GraphQL API.
@@ -121,18 +124,20 @@ function Show-ArgumentError {
 }
 
 $remaining = @($RemainingArguments | Where-Object { $null -ne $_ })
-if ($Help -and ([string]::IsNullOrWhiteSpace($PullRequestNumber)) -and $remaining.Count -eq 0) {
+$pullRequestArguments = @($PullRequestNumber | Where-Object { $null -ne $_ })
+if ($Help -and $pullRequestArguments.Count -eq 0 -and $remaining.Count -eq 0) {
     Show-Help
     return
 }
 
-if ([string]::IsNullOrWhiteSpace($PullRequestNumber) -and $remaining.Count -eq 0) {
+if ($pullRequestArguments.Count -eq 0 -and $remaining.Count -eq 0) {
     Show-ArgumentError -Message 'A PR number is required.'
     return
 }
 
 $argumentError = $null
-$resolvedPullRequestNumber = 0
+$resolvedPullRequestNumbers = New-Object 'System.Collections.Generic.List[int]'
+$pullRequestInput = $pullRequestArguments -join ','
 
 if ($Help) {
     $argumentError = '`-Help` cannot be combined with other arguments.'
@@ -140,8 +145,31 @@ if ($Help) {
 elseif ($remaining.Count -gt 0) {
     $argumentError = "Invalid argument(s): $($remaining -join ' ')"
 }
-elseif (-not [int]::TryParse($PullRequestNumber, [ref]$resolvedPullRequestNumber) -or $resolvedPullRequestNumber -lt 1) {
-    $argumentError = "PR number must be a positive integer: $PullRequestNumber"
+else {
+    $seenPullRequestNumbers = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($pullRequestArgument in $pullRequestArguments) {
+        foreach ($pullRequestValue in $pullRequestArgument.Split(',')) {
+            $candidate = $pullRequestValue.Trim()
+            $resolvedPullRequestNumber = 0
+            if ([string]::IsNullOrWhiteSpace($candidate) -or -not [int]::TryParse($candidate, [ref]$resolvedPullRequestNumber) -or $resolvedPullRequestNumber -lt 1) {
+                $argumentError = if ($pullRequestArguments.Count -gt 1 -or $pullRequestInput.Contains(',')) {
+                    "PR numbers must be a comma-separated list of positive integers: $pullRequestInput"
+                }
+                else {
+                    "PR number must be a positive integer: $pullRequestInput"
+                }
+                break
+            }
+
+            if ($seenPullRequestNumbers.Add($resolvedPullRequestNumber)) {
+                $resolvedPullRequestNumbers.Add($resolvedPullRequestNumber)
+            }
+        }
+
+        if ($null -ne $argumentError) {
+            break
+        }
+    }
 }
 
 if ($null -ne $argumentError) {
@@ -172,6 +200,14 @@ function Get-GitHubToken {
 }
 
 function Get-ProjectReadyAttribution {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$ResolvedPullRequestNumber,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Token
+    )
+
     $repositoryParts = $repository.Split('/')
 
 $query = @'
@@ -221,10 +257,9 @@ query(
 }
 '@
 
-    $token = Get-GitHubToken
     $headers = @{
         Accept = 'application/vnd.github+json'
-        Authorization = "Bearer $token"
+        Authorization = "Bearer $Token"
         'X-GitHub-Api-Version' = '2022-11-28'
     }
     $endCursor = $null
@@ -287,25 +322,44 @@ query(
 }
 
 try {
-    Get-ProjectReadyAttribution
+    $token = Get-GitHubToken
 }
 catch {
-    $errorMessage = $_.Exception.Message
-    $errorContext = if ($errorMessage -match '^Pull request') {
-        "PR $resolvedPullRequestNumber"
-    }
-    elseif ($errorMessage -match '(?i)token|authentication|unauthorized|forbidden|\b401\b|\b403\b|read:project') {
-        'AUTHENTICATION'
-    }
-    elseif ($errorMessage -match '^GitHub GraphQL query failed') {
-        'GITHUB'
-    }
-    else {
-        'SCRIPT'
-    }
-
-    Write-CliError -Context $errorContext -Message $errorMessage
+    Write-CliError -Context 'AUTHENTICATION' -Message $_.Exception.Message
     if ($launchedWithFile) {
         $host.SetShouldExit(1)
     }
+    return
+}
+
+$lookupFailed = $false
+foreach ($resolvedPullRequestNumber in $resolvedPullRequestNumbers) {
+    try {
+        Get-ProjectReadyAttribution -ResolvedPullRequestNumber $resolvedPullRequestNumber -Token $token
+    }
+    catch {
+        $lookupFailed = $true
+        $errorMessage = $_.Exception.Message
+        $errorContext = if ($errorMessage -match '^Pull request') {
+            "PR $resolvedPullRequestNumber"
+        }
+        elseif ($errorMessage -match '(?i)token|authentication|unauthorized|forbidden|\b401\b|\b403\b|read:project') {
+            'AUTHENTICATION'
+        }
+        elseif ($errorMessage -match '^GitHub GraphQL query failed') {
+            'GITHUB'
+        }
+        else {
+            'SCRIPT'
+        }
+
+        Write-CliError -Context $errorContext -Message $errorMessage
+        if ($errorContext -eq 'AUTHENTICATION') {
+            break
+        }
+    }
+}
+
+if ($lookupFailed -and $launchedWithFile) {
+    $host.SetShouldExit(1)
 }

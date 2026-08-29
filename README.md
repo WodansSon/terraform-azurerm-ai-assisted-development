@@ -237,6 +237,12 @@ Set-Location .\terraform-azurerm-ai-assisted-development
 pwsh -NoProfile -File .\tools\Get-PRReady.ps1 12345
 ```
 
+Pass a comma-separated list to query multiple pull requests sequentially. Successful JSON objects are written to standard output in input order, duplicate PR numbers are queried once, and contextual failures are written to standard error without preventing later lookups. The command exits with status `1` when any lookup fails.
+
+```powershell
+pwsh -NoProfile -File .\tools\Get-PRReady.ps1 12345,23456,34567
+```
+
 Run the following command for authentication requirements and limitations:
 
 ```powershell
