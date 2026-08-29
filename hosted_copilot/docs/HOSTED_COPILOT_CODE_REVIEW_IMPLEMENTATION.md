@@ -205,20 +205,21 @@ Deploy from the current source checkout into the writable test fork and run pair
 
 #### Paired Branch And Pull Request Topology:
 
-Pin the fork's current `main` commit as the control baseline for the experiment. Create `hosted-base` from that exact commit, then install and commit the Hosted overlay only on `hosted-base`. For every case and run, open one control test pull request against fork `main` and one Hosted test pull request against `hosted-base`. Both pull requests must contain the same planned test change.
+Pin the local fork's current `main` commit as the control baseline for the experiment. Create `hosted-base` from that exact commit, then install and commit the Hosted overlay only on `hosted-base`. For every case and run, open one control test pull request against the local fork's `main` branch and one Hosted test pull request against `hosted-base`. Both pull requests must contain the same planned test change.
 
 | Experiment Path | Starting Point | Contents | Pull Request Target |
 | --- | --- | --- | --- |
-| Control baseline | Pinned fork `main` | No Hosted overlay | `main` |
-| Hosted base | Same pinned fork `main` | Hosted overlay and installed-state record | None; unchanged Hosted baseline |
-| Control test PR | Fork `main` | Planned test change only | `main` |
+| Control baseline | Pinned local fork `main` | No Hosted overlay | Local fork `main` |
+| Hosted base | Same pinned local fork `main` | Hosted overlay and installed-state record | None; unchanged Hosted baseline |
+| Control test PR | Local fork `main` | Planned test change only | Local fork `main` |
 | Hosted test PR | `hosted-base` | Same planned test change only | `hosted-base` |
 
 ```mermaid
 %%{init: {"theme":"dark","themeVariables":{"fontFamily":"Segoe UI, Arial, sans-serif","fontSize":"14px","background":"#111418","primaryTextColor":"#e6edf3","lineColor":"#9da7b3"},"flowchart":{"htmlLabels":true,"wrappingWidth":600}}}%%
 flowchart TB
   main["Local fork from HashiCorp's AzureRM Repository <b>main</b>"]
-  hostedBase["Create <b>hosted-base</b> branch with <b>Hosted AI</b>"]
+  hostedBase["Create <b>hosted-base</b> branch"]
+  installOverlay["Install and commit <b>Hosted AI overlay</b>"]
   controlPr["<b>Open test pull request</b>"]
   hostedPr["<b>Open the same test pull request</b>"]
   review["<b>Request GitHub Copilot review on both pull requests</b>"]
@@ -226,7 +227,8 @@ flowchart TB
 
   main --> controlPr
   main --> hostedBase
-  hostedBase --> hostedPr
+  hostedBase --> installOverlay
+  installOverlay --> hostedPr
   controlPr --> review
   hostedPr --> review
   review --> compare
@@ -239,7 +241,7 @@ flowchart TB
   classDef result fill:#261f3d,stroke:#a78bfa,stroke-width:1px,color:#f0f3f6
 
   class main source
-  class hostedBase prerequisite
+  class hostedBase,installOverlay prerequisite
   class controlPr control
   class hostedPr hosted
   class review action
@@ -247,19 +249,19 @@ flowchart TB
   linkStyle default stroke:#9da7b3,stroke-width:2px
 ```
 
-GitHub requires every pull request to have a source branch. For each pair, create one temporary source branch from fork `main` and one from `hosted-base`, for example `control-documentation-example-01` and `hosted-documentation-example-01`. These source branches are the Git mechanism behind the two test pull requests, not additional experiment environments, and can be deleted after evidence capture.
+For each test, open two matching pull requests in the writable fork. The control pull request targets the fork's `main` branch, and the Hosted pull request targets its `hosted-base` branch. Both pull requests must contain the same planned test change.
 
 The control and Hosted test-change commits cannot have the same Git commit SHA because they have different parent commits. Equality means that both temporary source branches apply the same test change and that each pull request, measured against its corresponding base branch, has the same changed-file set and diff hash. The Hosted overlay must be inherited from `hosted-base`; it must not appear in the Hosted test pull request diff.
 
 Before requesting either review:
 
-- Verify fork `main` remains at the pinned upstream commit used to create `hosted-base`.
-- Verify fork `main` contains no Hosted package files.
+- Verify the local fork's `main` branch remains at the pinned upstream commit used to create `hosted-base`.
+- Verify the local fork's `main` branch contains no Hosted package files.
 - Verify `hosted-base` contains the manifest-owned files and installed-state record from the approved source commit.
 - Verify each temporary source branch changes only the test-case paths expected for its case.
 - Verify the paired pull request diffs have identical changed-file sets and diff hashes.
-- Open the control pull request against fork `main` and the Hosted pull request against `hosted-base`.
-- Keep fork `main` and `hosted-base` unchanged for every repeated run in the comparison set.
+- Open the control pull request against the local fork's `main` branch and the Hosted pull request against `hosted-base`.
+- Keep the local fork's `main` branch and `hosted-base` unchanged for every repeated run in the comparison set.
 - Apply the same review effort, repository settings, MCP configuration, memory setting, and review trigger.
 - Request both reviews within the same test window.
 
@@ -268,11 +270,11 @@ Before requesting either review:
 The Phase Four orchestration scripts should make the topology and comparison gates deterministic. They should:
 
 - Accept the pinned upstream commit, test case, run identifier, and review effort as explicit inputs.
-- Verify fork `main` remains at the pinned control commit and create or verify immutable `hosted-base` without rewriting existing experiment history.
+- Verify the local fork's `main` branch remains at the pinned control commit and create or verify immutable `hosted-base` without rewriting existing experiment history.
 - Deploy the Hosted overlay only to `hosted-base` through `Install-HostedCopilot.ps1`.
 - Create paired temporary source branches and apply one canonical test change to both.
 - Refuse to continue when changed-file sets or diff hashes differ.
-- Push `hosted-base` and both temporary source branches, then open the control pull request against fork `main` and the Hosted pull request against `hosted-base` only after the pair passes validation.
+- Push `hosted-base` and both temporary source branches, then open the control pull request against the local fork's `main` branch and the Hosted pull request against `hosted-base` only after the pair passes validation.
 - Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
 - Keep review invocation and result capture separate from deployment approval.
 
