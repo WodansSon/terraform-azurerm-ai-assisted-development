@@ -20,7 +20,7 @@ $cases = @(
     },
     [pscustomobject]@{
         name = 'hosted-only'
-        paths = @('hosted_copilot/tools/hosted-copilot/CHANGELOG.md')
+        paths = @('hosted_copilot/CHANGELOG.md')
         validators = @('Hosted Toolkit')
         repositoryChecks = $false
     },
@@ -32,7 +32,7 @@ $cases = @(
     },
     [pscustomobject]@{
         name = 'mixed'
-        paths = @('installer/file-manifest.config', 'hosted_copilot/tools/hosted-copilot/CHANGELOG.md')
+        paths = @('installer/file-manifest.config', 'hosted_copilot/CHANGELOG.md')
         validators = @('Interactive Toolkit', 'Hosted Toolkit')
         repositoryChecks = $false
     },

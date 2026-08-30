@@ -12,7 +12,7 @@ This skill is for maintainers of this repository only.
 Use it when:
 
 - adding or updating `CHANGELOG.md` entries for current branch changes
-- adding or updating `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` entries for Hosted Toolkit changes
+- adding or updating `hosted_copilot/CHANGELOG.md` entries for Hosted Toolkit changes
 - preparing an Interactive Toolkit release section from `Unreleased`
 - applying or correcting changelog taxonomy prefixes
 - checking whether changelog wording is user-facing enough
@@ -26,7 +26,7 @@ When maintaining the changelog in this repository, use these sources in this ord
 
 - `tools/toolkit-ownership.json`
 - `CHANGELOG.md`
-- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md`
+- `hosted_copilot/CHANGELOG.md`
 - `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md`
 - `.github/pull_request_template.md`
 - `tools/validate-ai-toolkit.ps1`
@@ -53,7 +53,7 @@ If preflight is incomplete, do not proceed with changelog work.
 ## Toolkit changelog ownership
 
 - Root `CHANGELOG.md` belongs to the Interactive Toolkit and uses the taxonomy and grouping rules below.
-- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` belongs to the Hosted Toolkit and uses its independent Keep a Changelog structure.
+- `hosted_copilot/CHANGELOG.md` belongs to the Hosted Toolkit and uses its independent Keep a Changelog structure.
 - Changes affecting both products require independent entries or explicit waivers for both changelogs.
 - Repository-maintenance-only changes require neither product changelog by default.
 - Keep Hosted Toolkit history under `Unreleased`; do not add a version file or versioned release section while it uses direct source deployment.
@@ -186,7 +186,7 @@ pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
 For a Hosted Toolkit changelog change, also run:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedToolkit.ps1
 ```
 
 ## Output expectation

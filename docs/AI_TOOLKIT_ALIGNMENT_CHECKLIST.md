@@ -1,6 +1,6 @@
 # Interactive Toolkit Alignment Checklist
 
-This checklist is for maintainers of the Interactive Toolkit in this repository. Hosted Toolkit architecture and validation are owned by `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` and `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1`.
+This checklist is for maintainers of the Interactive Toolkit in this repository. Hosted Toolkit architecture and validation are owned by `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` and `hosted_copilot/tools/Test-HostedToolkit.ps1`.
 
 Use it when you want to answer questions like:
 

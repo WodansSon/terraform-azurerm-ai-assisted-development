@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
-$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1'
+$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-HostedToolkit.ps1'
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
 $explicitPathsProvided = $PSBoundParameters.ContainsKey('ChangedPaths')
 
@@ -302,7 +302,7 @@ if ($runHosted) { $requiredValidators += 'Hosted Toolkit' }
 
 $changelogIssues = New-Object 'System.Collections.Generic.List[string]'
 $interactiveChangelogChanged = $resolution.paths -contains 'CHANGELOG.md'
-$hostedChangelogChanged = $resolution.paths -contains 'hosted_copilot/tools/hosted-copilot/CHANGELOG.md'
+$hostedChangelogChanged = $resolution.paths -contains 'hosted_copilot/CHANGELOG.md'
 
 if ($InteractiveChangelogNotRequired -and [string]::IsNullOrWhiteSpace($InteractiveChangelogReason)) {
     throw 'InteractiveChangelogNotRequired requires InteractiveChangelogReason'
@@ -338,7 +338,7 @@ elseif ($HostedChangelogNotRequired) {
 }
 else {
     if (-not $PlanOnly) {
-        $changelogIssues.Add('Hosted Toolkit changes require hosted_copilot/tools/hosted-copilot/CHANGELOG.md or an explicit Hosted Toolkit changelog waiver')
+        $changelogIssues.Add('Hosted Toolkit changes require hosted_copilot/CHANGELOG.md or an explicit Hosted Toolkit changelog waiver')
     }
     'required'
 }

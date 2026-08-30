@@ -7,11 +7,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $hostedRoot = Join-Path $repoRoot 'hosted_copilot'
 $architecturePath = Join-Path $repoRoot 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
-$changelogPath = Join-Path $PSScriptRoot 'CHANGELOG.md'
-$forbiddenVersionPath = Join-Path $PSScriptRoot 'VERSION'
+$gitIgnorePath = Join-Path $repoRoot '.gitignore'
+$changelogPath = Join-Path $hostedRoot 'CHANGELOG.md'
+$forbiddenVersionPath = Join-Path $hostedRoot 'VERSION'
 $packageManifestPath = Join-Path $PSScriptRoot 'package-manifest.json'
 $installerPath = Join-Path $PSScriptRoot 'Install-HostedCopilot.ps1'
 $interactiveManifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
@@ -22,7 +23,10 @@ $testInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-tests
 $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
-$regressionCasesPath = Join-Path $PSScriptRoot 'regression/cases'
+$regressionCasesPath = Join-Path $hostedRoot 'regression/cases'
+$reviewResultSchemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
+$reviewCapturePath = Join-Path $PSScriptRoot 'Capture-HostedReviewPair.ps1'
+$reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-HostedReviewResults.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
 $mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
 $puppeteerPackage = 'puppeteer@24.15.0'
@@ -222,7 +226,7 @@ else {
 
 Start-ValidationCheck -Name 'deployment-model'
 if (Test-Path -LiteralPath $forbiddenVersionPath) {
-    Add-ValidationIssue -Name 'deployment-model' -Issue 'Hosted Toolkit is deployed directly from this source repository and must not define tools/hosted-copilot/VERSION'
+    Add-ValidationIssue -Name 'deployment-model' -Issue 'Hosted Toolkit is deployed directly from this source repository and must not define hosted_copilot/VERSION'
 }
 else {
     Add-CheckResult -Name 'deployment-model' -Passed $true -Detail 'Hosted Toolkit uses direct source deployment without a separate version file or release bundle.'
@@ -245,6 +249,11 @@ if (Test-Path -LiteralPath $packageManifestPath) {
         if (@($manifestConfig.files).Count -eq 0) {
             throw 'files is empty'
         }
+        foreach ($file in @($manifestConfig.files)) {
+            if ($file -isnot [string] -or [string]::IsNullOrWhiteSpace([string]$file)) {
+                throw 'each files entry must be a non-empty relative path string'
+            }
+        }
         Add-CheckResult -Name 'package-manifest' -Passed $true -Detail 'Hosted Toolkit package manifest schema is valid.'
     }
     catch {
@@ -253,7 +262,7 @@ if (Test-Path -LiteralPath $packageManifestPath) {
 }
 elseif ($runtimeStarted) {
     Start-ValidationCheck -Name 'package-manifest'
-    Add-ValidationIssue -Name 'package-manifest' -Issue 'Hosted Toolkit runtime assets exist, but tools/hosted-copilot/package-manifest.json is missing'
+    Add-ValidationIssue -Name 'package-manifest' -Issue 'Hosted Toolkit runtime assets exist, but hosted_copilot/tools/package-manifest.json is missing'
 }
 else {
     Add-SkippedCheck -Name 'package-manifest' -Detail 'No package manifest is required during the design phase.'
@@ -268,7 +277,10 @@ if ($runtimeStarted) {
         $documentationInstructionsPath,
         $reviewSkillPath,
         $userDocumentationPath,
-        $installerPath
+        $installerPath,
+        $reviewResultSchemaPath,
+        $reviewCapturePath,
+        $reviewResultValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
     if ($missingRuntimePaths.Count -eq 0) {
@@ -366,47 +378,43 @@ if ($runtimeStarted) {
                 [System.IO.Path]::GetRelativePath($hostedRoot, $_.FullName).Replace('\', '/')
             }
         ) + @('docs/HOSTED_COPILOT_CODE_REVIEW.md')
-        $manifestSourcePaths = @($manifestConfig.files | ForEach-Object { ([string]$_.sourcePath).Replace('\', '/') })
-        $manifestTargetPaths = @($manifestConfig.files | ForEach-Object { ([string]$_.targetPath).Replace('\', '/') })
-        $missingOwnedPaths = @($requiredOwnedPaths | Where-Object { $_ -notin $manifestSourcePaths -or $_ -notin $manifestTargetPaths })
-        $unexpectedOwnedPaths = @($manifestSourcePaths | Where-Object { $_ -notin $requiredOwnedPaths })
-        $duplicateTargets = @($manifestTargetPaths | Group-Object | Where-Object Count -gt 1)
-        if ($missingOwnedPaths.Count -eq 0 -and $unexpectedOwnedPaths.Count -eq 0 -and $duplicateTargets.Count -eq 0) {
+        $manifestPaths = @($manifestConfig.files | ForEach-Object { ([string]$_).Replace('\', '/') })
+        $missingOwnedPaths = @($requiredOwnedPaths | Where-Object { $_ -notin $manifestPaths })
+        $unexpectedOwnedPaths = @($manifestPaths | Where-Object { $_ -notin $requiredOwnedPaths })
+        $duplicatePaths = @($manifestPaths | Group-Object | Where-Object Count -gt 1)
+        if ($missingOwnedPaths.Count -eq 0 -and $unexpectedOwnedPaths.Count -eq 0 -and $duplicatePaths.Count -eq 0) {
             Add-CheckResult -Name 'manifest-coverage' -Passed $true -Detail "Manifest owns all $($requiredOwnedPaths.Count) deployable runtime and user-documentation files."
         }
         else {
-            Add-ValidationIssue -Name 'manifest-coverage' -Issue ("Manifest coverage mismatch: missing={0}; unexpected={1}; duplicateTargets={2}" -f ($missingOwnedPaths -join ', '), ($unexpectedOwnedPaths -join ', '), $duplicateTargets.Count)
+            Add-ValidationIssue -Name 'manifest-coverage' -Issue ("Manifest coverage mismatch: missing={0}; unexpected={1}; duplicatePaths={2}" -f ($missingOwnedPaths -join ', '), ($unexpectedOwnedPaths -join ', '), $duplicatePaths.Count)
         }
 
-        Start-ValidationCheck -Name 'manifest-hashes'
-        $hashIssues = New-Object 'System.Collections.Generic.List[string]'
+        Start-ValidationCheck -Name 'manifest-sources'
+        $sourceIssues = New-Object 'System.Collections.Generic.List[string]'
         foreach ($file in @($manifestConfig.files)) {
-            $sourceRelativePath = ([string]$file.sourcePath).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
-            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot $sourceRelativePath))
+            $manifestRelativePath = ([string]$file).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot $manifestRelativePath))
             $hostedPrefix = $hostedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
             if (-not $sourcePath.StartsWith($hostedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $hashIssues.Add("sourcePath escapes hosted_copilot: $($file.sourcePath)")
+                $sourceIssues.Add("manifest path escapes hosted_copilot: $file")
                 continue
             }
             if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-                $hashIssues.Add("sourcePath is missing: $($file.sourcePath)")
+                $sourceIssues.Add("manifest source file is missing: $file")
                 continue
             }
-            $actualHash = Get-Sha256Hash -Path $sourcePath
-            if ($actualHash -ne ([string]$file.hash).ToLowerInvariant()) {
-                $hashIssues.Add("hash mismatch: $($file.sourcePath)")
-            }
+            $null = Get-Sha256Hash -Path $sourcePath
         }
-        if ($hashIssues.Count -eq 0) {
-            Add-CheckResult -Name 'manifest-hashes' -Passed $true -Detail 'Every manifest hash matches its Hosted source file.'
+        if ($sourceIssues.Count -eq 0) {
+            Add-CheckResult -Name 'manifest-sources' -Passed $true -Detail 'Every manifest path is contained, present, and hashable at deployment time.'
         }
         else {
-            Add-ValidationIssue -Name 'manifest-hashes' -Issue ($hashIssues -join '; ')
+            Add-ValidationIssue -Name 'manifest-sources' -Issue ($sourceIssues -join '; ')
         }
     }
     else {
         Add-SkippedCheck -Name 'manifest-coverage' -Detail 'Manifest coverage requires a valid package manifest.'
-        Add-SkippedCheck -Name 'manifest-hashes' -Detail 'Manifest hash validation requires a valid package manifest.'
+        Add-SkippedCheck -Name 'manifest-sources' -Detail 'Manifest source validation requires a valid package manifest.'
     }
 
     Start-ValidationCheck -Name 'guidance-budgets'
@@ -557,9 +565,56 @@ if ($runtimeStarted) {
     catch {
         Add-ValidationIssue -Name 'regression-cases' -Issue "Controlled regression cases are invalid: $($_.Exception.Message)"
     }
+
+    Start-ValidationCheck -Name 'review-results'
+    try {
+        $global:LASTEXITCODE = 0
+        $reviewResultOutput = @(& $reviewResultValidatorPath -OutputFormat Json 2>&1)
+        $reviewResultExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        if ($reviewResultExitCode -ne 0) {
+            throw (($reviewResultOutput | Out-String).Trim())
+        }
+        $reviewResult = ($reviewResultOutput -join [Environment]::NewLine) | ConvertFrom-Json
+        Add-CheckResult -Name 'review-results' -Passed $true -Detail "Validated $($reviewResult.resultCount) local paired review result records."
+    }
+    catch {
+        Add-ValidationIssue -Name 'review-results' -Issue "Local paired review results are invalid: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'result-artifact-boundary'
+    try {
+        if (-not (Test-Path -LiteralPath $gitIgnorePath -PathType Leaf)) {
+            throw '.gitignore is missing'
+        }
+        $gitIgnoreLines = @(Get-Content -LiteralPath $gitIgnorePath)
+        $requiredIgnoreRules = @(
+            'hosted_copilot/regression/raw/',
+            'hosted_copilot/regression/results/'
+        )
+        $missingIgnoreRules = @($requiredIgnoreRules | Where-Object { $_ -notin $gitIgnoreLines })
+        if ($missingIgnoreRules.Count -gt 0) {
+            throw "missing ignore rules: $($missingIgnoreRules -join ', ')"
+        }
+
+        $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+        if ($null -eq $gitCommand) {
+            throw 'git was not found on PATH'
+        }
+        $trackedArtifacts = @(& $gitCommand.Source -C $repoRoot ls-files -- 'hosted_copilot/regression/raw/**' 'hosted_copilot/regression/results/**')
+        if ($LASTEXITCODE -ne 0) {
+            throw 'git could not inspect tracked Hosted result artifacts'
+        }
+        if ($trackedArtifacts.Count -gt 0) {
+            throw "generated result artifacts are tracked: $($trackedArtifacts -join ', ')"
+        }
+        Add-CheckResult -Name 'result-artifact-boundary' -Passed $true -Detail 'Raw captures and adjudicated result records are ignored and absent from tracked source.'
+    }
+    catch {
+        Add-ValidationIssue -Name 'result-artifact-boundary' -Issue "Hosted result artifact boundary is invalid: $($_.Exception.Message)"
+    }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-hashes', 'guidance-budgets', 'installer-dry-run', 'regression-cases')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

@@ -151,7 +151,7 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 
 - Compact repository-wide, Go, test, and documentation instructions under `hosted_copilot/.github/`
 - One review-focused Hosted skill under `hosted_copilot/.github/skills/code-review/`
-- `package-manifest.json` containing the exact source-to-target deployment paths and source hashes
+- `package-manifest.json` containing the exact deployable paths, mirrored from `hosted_copilot/` into the target repository
 - `Install-HostedCopilot.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
 - `Test-HostedToolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
@@ -180,6 +180,7 @@ During the experiment, Hosted runtime instructions may be curated directly and f
 
 ```text
 hosted_copilot/
+  CHANGELOG.md
   .github/
     copilot-instructions.md
     instructions/
@@ -189,29 +190,33 @@ hosted_copilot/
     skills/
       code-review/
         SKILL.md
+  rules/
+    upstream-rules.yaml
+    maintainer-conventions.yaml
+    hosted-safeguards.yaml
+  regression/
+    README.md
+    cases/
+    schema/
+    raw/
+    results/
   tools/
-    hosted-copilot/
-      CHANGELOG.md
-      rules/
-        upstream-rules.yaml
-        maintainer-conventions.yaml
-        hosted-safeguards.yaml
-      regression/
-      package-manifest.json
-      Install-HostedCopilot.ps1
-      Sync-ContributorGuidance.ps1
-      Build-HostedInstructions.ps1
-      Test-HostedToolkit.ps1
+    package-manifest.json
+    Install-HostedCopilot.ps1
+    Sync-ContributorGuidance.ps1
+    Build-HostedInstructions.ps1
+    Test-HostedToolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
 ```
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
-- `tools/hosted-copilot/rules/` owns normalized rule records and provenance.
-- `tools/hosted-copilot/` owns synchronization, generation, validation, and regression support.
-- `tools/hosted-copilot/CHANGELOG.md` owns Hosted Toolkit development and deployment history.
-- `tools/hosted-copilot/package-manifest.json` owns the exact set of paths installed and updated by the hosted package.
-- `tools/hosted-copilot/Install-HostedCopilot.ps1` owns safe deployment into a target repository.
+- `rules/` owns normalized rule records and provenance.
+- `regression/` owns controlled cases, schemas, and local experiment artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
+- `tools/` owns synchronization, generation, validation, and deployment support.
+- `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
+- `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
+- `tools/Install-HostedCopilot.ps1` owns safe deployment into a target repository.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit and its maintenance commands.
 - Experiment instruction files are frozen by source commit. After adoption, generated instruction files are written directly beneath `hosted_copilot/.github/` and must not be edited manually.
 
@@ -241,7 +246,7 @@ Files with the same names or roles in the Interactive Toolkit are not shared dep
 
 The overlay remains manually copyable, but `Install-HostedCopilot.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
 
-The Hosted Toolkit is deployed directly from the current source checkout into a target fork. It does not use a separate release bundle, archive, or version file. Reproducibility comes from the source Git commit plus manifest-owned source and destination hashes.
+The Hosted Toolkit is deployed directly from the current source checkout into a target fork. It does not use a separate release bundle, archive, or version file. Reproducibility comes from the source Git commit, the manifest ownership map, and the exact deployed hashes recorded in installed state.
 
 **The Hosted Installer Must:**
 
@@ -255,8 +260,9 @@ The Hosted Toolkit is deployed directly from the current source checkout into a 
 - Fail closed when an unowned destination path already exists, including `.github/copilot-instructions.md`
 - Require explicit approval before replacing a colliding or locally modified file
 - Preserve unrelated `.github/`, `tools/`, and `docs/` content
-- Verify copied content against source hashes after installation
-- Record the source Git commit when available and the verified file hashes in deployment output or installed state
+- Compute source hashes from the current checkout during every dry run and installation
+- Verify copied content against the computed source hashes after installation
+- Record the source Git commit when available, the ownership-manifest hash, and the verified deployed file hashes in installed state
 - Avoid calling, importing, or modifying the Interactive Toolkit installer and manifest
 
 Manual copying must follow the same ownership boundary. It must merge directories rather than replace them and must not overwrite existing files without review.
@@ -347,13 +353,13 @@ The generator and validation pipeline must reject generated hosted-guidance outp
 
 ## Rule Source Model:
 
-The Hosted Toolkit must maintain normalized rules under `hosted_copilot/tools/hosted-copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
+The Hosted Toolkit must maintain normalized rules under `hosted_copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
 
 The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the Interactive Toolkit installer layout.
 
 ### Provenance Classes:
 
-- `Published upstream standard`: explicitly stated by HashiCorp contributor guidance.
+- `Published upstream standard`: explicitly stated by HashiCorp contributor guidance or prescribed through its canonical examples and templates. Template evidence is normative when it demonstrates the required contributor-facing shape rather than merely illustrating an optional style.
 - `Confirmed maintainer convention`: mandatory behavior directly confirmed by HashiCorp maintainers but not explicitly stated in contributor guidance.
 - `Inferred maintainer convention`: supported by repeated accepted review guidance or consistent established provider practice, without direct confirmation.
 - `Hosted safeguard`: local protection required for stable hosted-review behavior rather than an upstream contributor requirement.
@@ -387,6 +393,19 @@ The Oxford comma rule is the reference case for this distinction.
 - Runtime placement: hosted documentation contract.
 
 The Hosted Toolkit must not weaken this rule because the contributor standards demonstrate rather than explicitly state it.
+
+### Published Template Convention:
+
+The argument and attribute list-marker rule is the reference case for normative template evidence.
+
+- Requirement: use `*` as the Markdown list marker for argument and attribute entries; do not use `-` for these entries.
+- Requirement level: mandatory.
+- Provenance: published upstream standard reinforced by direct maintainer confirmation.
+- Documentation gap: no; the canonical contributor-guide examples and templates prescribe the required shape.
+- Evidence: argument, block-argument, attribute, and block-attribute templates in HashiCorp contributor guidance, plus direct maintainer clarification that reviewers enforce the pattern.
+- Runtime placement: hosted documentation contract.
+
+The Hosted Toolkit must treat prescribed contributor templates as authoritative even when adjacent prose does not restate every formatting token as a `MUST` requirement.
 
 ## Candidate Migration Policy:
 
@@ -424,7 +443,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 - Validate generated files against committed output.
 - Measure each generated surface against its token budget.
 - Validate rule IDs, required metadata, source links, duplicate mappings, and conflicting requirements.
-- Update `package-manifest.json` only when the hosted package intentionally adds, removes, or relocates an owned target path.
+- Update `package-manifest.json` only when the hosted package intentionally adds, removes, or relocates an owned path.
 - Preview deployment with `Install-HostedCopilot.ps1` in dry-run mode before writing to a target repository.
 - Require review of rules whose evidence disappeared or whose upstream source was renamed or removed.
 
@@ -604,6 +623,14 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 
 This metadata belongs to the Hosted Toolkit regression system and must not be added to the Interactive Toolkit regression schema.
 
+**Generated Experiment Evidence Remains Local:**
+
+- `hosted_copilot/regression/raw/` stores complete GitHub API captures and profile-blinded adjudication views.
+- `hosted_copilot/regression/results/` stores schema-valid paired result records after adjudication.
+- Both directories are Git-ignored because they are generated experiment state available in the maintainer's local checkout.
+- The schema, capture tool, validation tool, controlled cases, and final experiment conclusion are checked in.
+- Hosted validation validates local result records when present and succeeds with zero records in a clean clone.
+
 ### Repository Validation Dispatch:
 
 Profile validators must remain deterministic and validate their complete owned profile when called directly. They must not inspect the changed-file set and silently exit or route execution to a different product profile. Temporary delegation between compatibility entrypoints for the same profile is allowed during command migration.
@@ -613,7 +640,7 @@ Profile validators must remain deterministic and validate their complete owned p
 | Changed Ownership | Required Validation |
 | --- | --- |
 | Interactive Toolkit only | Run `tools/Validate-InteractiveToolkit.ps1` |
-| Hosted Toolkit only | Run `hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1` |
+| Hosted Toolkit only | Run `hosted_copilot/tools/Test-HostedToolkit.ps1` |
 | Both toolkits | Run both profile validators and report both results |
 | Repository maintenance only | Run shared repository checks without requiring either product validator or product changelog |
 | Shared path | Run both profile validators plus applicable shared checks |
@@ -641,7 +668,7 @@ During migration, `tools/Validate-InteractiveToolkit.ps1` delegates to the exist
 **The Two Toolkits Have Independent Changelog and Distribution Models:**
 
 - Root `CHANGELOG.md` and `installer/VERSION` belong to the Interactive Toolkit
-- `hosted_copilot/tools/hosted-copilot/CHANGELOG.md` tracks Hosted Toolkit development and deployment history
+- `hosted_copilot/CHANGELOG.md` tracks Hosted Toolkit development and deployment history
 - The Hosted Toolkit has no separate `VERSION`, release bundle, archive, or publication workflow under the current source-deployment model
 - Repository-maintenance-only changes require neither product changelog by default
 - Interactive Toolkit changes require an Interactive Toolkit changelog update or an explicit Interactive Toolkit waiver
@@ -651,7 +678,7 @@ During migration, `tools/Validate-InteractiveToolkit.ps1` delegates to the exist
 
 The dispatcher accepts separate waiver inputs: `-InteractiveChangelogNotRequired` with `-InteractiveChangelogReason` and `-HostedChangelogNotRequired` with `-HostedChangelogReason`. A waiver for one toolkit must never satisfy the other toolkit's changelog gate.
 
-Combined validation is a repository convenience, not a combined distribution gate. The Interactive Toolkit remains versioned, packaged, and released; the Hosted Toolkit remains directly deployed, independently validated, and recoverable from its source commit and manifest hashes.
+Combined validation is a repository convenience, not a combined distribution gate. The Interactive Toolkit remains versioned, packaged, and released; the Hosted Toolkit remains directly deployed, independently validated, and recoverable from its source commit, ownership-manifest hash, and installed file hashes.
 
 ## Rollout Direction:
 
@@ -695,14 +722,14 @@ Combined validation is a repository convenience, not a combined distribution gat
 - Run `Install-HostedCopilot.ps1` in dry-run mode against the target repository.
 - Review and resolve every reported destination collision before installation.
 - Install the manifest-owned contents of `hosted_copilot/` into the target repository root without path transformation.
-- Commit the copied `.github/`, `tools/hosted-copilot/`, and hosted documentation paths in the target repository.
+- Commit the copied `.github/`, `tools/`, and hosted documentation paths in the target repository.
 - Require CODEOWNERS review for hosted policy changes.
 - Enable hosted Copilot review with custom instructions.
 - Monitor live reviews and update normalized rules through the isolated maintenance process.
 
 ## Open Design Decisions:
 
-- The exact manifest schema for ownership, source hashes, and previously installed hashes.
+- The exact post-adoption mechanism for evolving the ownership manifest and installed-state schema.
 - The explicit approval mechanism for first-install collisions and locally modified package-owned files.
 - Whether GitHub publishes or support confirms which prompt components count toward `MaxPromptTokens`; until then, preserve the captured `110000` value and exact failure stage without asserting an exclusive system-message scope.
 - Which deterministic provider checks can run within hosted review without consuming excessive setup time or context.

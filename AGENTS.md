@@ -46,7 +46,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Use `tools/Validate-ChangedToolkits.ps1` for change-aware validation and use each profile validator directly only for complete validation of its owned toolkit.
 - When both toolkits change, run both validators independently, preserve both results, and fail the combined check if either required validator fails.
 - Do not let combined validation create a changelog, installer, deployment, or runtime dependency between the toolkits.
-- Keep root `CHANGELOG.md` and `installer/VERSION` owned by the Interactive Toolkit; keep the unversioned Hosted Toolkit changelog under `hosted_copilot/tools/hosted-copilot/`.
+- Keep root `CHANGELOG.md` and `installer/VERSION` owned by the Interactive Toolkit; keep the unversioned Hosted Toolkit changelog at `hosted_copilot/CHANGELOG.md`.
 - Treat explicitly designated shared configuration and dispatcher files as affecting both toolkits; treat unclassified paths as requiring an ownership decision rather than guessing.
 
 ## Interactive Toolkit Release Validation Safety

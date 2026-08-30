@@ -16,7 +16,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$hostedRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$hostedRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $resolvedManifestPath = [System.IO.Path]::GetFullPath($ManifestPath)
 $resolvedRepoDirectory = [System.IO.Path]::GetFullPath($RepoDirectory)
 $mode = if ($Install) { 'install' } else { 'dry-run' }
@@ -107,42 +107,32 @@ if (Test-Path -LiteralPath $installedStatePath -PathType Leaf) {
     }
 }
 
-$seenSourcePaths = @{}
-$seenTargetPaths = @{}
+$seenPaths = @{}
 foreach ($file in @($manifestConfig.files)) {
-    $sourceRelativePath = ([string]$file.sourcePath).Replace('\', '/')
-    $targetRelativePath = ([string]$file.targetPath).Replace('\', '/')
-    $expectedHash = ([string]$file.hash).ToLowerInvariant()
-
-    if ($seenSourcePaths.ContainsKey($sourceRelativePath)) {
-        throw "Manifest contains duplicate sourcePath: $sourceRelativePath"
+    if ($file -isnot [string]) {
+        throw 'Manifest files entries must be relative path strings'
     }
-    if ($seenTargetPaths.ContainsKey($targetRelativePath)) {
-        throw "Manifest contains duplicate targetPath: $targetRelativePath"
+    $relativePath = ([string]$file).Replace('\', '/')
+    if ($seenPaths.ContainsKey($relativePath)) {
+        throw "Manifest contains duplicate path: $relativePath"
     }
-    $seenSourcePaths[$sourceRelativePath] = $true
-    $seenTargetPaths[$targetRelativePath] = $true
+    $seenPaths[$relativePath] = $true
 
-    $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot (Get-RelativeManifestPath -Path $sourceRelativePath)))
-    $targetPath = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoDirectory (Get-RelativeManifestPath -Path $targetRelativePath)))
+    $resolvedRelativePath = Get-RelativeManifestPath -Path $relativePath
+    $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot $resolvedRelativePath))
+    $targetPath = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoDirectory $resolvedRelativePath))
 
     if (-not (Test-PathWithinRoot -Path $sourcePath -Root $hostedRoot)) {
-        throw "sourcePath escapes hosted_copilot: $sourceRelativePath"
+        throw "Manifest path escapes hosted_copilot: $relativePath"
     }
     if (-not (Test-PathWithinRoot -Path $targetPath -Root $resolvedRepoDirectory)) {
-        throw "targetPath escapes RepoDirectory: $targetRelativePath"
+        throw "Manifest path escapes RepoDirectory: $relativePath"
     }
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-        throw "Manifest sourcePath was not found: $sourceRelativePath"
-    }
-    if ($expectedHash -notmatch '^[0-9a-f]{64}$') {
-        throw "Manifest hash is not a lowercase SHA-256 value: $sourceRelativePath"
+        throw "Manifest source file was not found: $relativePath"
     }
 
     $sourceHash = Get-Sha256Hash -Path $sourcePath
-    if ($sourceHash -ne $expectedHash) {
-        throw "Manifest hash does not match sourcePath: $sourceRelativePath"
-    }
 
     $targetHash = $null
     $status = 'addition'
@@ -152,8 +142,8 @@ foreach ($file in @($manifestConfig.files)) {
         if ($targetHash -eq $sourceHash) {
             $status = 'unchanged'
         }
-        elseif ($installedFiles.ContainsKey($targetRelativePath)) {
-            if ($targetHash -eq $installedFiles[$targetRelativePath]) {
+        elseif ($installedFiles.ContainsKey($relativePath)) {
+            if ($targetHash -eq $installedFiles[$relativePath]) {
                 $status = 'update'
             }
             else {
@@ -168,12 +158,12 @@ foreach ($file in @($manifestConfig.files)) {
     }
 
     if ($requiresForce -and -not $Force) {
-        $issues.Add("$status requires explicit -Force approval: $targetRelativePath")
+        $issues.Add("$status requires explicit -Force approval: $relativePath")
     }
 
     $operations.Add([pscustomobject]@{
-        sourcePath = $sourceRelativePath
-        targetPath = $targetRelativePath
+        sourcePath = $relativePath
+        targetPath = $relativePath
         hash = $sourceHash
         targetHash = $targetHash
         status = $status

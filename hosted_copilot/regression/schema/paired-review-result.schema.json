@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/regression/schema/paired-review-result.schema.json",
+  "title": "Hosted Copilot Paired Review Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "repository",
+    "fixtureId",
+    "capturedAt",
+    "sourceCommit",
+    "manifestHash",
+    "adjudication",
+    "changedFiles",
+    "diffHashAlgorithm",
+    "diffHash",
+    "profiles",
+    "summary",
+    "rawCapturePath"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "fixtureId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sourceCommit": {
+      "$ref": "#/$defs/gitHash"
+    },
+    "manifestHash": {
+      "$ref": "#/$defs/sha256Hash"
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "method",
+        "completedAt",
+        "mappingRevealedAfterAdjudication"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "captured",
+            "adjudicated"
+          ]
+        },
+        "method": {
+          "enum": [
+            "blinded-profile-labels",
+            "profile-aware"
+          ]
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "mappingRevealedAfterAdjudication": {
+          "type": "boolean"
+        }
+      }
+    },
+    "changedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "diffHashAlgorithm": {
+      "const": "sha256-github-file-patches-v1"
+    },
+    "diffHash": {
+      "$ref": "#/$defs/sha256Hash"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/profileResult"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonStatus",
+        "confoundingReasons",
+        "control",
+        "hosted"
+      ],
+      "properties": {
+        "comparisonStatus": {
+          "enum": [
+            "direct",
+            "aggregate-only",
+            "confounded"
+          ]
+        },
+        "confoundingReasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "control": {
+          "$ref": "#/$defs/profileSummary"
+        },
+        "hosted": {
+          "$ref": "#/$defs/profileSummary"
+        }
+      }
+    },
+    "rawCapturePath": {
+      "type": "string",
+      "pattern": "^raw/.+\\.json$"
+    }
+  },
+  "$defs": {
+    "gitHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256Hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "profileResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot",
+        "instructionProfile",
+        "instructionProfileCommit",
+        "fixtureCommit",
+        "diffHash",
+        "reviewEffort",
+        "modelName",
+        "reasoningLevel",
+        "modelEvidenceSource",
+        "hostedReviewRuntimeVersion",
+        "requestedAt",
+        "reviewedAt",
+        "pullRequest",
+        "expectedFindings",
+        "actualFindings",
+        "duplicateFindings",
+        "unexpectedFindings",
+        "falsePositiveFindings",
+        "missedFindings",
+        "comparisonStatus"
+      ],
+      "properties": {
+        "slot": {
+          "enum": [
+            "A",
+            "B"
+          ]
+        },
+        "instructionProfile": {
+          "enum": [
+            "control",
+            "hosted"
+          ]
+        },
+        "instructionProfileCommit": {
+          "$ref": "#/$defs/gitHash"
+        },
+        "fixtureCommit": {
+          "$ref": "#/$defs/gitHash"
+        },
+        "diffHash": {
+          "$ref": "#/$defs/sha256Hash"
+        },
+        "reviewEffort": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasoningLevel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelEvidenceSource": {
+          "enum": [
+            "product_generated",
+            "pr_title",
+            "unavailable"
+          ]
+        },
+        "hostedReviewRuntimeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "pullRequest": {
+          "$ref": "#/$defs/pullRequest"
+        },
+        "expectedFindings": {
+          "$ref": "#/$defs/ruleIds"
+        },
+        "actualFindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "duplicateFindings": {
+          "$ref": "#/$defs/findingIds"
+        },
+        "unexpectedFindings": {
+          "$ref": "#/$defs/findingIds"
+        },
+        "falsePositiveFindings": {
+          "$ref": "#/$defs/findingIds"
+        },
+        "missedFindings": {
+          "$ref": "#/$defs/ruleIds"
+        },
+        "comparisonStatus": {
+          "enum": [
+            "direct",
+            "aggregate-only",
+            "confounded"
+          ]
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "url",
+        "baseBranch",
+        "baseCommit",
+        "headBranch",
+        "headCommit",
+        "reviewId"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "baseBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseCommit": {
+          "$ref": "#/$defs/gitHash"
+        },
+        "headBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headCommit": {
+          "$ref": "#/$defs/gitHash"
+        },
+        "reviewId": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "url",
+        "path",
+        "line",
+        "body",
+        "classification",
+        "ruleId",
+        "duplicateOf",
+        "adjudicationReason"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "enum": [
+            "expected",
+            "unexpected-valid",
+            "false-positive",
+            "duplicate",
+            "unadjudicated"
+          ]
+        },
+        "ruleId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duplicateOf": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "adjudicationReason": {
+          "type": "string"
+        }
+      }
+    },
+    "ruleIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "findingIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "profileSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedFound",
+        "missed",
+        "duplicates",
+        "unexpectedValid",
+        "falsePositives"
+      ],
+      "properties": {
+        "expectedFound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unexpectedValid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "falsePositives": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

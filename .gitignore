@@ -19,3 +19,7 @@ installer/aii.checksum
 tools/regression/runs/
 tools/regression/results/latest/
 tools/regression/results/history/
+
+# Hosted Toolkit generated review artifacts
+hosted_copilot/regression/raw/
+hosted_copilot/regression/results/

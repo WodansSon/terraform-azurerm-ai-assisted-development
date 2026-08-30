@@ -33,6 +33,7 @@ Apply these rules only when the changed lines introduce or expose an actionable 
 
 ## Argument Accuracy:
 
+- `[DOCS-FMT-005]` Argument and attribute entries must use `*` as the Markdown list marker, matching the contributor-guide templates; do not use `-` for these entries.
 - `[DOCS-ARG-003]` A resource argument with `ForceNew: true` must end with the exact sentence `Changing this forces a new resource to be created.` Non-resource documentation must not use ForceNew wording.
 - `[DOCS-ARG-004]` A schema default must be documented with a `Defaults to ...` sentence.
 - `[DOCS-ARG-005]` A schema validation or enum constraint must be documented using the canonical possible-values wording.
@@ -44,4 +45,8 @@ Apply these rules only when the changed lines introduce or expose an actionable 
 - `[DOCS-WORD-003]` Resource summaries start with `Manages`; data source summaries start with `Gets information about`; list-resource summaries start with `Lists`; ephemeral-resource summaries start with `Use this to access information about`; and function summaries describe the function behavior.
 - `[DOCS-WORD-005]` Use the Oxford comma in every documentation prose list of three or more items, including possible-value lists.
 
-`DOCS-WORD-005` is a mandatory confirmed maintainer convention and an upstream documentation gap. The remaining rules preserve published contributor requirements or evidence-backed provider conventions selected for the Hosted experiment.
+## Provenance:
+
+- `DOCS-FMT-005` is a mandatory convention prescribed by upstream contributor-guide templates and reinforced by direct maintainer confirmation.
+- `DOCS-WORD-005` is a mandatory confirmed maintainer convention and an upstream documentation gap.
+- The remaining rules preserve published contributor requirements or evidence-backed provider conventions selected for the Hosted experiment.

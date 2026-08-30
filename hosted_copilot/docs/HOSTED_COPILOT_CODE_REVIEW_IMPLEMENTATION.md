@@ -28,6 +28,7 @@ The Hosted Toolkit source must mirror those destination paths exactly:
 
 ```text
 hosted_copilot/
+  CHANGELOG.md
   .github/
     copilot-instructions.md
     instructions/
@@ -40,12 +41,18 @@ hosted_copilot/
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
     HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
+  regression/
+    README.md
+    cases/
+    schema/
+    raw/
+    results/
   tools/
-    hosted-copilot/
-      CHANGELOG.md
-      Install-HostedCopilot.ps1
-      Test-HostedToolkit.ps1
-      package-manifest.json
+    Capture-HostedReviewPair.ps1
+    Install-HostedCopilot.ps1
+    Test-HostedReviewResults.ps1
+    Test-HostedToolkit.ps1
+    package-manifest.json
 ```
 
 The relative path below `hosted_copilot/` is the destination path in the target repository. The implementation must not introduce a generated package directory, path-rewriting layer, Hosted release bundle, or Hosted version file.
@@ -129,7 +136,7 @@ applyTo: "website/docs/**/*.html.markdown"
 ---
 ```
 
-It contains published documentation requirements and mandatory confirmed maintainer conventions. It must include the Oxford comma requirement for documentation prose lists of three or more items.
+It contains published documentation requirements and mandatory confirmed maintainer conventions. Published requirements include canonical contributor-guide examples and templates when they prescribe the required documentation shape, including `*` list markers for argument and attribute entries. It must also include the Oxford comma requirement for documentation prose lists of three or more items.
 
 ### Review Skill:
 
@@ -282,16 +289,26 @@ The Phase Four orchestration scripts should make the topology and comparison gat
 
 Historical pull request titles are contextual evidence only. They do not select the Hosted review model and must not be treated as authoritative runtime metadata.
 
+#### Phase Four Result Artifacts:
+
+Reusable result infrastructure is checked in beneath `hosted_copilot/`: controlled cases under `regression/cases/`, the paired-result schema under `regression/schema/`, and capture and validation commands under `tools/`.
+
+Generated evidence remains local to the maintainer checkout:
+
+- `regression/raw/` contains complete GitHub captures and profile-blinded adjudication views.
+- `regression/results/` contains schema-valid paired result records after adjudication.
+- Both generated directories are Git-ignored and must not be committed.
+- `Test-HostedReviewResults.ps1` validates all local result records when present and succeeds with zero records in a clean clone.
+- The final experiment conclusion and adoption rationale are checked in after evaluation; individual generated runs are not.
+
 ## Package Manifest Requirements:
 
-`hosted_copilot/tools/hosted-copilot/package-manifest.json` owns the exact deployable file set.
+`hosted_copilot/tools/package-manifest.json` owns the exact deployable file set.
 
 The initial schema must support:
 
 - A manifest schema version
-- Source paths relative to `hosted_copilot/`
-- Destination paths relative to the target repository root
-- Source content hashes
+- Deployable paths relative to `hosted_copilot/` and mirrored beneath the target repository root
 - File ownership by the Hosted package
 - A stable package identity for installed-state comparison
 
@@ -301,9 +318,10 @@ Phase One fixes these camel-case manifest properties:
 - `packageIdentity`
 - `installedStatePath`
 - `files`
-- `sourcePath`, `targetPath`, and `hash` for every entry in `files`
 
-The generated installed-state record uses `schemaVersion`, `packageIdentity`, `commit`, `manifestHash`, and `files`. Each installed file records its `targetPath` and verified `hash`.
+Each `files` entry is one relative path string. The same path resolves beneath `hosted_copilot/` for the source and beneath `RepoDirectory` for the destination; path rewriting is not supported.
+
+The checked-in manifest is an ownership map and does not contain file hashes. The installer computes source hashes from the current checkout during dry run and installation. The generated installed-state record uses `schemaVersion`, `packageIdentity`, `commit`, `manifestHash`, and `files`; each installed file records its derived `targetPath` and verified deployed `hash`.
 
 The manifest must not include the implementation guide, Hosted changelog, experiment test artifacts, or other maintainer-only files unless the target repository needs them to operate or maintain the installed Hosted Toolkit.
 
@@ -327,7 +345,7 @@ The installer and validator consume this shared schema rather than defining para
 - Create only manifest-owned destination files.
 - Fail closed when an unowned destination already exists.
 - Require explicit approval before replacing a collision or locally modified package-owned file.
-- Verify every copied file against its source hash.
+- Compute source hashes from the current checkout and verify every copied file against its computed source hash.
 - Record installed hashes and source commit for later ownership checks.
 
 The Hosted installer must not call, import, overwrite, or otherwise depend on the Interactive Toolkit installer or `installer/file-manifest.config`.
@@ -340,7 +358,8 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Valid instruction frontmatter and exact `applyTo` patterns
 - Review-focused skill metadata
 - Package-manifest schema and complete owned-file coverage
-- Source-hash agreement
+- Manifest source containment, existence, and hashability
+- Installer-computed source and installed-state hash agreement
 - No Interactive Toolkit runtime dependencies
 - No Hosted `VERSION` or release bundle
 - Per-file and cumulative token budgets
@@ -348,6 +367,8 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Markdown validity
 - Mermaid rendering with explicitly pinned, supported Mermaid CLI and Puppeteer versions
 - Controlled test-case schema and result completeness
+- Local result schema conformance and recomputed adjudication totals when result records are present
+- Git-ignored raw captures and result records with no generated evidence tracked in source
 
 The validator must continue to distinguish design phase from runtime phase. Runtime gates become mandatory when `.github/` runtime assets or `package-manifest.json` appear.
 
@@ -401,8 +422,9 @@ The following minimum vocabulary is fixed for the Hosted implementation:
 | Target repository directory | `RepoDirectory` | Installer parameter and resolved deployment root |
 | Manifest file location | `ManifestPath` | Path to `package-manifest.json` |
 | Parsed manifest | `ManifestConfig` | Validated manifest data consumed by the installer and validator |
+| Manifest-owned file | `Path` | Relative path mirrored from `hosted_copilot/` beneath `RepoDirectory` |
 | Source file | `SourcePath` | Path beneath `hosted_copilot/` |
-| Target file | `TargetPath` | Corresponding path beneath `RepoDirectory` |
+| Target file | `TargetPath` | Same relative `Path` beneath `RepoDirectory` |
 | Source provenance | `Commit` | Git commit of the source checkout when available |
 | Content integrity | `Hash` | SHA-256 value for source, target, and installed-state comparisons |
 | Validation result | `Valid`, `Reason`, and `Issues` | Structured validation outcome and diagnostics |

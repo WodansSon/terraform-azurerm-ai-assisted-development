@@ -151,7 +151,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 - Run the repo maintenance checks:
   - Prefer `pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1` for change-aware repository validation.
   - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1` for complete direct validation of the Interactive Toolkit.
-  - Use `pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1` for complete direct validation of the Hosted Toolkit.
+  - Use `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedToolkit.ps1` for complete direct validation of the Hosted Toolkit.
   - Treat the dispatcher as owning independent changelog decisions; a waiver for one toolkit does not satisfy the other toolkit.
   - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues` when Interactive Toolkit CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.

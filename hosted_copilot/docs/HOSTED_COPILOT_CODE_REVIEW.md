@@ -17,7 +17,7 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 Run the installer from the source checkout and pass the target repository explicitly:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Install-HostedCopilot.ps1 `
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedCopilot.ps1 `
   -RepoDirectory C:\path\to\terraform-provider-azurerm
 ```
 
@@ -26,7 +26,7 @@ The default operation is a dry run. Review every reported addition, update, owne
 Install the approved plan with:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Install-HostedCopilot.ps1 `
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedCopilot.ps1 `
   -RepoDirectory C:\path\to\terraform-provider-azurerm `
   -Install
 ```
@@ -38,10 +38,10 @@ Use `-Force` only after reviewing a reported unowned collision or a locally modi
 Validate the Hosted source package with:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/hosted-copilot/Test-HostedToolkit.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedToolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, hashes, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity.
 
 ## Repository Settings:
 
