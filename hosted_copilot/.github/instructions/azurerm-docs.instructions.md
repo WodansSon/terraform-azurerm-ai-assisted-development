@@ -18,6 +18,7 @@ Apply these rules only when the changed lines introduce or expose an actionable 
 
 - `[DOCS-FM-001]` Reference documentation must begin with YAML frontmatter containing `subcategory`, `layout`, `page_title`, and `description`.
 - `[DOCS-FM-006]` The frontmatter `layout` must be `azurerm`.
+- `[DOCS-FMT-001]` Resource and data source docs must use the exact introductions `The following arguments are supported:` under **Arguments Reference** and `In addition to the Arguments listed above - the following Attributes are exported:` under **Attributes Reference**.
 - `[DOCS-STRUCT-001]` Resource documentation must contain **Example Usage**, **Arguments Reference**, **Attributes Reference**, and **Import**. Data source documentation must contain the first three sections and must not contain **Import**.
 - `[DOCS-STRUCT-003]` Include **Timeouts** only when the schema defines timeouts for the documented object.
 

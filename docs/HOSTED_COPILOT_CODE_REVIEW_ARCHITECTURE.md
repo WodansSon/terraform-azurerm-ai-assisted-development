@@ -584,6 +584,8 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 **For Each Comparison:**
 
 - Keep `control-base` immutable as the control baseline and keep `hosted-base` immutable as the Hosted baseline
+- Materialize modification-case `before` snapshots and required supporting evidence identically on both base branches before creating the paired source branches
+- Apply only the canonical `before`-to-`after` mutation on each paired source branch so unchanged fixture scaffolding is not exposed as new pull request content
 - Apply the same canonical test change and verify an identical changed-file set and diff hash against `control-base` and `hosted-base`; the resulting commits have different SHAs because their parents differ
 - Use the same review effort, repository settings, MCP configuration, memory setting, and review trigger
 - Request paired reviews within the same test window to reduce product-version drift

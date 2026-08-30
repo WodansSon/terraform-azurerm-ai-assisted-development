@@ -25,7 +25,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/Capture-HostedReviewPair.ps1 `
   -Repository WodansSon/terraform-provider-azurerm `
   -ControlPullRequest 1 `
   -HostedPullRequest 2 `
-  -FixtureId documentation-example-validation `
+  -FixtureId documentation-example-validation-v2 `
   -RunId lite-01 `
   -ReviewEffort Lite `
   -SourceCommit 0000000000000000000000000000000000000000 `
@@ -33,6 +33,13 @@ pwsh -NoProfile -File ./hosted_copilot/tools/Capture-HostedReviewPair.ps1 `
 ```
 
 The command refuses pairs with different changed-file sets or GitHub file patches. It writes a complete raw capture and a profile-blinded view beneath `raw/<fixtureId>/`.
+
+## Prepare A Live Pair:
+
+- Materialize the case's `before` snapshot at `targetPath` on both base branches before creating either pull request branch.
+- Apply the same `before`-to-`after` change on both pull request branches so only intentional seeded defects appear in each diff.
+- Do not model a modification case by adding the complete `after` snapshot as a new file; that exposes unchanged fixture scaffolding as reviewable pull request content.
+- Keep any implementation or schema evidence required by the case identical on both base branches.
 
 ## Adjudicate And Validate:
 

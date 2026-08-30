@@ -267,6 +267,8 @@ Before requesting either review:
 - Verify `control-base` and `hosted-base` start from the same pinned local fork `main` commit.
 - Verify `control-base` contains no Hosted package files.
 - Verify `hosted-base` contains the manifest-owned files and installed-state record from the approved source commit.
+- Materialize each modification case's `before` snapshot and any required supporting evidence identically on both base branches.
+- Apply only the canonical `before`-to-`after` change on the paired source branches; do not add the complete `after` snapshot as a new file when the case represents a modification.
 - Verify each temporary source branch changes only the test-case paths expected for its case.
 - Verify the paired pull request diffs have identical changed-file sets and diff hashes.
 - Open the control pull request against `control-base` and the Hosted pull request against `hosted-base`.
