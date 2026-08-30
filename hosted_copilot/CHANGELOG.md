@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Aligned Hosted validation output with the Interactive Toolkit one-shot execution-state contract by reporting phase, live check states, durations, skipped design gates, structured summaries, and presentation-free JSON.
 - Replaced the UTF-8 byte token upper bound with a dependency-free four-characters-per-token estimate and 25% safety headroom.
-- Documented the Phase Four paired-branch topology, identical-diff gate, review controls, and future orchestration responsibilities for comparing control and Hosted pull request reviews.
+- Documented the Phase Four paired-branch topology, identical-diff gate, fresh-pull-request isolation, review controls, role-attributed Actions-log model sessions and configured models, and future orchestration responsibilities for comparing control and Hosted pull request reviews.
 - Flattened the Hosted source layout so product history, regression assets, and maintenance tools have direct ownership beneath `hosted_copilot/`, and changed the package manifest to a single mirrored path per owned file while installation computes and records exact deployed hashes.
 
 ### Fixed

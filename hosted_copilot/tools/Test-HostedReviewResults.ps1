@@ -28,6 +28,23 @@ function Get-ProfileSummary {
     }
 }
 
+function Get-OptionalPropertyValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        $InputObject,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
 if (-not (Test-Path -LiteralPath $SchemaPath -PathType Leaf)) {
     throw "Paired review result schema was not found: $SchemaPath"
 }
@@ -68,6 +85,32 @@ foreach ($resultPath in $resultPaths) {
         $expectedRuleIds = @($case.expectedFindings.ruleId | Sort-Object -Unique)
 
         foreach ($profile in $profiles) {
+            $runtimeEvidence = Get-OptionalPropertyValue -InputObject $profile -Name 'runtimeEvidence'
+            if ($profile.modelEvidenceSource -eq 'product_generated') {
+                if ($null -eq $runtimeEvidence) {
+                    throw "$($profile.instructionProfile) product-generated model evidence requires runtimeEvidence"
+                }
+                if ($runtimeEvidence.source -ne 'actions_log') {
+                    throw "$($profile.instructionProfile) runtimeEvidence.source must be actions_log"
+                }
+                if ($runtimeEvidence.captureStatus -ne 'complete') {
+                    throw "$($profile.instructionProfile) product-generated model evidence requires complete runtime capture"
+                }
+                $primarySessions = @($runtimeEvidence.modelSessions | Where-Object role -eq 'primary_review')
+                if ($primarySessions.Count -ne 1) {
+                    throw "$($profile.instructionProfile) runtimeEvidence must contain exactly one primary_review session"
+                }
+                if ($primarySessions[0].sessionType -ne 'copilot-sdk' -or $primarySessions[0].clientName -ne 'github/copilot-code-review') {
+                    throw "$($profile.instructionProfile) primary_review session identity is invalid"
+                }
+                if ($primarySessions[0].modelName -ne $profile.modelName -or $primarySessions[0].reasoningLevel -ne $profile.reasoningLevel) {
+                    throw "$($profile.instructionProfile) primary_review session does not match profile model evidence"
+                }
+            }
+            elseif ($null -ne $runtimeEvidence -and $runtimeEvidence.captureStatus -eq 'complete') {
+                throw "$($profile.instructionProfile) complete runtimeEvidence requires product_generated modelEvidenceSource"
+            }
+
             if ((@($profile.expectedFindings | Sort-Object -Unique) -join ',') -ne ($expectedRuleIds -join ',')) {
                 throw "$($profile.instructionProfile) expectedFindings do not match case $($record.fixtureId)"
             }

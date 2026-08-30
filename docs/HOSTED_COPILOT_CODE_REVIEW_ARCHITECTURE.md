@@ -592,10 +592,15 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 - Run multiple independent review attempts for each profile because model output is nondeterministic
 - Capture the instruction-profile commit, test-change commit, diff hash, review effort, timestamp, and hosted-review runtime version
 - Capture model name and reasoning level when product-generated logs expose them
+- Treat the matched `Running Copilot Code Review` Actions log as product-generated model evidence; record its hash, configured primary model, every instantiated model session and its `clientName` role, configured-only auxiliary models, runtime version, `MaxPromptTokens`, memory and skill counts, and deduplication statistics
+- Attribute the review to the instantiated `github/copilot-code-review` session; do not treat deduplication or configured-only grouping, curation, and severity models as the primary reviewer
+- Record requested review effort and internal session reasoning separately; `Lite` does not imply a matching `ReasoningEffort` label
+- Preserve review evidence when Actions-log parsing is incomplete; record `partial` or `unavailable` runtime status with explicit diagnostics and do not claim direct model attribution
 - Record a title-supplied model label separately with evidence source `pr_title`
 - Use `unknown` when model identity is unavailable rather than inferring it
 - Classify a direct pair as model-confounded when model or reasoning evidence differs
 - Score expected findings, unexpected findings, duplicate findings, and missed findings without using the profile label during adjudication
+- Use fresh pull requests for every independent run so previous-feedback deduplication cannot suppress new candidates
 
 **Comparative Reports Must Separate:**
 
@@ -615,6 +620,7 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 - `reasoning_level`
 - `model_evidence_source`
 - `hosted_review_runtime_version`
+- `runtime_evidence`
 - `reviewed_at`
 - `expected_findings`
 - `actual_findings`

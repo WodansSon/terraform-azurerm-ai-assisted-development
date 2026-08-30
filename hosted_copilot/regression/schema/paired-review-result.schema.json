@@ -220,6 +220,9 @@
           "type": "string",
           "minLength": 1
         },
+        "runtimeEvidence": {
+          "$ref": "#/$defs/runtimeEvidence"
+        },
         "requestedAt": {
           "type": "string",
           "format": "date-time"
@@ -259,6 +262,142 @@
             "confounded"
           ]
         }
+      }
+    },
+    "runtimeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captureStatus",
+        "diagnostics",
+        "actionRunId",
+        "actionRunAttempt",
+        "actionRunUrl",
+        "actionLogSha256",
+        "parserVersion",
+        "source",
+        "configuredPrimaryModel",
+        "modelSessions",
+        "maxPromptTokens",
+        "memoryCount",
+        "skillCatalogEntries",
+        "invokedSkills",
+        "configuredAuxiliaryModels",
+        "deduplication"
+      ],
+      "properties": {
+        "captureStatus": {
+          "enum": ["complete", "partial", "unavailable"]
+        },
+        "diagnostics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "actionRunId": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "actionRunAttempt": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "actionRunUrl": {
+          "type": ["string", "null"],
+          "format": "uri"
+        },
+        "actionLogSha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "parserVersion": {
+          "const": "actions-log-v1"
+        },
+        "source": {
+          "enum": ["actions_log", "unavailable"]
+        },
+        "configuredPrimaryModel": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["rawModel", "modelName", "reasoningLevel", "evidenceToken"],
+          "properties": {
+            "rawModel": { "type": "string", "minLength": 1 },
+            "modelName": { "type": "string", "minLength": 1 },
+            "reasoningLevel": { "type": "string", "minLength": 1 },
+            "evidenceToken": { "type": "string", "minLength": 1 }
+          }
+        },
+        "modelSessions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/modelSession"
+          }
+        },
+        "maxPromptTokens": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "memoryCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "skillCatalogEntries": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "invokedSkills": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "configuredAuxiliaryModels": {
+          "$ref": "#/$defs/configuredAuxiliaryModels"
+        },
+        "deduplication": {
+          "$ref": "#/$defs/deduplicationEvidence"
+        }
+      }
+    },
+    "modelSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionType", "role", "clientName", "rawModel", "modelName", "reasoningLevel", "evidenceToken"],
+      "properties": {
+        "sessionType": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "clientName": { "type": "string", "minLength": 1 },
+        "rawModel": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string", "minLength": 1 },
+        "reasoningLevel": { "type": "string", "minLength": 1 },
+        "evidenceToken": { "type": "string", "minLength": 1 }
+      }
+    },
+    "configuredAuxiliaryModels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deduplication", "grouping", "curation", "severity"],
+      "properties": {
+        "deduplication": { "type": ["string", "null"] },
+        "grouping": { "type": ["string", "null"] },
+        "curation": { "type": ["string", "null"] },
+        "severity": { "type": ["string", "null"] }
+      }
+    },
+    "deduplicationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["previousFetched", "newCandidates", "duplicatesRemoved"],
+      "properties": {
+        "previousFetched": { "type": ["integer", "null"], "minimum": 0 },
+        "newCandidates": { "type": ["integer", "null"], "minimum": 0 },
+        "duplicatesRemoved": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
     "pullRequest": {

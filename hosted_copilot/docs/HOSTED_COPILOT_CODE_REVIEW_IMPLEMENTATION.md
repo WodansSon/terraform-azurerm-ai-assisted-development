@@ -287,6 +287,8 @@ The Phase Four orchestration scripts should make the topology and comparison gat
 - Refuse to continue when changed-file sets or diff hashes differ.
 - Push both base branches and both temporary source branches, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
 - Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
+- Resolve each review to one GitHub Actions run and record the Actions-log hash, configured primary model, instantiated primary and sub-agent sessions by `clientName`, configured-only auxiliary models, runtime version, `MaxPromptTokens`, memory count, loaded skills, and previous-feedback deduplication counts.
+- Create fresh pull requests for each independent run because GitHub deduplicates new candidates against prior feedback on the same pull request.
 - Keep review invocation and result capture separate from deployment approval.
 
 Historical pull request titles are contextual evidence only. They do not select the Hosted review model and must not be treated as authoritative runtime metadata.
