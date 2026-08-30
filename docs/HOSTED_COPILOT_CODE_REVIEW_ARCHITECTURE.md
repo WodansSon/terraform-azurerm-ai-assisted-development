@@ -564,8 +564,8 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 
 **For Each Comparison:**
 
-- Keep fork `main` pinned as the immutable control baseline and keep `hosted-base` immutable as the Hosted baseline
-- Apply the same canonical test change and verify an identical changed-file set and diff hash against fork `main` and `hosted-base`; the resulting commits have different SHAs because their parents differ
+- Keep `control-base` immutable as the control baseline and keep `hosted-base` immutable as the Hosted baseline
+- Apply the same canonical test change and verify an identical changed-file set and diff hash against `control-base` and `hosted-base`; the resulting commits have different SHAs because their parents differ
 - Use the same review effort, repository settings, MCP configuration, memory setting, and review trigger
 - Request paired reviews within the same test window to reduce product-version drift
 - Run multiple independent review attempts for each profile because model output is nondeterministic
