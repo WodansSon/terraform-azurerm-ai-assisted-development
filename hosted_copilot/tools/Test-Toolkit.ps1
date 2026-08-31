@@ -14,7 +14,7 @@ $gitIgnorePath = Join-Path $repoRoot '.gitignore'
 $changelogPath = Join-Path $hostedRoot 'CHANGELOG.md'
 $forbiddenVersionPath = Join-Path $hostedRoot 'VERSION'
 $packageManifestPath = Join-Path $PSScriptRoot 'package-manifest.json'
-$installerPath = Join-Path $PSScriptRoot 'Install-HostedCopilot.ps1'
+$installerPath = Join-Path $PSScriptRoot 'Install-Toolkit.ps1'
 $interactiveManifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $hostedRuntimePath = Join-Path $hostedRoot '.github'
 $repositoryInstructionsPath = Join-Path $hostedRuntimePath 'copilot-instructions.md'
@@ -23,10 +23,17 @@ $testInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-tests
 $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
+$experimentRunbookPath = Join-Path $hostedRoot 'docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md'
 $regressionCasesPath = Join-Path $hostedRoot 'regression/cases'
 $reviewResultSchemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
-$reviewCapturePath = Join-Path $PSScriptRoot 'Capture-HostedReviewPair.ps1'
-$reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-HostedReviewResults.ps1'
+$reviewCommonModulePath = Join-Path $PSScriptRoot 'Review.Common.psm1'
+$reviewBaseInitializerPath = Join-Path $PSScriptRoot 'Initialize-ReviewBases.ps1'
+$reviewPairCreatorPath = Join-Path $PSScriptRoot 'New-ReviewPair.ps1'
+$reviewPullRequestImporterPath = Join-Path $PSScriptRoot 'Import-PullRequest.ps1'
+$reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'Publish-TestCase.ps1'
+$reviewCapturePath = Join-Path $PSScriptRoot 'Capture-ReviewPair.ps1'
+$reviewPairCloserPath = Join-Path $PSScriptRoot 'Close-ReviewPair.ps1'
+$reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-ReviewResults.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
 $mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
 $puppeteerPackage = 'puppeteer@24.15.0'
@@ -277,9 +284,16 @@ if ($runtimeStarted) {
         $documentationInstructionsPath,
         $reviewSkillPath,
         $userDocumentationPath,
+        $experimentRunbookPath,
         $installerPath,
         $reviewResultSchemaPath,
+        $reviewCommonModulePath,
+        $reviewBaseInitializerPath,
+        $reviewPairCreatorPath,
+        $reviewPullRequestImporterPath,
+        $reviewTestCasePublisherPath,
         $reviewCapturePath,
+        $reviewPairCloserPath,
         $reviewResultValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
@@ -288,6 +302,64 @@ if ($runtimeStarted) {
     }
     else {
         Add-ValidationIssue -Name 'runtime-layout' -Issue ("Required Hosted runtime paths are missing: {0}" -f ($missingRuntimePaths -join ', '))
+    }
+
+    Start-ValidationCheck -Name 'lifecycle-tools'
+    $lifecycleIssues = New-Object 'System.Collections.Generic.List[string]'
+    $lifecyclePaths = @($reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath)
+    foreach ($lifecyclePath in $lifecyclePaths) {
+        if (-not (Test-Path -LiteralPath $lifecyclePath -PathType Leaf)) {
+            $lifecycleIssues.Add("lifecycle command is missing: $lifecyclePath")
+            continue
+        }
+        $tokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($lifecyclePath, [ref]$tokens, [ref]$parseErrors) | Out-Null
+        if ($parseErrors.Count -gt 0) {
+            $lifecycleIssues.Add("lifecycle command does not parse: $lifecyclePath")
+        }
+    }
+    if (Test-Path -LiteralPath $reviewBaseInitializerPath -PathType Leaf) {
+        $initializerContent = Get-Content -LiteralPath $reviewBaseInitializerPath -Raw
+        if ($initializerContent -notmatch '\[switch\]\$Initialize' -or $initializerContent -notmatch '\[switch\]\$Push' -or $initializerContent -notmatch '\$TestContentBase' -or $initializerContent -notmatch 'Assert-HostedReviewWritableFork') {
+            $lifecycleIssues.Add('base initialization must own control, Hosted, and test-content bases behind explicit mutation and writable-fork guards')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewPairCreatorPath -PathType Leaf) {
+        $creatorContent = Get-Content -LiteralPath $reviewPairCreatorPath -Raw
+        if ($creatorContent -notmatch '\[switch\]\$Create' -or $creatorContent -notmatch '\$SourcePullRequest' -or $creatorContent -notmatch '\$TestContentBase' -or $creatorContent -notmatch 'control-review/' -or $creatorContent -notmatch 'hosted-review/' -or $creatorContent -notmatch 'push --atomic' -or $creatorContent -notmatch 'Assert-HostedReviewWritableFork') {
+            $lifecycleIssues.Add('pair creation must mirror one test-content source PR into guarded atomic Control and Hosted review heads')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewPullRequestImporterPath -PathType Leaf) {
+        $importerContent = Get-Content -LiteralPath $reviewPullRequestImporterPath -Raw
+        if ($importerContent -notmatch '\$PullRequest' -or $importerContent -notmatch '\$SourceRepository' -or $importerContent -notmatch '\$TestContentBase' -or $importerContent -notmatch 'New-ReviewPair\.ps1' -or $importerContent -notmatch 'application/vnd\.github\.v3\.diff') {
+            $lifecycleIssues.Add('pull request import must materialize an upstream diff as a test-content source PR and delegate mirror creation')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewTestCasePublisherPath -PathType Leaf) {
+        $publisherContent = Get-Content -LiteralPath $reviewTestCasePublisherPath -Raw
+        if ($publisherContent -notmatch '\$CaseId' -or $publisherContent -notmatch 'contentRoot' -or $publisherContent -notmatch '\$TestContentBase' -or $publisherContent -notmatch 'New-ReviewPair\.ps1') {
+            $lifecycleIssues.Add('test-case publishing must materialize a content tree as a test-content source PR and delegate mirror creation')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewPairCloserPath -PathType Leaf) {
+        $closerContent = Get-Content -LiteralPath $reviewPairCloserPath -Raw
+        if ($closerContent -notmatch '\[switch\]\$Close' -or $closerContent -notmatch 'AllowMissingCapture' -or $closerContent -notmatch 'Assert-HostedReviewWritableFork') {
+            $lifecycleIssues.Add('pair cleanup must require Close, preserve its missing-capture override, and enforce the writable-fork guard')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewCommonModulePath -PathType Leaf) {
+        $moduleContent = Get-Content -LiteralPath $reviewCommonModulePath -Raw
+        if ($moduleContent -notmatch 'hashicorp/terraform-provider-azurerm' -or $moduleContent -notmatch 'Export-ModuleMember') {
+            $lifecycleIssues.Add('lifecycle module must enforce canonical provider lineage and export an explicit public surface')
+        }
+    }
+    if ($lifecycleIssues.Count -eq 0) {
+        Add-CheckResult -Name 'lifecycle-tools' -Passed $true -Detail 'Hosted experiment lifecycle commands parse and preserve explicit mutation and cleanup gates.'
+    }
+    else {
+        Add-ValidationIssue -Name 'lifecycle-tools' -Issue ($lifecycleIssues -join '; ')
     }
 
     Start-ValidationCheck -Name 'instruction-frontmatter'
@@ -501,12 +573,12 @@ if ($runtimeStarted) {
         }
         $caseIds = @{}
         $expectedFindingCount = 0
+        $caseFileCount = 0
 
         foreach ($caseConfigPath in $caseConfigPaths) {
             $caseRoot = Split-Path -Parent $caseConfigPath.FullName
             $caseConfig = Get-Content -LiteralPath $caseConfigPath.FullName -Raw | ConvertFrom-Json
             $caseId = [string]$caseConfig.id
-            $surface = [string]$caseConfig.surface
 
             if ($caseConfig.schemaVersion -ne 1 -or [string]::IsNullOrWhiteSpace($caseId)) {
                 throw "case schemaVersion or id is invalid: $($caseConfigPath.FullName)"
@@ -516,23 +588,36 @@ if ($runtimeStarted) {
             }
             $caseIds[$caseId] = $true
 
-            if (-not $surfaceInstructionPaths.ContainsKey($surface)) {
-                throw "case $caseId uses unsupported surface: $surface"
+            foreach ($legacyProperty in @('surface', 'targetPath', 'contentPath', 'beforePath', 'afterPath')) {
+                if ($null -ne $caseConfig.PSObject.Properties[$legacyProperty]) {
+                    throw "case $caseId must use contentRoot instead of legacy property $legacyProperty"
+                }
             }
-
-            $targetPath = ([string]$caseConfig.targetPath).Replace('\', '/')
-            if (($surface -eq 'documentation' -and $targetPath -notmatch '^website/docs/.+\.html\.markdown$') -or ($surface -eq 'implementation' -and $targetPath -notmatch '^internal/.+\.go$') -or ($surface -eq 'testing' -and $targetPath -notmatch '^internal/.+_test\.go$')) {
-                throw "case $caseId targetPath does not match its $surface surface: $targetPath"
+            foreach ($legacyDirectoryName in @('before', 'after')) {
+                $legacyDirectory = Join-Path $caseRoot $legacyDirectoryName
+                if (Test-Path -LiteralPath $legacyDirectory -PathType Container) {
+                    throw "case $caseId contains legacy directory: $legacyDirectoryName"
+                }
             }
-
-            $beforePath = [System.IO.Path]::GetFullPath((Join-Path $caseRoot ([string]$caseConfig.beforePath)))
-            $afterPath = [System.IO.Path]::GetFullPath((Join-Path $caseRoot ([string]$caseConfig.afterPath)))
+            $contentRoot = [System.IO.Path]::GetFullPath((Join-Path $caseRoot ([string]$caseConfig.contentRoot)))
             $caseRootPrefix = $caseRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-            if (-not $beforePath.StartsWith($caseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or -not $afterPath.StartsWith($caseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw "case $caseId snapshot path escapes its case directory"
+            if (-not $contentRoot.StartsWith($caseRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "case $caseId contentRoot escapes its case directory"
             }
-            if (-not (Test-Path -LiteralPath $beforePath -PathType Leaf) -or -not (Test-Path -LiteralPath $afterPath -PathType Leaf)) {
-                throw "case $caseId beforePath or afterPath is missing"
+            if (-not (Test-Path -LiteralPath $contentRoot -PathType Container)) {
+                throw "case $caseId contentRoot is missing"
+            }
+            $contentFiles = @(Get-ChildItem -LiteralPath $contentRoot -File -Recurse)
+            if ($contentFiles.Count -eq 0) {
+                throw "case $caseId contentRoot is empty"
+            }
+            $contentByPath = @{}
+            foreach ($contentFile in $contentFiles) {
+                $relativePath = [System.IO.Path]::GetRelativePath($contentRoot, $contentFile.FullName).Replace('\', '/')
+                if ($relativePath -match '^\.github(?:/|$)') {
+                    throw "case $caseId must not modify review customization or workflows: $relativePath"
+                }
+                $contentByPath[$relativePath] = $contentFile.FullName
             }
 
             $expectedFindings = @($caseConfig.expectedFindings)
@@ -540,27 +625,43 @@ if ($runtimeStarted) {
                 throw "case $caseId expectedFindings is empty"
             }
 
-            $beforeContent = Get-Content -LiteralPath $beforePath -Raw
-            $afterContent = Get-Content -LiteralPath $afterPath -Raw
-            $ruleContent = Get-Content -LiteralPath $surfaceInstructionPaths[$surface] -Raw
             foreach ($expectedFinding in $expectedFindings) {
                 $ruleId = [string]$expectedFinding.ruleId
+                $findingPath = ([string]$expectedFinding.path).Replace('\', '/')
                 $matchText = [string]$expectedFinding.match
-                if ([string]::IsNullOrWhiteSpace($ruleId) -or [string]::IsNullOrWhiteSpace($matchText) -or [string]::IsNullOrWhiteSpace([string]$expectedFinding.reason)) {
+                if ([string]::IsNullOrWhiteSpace($ruleId) -or [string]::IsNullOrWhiteSpace($findingPath) -or [string]::IsNullOrWhiteSpace($matchText) -or [string]::IsNullOrWhiteSpace([string]$expectedFinding.reason)) {
                     throw "case $caseId contains an incomplete expected finding"
                 }
+                if (-not $contentByPath.ContainsKey($findingPath)) {
+                    throw "case $caseId expected finding path is not present below contentRoot: $findingPath"
+                }
+                $surface = if ($findingPath -match '^website/docs/.+\.html\.markdown$') {
+                    'documentation'
+                }
+                elseif ($findingPath -match '^internal/.+_test\.go$') {
+                    'testing'
+                }
+                elseif ($findingPath -match '^internal/.+\.go$') {
+                    'implementation'
+                }
+                else {
+                    throw "case $caseId cannot derive a review surface for expected finding path: $findingPath"
+                }
+                $ruleContent = Get-Content -LiteralPath $surfaceInstructionPaths[$surface] -Raw
                 if (-not $ruleContent.Contains("[$ruleId]")) {
                     throw "case $caseId references unknown Hosted $surface rule $ruleId"
                 }
-                if (-not $afterContent.Contains($matchText) -or $beforeContent.Contains($matchText)) {
-                    throw "case $caseId expected match must appear only in the after snapshot: $matchText"
+                $content = Get-Content -LiteralPath $contentByPath[$findingPath] -Raw
+                if (-not $content.Contains($matchText)) {
+                    throw "case $caseId expected match must appear in ${findingPath}: $matchText"
                 }
             }
 
             $expectedFindingCount += $expectedFindings.Count
+            $caseFileCount += $contentFiles.Count
         }
 
-        Add-CheckResult -Name 'regression-cases' -Passed $true -Detail "Discovered $($caseConfigPaths.Count) surface-owned regression cases with $expectedFindingCount expected findings."
+        Add-CheckResult -Name 'regression-cases' -Passed $true -Detail "Discovered $($caseConfigPaths.Count) regression cases with $caseFileCount content files and $expectedFindingCount expected findings."
     }
     catch {
         Add-ValidationIssue -Name 'regression-cases' -Issue "Controlled regression cases are invalid: $($_.Exception.Message)"
@@ -614,7 +715,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

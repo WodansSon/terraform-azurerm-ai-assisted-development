@@ -41,6 +41,7 @@ hosted_copilot/
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
     HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
+    HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md
   regression/
     README.md
     cases/
@@ -48,10 +49,16 @@ hosted_copilot/
     raw/
     results/
   tools/
-    Capture-HostedReviewPair.ps1
-    Install-HostedCopilot.ps1
-    Test-HostedReviewResults.ps1
-    Test-HostedToolkit.ps1
+    Capture-ReviewPair.ps1
+    Close-ReviewPair.ps1
+    Review.Common.psm1
+    Import-PullRequest.ps1
+    Initialize-ReviewBases.ps1
+    Install-Toolkit.ps1
+    New-ReviewPair.ps1
+    Publish-TestCase.ps1
+    Test-ReviewResults.ps1
+    Test-Toolkit.ps1
     package-manifest.json
 ```
 
@@ -212,45 +219,73 @@ Deploy from the current source checkout into the writable test fork and run pair
 
 #### Paired Branch And Pull Request Topology:
 
-Pin the local fork's current `main` commit for the experiment. Create immutable `control-base` and `hosted-base` branches from that exact commit, then install and commit the Hosted overlay only on `hosted-base`. For every case and run, open one control test pull request against `control-base` and one Hosted test pull request against `hosted-base`. Both pull requests must contain the same planned test change.
+Pin the local fork's current `main` commit for the experiment. Point immutable `control-base` and `test-content` at that exact commit, then create `hosted-base` by installing and committing only the Hosted overlay on top of `control-base`. Author or import each canonical change on a source branch and open it as a pull request against `test-content`. For every run, mirror that source pull request's exact diff onto disposable Control and Hosted heads. Open the review pair only after their changed-file sets and diff hashes match.
 
 | Experiment Path | Starting Point | Contents | Pull Request Target |
 | --- | --- | --- | --- |
 | Control base | Pinned local fork `main` | No Hosted overlay | None; unchanged control baseline |
-| Hosted base | Same pinned local fork `main` | Hosted overlay and installed-state record | None; unchanged Hosted baseline |
-| Control test PR | `control-base` | Planned test change only | `control-base` |
-| Hosted test PR | `hosted-base` | Same planned test change only | `hosted-base` |
+| Hosted base | `control-base` | Hosted overlay and installed-state record only | None; unchanged Hosted baseline |
+| Test-content base | Same pinned local fork `main` | No accumulated test changes | Target for canonical source PRs |
+| Source PR | `test-case/...`, `imported-pr/...`, or another authoring branch | One canonical test change | `test-content` |
+| Control review head | `control-base` | Source PR diff on `control-review/source-pr-<number>/<run>` | `control-base` |
+| Hosted review head | `hosted-base` | Same source PR diff on `hosted-review/source-pr-<number>/<run>` | `hosted-base` |
 
 ```mermaid
 %%{init: {"theme":"dark","themeVariables":{"fontFamily":"Segoe UI, Arial, sans-serif","fontSize":"14px","background":"#111418","primaryTextColor":"#e6edf3","lineColor":"#9da7b3"},"flowchart":{"htmlLabels":true,"wrappingWidth":600}}}%%
 flowchart TB
-  main["Local fork from HashiCorp's AzureRM Repository <b>main</b>"]
-  controlBase["Create <b>control-base</b> branch"]
-  hostedBase["Create <b>hosted-base</b> branch"]
-  installOverlay["Install and commit <b>Hosted AI overlay</b>"]
-  controlPr["<b>Open test pull request</b>"]
-  hostedPr["<b>Open the same test pull request</b>"]
+  fork["Personal AzureRM fork"]
+
+  subgraph bases["<b>Persistent base branches</b>"]
+    direction LR
+    controlBase["Immutable <b>control-base</b><br/>Pinned commit, no Hosted overlay"]
+    hostedBase["Immutable <b>hosted-base</b><br/>Pinned commit plus Hosted overlay"]
+    testContent["Immutable <b>test-content</b><br/>Pinned commit, source PR target"]
+  end
+
+  sourceHead["Source branch<br/><b>test-case/...</b> or <b>imported-pr/...</b>"]
+  sourcePr["Canonical source PR<br/>head: source branch<br/>base: test-content"]
+  mirror["Mirror source PR diff"]
+  controlHead["<b>control-review/source-pr-&lt;number&gt;/&lt;run&gt;</b>"]
+  hostedHead["<b>hosted-review/source-pr-&lt;number&gt;/&lt;run&gt;</b>"]
+  controlPr["Control PR<br/>head: control-review<br/>base: control-base"]
+  hostedPr["Hosted PR<br/>head: hosted-review<br/>base: hosted-base"]
   review["<b>Request GitHub Copilot review on both pull requests</b>"]
   compare["<b>Compare the review results:</b> Expected <b>findings</b>, <b>misses</b>, <b>duplicates</b>, <b>false positives</b>, and <b>unexpected</b> findings"]
 
-  main --> controlBase
-  main --> hostedBase
-  controlBase ---> controlPr
-  hostedBase --> installOverlay
-  installOverlay --> hostedPr
+  fork -->|"<b>branch</b>"| controlBase
+  fork -->|"<b>branch</b>"| hostedBase
+  fork -->|"<b>branch</b>"| testContent
+  fork -->|"<b>Authored repo tests or imported PR changes</b>"| sourceHead
+  sourceHead -->|"<b>head</b>"| sourcePr
+  testContent -. "<b>base</b>" .-> sourcePr
+  sourcePr --> mirror
+  mirror -->|"<b>apply exact diff</b>"| controlHead
+  mirror -->|"<b>apply exact diff</b>"| hostedHead
+  controlBase -->|"<b>branch</b>"| controlHead
+  hostedBase -->|"<b>branch</b>"| hostedHead
+  controlHead -->|"<b>head</b>"| controlPr
+  controlBase -. "<b>base</b>" .-> controlPr
+  hostedHead -->|"<b>head</b>"| hostedPr
+  hostedBase -. "<b>base</b>" .-> hostedPr
   controlPr --> review
   hostedPr --> review
   review --> compare
 
   classDef source fill:#142b1a,stroke:#3fb950,stroke-width:1px,color:#e6edf3
   classDef prerequisite fill:#332a16,stroke:#d29922,stroke-width:1px,color:#f0f3f6
+  classDef canonical fill:#12355b,stroke:#58a6ff,stroke-width:2px,color:#f0f6fc
   classDef control fill:#17283a,stroke:#6cb6ff,stroke-width:1px,color:#e6edf3
   classDef hosted fill:#17283a,stroke:#6cb6ff,stroke-width:1px,color:#e6edf3
   classDef action fill:#332a16,stroke:#d29922,stroke-width:1px,color:#f0f3f6
   classDef result fill:#261f3d,stroke:#a78bfa,stroke-width:1px,color:#f0f3f6
 
-  class main source
-  class controlBase,hostedBase,installOverlay prerequisite
+  class fork source
+  class controlBase,hostedBase prerequisite
+  class testContent prerequisite
+  class sourceHead,sourcePr canonical
+  class mirror action
+  class controlHead control
+  class hostedHead hosted
   class controlPr control
   class hostedPr hosted
   class review action
@@ -267,8 +302,9 @@ Before requesting either review:
 - Verify `control-base` and `hosted-base` start from the same pinned local fork `main` commit.
 - Verify `control-base` contains no Hosted package files.
 - Verify `hosted-base` contains the manifest-owned files and installed-state record from the approved source commit.
-- Materialize each modification case's `before` snapshot and any required supporting evidence identically on both base branches.
-- Apply only the canonical `before`-to-`after` change on the paired source branches; do not add the complete `after` snapshot as a new file when the case represents a modification.
+- Author each synthetic case as a repository-shaped content tree and derive its changed-file set from Git.
+- Import real pull request diffs only from HashiCorp's AzureRM provider or one of its forks.
+- Reject test changes under `.github/` so a test cannot alter its own review configuration.
 - Verify each temporary source branch changes only the test-case paths expected for its case.
 - Verify the paired pull request diffs have identical changed-file sets and diff hashes.
 - Open the control pull request against `control-base` and the Hosted pull request against `hosted-base`.
@@ -276,16 +312,26 @@ Before requesting either review:
 - Apply the same review effort, repository settings, MCP configuration, memory setting, and review trigger.
 - Request both reviews within the same test window.
 
-#### Phase Four Automation Contract:
+#### Phase Four Automation:
 
-The Phase Four orchestration scripts should make the topology and comparison gates deterministic. They should:
+Use `HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md` and the lifecycle commands instead of creating branches and pull requests manually:
 
-- Accept the pinned upstream commit, test case, run identifier, and review effort as explicit inputs.
-- Create or verify immutable `control-base` and `hosted-base` branches without rewriting existing experiment history.
-- Deploy the Hosted overlay only to `hosted-base` through `Install-HostedCopilot.ps1`.
-- Create paired temporary source branches and apply one canonical test change to both.
+- `Initialize-ReviewBases.ps1` creates or verifies the three persistent bases.
+- `Publish-TestCase.ps1` creates or updates a synthetic source PR against `test-content` and delegates mirror creation.
+- `Import-PullRequest.ps1` creates or updates an imported source PR against `test-content` and delegates mirror creation.
+- `New-ReviewPair.ps1` mirrors one source PR into Control and Hosted heads, proves patch equality, opens or synchronizes both pull requests, and writes the pair record.
+- `Capture-ReviewPair.ps1` consumes the pair record and writes raw, blinded, and readable evidence.
+- `Close-ReviewPair.ps1` requires captured evidence by default, closes both pull requests, and removes only disposable heads.
+
+The commands enforce the following contract:
+
+- Accept the pinned upstream commit, change source, run identifier, and review effort as explicit inputs.
+- Create or verify immutable `control-base`, `hosted-base`, and `test-content` branches without rewriting existing experiment history.
+- Deploy the Hosted overlay only to `hosted-base` through `Install-Toolkit.ps1`.
+- Require each canonical source PR to target `test-content`, then apply its exact diff independently to Control and Hosted review heads.
+- Guard every mutation so it can target only the authenticated user's writable fork of HashiCorp's AzureRM provider.
 - Refuse to continue when changed-file sets or diff hashes differ.
-- Push both base branches and both temporary source branches, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
+- Push all three persistent bases and both temporary mirror heads, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
 - Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
 - Resolve each review to one GitHub Actions run and record the Actions-log hash, configured primary model, instantiated primary and sub-agent sessions by `clientName`, configured-only auxiliary models, runtime version, `MaxPromptTokens`, memory count, loaded skills, and previous-feedback deduplication counts.
 - Create fresh pull requests for each independent run because GitHub deduplicates new candidates against prior feedback on the same pull request.
@@ -299,10 +345,10 @@ Reusable result infrastructure is checked in beneath `hosted_copilot/`: controll
 
 Generated evidence remains local to the maintainer checkout:
 
-- `regression/raw/` contains complete GitHub captures and profile-blinded adjudication views.
+- `regression/raw/` contains pair records, complete GitHub captures, profile-blinded adjudication views, and readable summaries.
 - `regression/results/` contains schema-valid paired result records after adjudication.
 - Both generated directories are Git-ignored and must not be committed.
-- `Test-HostedReviewResults.ps1` validates all local result records when present and succeeds with zero records in a clean clone.
+- `Test-ReviewResults.ps1` validates all local result records when present and succeeds with zero records in a clean clone.
 - The final experiment conclusion and adoption rationale are checked in after evaluation; individual generated runs are not.
 
 ## Package Manifest Requirements:
@@ -333,7 +379,7 @@ The installer and validator consume this shared schema rather than defining para
 
 ## Installer Requirements:
 
-`Install-HostedCopilot.ps1` runs from this source checkout and accepts an explicit target repository directory.
+`Install-Toolkit.ps1` runs from this source checkout and accepts an explicit target repository directory.
 
 **Dry-Run Behavior:**
 
@@ -356,7 +402,7 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 
 ## Validation Requirements:
 
-`Test-HostedToolkit.ps1` remains the complete Hosted profile validator. As each phase is implemented, extend it to enforce:
+`Test-Toolkit.ps1` remains the complete Hosted profile validator. As each phase is implemented, extend it to enforce:
 
 - Required Hosted layout
 - Valid instruction frontmatter and exact `applyTo` patterns
@@ -372,7 +418,7 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Mermaid rendering with explicitly pinned, supported Mermaid CLI and Puppeteer versions
 - Controlled test-case schema and result completeness
 - Local result schema conformance and recomputed adjudication totals when result records are present
-- Git-ignored raw captures and result records with no generated evidence tracked in source
+- Git-ignored raw captures, readable pair summaries, and result records with no generated evidence tracked in source
 
 The validator must continue to distinguish design phase from runtime phase. Runtime gates become mandatory when `.github/` runtime assets or `package-manifest.json` appear.
 

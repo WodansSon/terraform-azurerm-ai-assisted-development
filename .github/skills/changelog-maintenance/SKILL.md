@@ -186,7 +186,7 @@ pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
 For a Hosted Toolkit changelog change, also run:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedToolkit.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
 ```
 
 ## Output expectation

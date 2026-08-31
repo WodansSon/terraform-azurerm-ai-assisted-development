@@ -1,18 +1,17 @@
 {
   "schemaVersion": 1,
   "id": "implementation-patch-and-id-canonicalization",
-  "surface": "implementation",
-  "targetPath": "internal/services/hostedfixture/hosted_fixture_resource.go",
-  "beforePath": "before/hosted_fixture_resource.go",
-  "afterPath": "after/hosted_fixture_resource.go",
+  "contentRoot": "content",
   "expectedFindings": [
     {
       "ruleId": "IMPL-PATCH-001",
+      "path": "internal/services/hostedfixture/hosted_fixture_patch_resource.go",
       "match": "return nil",
       "reason": "The changed expansion omits the PATCH property and preserves previously enabled remote state."
     },
     {
       "ruleId": "IMPL-SCHEMA-006",
+      "path": "internal/services/hostedfixture/hosted_fixture_patch_resource.go",
       "match": "return apiID, nil",
       "reason": "The changed flattening writes raw Azure ID casing instead of the parser's canonical ID."
     }

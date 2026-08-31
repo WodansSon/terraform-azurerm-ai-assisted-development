@@ -50,7 +50,7 @@ jobs:
             $validationFailed = $true
           }
 
-          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedToolkit.ps1
+          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
           if ($LASTEXITCODE -ne 0) {
             $validationFailed = $true
           }

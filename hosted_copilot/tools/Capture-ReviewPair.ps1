@@ -1,39 +1,61 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Manual')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [string]$Repository,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [int]$ControlPullRequest,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [int]$HostedPullRequest,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
     [string]$FixtureId,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
     [string]$RunId,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [ValidateSet('Lite', 'Medium')]
     [string]$ReviewEffort,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string]$SourceCommit,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
     [ValidatePattern('^[0-9a-f]{64}$')]
     [string]$ManifestHash,
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'PairRecord')]
+    [string]$PairPath,
 
     [string]$RegressionDirectory = (Join-Path $PSScriptRoot '../regression')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($PSCmdlet.ParameterSetName -eq 'PairRecord') {
+    $resolvedPairPath = [IO.Path]::GetFullPath($PairPath)
+    if (-not (Test-Path -LiteralPath $resolvedPairPath -PathType Leaf)) {
+        throw "PairPath was not found: $resolvedPairPath"
+    }
+    $pair = Get-Content -LiteralPath $resolvedPairPath -Raw | ConvertFrom-Json
+    if ($pair.schemaVersion -notin @(1, 2)) {
+        throw "Unsupported pair record schemaVersion: $($pair.schemaVersion)"
+    }
+    $Repository = [string]$pair.repository
+    $ControlPullRequest = [int]$pair.control.pullRequest
+    $HostedPullRequest = [int]$pair.hosted.pullRequest
+    $FixtureId = [string]$pair.caseId
+    $RunId = [string]$pair.runId
+    $ReviewEffort = [string]$pair.reviewEffort
+    $SourceCommit = [string]$pair.sourceCommit
+    $ManifestHash = [string]$pair.manifestHash
+}
 
 function Invoke-GitHubApi {
     param(
@@ -452,6 +474,132 @@ function Get-PullRequestEvidence {
     }
 }
 
+function Get-DisplayValue {
+    param(
+        $Value,
+
+        [string]$Fallback = 'unknown'
+    )
+
+    if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+        return $Fallback
+    }
+
+    return [string]$Value
+}
+
+function Get-SessionRoleLabel {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Role
+    )
+
+    switch ($Role) {
+        'primary_review' { return 'Primary reviewer' }
+        'grouping_within_review' { return 'Grouping sub-agent' }
+        'severity' { return 'Severity sub-agent' }
+        default { return (($Role -replace '_', ' ') + ' session') }
+    }
+}
+
+function ConvertTo-ReviewSummaryMarkdown {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Record,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Effort
+    )
+
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add('# Hosted Review Pair Summary')
+    $lines.Add('')
+    $lines.Add("- **Run:** ``$($Record.runId)``")
+    $lines.Add("- **Fixture:** ``$($Record.fixtureId)``")
+    $lines.Add("- **Review effort:** ``$Effort``")
+    $lines.Add("- **Captured:** ``$($Record.capturedAt)``")
+    $lines.Add("- **Diff SHA-256:** ``$($Record.diffHash)``")
+    $lines.Add('')
+    $lines.Add('`MaxPromptTokens` is an observed GitHub Copilot review runtime value, not token usage or a user-configurable setting.')
+
+    foreach ($profile in @($Record.profiles | Sort-Object { if ($_.evidence.instructionProfile -eq 'control') { 0 } else { 1 } })) {
+        $evidence = $profile.evidence
+        $runtime = $evidence.runtime
+        $profileName = if ($evidence.instructionProfile -eq 'control') { 'Control' } else { 'Hosted' }
+        $lines.Add('')
+        $lines.Add("## $profileName")
+        $lines.Add('')
+        $lines.Add("- **Pull request:** [#$($evidence.pullRequest.number)]($($evidence.pullRequest.url))")
+        $lines.Add("- **Review ID:** ``$($evidence.review.id)``")
+        $lines.Add("- **Runtime capture:** ``$(Get-DisplayValue -Value $runtime.captureStatus)``")
+        $lines.Add('')
+        $lines.Add('### Models Used')
+        $lines.Add('')
+
+        $sessions = @($runtime.modelSessions)
+        if ($sessions.Count -eq 0) {
+            $lines.Add('- No instantiated model sessions were captured.')
+        }
+        else {
+            foreach ($session in $sessions) {
+                $role = Get-SessionRoleLabel -Role ([string]$session.role)
+                $modelName = Get-DisplayValue -Value $session.modelName
+                $reasoningLevel = Get-DisplayValue -Value $session.reasoningLevel
+                $lines.Add("- **$role`:** ``$modelName`` (``$reasoningLevel``)")
+            }
+        }
+
+        $configuredModels = @($runtime.configuredAuxiliaryModels.GetEnumerator() | Where-Object { $null -ne $_.Value -and -not [string]::IsNullOrWhiteSpace([string]$_.Value) })
+        $lines.Add('')
+        $lines.Add('### Runtime')
+        $lines.Add('')
+        $lines.Add("- **Runtime version:** ``$(Get-DisplayValue -Value $runtime.runtimeVersion)``")
+        $parsedMaxPromptTokens = 0L
+        $maxPromptTokens = if ($null -eq $runtime.maxPromptTokens -or -not [int64]::TryParse([string]$runtime.maxPromptTokens, [ref]$parsedMaxPromptTokens)) {
+            Get-DisplayValue -Value $runtime.maxPromptTokens
+        }
+        else {
+            $parsedMaxPromptTokens.ToString('N0', [Globalization.CultureInfo]::InvariantCulture)
+        }
+        $lines.Add("- **``MaxPromptTokens``:** $maxPromptTokens")
+        $lines.Add("- **Memory prompts:** ``$(Get-DisplayValue -Value $runtime.memoryCount)``")
+        $lines.Add("- **Skill catalog entries:** ``$(Get-DisplayValue -Value $runtime.skillCatalogEntries)``")
+        $invokedSkills = if (@($runtime.invokedSkills).Count -eq 0) { 'None' } else { @($runtime.invokedSkills | ForEach-Object { "``$_``" }) -join ', ' }
+        $lines.Add("- **Invoked skills:** $invokedSkills")
+
+        $deduplication = $runtime.deduplication
+        if ($null -eq $deduplication.previousFetched -and $null -eq $deduplication.newCandidates -and $null -eq $deduplication.duplicatesRemoved) {
+            $lines.Add('- **Previous-feedback deduplication:** Not invoked')
+        }
+        else {
+            $lines.Add("- **Previous-feedback deduplication:** fetched ``$(Get-DisplayValue -Value $deduplication.previousFetched)``; candidates ``$(Get-DisplayValue -Value $deduplication.newCandidates)``; removed ``$(Get-DisplayValue -Value $deduplication.duplicatesRemoved)``")
+        }
+
+        if ($configuredModels.Count -gt 0) {
+            $lines.Add('')
+            $lines.Add('### Configured Auxiliary Models')
+            $lines.Add('')
+            $lines.Add('These values are runtime configuration, not proof that a model session executed.')
+            $lines.Add('')
+            foreach ($configuredModel in $configuredModels) {
+                $label = ([Globalization.CultureInfo]::InvariantCulture.TextInfo.ToTitleCase([string]$configuredModel.Key))
+                $lines.Add("- **$label`:** ``$($configuredModel.Value)``")
+            }
+        }
+
+        if (@($runtime.diagnostics).Count -gt 0) {
+            $lines.Add('')
+            $lines.Add('### Capture Diagnostics')
+            $lines.Add('')
+            foreach ($diagnostic in @($runtime.diagnostics)) {
+                $lines.Add("- $diagnostic")
+            }
+        }
+    }
+
+    return ($lines -join "`n") + "`n"
+}
+
 $ghCommand = Get-Command 'gh' -ErrorAction SilentlyContinue
 if ($null -eq $ghCommand) {
     throw 'GitHub CLI was not found on PATH'
@@ -468,8 +616,10 @@ if ($control.diffHash -ne $hosted.diffHash) {
 $capturedAt = [DateTimeOffset]::UtcNow.ToString('o')
 $rawRelativePath = "raw/$FixtureId/$RunId.json"
 $blindRelativePath = "raw/$FixtureId/$RunId.blind.json"
+$summaryRelativePath = "raw/$FixtureId/$RunId.summary.md"
 $rawPath = Join-Path $RegressionDirectory $rawRelativePath
 $blindPath = Join-Path $RegressionDirectory $blindRelativePath
+$summaryPath = Join-Path $RegressionDirectory $summaryRelativePath
 $rawDirectory = Split-Path -Parent $rawPath
 New-Item -ItemType Directory -Path $rawDirectory -Force | Out-Null
 
@@ -507,11 +657,13 @@ $blindRecord = [ordered]@{
 
 $rawRecord | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $rawPath -Encoding utf8NoBOM
 $blindRecord | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $blindPath -Encoding utf8NoBOM
+ConvertTo-ReviewSummaryMarkdown -Record $rawRecord -Effort $ReviewEffort | Set-Content -LiteralPath $summaryPath -Encoding utf8NoBOM
 
 [pscustomobject]@{
     success = $true
     rawPath = [System.IO.Path]::GetFullPath($rawPath)
     blindPath = [System.IO.Path]::GetFullPath($blindPath)
+    summaryPath = [System.IO.Path]::GetFullPath($summaryPath)
     diffHash = $control.diffHash
     changedFiles = $control.changedFiles
     controlReviewId = $control.review.id

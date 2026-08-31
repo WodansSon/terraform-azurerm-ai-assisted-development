@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
-$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-HostedToolkit.ps1'
+$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-Toolkit.ps1'
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
 $explicitPathsProvided = $PSBoundParameters.ContainsKey('ChangedPaths')
 

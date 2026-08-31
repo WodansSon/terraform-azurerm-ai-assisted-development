@@ -152,8 +152,8 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - Compact repository-wide, Go, test, and documentation instructions under `hosted_copilot/.github/`
 - One review-focused Hosted skill under `hosted_copilot/.github/skills/code-review/`
 - `package-manifest.json` containing the exact deployable paths, mirrored from `hosted_copilot/` into the target repository
-- `Install-HostedCopilot.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
-- `Test-HostedToolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
+- `Install-Toolkit.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
+- `Test-Toolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
 
 **Experiment Acceptance Criteria:**
@@ -202,10 +202,10 @@ hosted_copilot/
     results/
   tools/
     package-manifest.json
-    Install-HostedCopilot.ps1
+    Install-Toolkit.ps1
     Sync-ContributorGuidance.ps1
     Build-HostedInstructions.ps1
-    Test-HostedToolkit.ps1
+    Test-Toolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
 ```
@@ -216,7 +216,7 @@ hosted_copilot/
 - `tools/` owns synchronization, generation, validation, and deployment support.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
-- `tools/Install-HostedCopilot.ps1` owns safe deployment into a target repository.
+- `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit and its maintenance commands.
 - Experiment instruction files are frozen by source commit. After adoption, generated instruction files are written directly beneath `hosted_copilot/.github/` and must not be edited manually.
 
@@ -244,7 +244,7 @@ Files with the same names or roles in the Interactive Toolkit are not shared dep
 
 ### Hosted Deployment:
 
-The overlay remains manually copyable, but `Install-HostedCopilot.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
+The overlay remains manually copyable, but `Install-Toolkit.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
 
 The Hosted Toolkit is deployed directly from the current source checkout into a target fork. It does not use a separate release bundle, archive, or version file. Reproducibility comes from the source Git commit, the manifest ownership map, and the exact deployed hashes recorded in installed state.
 
@@ -444,7 +444,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 - Measure each generated surface against its token budget.
 - Validate rule IDs, required metadata, source links, duplicate mappings, and conflicting requirements.
 - Update `package-manifest.json` only when the hosted package intentionally adds, removes, or relocates an owned path.
-- Preview deployment with `Install-HostedCopilot.ps1` in dry-run mode before writing to a target repository.
+- Preview deployment with `Install-Toolkit.ps1` in dry-run mode before writing to a target repository.
 - Require review of rules whose evidence disappeared or whose upstream source was renamed or removed.
 
 The script owns synchronization, validation, and rendering. It does not own semantic interpretation.
@@ -584,8 +584,9 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 **For Each Comparison:**
 
 - Keep `control-base` immutable as the control baseline and keep `hosted-base` immutable as the Hosted baseline
-- Materialize modification-case `before` snapshots and required supporting evidence identically on both base branches before creating the paired source branches
-- Apply only the canonical `before`-to-`after` mutation on each paired source branch so unchanged fixture scaffolding is not exposed as new pull request content
+- Author synthetic changes as repository-shaped content trees or import canonical diffs from real AzureRM pull requests
+- Keep `test-content` as an immutable source-PR base at the pinned Control commit, and mirror each source PR diff into separate Control and Hosted review heads
+- Reject `.github/` test changes and guard all writes to the authenticated user's personal AzureRM fork
 - Apply the same canonical test change and verify an identical changed-file set and diff hash against `control-base` and `hosted-base`; the resulting commits have different SHAs because their parents differ
 - Use the same review effort, repository settings, MCP configuration, memory setting, and review trigger
 - Request paired reviews within the same test window to reduce product-version drift
@@ -601,6 +602,8 @@ This effort setting affects all automatic Copilot reviews. A person requesting a
 - Classify a direct pair as model-confounded when model or reasoning evidence differs
 - Score expected findings, unexpected findings, duplicate findings, and missed findings without using the profile label during adjudication
 - Use fresh pull requests for every independent run so previous-feedback deduplication cannot suppress new candidates
+- Use one persistent `control-base` and `hosted-base` pair for a fixed provider commit, Hosted package, and case set; create and delete only disposable paired heads for each run
+- Use the Hosted lifecycle commands and generated pair record instead of manual branch and pull request choreography
 
 **Comparative Reports Must Separate:**
 
@@ -648,7 +651,7 @@ Profile validators must remain deterministic and validate their complete owned p
 | Changed Ownership | Required Validation |
 | --- | --- |
 | Interactive Toolkit only | Run `tools/Validate-InteractiveToolkit.ps1` |
-| Hosted Toolkit only | Run `hosted_copilot/tools/Test-HostedToolkit.ps1` |
+| Hosted Toolkit only | Run `hosted_copilot/tools/Test-Toolkit.ps1` |
 | Both toolkits | Run both profile validators and report both results |
 | Repository maintenance only | Run shared repository checks without requiring either product validator or product changelog |
 | Shared path | Run both profile validators plus applicable shared checks |
@@ -711,7 +714,7 @@ Combined validation is a repository convenience, not a combined distribution gat
 - Implement the PowerShell drift, generation, and validation commands.
 - Generate the isolated hosted runtime profile.
 - Add token-budget and dependency-boundary checks.
-- Maintain `Test-HostedToolkit.ps1`, Hosted Toolkit changelog validation, and phase-aware runtime gates as the Hosted Toolkit develops.
+- Maintain `Test-Toolkit.ps1`, Hosted Toolkit changelog validation, and phase-aware runtime gates as the Hosted Toolkit develops.
 - Maintain the repository-level changed-toolkit dispatcher, explicit ownership map, and routing self-test.
 - Migrate the Interactive Toolkit validator implementation to its canonical entrypoint while preserving the existing compatibility entrypoint.
 
@@ -727,7 +730,7 @@ Combined validation is a repository convenience, not a combined distribution gat
 ### Protected Adoption:
 
 - Generate runtime instructions directly under `hosted_copilot/.github/`.
-- Run `Install-HostedCopilot.ps1` in dry-run mode against the target repository.
+- Run `Install-Toolkit.ps1` in dry-run mode against the target repository.
 - Review and resolve every reported destination collision before installation.
 - Install the manifest-owned contents of `hosted_copilot/` into the target repository root without path transformation.
 - Commit the copied `.github/`, `tools/`, and hosted documentation paths in the target repository.
