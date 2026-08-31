@@ -178,12 +178,16 @@ function Invoke-ProfileValidator {
     }
 
     $reportedStatus = $null
+    $reportedIssues = @()
     if ($null -ne $parsedResult) {
         if ($parsedResult.PSObject.Properties.Name -contains 'status') {
             $reportedStatus = $parsedResult.status
         }
         elseif ($parsedResult.PSObject.Properties.Name -contains 'overallStatus') {
             $reportedStatus = $parsedResult.overallStatus
+        }
+        if ($parsedResult.PSObject.Properties.Name -contains 'issues') {
+            $reportedIssues = @($parsedResult.issues | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
         }
     }
 
@@ -195,7 +199,7 @@ function Invoke-ProfileValidator {
         name = $Name
         status = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
         exitCode = $exitCode
-        detail = if (-not [string]::IsNullOrWhiteSpace($reportedStatus)) { "Validator reported $reportedStatus." } else { $outputText }
+        detail = if ($reportedIssues.Count -gt 0) { "Validator reported $reportedStatus`: $($reportedIssues -join '; ')" } elseif (-not [string]::IsNullOrWhiteSpace($reportedStatus)) { "Validator reported $reportedStatus." } else { $outputText }
         result = $parsedResult
     }
 }

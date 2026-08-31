@@ -791,6 +791,11 @@ else {
 
     try {
         New-Item -ItemType Directory -Path $mermaidTempPath | Out-Null
+        $puppeteerConfigPath = Join-Path $mermaidTempPath 'puppeteer-config.json'
+        $useLinuxCiPuppeteerConfig = $IsLinux -and $env:CI -eq 'true'
+        if ($useLinuxCiPuppeteerConfig) {
+            @{ args = @('--no-sandbox', '--disable-setuid-sandbox') } | ConvertTo-Json | Set-Content -LiteralPath $puppeteerConfigPath -Encoding utf8NoBOM
+        }
         $markdownPaths = @(
             Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse
             Get-Item -LiteralPath $architecturePath
@@ -808,7 +813,11 @@ else {
                 Set-Content -LiteralPath $inputPath -Value $mermaidMatch.Groups[1].Value -Encoding utf8NoBOM
 
                 $global:LASTEXITCODE = 0
-                $mermaidOutput = @(& $npxCommand.Source -y --prefer-offline -p $mermaidCliPackage -p $puppeteerPackage mmdc -i $inputPath -o $outputPath -b transparent 2>&1)
+                $mermaidArguments = @('-y', '--prefer-offline', '-p', $mermaidCliPackage, '-p', $puppeteerPackage, 'mmdc', '-i', $inputPath, '-o', $outputPath, '-b', 'transparent')
+                if ($useLinuxCiPuppeteerConfig) {
+                    $mermaidArguments += @('--puppeteerConfigFile', $puppeteerConfigPath)
+                }
+                $mermaidOutput = @(& $npxCommand.Source @mermaidArguments 2>&1)
                 $mermaidExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
                 if ($mermaidExitCode -ne 0) {
                     throw "Mermaid rendering failed for $($markdownPath.FullName): $((($mermaidOutput | Out-String).Trim()))"
