@@ -1,13 +1,18 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [switch]$SkipUpstreamDrift
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$validationOutputModulePath = Join-Path $repoRoot 'tools/ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $hostedRoot = Join-Path $repoRoot 'hosted_copilot'
 $architecturePath = Join-Path $repoRoot 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md'
 $gitIgnorePath = Join-Path $repoRoot '.gitignore'
@@ -34,6 +39,11 @@ $reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'Publish-TestCase.ps1'
 $reviewCapturePath = Join-Path $PSScriptRoot 'Capture-ReviewPair.ps1'
 $reviewPairCloserPath = Join-Path $PSScriptRoot 'Close-ReviewPair.ps1'
 $reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-ReviewResults.ps1'
+$instructionCatalogPath = Join-Path $hostedRoot 'rules/instruction-catalog.json'
+$instructionCatalogSchemaPath = Join-Path $hostedRoot 'rules/instruction-catalog.schema.json'
+$instructionGeneratorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
+$instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGeneration.ps1'
+$upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'Test-UpstreamSources.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
 $mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
 $puppeteerPackage = 'puppeteer@24.15.0'
@@ -41,37 +51,6 @@ $puppeteerPackage = 'puppeteer@24.15.0'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
 $checkStartTimes = @{}
-
-function Write-TextSectionHeader {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Title
-    )
-
-    $separator = '-' * 51
-
-    Write-Output ''
-    Write-Output $separator
-    Write-Output $Title.ToUpperInvariant()
-    Write-Output $separator
-}
-
-function Format-StatusLine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Status,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Detail
-    )
-
-    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
-
-    return ("{0,-11}{1,-30}: {2}" -f $statusLabel, $Name, $Detail)
-}
 
 function Start-ValidationCheck {
     param(
@@ -81,7 +60,7 @@ function Start-ValidationCheck {
 
     $checkStartTimes[$Name] = Get-Date
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-StatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
     }
 }
 
@@ -114,7 +93,7 @@ function Add-CheckResult {
     })
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-StatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
     }
 }
 
@@ -136,7 +115,7 @@ function Add-SkippedCheck {
     })
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-StatusLine -Status 'skipped' -Name $Name -Detail 'NOT APPLICABLE')
+        Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name $Name -Detail 'NOT APPLICABLE')
     }
 }
 
@@ -185,7 +164,7 @@ $purpose = 'experiment-support'
 $deploymentModel = 'source-checkout'
 
 if ($OutputFormat -eq 'Text') {
-    Write-TextSectionHeader -Title 'Hosted toolkit validation'
+    Write-ValidationSectionHeader -Title 'Hosted toolkit validation'
     Write-Output ("  Purpose     : {0}" -f $purpose.ToUpperInvariant())
     Write-Output ("  Deployment  : {0}" -f $deploymentModel.ToUpperInvariant())
     Write-Output ("  Phase       : {0}" -f $phase.ToUpperInvariant())
@@ -294,7 +273,12 @@ if ($runtimeStarted) {
         $reviewTestCasePublisherPath,
         $reviewCapturePath,
         $reviewPairCloserPath,
-        $reviewResultValidatorPath
+        $reviewResultValidatorPath,
+        $instructionCatalogPath,
+        $instructionCatalogSchemaPath,
+        $instructionGeneratorPath,
+        $instructionGenerationTestPath,
+        $upstreamSourceValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
     if ($missingRuntimePaths.Count -eq 0) {
@@ -422,6 +406,61 @@ if ($runtimeStarted) {
     }
     else {
         Add-ValidationIssue -Name 'instruction-boundaries' -Issue 'Instruction boundary validation requires Go and test instructions'
+    }
+
+    Start-ValidationCheck -Name 'instruction-catalog'
+    try {
+        $generationOutput = @(& pwsh -NoProfile -File $instructionGeneratorPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($generationOutput | Out-String).Trim())
+        }
+        $generationResult = ($generationOutput | Out-String) | ConvertFrom-Json
+        if (-not $generationResult.success) {
+            throw 'instruction generator reported stale outputs'
+        }
+        Add-CheckResult -Name 'instruction-catalog' -Passed $true -Detail "Validated $($generationResult.activeRuleCount) active normalized rules and byte-identical generated instructions."
+    }
+    catch {
+        Add-ValidationIssue -Name 'instruction-catalog' -Issue "Hosted instruction catalog or generated outputs are invalid: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'instruction-generation-tests'
+    try {
+        $generationTestOutput = @(& pwsh -NoProfile -File $instructionGenerationTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($generationTestOutput | Out-String).Trim())
+        }
+        $generationTestResult = ($generationTestOutput | Out-String) | ConvertFrom-Json
+        if ($generationTestResult.status -ne 'passed') {
+            throw 'instruction generation regression suite reported failures'
+        }
+        Add-CheckResult -Name 'instruction-generation-tests' -Passed $true -Detail "Passed $($generationTestResult.testCount) deterministic generation behavior tests."
+    }
+    catch {
+        Add-ValidationIssue -Name 'instruction-generation-tests' -Issue "Hosted instruction generation regression failed: $($_.Exception.Message)"
+    }
+
+    if ($SkipUpstreamDrift) {
+        Add-SkippedCheck -Name 'upstream-sources' -Detail 'Hosted upstream source drift validation was explicitly skipped.'
+    }
+    else {
+        Start-ValidationCheck -Name 'upstream-sources'
+        try {
+            $catalogHashBeforeDriftCheck = Get-Sha256Hash -Path $instructionCatalogPath
+            $upstreamOutput = @(& pwsh -NoProfile -File $upstreamSourceValidatorPath -FailOnDrift -OutputFormat Json 2>&1)
+            $catalogHashAfterDriftCheck = Get-Sha256Hash -Path $instructionCatalogPath
+            if ($LASTEXITCODE -ne 0) {
+                throw (($upstreamOutput | Out-String).Trim())
+            }
+            $upstreamResult = ($upstreamOutput | Out-String) | ConvertFrom-Json
+            if (-not $upstreamResult.success -or $upstreamResult.updatesCatalog -or $catalogHashBeforeDriftCheck -ne $catalogHashAfterDriftCheck) {
+                throw 'upstream source validator did not preserve its read-only success contract'
+            }
+            Add-CheckResult -Name 'upstream-sources' -Passed $true -Detail "Validated $($upstreamResult.sourceCount) Hosted-owned contributor sources with zero drift and no catalog mutation."
+        }
+        catch {
+            Add-ValidationIssue -Name 'upstream-sources' -Issue "Hosted upstream source validation failed: $($_.Exception.Message)"
+        }
     }
 
     Start-ValidationCheck -Name 'skill-metadata'
@@ -715,7 +754,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }
@@ -855,30 +894,28 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 10
 }
 else {
-    Write-TextSectionHeader -Title 'Hosted toolkit validation summary'
-    Write-Output ("  Status      : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Purpose     : {0}" -f $result.purpose.ToUpperInvariant())
-    Write-Output ("  Deployment  : {0}" -f $result.deploymentModel.ToUpperInvariant())
-    Write-Output ("  Phase       : {0}" -f $result.phase.ToUpperInvariant())
-    Write-Output ("  Token Guard : {0}" -f $result.tokenEstimator.ToUpperInvariant())
-    Write-Output ("  Hosted Root : {0}" -f $result.hostedRoot)
-    Write-Output ("  Issue Count : {0}" -f $result.issueCount)
+    Write-ValidationSectionHeader -Title 'Hosted toolkit validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        Purpose = $result.purpose.ToUpperInvariant()
+        Deployment = $result.deploymentModel.ToUpperInvariant()
+        Phase = $result.phase.ToUpperInvariant()
+        'Token Guard' = $result.tokenEstimator.ToUpperInvariant()
+        'Hosted Root' = $result.hostedRoot
+        'Issue Count' = $result.issueCount
+    })
 
-    Write-TextSectionHeader -Title 'Validation checks'
-    Write-Output ("  {0,-32} {1,-10} {2,10}" -f 'CHECK', 'STATUS', 'DURATION')
-    Write-Output ("  {0,-32} {1,-10} {2,10}" -f ('-' * 32), ('-' * 10), ('-' * 10))
-    foreach ($check in $checks) {
-        Write-Output ("  {0,-32} {1,-10} {2,10}" -f $check.name, $check.status.ToUpperInvariant(), ("{0}s" -f $check.durationSeconds))
-    }
+    Write-ValidationSectionHeader -Title 'Validation checks'
+    Write-ValidationStatusTable -Rows $checks.ToArray()
 
     if ($issues.Count -gt 0) {
-        Write-TextSectionHeader -Title 'Failures'
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($check in @($checks | Where-Object { -not $_.success })) {
-            Write-Output ("  {0}" -f (Format-StatusLine -Status 'failed' -Name $check.name -Detail $check.detail))
+            Write-Output ("  {0}" -f (Format-ValidationStatusLine -Status 'failed' -Name $check.name -Detail $check.detail))
         }
     }
 
-    Write-Output ''
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

@@ -48,9 +48,13 @@ hosted_copilot/
     schema/
     raw/
     results/
+  rules/
+    instruction-catalog.json
+    instruction-catalog.schema.json
   tools/
     Capture-ReviewPair.ps1
     Close-ReviewPair.ps1
+    Generate-Instructions.ps1
     Review.Common.psm1
     Import-PullRequest.ps1
     Initialize-ReviewBases.ps1
@@ -58,7 +62,9 @@ hosted_copilot/
     New-ReviewPair.ps1
     Publish-TestCase.ps1
     Test-ReviewResults.ps1
+    Test-InstructionGeneration.ps1
     Test-Toolkit.ps1
+    Test-UpstreamSources.ps1
     package-manifest.json
 ```
 
@@ -73,6 +79,9 @@ The Experiment MVP implements only the assets required to test whether compact H
 - Compact repository-wide review guidance
 - Compact Go, acceptance-test, and documentation instructions
 - Curated mandatory maintainer conventions identified from the Interactive Toolkit, including tribal knowledge, with each rule's requirement strength, provenance, and Hosted applicability reviewed before inclusion
+- A normalized Hosted rule catalog that preserves every current rule as active and records upstream standards, confirmed and inferred maintainer conventions, and local safeguards independently
+- Deterministic path-specific instruction generation with byte-for-byte freshness validation
+- Read-only upstream contributor-source drift detection that reports affected rule IDs without updating hashes or rule text
 - One review-focused agent skill
 - A package manifest for exact deployment ownership
 - A source-checkout deployment script with dry-run support
@@ -82,14 +91,12 @@ The Experiment MVP implements only the assets required to test whether compact H
 
 **Defer Until Adoption:**
 
-- A normalized rule database
-- Deterministic instruction generation
-- Automated upstream contributor-document synchronization
+- Automatic semantic interpretation or application of upstream contributor-document changes
 - Production-scale regression infrastructure
 - Hosted-specific CI rollout
 - Versioned Hosted releases or archives
 
-During the experiment, runtime instructions are curated source files and are frozen by Git commit. They must still preserve stable rule IDs and evidence traceability so successful rules can later move into normalized sources without changing their meaning.
+During the experiment, the normalized catalog is the authority for path-specific rules. Generated instruction files are committed and frozen by Git commit for deployment, but they are consumers rather than a second rule authority. Repository-wide instructions and the review skill remain curated because they define Hosted process and trust boundaries rather than contributor rules.
 
 ## Runtime File Responsibilities:
 
@@ -144,6 +151,46 @@ applyTo: "website/docs/**/*.html.markdown"
 ```
 
 It contains published documentation requirements and mandatory confirmed maintainer conventions. Published requirements include canonical contributor-guide examples and templates when they prescribe the required documentation shape, including `*` list markers for argument and attribute entries. It must also include the Oxford comma requirement for documentation prose lists of three or more items.
+
+## Normalized Instruction Generation:
+
+### Authority And Preservation:
+
+`hosted_copilot/rules/instruction-catalog.json` is the authority for the three path-specific instruction files. Its schema records each stable rule ID, exact runtime text, active or retired status, migration origin, provenance, evidence references, upstream source mappings, shared requirement defaults, and known upstream documentation gaps.
+
+The initial catalog is a lossless migration of all existing Hosted path-specific rules. Every migrated rule remains `active`, retains its original text, and records `hosted-baseline-migration` as its origin. The generator must reproduce the committed instruction files byte-for-byte before any catalog change can be accepted.
+
+Use `hosted-catalog-addition` as the origin for a rule first introduced through the normalized catalog after the baseline migration. Origin records how the rule entered the catalog; provenance separately records why the rule is authoritative.
+
+Published upstream standards, confirmed maintainer conventions, inferred maintainer conventions, and local safeguards remain independent provenance classes. Missing upstream coverage must never remove or weaken a maintainer convention. Hybrid rules may record more than one provenance class. A rule can leave runtime output only through an explicit `retired` status and retirement reason.
+
+### Generate Or Check Instructions:
+
+Check whether the committed files match the catalog without writing:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1
+```
+
+After reviewing an intentional catalog change, update all stale generated files explicitly:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1 -Write
+```
+
+The command validates the catalog schema, unique rule IDs, source and evidence references, provenance-specific evidence, active-rule coverage, output containment, and deterministic content. Check mode fails when a generated file is stale. Write mode changes only the catalog-owned path-specific instruction files.
+
+`Test-InstructionGeneration.ps1` exercises baseline freshness, catalog-native rule origins, read-only stale detection, and explicit writes entirely in a temporary Hosted root. `Test-Toolkit.ps1` runs this regression suite as part of the complete Hosted profile.
+
+### Review Upstream Drift:
+
+Run the Hosted-owned source check independently from the Interactive Toolkit:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-UpstreamSources.ps1 -FailOnDrift
+```
+
+The command fetches only contributor sources cited by active Hosted rules, compares raw-content SHA-256 values with approved baselines, and reports affected rule IDs. It is read-only and never updates the catalog. A changed digest requires semantic maintainer review. Update approved rule text only when source meaning changed; update a baseline only after recording that review in the same catalog change.
 
 ### Review Skill:
 
@@ -406,6 +453,10 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 
 - Required Hosted layout
 - Valid instruction frontmatter and exact `applyTo` patterns
+- Valid normalized catalog schema, provenance evidence, source references, and complete active-rule rendering
+- Byte-identical generated instruction freshness
+- Temporary-directory regression coverage for check and write behavior
+- Read-only upstream contributor-source drift detection with affected-rule reporting
 - Review-focused skill metadata
 - Package-manifest schema and complete owned-file coverage
 - Manifest source containment, existence, and hashability
@@ -455,11 +506,12 @@ The Experiment MVP is complete only when:
 - Every runtime path is first-party supported and manifest owned.
 - The installer can preview and deploy without modifying unrelated target files.
 - The Hosted validator passes all cumulative guidance budgets.
+- The normalized catalog reproduces every committed path-specific instruction and all cited upstream source baselines are reviewed.
 - Controlled comparisons use identical test-change diffs and review effort.
 - Results distinguish useful findings, misses, duplicates, false positives, and model-confounded runs.
 - The evidence supports an explicit decision to adopt, revise, or stop the Hosted Toolkit direction.
 
-Passing the experiment does not automatically authorize production generation, synchronization, CI, or release machinery. Those remain adoption decisions.
+Passing the experiment does not automatically authorize automatic semantic synchronization, production-scale CI, or release machinery. Those remain adoption decisions.
 
 ## Naming Consistency And Immediate Next Step:
 

@@ -27,6 +27,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
 $hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-Toolkit.ps1'
@@ -162,13 +165,27 @@ function Invoke-ProfileValidator {
         }
     }
 
+    $childOutputFormat = if ($OutputFormat -eq 'Text') { 'Text' } else { 'Json' }
+    $validatorName = "validator/{0}" -f $Name.ToLowerInvariant().Replace(' toolkit', '')
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $validatorName -Detail 'IN PROGRESS')
+    }
+
+    $started = Get-Date
     $global:LASTEXITCODE = 0
-    $output = @(& pwsh -NoProfile -File $Path -OutputFormat Json @Arguments 2>&1)
+    $output = @(& pwsh -NoProfile -File $Path -OutputFormat $childOutputFormat @Arguments 2>&1 | ForEach-Object {
+        if ($OutputFormat -eq 'Text' -and ([string]$_) -match '^\s*\[(RUNNING|PASSED|FAILED|SKIPPED)\]') {
+            Write-Host (Add-ValidationIndent -Line ([string]$_))
+        }
+
+        Write-Output $_
+    })
     $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
     $outputText = ($output | Out-String).Trim()
     $parsedResult = $null
 
-    if (-not [string]::IsNullOrWhiteSpace($outputText)) {
+    if ($childOutputFormat -eq 'Json' -and -not [string]::IsNullOrWhiteSpace($outputText)) {
         try {
             $parsedResult = $outputText | ConvertFrom-Json
         }
@@ -195,11 +212,18 @@ function Invoke-ProfileValidator {
         $exitCode = 1
     }
 
+    if ($OutputFormat -eq 'Text') {
+        $profileStatus = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
+        $durationDetail = Format-ValidationDuration -DurationSeconds $durationSeconds
+        Write-Host (Format-ValidationStatusLine -Status $profileStatus -Name $validatorName -Detail $durationDetail)
+    }
+
     return [pscustomobject]@{
         name = $Name
         status = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
         exitCode = $exitCode
-        detail = if ($reportedIssues.Count -gt 0) { "Validator reported $reportedStatus`: $($reportedIssues -join '; ')" } elseif (-not [string]::IsNullOrWhiteSpace($reportedStatus)) { "Validator reported $reportedStatus." } else { $outputText }
+        durationSeconds = $durationSeconds
+        detail = if ($reportedIssues.Count -gt 0) { "Validator reported $reportedStatus`: $($reportedIssues -join '; ')" } elseif (-not [string]::IsNullOrWhiteSpace($reportedStatus)) { "Validator reported $reportedStatus." } elseif ($exitCode -eq 0) { 'Validator completed successfully.' } else { $outputText }
         result = $parsedResult
     }
 }
@@ -347,6 +371,10 @@ else {
     'required'
 }
 
+if ($OutputFormat -eq 'Text' -and -not $PlanOnly) {
+    Write-ValidationSectionHeader -Title 'Changed Toolkit validation'
+}
+
 $executions = New-Object 'System.Collections.Generic.List[object]'
 if (-not $PlanOnly -and $unknownPaths.Count -eq 0) {
     if ($runInteractive) {
@@ -406,45 +434,48 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 12
 }
 else {
-    Write-Output 'Changed Toolkit validation summary'
-    Write-Output ("  Status                 : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Purpose                : {0}" -f $result.purpose.ToUpperInvariant())
-    Write-Output ("  Scope                  : {0}" -f $result.scope.ToUpperInvariant())
-    Write-Output ("  Changed Paths          : {0}" -f $result.changedPathCount)
-    Write-Output ("  Required Validators    : {0}" -f $(if ($requiredValidators.Count -gt 0) { $requiredValidators -join ', ' } else { 'none' }))
-    Write-Output ("  Repository Checks      : {0}" -f $(if ($runRepositoryChecks) { 'required' } else { 'not required' }))
-    Write-Output ("  Interactive Changelog  : {0}" -f $interactiveChangelogStatus.ToUpperInvariant())
-    Write-Output ("  Hosted Changelog       : {0}" -f $hostedChangelogStatus.ToUpperInvariant())
+    Write-ValidationSectionHeader -Title 'Changed Toolkit validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        Purpose = $result.purpose.ToUpperInvariant()
+        Scope = $result.scope.ToUpperInvariant()
+        'Changed Paths' = $result.changedPathCount
+        'Required Validators' = $(if ($requiredValidators.Count -gt 0) { $requiredValidators -join ', ' } else { 'none' })
+        'Repository Checks' = $(if ($runRepositoryChecks) { 'required' } else { 'not required' })
+        'Interactive Changelog' = $interactiveChangelogStatus.ToUpperInvariant()
+        'Hosted Changelog' = $hostedChangelogStatus.ToUpperInvariant()
+    })
 
     if ($classification.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Classifications'
-        foreach ($item in $classification) {
-            Write-Output ("  [{0}] {1}" -f $item.ownership.ToUpperInvariant(), $item.path)
-        }
+        Write-ValidationSectionHeader -Title 'Classifications'
+        Write-ValidationTwoColumnTable -Rows $classification.ToArray() -FirstHeader 'OWNERSHIP' -FirstProperty 'ownership' -SecondHeader 'PATH' -SecondProperty 'path' -UppercaseFirst
     }
 
     if ($executions.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Executions'
-        foreach ($execution in $executions) {
-            Write-Output ("  [{0}] {1}: {2}" -f $execution.status.ToUpperInvariant(), $execution.name, $execution.detail)
+        Write-ValidationSectionHeader -Title 'Executions'
+        Write-ValidationStatusTable -Rows $executions.ToArray() -NameHeader 'VALIDATOR' -NameWidth 24
+    }
+
+    if ($executionFailures.Count -gt 0) {
+        Write-ValidationSectionHeader -Title 'Execution failures'
+        foreach ($execution in $executionFailures) {
+            Write-Output ("  {0}" -f (Format-ValidationStatusLine -Status $execution.status -Name $execution.name -Detail $execution.detail))
         }
     }
 
     if ($null -ne $repositoryExecution) {
-        Write-Output ''
-        Write-Output 'Repository Checks'
-        Write-Output ("  [{0}] {1}" -f $repositoryExecution.status.ToUpperInvariant(), $repositoryExecution.detail)
+        Write-ValidationSectionHeader -Title 'Repository checks'
+        Write-Output ("  {0}" -f (Format-ValidationStatusLine -Status $repositoryExecution.status -Name $repositoryExecution.name -Detail $repositoryExecution.detail))
     }
 
     if ($changelogIssues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Changelog Issues'
+        Write-ValidationSectionHeader -Title 'Changelog issues'
         foreach ($issue in $changelogIssues) {
             Write-Output "  - $issue"
         }
     }
+
+    Complete-ValidationTextOutput
 }
 
 if ($status -eq 'failed') {

@@ -12,6 +12,24 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` provides this operating reference.
 - `.github/hosted-copilot-installed-state.json` records package ownership, source commit, and installed hashes after deployment.
 
+## Source Maintenance:
+
+The source repository keeps path-specific rules in `hosted_copilot/rules/instruction-catalog.json`. The catalog preserves published upstream standards, maintainer conventions, and local safeguards as separate provenance classes. Generated files under `hosted_copilot/.github/instructions/` must not be edited directly.
+
+Check generated-file freshness without writing:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1
+```
+
+After approving a catalog change, regenerate explicitly with `-Write`. Check cited HashiCorp contributor sources independently with:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-UpstreamSources.ps1 -FailOnDrift
+```
+
+Source drift never updates the catalog automatically. Review changed meaning before changing rule text or accepting a new baseline. Missing upstream coverage does not weaken confirmed or inferred maintainer conventions.
+
 ## Deployment:
 
 Run the installer from the source checkout and pass the target repository explicitly:
@@ -41,7 +59,7 @@ Validate the Hosted source package with:
 pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, manifest ownership, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, upstream drift, manifest ownership, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity. Use `-SkipUpstreamDrift` only for explicit offline diagnosis.
 
 ## Repository Settings:
 

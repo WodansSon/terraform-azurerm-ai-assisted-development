@@ -26,6 +26,14 @@
       "ownership": "shared"
     },
     {
+      "pattern": "tools/ValidationOutput.psm1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/Test-ValidationOutput.ps1",
+      "ownership": "shared"
+    },
+    {
       "pattern": "tools/toolkit-ownership.json",
       "ownership": "shared"
     },

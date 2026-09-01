@@ -7,6 +7,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 
@@ -129,21 +132,23 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
-    Write-Output 'Changelog consistency validation summary'
-    Write-Output ("  Status               : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Changelog Path       : {0}" -f $result.changelogPath)
-    Write-Output ("  Latest Release       : {0}" -f $(if ($null -ne $latestRelease) { $latestRelease } else { 'n/a' }))
-    Write-Output ("  Release Headings     : {0}" -f $result.releaseHeadingCount)
-    Write-Output ("  Footer References    : {0}" -f $result.referenceCount)
-    Write-Output ("  Issue Count          : {0}" -f $result.issueCount)
+    Write-ValidationSectionHeader -Title 'Changelog consistency validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        'Changelog Path' = $result.changelogPath
+        'Latest Release' = $(if ($null -ne $latestRelease) { $latestRelease } else { 'n/a' })
+        'Release Headings' = $result.releaseHeadingCount
+        'Footer References' = $result.referenceCount
+        'Issue Count' = $result.issueCount
+    })
 
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Issues'
+        Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {
             Write-Output ("  - {0}" -f $issue)
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

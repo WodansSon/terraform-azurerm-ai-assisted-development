@@ -13,14 +13,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added the Phase One documentation review package with compact repository and documentation instructions, including mandatory published-template conventions and exact section introductions, a review skill, manifest-owned source deployment, installed-state tracking, user guidance, and a baseline-aware controlled documentation test case.
 - Added the Phase Two Go review package with compact implementation rules, manifest ownership, cumulative guidance budgets, and controlled PATCH-state and resource-ID test cases.
 - Added the Phase Three acceptance-test review package with compact test-specific rules, cumulative Go-plus-test budget validation, and controlled callback-deadline and embedded-Terraform test cases.
+- Added a normalized Hosted rule catalog, deterministic path-specific instruction generation, and read-only HashiCorp contributor-source drift detection while preserving all 54 existing rules as active Hosted baseline-migration content, including confirmed and inferred maintainer conventions.
 
 ### Changed
 
-- Aligned Hosted validation output with the Interactive Toolkit one-shot execution-state contract by reporting phase, live check states, durations, skipped design gates, structured summaries, and presentation-free JSON.
+- Aligned repo-local Hosted validation and test reports with the Interactive Toolkit execution-state contract by consuming one shared presentation module for phases, skipped design gates, divider-framed sections, structured summaries, tables, nested child progress, aggregate `TOTAL` durations, terminal spacing, and presentation-free JSON.
 - Replaced the UTF-8 byte token upper bound with a dependency-free four-characters-per-token estimate and 25% safety headroom.
 - Documented the Phase Four paired-branch topology, identical-diff gate, fresh-pull-request isolation, review controls, role-attributed Actions-log model sessions and configured models, readable runtime summaries, and future orchestration responsibilities for comparing control and Hosted pull request reviews.
 - Added record-driven experiment lifecycle commands that initialize three persistent bases, publish synthetic or imported changes as canonical source PRs against `test-content`, synchronize validated Control and Hosted mirror pairs, capture evidence without repeated metadata, guard writes to the authenticated user's personal provider fork, and safely close and remove only disposable mirror heads.
 - Flattened the Hosted source layout so product history, regression assets, and maintenance tools have direct ownership beneath `hosted_copilot/`, and changed the package manifest to a single mirrored path per owned file while installation computes and records exact deployed hashes.
+- Made the normalized catalog authoritative for path-specific rules and extended Hosted validation to require byte-identical generated output, provenance-specific evidence, complete active-rule rendering, focused check/write regression coverage, and reviewed upstream source baselines.
 
 ### Fixed
 

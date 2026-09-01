@@ -12,6 +12,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ArchitecturePath)) {
     $ArchitecturePath = Join-Path $repoRoot 'docs/ARCHITECTURE.md'
@@ -99,20 +102,22 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
-    Write-Output 'Architecture layout validation summary'
-    Write-Output ("  Status               : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Architecture Path    : {0}" -f $result.architecturePath)
-    Write-Output ("  Expected Row Width   : {0}" -f $result.expectedWidth)
-    Write-Output ("  Validated Rows       : {0}" -f $result.validatedRowCount)
-    Write-Output ("  Issue Count          : {0}" -f $result.issueCount)
+    Write-ValidationSectionHeader -Title 'Architecture layout validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        'Architecture Path' = $result.architecturePath
+        'Expected Row Width' = $result.expectedWidth
+        'Validated Rows' = $result.validatedRowCount
+        'Issue Count' = $result.issueCount
+    })
 
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Issues'
+        Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {
             Write-Output ("  - {0}" -f $issue)
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

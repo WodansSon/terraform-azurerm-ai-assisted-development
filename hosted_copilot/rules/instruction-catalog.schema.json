@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "lastSemanticReview", "ruleDefaults", "sources", "evidence", "surfaces", "rules"],
+  "properties": {
+    "$schema": {
+      "const": "instruction-catalog.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "lastSemanticReview": {
+      "type": "string",
+      "format": "date"
+    },
+    "ruleDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirementLevel", "enforcementMethod", "documentationGap"],
+      "properties": {
+        "requirementLevel": { "const": "mandatory" },
+        "enforcementMethod": { "const": "model-based" },
+        "documentationGap": { "const": false }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "rawUrl", "referenceUrl", "baselineSha256"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "rawUrl": { "type": "string", "format": "uri" },
+          "referenceUrl": { "type": "string", "format": "uri" },
+          "baselineSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "description", "reference"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "type": { "enum": ["source-contract", "maintainer-confirmation", "architecture"] },
+          "description": { "type": "string", "minLength": 1 },
+          "reference": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "outputPath", "description", "applyTo", "title", "introduction", "sections", "closing"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "outputPath": { "type": "string", "pattern": "^\\.github/instructions/[a-z0-9-]+\\.instructions\\.md$" },
+          "description": { "type": "string", "minLength": 1 },
+          "applyTo": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "introduction": { "type": "string", "minLength": 1 },
+          "sections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["heading", "ruleIds"],
+              "properties": {
+                "heading": { "type": "string", "minLength": 1 },
+                "ruleIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
+                }
+              }
+            }
+          },
+          "closing": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "origin", "status", "text", "provenance", "sourceIds", "evidenceIds"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" },
+          "origin": { "enum": ["hosted-baseline-migration", "hosted-catalog-addition"] },
+          "status": { "enum": ["active", "retired"] },
+          "text": { "type": "string", "minLength": 1 },
+          "provenance": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "published-upstream-standard",
+                "confirmed-maintainer-convention",
+                "inferred-maintainer-convention",
+                "local-safeguard"
+              ]
+            }
+          },
+          "sourceIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+          },
+          "documentationGap": { "type": "boolean" },
+          "retirementReason": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "provenance": { "contains": { "const": "published-upstream-standard" } }
+              }
+            },
+            "then": {
+              "properties": { "sourceIds": { "minItems": 1 } }
+            }
+          },
+          {
+            "if": { "properties": { "status": { "const": "retired" } } },
+            "then": { "required": ["retirementReason"] }
+          }
+        ]
+      }
+    }
+  }
+}

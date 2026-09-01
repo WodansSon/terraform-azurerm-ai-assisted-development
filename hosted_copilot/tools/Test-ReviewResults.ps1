@@ -13,6 +13,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 function Get-ProfileSummary {
     param(
         [Parameter(Mandatory = $true)]
@@ -169,11 +172,19 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 10
 }
 else {
-    Write-Output "Hosted paired review results: $($result.status.ToUpperInvariant())"
-    Write-Output "  Result count: $($result.resultCount)"
+    Write-ValidationSectionHeader -Title 'Hosted paired review result validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        'Result Count' = $result.resultCount
+        'Issue Count' = $result.issueCount
+    })
+    if ($result.issues.Count -gt 0) {
+        Write-ValidationSectionHeader -Title 'Issues'
+    }
     foreach ($issue in $result.issues) {
         Write-Output "  - $issue"
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

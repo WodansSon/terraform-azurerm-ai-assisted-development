@@ -487,12 +487,20 @@ The current repository architecture includes deterministic validation and benchm
 - `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.
 - `tools/toolkit-ownership.json`: ordered ownership map used by the changed-path dispatcher.
 - `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.
+- `tools/ValidationOutput.psm1`: shared repo-only presentation functions for validation section headers, summaries, status lines, tables, and terminal spacing.
+- `tools/Test-ValidationOutput.ps1`: exact output-contract coverage for the shared validation presentation functions.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
 - `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
 - `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.
 - `docs/AI_REGRESSION_HARNESS.md`: the benchmark model and scoring philosophy behind the regression suite.
+
+#### Validation Output Contract
+
+Repo-local validation and test report renderers use `tools/ValidationOutput.psm1` rather than defining local presentation helpers. The module owns the fixed divider width, uppercase section headings and statuses, blank lines before and after section headers, aligned summary fields, status and duration tables, two-column tables, nested status indentation, aggregate `TOTAL` duration labels, and the final blank line before the shell prompt. Each orchestrator adds one indentation level when relaying child statuses and preserves existing indentation so dispatcher, profile, and child-stage hierarchy remains visible. JSON paths do not call presentation functions and remain machine-readable. Operational commands that scaffold, publish, install, or mutate review state keep command-specific output and are not validation report consumers.
+
+The module is shared repository-maintenance infrastructure. It is not included in the Interactive installer manifest or the Hosted package manifest. Hosted maintenance validators consume it only from the full source checkout; Hosted runtime instructions, catalogs, generation, deployment, and semantic validation remain independently owned.
 
 ### Prompt Files (high-level)
 

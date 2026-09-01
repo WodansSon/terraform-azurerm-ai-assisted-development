@@ -47,7 +47,8 @@ The Interactive Toolkit's many broad `applyTo` files work for its routed workflo
 - A maximum `25K`-token engineering budget for hosted system and instruction guidance on any review surface
 - Compact contracts derived from HashiCorp contributor guidance
 - Mandatory confirmed maintainer conventions, including the Oxford comma requirement for all documentation
-- Hosted-only generation, validation, regression, manifest, and installation tooling
+- Hosted-only generation, semantic validation, regression, manifest, and installation tooling
+- Shared repo-local presentation formatting for validation and test report renderers
 - No runtime or installer dependency on the Interactive Toolkit
 
 ## Status:
@@ -64,10 +65,11 @@ The Hosted Toolkit must remain fully isolated from the Interactive Toolkit imple
 
 - Hosted Toolkit runtime files must not be added to the Interactive Toolkit installer manifest.
 - The Interactive Toolkit installer must not install, update, remove, or validate Hosted Toolkit files.
-- All hosted source rules, scripts, validators, regression test artifacts, documentation, and runtime files must live under `hosted_copilot/` in this repository.
+- All Hosted product rules, semantic validators, regression test artifacts, documentation, runtime files, and operational scripts must live under `hosted_copilot/` in this repository. Repo-local validation presentation functions remain shared maintenance infrastructure.
 - Paths beneath `hosted_copilot/` must mirror their final paths in the target repository.
 - Installing the Hosted Toolkit means copying the contents of `hosted_copilot/` into the target repository root.
-- Hosted generators, validators, regression test artifacts, deployment state, and provenance must remain independent.
+- Hosted generators, semantic validators, regression test artifacts, deployment state, and provenance must remain independent.
+- Repo-local validation and test report renderers may use shared presentation functions that do not participate in runtime behavior, generation, semantic decisions, deployment, or either toolkit package.
 - Hosted Toolkit runtime instructions must not import, load, or depend on Interactive Toolkit contracts, prompts, skills, schemas, or companion guidance.
 - The Hosted Toolkit implementation may use this repository as migration evidence while its initial rules are curated, but it must own the resulting rules after migration.
 - Later rule sharing must be an explicit, human-reviewed port between independent implementations, never a runtime include or automatic synchronization dependency.
@@ -154,6 +156,8 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - `package-manifest.json` containing the exact deployable paths, mirrored from `hosted_copilot/` into the target repository
 - `Install-Toolkit.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
 - `Test-Toolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
+- A normalized rule catalog and schema that preserve upstream, maintainer, and local provenance independently
+- Deterministic path-specific instruction generation and read-only upstream source drift detection
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
 
 **Experiment Acceptance Criteria:**
@@ -166,13 +170,12 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 
 **Deferred Until an Adoption Decision:**
 
-- Normalized rule databases and deterministic instruction generation
-- Automated upstream contributor synchronization
+- Automatic semantic interpretation or application of upstream contributor changes
 - A production regression harness beyond the controlled experiment test-case matrix
 - Hosted-specific CI rollout and long-term operational monitoring
 - Any versioned release, archive, or publication workflow
 
-During the experiment, Hosted runtime instructions may be curated directly and frozen by source commit. If the experiment supports adoption, normalized rule sources and deterministic generation become adoption gates before the Hosted Toolkit is treated as an enduring maintained product.
+During the experiment, normalized rule sources and deterministic generation are required so evaluation uses reproducible guidance without losing maintainer conventions. Generated runtime files remain committed and frozen by source commit. Production automation beyond read-only drift detection remains an adoption decision.
 
 ## Target Hosted Package Layout:
 
@@ -191,9 +194,8 @@ hosted_copilot/
       code-review/
         SKILL.md
   rules/
-    upstream-rules.yaml
-    maintainer-conventions.yaml
-    hosted-safeguards.yaml
+    instruction-catalog.json
+    instruction-catalog.schema.json
   regression/
     README.md
     cases/
@@ -203,8 +205,9 @@ hosted_copilot/
   tools/
     package-manifest.json
     Install-Toolkit.ps1
-    Sync-ContributorGuidance.ps1
-    Build-HostedInstructions.ps1
+    Generate-Instructions.ps1
+    Test-InstructionGeneration.ps1
+    Test-UpstreamSources.ps1
     Test-Toolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
@@ -218,7 +221,7 @@ hosted_copilot/
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
 - `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit and its maintenance commands.
-- Experiment instruction files are frozen by source commit. After adoption, generated instruction files are written directly beneath `hosted_copilot/.github/` and must not be edited manually.
+- Generated path-specific instruction files are written directly beneath `hosted_copilot/.github/`, committed, and frozen by source commit. They must not be edited manually.
 
 Nothing under `hosted_copilot/` is Interactive Toolkit runtime payload.
 
@@ -362,7 +365,7 @@ The entire `hosted_copilot/` tree is an isolated distribution source. It must no
 - `Published upstream standard`: explicitly stated by HashiCorp contributor guidance or prescribed through its canonical examples and templates. Template evidence is normative when it demonstrates the required contributor-facing shape rather than merely illustrating an optional style.
 - `Confirmed maintainer convention`: mandatory behavior directly confirmed by HashiCorp maintainers but not explicitly stated in contributor guidance.
 - `Inferred maintainer convention`: supported by repeated accepted review guidance or consistent established provider practice, without direct confirmation.
-- `Hosted safeguard`: local protection required for stable hosted-review behavior rather than an upstream contributor requirement.
+- `Local safeguard`: local protection required for stable hosted-review behavior rather than an upstream contributor requirement.
 
 ### Independent Rule Dimensions:
 
@@ -435,7 +438,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 
 - Pin each tracked upstream source to a recorded content digest.
 - Discover upstream source drift through a PowerShell maintenance command.
-- Report changed source sections and affected rule mappings.
+- Report changed sources and affected rule mappings.
 - Do not rewrite normalized rules solely because a digest changed.
 - Require a maintainer to decide whether the changed prose alters rule meaning.
 - Update approved normalized rules manually.
@@ -447,7 +450,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 - Preview deployment with `Install-Toolkit.ps1` in dry-run mode before writing to a target repository.
 - Require review of rules whose evidence disappeared or whose upstream source was renamed or removed.
 
-The script owns synchronization, validation, and rendering. It does not own semantic interpretation.
+The scripts own drift detection, validation, and rendering. They do not own semantic interpretation or baseline acceptance.
 
 ## Deterministic Enforcement:
 
@@ -663,6 +666,7 @@ Profile validators must remain deterministic and validate their complete owned p
 - The complete `hosted_copilot/**` tree and this architecture document as Hosted Toolkit paths
 - `AGENTS.md` and other explicitly designated maintainer-only files as repository maintenance
 - Shared configuration and dispatcher files that can affect both toolkits as shared paths
+- Shared repo-local validation presentation modules and contract tests that affect both maintenance profiles
 
 **When Both Toolkits Change, the Dispatcher Must:**
 

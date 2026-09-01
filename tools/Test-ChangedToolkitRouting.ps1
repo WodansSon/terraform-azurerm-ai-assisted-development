@@ -8,8 +8,53 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $dispatcherPath = Join-Path $PSScriptRoot 'Validate-ChangedToolkits.ps1'
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $results = New-Object 'System.Collections.Generic.List[object]'
+
+$dispatcherContent = Get-Content -LiteralPath $dispatcherPath -Raw
+$relayContractPresent = $dispatcherContent -match '\$childOutputFormat = if \(\$OutputFormat -eq ''Text''\)' -and
+    $dispatcherContent -match '\^\\s\*\\\[\(RUNNING\|PASSED\|FAILED\|SKIPPED\)\\\]' -and
+    $dispatcherContent -match 'Write-Host \(Add-ValidationIndent -Line \(\[string\]\$_\)\)' -and
+    $dispatcherContent -match 'validator/\{0\}' -and
+    $dispatcherContent -match '\$durationSeconds = \[Math\]::Round' -and
+    $dispatcherContent -match 'Import-Module -Name \$validationOutputModulePath -Force' -and
+    $dispatcherContent -notmatch 'function Write-TextSectionHeader' -and
+    $dispatcherContent -notmatch 'function Format-StatusLine' -and
+    $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Changed Toolkit validation'" -and
+    $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Changed Toolkit validation summary'" -and
+    $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Classifications'" -and
+    $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Executions'" -and
+    $dispatcherContent -match 'Write-ValidationSummary -Fields' -and
+    $dispatcherContent -match 'Write-ValidationStatusTable -Rows .* -NameHeader ''VALIDATOR'' -NameWidth 24' -and
+    $dispatcherContent -notmatch 'Write-ValidationStatusTable -Rows .* -TotalDuration' -and
+    $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Execution failures'" -and
+    $dispatcherContent -match 'Write-ValidationTwoColumnTable -Rows' -and
+    $dispatcherContent -match 'Complete-ValidationTextOutput'
+if (-not $relayContractPresent) {
+    $issues.Add('dispatcher text mode must relay child execution states and consume the shared validation presentation contract without local formatter copies')
+}
+
+if (-not (Test-Path -LiteralPath $validationOutputModulePath -PathType Leaf)) {
+    $issues.Add('shared validation output module is missing')
+}
+
+$textOutput = @(& $dispatcherPath -PlanOnly -ChangedPaths 'hosted_copilot/CHANGELOG.md')
+$classificationIndex = [Array]::IndexOf($textOutput, 'CLASSIFICATIONS')
+$classificationSpacingPassed = $classificationIndex -ge 0 -and
+    $classificationIndex + 3 -lt $textOutput.Count -and
+    [string]$textOutput[$classificationIndex + 1] -eq ('-' * 51) -and
+    [string]$textOutput[$classificationIndex + 2] -eq '' -and
+    [string]$textOutput[$classificationIndex + 3] -match '^\s+OWNERSHIP\s+PATH$'
+$textFormatPassed = $textOutput.Count -gt 0 -and
+    [string]$textOutput[0] -eq '' -and
+    [string]$textOutput[-1] -eq '' -and
+    $textOutput -contains ('-' * 51) -and
+    $textOutput -contains 'CHANGED TOOLKIT VALIDATION SUMMARY' -and
+    $classificationSpacingPassed
+if (-not $textFormatPassed) {
+    $issues.Add('dispatcher text output must begin and end with blank lines, use standard section headers, and separate the classifications header from its table')
+}
 
 $cases = @(
     [pscustomobject]@{
@@ -39,6 +84,12 @@ $cases = @(
     [pscustomobject]@{
         name = 'shared'
         paths = @('.github/.markdownlint.json')
+        validators = @('Interactive Toolkit', 'Hosted Toolkit')
+        repositoryChecks = $true
+    },
+    [pscustomobject]@{
+        name = 'shared-validation-output'
+        paths = @('tools/ValidationOutput.psm1', 'tools/Test-ValidationOutput.ps1')
         validators = @('Interactive Toolkit', 'Hosted Toolkit')
         repositoryChecks = $true
     },
@@ -115,23 +166,23 @@ if ($OutputFormat -eq 'Json') {
     $summary | ConvertTo-Json -Depth 10
 }
 else {
-    Write-Output 'Changed Toolkit routing test summary'
-    Write-Output ("  Status     : {0}" -f $summary.status.ToUpperInvariant())
-    Write-Output ("  Cases      : {0}" -f $summary.caseCount)
-    Write-Output ("  Issue Count: {0}" -f $summary.issueCount)
-    Write-Output ''
+    Write-ValidationSectionHeader -Title 'Changed Toolkit routing test summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $summary.status.ToUpperInvariant()
+        Cases = $summary.caseCount
+        'Issue Count' = $summary.issueCount
+    })
 
-    foreach ($result in $results) {
-        Write-Output ("  [{0}] {1}" -f $result.status.ToUpperInvariant(), $result.name)
-    }
+    Write-ValidationSectionHeader -Title 'Routing cases'
+    Write-ValidationTwoColumnTable -Rows @($results.ToArray()) -FirstHeader 'status' -FirstProperty 'status' -SecondHeader 'case' -SecondProperty 'name' -UppercaseFirst
 
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Issues'
+        Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {
             Write-Output "  - $issue"
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {
