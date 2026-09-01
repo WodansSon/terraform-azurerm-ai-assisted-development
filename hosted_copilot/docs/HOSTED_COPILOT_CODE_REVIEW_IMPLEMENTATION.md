@@ -156,7 +156,9 @@ It contains published documentation requirements and mandatory confirmed maintai
 
 ### Authority And Preservation:
 
-`hosted_copilot/rules/instruction-catalog.json` is the authority for the three path-specific instruction files. Its schema records each stable rule ID, exact runtime text, active or retired status, migration origin, provenance, evidence references, upstream source mappings, shared requirement defaults, and known upstream documentation gaps.
+`hosted_copilot/copilot-rule-catalog/instruction-catalog.json` is the authority for the three path-specific instruction files. Its schema records each stable rule ID, exact runtime text, active or retired status, migration origin, provenance, evidence references, upstream source mappings, implementation model applicability, shared requirement defaults, and known upstream documentation gaps.
+
+Implementation rules classify applicability across `legacy`, `typed`, and `framework`. Legacy identifies function-based untyped Plugin SDK maintenance surfaces, typed identifies ordinary receiver-based `internal/sdk` resources and data sources, and framework identifies framework-native or specialized surfaces. The generator renders this applicability with each implementation rule so review does not apply typed or framework patterns to legacy code, or treat maintenance as an implicit migration.
 
 The initial catalog is a lossless migration of all existing Hosted path-specific rules. Every migrated rule remains `active`, retains its original text, and records `hosted-baseline-migration` as its origin. The generator must reproduce the committed instruction files byte-for-byte before any catalog change can be accepted.
 

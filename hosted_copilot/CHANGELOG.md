@@ -17,12 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Aligned repo-local Hosted validation and test reports with the Interactive Toolkit execution-state contract by consuming one shared presentation module for phases, skipped design gates, divider-framed sections, structured summaries, tables, nested child progress, aggregate `TOTAL` durations, terminal spacing, and presentation-free JSON.
+- Aligned repo-local Hosted validation and test reports with the Interactive Toolkit execution-state contract by consuming one shared presentation module for phases, skipped design gates, divider-framed sections, structured summaries, tables, nested child progress, durations, terminal spacing, and presentation-free JSON.
 - Replaced the UTF-8 byte token upper bound with a dependency-free four-characters-per-token estimate and 25% safety headroom.
 - Documented the Phase Four paired-branch topology, identical-diff gate, fresh-pull-request isolation, review controls, role-attributed Actions-log model sessions and configured models, readable runtime summaries, and future orchestration responsibilities for comparing control and Hosted pull request reviews.
 - Added record-driven experiment lifecycle commands that initialize three persistent bases, publish synthetic or imported changes as canonical source PRs against `test-content`, synchronize validated Control and Hosted mirror pairs, capture evidence without repeated metadata, guard writes to the authenticated user's personal provider fork, and safely close and remove only disposable mirror heads.
 - Flattened the Hosted source layout so product history, regression assets, and maintenance tools have direct ownership beneath `hosted_copilot/`, and changed the package manifest to a single mirrored path per owned file while installation computes and records exact deployed hashes.
-- Made the normalized catalog authoritative for path-specific rules and extended Hosted validation to require byte-identical generated output, provenance-specific evidence, complete active-rule rendering, focused check/write regression coverage, and reviewed upstream source baselines.
+- Made the normalized catalog authoritative for path-specific rules, recorded legacy, typed, and framework applicability for implementation rules, completed a semantic provenance review against normative upstream prose and examples, and extended Hosted validation to require byte-identical generated output, provenance-specific evidence, complete active-rule rendering, focused check/write regression coverage, and reviewed upstream source baselines.
 
 ### Fixed
 

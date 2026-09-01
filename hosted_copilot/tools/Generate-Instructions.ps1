@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$CatalogPath = (Join-Path $PSScriptRoot '../rules/instruction-catalog.json'),
+    [string]$CatalogPath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/instruction-catalog.json'),
 
     [string]$HostedRoot = (Join-Path $PSScriptRoot '..'),
 
@@ -95,7 +95,13 @@ foreach ($surface in @($catalog.surfaces)) {
                 throw "Active rule ID is rendered more than once: $id"
             }
             $usedRuleIds.Add($id)
-            $lines.Add("- ``[$id]`` $($rule.text)")
+            $implementationModelScope = if ($surface.id -eq 'implementation') {
+                " [$($rule.implementationModels -join ', ')]"
+            }
+            else {
+                ''
+            }
+            $lines.Add("- ``[$id]``$implementationModelScope $($rule.text)")
         }
     }
 

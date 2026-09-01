@@ -356,7 +356,7 @@ The generator and validation pipeline must reject generated hosted-guidance outp
 
 ## Rule Source Model:
 
-The Hosted Toolkit must maintain normalized rules under `hosted_copilot/rules/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
+The Hosted Toolkit must maintain normalized rules under `hosted_copilot/copilot-rule-catalog/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
 
 The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the Interactive Toolkit installer layout.
 
@@ -379,10 +379,23 @@ The entire `hosted_copilot/` tree is an isolated distribution source. It must no
 - Evidence references
 - Whether an upstream documentation gap exists
 - Runtime inclusion decision
+- Implementation model applicability for implementation rules
 - Deterministic or model-based enforcement method
 - Last semantic review date
 
 A mandatory tribal requirement remains mandatory even though it is not explicitly documented.
+
+### Implementation Model Convention:
+
+The provider contains three concurrent implementation models. They must not be treated as interchangeable.
+
+- `Legacy` means the function-based untyped Plugin SDK model used by most existing resources and data sources. Maintain this model for existing files unless the task explicitly includes migration.
+- `Typed` means the receiver-based `internal/sdk` model. Published contributor guidance currently makes this the default for new ordinary resources and data sources.
+- `Framework` means the newest framework-native direction. Current first-class framework surfaces include list resources, ephemeral resources, and provider-defined functions; future migrations may extend framework ownership without retroactively changing the model of existing files.
+
+Review rules must declare which models they apply to. Reviewers must classify the changed file before applying model-specific lifecycle, schema, state, or callback guidance. The existence of newer typed or framework code in the same service does not authorize incidental migration of legacy or typed files.
+
+This model hierarchy combines published upstream typed-versus-untyped guidance with direct maintainer confirmation of the framework migration direction. The catalog therefore records both published upstream and confirmed maintainer provenance where one rule describes the complete three-model boundary.
 
 ### Oxford Comma Requirement:
 

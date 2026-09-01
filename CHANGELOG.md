@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **[Docs]** - Documentation reviews and writing now require four-backtick outer fences when examples contain nested fenced code blocks, matching upstream reference documentation standards.
 
 - **Maintainer/Workflow:**
-  - **[Internal]** - Defined the repository's two-toolkit architecture, an explicit Hosted Experiment MVP handoff, and changed-path validation dispatch so the versioned Interactive Toolkit and source-deployed Hosted experiment remain independently owned and validated across single-toolkit, mixed, shared, repository-maintenance, and unclassified changes; repo-local validation and test reports now consume one shared presentation module for standard sections, summaries, tables, statuses, nested child progress, aggregate `TOTAL` durations, and terminal spacing while preserving presentation-free JSON.
+  - **[Implementation]** - Implementation guidance now distinguishes legacy untyped Plugin SDK, typed `internal/sdk`, and framework-native models, preserves the current model during maintenance unless migration is explicit, and keeps typed as the current default for new ordinary resources and data sources while framework-native surfaces follow their specialized patterns.
+  - **[Internal]** - Defined the repository's two-toolkit architecture, an explicit Hosted Experiment MVP handoff, and changed-path validation dispatch so the versioned Interactive Toolkit and source-deployed Hosted experiment remain independently owned and validated across single-toolkit, mixed, shared, repository-maintenance, and unclassified changes; repo-local validation and test reports now consume one shared presentation module for standard sections, summaries, tables, statuses, nested child progress, durations, and terminal spacing while preserving presentation-free JSON.
 
 ### Fixed
 

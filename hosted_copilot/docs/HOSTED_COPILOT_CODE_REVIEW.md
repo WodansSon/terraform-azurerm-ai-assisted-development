@@ -14,7 +14,7 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 
 ## Source Maintenance:
 
-The source repository keeps path-specific rules in `hosted_copilot/rules/instruction-catalog.json`. The catalog preserves published upstream standards, maintainer conventions, and local safeguards as separate provenance classes. Generated files under `hosted_copilot/.github/instructions/` must not be edited directly.
+The source repository keeps path-specific rules in `hosted_copilot/copilot-rule-catalog/instruction-catalog.json`. The catalog preserves published upstream standards, maintainer conventions, and local safeguards as separate provenance classes. Generated files under `hosted_copilot/.github/instructions/` must not be edited directly.
 
 Check generated-file freshness without writing:
 

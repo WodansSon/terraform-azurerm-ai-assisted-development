@@ -12,8 +12,8 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $hostedRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $generatorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
-$sourceCatalogPath = Join-Path $hostedRoot 'rules/instruction-catalog.json'
-$sourceSchemaPath = Join-Path $hostedRoot 'rules/instruction-catalog.schema.json'
+$sourceCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
+$sourceSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-instruction-generation-{0}" -f [Guid]::NewGuid().ToString('N'))
@@ -46,7 +46,7 @@ function Invoke-Generator {
     $arguments = @(
         '-NoProfile',
         '-File', $generatorPath,
-        '-CatalogPath', (Join-Path $tempRoot 'rules/instruction-catalog.json'),
+        '-CatalogPath', (Join-Path $tempRoot 'copilot-rule-catalog/instruction-catalog.json'),
         '-HostedRoot', $tempRoot,
         '-OutputFormat', 'Json'
     )
@@ -66,10 +66,10 @@ function Invoke-Generator {
 }
 
 try {
-    $rulesDirectory = Join-Path $tempRoot 'rules'
-    New-Item -ItemType Directory -Path $rulesDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $rulesDirectory 'instruction-catalog.json')
-    Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $rulesDirectory 'instruction-catalog.schema.json')
+    $catalogDirectory = Join-Path $tempRoot 'copilot-rule-catalog'
+    New-Item -ItemType Directory -Path $catalogDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.json')
+    Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.schema.json')
 
     $catalog = Get-Content -LiteralPath $sourceCatalogPath -Raw | ConvertFrom-Json
     foreach ($surface in @($catalog.surfaces)) {
@@ -82,7 +82,15 @@ try {
     $baseline = Invoke-Generator
     Add-TestResult -Name 'baseline-freshness' -Passed ($baseline.exitCode -eq 0) -Detail $(if ($baseline.exitCode -eq 0) { 'Current catalog reproduces all committed instruction files.' } else { $baseline.output })
 
-    $tempCatalogPath = Join-Path $rulesDirectory 'instruction-catalog.json'
+    $implementationOutputPath = Join-Path $tempRoot ([string]$catalog.surfaces[0].outputPath)
+    $implementationOutput = Get-Content -LiteralPath $implementationOutputPath -Raw
+    $modelRenderingPassed = $implementationOutput.Contains('- `[IMPL-WF-002B]` [legacy, typed]') -and
+        $implementationOutput.Contains('- `[IMPL-SCHEMA-008]` [legacy, typed]') -and
+        $implementationOutput.Contains('- `[IMPL-PATCH-001]` [legacy, typed]') -and
+        $implementationOutput.Contains('- `[IMPL-SCHEMA-007]` [legacy, typed, framework]')
+    Add-TestResult -Name 'implementation-model-rendering' -Passed $modelRenderingPassed -Detail $(if ($modelRenderingPassed) { 'Generated implementation rules preserve model-specific applicability.' } else { 'Generated implementation model markers are missing or incorrect.' })
+
+    $tempCatalogPath = Join-Path $catalogDirectory 'instruction-catalog.json'
     $catalog.rules[0].origin = 'hosted-catalog-addition'
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
     $catalogAddition = Invoke-Generator
@@ -101,6 +109,11 @@ try {
     $afterWriteHash = (Get-FileHash -LiteralPath $firstOutputPath -Algorithm SHA256).Hash
     $writePassed = $writeResult.exitCode -eq 0 -and $afterWriteHash -ne $beforeStaleHash
     Add-TestResult -Name 'explicit-write' -Passed $writePassed -Detail $(if ($writePassed) { 'Write mode updates stale generated output explicitly.' } else { $writeResult.output })
+
+    $catalog.rules[0].PSObject.Properties.Remove('implementationModels')
+    $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
+    $missingModelMetadata = Invoke-Generator
+    Add-TestResult -Name 'implementation-model-required' -Passed ($missingModelMetadata.exitCode -ne 0) -Detail $(if ($missingModelMetadata.exitCode -ne 0) { 'Implementation rules without model applicability fail schema validation.' } else { 'Implementation rule model applicability was not enforced.' })
 }
 catch {
     $issues.Add($_.Exception.Message)

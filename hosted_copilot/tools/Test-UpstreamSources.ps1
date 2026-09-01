@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$CatalogPath = (Join-Path $PSScriptRoot '../rules/instruction-catalog.json'),
+    [string]$CatalogPath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/instruction-catalog.json'),
 
     [switch]$FailOnDrift,
 
