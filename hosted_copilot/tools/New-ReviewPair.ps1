@@ -12,7 +12,7 @@ param(
     [string]$RunId,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Lite', 'Medium')]
+    [ValidateSet('Lite', 'Balanced')]
     [string]$ReviewEffort,
 
     [string]$ControlBase = 'control-base',
@@ -99,7 +99,7 @@ function Get-PullRequestFiles {
     if ($result.Count -ne $ExpectedCount) {
         throw "Source pull request file capture is incomplete; expected $ExpectedCount, found $($result.Count)"
     }
-    return @($result)
+    return @($result.ToArray())
 }
 
 function New-MirrorCommit {

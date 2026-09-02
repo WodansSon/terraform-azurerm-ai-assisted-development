@@ -18,7 +18,7 @@ param(
     [string]$RunId,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]
-    [ValidateSet('Lite', 'Medium')]
+    [ValidateSet('Lite', 'Balanced')]
     [string]$ReviewEffort,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Manual')]

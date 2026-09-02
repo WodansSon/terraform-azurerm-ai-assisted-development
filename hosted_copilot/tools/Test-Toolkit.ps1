@@ -303,6 +303,20 @@ if ($runtimeStarted) {
             $lifecycleIssues.Add("lifecycle command does not parse: $lifecyclePath")
         }
     }
+    $reviewEffortCommandPaths = @($reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath)
+    foreach ($reviewEffortCommandPath in $reviewEffortCommandPaths) {
+        try {
+            $reviewEffortParameter = (Get-Command -Name $reviewEffortCommandPath -CommandType ExternalScript).Parameters['ReviewEffort']
+            $reviewEffortValidateSets = @($reviewEffortParameter.Attributes | Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] })
+            $reviewEffortValues = @($reviewEffortValidateSets.ValidValues | Sort-Object -Unique)
+            if ($reviewEffortValidateSets.Count -ne 1 -or ($reviewEffortValues -join ',') -ne 'Balanced,Lite') {
+                throw "expected Lite and Balanced, found $($reviewEffortValues -join ', ')"
+            }
+        }
+        catch {
+            $lifecycleIssues.Add("$(Split-Path -Leaf $reviewEffortCommandPath) must accept exactly the Lite and Balanced review effort levels: $($_.Exception.Message)")
+        }
+    }
     if (Test-Path -LiteralPath $reviewBaseInitializerPath -PathType Leaf) {
         $initializerContent = Get-Content -LiteralPath $reviewBaseInitializerPath -Raw
         if ($initializerContent -notmatch '\[switch\]\$Initialize' -or $initializerContent -notmatch '\[switch\]\$Push' -or $initializerContent -notmatch '\$TestContentBase' -or $initializerContent -notmatch 'Assert-HostedReviewWritableFork') {
@@ -313,6 +327,37 @@ if ($runtimeStarted) {
         $creatorContent = Get-Content -LiteralPath $reviewPairCreatorPath -Raw
         if ($creatorContent -notmatch '\[switch\]\$Create' -or $creatorContent -notmatch '\$SourcePullRequest' -or $creatorContent -notmatch '\$TestContentBase' -or $creatorContent -notmatch 'control-review/' -or $creatorContent -notmatch 'hosted-review/' -or $creatorContent -notmatch 'push --atomic' -or $creatorContent -notmatch 'Assert-HostedReviewWritableFork') {
             $lifecycleIssues.Add('pair creation must mirror one test-content source PR into guarded atomic Control and Hosted review heads')
+        }
+        try {
+            $creatorTokens = $null
+            $creatorParseErrors = $null
+            $creatorAst = [System.Management.Automation.Language.Parser]::ParseFile($reviewPairCreatorPath, [ref]$creatorTokens, [ref]$creatorParseErrors)
+            $pullRequestFilesFunction = $creatorAst.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PullRequestFiles'
+                }, $true)
+            if ($null -eq $pullRequestFilesFunction) {
+                throw 'Get-PullRequestFiles was not found'
+            }
+            $capturedFiles = @(& {
+                    param($functionDefinition)
+
+                    function Invoke-HostedReviewGitHubApi {
+                        return @(
+                            [pscustomobject]@{ filename = 'first.go' },
+                            [pscustomobject]@{ filename = 'second.go' }
+                        )
+                    }
+
+                    . ([scriptblock]::Create($functionDefinition))
+                    Get-PullRequestFiles -Repository 'owner/repository' -Number 1 -ExpectedCount 2
+                } $pullRequestFilesFunction.Extent.Text)
+            if ($capturedFiles.Count -ne 2 -or $capturedFiles[0].filename -ne 'first.go' -or $capturedFiles[1].filename -ne 'second.go') {
+                throw 'Get-PullRequestFiles did not preserve the mocked file collection'
+            }
+        }
+        catch {
+            $lifecycleIssues.Add("pair creation must return captured pull request files as a cross-platform object array: $($_.Exception.Message)")
         }
     }
     if (Test-Path -LiteralPath $reviewPullRequestImporterPath -PathType Leaf) {
@@ -708,6 +753,11 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'review-results'
     try {
+        $reviewResultSchema = Get-Content -LiteralPath $reviewResultSchemaPath -Raw | ConvertFrom-Json
+        $schemaReviewEffortValues = @($reviewResultSchema.'$defs'.profileResult.properties.reviewEffort.enum | Sort-Object -Unique)
+        if (($schemaReviewEffortValues -join ',') -ne 'Balanced,Lite') {
+            throw "paired review result schema must accept exactly Lite and Balanced review effort levels, found $($schemaReviewEffortValues -join ', ')"
+        }
         $global:LASTEXITCODE = 0
         $reviewResultOutput = @(& $reviewResultValidatorPath -OutputFormat Json 2>&1)
         $reviewResultExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }

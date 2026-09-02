@@ -12,7 +12,7 @@ param(
     [string]$RunId,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Lite', 'Medium')]
+    [ValidateSet('Lite', 'Balanced')]
     [string]$ReviewEffort,
 
     [string]$ControlBase = 'control-base',

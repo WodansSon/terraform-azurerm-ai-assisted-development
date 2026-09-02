@@ -27,3 +27,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - Added deterministic Mermaid rendering validation with Mermaid CLI `11.16.0` and supported Puppeteer `24.15.0` instead of relying on deprecated diagnostic dependencies.
+- Corrected experiment lifecycle commands to accept GitHub's supported `Lite` and `Balanced` review effort levels, constrain paired results to the same values, and return captured pull request files as a cross-platform object array.

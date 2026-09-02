@@ -198,8 +198,10 @@
           "$ref": "#/$defs/sha256Hash"
         },
         "reviewEffort": {
-          "type": "string",
-          "minLength": 1
+          "enum": [
+            "Lite",
+            "Balanced"
+          ]
         },
         "modelName": {
           "type": "string",
