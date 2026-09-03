@@ -26,6 +26,7 @@ Apply these rules only when changed lines introduce or expose an actionable test
 
 ## Generated And Embedded Content:
 
+- `[TEST-PATTERN-007]` In `fmt.Sprintf`-based acceptance-test configuration helpers, pass one-use helper calls such as `r.template(data)` directly as arguments instead of assigning them to a local variable first. Introduce a local only when the value is reused or transformed.
 - `[TEST-PATTERN-008]` Use one canonical helper type for each Terraform resource or data source across main, list, identity, and generated tests. Do not hand-edit generated identity tests or bridge naming drift with aliases or wrappers.
 - `[TEST-PATTERN-010]` Embedded Terraform configuration must use two-space indentation and no tabs. Go formatting and Go tests do not detect invalid indentation inside raw strings.
 

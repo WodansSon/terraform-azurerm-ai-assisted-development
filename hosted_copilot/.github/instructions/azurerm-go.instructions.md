@@ -10,6 +10,7 @@ Apply these rules only when changed lines introduce or expose an actionable defe
 ## Evidence And Implementation Model:
 
 - `[IMPL-EVID-001]` [legacy, typed, framework] Do not infer Azure field types, required properties, enum values, or PATCH semantics. Verify them against generated SDK models and the selected API version.
+- `[IMPL-EVID-002]` [legacy, typed, framework] Use the closest same-service resource or data source as the primary pattern source for schema shape, CRUD structure, expand and flatten helpers, and timeouts. Do not introduce a new local pattern when an established service pattern already covers the problem.
 - `[IMPL-WF-001A]` [legacy, typed, framework] Classify implementation code as legacy untyped Plugin SDK, typed `internal/sdk`, or framework-native before suggesting changes. Maintain the existing model unless the task is an explicit migration; use typed for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces.
 
 ## Create And Import Behavior:
@@ -17,10 +18,16 @@ Apply these rules only when changed lines introduce or expose an actionable defe
 - `[IMPL-WF-002B]` [legacy, typed] A create-time import-as-exists check must honor `SkipImportCheckOnCreateAndAllowOverwritingExistingResources`; when the feature is enabled, existing remote resources must not trigger `ImportAsExistsError`.
 - `[IMPL-WF-002C]` [legacy, typed] When Resource Identity is supported, callback-based create flows must set both the resource ID and identity before returning. Do not defer required identity population until Read.
 
+## Specialized Surfaces:
+
+- `[IMPL-WF-004]` [framework] Ephemeral resources belong in the owning service package as `*_ephemeral.go` using the `sdk.EphemeralResource` pattern with `Metadata`, `Configure`, `Schema`, and `Open` rather than CRUD methods. Registration through `Registration.EphemeralResources()`, `website/docs/ephemeral-resources/` docs, and `*_ephemeral_test.go` coverage are required companions.
+- `[IMPL-WF-005]` [framework] Provider-defined functions belong under `internal/provider/function/` using the framework `function.Function` pattern with `Metadata`, `Definition`, and `Run`. `website/docs/functions/` docs and `internal/provider/function/*_test.go` coverage are required companions.
+
 ## Schema And State:
 
 - `[IMPL-SCHEMA-001]` [legacy, typed, framework] Required, optional, computed, ForceNew, defaults, conflicts, and validation must match actual API and lifecycle behavior. Flag schema declarations that permit invalid requests, reject valid configuration, or cannot round-trip state.
 - `[IMPL-SCHEMA-004]` [legacy, typed] Prefer generated SDK `PossibleValuesFor...()` helpers for enum validation when they represent the accepted set. A narrower validator requires service-specific evidence.
+- `[IMPL-SCHEMA-005]` [legacy, typed] Compose established validators inline in the schema, including nested `validation.All(...)` and `validation.Any(...)` combinations. Extract into the same service's `validate/` folder only for genuinely complex bespoke logic, and name that file and its unit test for the validated subject.
 - `[IMPL-SCHEMA-006]` [legacy, typed, framework] Parse Azure-returned resource IDs with the shared typed parser and write the parser's canonical `.ID()` form to Terraform state. Do not persist raw API ID casing when a parser exists.
 - `[IMPL-SCHEMA-007]` [legacy, typed, framework] Do not expose preview-only Azure properties as stable schema before GA unless the provider's explicit feature-gate policy permits them.
 - `[IMPL-SCHEMA-008]` [legacy, typed] When Azure uses a `None`, `Off`, or equivalent sentinel for omission, keep that sentinel out of user-facing validation, expand omitted configuration to the API sentinel, and flatten the sentinel back to omitted state.
@@ -36,5 +43,10 @@ Apply these rules only when changed lines introduce or expose an actionable defe
 
 - `[IMPL-ERR-001]` [legacy, typed, framework] Provider errors must be lowercase, add the operation and resource context needed to diagnose the failure, wrap field names and values in backticks, avoid contractions and terminal punctuation, and use `%+v` for underlying errors. Use `errors.New(...)` for static messages that do not wrap an error or require formatting; use `fmt.Errorf(...)` only when formatting values or wrapping context.
 - `[IMPL-ERR-002]` [legacy, typed, framework] Return already comprehensive typed resource ID parser errors directly. Wrap them only when the additional context materially improves diagnosis.
+
+## Code Clarity:
+
+- `[IMPL-CODE-001]` [legacy, typed, framework] Comment only non-obvious Azure quirks, Azure SDK workarounds, irreducibly complex logic, or non-obvious state behavior. Do not comment variable assignments, struct initialization, standard Terraform or Go patterns, obvious field mappings, or routine error and nil handling.
+- `[IMPL-CODE-002]` [legacy, typed, framework] Do not add generic lifecycle logging such as `Creating %s`, `Reading %s`, `Updating %s`, or `Deleting %s` that only duplicates Terraform core or provider-native logging. Targeted not-found or removing-from-state diagnostics remain acceptable when they add distinct debugging value.
 
 These rules are compact Hosted selections from the implementation compliance contract. Test lifecycle and acceptance-test conventions are deferred to the test supplement so test files do not load duplicate rule meaning.
