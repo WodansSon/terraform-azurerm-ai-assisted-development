@@ -105,11 +105,14 @@ During the experiment, the normalized catalog is the authority for path-specific
 `hosted_copilot/.github/copilot-instructions.md` contains only guidance needed for every Hosted review:
 
 - Repository purpose and important evidence locations
+- The required review procedure, including mandatory use of the `code-review` skill
+- Contributor guide precedence over path-specific rules
 - Actionable-defect threshold
-- Evidence hierarchy
+- Evidence hierarchy for establishing what changed code does
+- Finding attribution to the enforcing rule ID or contributor guide section
 - Duplicate-feedback avoidance
 - Concise inline-comment expectations
-- Trust rules for Hosted customization changes
+- Trust rules for Hosted customization changes and changed contributor guidance
 - Pointers to deterministic checks that are safe in the Hosted environment
 
 Do not place detailed Go, test, or documentation requirements in this file.
@@ -160,9 +163,9 @@ It contains published documentation requirements and mandatory confirmed maintai
 
 Implementation rules classify applicability across `legacy`, `typed`, and `framework`. Legacy identifies function-based untyped Plugin SDK maintenance surfaces, typed identifies ordinary receiver-based `internal/sdk` resources and data sources, and framework identifies framework-native or specialized surfaces. The generator renders this applicability with each implementation rule so review does not apply typed or framework patterns to legacy code, or treat maintenance as an implicit migration.
 
-The initial catalog is a lossless migration of all existing Hosted path-specific rules. Every migrated rule remains `active`, retains its original text, and records `hosted-baseline-migration` as its origin. The generator must reproduce the committed instruction files byte-for-byte before any catalog change can be accepted.
+The catalog must preserve every applicable Hosted path-specific requirement, including requirements drawn from Interactive Toolkit compliance contracts that the contributor guide does not already mandate. Each rule with an Interactive compliance-contract counterpart must be `active`, retain the counterpart's requirement meaning, and record `hosted-baseline-migration` as its origin. The generator must reproduce the committed instruction files byte-for-byte before any catalog change can be accepted.
 
-Use `hosted-catalog-addition` as the origin for a rule first introduced through the normalized catalog after the baseline migration. Origin records how the rule entered the catalog; provenance separately records why the rule is authoritative.
+Use `hosted-catalog-addition` as the origin for a rule that has no Interactive compliance-contract counterpart and was first introduced through the normalized catalog. Origin records how the rule entered the catalog; provenance separately records why the rule is authoritative.
 
 Published upstream standards, confirmed maintainer conventions, inferred maintainer conventions, and local safeguards remain independent provenance classes. Missing upstream coverage must never remove or weaken a maintainer convention. Hybrid rules may record more than one provenance class. A rule can leave runtime output only through an explicit `retired` status and retirement reason.
 
@@ -198,17 +201,18 @@ The command fetches only contributor sources cited by active Hosted rules, compa
 
 `hosted_copilot/.github/skills/code-review/SKILL.md` defines one compact review procedure:
 
+- Read the complete contributor guide under `contributing/` before producing any finding, and report the review as blocked when the guide cannot be enumerated or fully read.
 - Classify the changed file surface.
 - Read the diff and nearest evidence needed to prove or disprove a concern.
-- Apply the repository-wide and matching path-specific rules.
+- Evaluate changed files against the guide checklist, then apply the repository-wide and matching path-specific rules.
 - Inspect existing review feedback when GitHub context makes it available.
 - Suppress materially equivalent comments.
 - Emit only actionable, line-addressable findings.
-- Keep each comment concise and include the applicable stable rule ID.
+- Keep each comment concise and cite the applicable stable rule ID, or the contributor guide file and section when no path-specific rule applies.
 
 The skill must not reproduce Interactive Toolkit roles, handoff schemas, frozen audits, moderation, presentation passes, or pending-review staging.
 
-Mandatory requirements remain in path-specific instructions. Skill relevance is not a sufficient enforcement boundary.
+Mandatory requirements remain in the contributor guide and path-specific instructions. Skill relevance is not a sufficient enforcement boundary.
 
 ## Guidance Budgets:
 

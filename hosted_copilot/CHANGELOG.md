@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Documented contributor guide precedence as the Hosted rule-source model, recorded the narrower control-versus-Hosted comparison the current lifecycle commands actually produce, and aligned the runtime file responsibilities and catalog origin definitions with the extended rule set.
 - Made the HashiCorp contributor guide the golden standard for Hosted review by requiring the review skill to enumerate and read every file under `contributing/` before producing findings, treating path-specific rules as supplemental, attributing each finding to either its stable rule ID or the guide section that requires it, and extending the head-branch trust boundary to changed contributor guidance.
 - Aligned repo-local Hosted validation and test reports with the Interactive Toolkit execution-state contract by consuming one shared presentation module for phases, skipped design gates, divider-framed sections, structured summaries, tables, nested child progress, durations, terminal spacing, and presentation-free JSON.
 - Replaced the UTF-8 byte token upper bound with a dependency-free four-characters-per-token estimate and 25% safety headroom.
