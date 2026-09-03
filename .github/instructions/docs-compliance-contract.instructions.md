@@ -76,18 +76,6 @@ Areas:
 - `DEPR` = next-major (vNext) deprecations
 - `EVID` = evidence/verification guardrails
 
-## Rule provenance
-
-Some rules in this contract come from published upstream standards, while others are inferred from repeated maintainer review behavior or added locally to reduce audit drift.
-
-Use the following provenance labels when a rule needs extra source clarity:
-
-- `Published upstream standard`: explicitly documented by upstream contributor or provider documentation standards.
-- `Inferred maintainer convention`: not clearly codified upstream, but supported by repeated maintainer review guidance, accepted maintainer rewrites, or other factual review evidence.
-- `Local safeguard`: a repository-local rule added to reduce drift, ambiguity, or run-to-run inconsistency even when upstream documentation is silent or less explicit.
-
-Provenance rollout is incremental. New rules and touched ambiguous rules should include provenance notes first; older rules may be backfilled over time.
-
 ## Evidence hierarchy
 
 When a rule requires behavioral claims, use this evidence order:
@@ -98,8 +86,6 @@ When a rule requires behavioral claims, use this evidence order:
 
 If you cannot locate workspace evidence for a claim that affects validity, do not guess.
 
----
-
 # Contract Rules
 
 ## Evidence & guardrails
@@ -109,8 +95,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Writer behavior**: prefer removing/avoiding the unproven claim, or locate evidence.
 - **Auditor behavior**: record an Issue stating evidence could not be proven.
 
----
-
 ## Observations
 
 ### DOCS-OBS-001: Prefer boolean `*_enabled` over string toggles (observation-only)
@@ -118,8 +102,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Tri-state nuance**: if a third value exists (for example `None`), a string enum may be justified.
 - **Auditor behavior**: report as an **Observation** only (not an Issue), unless the docs are incorrect relative to the current schema.
 - **Docs behavior**: documentation MUST describe the schema as it exists today. This observation must NOT be used to justify rewriting docs to a hypothetical boolean field; it should only surface as an observation about schema design.
-
----
 
 ## Frontmatter
 
@@ -168,8 +150,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 
 ### DOCS-FM-006: `layout` must be `azurerm`
 - **Rule**: The YAML `layout` value for resource, data source, list-resource, ephemeral-resource, and function reference docs MUST be `azurerm`.
-
----
 
 ## Structure
 
@@ -225,8 +205,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Scope**: function docs under `website/docs/functions/**`.
 - **Rule**: Function docs MUST include the exact runtime-support note `~> **Note:** Provider-defined functions are supported in Terraform 1.8 and later, and are available from version 4.0 of the provider.` immediately below the title and before the summary sentence.
 
----
-
 ## Formatting
 
 ### DOCS-FMT-001: Canonical section intro lines
@@ -246,12 +224,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 
 ### DOCS-FMT-004: Outer fences must contain nested code fences safely
 - **Rule**: A code block containing a nested triple-backtick code block MUST use four backticks for its outer opening and closing fences.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`
-  - That guidance requires four backticks around an outer code block that contains nested code blocks
-
----
 
 ## Import (resources)
 
@@ -279,8 +251,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
     3) preserve the key's casing in the derived name (for example `customDomains` -> `customDomain1`)
   - **Special-cases**:
     - `resourceGroups/<value>` MUST use `resourceGroup1`
-
----
 
 ## Schema shape parity
 
@@ -322,22 +292,12 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Scope**: block references inside block subsections (for example nested bullets that describe another documented block subsection in the same page section).
 - **Rule**: When directional wording is used for a referenced block subsection in the same section, `as defined above` MUST be used when the referenced block subsection appears earlier in that section, and `as defined below` MUST be used when the referenced block subsection appears later in that section.
 - **Rule**: This does not change the canonical top-level block bullet pattern under `## Arguments Reference` or `## Attributes Reference`, which continues to use `as defined below`.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to make subsection cross-references deterministic after block reordering
-  - Enforced by this repository's docs contract rather than a clearly codified upstream wording rule
 
 ### DOCS-SHAPE-008: Block subsection separators
 - **Scope**: `## Arguments Reference` and `## Attributes Reference`.
 - **Rule**: Insert `---` immediately before the first block subsection heading that follows the top-level bullet list.
 - **Rule**: Insert `---` between adjacent block subsections.
 - **Rule**: Do not insert `---` between ordinary top-level argument or attribute bullets.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to keep nested block sections visually stable and patch-ready during audits
-  - Companion guidance and audits in this repository rely on this separator pattern for consistent rewrites
-
----
 
 ## Examples
 
@@ -348,20 +308,11 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: List-resource examples must be functional for a list query scenario and use Terraform `list` blocks rather than `resource` or `data` blocks for the primary example.
 - **Rule**: Ephemeral-resource examples must be functional for an ephemeral read scenario and use Terraform `ephemeral` blocks rather than `resource` or `data` blocks for the primary documented object.
 - **Rule**: Function examples must be functional for a provider-defined function scenario and call the documented function through `provider::azurerm::<name>(...)`.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
-  - That guidance says examples MUST be functional and should not error when a user runs `terraform plan`
-  - Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` separates resource examples from data source lookup examples and explains that data source examples may assume the looked-up object already exists
 
 ### DOCS-EX-001: Example Terraform config fences must be `hcl`
 - **Scope**: fenced Terraform configuration blocks under headings that start with `Example` (e.g. `## Example Usage`, `## Example ...`).
 - **Rule**: Terraform configuration examples MUST use fenced blocks labeled `hcl`.
 - **Out of scope**: code blocks outside `Example*` headings.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`
-  - That guidance says Terraform configuration should use `hcl` code fences and not `terraform`
 
 ### DOCS-EX-002: Example Terraform CLI fences must be `shell` or `shell-session`
 - **Scope**: fenced CLI blocks under headings that start with `Example`.
@@ -372,11 +323,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Rule**: Every Terraform reference used in a resource Example configuration (`resource`, `data`, `module`, expressions like `azurerm_*.*`, `data.*.*`, `module.*`) MUST be declared somewhere on the same doc page.
 - **Allowed pattern**: define shared resources in `## Example Usage`, reference them from other examples on the same page.
 - **Remediation rule**: if an Example is not self-contained, fix it by adding the missing `resource`/`data`/`module` declarations to the page (typically in `## Example Usage`), not by deleting the Example section/block.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to stop audits from resolving broken examples by deleting Example content or leaving undeclared references behind
-  - Reflected in this repository's docs review workflow for copy/pasteable examples
-  - Scoped to resource docs because the upstream clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` distinguishes resource examples from data source lookup examples
 
 ### DOCS-EX-020: Example self-containedness must be transitive
 - **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
@@ -386,10 +332,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Repeat until there are no undeclared references (transitive closure).
 - **Rule**: Do not stop after fixing only the first-level missing reference if doing so leaves the Example non-functional.
 - **Guardrail**: if you cannot complete transitive self-containedness without guessing due to missing workspace evidence, record an Observation and cite `DOCS-EVID-001`.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to prevent partial self-containedness fixes that still leave Example blocks unrunnable
-  - Enforced for deterministic docs audits in this repository
 
 ### DOCS-EX-021: Preserve reference semantics in examples
 - **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
@@ -398,10 +340,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
   - Examples of problematic "convenience" rewrites: replacing a reference with a plausible-looking hostname/domain string, or removing a reference entirely.
 - **Default behavior**: preserve the original reference intent and make the Example self-contained by declaring the referenced object(s) per `DOCS-EX-003`/`DOCS-EX-020`.
 - **Guardrail**: if evidence is insufficient to justify a reference↔literal change, do not guess; record an Observation per `DOCS-EVID-001`.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to stop Example repairs from inventing plausible-looking literal values that drift from real provider behavior
-  - Works with `DOCS-EVID-001` to keep example rewrites evidence-based
 
 ### DOCS-EX-019: Do not replace Terraform references with invented literals
 - **Scope**: resource Example Terraform configuration blocks (`## Example*`) in `website/docs/r/**`.
@@ -409,10 +347,6 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **Required remediation**: declare the missing referenced `resource`/`data`/`module` blocks on the same doc page (see `DOCS-EX-003`).
 - **Exception**: you may replace a reference with a literal only when schema/implementation evidence proves the literal value form and constraints deterministically and the Example is explicitly teaching a literal value scenario (see `DOCS-EX-010`/`DOCS-EX-016`). Otherwise record an Observation per `DOCS-EVID-001`.
 - **Independence**: this rule is independent of `DOCS-EX-004`/`DOCS-EX-018`; preserving existing required `depends_on` and example-adjacent notes remains mandatory.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added after repeated docs-audit failure modes where undeclared references were replaced with invented strings instead of real declarations
-  - Reinforces `DOCS-EX-003` and `DOCS-EX-021` with a concrete prohibited shortcut
 
 ### DOCS-EX-004: Preserve required `depends_on` verbatim when rewriting examples
 - **Rule**: If an existing example contains `depends_on = [...]`, it MUST be preserved with the same referenced objects when rewriting that example.
@@ -420,27 +354,15 @@ If you cannot locate workspace evidence for a claim that affects validity, do no
 - **How to fix self-containedness**: add missing referenced resources; do not delete/simplify `depends_on`.
 - **Hard rule**: if `depends_on` references objects not declared on the page, you MUST add the missing declarations rather than removing those entries.
 - **Non-negotiable**: do not remove or shorten an existing `depends_on` to make an example "simpler".
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to preserve sequencing semantics already present in existing examples and notes
-  - Prevents audits or rewrites from simplifying examples in ways that silently remove required ordering
 
 ### DOCS-EX-017: Do not introduce net-new `depends_on` without evidence
 - **Rule**: Do not introduce `depends_on` in examples unless schema/implementation evidence proves ordering is required, or the docs are explicitly teaching an ordering constraint.
 - **Guardrail**: If ordering requirements cannot be proven from schema/implementation evidence, do not add `depends_on` (see DOCS-EVID-001).
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to prevent speculative example fixes that add `depends_on` without proof
-  - Works with `DOCS-EVID-001` to keep ordering guidance evidence-based
 
 ### DOCS-EX-018: Preserve example-adjacent notes when rewriting examples
 - **Scope**: notes immediately above or directly associated with a Terraform configuration block under headings that start with `Example`.
 - **Rule**: If an `Example*` section contains a note that describes required sequencing/validation (for example, it claims a specific `depends_on` is required), you MUST preserve that note when rewriting the example.
 - **Rule**: If you change the example in a way that would make the note inaccurate, rewrite the note so it remains correct and evidence-based (do not delete it to avoid the obligation).
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to stop rewrites from dropping neighboring notes that explain why the Example is structured a certain way
-  - Keeps Example code and surrounding explanatory notes aligned during audits
 
 ### DOCS-EX-005: Examples must not hard-code secrets
 - **Rule**: Examples must not contain passwords/tokens/keys/client secrets/private keys/SAS tokens.
@@ -463,10 +385,6 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Scope**: resource docs under `website/docs/r/**`, data source docs under `website/docs/d/**`, list-resource docs under `website/docs/list-resources/**`, and ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
 - **Rule**: Example Terraform configuration blocks for those doc types must not include a `terraform { ... }` block or a `provider { ... }` block.
 - **Rule**: Function docs under `website/docs/functions/**` may include a `provider "azurerm"` block when needed to make the provider-defined function example runnable.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
-  - That guidance says resource and data source examples should not define a `terraform` or `provider` block
 
 ### DOCS-EX-009: Example HCL must be syntactically valid
 - **Rule**: Example Terraform configuration blocks must be valid HCL (balanced braces, correct block structure, no obvious truncation).
@@ -486,10 +404,6 @@ Additional auditor behavior (deterministic suffix; nit-level):
 ### DOCS-EX-012: Example sections must remain copy/pasteable Terraform
 - **Rule**: Do not delete or convert "Example …" Terraform configuration blocks into prose. An `Example*` section must contain copy/pasteable Terraform configuration.
 - **Rule**: Do not remove an `Example*` section (or its fenced Terraform configuration block) as a remediation for self-containedness or other example failures.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to prevent audits from resolving broken examples by collapsing them into prose
-  - Keeps `Example*` sections aligned with the repository's copy/pasteable-example expectation
 
 ### DOCS-EX-013: Example instance name convention (style)
 - **Rule**: Generally, the resource/data source/list-resource/ephemeral-resource instance name in examples should be `example`.
@@ -506,40 +420,22 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Rule**: Data source examples may assume the looked-up object already exists and do not need to declare the backing resource in the same example.
 - **Rule**: Data source examples should include only the arguments needed to identify the looked-up object.
 - **Rule**: Do not add resource scaffolding solely to create the lookup target in a data source example.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`
-  - Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` adds an explicit resource-example versus data-source-example split and says data source examples may assume the looked-up object already exists
 
 ### DOCS-EX-023: List-resource examples must demonstrate list queries
 - **Scope**: list-resource docs under `website/docs/list-resources/**`.
 - **Rule**: The primary example blocks in list-resource docs MUST use Terraform `list "azurerm_<name>" "example"` syntax for the documented list resource.
 - **Rule**: List-resource examples should demonstrate the intended query scopes of the list resource, such as the default subscription-wide query and any supported narrowed query configuration.
 - **Rule**: Do not model the primary example as a `resource` or `data` block when the page is documenting a list resource.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add documentation for this List Resource`
-  - The upstream example there uses `list "azurerm_network_profile" "example"` blocks and shows multiple query-scope examples for the list resource
 
 ### DOCS-EX-024: Ephemeral-resource examples must demonstrate ephemeral reads
 - **Scope**: ephemeral-resource docs under `website/docs/ephemeral-resources/**`.
 - **Rule**: The primary example blocks in ephemeral-resource docs MUST use Terraform `ephemeral "azurerm_<name>" "example"` syntax for the documented ephemeral resource.
 - **Rule**: Ephemeral-resource examples may include resource and data source blocks needed to source the ephemeral query inputs, but the primary documented object must remain an `ephemeral` block.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for ephemeral-resource reference pages
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_certificate.html.markdown`
 
 ### DOCS-EX-025: Function examples must call provider-defined functions
 - **Scope**: function docs under `website/docs/functions/**`.
 - **Rule**: Function examples MUST call the documented function using `provider::azurerm::<name>(...)` syntax.
 - **Rule**: Function docs may include additional example sections such as import-oriented examples when the function is specifically useful there.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
 
 ### DOCS-EX-015: Deterministic example name value derivation (nit-level)
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
@@ -566,17 +462,11 @@ Additional auditor behavior (deterministic suffix; nit-level):
     - If a minimum length is proven and the derived value is shorter, pad deterministically using only characters proven valid by evidence (prefer `1` if digits are allowed; otherwise `a` if letters are allowed).
   - Guardrail: if you cannot determine the allowed character set/separators/length bounds from schema/implementation evidence, or cannot satisfy constraints deterministically (for example a complex regex requirement), do not guess a renamed value (see DOCS-EVID-001).
 - **Severity**: this is a nit-level compliance rule and must not, by itself, make a page invalid.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to make example-name fixes deterministic across `/code-review-docs` and `/docs-writer`
-  - Helps avoid ad hoc renames that vary from run to run when multiple valid-looking names are possible
 
 ### DOCS-EX-016: Example values must respect ValidateFunc constraints
 - **Scope**: Example Terraform configuration blocks (`## Example*`).
 - **Rule**: If schema/implementation evidence constrains a string value (for example via `ValidateFunc`, regex, length bounds, charset restrictions, or an enum), any example value violating that constraint is invalid and must be fixed.
 - **Example**: if evidence forbids hyphens for a field value, any example value containing `-` is invalid.
-
----
 
 ## Notes
 
@@ -597,10 +487,6 @@ Additional auditor behavior (deterministic suffix; nit-level):
 
 ### DOCS-NOTE-003: Note formatting
 - **Rule**: Notes must use the exact format: `(->|~>|!>) **Note:** <text>`.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Notes`
-  - That guidance says note blocks should follow the exact format `(->|~>|!>) **Note:**`
 
 ### DOCS-NOTE-004: Note correctness
 - **Rule**: Note content must not contradict schema/implementation behavior.
@@ -621,15 +507,6 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Rule**: Data source, list-resource, ephemeral-resource, and function documentation for arguments, attributes, and nested fields MUST stay concise and limited to explaining what the field is.
 - **Rule**: Those doc types MUST NOT use field-level note blocks for additional caveats, setup guidance, conditional requirements, or extended explanations.
 - **Auditor behavior**: any field-level `-> **Note:**`, `~> **Note:**`, or `!> **Note:**` in a data source, list-resource, ephemeral-resource, or function doc is an Issue.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` prefers short, field-definitional data source bullets
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows concise query-argument bullets for list-resource docs
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/*.html.markdown` show concise ephemeral argument bullets plus only the top-level runtime-support note
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/*.html.markdown` show concise argument lists plus only the top-level runtime-support note
-  - Added to keep `/code-review-docs` and `/docs-writer` deterministic and prevent drift toward over-explained non-resource docs
-
----
 
 ## Arguments Reference
 
@@ -643,31 +520,16 @@ Additional auditor behavior (deterministic suffix; nit-level):
   2) `location` (if present)
   3) remaining required arguments (alphabetical)
   4) optional arguments (alphabetical), with `tags` always last
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Ordering`
-  - That guidance defines ID-segment ordering, `location`, required arguments, then optional arguments with `tags` last
 
 ### DOCS-ARG-012: List-resource query arguments should be ordered alphabetically
 - **Scope**: list-resource docs under `website/docs/list-resources/**`.
 - **Rule**: Query arguments in list-resource docs should be ordered alphabetically.
 - **Rule**: If the list-resource config schema marks an argument as required, keep required arguments first and then order within required and optional groups alphabetically.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows `resource_group_name` before `subscription_id` in the list-resource `Argument Reference`
-  - List-resource query config documents filters rather than resource identity fields, so the resource/data-source ID ordering pattern does not apply directly
 
 ### DOCS-ARG-013: Function argument lists must follow function signature order
 - **Scope**: function docs under `website/docs/functions/**`.
 - **Rule**: The `## Arguments` section for function docs MUST list parameters in the same order as the implementation signature.
 - **Rule**: Function arguments should be documented as ordered list items rather than resource-style argument bullets.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
-  - Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
 
 ### DOCS-ARG-003: ForceNew behavior must be documented
 - **Rule**: For `ForceNew: true` arguments, include the standard ForceNew sentence (see DOCS-WORD-001).
@@ -682,10 +544,6 @@ Additional auditor behavior (deterministic suffix; nit-level):
 - **Rule**: In resource docs, if more detail is needed, use a note block under the argument.
 - **Rule**: In data source docs, keep the bullet short and limited to explaining what the field is; do not add field-level note blocks or extended caveats.
 - **Rule**: Core argument semantics should remain in the bullet when they read cleanly, including the field definition, `Possible values are ...`, and `Defaults to ...` when applicable.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md`
-  - Contract rule `DOCS-NOTE-009` for data source field-level note prohibition
 
 ### DOCS-ARG-011: Argument bullet concision is semantic, not numeric
 - **Rule**: Each argument bullet description MUST remain concise and field-definitional, but sentence count alone is not a compliance criterion.
@@ -702,11 +560,6 @@ Example (rewrite long bullet to bullet + note):
 - After (compliant):
   - ``* `foo_id` - (Optional) The ID of the related resource.``
   - `-> **Note:** If you are using a managed DNS service, you may need to delegate your DNS zone; otherwise validate by creating the required DNS records manually.`
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions` requires concise descriptions and directs additional detail into notes
-  - That same guidance requires standard sentences for constrained possible values, defaults, and ForceNew behavior, and its examples show multiple required semantic sentences remaining in argument bullets
-  - Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` keeps core semantics in the bullet and moves only supplemental caveats into notes
 
 ### DOCS-ARG-009: ForceNew sentence placement
 - **Scope**: resources only.
@@ -727,8 +580,6 @@ Example (rewrite long bullet to bullet + note):
 
 ### DOCS-ARG-005: Validations must be documented (when constraining user input)
 - **Rule**: When schema validations constrain values (enums, bounds, etc.), docs must describe allowed values using the standard wording (see DOCS-WORD-002).
-
----
 
 ## Attributes Reference
 
@@ -752,8 +603,6 @@ Example (rewrite long bullet to bullet + note):
 - **Rule**: Remaining nested attributes MUST be listed alphabetically.
 - **Rule**: Any note blocks that apply to a nested attribute MUST remain directly attached to that attribute when reordering.
 
----
-
 ## Wording
 
 ### DOCS-WORD-003: Resource vs data source summary sentence
@@ -775,10 +624,6 @@ Example (rewrite long bullet to bullet + note):
 
 ### DOCS-WORD-001: ForceNew sentence
 - **Rule**: The ForceNew sentence MUST be exactly: `Changing this forces a new resource to be created.`
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`
-  - That guidance says ForceNew argument descriptions must end with `Changing this forces a new resource to be created.`
 
 ### DOCS-WORD-002: Enum wording
 - **Rule**: Use `Possible values are ...`.
@@ -788,10 +633,6 @@ Example (rewrite long bullet to bullet + note):
   - Replace `Valid options are` with `Possible values are`.
   - Replace `Valid values are` with `Possible values are`.
   - Replace `Possible values include` with `Possible values are`.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`
-  - That guidance defines the canonical wording for enums, single-value constraints, and numeric ranges
 
 ### DOCS-WORD-005: Oxford comma for lists
 - **Rule**: For lists of 3+ items in prose (including enum lists), use the Oxford comma.
@@ -805,10 +646,6 @@ Example (rewrite long bullet to bullet + note):
 - **Examples**:
   - Prefer `The ID of the Orchestrated Virtual Machine Scale Set.` over `The ID of the Virtual Machine Scale Set.`
   - Prefer `Used when creating the Orchestrated Virtual Machine Scale Set.` over `Used when creating the Virtual Machine Scale Set.`
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to prevent generic service-object wording drift in `Attributes Reference`, `Timeouts`, and `Import`
-  - Enforced through this repository's docs contract rather than a clearly codified upstream wording rule
 
 ### DOCS-WORD-007: Use Azure proper-name capitalization in field prose
 - **Rule**: When documentation prose refers to the Azure object `Resource Group`, capitalize it as `Resource Group` rather than `resource group`.
@@ -817,12 +654,6 @@ Example (rewrite long bullet to bullet + note):
 - **Examples**:
   - Prefer `The name of the Resource Group.` over `The name of the resource group.`
   - Prefer `The name of the Resource Group where the Resource exists.` over `The name of the resource group where the Resource exists.`
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Reviewer suggestion in hashicorp/terraform-provider-azurerm PR `#31957`, discussion `r3116933429`
-  - Existing companion guidance examples in `.github/instructions/documentation-guidelines.instructions.md`
-
----
 
 ## Timeouts
 
@@ -844,22 +675,16 @@ Example (rewrite long bullet to bullet + note):
   - If the page is existing/modified, treat a legacy link as allowed (no Issue).
   - If you cannot determine new vs existing from available context, record an Observation (not an Issue).
 
----
-
 ## Language
 
 ### DOCS-LANG-001: Fix obvious typos and grammar
 - **Rule**: Obvious typos and grammar mistakes in documentation must be fixed.
 - **Auditor behavior**: only raise an Issue when the fix is unambiguous and can be provided as an exact patch-ready replacement.
 
----
-
 ## Links
 
 ### DOCS-LINK-001: Locale-neutral Microsoft Learn links
 - **Rule**: Avoid locale segments like `/en-us/` in documentation URLs unless required.
-
----
 
 ## Deprecations (vNext)
 

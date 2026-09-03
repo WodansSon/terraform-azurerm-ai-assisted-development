@@ -422,6 +422,7 @@ terraform-azurerm-ai-assisted-development/
 │   ├── check-upstream-contributor-drift.ps1
 │   ├── Get-PRReady.ps1
 │   ├── Test-ChangedToolkitRouting.ps1
+│   ├── Test-InteractiveRuleCatalog.ps1
 │   ├── Test-PRReady.ps1
 │   ├── toolkit-ownership.json
 │   ├── Validate-ChangedToolkits.ps1
@@ -433,6 +434,9 @@ terraform-azurerm-ai-assisted-development/
 │   ├── validate-contracts.ps1
 │   ├── verify-bundle-checksum.ps1
 │   ├── config/
+│   ├── interactive-rule-catalog/
+│   │   ├── rule-catalog.json
+│   │   └── rule-catalog.schema.json
 │   ├── BashAnalyzer/
 │   ├── PSAnalyzer/
 │   └── regression/
@@ -474,6 +478,7 @@ The repository contains the shipped Interactive Toolkit runtime, preliminary Hos
 - The shipped `pr-description` workflow is a four-phase local drafting shortcut: two canonical one-line direct-Git evidence batches issued once each, one concurrent direct-read plan that extracts a concise material behavior inventory from changed paths, one skill draft that represents each user-facing behavior once while preserving immutable template lines verbatim, an in-memory schema conformance check, and one cheap final `HEAD` and status check. The behavior inventory covers meaningful scope, lifecycle, ownership guards, computed outputs, list behavior, and state normalization without performing correctness assessment or defect discovery. When a stale named main ref produces an implausibly broad scope, one bounded local first-parent metadata pass and one replacement scope pass can isolate a narrower contributor stack; the second parent of the newest clear mainline integration merge takes precedence over the linear contributor-boundary fallback so merged mainline history is not drafted as PR content. Unsuccessful recovery retains the original scope for dependency analysis. Cross-service Resources and shared helpers remain one intent when direct evidence connects them, and only multiple independent user-facing intents that cannot share one honest title hard-stop. It does not retry Git batches in alternate syntax, search for known changed paths, enumerate tests merely to prove authored coverage, regenerate template prose or URLs, generate terminal scripts, fetch, search GitHub, reload upstream policy, run tests, scan alternate environments, or compute full-content fingerprints.
 - Repo-only maintenance surfaces stay in this repository and are not installed into target repos.
 - Repo-only surfaces include maintainer skills such as `ai-toolkit-maintenance` and `changelog-maintenance`, the `docs/` architecture and alignment references, and the validation and regression tooling under `tools/`.
+- The tracked Interactive rule catalog under `tools/interactive-rule-catalog/` owns provenance and `active`, `deprecated`, and `retired` lifecycle history for contract rule IDs. Contracts remain the hand-authored runtime authority and are not generated from the catalog.
 
 ### Validation And Regression Surfaces
 
@@ -489,10 +494,11 @@ The current repository architecture includes deterministic validation and benchm
 - `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.
 - `tools/ValidationOutput.psm1`: shared repo-only presentation functions for validation section headers, summaries, status lines, tables, and terminal spacing.
 - `tools/Test-ValidationOutput.ps1`: exact output-contract coverage for the shared validation presentation functions.
+- `tools/Test-InteractiveRuleCatalog.ps1`: schema, lifecycle, contract-rule coverage, content-hash, upstream source-ID, and installer-exclusion validation for the repo-only Interactive rule catalog.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
-- `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
+- `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection using catalog source IDs for rule mappings and exact Markdown references for file mappings.
 - `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.
 - `docs/AI_REGRESSION_HARNESS.md`: the benchmark model and scoring philosophy behind the regression suite.
 

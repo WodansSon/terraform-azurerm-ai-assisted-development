@@ -33,6 +33,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Formal review workflow behavior belongs in the shared review contracts, prompts, and skills.
 - Shipped runtime guidance belongs only in files intentionally included by `installer/file-manifest.config`.
 - Repo-only maintainer workflow guidance must stay outside the shipped payload by default.
+- Hand-authored Interactive contracts own runtime rule wording and behavior; `tools/interactive-rule-catalog/rule-catalog.json` owns provenance and lifecycle history and must remain outside `installer/file-manifest.config`.
 
 ## Toolkit Ownership and Routing
 

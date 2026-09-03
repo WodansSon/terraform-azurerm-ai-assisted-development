@@ -12,12 +12,6 @@ $ErrorActionPreference = 'Stop'
 $validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
 
-$allowedProvenanceLabels = @(
-    'Published upstream standard',
-    'Inferred maintainer convention',
-    'Local safeguard'
-)
-
 $requiredContractHeadings = @(
     '## Canonical sources of truth (precedence)',
     'Conflict resolution:',
@@ -407,86 +401,6 @@ function Get-ContractReport {
 
     $companionInstructionPaths = @(Get-CompanionInstructionPaths -RelativeContractPath $relativePath -CanonicalSourceSection $canonicalSourceSection -DetailedCompanionSection $detailedCompanionSection)
 
-    $provenanceRuleCount = 0
-    $rulesWithEvidenceCount = 0
-
-    foreach ($ruleIndex in $ruleHeadingIndexes) {
-        $ruleHeading = $lines[$ruleIndex]
-        $ruleId = $ruleHeading -replace '^###\s+', ''
-        $ruleLines = @()
-
-        for ($i = $ruleIndex + 1; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^###\s+' -or $lines[$i] -match '^##\s+') {
-                break
-            }
-
-            $ruleLines += $lines[$i]
-        }
-
-        $provenanceLineIndex = -1
-        $evidenceLineIndex = -1
-        $provenanceValue = $null
-
-        for ($i = 0; $i -lt $ruleLines.Count; $i++) {
-            if ($ruleLines[$i] -match '^- \*\*Provenance\*\*:\s*(.+)$') {
-                $provenanceLineIndex = $i
-                $provenanceValue = $Matches[1].Trim().TrimEnd('.')
-            }
-
-            if ($ruleLines[$i] -match '^- \*\*Evidence\*\*:\s*$') {
-                $evidenceLineIndex = $i
-            }
-        }
-
-        if ($evidenceLineIndex -ge 0 -and $provenanceLineIndex -lt 0) {
-            $errors.Add("$ruleId has evidence but no provenance label")
-        }
-
-        if ($provenanceLineIndex -ge 0) {
-            $provenanceRuleCount++
-
-            if ($allowedProvenanceLabels -notcontains $provenanceValue) {
-                $errors.Add("$ruleId uses unsupported provenance label: $provenanceValue")
-            }
-
-            if ($evidenceLineIndex -lt 0) {
-                $errors.Add("$ruleId has provenance but no evidence block")
-            }
-            elseif ($evidenceLineIndex -lt $provenanceLineIndex) {
-                $errors.Add("$ruleId places evidence before provenance")
-            }
-            else {
-                $rulesWithEvidenceCount++
-
-                $hasEvidenceItems = $false
-                for ($i = $evidenceLineIndex + 1; $i -lt $ruleLines.Count; $i++) {
-                    $trimmedLine = $ruleLines[$i].TrimEnd()
-
-                    if ($trimmedLine -eq '') {
-                        continue
-                    }
-
-                    if ($trimmedLine -match '^- \*\*') {
-                        break
-                    }
-
-                    if ($trimmedLine -match '^  -\s+' -or $trimmedLine -match '^\s{2,}-\s+') {
-                        $hasEvidenceItems = $true
-                        break
-                    }
-
-                    if ($trimmedLine -match '^###\s+' -or $trimmedLine -match '^##\s+') {
-                        break
-                    }
-                }
-
-                if (-not $hasEvidenceItems) {
-                    $errors.Add("$ruleId has an evidence heading but no evidence bullet items")
-                }
-            }
-        }
-    }
-
     $consumers = Get-ContractConsumers -RepoRoot $RepoRoot -RelativeContractPath $relativePath
 
     $declaredConsumerPaths = @($declaredConsumers | ForEach-Object { $_.path })
@@ -563,8 +477,6 @@ function Get-ContractReport {
         consumers = @($consumers)
         eofMarker = $lastNonEmptyLine
         ruleCount = $ruleHeadingIndexes.Count
-        provenanceRuleCount = $provenanceRuleCount
-        rulesWithEvidenceCount = $rulesWithEvidenceCount
         errors = @($errors)
         warnings = @($warnings)
     }
@@ -594,7 +506,6 @@ function Write-TextReport {
         Write-Output (Format-ValidationStatusLine -Status $status -Name $report.path -Detail $report.title -NameWidth 80)
         Write-ValidationSummary -Fields ([ordered]@{
             Rules = $report.ruleCount
-            'Provenance Rules' = $report.provenanceRuleCount
             'Companion Instructions' = $report.companionInstructionCount
             'Declared Consumers' = $report.declaredConsumerCount
             'EOF-Load Consumers' = $report.eofLoadConsumerCount

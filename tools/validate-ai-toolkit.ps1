@@ -33,6 +33,7 @@ $changelogConsistencyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-co
 $architectureLayoutScriptPath = Join-Path $PSScriptRoot 'validate-architecture-layout.ps1'
 $copiedMarkdownLinksScriptPath = Join-Path $PSScriptRoot 'validate-copied-markdown-links.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
+$interactiveRuleCatalogScriptPath = Join-Path $PSScriptRoot 'Test-InteractiveRuleCatalog.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
@@ -448,6 +449,10 @@ try {
 
     $steps += Invoke-ValidationStep -Name 'contracts' -Detail 'Validate AI-toolkit contracts, companion guidance, and consumer wiring.' -Command {
         & pwsh -NoProfile -File $contractsScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'interactive-rule-catalog' -Detail 'Validate repo-only rule provenance, lifecycle history, runtime contract hashes, and installer exclusion.' -Command {
+        & pwsh -NoProfile -File $interactiveRuleCatalogScriptPath
     }
 
     $steps += Invoke-ValidationStep -Name 'project-ready-utility' -Detail 'Run deterministic argument, help, output, and error regression tests for the AzureRM project readiness utility.' -Command {

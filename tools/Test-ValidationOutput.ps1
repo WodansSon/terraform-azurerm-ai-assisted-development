@@ -113,6 +113,7 @@ Assert-OutputSequence -Name 'text output ending' -Actual @(Complete-ValidationTe
 $presentationConsumers = @(
     'check-upstream-contributor-drift.ps1',
     'Test-ChangedToolkitRouting.ps1',
+    'Test-InteractiveRuleCatalog.ps1',
     'Test-PRReady.ps1',
     'Test-ValidationOutput.ps1',
     'Validate-ChangedToolkits.ps1',

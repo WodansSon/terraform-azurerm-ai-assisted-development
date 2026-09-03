@@ -37,6 +37,7 @@ When doing AI-toolkit maintenance in this repository, use these sources in this 
 - `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md`
 - `tools/toolkit-ownership.json`
 - `tools/config/upstream-contributor.json`
+- `tools/interactive-rule-catalog/rule-catalog.json`
 - `CONTRIBUTING.md`
 - `.github/pull_request_template.md`
 - `installer/file-manifest.config`
@@ -96,7 +97,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 - Rule: It must not use heuristics to guess which local files or rules an upstream topic probably maps to.
 - Rule: Exact-reference aggregation is only for proving local links that are already explicitly written in repo content. It is not the semantic mapping step.
 - Rule: When the request is to check whether the AI toolkit is up to date, or when upstream HashiCorp contributor alignment is in scope, running `tools/check-upstream-contributor-drift.ps1` is a core step of this skill rather than an optional extra.
-- Rule: When the drift checker reports changed upstream sources or rule issues, follow it with an AI-assisted maintainer review before changing local rules, provenance labels, or evidence blocks.
+- Rule: When the drift checker reports changed upstream sources or rule issues, follow it with an AI-assisted maintainer review before changing local rules or catalog provenance and evidence records.
 - Rule: When the drift checker reports uncovered upstream topics or dynamically mapped untracked topics, use AI-assisted review to decide whether a new tracked source or local guidance update is needed.
 - Rule: Do not rewrite local guidance solely because a source hash changed; first determine whether the upstream change actually changes the meaning of the guidance.
 - **Provenance**: Local safeguard.
@@ -129,6 +130,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 
 - Keep authority boundaries clear:
   - Contracts remain the authority where they exist.
+  - The repo-only Interactive rule catalog is authoritative for rule provenance and lifecycle status; it does not generate contract wording.
   - Companion guidance should point back to the relevant contract.
   - Skills and routing files should not become competing authority sources.
 
@@ -141,7 +143,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Use `tools/config/upstream-contributor.json` for tracked-source baselines only.
   - Treat `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing` as the canonical remote contributor-doc root when comparing local references to upstream docs from this installer repo.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` to detect when tracked upstream docs have changed since the local baseline.
-  - Let the drift checker derive local mappings dynamically from exact upstream topic references already present in repo files and rule evidence blocks.
+  - Let the drift checker derive local rule mappings from explicit source IDs in `tools/interactive-rule-catalog/rule-catalog.json` and local file mappings from exact upstream topic references already present in repo files.
   - Let non-catalog sources such as the upstream pull request template declare a canonical `referenceUrl`; derive their local file and rule mappings from exact references rather than hard-coded ownership.
   - Use AI semantic matching after that deterministic pass to assess uncovered, changed, renamed, or merged upstream topics that do not already have explicit local links.
   - Do not add heuristic mapping rules to the script. If exact references are missing, let the drift checker surface that as a maintainer review event.
@@ -156,6 +158,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues` when Interactive Toolkit CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.
   - Run `pwsh -NoProfile -File ./tools/validate-contracts.ps1` after contract or consumer changes.
+  - Run `pwsh -NoProfile -File ./tools/Test-InteractiveRuleCatalog.ps1` after contract rule, provenance, evidence, or lifecycle changes.
   - Run `npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.markdownlint.json` after Markdown-based AI-toolkit changes.
 
 ## Output expectation
