@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/rule-intake-review.schema.json",
+  "title": "Hosted Rule Intake Review Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "upstreamCandidates", "interactiveCandidates"],
+  "properties": {
+    "$schema": { "const": "rule-intake-review.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "readOnly": { "const": true },
+    "refreshMode": { "const": "regenerate-read-only-bundle" },
+    "snapshots": { "$ref": "#/$defs/snapshots" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "guidanceCapacity": { "$ref": "#/$defs/guidanceCapacity" },
+    "upstreamCandidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/upstreamCandidate" }
+    },
+    "interactiveCandidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/interactiveCandidate" }
+    }
+  },
+  "$defs": {
+    "sha256Hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitHash": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "ruleId": { "type": "string", "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedCatalogSha256", "intakeLedgerSha256", "upstream", "interactive"],
+      "properties": {
+        "hostedCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
+        "intakeLedgerSha256": { "$ref": "#/$defs/sha256Hash" },
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "baselineCommit", "currentRef", "currentCommit"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "baselineCommit": { "$ref": "#/$defs/gitHash" },
+            "currentRef": { "type": "string", "minLength": 1 },
+            "currentCommit": { "$ref": "#/$defs/gitHash" }
+          }
+        },
+        "interactive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["catalogPath", "previousCatalogSha256", "currentCatalogSha256", "catalogChanged"],
+          "properties": {
+            "catalogPath": { "type": "string", "minLength": 1 },
+            "previousCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
+            "currentCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
+            "catalogChanged": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upstreamSourceCount", "changedUpstreamCount", "interactiveRuleCount", "interactiveReviewCount", "interactiveCurrentCount", "interactiveStateCounts"],
+      "properties": {
+        "upstreamSourceCount": { "type": "integer", "minimum": 0 },
+        "changedUpstreamCount": { "type": "integer", "minimum": 0 },
+        "interactiveRuleCount": { "type": "integer", "minimum": 0 },
+        "interactiveReviewCount": { "type": "integer", "minimum": 0 },
+        "interactiveCurrentCount": { "type": "integer", "minimum": 0 },
+        "interactiveStateCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["new", "changed", "retired", "deferred", "current"],
+          "properties": {
+            "new": { "type": "integer", "minimum": 0 },
+            "changed": { "type": "integer", "minimum": 0 },
+            "retired": { "type": "integer", "minimum": 0 },
+            "deferred": { "type": "integer", "minimum": 0 },
+            "current": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "capacityReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "paths", "characterCount", "estimatedTokens", "guardedTokens", "budgetTokens", "budgetHeadroomTokens", "utilizationPercent", "withinBudget"],
+      "properties": {
+        "name": { "enum": ["repository", "go", "test", "documentation", "skill", "go-combined", "test-combined", "documentation-combined"] },
+        "kind": { "enum": ["file", "combined"] },
+        "paths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "characterCount": { "type": "integer", "minimum": 0 },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "guardedTokens": { "type": "integer", "minimum": 0 },
+        "budgetTokens": { "type": "integer", "minimum": 1 },
+        "budgetHeadroomTokens": { "type": "integer" },
+        "utilizationPercent": { "type": "number", "minimum": 0 },
+        "withinBudget": { "type": "boolean" }
+      }
+    },
+    "guidanceCapacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "estimator", "safetyMarginPercent", "reportCount", "reports"],
+      "properties": {
+        "status": { "enum": ["passed", "failed"] },
+        "estimator": { "const": "character-quarter-estimate-25pct-v1" },
+        "safetyMarginPercent": { "const": 25 },
+        "reportCount": { "const": 8 },
+        "reports": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/capacityReport" }
+        }
+      }
+    },
+    "relatedHostedRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "text", "placements"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ruleId" },
+        "status": { "enum": ["active", "retired"] },
+        "text": { "type": "string", "minLength": 1 },
+        "placements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["surfaceId", "sectionHeading"],
+            "properties": {
+              "surfaceId": { "enum": ["implementation", "testing", "documentation"] },
+              "sectionHeading": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"],
+      "properties": {
+        "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "aiAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
+      "properties": {
+        "status": { "const": "evaluated" },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "assessedAt": { "type": "string", "format": "date-time" },
+        "evaluator": { "type": "string", "minLength": 1 },
+        "hostedApplicable": { "type": "boolean" },
+        "applicabilityRationale": { "type": "string", "minLength": 1 },
+        "hostedCategory": { "enum": ["repository", "review-classification-and-evidence", "implementation", "testing", "documentation", "not-applicable"] },
+        "recommendation": { "enum": ["add", "update", "retire", "no-change", "exclude", "defer"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "impactDescription": { "type": "string", "minLength": 1 },
+        "currentHostedCoverage": { "type": "string", "minLength": 1 },
+        "affectedSurfaces": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
+        },
+        "guardedTokenDelta": { "type": "integer" },
+        "proposedText": { "type": "string" },
+        "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
+        "selectionRationale": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "hostedApplicable": { "const": true } }, "required": ["hostedApplicable"] },
+          "then": {
+            "properties": {
+              "hostedCategory": { "not": { "const": "not-applicable" } },
+              "affectedSurfaces": { "minItems": 1 }
+            }
+          },
+          "else": {
+            "properties": {
+              "hostedCategory": { "const": "not-applicable" },
+              "recommendation": { "const": "exclude" },
+              "affectedSurfaces": { "maxItems": 0 },
+              "guardedTokenDelta": { "const": 0 },
+              "proposedText": { "const": "" }
+            }
+          }
+        }
+      ]
+    },
+    "upstreamCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "referenceUrl", "baselineSha256", "currentSha256", "state", "requiresReview", "affectedHostedRuleIds", "baselineContent", "currentContent"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "referenceUrl": { "type": "string", "format": "uri" },
+        "baselineSha256": { "$ref": "#/$defs/sha256Hash" },
+        "currentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "state": { "enum": ["changed", "current"] },
+        "requiresReview": { "type": "boolean" },
+        "affectedHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/ruleId" } },
+        "baselineContent": { "type": "string" },
+        "currentContent": { "type": "string" },
+        "assessment": { "$ref": "#/$defs/aiAssessment" }
+      }
+    },
+    "interactiveCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "contractPath", "sourceStatus", "contentSha256", "provenance", "evidence", "sourceIds", "ruleText", "state", "requiresReview", "changeReasons", "priorDecision", "relatedHostedRules"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ruleId" },
+        "title": { "type": "string", "minLength": 1 },
+        "contractPath": { "type": "string", "minLength": 1 },
+        "sourceStatus": { "enum": ["active", "deprecated", "retired"] },
+        "contentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "provenance": { "enum": ["published-upstream-standard", "inferred-maintainer-convention", "local-safeguard", "unclassified"] },
+        "evidence": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "sourceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "ruleText": { "type": ["string", "null"] },
+        "state": { "enum": ["new", "changed", "retired", "deferred", "current"] },
+        "requiresReview": { "type": "boolean" },
+        "changeReasons": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "priorDecision": { "type": ["object", "null"] },
+        "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
+        "assessment": { "$ref": "#/$defs/aiAssessment" }
+      }
+    }
+  }
+}

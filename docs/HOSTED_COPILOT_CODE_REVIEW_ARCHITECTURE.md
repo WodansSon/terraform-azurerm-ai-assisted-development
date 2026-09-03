@@ -118,10 +118,12 @@ These constraints mean the Hosted Toolkit cannot reproduce the Interactive Toolk
 - Apply documented HashiCorp contributor requirements.
 - Preserve selected mandatory maintainer knowledge that is not explicitly documented.
 - Keep rule provenance, requirement strength, and documentation gaps distinct.
+- Review published contributor guidance and Interactive Toolkit rules as independent candidate sources without making either source an automatic runtime dependency.
 - Produce concise, evidence-backed inline findings.
 - Load only guidance relevant to the changed file surface.
 - Use deterministic tooling for checks that do not require model reasoning.
 - Make upstream documentation drift visible without automatically reinterpreting changed prose.
+- Report impact, estimated token cost, and remaining Hosted guidance capacity before approving candidate rules.
 - Keep generated runtime files reproducible and reviewable.
 - Protect hosted instructions from unreviewed pull request changes.
 
@@ -133,7 +135,7 @@ These constraints mean the Hosted Toolkit cannot reproduce the Interactive Toolk
 - Implementing resource or documentation changes.
 - Loading every Interactive Toolkit rule into hosted review.
 - Treating historical pull request comments as authoritative training data.
-- Automatically converting changed contributor prose into new compliance requirements.
+- Unattended conversion of changed contributor prose or Interactive Toolkit rules into new Hosted compliance requirements.
 
 ## Experiment MVP Handoff:
 
@@ -157,7 +159,10 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - `Install-Toolkit.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
 - `Test-Toolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
 - A normalized rule catalog and schema that preserve upstream, maintainer, and local provenance independently
-- Deterministic path-specific instruction generation and read-only upstream source drift detection
+- Deterministic path-specific instruction generation and read-only drift detection across the complete upstream contributor-document set
+- A Hosted-owned intake ledger that records semantic decisions for every reviewed Interactive Toolkit rule without creating a runtime synchronization dependency
+- AI-assisted candidate review with deterministic evidence, impact weighting, projected token budgets, and explicit maintainer approval before catalog changes
+- A local Hosted Rule Workbench that presents intake as one guided promotion process while preserving PowerShell as the only repository-write boundary
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
 
 **Experiment Acceptance Criteria:**
@@ -170,7 +175,7 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 
 **Deferred Until an Adoption Decision:**
 
-- Automatic semantic interpretation or application of upstream contributor changes
+- Unattended semantic interpretation or automatic application of upstream contributor or Interactive Toolkit changes
 - A production regression harness beyond the controlled experiment test-case matrix
 - Hosted-specific CI rollout and long-term operational monitoring
 - Any versioned release, archive, or publication workflow
@@ -193,9 +198,15 @@ hosted_copilot/
     skills/
       code-review/
         SKILL.md
-  rules/
+  copilot-rule-catalog/
     instruction-catalog.json
     instruction-catalog.schema.json
+    interactive-intake-ledger.json
+    interactive-intake-ledger.schema.json
+    rule-intake-review.schema.json
+    promotion-plan.schema.json
+    promotion-receipt.schema.json
+    audit/
   regression/
     README.md
     cases/
@@ -206,17 +217,26 @@ hosted_copilot/
     package-manifest.json
     Install-Toolkit.ps1
     Generate-Instructions.ps1
+    Invoke-RulePromotion.ps1
+    New-RuleIntakeReview.ps1
+    Start-RuleWorkbench.ps1
     Test-InstructionGeneration.ps1
+    Test-RuleIntakeReview.ps1
     Test-UpstreamSources.ps1
     Test-Toolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
+  workbench/
+    index.html
+    app.js
+    styles.css
 ```
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
-- `rules/` owns normalized rule records and provenance.
+- `copilot-rule-catalog/` owns normalized rules, intake decisions, promotion schemas, and append-only promotion receipts.
 - `regression/` owns controlled cases, schemas, and local experiment artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
 - `tools/` owns synchronization, generation, validation, and deployment support.
+- `workbench/` owns the static local review interface. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
 - `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
@@ -354,6 +374,8 @@ The `25K` limit below is this project's conservative engineering budget for host
 
 The generator and validation pipeline must reject generated hosted-guidance output that exceeds its surface budget. It cannot validate GitHub's unpublished total runtime context accounting.
 
+Budget reporting must distinguish the dependency-free character-quarter estimate from actual runtime consumption, which GitHub does not expose. For each runtime file and combined review surface, report estimated tokens, guarded tokens with the required 25% margin, the approved budget, remaining guarded tokens, and utilization. Every candidate proposal must render the complete proposed catalog in a temporary Hosted root and report its token delta plus projected post-change values.
+
 ## Rule Source Model:
 
 The Hosted Toolkit must maintain normalized rules under `hosted_copilot/copilot-rule-catalog/`, outside the runtime instruction files. Generated files under `hosted_copilot/.github/` must not become a second rule authority.
@@ -427,6 +449,78 @@ The Hosted Toolkit must treat prescribed contributor templates as authoritative 
 
 The current Interactive Toolkit contains useful migration evidence but is not the Hosted Toolkit runtime source.
 
+### Independent Candidate Channels:
+
+**The Hosted Maintenance Workflow Has Two Independent Semantic Intake Channels:**
+
+- **Upstream contributor channel:** Review the contributor README and every indexed contributor topic for published standards, changed meaning, new requirements, and removed requirements.
+- **Interactive knowledge channel:** Review every Interactive Toolkit rule for maintainer conventions, local safeguards, or cross-cutting review behavior that contributor documentation does not preserve.
+
+The first Interactive baseline contains 349 active rules. All 349 must receive a persisted intake decision, even when their contract family appears unrelated to Hosted review. Direct implementation, testing, and documentation rules should be reviewed first, followed by cross-cutting review rules and then workflow-specific families. Contract-family routing is a review order, not permission to silently exclude rules.
+
+The Interactive rule catalog provides stable IDs, contract ownership, lifecycle, hashes, provenance, and source mappings. The hand-authored Interactive contracts remain authoritative for rule wording. Intake tooling must include the exact contract rule block in semantic evidence rather than treating the catalog title as complete rule text.
+
+### Hosted-Owned Intake Ledger:
+
+`hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.json` records the latest approved decision for each reviewed Interactive rule. Supported durable decisions are `equivalent`, `included`, `excluded`, and `deferred`. Each record must preserve source identity and hash, lifecycle status, rationale, review date, mapped Hosted rule IDs, and the evidence-backed selection factors used for the decision.
+
+An unchanged source content hash keeps the prior decision current. A new rule, changed content hash, or lifecycle transition reopens semantic review. The ledger is Hosted-owned maintenance evidence, is not runtime guidance, and must not be installed into the target provider repository.
+
+Normal Hosted validation may validate the ledger schema and internal references, but it must not compare the ledger with the current Interactive Toolkit automatically. Interactive comparison is an explicitly invoked maintenance audit so changes to one toolkit do not block or mutate the other.
+
+### Impact-Weighted Selection:
+
+Eligibility requires Hosted applicability, actionable or foundational value, sufficient evidence, and no material duplication by stronger Hosted behavior. Eligible candidates are rated from zero through five for severity, frequency, breadth, Hosted detectability, evidence strength, false-positive risk, and redundancy.
+
+The AI semantic review pass owns eligibility analysis, factor ratings, and selection rationale. The maintainer reviews these outputs and owns the final disposition and approval, but does not edit factor values in the Workbench. Disagreement with an assessment requires deferral or a new AI assessment rather than an untracked manual score change.
+
+**Calculate Impact As:**
+
+$$
+\operatorname{impact}=\max(0,6S+3F+3B+4D+4E-5R-3O)
+$$
+
+**For a Positive Guarded Token Delta, Calculate Token Efficiency As:**
+
+$$
+\operatorname{efficiency}=100\times\frac{\operatorname{impact}}{\operatorname{guardedTokenDelta}}
+$$
+
+Store the factor ratings and rationale, then derive impact and efficiency. Use these values to order candidates and explain limited-capacity tradeoffs, never to make an automatic inclusion or retirement decision. Foundational safeguards may use an explicit maintainer-approved override when their primary value is improving the reliability of many other rules; overrides do not bypass evidence, token projection, or final approval.
+
+### Hosted Rule Workbench:
+
+The Hosted Rule Workbench is the maintainer-facing orchestration layer for semantic intake and promotion. It uses familiar catalog, comparison, selection, running-total, and confirmation patterns without presenting rules as commercial products.
+
+The Workbench supports laptop and desktop browsers only. Handset-width viewports and browsers that identify as mobile must display an unsupported-device screen instead of loading the review workspace or initializing persisted draft state.
+
+`Start-RuleWorkbench.ps1` builds a review bundle, stages the static Workbench with that bundle in an external temporary directory, and serves it from a stable loopback origin. The server binds only to `127.0.0.1`, serves static files, exposes no repository-write API, and uses a stable default port so browser storage remains available across launches. A port override creates a different browser-storage origin and must be reported clearly.
+
+The Workbench uses IndexedDB for review bundles, read-only AI assessments, maintainer decisions, evidence notes, and resumable drafts. Local storage holds only lightweight preferences and the active session identifier. Each persisted decision and assessment is keyed to source identity and content hash; changed source content reopens the candidate instead of inheriting stale analysis. Maintainers can export and import draft state independently from browser storage.
+
+Semantic evaluation completes before a candidate enters the Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. The tree is organized beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Category and candidate checkboxes add items to the maintainer review set; clicking a candidate row independently opens its complete source rule and AI assessment.
+
+**The Workbench Presents One Guided Process:**
+
+- **Catalog:** Search evaluated upstream and Interactive candidates by source and category, build a review set with category or candidate checkboxes, and open candidate details independently from checkbox selection.
+- **Assessment:** Display the complete source rule, AI recommendation, impact description, token cost, projected headroom, all factor ratings, selection rationale, Hosted coverage, and proposed wording. Factor ratings and rationale are always visible and read-only. The maintainer records a recommendation-aware decision plus rationale; the left-pane checkbox keeps candidate selection reversible.
+- **Promotion plan:** Collect proposed adds, updates, and retirements with stable IDs, exact text, section placement, provenance, evidence, mappings, and regression requirements. Per-row Undo returns a candidate to undecided without implying exclusion.
+- **Capacity:** Show current and projected guarded tokens, remaining capacity, utilization, impact, and token efficiency for every affected surface.
+- **Preview:** Render the complete proposed catalog in a temporary Hosted root and show the exact catalog, ledger, baseline, regression, and generated-instruction changes.
+- **Approval:** Freeze the exact exported promotion-plan bytes, calculate their SHA-256 hash, capture approver attribution, and invalidate approval whenever the plan changes.
+
+Browser state is resumable working state, not repository authority. The Workbench exports the frozen plan; `Invoke-RulePromotion.ps1` independently validates the schema, recomputes the exact file-byte hash, verifies source snapshots and repository preconditions, recreates the preview, and applies only that plan. It must fail before writing when any source, catalog, ledger, generated output, regression input, or expected hash has changed.
+
+### Atomic Promotion And Audit:
+
+A promotion is one coherent repository change containing approved catalog rules, section mappings, ledger decisions, accepted source baselines, required regression assets, and generated instructions. Source baseline acceptance must identify the semantic decision that authorizes it; a digest change alone is never sufficient.
+
+The promotion command stages all outputs outside the repository, validates the complete staged Hosted Toolkit, and only then replaces the approved repository files. If staging or validation fails, the repository remains unchanged. After successful replacement, it reruns complete Hosted validation. A post-write failure is reported as an incomplete promotion requiring maintainer intervention; the command must not silently roll back or overwrite concurrent work.
+
+Every successful promotion adds one immutable receipt under `hosted_copilot/copilot-rule-catalog/audit/`, named with its UTC timestamp and promotion-plan hash. The receipt records the plan hash, approver attribution and method, source snapshot hashes, decisions and selection factors, Hosted rule IDs and section placement, before-and-after catalog and generated-output hashes, token reports, regression assets, validations, and outcome.
+
+Locally entered or Git-configured identity is attribution, not cryptographic authentication. Capture authenticated GitHub identity when available and label manual identity honestly. Git commit authorship and pull request approval remain the strongest final review evidence. Receipts are Hosted-owned maintenance history, never runtime payload.
+
 **Initial Candidate Groups:**
 
 - Published upstream rules are baseline candidates.
@@ -449,9 +543,16 @@ Do not migrate Interactive Toolkit role machinery, transport schemas, prompt mec
 
 The hosted source-maintenance flow should be deterministic until semantic judgment is required.
 
+- Track the contributor README and every contributor topic it indexes, independently from whether an active Hosted rule currently cites that document.
 - Pin each tracked upstream source to a recorded content digest.
+- Pin the reviewed upstream source set to one immutable baseline commit so changed documents have reproducible before text.
 - Discover upstream source drift through a PowerShell maintenance command.
-- Report changed sources and affected rule mappings.
+- Report changed sources, affected rule mappings, untracked contributor topics, and stale catalog topics.
+- Build a read-only semantic-review bundle containing changed upstream text, complete Interactive rule blocks requiring review, current Hosted mappings, and source hashes.
+- Classify Interactive candidates as new, changed, retired, deferred, or current by comparing the current catalog with source-hashed ledger decisions.
+- Implement **Refresh Candidates** by regenerating the read-only bundle from current immutable snapshots; never label this operation as synchronization or mutate Hosted decisions.
+- Classify candidates through AI-assisted semantic review and calculate impact, guarded token delta, token efficiency, and projected remaining capacity.
+- Stop for explicit maintainer approval before changing source baselines, intake decisions, normalized rules, generated instructions, or regression expectations.
 - Do not rewrite normalized rules solely because a digest changed.
 - Require a maintainer to decide whether the changed prose alters rule meaning.
 - Update approved normalized rules manually.
@@ -476,6 +577,11 @@ Rules that can be checked reliably without model reasoning should use scripts, l
 - Rule schema validation
 - Provenance and evidence completeness
 - Tracked-source digest changes
+- Complete contributor-topic catalog coverage
+- Interactive intake-ledger schema, decision completeness, selection factors, and Hosted rule-reference validity
+- Read-only semantic-review bundle generation
+- Structured current and projected token-budget reporting
+- Deterministic impact and token-efficiency calculations
 - Duplicate stable rule IDs
 - Forbidden dependencies on Interactive Toolkit files
 - Required frontmatter and supported hosted paths

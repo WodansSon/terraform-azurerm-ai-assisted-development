@@ -41,8 +41,22 @@ $reviewPairCloserPath = Join-Path $PSScriptRoot 'Close-ReviewPair.ps1'
 $reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-ReviewResults.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
+$intakeLedgerPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.json'
+$intakeLedgerSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.schema.json'
+$promotionPlanSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-plan.schema.json'
+$promotionReceiptSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-receipt.schema.json'
+$ruleIntakeBundleSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-intake-review.schema.json'
+$promotionAuditPath = Join-Path $hostedRoot 'copilot-rule-catalog/audit'
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGeneration.ps1'
+$guidanceCapacityPath = Join-Path $PSScriptRoot 'Get-GuidanceCapacity.ps1'
+$ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
+$ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
+$ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
+$ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
+$ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
+$ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
+$ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
 $upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'Test-UpstreamSources.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
 $mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
@@ -51,6 +65,7 @@ $puppeteerPackage = 'puppeteer@24.15.0'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
 $checkStartTimes = @{}
+$tokenCapacityResult = $null
 
 function Start-ValidationCheck {
     param(
@@ -139,23 +154,6 @@ function Get-Sha256Hash {
     )
 
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-}
-
-function Get-TokenEstimate {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    $characterCount = (Get-Content -LiteralPath $Path -Raw).Length
-    $estimatedTokens = [Math]::Ceiling($characterCount / 4)
-    $guardedTokens = [Math]::Ceiling($estimatedTokens * 1.25)
-
-    return [pscustomobject]@{
-        characterCount = $characterCount
-        estimatedTokens = $estimatedTokens
-        guardedTokens = $guardedTokens
-    }
 }
 
 $runtimeStarted = (Test-Path -LiteralPath $hostedRuntimePath) -or (Test-Path -LiteralPath $packageManifestPath)
@@ -276,8 +274,21 @@ if ($runtimeStarted) {
         $reviewResultValidatorPath,
         $instructionCatalogPath,
         $instructionCatalogSchemaPath,
+        $intakeLedgerPath,
+        $intakeLedgerSchemaPath,
+        $promotionPlanSchemaPath,
+        $promotionReceiptSchemaPath,
+        $ruleIntakeBundleSchemaPath,
         $instructionGeneratorPath,
         $instructionGenerationTestPath,
+        $guidanceCapacityPath,
+        $ruleIntakeBundlePath,
+        $ruleIntakeTestPath,
+        $ruleWorkbenchLauncherPath,
+        $ruleWorkbenchTestPath,
+        $ruleWorkbenchIndexPath,
+        $ruleWorkbenchScriptPath,
+        $ruleWorkbenchStylesPath,
         $upstreamSourceValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
@@ -485,6 +496,77 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'instruction-generation-tests' -Issue "Hosted instruction generation regression failed: $($_.Exception.Message)"
     }
 
+    Start-ValidationCheck -Name 'rule-intake-contracts'
+    try {
+        $ledgerContent = Get-Content -LiteralPath $intakeLedgerPath -Raw
+        if (-not ($ledgerContent | Test-Json -SchemaFile $intakeLedgerSchemaPath -ErrorAction Stop)) {
+            throw 'Interactive intake ledger schema validation failed'
+        }
+        $ledger = $ledgerContent | ConvertFrom-Json
+        $duplicateDecisionIds = @($ledger.decisions | Group-Object sourceRuleId | Where-Object Count -gt 1)
+        if ($duplicateDecisionIds.Count -gt 0) {
+            throw "Interactive intake ledger contains duplicate source rule IDs: $(@($duplicateDecisionIds.Name) -join ', ')"
+        }
+
+        $hostedRuleIds = @((Get-Content -LiteralPath $instructionCatalogPath -Raw | ConvertFrom-Json).rules | ForEach-Object { [string]$_.id })
+        $unknownHostedRuleIds = @($ledger.decisions | ForEach-Object { $_.hostedRuleIds } | Where-Object { $_ -notin $hostedRuleIds } | Sort-Object -Unique)
+        if ($unknownHostedRuleIds.Count -gt 0) {
+            throw "Interactive intake ledger references unknown Hosted rule IDs: $($unknownHostedRuleIds -join ', ')"
+        }
+
+        $intakeTestOutput = @(& pwsh -NoProfile -File $ruleIntakeTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($intakeTestOutput | Out-String).Trim())
+        }
+        $intakeTestResult = ($intakeTestOutput | Out-String) | ConvertFrom-Json
+        if ($intakeTestResult.status -ne 'passed') {
+            throw 'rule intake regression suite reported failures'
+        }
+
+        $receiptCount = 0
+        $receiptPlanHashes = New-Object 'System.Collections.Generic.List[string]'
+        if (Test-Path -LiteralPath $promotionAuditPath -PathType Container) {
+            foreach ($receiptPath in @(Get-ChildItem -LiteralPath $promotionAuditPath -Filter '*.json' -File)) {
+                $receiptContent = Get-Content -LiteralPath $receiptPath.FullName -Raw
+                if (-not ($receiptContent | Test-Json -SchemaFile $promotionReceiptSchemaPath -ErrorAction Stop)) {
+                    throw "Promotion receipt schema validation failed: $($receiptPath.Name)"
+                }
+                $receipt = $receiptContent | ConvertFrom-Json
+                $expectedSuffix = "-$($receipt.planSha256).json"
+                if (-not $receiptPath.Name.EndsWith($expectedSuffix, [StringComparison]::Ordinal)) {
+                    throw "Promotion receipt filename does not end with its plan hash: $($receiptPath.Name)"
+                }
+                $receiptPlanHashes.Add([string]$receipt.planSha256)
+                $receiptCount++
+            }
+        }
+        $duplicateReceiptHashes = @($receiptPlanHashes | Group-Object | Where-Object Count -gt 1)
+        if ($duplicateReceiptHashes.Count -gt 0) {
+            throw "Promotion audit contains duplicate plan hashes: $(@($duplicateReceiptHashes.Name) -join ', ')"
+        }
+
+        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, $($intakeTestResult.testCount) contract tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
+    }
+    catch {
+        Add-ValidationIssue -Name 'rule-intake-contracts' -Issue "Hosted rule intake contracts are invalid: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'rule-workbench'
+    try {
+        $workbenchTestOutput = @(& pwsh -NoProfile -File $ruleWorkbenchTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($workbenchTestOutput | Out-String).Trim())
+        }
+        $workbenchTestResult = ($workbenchTestOutput | Out-String) | ConvertFrom-Json
+        if ($workbenchTestResult.status -ne 'passed') {
+            throw 'rule Workbench regression suite reported failures'
+        }
+        Add-CheckResult -Name 'rule-workbench' -Passed $true -Detail "Passed $($workbenchTestResult.testCount) static Workbench, browser-state, external-staging, and loopback read-only server tests."
+    }
+    catch {
+        Add-ValidationIssue -Name 'rule-workbench' -Issue "Hosted Rule Workbench validation failed: $($_.Exception.Message)"
+    }
+
     if ($SkipUpstreamDrift) {
         Add-SkippedCheck -Name 'upstream-sources' -Detail 'Hosted upstream source drift validation was explicitly skipped.'
     }
@@ -501,7 +583,12 @@ if ($runtimeStarted) {
             if (-not $upstreamResult.success -or $upstreamResult.updatesCatalog -or $catalogHashBeforeDriftCheck -ne $catalogHashAfterDriftCheck) {
                 throw 'upstream source validator did not preserve its read-only success contract'
             }
-            Add-CheckResult -Name 'upstream-sources' -Passed $true -Detail "Validated $($upstreamResult.sourceCount) Hosted-owned contributor sources with zero drift and no catalog mutation."
+            $catalogSourceIds = @((Get-Content -LiteralPath $instructionCatalogPath -Raw | ConvertFrom-Json).sources | ForEach-Object { [string]$_.id } | Sort-Object)
+            $checkedSourceIds = @($upstreamResult.sources | ForEach-Object { [string]$_.id } | Sort-Object)
+            if (@(Compare-Object -ReferenceObject $catalogSourceIds -DifferenceObject $checkedSourceIds).Count -gt 0) {
+                throw 'upstream source validator did not check every Hosted catalog source'
+            }
+            Add-CheckResult -Name 'upstream-sources' -Passed $true -Detail "Validated all $($upstreamResult.sourceCount) Hosted-owned contributor sources and $($upstreamResult.discoveredTopicCount) discovered topics with zero drift and no catalog mutation."
         }
         catch {
             Add-ValidationIssue -Name 'upstream-sources' -Issue "Hosted upstream source validation failed: $($_.Exception.Message)"
@@ -575,24 +662,28 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'guidance-budgets'
     if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $testInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
-        $repositoryEstimate = Get-TokenEstimate -Path $repositoryInstructionsPath
-        $goEstimate = Get-TokenEstimate -Path $goInstructionsPath
-        $testEstimate = Get-TokenEstimate -Path $testInstructionsPath
-        $documentationEstimate = Get-TokenEstimate -Path $documentationInstructionsPath
-        $skillEstimate = Get-TokenEstimate -Path $reviewSkillPath
-        $goCombinedEstimate = $repositoryEstimate.estimatedTokens + $goEstimate.estimatedTokens + $skillEstimate.estimatedTokens
-        $goCombinedGuarded = $repositoryEstimate.guardedTokens + $goEstimate.guardedTokens + $skillEstimate.guardedTokens
-        $testCombinedEstimate = $repositoryEstimate.estimatedTokens + $goEstimate.estimatedTokens + $testEstimate.estimatedTokens + $skillEstimate.estimatedTokens
-        $testCombinedGuarded = $repositoryEstimate.guardedTokens + $goEstimate.guardedTokens + $testEstimate.guardedTokens + $skillEstimate.guardedTokens
-        $documentationCombinedEstimate = $repositoryEstimate.estimatedTokens + $documentationEstimate.estimatedTokens + $skillEstimate.estimatedTokens
-        $documentationCombinedGuarded = $repositoryEstimate.guardedTokens + $documentationEstimate.guardedTokens + $skillEstimate.guardedTokens
-        $budgetPassed = $repositoryEstimate.guardedTokens -le 2000 -and $goEstimate.guardedTokens -le 8000 -and $testEstimate.guardedTokens -le 4000 -and $documentationEstimate.guardedTokens -le 8000 -and $skillEstimate.guardedTokens -le 3000 -and $goCombinedGuarded -le 25000 -and $testCombinedGuarded -le 25000 -and $documentationCombinedGuarded -le 25000
-        $budgetDetail = "$tokenEstimator estimated/guarded tokens: repository=$($repositoryEstimate.estimatedTokens)/$($repositoryEstimate.guardedTokens)/2000; go=$($goEstimate.estimatedTokens)/$($goEstimate.guardedTokens)/8000; test=$($testEstimate.estimatedTokens)/$($testEstimate.guardedTokens)/4000; documentation=$($documentationEstimate.estimatedTokens)/$($documentationEstimate.guardedTokens)/8000; skill=$($skillEstimate.estimatedTokens)/$($skillEstimate.guardedTokens)/3000; go-combined=$goCombinedEstimate/$goCombinedGuarded/25000; test-combined=$testCombinedEstimate/$testCombinedGuarded/25000; documentation-combined=$documentationCombinedEstimate/$documentationCombinedGuarded/25000"
-        if ($budgetPassed) {
+        try {
+            $capacityOutput = @(& pwsh -NoProfile -File $guidanceCapacityPath -HostedRoot $hostedRoot -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw (($capacityOutput | Out-String).Trim())
+            }
+            $tokenCapacityResult = ($capacityOutput | Out-String) | ConvertFrom-Json
+            $expectedCapacityNames = @('repository', 'go', 'test', 'documentation', 'skill', 'go-combined', 'test-combined', 'documentation-combined') | Sort-Object
+            $actualCapacityNames = @($tokenCapacityResult.reports | ForEach-Object { [string]$_.name } | Sort-Object)
+            if ($tokenCapacityResult.status -ne 'passed' -or $tokenCapacityResult.estimator -ne $tokenEstimator -or @(Compare-Object $expectedCapacityNames $actualCapacityNames).Count -gt 0) {
+                throw 'guidance capacity command returned an invalid report set'
+            }
+            foreach ($report in @($tokenCapacityResult.reports)) {
+                if ($report.budgetHeadroomTokens -ne ($report.budgetTokens - $report.guardedTokens) -or $report.withinBudget -ne ($report.guardedTokens -le $report.budgetTokens)) {
+                    throw "guidance capacity arithmetic is invalid for $($report.name)"
+                }
+            }
+            $capacityDetails = @($tokenCapacityResult.reports | ForEach-Object { "$($_.name)=$($_.guardedTokens)/$($_.budgetTokens)/$($_.budgetHeadroomTokens)" })
+            $budgetDetail = "$tokenEstimator guarded/budget/headroom tokens: $($capacityDetails -join '; ')"
             Add-CheckResult -Name 'guidance-budgets' -Passed $true -Detail $budgetDetail
         }
-        else {
-            Add-ValidationIssue -Name 'guidance-budgets' -Issue "Hosted guidance exceeds its conservative budget: $budgetDetail"
+        catch {
+            Add-ValidationIssue -Name 'guidance-budgets' -Issue "Hosted guidance capacity validation failed: $($_.Exception.Message)"
         }
     }
     else {
@@ -804,7 +895,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }
@@ -933,6 +1024,7 @@ $result = [ordered]@{
     deploymentModel = $deploymentModel
     phase = $phase
     tokenEstimator = $tokenEstimator
+    guidanceCapacity = $tokenCapacityResult
     repoRoot = $repoRoot
     hostedRoot = $hostedRoot
     checks = @($checks.ToArray())

@@ -29,11 +29,12 @@ if (-not ($catalogContent | Test-Json -SchemaFile $schemaPath)) {
 }
 $catalog = $catalogContent | ConvertFrom-Json
 
-$activeSourceIds = @($catalog.rules | Where-Object status -eq 'active' | ForEach-Object { $_.sourceIds } | Sort-Object -Unique)
+$currentContentBySourceId = @{}
 $sourceResults = @()
-foreach ($source in @($catalog.sources | Where-Object { $_.id -in $activeSourceIds })) {
+foreach ($source in @($catalog.sources)) {
     try {
         $content = (Invoke-WebRequest -UseBasicParsing -Uri $source.rawUrl).Content
+        $currentContentBySourceId[[string]$source.id] = $content
         $bytes = [Text.Encoding]::UTF8.GetBytes($content)
         $currentHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
         $status = if ($currentHash -eq $source.baselineSha256) { 'unchanged' } else { 'changed' }
@@ -61,16 +62,34 @@ foreach ($source in @($catalog.sources | Where-Object { $_.id -in $activeSourceI
     }
 }
 
+$catalogTopicPaths = @($catalog.sources | ForEach-Object {
+    $match = [regex]::Match([string]$_.rawUrl, '/contributing/(?<path>topics/[a-z0-9-]+\.md)$')
+    if ($match.Success) {
+        $match.Groups['path'].Value
+    }
+} | Sort-Object -Unique)
+$contributorReadme = $currentContentBySourceId['contributing-readme']
+$discoveredTopicPaths = if ($null -ne $contributorReadme) {
+    @([regex]::Matches($contributorReadme, '(?:\./)?(?<path>topics/[a-z0-9-]+\.md)') | ForEach-Object { $_.Groups['path'].Value } | Sort-Object -Unique)
+}
+else {
+    @()
+}
+$untrackedTopicPaths = @($discoveredTopicPaths | Where-Object { $_ -notin $catalogTopicPaths })
+$staleTopicPaths = @($catalogTopicPaths | Where-Object { $_ -notin $discoveredTopicPaths })
 $changedSources = @($sourceResults | Where-Object status -eq 'changed')
 $failedSources = @($sourceResults | Where-Object status -eq 'fetch-failed')
 $result = [ordered]@{
-    success = $changedSources.Count -eq 0 -and $failedSources.Count -eq 0
+    success = $changedSources.Count -eq 0 -and $failedSources.Count -eq 0 -and $untrackedTopicPaths.Count -eq 0 -and $staleTopicPaths.Count -eq 0
     comparisonMode = 'raw-content-sha256'
     performsSemanticComparison = $false
     updatesCatalog = $false
     semanticReviewRequired = $changedSources.Count -gt 0
     lastSemanticReview = [string]$catalog.lastSemanticReview
     sourceCount = $sourceResults.Count
+    discoveredTopicCount = $discoveredTopicPaths.Count
+    untrackedTopicPaths = $untrackedTopicPaths
+    staleTopicPaths = $staleTopicPaths
     changedCount = $changedSources.Count
     failedCount = $failedSources.Count
     sources = $sourceResults
@@ -84,6 +103,9 @@ else {
     Write-ValidationSummary -Fields ([ordered]@{
         Status = $(if ($result.success) { 'PASSED' } else { 'FAILED' })
         'Sources Checked' = $result.sourceCount
+        'Topics Discovered' = $result.discoveredTopicCount
+        'Untracked Topics' = $result.untrackedTopicPaths.Count
+        'Stale Topics' = $result.staleTopicPaths.Count
         Changed = $result.changedCount
         'Fetch Failed' = $result.failedCount
         'Updates Catalog' = $result.updatesCatalog
@@ -95,9 +117,15 @@ else {
         Write-Output (Format-ValidationStatusLine -Status $source.status -Name $source.id -Detail $source.referenceUrl)
         Write-Output "    Affected rules: $($source.affectedRuleIds -join ', ')"
     }
+    foreach ($path in $untrackedTopicPaths) {
+        Write-Output (Format-ValidationStatusLine -Status 'untracked' -Name $path -Detail 'Contributor topic is missing from the Hosted source catalog')
+    }
+    foreach ($path in $staleTopicPaths) {
+        Write-Output (Format-ValidationStatusLine -Status 'stale' -Name $path -Detail 'Hosted source catalog topic is missing from the contributor index')
+    }
     Complete-ValidationTextOutput
 }
 
 if ($FailOnDrift -and -not $result.success) {
-    throw 'Hosted upstream source drift requires semantic maintainer review; the catalog was not modified'
+    throw 'Hosted upstream source drift or topic coverage requires semantic maintainer review; the catalog was not modified'
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "lastSemanticReview", "ruleDefaults", "sources", "evidence", "surfaces", "rules"],
+  "required": ["$schema", "schemaVersion", "lastSemanticReview", "upstreamSnapshot", "ruleDefaults", "sources", "evidence", "surfaces", "rules"],
   "properties": {
     "$schema": {
       "const": "instruction-catalog.schema.json"
@@ -13,6 +13,16 @@
     "lastSemanticReview": {
       "type": "string",
       "format": "date"
+    },
+    "upstreamSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "baselineCommit", "currentRef"],
+      "properties": {
+        "repository": { "const": "hashicorp/terraform-provider-azurerm" },
+        "baselineCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "currentRef": { "type": "string", "minLength": 1 }
+      }
     },
     "ruleDefaults": {
       "type": "object",
@@ -132,7 +142,53 @@
             "items": { "enum": ["legacy", "typed", "framework"] }
           },
           "documentationGap": { "type": "boolean" },
-          "retirementReason": { "type": "string", "minLength": 1 }
+          "retirementReason": { "type": "string", "minLength": 1 },
+          "selectionFactors": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scoringStatus"],
+            "properties": {
+              "scoringStatus": { "enum": ["scored", "not-applicable"] },
+              "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+              "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "scoringStatus": { "const": "scored" } } },
+                "then": { "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"] }
+              }
+            ]
+          },
+          "selectionRationale": { "type": "string", "minLength": 1 },
+          "foundationalOverride": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["rationale", "affectedHostedRuleIds", "affectedSurfaces"],
+                "properties": {
+                  "rationale": { "type": "string", "minLength": 1 },
+                  "affectedHostedRuleIds": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
+                  },
+                  "affectedSurfaces": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
+                  }
+                }
+              },
+              { "type": "null" }
+            ]
+          }
         },
         "allOf": [
           {

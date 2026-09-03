@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Hosted Rule Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="unsupported-device" aria-labelledby="unsupported-device-heading">
+    <span class="unsupported-mark" aria-hidden="true">HR</span>
+    <p class="eyebrow">Hosted Rule Workbench</p>
+    <h1 id="unsupported-device-heading">Mobile devices are not supported</h1>
+    <p>Open this Workbench on a laptop or desktop computer.</p>
+  </main>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">HR</span>
+        <div>
+          <p class="eyebrow">AzureRM maintenance</p>
+          <h1>Hosted Rule Workbench</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="snapshot-chip" id="snapshot-chip">Loading snapshot</span>
+        <button class="button secondary" id="refresh-button" type="button" title="Refresh candidates" aria-label="Refresh candidates">
+          <i data-lucide="refresh-cw" aria-hidden="true"></i>
+          <span class="button-label">Refresh candidates</span>
+        </button>
+        <button class="button secondary" id="export-button" type="button" title="Export draft" aria-label="Export draft">
+          <i data-lucide="download" aria-hidden="true"></i>
+          <span class="button-label">Export draft</span>
+        </button>
+        <label class="button secondary" for="import-input" title="Import draft" aria-label="Import draft">
+          <i data-lucide="upload" aria-hidden="true"></i>
+          <span class="button-label">Import draft</span>
+        </label>
+        <input id="import-input" type="file" accept="application/json" hidden>
+      </div>
+    </header>
+
+    <aside class="stage-nav" aria-label="Workbench stages">
+      <button class="stage-link active" type="button" data-view="catalog">
+        <i data-lucide="library" aria-hidden="true"></i>
+        <span>Evaluated candidates</span>
+        <span class="stage-count" id="catalog-count">0</span>
+      </button>
+      <button class="stage-link" type="button" data-view="plan">
+        <i data-lucide="list-checks" aria-hidden="true"></i>
+        <span>Promotion plan</span>
+        <span class="stage-count" id="plan-count">0</span>
+      </button>
+      <button class="stage-link" type="button" data-view="preview">
+        <i data-lucide="file-diff" aria-hidden="true"></i>
+        <span>Preview</span>
+        <span class="stage-status" id="preview-status">Draft</span>
+      </button>
+      <div class="nav-footer">
+        <span class="save-indicator" id="save-indicator">Draft not loaded</span>
+        <p>Browser state is local. Repository changes require an approved promotion plan.</p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="view active" id="catalog-view" data-view-panel="catalog">
+        <div class="metrics-band" id="metrics-band" aria-label="Review metrics"></div>
+
+        <div class="catalog-toolbar">
+          <label class="search-field">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <span class="sr-only">Search evaluated candidates</span>
+            <input id="search-input" type="search" placeholder="Search sources, categories, or rules">
+          </label>
+          <div class="review-set-control">
+            <span>Review set</span>
+            <strong id="review-set-count">0 selected</strong>
+            <button class="button primary" id="review-selected-button" type="button" disabled>Review selected</button>
+          </div>
+        </div>
+
+        <div class="catalog-layout">
+          <section class="candidate-panel" aria-labelledby="candidate-heading">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Maintainer review</p>
+                <h2 id="candidate-heading">Candidate sources</h2>
+              </div>
+              <span id="filter-count">0 shown</span>
+            </div>
+            <div class="candidate-list" id="candidate-list"></div>
+          </section>
+
+          <section class="assessment-panel" id="assessment-panel" aria-live="polite">
+            <div class="empty-state">
+              <i data-lucide="mouse-pointer-square-dashed" aria-hidden="true"></i>
+              <h2>Select a candidate</h2>
+              <p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="plan-view" data-view-panel="plan">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Selected changes</p>
+            <h2>Promotion plan</h2>
+          </div>
+          <button class="button secondary" id="return-catalog-button" type="button">
+            <i data-lucide="arrow-left" aria-hidden="true"></i>
+            Return to catalog
+          </button>
+        </div>
+        <div class="plan-layout">
+          <section class="plan-table-wrap">
+            <table class="plan-table">
+              <colgroup>
+                <col class="plan-column-candidate">
+                <col class="plan-column-source">
+                <col class="plan-column-impact">
+                <col class="plan-column-cost">
+                <col class="plan-column-readiness">
+                <col class="plan-column-actions">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Candidate</th>
+                  <th>Source</th>
+                  <th>Impact</th>
+                  <th>Draft cost</th>
+                  <th>Readiness</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="plan-table-body"></tbody>
+            </table>
+            <div class="empty-state compact" id="empty-plan">
+              <i data-lucide="inbox" aria-hidden="true"></i>
+              <h3>No proposed changes</h3>
+              <p>Include a candidate from the rule catalog to add it to this plan.</p>
+            </div>
+          </section>
+          <aside class="capacity-panel" id="capacity-panel"></aside>
+        </div>
+      </section>
+
+      <section class="view" id="preview-view" data-view-panel="preview">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Immutable handoff</p>
+            <h2>Promotion preview</h2>
+          </div>
+          <span class="status-badge warning" id="approval-badge">Not staged</span>
+        </div>
+        <div class="preview-layout">
+          <section class="preview-summary" id="preview-summary"></section>
+          <section class="preview-code">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Draft state</p>
+                <h3>Selection payload</h3>
+              </div>
+              <button class="icon-button" id="copy-preview-button" type="button" title="Copy draft payload" aria-label="Copy draft payload">
+                <i data-lucide="copy" aria-hidden="true"></i>
+              </button>
+            </div>
+            <pre id="preview-json"></pre>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
