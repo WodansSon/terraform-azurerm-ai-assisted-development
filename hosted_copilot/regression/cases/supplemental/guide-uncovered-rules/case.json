@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "supplemental-guide-uncovered-rules",
+  "contentRoot": "content",
+  "expectedFindings": [
+    {
+      "ruleId": "IMPL-CODE-002",
+      "path": "internal/services/hostedfixture/hosted_fixture_supplemental_resource.go",
+      "match": "log.Printf(\"[INFO] Creating %s\", id)",
+      "reason": "Generic create, read, and delete lifecycle logging only duplicates Terraform core and provider-native logging."
+    },
+    {
+      "ruleId": "IMPL-CODE-001",
+      "path": "internal/services/hostedfixture/hosted_fixture_supplemental_resource.go",
+      "match": "// Decode the Terraform configuration into the model struct.",
+      "reason": "The comment restates a self-explanatory decode call and documents no Azure quirk, SDK workaround, or non-obvious state behavior."
+    },
+    {
+      "ruleId": "IMPL-SCHEMA-005",
+      "path": "internal/services/hostedfixture/hosted_fixture_supplemental_resource.go",
+      "match": "validate.SupplementalFixtureTier",
+      "reason": "The extracted validator is a wrapper-only helper around an established combinator that belongs inline in the schema."
+    },
+    {
+      "ruleId": "TEST-PATTERN-007",
+      "path": "internal/services/hostedfixture/hosted_fixture_supplemental_resource_test.go",
+      "match": "template := r.template(data)",
+      "reason": "The one-use helper result is assigned to a local instead of being passed directly into fmt.Sprintf."
+    },
+    {
+      "ruleId": "DOCS-SHAPE-005",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "A `zones` block supports the following:",
+      "reason": "The schema declares zones as a list of primitive strings, so it must not be documented as a nested block with named subfields."
+    },
+    {
+      "ruleId": "DOCS-SHAPE-007",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "as defined above",
+      "reason": "The block subsection appears after the argument entry, so the directional reference must say defined below."
+    },
+    {
+      "ruleId": "DOCS-NOTE-008",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "limits `retention_days` to `90` or fewer",
+      "reason": "This note restates the preceding note's constraint in inverse phrasing instead of merging both into one note."
+    },
+    {
+      "ruleId": "DOCS-LINK-001",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "learn.microsoft.com/en-us/",
+      "reason": "The Microsoft Learn link carries an unnecessary locale segment."
+    },
+    {
+      "ruleId": "DOCS-ATTR-004",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "* `name` - The name of this Supplemental Fixture.",
+      "reason": "Common argument fields are special-cased ahead of id under Attributes Reference instead of leaving id first and the remainder alphabetical."
+    },
+    {
+      "ruleId": "DOCS-WORD-007",
+      "path": "website/docs/r/hosted_fixture_supplemental.html.markdown",
+      "match": "the resource group in which",
+      "reason": "The Azure object name Resource Group is written in lower case in field prose."
+    }
+  ],
+  "unexpectedFindingPolicy": "Record every additional comment for maintainer adjudication. This case is built so that every contributor-guide requirement is already satisfied, so a control-profile finding outside this list is evidence that the case is not isolating supplemental-rule value."
+}
