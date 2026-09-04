@@ -48,6 +48,7 @@ $promotionReceiptSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promot
 $ruleIntakeBundleSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-intake-review.schema.json'
 $assessmentBaselinePath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.json'
 $assessmentBaselineSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
+$maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "copilot-rule-catalog/maintainer-rules/$_" }
 $promotionAuditPath = Join-Path $hostedRoot 'copilot-rule-catalog/audit'
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGeneration.ps1'
@@ -532,6 +533,14 @@ if ($runtimeStarted) {
         if ($intakeTestResult.status -ne 'passed') {
             throw 'rule intake regression suite reported failures'
         }
+        $missingMaintainerRulePaths = @($maintainerRulePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+        if ($missingMaintainerRulePaths.Count -gt 0) {
+            throw "Maintainer rule sources are missing: $($missingMaintainerRulePaths -join ', ')"
+        }
+        $deployedMaintainerRulePaths = @($manifestConfig.files | Where-Object { $_ -like 'copilot-rule-catalog/maintainer-rules/*' })
+        if ($deployedMaintainerRulePaths.Count -gt 0) {
+            throw "Maintainer rule sources must not be deployed: $($deployedMaintainerRulePaths -join ', ')"
+        }
 
         $receiptCount = 0
         $receiptPlanHashes = New-Object 'System.Collections.Generic.List[string]'
@@ -555,7 +564,7 @@ if ($runtimeStarted) {
             throw "Promotion audit contains duplicate plan hashes: $(@($duplicateReceiptHashes.Name) -join ', ')"
         }
 
-        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, $($intakeTestResult.testCount) contract tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
+        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, three source-only Maintainer Proposal files, $($intakeTestResult.testCount) contract tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
     }
     catch {
         Add-ValidationIssue -Name 'rule-intake-contracts' -Issue "Hosted rule intake contracts are invalid: $($_.Exception.Message)"

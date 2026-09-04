@@ -84,16 +84,16 @@
       "additionalProperties": false,
       "required": ["sourceType", "id", "sourceContentSha256", "assessment"],
       "properties": {
-        "sourceType": { "enum": ["interactive", "upstream"] },
+        "sourceType": { "enum": ["interactive", "maintainer", "upstream"] },
         "id": { "type": "string", "minLength": 1 },
         "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
         "assessment": { "$ref": "#/$defs/assessment" }
       },
       "allOf": [
         {
-          "if": { "properties": { "sourceType": { "const": "interactive" } }, "required": ["sourceType"] },
-          "then": { "properties": { "id": { "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" } } },
-          "else": { "properties": { "id": { "pattern": "^[a-z][a-z0-9-]*$" } } }
+          "if": { "properties": { "sourceType": { "const": "upstream" } }, "required": ["sourceType"] },
+          "then": { "properties": { "id": { "pattern": "^[a-z][a-z0-9-]*$" } } },
+          "else": { "properties": { "id": { "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" } } }
         }
       ]
     }

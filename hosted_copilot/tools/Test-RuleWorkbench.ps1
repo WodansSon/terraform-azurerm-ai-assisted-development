@@ -79,6 +79,7 @@ try {
             intakeLedgerSha256 = 'b' * 64
             upstream = [ordered]@{ repository = 'hashicorp/terraform-provider-azurerm'; baselineCommit = '1' * 40; currentRef = 'main'; currentCommit = '2' * 40 }
             interactive = [ordered]@{ catalogPath = 'tools/interactive-rule-catalog/rule-catalog.json'; previousCatalogSha256 = 'c' * 64; currentCatalogSha256 = 'c' * 64; catalogChanged = $false }
+            maintainer = [ordered]@{ directoryPath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules'; sourceSha256 = 'e' * 64 }
         }
         summary = [ordered]@{
             upstreamSourceCount = 0
@@ -87,6 +88,10 @@ try {
             interactiveReviewCount = 1
             interactiveCurrentCount = 0
             interactiveStateCounts = [ordered]@{ new = 1; changed = 0; retired = 0; deferred = 0; current = 0 }
+            maintainerRuleCount = 0
+            maintainerReviewCount = 0
+            maintainerCurrentCount = 0
+            maintainerStateCounts = [ordered]@{ new = 0; changed = 0; retired = 0; current = 0 }
         }
         guidanceCapacity = [ordered]@{
             status = 'passed'
@@ -140,7 +145,30 @@ try {
                 }
             }
         )
+        maintainerCandidates = @()
     }
+    $maintainerAssessment = $bundle.interactiveCandidates[0].assessment | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $maintainerAssessment.sourceContentSha256 = 'f' * 64
+    $maintainerAssessment.hostedCategory = 'documentation'
+    $maintainerAssessment.proposedText = 'Flag documentation that omits a required maintainer convention.'
+    $bundle.maintainerCandidates = @([ordered]@{
+        id = 'DOCS-MAINT-001'
+        title = 'Maintainer proposal'
+        sourcePath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'
+        surface = 'documentation'
+        sourceStatus = 'active'
+        contentSha256 = 'f' * 64
+        provenance = 'confirmed-maintainer-convention'
+        rationale = 'The maintainer confirmed this documentation review requirement.'
+        ruleText = 'Flag documentation that omits a required maintainer convention.'
+        state = 'new'
+        requiresReview = $true
+        relatedHostedRules = @()
+        assessment = $maintainerAssessment
+    })
+    $bundle.summary.maintainerRuleCount = 1
+    $bundle.summary.maintainerReviewCount = 1
+    $bundle.summary.maintainerStateCounts.new = 1
     $bundleJson = $bundle | ConvertTo-Json -Depth 20
     [IO.File]::WriteAllText($bundlePath, $bundleJson + "`n", [Text.UTF8Encoding]::new($false))
     Add-TestResult -Name 'fixture-bundle-valid' -Passed ([bool]($bundleJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench bundle satisfies the candidate review schema.'
@@ -157,8 +185,35 @@ try {
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
     $bundleHashAfter = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
     $stagedPaths = @('index.html', 'app.js', 'styles.css', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 1 -and $stageResult.evaluatedCandidateCount -eq 1 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports discovered and AI-evaluated candidates separately.' } else { ($stageOutput | Out-String).Trim() })
+    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 2 -and $stageResult.evaluatedCandidateCount -eq 2 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports discovered and AI-evaluated candidates separately.' } else { ($stageOutput | Out-String).Trim() })
     Add-TestResult -Name 'source-bundle-read-only' -Passed ($bundleHashBefore -eq $bundleHashAfter) -Detail 'Workbench staging does not modify its source bundle.'
+
+    $fakeAssessmentPath = Join-Path $tempRoot 'fake-assessment.ps1'
+    $escapedBundlePath = $bundlePath.Replace("'", "''")
+    [IO.File]::WriteAllText($fakeAssessmentPath, @"
+[CmdletBinding()]
+param(
+    [string]`$RepositoryRoot,
+    [string]`$OutputPath,
+    [string]`$CachePath,
+    [string]`$BaselinePath,
+    [string]`$Model,
+    [string]`$ReasoningEffort,
+    [int]`$BatchSize,
+    [int]`$UpstreamBatchSize,
+    [int]`$MaxRetries,
+    [string]`$EvaluatorCommand,
+    [switch]`$Force,
+    [string]`$OutputFormat
+)
+Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
+[ordered]@{ status = 'passed'; candidateCount = 2; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 2; inapplicableCount = 0; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
+"@, [Text.UTF8Encoding]::new($false))
+    $jsonAssessmentSiteDirectory = Join-Path $tempRoot 'json-assessment-site'
+    $jsonAssessmentOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $jsonAssessmentSiteDirectory -AssessmentScriptPath $fakeAssessmentPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $jsonAssessmentExitCode = $LASTEXITCODE
+    $jsonAssessmentResult = if ($jsonAssessmentExitCode -eq 0) { ($jsonAssessmentOutput | Out-String) | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 2 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -181,8 +236,8 @@ try {
     $staticInformationColorsValid = $stylesContent -match '\.stage-link\.active\s*\{[^}]*box-shadow:\s*3px 0 0 var\(--blue\) inset' -and $stylesContent -match '\.save-indicator\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.plan-count-control strong\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.candidate-source-root > summary\s*\{[^}]*color:\s*#c6d4ff' -and $stylesContent -match '\.tree-impact\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.ai-evaluation-summary\s*\{[^}]*background:\s*var\(--blue-soft\);[^}]*border-left:\s*4px solid var\(--blue\)' -and $stylesContent -match '\.assessment-details-heading > span\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.score-item\.efficiency strong\s*\{[^}]*color:\s*#c6d4ff' -and $stylesContent -match '\.toast\s*\{[^}]*border-left:\s*4px solid var\(--blue\)'
     Add-TestResult -Name 'static-information-colors' -Passed $staticInformationColorsValid -Detail 'Current-view chrome, selection counts, impact values, efficiency, and headroom use slate blue rather than the cyan interaction accent.'
 
-    $sourceTreeValid = $appContent -match 'candidate-source-root' -and $appContent -match 'candidate-category' -and $appContent -notmatch 'data-category-checkbox' -and $appContent -match 'data-decision-key' -and $appContent -notmatch 'reviewSet' -and $stylesContent -match '\.candidate-tree-row' -and $stylesContent -match '\.candidate-list-header' -and $stylesContent -match '\.candidate-category > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) auto'
-    Add-TestResult -Name 'evaluated-source-tree' -Passed $sourceTreeValid -Detail 'Hosted-applicable candidates are grouped by navigation-only folders with promotion-plan checkboxes only on leaf candidates.'
+    $sourceTreeValid = $appContent -match 'candidate-source-root' -and $appContent -match 'candidate-category' -and $appContent -match '\["maintainer", "Maintainer Proposals"\]' -and $appContent -match 'key: `maintainer:\$\{candidate\.id\}`' -and $appContent -match 'Proposal rationale' -and $appContent -notmatch 'data-category-checkbox' -and $appContent -match 'data-decision-key' -and $appContent -notmatch 'reviewSet' -and $stylesContent -match '\.candidate-tree-row' -and $stylesContent -match '\.candidate-list-header' -and $stylesContent -match '\.candidate-category > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) auto'
+    Add-TestResult -Name 'evaluated-source-tree' -Passed $sourceTreeValid -Detail 'Interactive, Contributor Guidance, and Maintainer Proposals candidates are grouped by source with promotion-plan checkboxes only on leaf candidates.'
 
     $contributorHierarchyValid = $appContent -match 'sourceType === "upstream"\s*\? `<div class="candidate-category-items contributor-candidates">\$\{candidates\.map\(renderCandidateTreeRow\)' -and $appContent -match 'Object\.entries\(groupCandidatesByCategory\(candidates\)\)'
     Add-TestResult -Name 'contributor-direct-children' -Passed $contributorHierarchyValid -Detail 'Contributor Guidance rules render directly beneath their source root while Interactive Toolkit rules retain category folders.'
@@ -209,8 +264,8 @@ try {
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
-    $assessmentLaunchValid = $launcherContent -match 'Invoke-RuleIntakeAssessment\.ps1' -and $launcherContent -match '\$null -eq \$resolvedBundlePath' -and $launcherContent -match '''-CachePath'', \$AssessmentCachePath' -and $launcherContent -match '''-BaselinePath'', \$AssessmentBaselinePath' -and $launcherContent -match '''-Model'', \$AssessmentModel' -and $launcherContent -match 'Rule intake assessment failed'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Default Workbench launches resolve candidates through local cache, committed baseline, and incremental assessment, while an explicit BundlePath remains a model-free staging path.'
+    $assessmentLaunchValid = $launcherContent -match 'Invoke-RuleIntakeAssessment\.ps1' -and $launcherContent -match '\$null -eq \$resolvedBundlePath' -and $launcherContent -match '''-CachePath'', \$AssessmentCachePath' -and $launcherContent -match '''-BaselinePath'', \$AssessmentBaselinePath' -and $launcherContent -match '''-Model'', \$AssessmentModel' -and $launcherContent -match '\$assessmentOutputFormat = if \(\$OutputFormat -eq ''Text''\) \{ ''Text'' \} else \{ ''Json'' \}' -and $launcherContent -match "Write-Host '\[RUNNING\].*assessment" -and $launcherContent -match '& pwsh @assessmentArguments 2>&1 \| ForEach-Object \{ Write-Host \$_ \}' -and $launcherContent -match "Write-Host '\[PASSED\].*assessment" -and $launcherContent -match 'Rule intake assessment failed'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Text launches visibly complete candidate assessment before Workbench staging, JSON launches remain machine-readable, and an explicit BundlePath remains a model-free staging path.'
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
     Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, serves static GET and HEAD requests, and exposes only a token-authenticated process shutdown lifecycle endpoint.'

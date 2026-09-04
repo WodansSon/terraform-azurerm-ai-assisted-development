@@ -206,10 +206,19 @@ Deterministic scripts own source collection, hashing, rule-block extraction, map
 
 #### Candidate Sources:
 
-Review both candidate channels on their own terms:
+Review all three candidate channels on their own terms:
 
 - The upstream contributor channel contains the contributor README and every indexed topic. It is authoritative for published standards but does not contain all maintained provider conventions.
 - The Interactive knowledge channel contains every Interactive contract rule. It is evidence for maintainer conventions, local safeguards, and cross-cutting review behavior, but it is not a Hosted runtime source.
+- The Maintainer Proposals channel contains hand-authored rules for missing Hosted review behavior that neither other source contains. It is Hosted-owned maintenance input, not deployed runtime guidance.
+
+Author Maintainer Proposals in these source-only files:
+
+- `hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md`
+- `hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md`
+- `hosted_copilot/copilot-rule-catalog/maintainer-rules/testing.rules.md`
+
+Each rule uses an instruction-style `### RULE-ID: Title` heading followed by exactly one `Rule`, `Provenance`, and `Rationale` bullet. `Status` is optional and defaults to `active`; use `retired` only after the rule maps to a Hosted catalog record. Documentation IDs start with `DOCS-`, implementation IDs with `IMPL-`, and testing IDs with `TEST-`. Allowed provenance values are `confirmed-maintainer-convention`, `inferred-maintainer-convention`, and `local-safeguard`.
 
 The initial Interactive intake audit must classify all 349 currently active rules. The three directly applicable contract families currently contain 158 rules: 102 documentation rules, 36 implementation rules, and 20 testing rules. Fifty-three IDs overlap the current Hosted catalog, leaving 105 direct candidates before semantic equivalence review. These counts describe the initial baseline and must not become hard-coded future limits.
 
@@ -244,6 +253,7 @@ Add `hosted_copilot/tools/New-RuleIntakeReview.ps1` as a read-only evidence coll
 - Validate the Hosted catalog and intake ledger before analysis.
 - Collect changed upstream documents with immutable baseline and current source identity.
 - Extract exact Interactive rule blocks from the hand-authored contracts and verify their hashes against the Interactive catalog.
+- Parse strict instruction-style Maintainer Proposal blocks, generate their hashes and structured metadata, and map exact Hosted rule IDs without requiring hand-authored JSON.
 - Include new, changed, retired, and deferred Interactive records requiring semantic review.
 - Include current Hosted rules and existing mappings relevant to each candidate.
 - Write generated review artifacts only to an explicit output directory or an external temporary directory.
@@ -257,7 +267,7 @@ Run the collector directly to refresh candidates or create a Workbench input art
 pwsh -NoProfile -File ./hosted_copilot/tools/New-RuleIntakeReview.ps1 -OutputPath <external-path>/rule-intake-review.json
 ```
 
-The bundle classifies Interactive rules as `new`, `changed`, `retired`, `deferred`, or `current`. A source content hash, lifecycle, or contract-path change reopens a prior decision. Exact normalized contract rule text must match the Interactive catalog hash before it enters the bundle.
+The bundle classifies Interactive rules as `new`, `changed`, `retired`, `deferred`, or `current`. It classifies Maintainer Proposals as `new`, `changed`, `retired`, or `current` by comparing source status and exact rule text with the same Hosted rule ID. A source content hash, lifecycle, or contract-path change reopens a prior decision. Exact normalized contract rule text must match the Interactive catalog hash before it enters the bundle.
 
 Refresh candidates by restarting the Workbench or invoking the collector and assessor directly. The browser does not expose a refresh action because its staged bundle is fixed for the server lifetime. Candidate regeneration does not update the ledger, catalog, source baselines, or generated instructions.
 
@@ -377,7 +387,7 @@ The static proof-of-concept interface lives beneath `hosted_copilot/workbench/`.
 pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
 ```
 
-By default, the launcher collects candidates, resolves unchanged assessments from the machine-local cache and committed baseline, evaluates only remaining candidates, writes the completed bundle into an external temporary site, and serves it from `http://127.0.0.1:43143/`. A fresh checkout with a current baseline does not rebuild existing assessments locally. Static content accepts only `GET` and `HEAD`; the sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches. Use `-BundlePath` to stage a prebuilt schema-valid bundle without collecting candidates. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening a browser automatically.
+By default, the launcher completes two visible phases. The assessment phase first collects candidates, reports cache and committed-baseline reuse, streams each required AI assessment batch, and prints its completion summary. Only after assessment succeeds does the Workbench phase stage the completed bundle and report the server as ready at `http://127.0.0.1:43143/`. This separation prevents a long assessment from appearing to be a hung server launch. A fresh checkout with a current baseline does not rebuild existing assessments locally. JSON output remains a single machine-readable result and therefore captures assessment details instead of streaming text. Static content accepts only `GET` and `HEAD`; the sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches. Use `-BundlePath` to stage a prebuilt schema-valid bundle without collecting candidates. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening a browser automatically.
 
 The Workbench supports laptop and desktop browsers only. At viewport widths below `768px`, or when the browser identifies as mobile, display the unsupported-device screen and do not load the candidate bundle or initialize IndexedDB. Do not maintain a separate responsive handset workflow for rule assessment or promotion.
 
@@ -385,7 +395,7 @@ Use IndexedDB for bundles, read-only AI assessments, maintainer choices, evidenc
 
 The proof of concept does not run a model inside the browser. Semantic evaluation must complete before a candidate appears in the Workbench tree. Do not show unevaluated candidates or invent fallback scores. Bind every assessment to the candidate source-content SHA-256 and reject stale assessments.
 
-Organize evaluated candidates beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Interactive category folders are navigation-only; Contributor Guidance rules are direct children of their source root. Show source lifecycle and authoritative Hosted catalog status as separate columns. A leaf checkbox controls only promotion-plan membership for the selected add, update, or retire action. Clicking a candidate row is a separate interaction that opens the right pane and must not change plan membership, rebuild the tree, or collapse expanded folders.
+Organize evaluated candidates beneath non-selectable **Interactive Toolkit**, **Contributor Guidance**, and **Maintainer Proposals** source roots. Interactive and maintainer category folders are navigation-only; Contributor Guidance rules are direct children of their source root. Show source lifecycle and authoritative Hosted catalog status as separate columns. A leaf checkbox controls only promotion-plan membership for the selected add, update, or retire action. Clicking a candidate row is a separate interaction that opens the right pane and must not change plan membership, rebuild the tree, or collapse expanded folders.
 
 The right pane always displays the complete source rule, authoritative catalog status, exact mapped Hosted rule IDs, text and placements, the AI recommendation, plain-language impact description, token cost, projected headroom, all seven factor judgments, selection rationale, related Hosted coverage, proposed Hosted wording, and editable decision rationale. Assessment details are AI-adjudicated evidence and cannot be edited. Rule Actions is mutually exclusive: unmapped candidates allow no change, add, exclude, or defer; mapped candidates allow no change, update, retire, or defer; source-retired and retired-mapping cases use their narrower applicable subsets. Selecting add, update, or retire adds that action to the plan by default, while the tree and detail checkboxes provide the same explicit membership control.
 

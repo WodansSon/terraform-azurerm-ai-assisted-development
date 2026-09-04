@@ -457,10 +457,13 @@ The current Interactive Toolkit contains useful migration evidence but is not th
 
 ### Independent Candidate Channels:
 
-**The Hosted Maintenance Workflow Has Two Independent Semantic Intake Channels:**
+**The Hosted Maintenance Workflow Has Three Independent Semantic Intake Channels:**
 
 - **Upstream contributor channel:** Review the contributor README and every indexed contributor topic for published standards, changed meaning, new requirements, and removed requirements.
 - **Interactive knowledge channel:** Review every Interactive Toolkit rule for maintainer conventions, local safeguards, or cross-cutting review behavior that contributor documentation does not preserve.
+- **Maintainer proposal channel:** Review instruction-style Markdown rules authored directly under `hosted_copilot/copilot-rule-catalog/maintainer-rules/` for missing Hosted behavior that neither other channel contains.
+
+Maintainer proposal files are hand-authored source records, not runtime instructions. They remain outside the deployed package manifest. The collector validates their surface-specific IDs and required `Rule`, `Provenance`, and `Rationale` fields, hashes each normalized block, maps exact Hosted rule IDs, and generates structured candidate JSON. Maintainers never hand-author the generated candidate or assessment JSON.
 
 The first Interactive baseline contains 349 active rules. All 349 must receive a persisted intake decision, even when their contract family appears unrelated to Hosted review. Direct implementation, testing, and documentation rules should be reviewed first, followed by cross-cutting review rules and then workflow-specific families. Contract-family routing is a review order, not permission to silently exclude rules.
 
@@ -508,7 +511,7 @@ This is maintainer-invoked experiment support, not unattended semantic synchroni
 
 The Workbench uses IndexedDB for review bundles, read-only AI assessments, maintainer decisions, evidence notes, and resumable drafts. Local storage holds only lightweight preferences and the active session identifier. Each persisted decision and assessment is keyed to source identity and content hash; changed source content reopens the candidate instead of inheriting stale analysis. Draft schema version 2 stores a mutually exclusive rule action and independent promotion-plan membership; unreleased earlier draft shapes are rejected rather than migrated. Maintainers can export and import current draft state independently from browser storage.
 
-Semantic evaluation completes before a candidate enters the Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. The tree is organized beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Interactive rules retain navigation-only category folders, while Contributor Guidance rules are direct children of their source root. Each candidate shows source lifecycle and authoritative Hosted catalog status separately. `Mapped` means the bundle identifies one or more active Hosted rules; `Retired mapping` means only retired Hosted rules remain; `Not mapped` means no authoritative mapping exists. The tree checkbox controls only whether the selected add, update, or retire action is in the promotion plan. Clicking a candidate row independently opens its complete source rule and AI assessment without changing plan membership or collapsing the tree.
+Semantic evaluation completes before a candidate enters the Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. The tree is organized beneath non-selectable **Interactive Toolkit**, **Contributor Guidance**, and **Maintainer Proposals** source roots. Interactive and maintainer rules retain navigation-only category folders, while Contributor Guidance rules are direct children of their source root. Each candidate shows source lifecycle and authoritative Hosted catalog status separately. `Mapped` means the bundle identifies one or more active Hosted rules; `Retired mapping` means only retired Hosted rules remain; `Not mapped` means no authoritative mapping exists. The tree checkbox controls only whether the selected add, update, or retire action is in the promotion plan. Clicking a candidate row independently opens its complete source rule and AI assessment without changing plan membership or collapsing the tree.
 
 **The Workbench Presents One Guided Process:**
 

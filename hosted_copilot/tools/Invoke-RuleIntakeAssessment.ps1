@@ -84,10 +84,10 @@ function Get-CandidateSourceHash {
         [Parameter(Mandatory = $true)][object]$Candidate
     )
 
-    if ($SourceType -eq 'interactive') {
-        return [string]$Candidate.contentSha256
+    if ($SourceType -eq 'upstream') {
+        return [string]$Candidate.currentSha256
     }
-    return [string]$Candidate.currentSha256
+    return [string]$Candidate.contentSha256
 }
 
 function Get-AssessmentIdentity {
@@ -363,6 +363,7 @@ foreach ($entry in $cacheEntries.ToArray()) {
 $candidateRecords = New-Object 'System.Collections.Generic.List[object]'
 foreach ($source in @(
     [pscustomobject]@{ sourceType = 'interactive'; candidates = @($bundle.interactiveCandidates) },
+    [pscustomobject]@{ sourceType = 'maintainer'; candidates = @($bundle.maintainerCandidates) },
     [pscustomobject]@{ sourceType = 'upstream'; candidates = @($bundle.upstreamCandidates) }
 )) {
     foreach ($candidate in $source.candidates) {
@@ -442,7 +443,7 @@ if ($seededCount -gt 0) {
 }
 
 $assessmentBatches = New-Object 'System.Collections.Generic.List[object]'
-foreach ($sourceType in @('interactive', 'upstream')) {
+foreach ($sourceType in @('interactive', 'maintainer', 'upstream')) {
     $sourcePending = @($pending.ToArray() | Where-Object sourceType -eq $sourceType)
     $sourceBatchSize = if ($sourceType -eq 'upstream') { $UpstreamBatchSize } else { $BatchSize }
     for ($sourceOffset = 0; $sourceOffset -lt $sourcePending.Count; $sourceOffset += $sourceBatchSize) {
@@ -635,7 +636,7 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
     }
     [IO.File]::WriteAllText($resolvedOutputPath, $resultJson + "`n", [Text.UTF8Encoding]::new($false))
 
-    $allCandidates = @($bundle.interactiveCandidates) + @($bundle.upstreamCandidates)
+    $allCandidates = @($bundle.interactiveCandidates) + @($bundle.maintainerCandidates) + @($bundle.upstreamCandidates)
     $summary = [ordered]@{
         status = 'passed'
         outputPath = $resolvedOutputPath

@@ -4,7 +4,7 @@
   "title": "Hosted Rule Intake Review Bundle",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "upstreamCandidates", "interactiveCandidates"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "upstreamCandidates", "interactiveCandidates", "maintainerCandidates"],
   "properties": {
     "$schema": { "const": "rule-intake-review.schema.json" },
     "schemaVersion": { "const": 1 },
@@ -21,6 +21,10 @@
     "interactiveCandidates": {
       "type": "array",
       "items": { "$ref": "#/$defs/interactiveCandidate" }
+    },
+    "maintainerCandidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/maintainerCandidate" }
     }
   },
   "$defs": {
@@ -30,7 +34,7 @@
     "snapshots": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["hostedCatalogSha256", "intakeLedgerSha256", "upstream", "interactive"],
+      "required": ["hostedCatalogSha256", "intakeLedgerSha256", "upstream", "interactive", "maintainer"],
       "properties": {
         "hostedCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
         "intakeLedgerSha256": { "$ref": "#/$defs/sha256Hash" },
@@ -55,13 +59,22 @@
             "currentCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
             "catalogChanged": { "type": "boolean" }
           }
+        },
+        "maintainer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["directoryPath", "sourceSha256"],
+          "properties": {
+            "directoryPath": { "type": "string", "minLength": 1 },
+            "sourceSha256": { "$ref": "#/$defs/sha256Hash" }
+          }
         }
       }
     },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["upstreamSourceCount", "changedUpstreamCount", "interactiveRuleCount", "interactiveReviewCount", "interactiveCurrentCount", "interactiveStateCounts"],
+      "required": ["upstreamSourceCount", "changedUpstreamCount", "interactiveRuleCount", "interactiveReviewCount", "interactiveCurrentCount", "interactiveStateCounts", "maintainerRuleCount", "maintainerReviewCount", "maintainerCurrentCount", "maintainerStateCounts"],
       "properties": {
         "upstreamSourceCount": { "type": "integer", "minimum": 0 },
         "changedUpstreamCount": { "type": "integer", "minimum": 0 },
@@ -77,6 +90,20 @@
             "changed": { "type": "integer", "minimum": 0 },
             "retired": { "type": "integer", "minimum": 0 },
             "deferred": { "type": "integer", "minimum": 0 },
+            "current": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "maintainerRuleCount": { "type": "integer", "minimum": 0 },
+        "maintainerReviewCount": { "type": "integer", "minimum": 0 },
+        "maintainerCurrentCount": { "type": "integer", "minimum": 0 },
+        "maintainerStateCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["new", "changed", "retired", "current"],
+          "properties": {
+            "new": { "type": "integer", "minimum": 0 },
+            "changed": { "type": "integer", "minimum": 0 },
+            "retired": { "type": "integer", "minimum": 0 },
             "current": { "type": "integer", "minimum": 0 }
           }
         }
@@ -236,6 +263,26 @@
         "requiresReview": { "type": "boolean" },
         "changeReasons": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "priorDecision": { "type": ["object", "null"] },
+        "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
+        "assessment": { "$ref": "#/$defs/aiAssessment" }
+      }
+    },
+    "maintainerCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "sourcePath", "surface", "sourceStatus", "contentSha256", "provenance", "rationale", "ruleText", "state", "requiresReview", "relatedHostedRules"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ruleId" },
+        "title": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "surface": { "enum": ["implementation", "testing", "documentation"] },
+        "sourceStatus": { "enum": ["active", "retired"] },
+        "contentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "provenance": { "enum": ["confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "ruleText": { "type": "string", "minLength": 1 },
+        "state": { "enum": ["new", "changed", "retired", "current"] },
+        "requiresReview": { "type": "boolean" },
         "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
         "assessment": { "$ref": "#/$defs/aiAssessment" }
       }

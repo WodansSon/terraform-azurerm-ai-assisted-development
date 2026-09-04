@@ -49,6 +49,7 @@ $entries = New-Object 'System.Collections.Generic.List[object]'
 $identities = @{}
 foreach ($source in @(
     [pscustomobject]@{ sourceType = 'interactive'; candidates = @($bundle.interactiveCandidates); hashProperty = 'contentSha256' },
+    [pscustomobject]@{ sourceType = 'maintainer'; candidates = @($bundle.maintainerCandidates); hashProperty = 'contentSha256' },
     [pscustomobject]@{ sourceType = 'upstream'; candidates = @($bundle.upstreamCandidates); hashProperty = 'currentSha256' }
 )) {
     foreach ($candidate in $source.candidates) {
@@ -109,6 +110,7 @@ $result = [ordered]@{
     baselinePath = $resolvedBaselinePath
     entryCount = $entries.Count
     interactiveCount = @($entries.ToArray() | Where-Object sourceType -eq 'interactive').Count
+    maintainerCount = @($entries.ToArray() | Where-Object sourceType -eq 'maintainer').Count
     upstreamCount = @($entries.ToArray() | Where-Object sourceType -eq 'upstream').Count
     hostedCatalogSha256 = $baseline.hostedCatalogSha256
     sourceBundleSha256 = $baseline.sourceBundleSha256
@@ -124,6 +126,7 @@ else {
         Published = $result.published
         Entries = $result.entryCount
         Interactive = $result.interactiveCount
+        Maintainer = $result.maintainerCount
         Upstream = $result.upstreamCount
         'Hosted Catalog SHA-256' = $result.hostedCatalogSha256
         'Source Bundle SHA-256' = $result.sourceBundleSha256

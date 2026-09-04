@@ -285,10 +285,11 @@ try {
         $fixtureContractPath = Join-Path $fixtureRoot '.github/instructions/implementation-compliance-contract.instructions.md'
         $fixtureBaselineRoot = Join-Path $fixtureRoot 'upstream-baseline'
         $fixtureCurrentRoot = Join-Path $fixtureRoot 'upstream-current'
+        $fixtureMaintainerRoot = Join-Path $fixtureCatalogRoot 'maintainer-rules'
         $fixtureBaselinePath = Join-Path $fixtureBaselineRoot 'contributing/README.md'
         $fixtureCurrentPath = Join-Path $fixtureCurrentRoot 'contributing/README.md'
         $fixtureRuntimeRoot = Join-Path $fixtureRoot 'hosted_copilot/.github'
-        foreach ($directory in @($fixtureCatalogRoot, $fixtureInteractiveCatalogRoot, (Split-Path -Parent $fixtureContractPath), (Split-Path -Parent $fixtureBaselinePath), (Split-Path -Parent $fixtureCurrentPath), (Join-Path $fixtureRuntimeRoot 'instructions'), (Join-Path $fixtureRuntimeRoot 'skills/code-review'))) {
+        foreach ($directory in @($fixtureCatalogRoot, $fixtureInteractiveCatalogRoot, $fixtureMaintainerRoot, (Split-Path -Parent $fixtureContractPath), (Split-Path -Parent $fixtureBaselinePath), (Split-Path -Parent $fixtureCurrentPath), (Join-Path $fixtureRuntimeRoot 'instructions'), (Join-Path $fixtureRuntimeRoot 'skills/code-review'))) {
             $null = New-Item -ItemType Directory -Path $directory -Force
         }
         Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $fixtureCatalogRoot
@@ -304,6 +305,9 @@ try {
             $content = "# Fixture $runtimePath`n"
             [IO.File]::WriteAllText((Join-Path $fixtureRuntimeRoot $runtimePath), $content, [Text.UTF8Encoding]::new($false))
         }
+        [IO.File]::WriteAllText((Join-Path $fixtureMaintainerRoot 'documentation.rules.md'), "---`ndescription: `"Fixture documentation proposals.`"`nsurface: documentation`n---`n`n# Documentation proposals`n", [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $fixtureMaintainerRoot 'implementation.rules.md'), "---`ndescription: `"Fixture implementation proposals.`"`nsurface: implementation`n---`n`n# Implementation proposals`n`n### IMPL-MAINT-001: Validate generated state`n`n- Rule: Flag generated state that does not match its source schema.`n- Provenance: local-safeguard`n- Rationale: Generated state drift causes review and runtime defects.`n", [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $fixtureMaintainerRoot 'testing.rules.md'), "---`ndescription: `"Fixture testing proposals.`"`nsurface: testing`n---`n`n# Testing proposals`n", [Text.UTF8Encoding]::new($false))
 
         $ruleBlocks = [ordered]@{
             'IMPL-TEST-001' = "### IMPL-TEST-001: New candidate`n`n- Rule: Review the new candidate."
@@ -359,7 +363,7 @@ try {
         })
 
         $bundleOutputPath = Join-Path $fixtureRoot 'output/rule-intake-review.json'
-        $protectedPaths = @($fixtureHostedCatalogPath, $fixtureLedgerPath, $fixtureInteractiveCatalogPath, $fixtureContractPath)
+        $protectedPaths = @($fixtureHostedCatalogPath, $fixtureLedgerPath, $fixtureInteractiveCatalogPath, $fixtureContractPath, (Join-Path $fixtureMaintainerRoot 'documentation.rules.md'), (Join-Path $fixtureMaintainerRoot 'implementation.rules.md'), (Join-Path $fixtureMaintainerRoot 'testing.rules.md'))
         $hashesBefore = @($protectedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
         $bundleOutput = @(& pwsh -NoProfile -File $bundleScriptPath -RepositoryRoot $fixtureRoot -HostedCatalogPath $fixtureHostedCatalogPath -IntakeLedgerPath $fixtureLedgerPath -InteractiveCatalogPath $fixtureInteractiveCatalogPath -UpstreamBaselineDirectory $fixtureBaselineRoot -UpstreamCurrentDirectory $fixtureCurrentRoot -UpstreamCurrentCommit ('2' * 40) -OutputPath $bundleOutputPath -OutputFormat Json 2>&1)
         $bundleExitCode = $LASTEXITCODE
@@ -377,6 +381,8 @@ try {
         Add-TestResult -Name 'upstream-change-classified' -Passed ($bundleExitCode -eq 0 -and $bundle.summary.changedUpstreamCount -eq 1 -and $bundle.upstreamCandidates[0].state -eq 'changed') -Detail 'Changed upstream content is reopened for semantic review.'
         $upstreamMappedRule = if ($bundleExitCode -eq 0) { @($bundle.upstreamCandidates[0].relatedHostedRules)[0] } else { $null }
         Add-TestResult -Name 'upstream-hosted-mapping-complete' -Passed ($null -ne $upstreamMappedRule -and $upstreamMappedRule.id -eq 'IMPL-TEST-005' -and $upstreamMappedRule.text -eq 'Review the current Hosted fixture.' -and $upstreamMappedRule.placements[0].surfaceId -eq 'implementation') -Detail 'Upstream candidates include exact mapped Hosted rule identity, text, status, and placement.'
+        $maintainerCandidate = if ($bundleExitCode -eq 0) { @($bundle.maintainerCandidates)[0] } else { $null }
+        Add-TestResult -Name 'maintainer-markdown-parsed' -Passed ($null -ne $maintainerCandidate -and $maintainerCandidate.id -eq 'IMPL-MAINT-001' -and $maintainerCandidate.surface -eq 'implementation' -and $maintainerCandidate.state -eq 'new' -and $maintainerCandidate.ruleText -eq 'Flag generated state that does not match its source schema.' -and $maintainerCandidate.provenance -eq 'local-safeguard') -Detail 'Instruction-style maintainer Markdown is parsed into a structured, hash-bound candidate without hand-authored JSON.'
         $statesById = @{}
         if ($bundleExitCode -eq 0) {
             foreach ($candidate in @($bundle.interactiveCandidates)) { $statesById[[string]$candidate.id] = [string]$candidate.state }

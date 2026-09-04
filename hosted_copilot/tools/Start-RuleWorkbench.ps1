@@ -11,6 +11,8 @@ param(
 
     [string]$AssessmentBaselinePath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-assessments/assessment-baseline.json'),
 
+    [string]$AssessmentScriptPath = (Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'),
+
     [string]$AssessmentModel = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
@@ -45,7 +47,7 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
-$assessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
+$assessmentPath = [IO.Path]::GetFullPath($AssessmentScriptPath)
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -80,6 +82,7 @@ $assessmentResult = $null
 
 function Update-StagedBundle {
     if ($null -eq $resolvedBundlePath) {
+        $assessmentOutputFormat = if ($OutputFormat -eq 'Text') { 'Text' } else { 'Json' }
         $assessmentArguments = @(
             '-NoProfile',
             '-File', $assessmentPath,
@@ -93,16 +96,31 @@ function Update-StagedBundle {
             '-UpstreamBatchSize', $UpstreamAssessmentBatchSize,
             '-MaxRetries', $AssessmentMaxRetries,
             '-EvaluatorCommand', $EvaluatorCommand,
-            '-OutputFormat', 'Json'
+            '-OutputFormat', $assessmentOutputFormat
         )
         if ($ForceAssessment) {
             $assessmentArguments += '-Force'
         }
-        $bundleOutput = @(& pwsh @assessmentArguments 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw "Rule intake assessment failed: $(($bundleOutput | Out-String).Trim())"
+        if ($OutputFormat -eq 'Text') {
+            Write-Host '[RUNNING]  assessment                  : Collecting candidates and resolving AI assessments'
+            & pwsh @assessmentArguments 2>&1 | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Rule intake assessment failed; review the assessment output above'
+            }
+            Write-Host '[PASSED]   assessment                  : Candidate bundle is ready for Workbench staging'
         }
-        $script:assessmentResult = ($bundleOutput | Out-String) | ConvertFrom-Json
+        else {
+            $bundleOutput = @(& pwsh @assessmentArguments 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Rule intake assessment failed: $(($bundleOutput | Out-String).Trim())"
+            }
+            try {
+                $script:assessmentResult = ($bundleOutput | Out-String) | ConvertFrom-Json
+            }
+            catch {
+                throw "Rule intake assessment did not return valid JSON: $($_.Exception.Message)"
+            }
+        }
     }
     else {
         if (-not (Test-Path -LiteralPath $resolvedBundlePath -PathType Leaf)) {
@@ -123,7 +141,7 @@ function Update-StagedBundle {
 }
 
 $stagedBundle = Update-StagedBundle
-$stagedCandidates = @($stagedBundle.interactiveCandidates) + @($stagedBundle.upstreamCandidates)
+$stagedCandidates = @($stagedBundle.interactiveCandidates) + @($stagedBundle.maintainerCandidates) + @($stagedBundle.upstreamCandidates)
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
@@ -150,9 +168,7 @@ if ($StageOnly) {
             Status = $result.status.ToUpperInvariant()
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            'Assessment Cache Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.cacheHitCount })
-            'Assessment Baseline Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.baselineHitCount })
-            'New Assessments' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.evaluatedCount })
+            Assessment = $(if ($null -eq $resolvedBundlePath) { 'COMPLETED ABOVE' } else { 'PREBUILT BUNDLE' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -222,9 +238,7 @@ try {
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            'Assessment Cache Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.cacheHitCount })
-            'Assessment Baseline Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.baselineHitCount })
-            'New Assessments' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.evaluatedCount })
+            Assessment = $(if ($null -eq $resolvedBundlePath) { 'COMPLETED ABOVE' } else { 'PREBUILT BUNDLE' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'

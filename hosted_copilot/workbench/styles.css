@@ -1179,6 +1179,10 @@ h3 {
   border-radius: 4px;
 }
 
+.proposal-rationale {
+  margin-top: 10px;
+}
+
 .assessment-pending strong,
 .assessment-rationale strong {
   color: #c6d4ff;

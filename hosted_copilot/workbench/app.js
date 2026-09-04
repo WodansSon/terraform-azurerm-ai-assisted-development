@@ -114,7 +114,11 @@ async function loadBundle() {
       .filter(({ assessment }) => assessment.hostedApplicable)
       .map(({ candidate, assessment }) => ({
         ...candidate,
-        category: candidate.sourceType === "upstream" ? getUpstreamCategory(candidate) : formatHostedCategory(assessment.hostedCategory)
+        category: candidate.sourceType === "upstream"
+          ? getUpstreamCategory(candidate)
+          : candidate.sourceType === "maintainer"
+            ? capitalize(candidate.surface)
+            : formatHostedCategory(assessment.hostedCategory)
       }));
     localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
     await persistSession();
@@ -199,12 +203,32 @@ function normalizeCandidates(bundle) {
     assessment: candidate.assessment || null,
     relatedHostedRules: candidate.relatedHostedRules || []
   }));
-  return [...interactive, ...upstream];
+  const maintainer = bundle.maintainerCandidates.map((candidate) => ({
+    key: `maintainer:${candidate.id}`,
+    id: candidate.id,
+    sourceType: "maintainer",
+    sourceLabel: "Maintainer proposal",
+    category: capitalize(candidate.surface),
+    title: candidate.title,
+    state: candidate.state,
+    requiresReview: candidate.requiresReview,
+    provenance: candidate.provenance,
+    sourcePath: candidate.sourcePath,
+    sourceRationale: candidate.rationale,
+    surface: candidate.surface,
+    hash: candidate.contentSha256,
+    text: candidate.ruleText,
+    baselineText: null,
+    priorDecision: null,
+    assessment: candidate.assessment || null,
+    relatedHostedRules: candidate.relatedHostedRules || []
+  }));
+  return [...interactive, ...upstream, ...maintainer];
 }
 
 function getSessionId(bundle) {
   const snapshots = bundle.snapshots;
-  return [snapshots.hostedCatalogSha256, snapshots.interactive.currentCatalogSha256, snapshots.upstream.currentCommit].join(":");
+  return [snapshots.hostedCatalogSha256, snapshots.interactive.currentCatalogSha256, snapshots.upstream.currentCommit, snapshots.maintainer.sourceSha256].join(":");
 }
 
 function createSession(id, bundle) {
@@ -226,7 +250,7 @@ function defaultDecision(candidate) {
     action: "no-change",
     inPlan: false,
     rationale: "",
-    proposedText: assessment?.proposedText || (candidate.sourceType === "interactive" ? extractRuleBody(candidate.text) : ""),
+    proposedText: assessment?.proposedText || (candidate.sourceType === "upstream" ? "" : extractRuleBody(candidate.text)),
     assessment,
     updatedAt: new Date().toISOString()
   };
@@ -407,7 +431,8 @@ function renderCandidateList() {
   }
   const sources = [
     ["interactive", "Interactive Toolkit"],
-    ["upstream", "Contributor Guidance"]
+    ["upstream", "Contributor Guidance"],
+    ["maintainer", "Maintainer Proposals"]
   ];
   elements["candidate-list"].innerHTML = `
     <div class="eligibility-note"><strong>${formatNumber(state.excludedCandidateCount)} inapplicable items excluded</strong><span>Workflow-only and non-review guidance is screened out before maintainer review.</span></div>
@@ -512,6 +537,7 @@ function renderAssessment() {
       <div class="section-block">
         <span class="section-label">Source rule</span>
         <pre class="evidence-box">${escapeHtml(candidate.text)}</pre>
+        ${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}
       </div>
 
       <div class="section-block">
@@ -853,6 +879,9 @@ function buildApprovalPayload() {
       return {
         sourceType: candidate.sourceType,
         id: candidate.id,
+        sourcePath: candidate.sourcePath,
+        sourceRationale: candidate.sourceRationale || null,
+        provenance: candidate.provenance,
         sourceContentSha256: candidate.hash,
         catalogStatus: getCatalogStatus(candidate).key,
         mappedHostedRuleIds: getCatalogStatus(candidate).rules.map((rule) => rule.id),

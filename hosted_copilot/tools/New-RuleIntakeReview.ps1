@@ -8,6 +8,8 @@ param(
 
     [string]$InteractiveCatalogPath = (Join-Path $PSScriptRoot '../../tools/interactive-rule-catalog/rule-catalog.json'),
 
+    [string]$MaintainerRulesDirectory,
+
     [string]$UpstreamBaselineDirectory,
 
     [string]$UpstreamCurrentDirectory,
@@ -30,6 +32,12 @@ $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $resolvedHostedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
 $resolvedLedgerPath = [IO.Path]::GetFullPath($IntakeLedgerPath)
 $resolvedInteractiveCatalogPath = [IO.Path]::GetFullPath($InteractiveCatalogPath)
+$resolvedMaintainerRulesDirectory = if ([string]::IsNullOrWhiteSpace($MaintainerRulesDirectory)) {
+    [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $resolvedHostedCatalogPath) 'maintainer-rules'))
+}
+else {
+    [IO.Path]::GetFullPath($MaintainerRulesDirectory)
+}
 $hostedCatalogSchemaPath = Join-Path (Split-Path -Parent $resolvedHostedCatalogPath) 'instruction-catalog.schema.json'
 $ledgerSchemaPath = Join-Path (Split-Path -Parent $resolvedLedgerPath) 'interactive-intake-ledger.schema.json'
 $interactiveCatalogSchemaPath = Join-Path (Split-Path -Parent $resolvedInteractiveCatalogPath) 'rule-catalog.schema.json'
@@ -115,6 +123,153 @@ function Get-InteractiveRuleTextById {
     return $result
 }
 
+function Get-MaintainerRuleCandidates {
+    param(
+        [Parameter(Mandatory = $true)][string]$Directory,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][hashtable]$HostedRulesById,
+        [Parameter(Mandatory = $true)][hashtable]$PlacementsByRuleId
+    )
+
+    $sourceFiles = [ordered]@{
+        documentation = 'documentation.rules.md'
+        implementation = 'implementation.rules.md'
+        testing = 'testing.rules.md'
+    }
+    $allowedProvenance = @('confirmed-maintainer-convention', 'inferred-maintainer-convention', 'local-safeguard')
+    $idPrefixes = @{ documentation = 'DOCS-'; implementation = 'IMPL-'; testing = 'TEST-' }
+    $candidates = New-Object 'System.Collections.Generic.List[object]'
+    $seenIds = @{}
+
+    foreach ($entry in $sourceFiles.GetEnumerator()) {
+        $surface = [string]$entry.Key
+        $sourcePath = Join-Path $Directory ([string]$entry.Value)
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "Maintainer rule source was not found: $sourcePath"
+        }
+        $lines = @(Get-Content -LiteralPath $sourcePath)
+        if ($lines.Count -lt 4 -or $lines[0] -ne '---') {
+            throw "Maintainer rule source frontmatter is invalid: $sourcePath"
+        }
+        $frontmatterEnd = [Array]::IndexOf($lines, '---', 1)
+        if ($frontmatterEnd -lt 1 -or @($lines[1..($frontmatterEnd - 1)] | Where-Object { $_ -eq "surface: $surface" }).Count -ne 1) {
+            throw "Maintainer rule source surface must be `$surface`: $sourcePath"
+        }
+
+        $headingIndexes = New-Object 'System.Collections.Generic.List[int]'
+        $insideComment = $false
+        for ($lineIndex = $frontmatterEnd + 1; $lineIndex -lt $lines.Count; $lineIndex++) {
+            if ($lines[$lineIndex] -match '^\s*<!--') {
+                $insideComment = $lines[$lineIndex] -notmatch '-->\s*$'
+                continue
+            }
+            if ($insideComment) {
+                if ($lines[$lineIndex] -match '-->\s*$') {
+                    $insideComment = $false
+                }
+                continue
+            }
+            if ($lines[$lineIndex] -match '^### ') {
+                if ($lines[$lineIndex] -notmatch '^### (?<id>[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?): (?<title>.+)$') {
+                    throw "Maintainer rule heading is invalid at $sourcePath`:$($lineIndex + 1)"
+                }
+                $headingIndexes.Add($lineIndex)
+            }
+        }
+
+        for ($headingPosition = 0; $headingPosition -lt $headingIndexes.Count; $headingPosition++) {
+            $startIndex = $headingIndexes[$headingPosition]
+            $endIndex = if ($headingPosition + 1 -lt $headingIndexes.Count) { $headingIndexes[$headingPosition + 1] - 1 } else { $lines.Count - 1 }
+            $null = $lines[$startIndex] -match '^### (?<id>[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?): (?<title>.+)$'
+            $ruleId = [string]$Matches['id']
+            $title = [string]$Matches['title']
+            if (-not $ruleId.StartsWith($idPrefixes[$surface], [StringComparison]::Ordinal)) {
+                throw "Maintainer rule $ruleId does not match the $surface surface"
+            }
+            if ($seenIds.ContainsKey($ruleId)) {
+                throw "Duplicate maintainer rule ID: $ruleId"
+            }
+            $seenIds[$ruleId] = $true
+
+            $fields = @{}
+            foreach ($line in @($lines[($startIndex + 1)..$endIndex])) {
+                if ([string]::IsNullOrWhiteSpace($line) -or $line -match '^<!--' -or $line -match '^-->$') {
+                    continue
+                }
+                if ($line -notmatch '^- (?<name>Rule|Provenance|Rationale|Status): (?<value>\S.*)$') {
+                    throw "Maintainer rule $ruleId contains unsupported content: $line"
+                }
+                $fieldName = [string]$Matches['name']
+                if ($fields.ContainsKey($fieldName)) {
+                    throw "Maintainer rule $ruleId repeats field $fieldName"
+                }
+                $fields[$fieldName] = [string]$Matches['value']
+            }
+            foreach ($requiredField in @('Rule', 'Provenance', 'Rationale')) {
+                if (-not $fields.ContainsKey($requiredField)) {
+                    throw "Maintainer rule $ruleId is missing field $requiredField"
+                }
+            }
+            if ($fields['Provenance'] -notin $allowedProvenance) {
+                throw "Maintainer rule $ruleId has unsupported provenance $($fields['Provenance'])"
+            }
+            $sourceStatus = if ($fields.ContainsKey('Status')) { [string]$fields['Status'] } else { 'active' }
+            if ($sourceStatus -notin @('active', 'retired')) {
+                throw "Maintainer rule $ruleId has unsupported status $sourceStatus"
+            }
+
+            $hostedRule = if ($HostedRulesById.ContainsKey($ruleId)) { $HostedRulesById[$ruleId] } else { $null }
+            if ($sourceStatus -eq 'retired' -and $null -eq $hostedRule) {
+                throw "Retired maintainer rule $ruleId does not map to a Hosted rule"
+            }
+            $state = if ($sourceStatus -eq 'retired') {
+                if ($hostedRule.status -eq 'retired') { 'current' } else { 'retired' }
+            }
+            elseif ($null -eq $hostedRule) {
+                'new'
+            }
+            elseif ($hostedRule.status -eq 'active' -and [string]$hostedRule.text -ceq [string]$fields['Rule']) {
+                'current'
+            }
+            else {
+                'changed'
+            }
+            [object[]]$relatedHostedRules = @()
+            if ($null -ne $hostedRule) {
+                [object[]]$placements = if ($PlacementsByRuleId.ContainsKey($ruleId)) { @($PlacementsByRuleId[$ruleId].ToArray()) } else { @() }
+                $relatedHostedRules = @([pscustomobject]@{ id = $ruleId; status = [string]$hostedRule.status; text = [string]$hostedRule.text; placements = $placements })
+            }
+            $normalizedBlock = Get-NormalizedRuleText -Lines @($lines[$startIndex..$endIndex])
+            $relativeSourcePath = [IO.Path]::GetRelativePath($RepositoryRoot, $sourcePath).Replace('\', '/')
+            $candidates.Add([pscustomobject]@{
+                id = $ruleId
+                title = $title
+                sourcePath = $relativeSourcePath
+                surface = $surface
+                sourceStatus = $sourceStatus
+                contentSha256 = Get-ContentSha256 -Content $normalizedBlock
+                provenance = [string]$fields['Provenance']
+                rationale = [string]$fields['Rationale']
+                ruleText = [string]$fields['Rule']
+                state = $state
+                requiresReview = $state -ne 'current'
+                relatedHostedRules = @($relatedHostedRules)
+            })
+        }
+    }
+
+    return $candidates.ToArray()
+}
+
+function Get-MaintainerRulesSnapshotSha256 {
+    param([Parameter(Mandatory = $true)][string]$Directory)
+
+    $snapshot = @(Get-ChildItem -LiteralPath $Directory -Filter '*.rules.md' -File | Sort-Object Name | ForEach-Object {
+        "$($_.Name)`n$([IO.File]::ReadAllText($_.FullName))"
+    }) -join "`n"
+    return Get-ContentSha256 -Content $snapshot
+}
+
 function Get-UpstreamRelativePath {
     param([Parameter(Mandatory = $true)][string]$RawUrl)
 
@@ -173,6 +328,9 @@ foreach ($requiredPath in @($resolvedHostedCatalogPath, $hostedCatalogSchemaPath
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required rule intake file was not found: $requiredPath"
     }
+}
+if (-not (Test-Path -LiteralPath $resolvedMaintainerRulesDirectory -PathType Container)) {
+    throw "Maintainer rules directory was not found: $resolvedMaintainerRulesDirectory"
 }
 
 $hostedCatalogContent = Get-Content -LiteralPath $resolvedHostedCatalogPath -Raw
@@ -344,6 +502,12 @@ foreach ($rule in @($interactiveCatalog.rules | Sort-Object contractPath, id)) {
     })
 }
 
+$maintainerCandidates = @(Get-MaintainerRuleCandidates -Directory $resolvedMaintainerRulesDirectory -RepositoryRoot $resolvedRepositoryRoot -HostedRulesById $hostedRulesById -PlacementsByRuleId $placementsByRuleId)
+$maintainerStateCounts = [ordered]@{}
+foreach ($state in @('new', 'changed', 'retired', 'current')) {
+    $maintainerStateCounts[$state] = @($maintainerCandidates | Where-Object state -eq $state).Count
+}
+
 $stateCounts = [ordered]@{}
 foreach ($state in @('new', 'changed', 'retired', 'deferred', 'current')) {
     $stateCounts[$state] = @($interactiveCandidates | Where-Object state -eq $state).Count
@@ -370,6 +534,10 @@ $result = [ordered]@{
             currentCatalogSha256 = $currentInteractiveCatalogHash
             catalogChanged = $currentInteractiveCatalogHash -ne [string]$ledger.sourceSnapshot.catalogSha256
         }
+        maintainer = [ordered]@{
+            directoryPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $resolvedMaintainerRulesDirectory).Replace('\', '/')
+            sourceSha256 = Get-MaintainerRulesSnapshotSha256 -Directory $resolvedMaintainerRulesDirectory
+        }
     }
     summary = [ordered]@{
         upstreamSourceCount = $upstreamCandidates.Count
@@ -378,10 +546,15 @@ $result = [ordered]@{
         interactiveReviewCount = @($interactiveCandidates | Where-Object requiresReview).Count
         interactiveCurrentCount = $stateCounts.current
         interactiveStateCounts = $stateCounts
+        maintainerRuleCount = $maintainerCandidates.Count
+        maintainerReviewCount = @($maintainerCandidates | Where-Object requiresReview).Count
+        maintainerCurrentCount = $maintainerStateCounts.current
+        maintainerStateCounts = $maintainerStateCounts
     }
     guidanceCapacity = $guidanceCapacity
     upstreamCandidates = $upstreamCandidates.ToArray()
     interactiveCandidates = $interactiveCandidates.ToArray()
+    maintainerCandidates = $maintainerCandidates
 }
 
 $resultJson = $result | ConvertTo-Json -Depth 30
@@ -409,6 +582,9 @@ else {
         'Interactive Rules' = $result.summary.interactiveRuleCount
         'Interactive Review' = $result.summary.interactiveReviewCount
         'Interactive Current' = $result.summary.interactiveCurrentCount
+        'Maintainer Rules' = $result.summary.maintainerRuleCount
+        'Maintainer Review' = $result.summary.maintainerReviewCount
+        'Maintainer Current' = $result.summary.maintainerCurrentCount
         'Guarded Headroom' = (@($result.guidanceCapacity.reports | Where-Object kind -eq 'combined' | ForEach-Object { "$($_.name)=$($_.budgetHeadroomTokens)" }) -join '; ')
         'Updates Repository' = $false
         'Output Path' = $(if ([string]::IsNullOrWhiteSpace($OutputPath)) { '(not written)' } else { [IO.Path]::GetFullPath($OutputPath) })

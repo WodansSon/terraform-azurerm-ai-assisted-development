@@ -117,6 +117,7 @@ function Write-Bundle {
             intakeLedgerSha256 = 'b' * 64
             upstream = [ordered]@{ repository = 'hashicorp/terraform-provider-azurerm'; baselineCommit = '1' * 40; currentRef = 'main'; currentCommit = '2' * 40 }
             interactive = [ordered]@{ catalogPath = 'tools/interactive-rule-catalog/rule-catalog.json'; previousCatalogSha256 = 'c' * 64; currentCatalogSha256 = 'c' * 64; catalogChanged = $false }
+            maintainer = [ordered]@{ directoryPath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules'; sourceSha256 = 'd' * 64 }
         }
         summary = [ordered]@{
             upstreamSourceCount = 0
@@ -125,6 +126,10 @@ function Write-Bundle {
             interactiveReviewCount = 2
             interactiveCurrentCount = 0
             interactiveStateCounts = [ordered]@{ new = 2; changed = 0; retired = 0; deferred = 0; current = 0 }
+            maintainerRuleCount = 0
+            maintainerReviewCount = 0
+            maintainerCurrentCount = 0
+            maintainerStateCounts = [ordered]@{ new = 0; changed = 0; retired = 0; current = 0 }
         }
         guidanceCapacity = [ordered]@{
             status = 'passed'
@@ -135,6 +140,7 @@ function Write-Bundle {
         }
         upstreamCandidates = @()
         interactiveCandidates = $candidates
+        maintainerCandidates = @()
     }
     [IO.File]::WriteAllText($Path, ($bundle | ConvertTo-Json -Depth 20) + "`n", [Text.UTF8Encoding]::new($false))
 }
@@ -314,14 +320,35 @@ else {
         baselineContent = 'Old guidance.'
         currentContent = 'Current guidance.'
     })
+    $mixedBundle.maintainerCandidates = @([pscustomobject]@{
+        id = 'DOCS-MAINT-001'
+        title = 'Maintainer proposal'
+        sourcePath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'
+        surface = 'documentation'
+        sourceStatus = 'active'
+        contentSha256 = '3' * 64
+        provenance = 'confirmed-maintainer-convention'
+        rationale = 'The maintainer confirmed this documentation review requirement.'
+        ruleText = 'Flag documentation that omits a required maintainer convention.'
+        state = 'new'
+        requiresReview = $true
+        relatedHostedRules = @()
+    })
     $mixedBundle.summary.upstreamSourceCount = 1
     $mixedBundle.summary.changedUpstreamCount = 1
+    $mixedBundle.summary.maintainerRuleCount = 1
+    $mixedBundle.summary.maintainerReviewCount = 1
+    $mixedBundle.summary.maintainerStateCounts.new = 1
     [IO.File]::WriteAllText($mixedBundlePath, ($mixedBundle | ConvertTo-Json -Depth 20) + "`n", [Text.UTF8Encoding]::new($false))
     $mixedLogPath = Join-Path $mixedRoot 'calls.log'
     $env:FAKE_EVALUATOR_CALL_LOG = $mixedLogPath
-    $mixedResult = Invoke-Assessment -InputPath $mixedBundlePath -OutputPath (Join-Path $mixedRoot 'assessed.json') -CachePath (Join-Path $mixedRoot 'cache.json') -BatchSize 50
+    $mixedAssessedPath = Join-Path $mixedRoot 'assessed.json'
+    $mixedResult = Invoke-Assessment -InputPath $mixedBundlePath -OutputPath $mixedAssessedPath -CachePath (Join-Path $mixedRoot 'cache.json') -BatchSize 50
     $mixedCalls = @(Get-Content -LiteralPath $mixedLogPath)
-    Add-TestResult -Name 'source-types-batched-separately' -Passed ($mixedResult.evaluatedCount -eq 3 -and $mixedResult.batchCount -eq 2 -and $mixedCalls.Count -eq 2 -and $mixedCalls[0] -match ':interactive:2$' -and $mixedCalls[1] -match ':upstream:1$') -Detail 'Interactive and upstream candidates remain in separate evaluator batches even when the configured batch size could contain both.'
+    Add-TestResult -Name 'source-types-batched-separately' -Passed ($mixedResult.evaluatedCount -eq 4 -and $mixedResult.batchCount -eq 3 -and $mixedCalls.Count -eq 3 -and $mixedCalls[0] -match ':interactive:2$' -and $mixedCalls[1] -match ':maintainer:1$' -and $mixedCalls[2] -match ':upstream:1$') -Detail 'Interactive, maintainer, and upstream candidates remain in separate evaluator batches even when the configured batch size could contain all three source types.'
+    $mixedBaselineOutput = @(& pwsh -NoProfile -File $baselinePublisherPath -BundlePath $mixedAssessedPath -BaselinePath (Join-Path $mixedRoot 'baseline.json') -OutputFormat Json 2>&1)
+    $mixedBaselineResult = if ($LASTEXITCODE -eq 0) { ($mixedBaselineOutput | Out-String) | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'maintainer-baseline-publication' -Passed ($null -ne $mixedBaselineResult -and $mixedBaselineResult.maintainerCount -eq 1 -and $mixedBaselineResult.entryCount -eq 4) -Detail 'Baseline publication generates a hash-bound maintainer assessment entry from the assessed bundle.'
 
     $env:FAKE_EVALUATOR_CALL_LOG = $callLogPath
     Write-Bundle -Path $changedBundlePath -SecondHash ('f' * 64)
