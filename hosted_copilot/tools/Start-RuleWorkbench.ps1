@@ -73,7 +73,42 @@ foreach ($assetName in $ownedAssetNames) {
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)
 $shutdownToken = [Convert]::ToHexString($shutdownTokenBytes).ToLowerInvariant()
-$shutdownConfig = [ordered]@{ shutdownToken = $shutdownToken } | ConvertTo-Json -Compress
+$maintainerIdentity = [ordered]@{
+    status = 'unavailable'
+    login = $null
+    isCodeOwner = $false
+    reason = 'GitHub CLI authentication is required to propose an applicability override.'
+}
+$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+if ($null -ne $ghCommand) {
+    $loginOutput = @(& $ghCommand.Source api user --jq .login 2>$null)
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($loginOutput | Out-String))) {
+        $login = ($loginOutput | Select-Object -First 1).Trim()
+        $codeOwnersPath = Join-Path $repositoryRoot '.github/CODEOWNERS'
+        $applicableOwners = @()
+        if (Test-Path -LiteralPath $codeOwnersPath -PathType Leaf) {
+            foreach ($line in Get-Content -LiteralPath $codeOwnersPath) {
+                $trimmed = $line.Trim()
+                if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith('#')) { continue }
+                $parts = @($trimmed -split '\s+' | Where-Object { $_ })
+                if ($parts.Count -ge 2 -and $parts[0] -in @('*', '/hosted_copilot/')) {
+                    $applicableOwners = @($parts[1..($parts.Count - 1)])
+                }
+            }
+        }
+        $isCodeOwner = $applicableOwners -contains "@$login"
+        $maintainerIdentity = [ordered]@{
+            status = if ($isCodeOwner) { 'validated' } else { 'unauthorized' }
+            login = $login
+            isCodeOwner = $isCodeOwner
+            reason = if ($isCodeOwner) { $null } else { 'The authenticated GitHub user is not a CODEOWNER for Hosted Toolkit changes.' }
+        }
+    }
+}
+$shutdownConfig = [ordered]@{
+    shutdownToken = $shutdownToken
+    maintainerIdentity = $maintainerIdentity
+} | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
 
 $stagedBundlePath = Join-Path $resolvedSiteDirectory 'rule-intake-review.json'

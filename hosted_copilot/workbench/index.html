@@ -51,7 +51,7 @@
     <aside class="stage-nav" aria-label="Workbench stages">
       <button class="stage-link active" type="button" data-view="catalog">
         <i data-lucide="library" aria-hidden="true"></i>
-        <span>Evaluated candidates</span>
+        <span>Eligible candidates</span>
         <span class="stage-count" id="catalog-count">0</span>
       </button>
       <button class="stage-link" type="button" data-view="plan">
@@ -86,25 +86,55 @@
           </div>
         </div>
 
-        <div class="catalog-layout">
-          <section class="candidate-panel" aria-labelledby="candidate-heading">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Maintainer review</p>
-                <h2 id="candidate-heading">Candidate sources</h2>
-              </div>
-              <span id="filter-count">0 shown</span>
-            </div>
-            <div class="candidate-list" id="candidate-list"></div>
-          </section>
+        <div class="workspace-tabs" role="tablist" aria-label="Candidate workspace views">
+          <button class="workspace-tab active" id="candidate-sources-tab" type="button" role="tab" aria-selected="true" aria-controls="candidate-sources-panel" data-workspace-tab="candidate-sources">Candidate Sources</button>
+          <button class="workspace-tab" id="assessment-results-tab" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-panel" data-workspace-tab="assessment-results">Assessment Results <span id="assessment-results-count">0</span></button>
+        </div>
 
-          <section class="assessment-panel" id="assessment-panel" aria-live="polite">
-            <div class="empty-state">
-              <i data-lucide="mouse-pointer-square-dashed" aria-hidden="true"></i>
-              <h2>Select a candidate</h2>
-              <p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p>
-            </div>
-          </section>
+        <div class="workspace-tab-panel active" id="candidate-sources-panel" role="tabpanel" aria-labelledby="candidate-sources-tab">
+          <div class="catalog-layout">
+            <section class="candidate-panel" aria-labelledby="candidate-heading">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Maintainer review</p>
+                  <h2 id="candidate-heading">Candidate Sources:</h2>
+                </div>
+                <span id="filter-count">0 shown</span>
+              </div>
+              <div class="candidate-list" id="candidate-list"></div>
+            </section>
+
+            <section class="assessment-panel" id="assessment-panel" aria-live="polite">
+              <div class="empty-state">
+                <i data-lucide="mouse-pointer-square-dashed" aria-hidden="true"></i>
+                <h2>Select a candidate</h2>
+                <p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="workspace-tab-panel" id="assessment-results-panel" role="tabpanel" aria-labelledby="assessment-results-tab" hidden>
+          <div class="catalog-layout">
+            <section class="candidate-panel" aria-labelledby="assessment-results-heading">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Read-only assessment audit</p>
+                  <h2 id="assessment-results-heading">Excluded assessment results</h2>
+                </div>
+                <span id="assessment-results-filter-count">0 shown</span>
+              </div>
+              <div class="candidate-list" id="assessment-results-list"></div>
+            </section>
+
+            <section class="assessment-panel" id="assessment-results-detail" aria-live="polite">
+              <div class="empty-state">
+                <i data-lucide="clipboard-check" aria-hidden="true"></i>
+                <h2>Select an assessment result</h2>
+                <p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -176,14 +206,31 @@
           <section class="preview-code">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Draft state</p>
-                <h3>Selection payload</h3>
+                <p class="eyebrow">Change review</p>
+                <h3>Proposed Changes</h3>
               </div>
-              <button class="icon-button" id="copy-preview-button" type="button" title="Copy draft payload" aria-label="Copy draft payload">
-                <i data-lucide="copy" aria-hidden="true"></i>
-              </button>
             </div>
-            <pre id="preview-json"></pre>
+            <div class="preview-diff" id="preview-diff"></div>
+            <section class="payload-review" aria-labelledby="payload-review-heading">
+              <div class="payload-review-heading">
+                <div>
+                  <p class="eyebrow">Selection review</p>
+                  <h3 id="payload-review-heading">Payload Changes</h3>
+                </div>
+                <span>Default / Current</span>
+              </div>
+              <div id="preview-payload-diff"></div>
+            </section>
+            <details class="preview-raw-payload">
+              <summary>Raw Selection Payload</summary>
+              <div class="preview-raw-heading">
+                <span>JSON</span>
+                <button class="icon-button" id="copy-preview-button" type="button" title="Copy selection payload" aria-label="Copy selection payload">
+                  <i data-lucide="copy" aria-hidden="true"></i>
+                </button>
+              </div>
+              <pre id="preview-json"></pre>
+            </details>
           </section>
         </div>
       </section>
