@@ -161,7 +161,7 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - A normalized rule catalog and schema that preserve upstream, maintainer, and local provenance independently
 - Deterministic path-specific instruction generation and read-only drift detection across the complete upstream contributor-document set
 - A Hosted-owned intake ledger that records semantic decisions for every reviewed Interactive Toolkit rule without creating a runtime synchronization dependency
-- AI-assisted candidate review with deterministic evidence, impact weighting, projected token budgets, and explicit maintainer approval before catalog changes
+- Explicitly invoked, incremental AI-assisted candidate review with deterministic evidence, hash-bound cache reuse, impact weighting, projected token budgets, and explicit maintainer approval before catalog changes
 - A local Hosted Rule Workbench that presents intake as one guided promotion process while preserving PowerShell as the only repository-write boundary
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
 
@@ -206,6 +206,9 @@ hosted_copilot/
     rule-intake-review.schema.json
     promotion-plan.schema.json
     promotion-receipt.schema.json
+    rule-assessments/
+      assessment-baseline.json
+      assessment-baseline.schema.json
     audit/
   regression/
     README.md
@@ -217,10 +220,13 @@ hosted_copilot/
     package-manifest.json
     Install-Toolkit.ps1
     Generate-Instructions.ps1
+    Invoke-RuleIntakeAssessment.ps1
     Invoke-RulePromotion.ps1
     New-RuleIntakeReview.ps1
+    Publish-RuleIntakeAssessmentBaseline.ps1
     Start-RuleWorkbench.ps1
     Test-InstructionGeneration.ps1
+    Test-RuleIntakeAssessment.ps1
     Test-RuleIntakeReview.ps1
     Test-UpstreamSources.ps1
     Test-Toolkit.ps1
@@ -233,9 +239,9 @@ hosted_copilot/
 ```
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
-- `copilot-rule-catalog/` owns normalized rules, intake decisions, promotion schemas, and append-only promotion receipts.
+- `copilot-rule-catalog/` owns normalized rules, shared rule assessments, intake decisions, promotion schemas, and append-only promotion receipts.
 - `regression/` owns controlled cases, schemas, and local experiment artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
-- `tools/` owns synchronization, generation, validation, and deployment support.
+- `tools/` owns assessment, generation, validation, promotion, and deployment support.
 - `workbench/` owns the static local review interface. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
@@ -494,22 +500,26 @@ The Hosted Rule Workbench is the maintainer-facing orchestration layer for seman
 
 The Workbench supports laptop and desktop browsers only. Handset-width viewports and browsers that identify as mobile must display an unsupported-device screen instead of loading the review workspace or initializing persisted draft state.
 
-`Start-RuleWorkbench.ps1` builds a review bundle, stages the static Workbench with that bundle in an external temporary directory, and serves it from a stable loopback origin. The server binds only to `127.0.0.1`, serves static files, exposes no repository-write API, and uses a stable default port so browser storage remains available across launches. A port override creates a different browser-storage origin and must be reported clearly.
+`Start-RuleWorkbench.ps1` invokes the deterministic collector and incremental semantic assessor, stages the static Workbench with the completed bundle in an external temporary directory, and serves it from a stable loopback origin. The catalog-owned baseline under `hosted_copilot/copilot-rule-catalog/rule-assessments/` supplies source- and Hosted-catalog-bound assessments to every checkout. `Invoke-RuleIntakeAssessment.ps1` resolves each candidate through machine-local context cache, committed baseline, and finally the local Copilot CLI. A new checkout therefore evaluates only candidates that changed after the committed baseline rather than rebuilding the complete assessment set.
 
-The Workbench uses IndexedDB for review bundles, read-only AI assessments, maintainer decisions, evidence notes, and resumable drafts. Local storage holds only lightweight preferences and the active session identifier. Each persisted decision and assessment is keyed to source identity and content hash; changed source content reopens the candidate instead of inheriting stale analysis. Maintainers can export and import draft state independently from browser storage.
+The local cache context includes the Hosted catalog hash, evaluator contract hash, model, and reasoning effort. Each source-specific model batch runs from an isolated temporary directory containing only its candidate packet, current Hosted catalog, and assessment schema; Copilot receives only the read-only `view` tool, returns structured JSONL, and must report the configured model. The command schema-validates every response, retries malformed output within a fixed bound, writes cache and bundle artifacts outside the repository, and never applies catalog or ledger changes. Supplying `BundlePath` directly to the assessor bypasses collection but still resolves assessments; supplying it to the Workbench launcher stages that already completed bundle without invoking the assessor.
 
-Semantic evaluation completes before a candidate enters the Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. The tree is organized beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Category and candidate checkboxes add items to the maintainer review set; clicking a candidate row independently opens its complete source rule and AI assessment.
+This is maintainer-invoked experiment support, not unattended semantic synchronization. A changed Interactive rule or upstream document invalidates only its matching baseline and cache entries when the remaining context is unchanged. A changed Hosted catalog invalidates the shared baseline because every equivalence judgment used that catalog; evaluator-contract, model, or reasoning changes invalidate the narrower local cache context. `Publish-RuleIntakeAssessmentBaseline.ps1` previews by default and updates the shared baseline only with explicit `-Publish` after a maintainer accepts a complete assessed bundle. The server binds only to `127.0.0.1`, serves static files through `GET` and `HEAD`, exposes no repository-write API, and uses a stable default port so browser storage remains available across launches. **Close Workbench** sends the sole mutating request, a per-launch-token-authenticated `POST /shutdown` that stops only the local server process. A port override creates a different browser-storage origin and must be reported clearly.
+
+The Workbench uses IndexedDB for review bundles, read-only AI assessments, maintainer decisions, evidence notes, and resumable drafts. Local storage holds only lightweight preferences and the active session identifier. Each persisted decision and assessment is keyed to source identity and content hash; changed source content reopens the candidate instead of inheriting stale analysis. Draft schema version 2 stores a mutually exclusive rule action and independent promotion-plan membership; unreleased earlier draft shapes are rejected rather than migrated. Maintainers can export and import current draft state independently from browser storage.
+
+Semantic evaluation completes before a candidate enters the Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. The tree is organized beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Interactive rules retain navigation-only category folders, while Contributor Guidance rules are direct children of their source root. Each candidate shows source lifecycle and authoritative Hosted catalog status separately. `Mapped` means the bundle identifies one or more active Hosted rules; `Retired mapping` means only retired Hosted rules remain; `Not mapped` means no authoritative mapping exists. The tree checkbox controls only whether the selected add, update, or retire action is in the promotion plan. Clicking a candidate row independently opens its complete source rule and AI assessment without changing plan membership or collapsing the tree.
 
 **The Workbench Presents One Guided Process:**
 
-- **Catalog:** Search evaluated upstream and Interactive candidates by source and category, build a review set with category or candidate checkboxes, and open candidate details independently from checkbox selection.
-- **Assessment:** Display the complete source rule, AI recommendation, impact description, token cost, projected headroom, all factor ratings, selection rationale, Hosted coverage, and proposed wording. Factor ratings and rationale are always visible and read-only. The maintainer records a recommendation-aware decision plus rationale; the left-pane checkbox keeps candidate selection reversible.
-- **Promotion plan:** Collect proposed adds, updates, and retirements with stable IDs, exact text, section placement, provenance, evidence, mappings, and regression requirements. Per-row Undo returns a candidate to undecided without implying exclusion.
+- **Catalog:** Search evaluated upstream and Interactive candidates, compare source lifecycle with Hosted catalog status, add selected actions to the promotion plan with leaf checkboxes, track the plan count, and open candidate details independently without rebuilding expanded tree folders.
+- **Assessment:** Display the complete source rule, exact mapped Hosted rule IDs, text and placement, separate related-coverage analysis, AI recommendation, impact description, token cost, projected headroom, all factor ratings, selection rationale, and proposed wording. The maintainer chooses one status-constrained action and records rationale. Unmapped candidates allow no change, add, exclude, or defer; mapped candidates allow no change, update, retire, or defer. AI recommendation remains advisory and every new maintainer decision begins at no change.
+- **Promotion plan:** Collect checked proposed adds, updates, and retirements with stable IDs, exact text, section placement, provenance, evidence, mappings, and regression requirements. Per-row Undo unchecks and excludes the candidate, with immediate Restore available from the notification.
 - **Capacity:** Show current and projected guarded tokens, remaining capacity, utilization, impact, and token efficiency for every affected surface.
 - **Preview:** Render the complete proposed catalog in a temporary Hosted root and show the exact catalog, ledger, baseline, regression, and generated-instruction changes.
-- **Approval:** Freeze the exact exported promotion-plan bytes, calculate their SHA-256 hash, capture approver attribution, and invalidate approval whenever the plan changes.
+- **Approval:** On Preview, require selected-rule rationale and manual approver identity before **Approve & Export** freezes the exact selection payload, calculates its SHA-256 hash, and exports an immutable approval handoff. Any later selection or rationale change requires a new handoff.
 
-Browser state is resumable working state, not repository authority. The Workbench exports the frozen plan; `Invoke-RulePromotion.ps1` independently validates the schema, recomputes the exact file-byte hash, verifies source snapshots and repository preconditions, recreates the preview, and applies only that plan. It must fail before writing when any source, catalog, ledger, generated output, regression input, or expected hash has changed.
+Browser state is resumable working state, not repository authority. The current Workbench exports a hash-bound approval handoff, not a repository-ready promotion plan, and exposes no write endpoint. The future promotion planner must resolve section placement, rule IDs, generated-output hashes, source-baseline decisions, regression changes, and staged validation before producing the complete promotion plan. `Invoke-RulePromotion.ps1` must independently validate that plan, recompute its exact file-byte hash, verify source snapshots and repository preconditions, recreate the preview, and apply only that plan. It must fail before writing when any source, catalog, ledger, generated output, regression input, or expected hash has changed.
 
 ### Atomic Promotion And Audit:
 
@@ -550,7 +560,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 - Report changed sources, affected rule mappings, untracked contributor topics, and stale catalog topics.
 - Build a read-only semantic-review bundle containing changed upstream text, complete Interactive rule blocks requiring review, current Hosted mappings, and source hashes.
 - Classify Interactive candidates as new, changed, retired, deferred, or current by comparing the current catalog with source-hashed ledger decisions.
-- Implement **Refresh Candidates** by regenerating the read-only bundle from current immutable snapshots; never label this operation as synchronization or mutate Hosted decisions.
+- Regenerate candidates by restarting the Workbench or invoking the collector and assessor directly; do not expose a browser refresh action that cannot rebuild the server-staged bundle.
 - Classify candidates through AI-assisted semantic review and calculate impact, guarded token delta, token efficiency, and projected remaining capacity.
 - Stop for explicit maintainer approval before changing source baselines, intake decisions, normalized rules, generated instructions, or regression expectations.
 - Do not rewrite normalized rules solely because a digest changed.

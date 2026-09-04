@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="shutdown-config.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -31,10 +32,6 @@
       </div>
       <div class="topbar-actions">
         <span class="snapshot-chip" id="snapshot-chip">Loading snapshot</span>
-        <button class="button secondary" id="refresh-button" type="button" title="Refresh candidates" aria-label="Refresh candidates">
-          <i data-lucide="refresh-cw" aria-hidden="true"></i>
-          <span class="button-label">Refresh candidates</span>
-        </button>
         <button class="button secondary" id="export-button" type="button" title="Export draft" aria-label="Export draft">
           <i data-lucide="download" aria-hidden="true"></i>
           <span class="button-label">Export draft</span>
@@ -44,6 +41,10 @@
           <span class="button-label">Import draft</span>
         </label>
         <input id="import-input" type="file" accept="application/json" hidden>
+        <button class="button secondary" id="close-button" type="button" title="Close Workbench" aria-label="Close Workbench">
+          <i data-lucide="power" aria-hidden="true"></i>
+          <span class="button-label">Close Workbench</span>
+        </button>
       </div>
     </header>
 
@@ -79,10 +80,9 @@
             <span class="sr-only">Search evaluated candidates</span>
             <input id="search-input" type="search" placeholder="Search sources, categories, or rules">
           </label>
-          <div class="review-set-control">
-            <span>Review set</span>
-            <strong id="review-set-count">0 selected</strong>
-            <button class="button primary" id="review-selected-button" type="button" disabled>Review selected</button>
+          <div class="plan-count-control">
+            <span>In plan</span>
+            <strong id="plan-action-count">0 actions</strong>
           </div>
         </div>
 
@@ -145,7 +145,7 @@
             <div class="empty-state compact" id="empty-plan">
               <i data-lucide="inbox" aria-hidden="true"></i>
               <h3>No proposed changes</h3>
-              <p>Include a candidate from the rule catalog to add it to this plan.</p>
+              <p>Choose an add, update, or retire action to add it to this plan.</p>
             </div>
           </section>
           <aside class="capacity-panel" id="capacity-panel"></aside>
@@ -161,7 +161,18 @@
           <span class="status-badge warning" id="approval-badge">Not staged</span>
         </div>
         <div class="preview-layout">
-          <section class="preview-summary" id="preview-summary"></section>
+          <section class="preview-summary">
+            <div id="preview-summary"></div>
+            <div class="approval-controls">
+              <label for="approver-name">Approver name</label>
+              <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
+              <button class="button primary" id="approve-export-button" type="button" disabled>
+                <i data-lucide="shield-check" aria-hidden="true"></i>
+                Approve &amp; Export
+              </button>
+              <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
+            </div>
+          </section>
           <section class="preview-code">
             <div class="panel-heading">
               <div>

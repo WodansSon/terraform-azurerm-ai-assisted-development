@@ -355,7 +355,7 @@ try {
             sources = @([ordered]@{ id = 'contributing-readme'; title = 'Contributor fixture'; rawUrl = 'https://raw.githubusercontent.com/hashicorp/terraform-provider-azurerm/main/contributing/README.md'; referenceUrl = 'https://github.com/hashicorp/terraform-provider-azurerm/blob/main/contributing/README.md'; baselineSha256 = Get-StringSha256 $baselineContent })
             evidence = @([ordered]@{ id = 'implementation-contract'; type = 'source-contract'; description = 'Fixture implementation evidence.'; reference = '.github/instructions/implementation-compliance-contract.instructions.md' })
             surfaces = @([ordered]@{ id = 'implementation'; outputPath = '.github/instructions/fixture.instructions.md'; description = 'Fixture instructions.'; applyTo = 'internal/**/*.go'; title = 'Fixture'; introduction = 'Fixture introduction.'; sections = @([ordered]@{ heading = 'Fixture'; ruleIds = @('IMPL-TEST-005') }); closing = 'Fixture closing.' })
-            rules = @([ordered]@{ id = 'IMPL-TEST-005'; origin = 'hosted-baseline-migration'; status = 'active'; text = 'Review the current Hosted fixture.'; provenance = @('inferred-maintainer-convention'); sourceIds = @(); evidenceIds = @('implementation-contract'); implementationModels = @('legacy', 'typed', 'framework') })
+            rules = @([ordered]@{ id = 'IMPL-TEST-005'; origin = 'hosted-baseline-migration'; status = 'active'; text = 'Review the current Hosted fixture.'; provenance = @('inferred-maintainer-convention'); sourceIds = @('contributing-readme'); evidenceIds = @('implementation-contract'); implementationModels = @('legacy', 'typed', 'framework') })
         })
 
         $bundleOutputPath = Join-Path $fixtureRoot 'output/rule-intake-review.json'
@@ -375,6 +375,8 @@ try {
         $capacityArithmeticValid = $bundleExitCode -eq 0 -and @($bundle.guidanceCapacity.reports | Where-Object { $_.budgetHeadroomTokens -ne ($_.budgetTokens - $_.guardedTokens) }).Count -eq 0
         Add-TestResult -Name 'candidate-bundle-capacity' -Passed ($bundleExitCode -eq 0 -and @(Compare-Object $expectedCapacityNames $capacityNames).Count -eq 0 -and $capacityArithmeticValid) -Detail 'Candidate bundles expose all eight structured capacity reports with valid budget headroom.'
         Add-TestResult -Name 'upstream-change-classified' -Passed ($bundleExitCode -eq 0 -and $bundle.summary.changedUpstreamCount -eq 1 -and $bundle.upstreamCandidates[0].state -eq 'changed') -Detail 'Changed upstream content is reopened for semantic review.'
+        $upstreamMappedRule = if ($bundleExitCode -eq 0) { @($bundle.upstreamCandidates[0].relatedHostedRules)[0] } else { $null }
+        Add-TestResult -Name 'upstream-hosted-mapping-complete' -Passed ($null -ne $upstreamMappedRule -and $upstreamMappedRule.id -eq 'IMPL-TEST-005' -and $upstreamMappedRule.text -eq 'Review the current Hosted fixture.' -and $upstreamMappedRule.placements[0].surfaceId -eq 'implementation') -Detail 'Upstream candidates include exact mapped Hosted rule identity, text, status, and placement.'
         $statesById = @{}
         if ($bundleExitCode -eq 0) {
             foreach ($candidate in @($bundle.interactiveCandidates)) { $statesById[[string]$candidate.id] = [string]$candidate.state }

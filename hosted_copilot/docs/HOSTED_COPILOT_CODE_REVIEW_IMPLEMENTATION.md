@@ -259,9 +259,38 @@ pwsh -NoProfile -File ./hosted_copilot/tools/New-RuleIntakeReview.ps1 -OutputPat
 
 The bundle classifies Interactive rules as `new`, `changed`, `retired`, `deferred`, or `current`. A source content hash, lifecycle, or contract-path change reopens a prior decision. Exact normalized contract rule text must match the Interactive catalog hash before it enters the bundle.
 
-The Workbench action is named **Refresh Candidates**, not sync. For the proof of concept it regenerates this bundle by restarting the Workbench or invoking the collector again. It does not update the ledger, catalog, source baselines, or generated instructions.
+Refresh candidates by restarting the Workbench or invoking the collector and assessor directly. The browser does not expose a refresh action because its staged bundle is fixed for the server lifetime. Candidate regeneration does not update the ledger, catalog, source baselines, or generated instructions.
 
 Do not make the Hosted package or complete Hosted validator depend on the current Interactive Toolkit. The intake command is a repository-maintenance bridge invoked only when a maintainer requests an audit.
+
+#### Automated Semantic Assessment:
+
+Run the incremental assessment command when creating a complete Workbench bundle:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-RuleIntakeAssessment.ps1 -OutputPath <external-path>/rule-intake-review.json
+```
+
+The command invokes `New-RuleIntakeReview.ps1`, partitions cache misses into bounded source-specific batches, and calls the local Copilot CLI noninteractively with the configured model and reasoning effort. Upstream contributor documents use a separate, smaller batch-size limit because each candidate carries complete document content. Each model call runs in an isolated evidence directory containing only the batch, current Hosted catalog, and assessment schema; expose only the read-only `view` tool, consume the raw assistant message from JSONL output, and verify the reported model. Validate each candidate ID, source hash, semantic field, and final bundle schema, and fail closed after bounded malformed-output retries. Tests inject a fake evaluator and must never invoke a model.
+
+The committed shared baseline lives under `hosted_copilot/copilot-rule-catalog/rule-assessments/` and contains only source identity, source-content hash, and validated assessment records. It does not duplicate candidate source documents, capacity reports, or Workbench state. Resolve assessments in this order:
+
+1. Use a machine-local cache entry matching source identity, source-content hash, Hosted catalog hash, evaluator contract hash, model, and reasoning effort.
+2. Use a committed baseline entry matching source identity and source-content hash when the baseline targets the current Hosted catalog.
+3. Invoke Copilot for the remaining candidates.
+
+A changed source rule normally reassesses only that candidate. A changed Hosted catalog invalidates the shared baseline and relevant local cache because the semantic comparison target changed. Evaluator-contract, model, and reasoning changes invalidate local cache entries but do not erase a maintainer-accepted shared baseline. Cache files, batch artifacts, and assessed bundles must remain outside the repository.
+
+After reviewing and accepting a complete refreshed bundle, preview and then explicitly publish the next shared baseline:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json
+pwsh -NoProfile -File ./hosted_copilot/tools/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json -Publish
+```
+
+The publisher rejects unevaluated candidates and source-hash mismatches, validates the compact baseline schema, previews without writing by default, and replaces only the baseline file when `-Publish` is explicit.
+
+Assessment is explicitly invoked maintainer automation. It produces a read-only bundle and never updates the Hosted catalog, intake ledger, source baselines, generated instructions, regression assets, or shared assessment baseline. Only the separate explicit publisher may update the shared assessment baseline. Neither command authorizes unattended semantic synchronization or automatic rule promotion.
 
 #### Decision Proposal:
 
@@ -280,7 +309,7 @@ Every proposal must cite its source evidence, identify affected Hosted surfaces,
 
 Apply eligibility gates before calculating impact. A rule is eligible only when it applies to native Hosted review, can produce an actionable finding or necessary cross-cutting safeguard, has sufficient evidence, and is not materially duplicated by stronger Hosted behavior. A failed eligibility gate requires an `exclude` or `defer` proposal regardless of score.
 
-The AI semantic review pass assigns eligibility, selection factors, and selection rationale. These values are read-only in the Workbench. The maintainer controls disposition, decision rationale, proposed Hosted rule text, and final approval. If the maintainer disputes factor evidence or scoring, defer the candidate or request another AI assessment; do not overwrite the factor values manually.
+The AI semantic review pass assigns eligibility, recommendation, selection factors, and selection rationale. These values are read-only in the Workbench. The maintainer independently chooses one catalog-status-constrained rule action, controls whether add, update, or retire enters the promotion plan, records decision rationale, and owns final approval. Every new maintainer decision begins at no change rather than silently adopting the AI recommendation. If the maintainer disputes factor evidence or scoring, defer the candidate or request another AI assessment; do not overwrite the factor values manually.
 
 Rate each eligible rule from `0` through `5` on these independently justified factors:
 
@@ -348,7 +377,7 @@ The static proof-of-concept interface lives beneath `hosted_copilot/workbench/`.
 pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
 ```
 
-The launcher generates the current review bundle into an external temporary site and serves it from `http://127.0.0.1:43143/`. It accepts only `GET` and `HEAD`, exposes no repository-write endpoint, and keeps the origin stable so browser storage persists across launches. **Refresh candidates** regenerates and schema-validates only the external staged bundle before reloading it. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening a browser automatically.
+By default, the launcher collects candidates, resolves unchanged assessments from the machine-local cache and committed baseline, evaluates only remaining candidates, writes the completed bundle into an external temporary site, and serves it from `http://127.0.0.1:43143/`. A fresh checkout with a current baseline does not rebuild existing assessments locally. Static content accepts only `GET` and `HEAD`; the sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches. Use `-BundlePath` to stage a prebuilt schema-valid bundle without collecting candidates. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening a browser automatically.
 
 The Workbench supports laptop and desktop browsers only. At viewport widths below `768px`, or when the browser identifies as mobile, display the unsupported-device screen and do not load the candidate bundle or initialize IndexedDB. Do not maintain a separate responsive handset workflow for rule assessment or promotion.
 
@@ -356,20 +385,20 @@ Use IndexedDB for bundles, read-only AI assessments, maintainer choices, evidenc
 
 The proof of concept does not run a model inside the browser. Semantic evaluation must complete before a candidate appears in the Workbench tree. Do not show unevaluated candidates or invent fallback scores. Bind every assessment to the candidate source-content SHA-256 and reject stale assessments.
 
-Organize evaluated candidates beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Category folders are navigation-only; only individual candidates have checkboxes that add items to the review set. Clicking a candidate row is a separate interaction that opens the right pane and must not change checkbox state.
+Organize evaluated candidates beneath non-selectable **Interactive Toolkit** and **Contributor Guidance** source roots. Interactive category folders are navigation-only; Contributor Guidance rules are direct children of their source root. Show source lifecycle and authoritative Hosted catalog status as separate columns. A leaf checkbox controls only promotion-plan membership for the selected add, update, or retire action. Clicking a candidate row is a separate interaction that opens the right pane and must not change plan membership, rebuild the tree, or collapse expanded folders.
 
-The right pane always displays the complete source rule followed by the AI recommendation, plain-language impact description, token cost, projected headroom, all seven factor judgments, selection rationale, current Hosted coverage, and proposed Hosted wording. Assessment details are AI-adjudicated evidence and cannot be edited. Expose recommendation-aware maintainer commands using cool-white labels, opaque semantic backgrounds, and visible borders. Do not add Undo to this pane because candidate selection remains reversible from the left pane.
+The right pane always displays the complete source rule, authoritative catalog status, exact mapped Hosted rule IDs, text and placements, the AI recommendation, plain-language impact description, token cost, projected headroom, all seven factor judgments, selection rationale, related Hosted coverage, proposed Hosted wording, and editable decision rationale. Assessment details are AI-adjudicated evidence and cannot be edited. Rule Actions is mutually exclusive: unmapped candidates allow no change, add, exclude, or defer; mapped candidates allow no change, update, retire, or defer; source-retired and retired-mapping cases use their narrower applicable subsets. Selecting add, update, or retire adds that action to the plan by default, while the tree and detail checkboxes provide the same explicit membership control.
 
 The interface must provide these views as one process:
 
-- A searchable evaluated-candidate tree grouped by source and category, with independent category and candidate review-set checkboxes
-- An assessment workspace with the full source rule and always-visible read-only AI recommendation, impact, cost, factor judgments, rationale, Hosted coverage, and proposed wording alongside recommendation-aware controls
+- A searchable evaluated-candidate tree with source-state and catalog-status columns, leaf-only promotion-plan checkboxes, and an action count
+- An assessment workspace with the full source rule, exact mapped Hosted rule evidence, status-constrained Rule Actions, always-visible read-only AI recommendation, impact, cost, factor judgments, rationale, related Hosted coverage, and proposed wording alongside editable maintainer rationale
 - A promotion-plan panel containing only proposed adds, updates, and retirements
 - Live impact, token delta, guarded usage, remaining capacity, utilization, conflicts, and dependency totals
 - A staged preview of exact catalog, ledger, baseline, regression, and generated-instruction changes
-- A final approval summary containing attribution, plan-byte hash, validation state, and export action
+- A Preview approval summary containing manual attribution, readiness state, selection-payload hash, and **Approve & Export** action
 
-Every candidate must have an explicit disposition; Undo in the promotion plan returns an item to undecided and must not imply exclusion. Any edit after approval invalidates the approval and produces a different exported plan hash.
+Every candidate has one explicit action. The current Preview action remains disabled until at least one add, update, or retire action is in the plan, every plan item has maintainer rationale, and an approver name is present. **Approve & Export** writes a hash-bound selection handoff containing catalog status, mapped Hosted IDs, action, and plan membership; it does not update the repository. Undo or any later action, membership, or rationale edit requires exporting a new handoff with a different payload hash.
 
 #### Staged Promotion Transaction:
 
@@ -379,7 +408,7 @@ The promotion workflow is:
 - **Assess:** Record eligibility, semantic disposition, selection factors, evidence, duplication, and token tradeoffs.
 - **Stage:** Build a complete immutable promotion plan with exact rule IDs, text, surfaces, section placement, provenance, mappings, ledger changes, source baseline decisions, and regression requirements.
 - **Preview:** Render and validate the complete plan in a temporary Hosted root, including exact generated diffs and projected budgets.
-- **Approve:** Freeze the exact exported UTF-8 plan bytes, calculate their SHA-256 hash, capture approver attribution, and require approval of that hash.
+- **Approve:** Freeze the exact exported UTF-8 selection payload, calculate its SHA-256 hash, capture manual approver attribution, and export the immutable approval handoff. The handoff is not yet a repository-ready promotion plan.
 - **Promote:** Recompute the file-byte hash, verify all source and repository preconditions, stage all outputs, validate the staged Hosted Toolkit, and replace only the approved files.
 - **Verify:** Run complete Hosted validation against the resulting worktree and write the successful promotion receipt.
 - **Deploy:** Deploy and observe the changed Hosted package separately; source promotion does not claim deployment.

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json",
+  "title": "Hosted Rule Assessment Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "generatedAt", "hostedCatalogSha256", "sourceBundleSha256", "entries"],
+  "properties": {
+    "$schema": { "const": "assessment-baseline.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "hostedCatalogSha256": { "$ref": "#/$defs/sha256Hash" },
+    "sourceBundleSha256": { "$ref": "#/$defs/sha256Hash" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/baselineEntry" }
+    }
+  },
+  "$defs": {
+    "sha256Hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"],
+      "properties": {
+        "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
+      "properties": {
+        "status": { "const": "evaluated" },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "assessedAt": { "type": "string", "format": "date-time" },
+        "evaluator": { "type": "string", "minLength": 1 },
+        "hostedApplicable": { "type": "boolean" },
+        "applicabilityRationale": { "type": "string", "minLength": 1 },
+        "hostedCategory": { "enum": ["repository", "review-classification-and-evidence", "implementation", "testing", "documentation", "not-applicable"] },
+        "recommendation": { "enum": ["add", "update", "retire", "no-change", "exclude", "defer"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "impactDescription": { "type": "string", "minLength": 1 },
+        "currentHostedCoverage": { "type": "string", "minLength": 1 },
+        "affectedSurfaces": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
+        },
+        "guardedTokenDelta": { "type": "integer" },
+        "proposedText": { "type": "string" },
+        "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
+        "selectionRationale": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "hostedApplicable": { "const": true } }, "required": ["hostedApplicable"] },
+          "then": {
+            "properties": {
+              "hostedCategory": { "not": { "const": "not-applicable" } },
+              "affectedSurfaces": { "minItems": 1 }
+            }
+          },
+          "else": {
+            "properties": {
+              "hostedCategory": { "const": "not-applicable" },
+              "recommendation": { "const": "exclude" },
+              "affectedSurfaces": { "maxItems": 0 },
+              "guardedTokenDelta": { "const": 0 },
+              "proposedText": { "const": "" }
+            }
+          }
+        }
+      ]
+    },
+    "baselineEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "id", "sourceContentSha256", "assessment"],
+      "properties": {
+        "sourceType": { "enum": ["interactive", "upstream"] },
+        "id": { "type": "string", "minLength": 1 },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "assessment": { "$ref": "#/$defs/assessment" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sourceType": { "const": "interactive" } }, "required": ["sourceType"] },
+          "then": { "properties": { "id": { "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" } } },
+          "else": { "properties": { "id": { "pattern": "^[a-z][a-z0-9-]*$" } } }
+        }
+      ]
+    }
+  }
+}

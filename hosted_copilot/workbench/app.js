@@ -35,17 +35,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (mobileDeviceDetected) return;
   captureElements();
   bindEvents();
-  await loadBundle(false);
+  await loadBundle();
   refreshIcons();
 });
 
 function captureElements() {
   for (const id of [
-    "snapshot-chip", "refresh-button", "export-button", "import-input", "catalog-count", "plan-count",
-    "preview-status", "save-indicator", "metrics-band", "search-input", "review-set-count", "review-selected-button",
+    "snapshot-chip", "close-button", "export-button", "import-input", "catalog-count", "plan-count",
+    "preview-status", "save-indicator", "metrics-band", "search-input", "plan-action-count",
     "filter-count", "candidate-list", "assessment-panel",
     "return-catalog-button", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
-    "preview-summary", "preview-json", "copy-preview-button", "toast"
+    "preview-summary", "preview-json", "copy-preview-button", "approver-name", "approve-export-button", "toast"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -56,11 +56,10 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
-  elements["refresh-button"].addEventListener("click", () => loadBundle(true));
+  elements["close-button"].addEventListener("click", closeWorkbench);
   elements["export-button"].addEventListener("click", exportDraft);
   elements["import-input"].addEventListener("change", importDraft);
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
-  elements["review-selected-button"].addEventListener("click", reviewSelectedCandidates);
   elements["candidate-list"].addEventListener("click", (event) => {
     if (event.target.closest('input[type="checkbox"], summary')) return;
     const row = event.target.closest("[data-candidate-key]");
@@ -75,7 +74,6 @@ function bindEvents() {
       selectCandidate(row.dataset.candidateKey);
     }
   });
-  elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
   elements["plan-table-body"].addEventListener("click", (event) => {
     const undo = event.target.closest("[data-plan-undo]");
@@ -90,14 +88,14 @@ function bindEvents() {
     switchView("catalog");
   });
   elements["copy-preview-button"].addEventListener("click", copyPreview);
+  elements["approver-name"].addEventListener("input", handleApproverInput);
+  elements["approve-export-button"].addEventListener("click", approveAndExport);
 }
 
-async function loadBundle(cacheBusted) {
+async function loadBundle() {
   setSaveIndicator("Loading bundle");
-  elements["refresh-button"].disabled = true;
   try {
-    const suffix = cacheBusted ? `?refresh=${Date.now()}` : "";
-    const response = await fetch(`rule-intake-review.json${suffix}`, { cache: "no-store" });
+    const response = await fetch("rule-intake-review.json", { cache: "no-store" });
     if (!response.ok) throw new Error(`Bundle request failed with ${response.status}`);
     const bundle = await response.json();
     validateBundle(bundle);
@@ -105,8 +103,7 @@ async function loadBundle(cacheBusted) {
     const discoveredCandidates = normalizeCandidates(bundle);
     const sessionId = getSessionId(bundle);
     const existing = await readSession(sessionId);
-    state.session = existing || createSession(sessionId, bundle);
-    if (!Array.isArray(state.session.reviewSet)) state.session.reviewSet = [];
+    state.session = existing?.schemaVersion === 2 ? existing : createSession(sessionId, bundle);
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
     if (evaluatedCount !== discoveredCandidates.length) {
@@ -123,11 +120,36 @@ async function loadBundle(cacheBusted) {
     await persistSession();
     state.activeKey = null;
     renderAll();
-    showToast(cacheBusted ? "Candidate bundle refreshed" : "Workbench draft loaded");
+    showToast("Workbench draft loaded");
   } catch (error) {
     renderFatalError(error);
-  } finally {
-    elements["refresh-button"].disabled = false;
+  }
+}
+
+async function closeWorkbench() {
+  const shutdownToken = globalThis.__HOSTED_RULE_WORKBENCH__?.shutdownToken;
+  if (!shutdownToken) {
+    showToast("Workbench shutdown is unavailable.", true);
+    return;
+  }
+  elements["close-button"].disabled = true;
+  try {
+    const response = await fetch("/shutdown", {
+      method: "POST",
+      headers: { "X-Workbench-Shutdown-Token": shutdownToken }
+    });
+    if (!response.ok) throw new Error(`Shutdown request failed with ${response.status}`);
+    document.body.innerHTML = `
+      <main class="shutdown-state">
+        <span class="brand-mark" aria-hidden="true">HR</span>
+        <p class="eyebrow">Hosted Rule Workbench</p>
+        <h1>Workbench closed</h1>
+        <p>The local server has stopped. This tab can be closed.</p>
+      </main>
+    `;
+  } catch (error) {
+    elements["close-button"].disabled = false;
+    showToast(error.message, true);
   }
 }
 
@@ -157,7 +179,7 @@ function normalizeCandidates(bundle) {
     baselineText: candidate.baselineContent,
     priorDecision: null,
     assessment: candidate.assessment || null,
-    relatedHostedRules: candidate.affectedHostedRuleIds.map((id) => ({ id, text: "Mapped Hosted rule", placements: [] }))
+    relatedHostedRules: candidate.relatedHostedRules
   }));
   const interactive = bundle.interactiveCandidates.map((candidate) => ({
     key: `interactive:${candidate.id}`,
@@ -187,11 +209,12 @@ function getSessionId(bundle) {
 
 function createSession(id, bundle) {
   return {
+    schemaVersion: 2,
     id,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     snapshots: bundle.snapshots,
-    reviewSet: [],
+    approverName: "",
     decisions: {}
   };
 }
@@ -200,7 +223,8 @@ function defaultDecision(candidate) {
   const assessment = candidate.assessment || getPriorAssessment(candidate);
   return {
     sourceHash: candidate.hash,
-    disposition: "pending",
+    action: "no-change",
+    inPlan: false,
     rationale: "",
     proposedText: assessment?.proposedText || (candidate.sourceType === "interactive" ? extractRuleBody(candidate.text) : ""),
     assessment,
@@ -230,8 +254,44 @@ function extractRuleBody(text) {
 function getDecision(candidate) {
   const saved = state.session.decisions[candidate.key];
   if (!saved || saved.sourceHash !== candidate.hash) return defaultDecision(candidate);
-  if (Object.prototype.hasOwnProperty.call(saved, "assessment")) return saved;
-  return { ...saved, assessment: getPriorAssessment(candidate) };
+  const allowedActions = getAllowedActions(candidate);
+  if (!allowedActions.includes(saved.action) || typeof saved.inPlan !== "boolean") return defaultDecision(candidate);
+  return {
+    ...saved,
+    inPlan: saved.inPlan && isPromotionAction(saved.action),
+    assessment: candidate.assessment || getPriorAssessment(candidate),
+  };
+}
+
+function getCatalogStatus(candidate) {
+  const activeRules = candidate.relatedHostedRules.filter((rule) => rule.status === "active");
+  const retiredRules = candidate.relatedHostedRules.filter((rule) => rule.status === "retired");
+  if (activeRules.length) return { key: "mapped", label: "Mapped", rules: activeRules };
+  if (retiredRules.length) return { key: "retired", label: "Retired mapping", rules: retiredRules };
+  return { key: "unmapped", label: "Not mapped", rules: [] };
+}
+
+function getAllowedActions(candidate) {
+  const catalogStatus = getCatalogStatus(candidate).key;
+  if (candidate.state === "retired") {
+    return catalogStatus === "mapped" ? ["no-change", "retire", "defer"] : ["no-change", "exclude", "defer"];
+  }
+  if (catalogStatus === "mapped") return ["no-change", "update", "retire", "defer"];
+  if (catalogStatus === "retired") return ["no-change", "add", "defer"];
+  return ["no-change", "add", "exclude", "defer"];
+}
+
+function getDefaultPlanAction(candidate, recommendation) {
+  const allowedActions = getAllowedActions(candidate);
+  if (isPromotionAction(recommendation) && allowedActions.includes(recommendation)) return recommendation;
+  if (candidate.state === "retired" && allowedActions.includes("retire")) return "retire";
+  if (allowedActions.includes("update")) return "update";
+  if (allowedActions.includes("add")) return "add";
+  return "no-change";
+}
+
+function isPromotionAction(action) {
+  return ["add", "update", "retire"].includes(action);
 }
 
 function getAssessment(candidate, decision) {
@@ -251,15 +311,27 @@ function getAssessment(candidate, decision) {
 
 function updateDecision(candidate, changes) {
   const current = getDecision(candidate);
+  const { assessment, ...maintainerDecision } = current;
   state.session.decisions[candidate.key] = {
-    ...current,
+    ...maintainerDecision,
     ...changes,
     sourceHash: candidate.hash,
     updatedAt: new Date().toISOString()
   };
   state.session.updatedAt = new Date().toISOString();
   persistSession();
-  renderAll(false);
+  syncCandidateTreeRows();
+  renderDecisionOutputs();
+}
+
+function renderDecisionOutputs() {
+  renderMetrics();
+  renderPlan();
+  renderCapacity();
+  renderPreview();
+  renderCounts();
+  setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
+  refreshIcons();
 }
 
 function calculateImpact(factors) {
@@ -299,14 +371,13 @@ function renderSnapshot() {
 }
 
 function renderMetrics() {
-  const reviewed = state.candidates.filter((candidate) => getDecision(candidate).disposition !== "pending").length;
-  const included = getIncludedCandidates().length;
+  const planCount = getPlanCandidates().length;
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const metrics = [
     ["Hosted-capable inventory", state.candidates.length, `${state.excludedCandidateCount} inapplicable excluded`],
-    ["Review set", state.session.reviewSet.length, "Selected with tree checkboxes"],
-    ["Decided", reviewed, `${reviewed} of ${state.candidates.length} reviewed`],
-    ["In plan", included, "Proposed additions or updates"],
+    ["Mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length, "Active Hosted mappings"],
+    ["Not mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length, "No Hosted mapping"],
+    ["In plan", planCount, "Add, update, or retire"],
     ["Test headroom", formatNumber(combined.budgetHeadroomTokens), `${combined.utilizationPercent}% utilized`]
   ];
   elements["metrics-band"].innerHTML = metrics.map(([label, value, note]) => `
@@ -345,6 +416,7 @@ function renderCandidateList() {
       <strong>Candidate</strong>
       <span class="candidate-list-header-summary">
         <strong>Source state</strong>
+        <strong>Catalog status</strong>
         <strong>Impact</strong>
         <strong>Token cost</strong>
         <strong>Recommendation</strong>
@@ -353,11 +425,13 @@ function renderCandidateList() {
   ` + sources.map(([sourceType, label]) => {
     const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
     if (!candidates.length) return "";
-    const categories = groupCandidatesByCategory(candidates);
+    const children = sourceType === "upstream"
+      ? `<div class="candidate-category-items contributor-candidates">${candidates.map(renderCandidateTreeRow).join("")}</div>`
+      : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     return `
       <details class="candidate-source-root" ${state.query ? "open" : ""}>
         <summary><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
-        ${Object.entries(categories).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("")}
+        ${children}
       </details>
     `;
   }).join("");
@@ -380,14 +454,16 @@ function renderCandidateCategory(sourceType, category, candidates) {
 }
 
 function renderCandidateTreeRow(candidate) {
-  const assessment = getAssessment(candidate, getDecision(candidate));
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
   const impact = calculateImpact(assessment.factors);
-  const selected = state.session.reviewSet.includes(candidate.key);
+  const catalogStatus = getCatalogStatus(candidate);
+  const inPlan = decision.inPlan;
   return `
-    <div class="candidate-tree-row ${candidate.key === state.activeKey ? "active" : ""} ${selected ? "review-selected" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}">
-      <input type="checkbox" data-review-key="${escapeHtml(candidate.key)}" aria-label="Select ${escapeHtml(candidate.id)} for review" ${selected ? "checked" : ""}>
+    <div class="candidate-tree-row ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}">
+      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="Include ${escapeHtml(candidate.id)} action in promotion plan" title="${inPlan ? "Remove action from" : "Add action to"} promotion plan" ${inPlan ? "checked" : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatSignedNumber(assessment.guardedTokenDelta)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatSignedNumber(assessment.guardedTokenDelta)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
 }
@@ -406,9 +482,16 @@ function renderAssessment() {
   const efficiency = draftCost > 0 ? ((impact * 100) / draftCost).toFixed(1) : null;
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const projectedHeadroom = combined.budgetHeadroomTokens - draftCost;
-  const overlaps = candidate.relatedHostedRules.length
-    ? candidate.relatedHostedRules.map((rule) => `<div class="overlap-item"><strong>${escapeHtml(rule.id)}</strong><br>${escapeHtml(rule.text)}</div>`).join("")
-    : `<div class="overlap-item">No mapped Hosted rule</div>`;
+  const catalogStatus = getCatalogStatus(candidate);
+  const mappedRules = catalogStatus.rules.length
+    ? catalogStatus.rules.map((rule) => {
+      const placements = rule.placements?.length
+        ? rule.placements.map((placement) => `${placement.surfaceId} / ${placement.sectionHeading}`).join("; ")
+        : "Placement unavailable in source bundle";
+      return `<div class="overlap-item"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p><small>${escapeHtml(placements)}</small></div>`;
+    }).join("")
+    : `<div class="overlap-item empty-mapping">No Hosted rule is mapped to this source candidate.</div>`;
+  const allowedActions = getAllowedActions(candidate);
 
   elements["assessment-panel"].innerHTML = `
     <div class="assessment-content">
@@ -423,12 +506,18 @@ function renderAssessment() {
           <h2>${escapeHtml(candidate.title)}</h2>
           <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
         </div>
-        <span class="decision-badge ${escapeHtml(decision.disposition)}">${escapeHtml(decision.disposition)}</span>
+        <span class="decision-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span>
       </div>
 
       <div class="section-block">
         <span class="section-label">Source rule</span>
         <pre class="evidence-box">${escapeHtml(candidate.text)}</pre>
+      </div>
+
+      <div class="section-block">
+        <span class="section-label">Hosted catalog status</span>
+        <div class="catalog-status-heading"><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><strong>${catalogStatus.rules.length ? `${catalogStatus.rules.length} mapped rule${catalogStatus.rules.length === 1 ? "" : "s"}` : "No authoritative mapping"}</strong></div>
+        <div class="overlap-list">${mappedRules}</div>
       </div>
 
       <div class="section-block">
@@ -449,9 +538,8 @@ function renderAssessment() {
       </div>
 
       <div class="section-block">
-        <span class="section-label">Current Hosted coverage</span>
+        <span class="section-label">Related Hosted coverage</span>
         <p class="coverage-summary">${escapeHtml(assessment.currentHostedCoverage)}</p>
-        <div class="overlap-list">${overlaps}</div>
       </div>
 
       <div class="section-block">
@@ -459,28 +547,28 @@ function renderAssessment() {
         <pre class="evidence-box proposed-rule">${escapeHtml(assessment.proposedText || "No Hosted rule change proposed.")}</pre>
       </div>
 
-      <div class="section-block field-stack">
-        <label>Decision rationale<textarea data-decision-field="rationale" placeholder="Record why this recommendation was accepted, rejected, or deferred.">${escapeHtml(decision.rationale)}</textarea></label>
-        <div class="decision-control ${decision.disposition !== "pending" ? "has-decision" : ""}" role="group" aria-label="Candidate decision">${renderDecisionActions(assessment.recommendation, decision.disposition)}</div>
+      <div class="section-block rule-actions">
+        <span class="section-label">Rule actions</span>
+        <p class="section-help">Choose one action. Hosted catalog status determines which actions are available.</p>
+        <fieldset class="action-options">
+          <legend class="sr-only">Rule action</legend>
+          ${allowedActions.map((action) => `
+            <label class="action-option ${decision.action === action ? "selected" : ""}">
+              <input type="radio" name="rule-action" data-rule-action="${escapeHtml(action)}" value="${escapeHtml(action)}" ${decision.action === action ? "checked" : ""}>
+              <span>${escapeHtml(formatRecommendation(action))}</span>
+            </label>
+          `).join("")}
+        </fieldset>
+        <label class="plan-toggle ${isPromotionAction(decision.action) ? "" : "disabled"}">
+          <input type="checkbox" data-plan-toggle ${decision.inPlan ? "checked" : ""} ${isPromotionAction(decision.action) ? "" : "disabled"}>
+          <span>Include this ${escapeHtml(formatRecommendation(decision.action).toLowerCase())} action in the promotion plan</span>
+        </label>
+        <div class="field-stack">
+          <label>Decision rationale<textarea data-decision-field="rationale" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea></label>
+        </div>
       </div>
     </div>
   `;
-}
-
-function decisionButton(value, label, current, accessibleLabel) {
-  return `<button type="button" class="${value} ${value === current ? "active" : ""}" data-disposition="${value}" aria-label="${accessibleLabel}" title="${accessibleLabel}">${label}</button>`;
-}
-
-function renderDecisionActions(recommendation, current) {
-  const actions = {
-    add: [["included", "Add", "Add rule to Hosted guidance"], ["deferred", "Defer", "Defer rule for later investigation"], ["excluded", "Exclude", "Exclude rule from Hosted guidance"]],
-    update: [["included", "Update", "Update Hosted guidance"], ["equivalent", "Keep", "Keep current Hosted guidance"], ["deferred", "Defer", "Defer update for later investigation"]],
-    retire: [["included", "Remove", "Remove rule from Hosted guidance"], ["equivalent", "Keep", "Keep current Hosted guidance"], ["deferred", "Defer", "Defer retirement for later investigation"]],
-    "no-change": [["equivalent", "Keep", "Keep current Hosted guidance"], ["pending", "Reassess", "Request another AI assessment"], ["deferred", "Defer", "Defer rule for later investigation"]],
-    exclude: [["included", "Add", "Add rule to Hosted guidance"], ["deferred", "Defer", "Defer rule for later investigation"], ["excluded", "Exclude", "Exclude rule from Hosted guidance"]],
-    defer: [["included", "Add", "Add rule to Hosted guidance"], ["deferred", "Defer", "Defer rule for later investigation"], ["excluded", "Exclude", "Exclude rule from Hosted guidance"]]
-  };
-  return actions[recommendation].map(([value, label, accessibleLabel]) => decisionButton(value, label, current, accessibleLabel)).join("");
 }
 
 function renderPriorityAssessment(assessment, efficiency) {
@@ -517,25 +605,14 @@ function factorReadout(label, description, kind, value) {
   `;
 }
 
-function handleAssessmentClick(event) {
-  const button = event.target.closest("[data-disposition]");
-  if (!button) return;
-  const candidate = getActiveCandidate();
-  if (candidate) {
-    updateDecision(candidate, { disposition: button.dataset.disposition });
-    renderAssessment();
-  }
-}
-
 function undoDecision(candidate) {
-  const previousDisposition = getDecision(candidate).disposition;
-  if (previousDisposition === "pending") return;
-  updateDecision(candidate, { disposition: "pending" });
-  showToast("Decision undone. Candidate returned to undecided.", false, {
+  if (!getDecision(candidate).inPlan) return;
+  updateDecision(candidate, { inPlan: false });
+  showToast("Action removed from plan.", false, {
     label: "Restore",
     handler: () => {
-      updateDecision(candidate, { disposition: previousDisposition });
-      showToast("Decision restored");
+      updateDecision(candidate, { inPlan: true });
+      showToast("Action restored to plan");
     }
   });
 }
@@ -543,6 +620,17 @@ function undoDecision(candidate) {
 function handleAssessmentInput(event) {
   const candidate = getActiveCandidate();
   if (!candidate) return;
+  if (event.target.dataset.ruleAction) {
+    const action = event.target.dataset.ruleAction;
+    updateDecision(candidate, { action, inPlan: isPromotionAction(action) });
+    renderAssessment();
+    return;
+  }
+  if (event.target.hasAttribute("data-plan-toggle")) {
+    updateDecision(candidate, { inPlan: event.target.checked });
+    renderAssessment();
+    return;
+  }
   if (event.target.dataset.decisionField) {
     updateDecision(candidate, { [event.target.dataset.decisionField]: event.target.value });
     if (event.target.dataset.decisionField === "proposedText") refreshAssessmentScores(candidate);
@@ -564,9 +652,9 @@ function refreshAssessmentScores(candidate) {
 }
 
 function renderPlan() {
-  const included = getIncludedCandidates();
-  elements["empty-plan"].hidden = included.length > 0;
-  elements["plan-table-body"].innerHTML = included.map((candidate) => {
+  const planCandidates = getPlanCandidates();
+  elements["empty-plan"].hidden = planCandidates.length > 0;
+  elements["plan-table-body"].innerHTML = planCandidates.map((candidate) => {
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
     const impact = assessment ? calculateImpact(assessment.factors) : null;
@@ -576,7 +664,7 @@ function renderPlan() {
     return `
       <tr>
         <td><button class="candidate-link" type="button" data-plan-candidate="${escapeHtml(candidate.key)}">${escapeHtml(candidate.id)}</button><br>${escapeHtml(candidate.title)}</td>
-        <td>${escapeHtml(candidate.sourceLabel)}</td>
+        <td><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span><br>${escapeHtml(candidate.sourceLabel)}</td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
         <td><span class="status-badge ${ready ? "success" : "warning"}">${readiness}</span></td>
@@ -588,7 +676,7 @@ function renderPlan() {
 
 function renderCapacity() {
   const reports = getCapacityReports().filter((report) => report.kind === "combined");
-  const draftCost = getIncludedCandidates().reduce((sum, candidate) => sum + getAssessment(candidate, getDecision(candidate)).guardedTokenDelta, 0);
+  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getAssessment(candidate, getDecision(candidate)).guardedTokenDelta, 0);
   elements["capacity-panel"].innerHTML = `
     <p class="eyebrow">Plan projection</p>
     <h3>Guidance capacity</h3>
@@ -619,45 +707,64 @@ function getProjectedCapacityDelta(report) {
     "documentation-combined": new Set(["repository", "documentation", "review-skill"])
   }[report.name];
   if (!reportSurfaces) return 0;
-  return getIncludedCandidates().reduce((sum, candidate) => {
+  return getPlanCandidates().reduce((sum, candidate) => {
     const assessment = getAssessment(candidate, getDecision(candidate));
     return assessment.affectedSurfaces.some((surface) => reportSurfaces.has(surface)) ? sum + assessment.guardedTokenDelta : sum;
   }, 0);
 }
 
 function renderPreview() {
-  const included = getIncludedCandidates();
-  const decided = state.candidates.filter((candidate) => getDecision(candidate).disposition !== "pending").length;
-  const ready = included.length > 0 && included.every((candidate) => {
-    const decision = getDecision(candidate);
-    return getAssessment(candidate, decision) && decision.rationale.trim();
-  });
+  const readiness = getPreviewReadiness();
+  const planCandidates = readiness.planCandidates;
+  const ready = readiness.ready;
   elements["approval-badge"].className = `status-badge ${ready ? "success" : "warning"}`;
-  elements["approval-badge"].textContent = ready ? "Ready to stage" : "Not staged";
+  elements["approval-badge"].textContent = ready ? "Ready to export" : "Not ready";
   elements["preview-status"].textContent = ready ? "Ready" : "Draft";
   elements["preview-summary"].innerHTML = `
     <p class="eyebrow">Review state</p>
     <h3>Draft summary</h3>
     <dl class="summary-list">
       <div><dt>Snapshot</dt><dd>${escapeHtml(state.bundle.snapshots.upstream.currentCommit.slice(0, 8))}</dd></div>
-      <div><dt>Decisions</dt><dd>${decided}</dd></div>
-      <div><dt>Pending</dt><dd>${state.candidates.length - decided}</dd></div>
-      <div><dt>Plan items</dt><dd>${included.length}</dd></div>
-      <div><dt>Stage status</dt><dd>${ready ? "ready" : "incomplete"}</dd></div>
+      <div><dt>Mapped</dt><dd>${state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length}</dd></div>
+      <div><dt>Not mapped</dt><dd>${state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length}</dd></div>
+      <div><dt>Plan items</dt><dd>${planCandidates.length}</dd></div>
+      <div><dt>Approval</dt><dd>${escapeHtml(readiness.status)}</dd></div>
     </dl>
   `;
-  elements["preview-json"].textContent = JSON.stringify(buildDraftExport(), null, 2);
+  if (elements["approver-name"].value !== state.session.approverName) {
+    elements["approver-name"].value = state.session.approverName || "";
+  }
+  elements["approve-export-button"].disabled = !ready;
+  elements["preview-json"].textContent = JSON.stringify(buildApprovalPayload(), null, 2);
+}
+
+function getPreviewReadiness() {
+  const planCandidates = getPlanCandidates();
+  const missingRationale = planCandidates.some((candidate) => {
+    const decision = getDecision(candidate);
+    return !getAssessment(candidate, decision) || !decision.rationale.trim();
+  });
+  const approverName = String(state.session.approverName || "").trim();
+  let status = "ready";
+  if (planCandidates.length === 0) status = "no actions";
+  else if (missingRationale) status = "needs rationale";
+  else if (!approverName) status = "needs approver";
+  return {
+    planCandidates,
+    approverName,
+    status,
+    ready: planCandidates.length > 0 && !missingRationale && Boolean(approverName)
+  };
 }
 
 function renderCounts() {
   elements["catalog-count"].textContent = formatNumber(state.candidates.length);
-  elements["plan-count"].textContent = formatNumber(getIncludedCandidates().length);
-  elements["review-set-count"].textContent = `${formatNumber(state.session.reviewSet.length)} selected`;
-  elements["review-selected-button"].disabled = state.session.reviewSet.length === 0;
+  elements["plan-count"].textContent = formatNumber(getPlanCandidates().length);
+  elements["plan-action-count"].textContent = `${formatNumber(getPlanCandidates().length)} actions`;
 }
 
-function getIncludedCandidates() {
-  return state.candidates.filter((candidate) => getDecision(candidate).disposition === "included");
+function getPlanCandidates() {
+  return state.candidates.filter((candidate) => getDecision(candidate).inPlan);
 }
 
 function getCapacityReports() {
@@ -668,9 +775,24 @@ function getActiveCandidate() {
   return state.candidates.find((candidate) => candidate.key === state.activeKey) || null;
 }
 
+function syncCandidateTreeRows() {
+  elements["candidate-list"].querySelectorAll("[data-candidate-key]").forEach((row) => {
+    const key = row.dataset.candidateKey;
+    const candidate = state.candidates.find((item) => item.key === key);
+    const inPlan = candidate && getDecision(candidate).inPlan;
+    row.classList.toggle("active", key === state.activeKey);
+    row.classList.toggle("in-plan", inPlan);
+    const checkbox = row.querySelector("[data-decision-key]");
+    if (checkbox) {
+      checkbox.checked = inPlan;
+      checkbox.title = `${inPlan ? "Remove action from" : "Add action to"} promotion plan`;
+    }
+  });
+}
+
 function selectCandidate(key) {
   state.activeKey = key;
-  renderCandidateList();
+  syncCandidateTreeRows();
   renderAssessment();
   refreshIcons();
 }
@@ -682,27 +804,16 @@ function updateFilter(value) {
 }
 
 function handleTreeSelection(event) {
-  const candidateCheckbox = event.target.closest("[data-review-key]");
-  if (candidateCheckbox) updateReviewSet([candidateCheckbox.dataset.reviewKey], candidateCheckbox.checked);
-}
-
-function updateReviewSet(keys, selected) {
-  const reviewSet = new Set(state.session.reviewSet);
-  for (const key of keys) selected ? reviewSet.add(key) : reviewSet.delete(key);
-  state.session.reviewSet = [...reviewSet].filter((key) => state.candidates.some((candidate) => candidate.key === key));
-  state.session.updatedAt = new Date().toISOString();
-  persistSession();
-  renderCandidateList();
-  renderMetrics();
-  renderCounts();
-  refreshIcons();
-}
-
-function reviewSelectedCandidates() {
-  const first = state.session.reviewSet.find((key) => state.candidates.some((candidate) => candidate.key === key));
-  if (!first) return;
-  selectCandidate(first);
-  showToast(`${state.session.reviewSet.length} candidates in review set`);
+  const candidateCheckbox = event.target.closest("[data-decision-key]");
+  if (!candidateCheckbox) return;
+  const candidate = state.candidates.find((item) => item.key === candidateCheckbox.dataset.decisionKey);
+  if (!candidate) return;
+  const decision = getDecision(candidate);
+  const action = candidateCheckbox.checked && !isPromotionAction(decision.action)
+    ? getDefaultPlanAction(candidate, getAssessment(candidate, decision)?.recommendation)
+    : decision.action;
+  updateDecision(candidate, { action, inPlan: candidateCheckbox.checked && isPromotionAction(action) });
+  if (candidate.key === state.activeKey) renderAssessment();
 }
 
 function switchView(view) {
@@ -719,13 +830,40 @@ function switchView(view) {
 
 function buildDraftExport() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "hosted-rule-workbench-draft",
     sessionId: state.session.id,
     exportedAt: new Date().toISOString(),
     snapshots: state.session.snapshots,
-    reviewSet: state.session.reviewSet,
+    approverName: state.session.approverName || "",
     decisions: state.session.decisions
+  };
+}
+
+function buildApprovalPayload() {
+  return {
+    schemaVersion: 1,
+    kind: "hosted-rule-promotion-selection",
+    sessionId: state.session.id,
+    snapshots: state.session.snapshots,
+    inapplicableCandidateCount: state.excludedCandidateCount,
+    decisions: state.candidates.map((candidate) => {
+      const decision = getDecision(candidate);
+      const assessment = getAssessment(candidate, decision);
+      return {
+        sourceType: candidate.sourceType,
+        id: candidate.id,
+        sourceContentSha256: candidate.hash,
+        catalogStatus: getCatalogStatus(candidate).key,
+        mappedHostedRuleIds: getCatalogStatus(candidate).rules.map((rule) => rule.id),
+        action: decision.action,
+        inPlan: decision.inPlan,
+        rationale: decision.rationale.trim(),
+        proposedText: decision.proposedText,
+        recommendation: assessment.recommendation,
+        hostedCategory: assessment.hostedCategory
+      };
+    })
   };
 }
 
@@ -733,6 +871,61 @@ function exportDraft() {
   const payload = JSON.stringify(buildDraftExport(), null, 2) + "\n";
   downloadJson(payload, `hosted-rule-draft-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
   showToast("Draft exported");
+}
+
+function handleApproverInput(event) {
+  state.session.approverName = event.target.value.slice(0, 120);
+  state.session.updatedAt = new Date().toISOString();
+  persistSession();
+  renderPreview();
+  setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
+  refreshIcons();
+}
+
+async function approveAndExport() {
+  const readiness = getPreviewReadiness();
+  if (!readiness.ready) {
+    showToast("Complete the selected rule rationale and approver name before exporting.", true);
+    return;
+  }
+  elements["approve-export-button"].disabled = true;
+  try {
+    const approvedAt = new Date().toISOString();
+    const payload = buildApprovalPayload();
+    const payloadBytes = JSON.stringify(payload, null, 2) + "\n";
+    const approvedPayloadSha256 = await sha256Hex(payloadBytes);
+    const handoff = {
+      schemaVersion: 1,
+      kind: "hosted-rule-workbench-approval-handoff",
+      createdAt: approvedAt,
+      encoding: "utf-8",
+      hashAlgorithm: "sha256-payload-bytes-v1",
+      approvedPayloadSha256,
+      approval: {
+        state: "approved",
+        approvedAt,
+        approvedBy: {
+          type: "manual",
+          id: readiness.approverName,
+          displayName: readiness.approverName
+        },
+        method: "hosted-rule-workbench"
+      },
+      payload
+    };
+    const exportBytes = JSON.stringify(handoff, null, 2) + "\n";
+    downloadJson(exportBytes, `hosted-rule-approval-${approvedAt.replace(/[:.]/g, "-")}.json`);
+    showToast(`Approved handoff exported (${approvedPayloadSha256.slice(0, 12)}...)`);
+  } catch {
+    showToast("Approval handoff could not be exported.", true);
+  } finally {
+    renderPreview();
+  }
+}
+
+async function sha256Hex(content) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function importDraft(event) {
@@ -744,7 +937,19 @@ async function importDraft(event) {
     if (draft.kind !== "hosted-rule-workbench-draft" || draft.sessionId !== state.session.id) {
       throw new Error("The draft belongs to a different source snapshot.");
     }
-    state.session.reviewSet = Array.isArray(draft.reviewSet) ? draft.reviewSet : [];
+    if (draft.schemaVersion !== 2) {
+      throw new Error("The draft version is not supported.");
+    }
+    if (!draft.decisions || typeof draft.decisions !== "object" || Array.isArray(draft.decisions)) {
+      throw new Error("The draft decisions are invalid.");
+    }
+    for (const [key, decision] of Object.entries(draft.decisions)) {
+      const candidate = state.candidates.find((item) => item.key === key);
+      if (!candidate || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || typeof decision.inPlan !== "boolean") {
+        throw new Error(`The draft decision for ${key} is invalid.`);
+      }
+    }
+    state.session.approverName = String(draft.approverName || "").slice(0, 120);
     state.session.decisions = draft.decisions || {};
     state.session.updatedAt = new Date().toISOString();
     await persistSession();

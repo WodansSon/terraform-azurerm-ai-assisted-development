@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added the Phase Two Go review package with compact implementation rules, manifest ownership, cumulative guidance budgets, and controlled PATCH-state and resource-ID test cases.
 - Added the Phase Three acceptance-test review package with compact test-specific rules, cumulative Go-plus-test budget validation, and controlled callback-deadline and embedded-Terraform test cases.
 - Added a normalized Hosted rule catalog, deterministic path-specific instruction generation, complete read-only HashiCorp contributor-source drift detection, a source-pinned candidate refresh bundle with exact Interactive contract evidence and structured guidance-capacity headroom, and validated intake-ledger, immutable promotion-plan, and append-only promotion-receipt contracts while preserving all 54 existing rules as active Hosted baseline-migration content.
-- Added the laptop-and-desktop Hosted Rule Workbench proof of concept with a low-glare dark interface, searchable candidate catalog, impact assessment, IndexedDB draft persistence, capacity reporting, promotion-plan review, portable draft files, an explicit mobile-device boundary, external staging, and a loopback-only read-only launcher.
+- Added the laptop-and-desktop Hosted Rule Workbench proof of concept with a low-glare dark interface, searchable candidate catalog, a committed 378-record shared assessment baseline, incremental Copilot-backed semantic assessment with shared and machine-local hash-bound reuse, explicit baseline publication, fail-closed validation, IndexedDB draft persistence, capacity reporting, promotion-plan review, portable drafts, Preview-page **Approve & Export** with manual attribution and SHA-256-bound selection handoffs, **Close Workbench** with token-authenticated local server shutdown, an explicit mobile-device boundary, external staging, and a loopback-only repository-read-only launcher.
 
 ### Changed
 
@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- Reworked the Workbench around pre-evaluated candidates with source-and-category tree navigation, independent review-set checkboxes, complete source rules, always-visible read-only AI impact and cost adjudication, and focused Add, Exclude, and Defer maintainer actions.
+- Reworked the Workbench around pre-evaluated candidates with stable source-tree navigation, direct Contributor Guidance children, separate source-lifecycle and authoritative Hosted-catalog status, exact mapped-rule evidence, mutually exclusive status-constrained Rule Actions, explicit promotion-plan membership, a clean version-two draft model, always-visible read-only AI impact and cost adjudication, and promotion-plan Undo.
 - Added deterministic Mermaid rendering validation with Mermaid CLI `11.16.0` and supported Puppeteer `24.15.0` instead of relying on deprecated diagnostic dependencies.
 - Corrected experiment lifecycle commands to accept GitHub's supported `Lite` and `Balanced` review effort levels, constrain paired results to the same values, and return captured pull request files as a cross-platform object array.
 - Expanded Hosted upstream drift coverage from only sources cited by active rules to the complete contributor-document set, with validation for untracked and stale contributor topics.

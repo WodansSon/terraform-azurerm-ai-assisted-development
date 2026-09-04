@@ -202,7 +202,7 @@
     "upstreamCandidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "referenceUrl", "baselineSha256", "currentSha256", "state", "requiresReview", "affectedHostedRuleIds", "baselineContent", "currentContent"],
+      "required": ["id", "title", "referenceUrl", "baselineSha256", "currentSha256", "state", "requiresReview", "affectedHostedRuleIds", "relatedHostedRules", "baselineContent", "currentContent"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "title": { "type": "string", "minLength": 1 },
@@ -212,6 +212,7 @@
         "state": { "enum": ["changed", "current"] },
         "requiresReview": { "type": "boolean" },
         "affectedHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/ruleId" } },
+        "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
         "baselineContent": { "type": "string" },
         "currentContent": { "type": "string" },
         "assessment": { "$ref": "#/$defs/aiAssessment" }

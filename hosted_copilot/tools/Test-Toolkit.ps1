@@ -46,12 +46,17 @@ $intakeLedgerSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactiv
 $promotionPlanSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-plan.schema.json'
 $promotionReceiptSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-receipt.schema.json'
 $ruleIntakeBundleSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-intake-review.schema.json'
+$assessmentBaselinePath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.json'
+$assessmentBaselineSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
 $promotionAuditPath = Join-Path $hostedRoot 'copilot-rule-catalog/audit'
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGeneration.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'Get-GuidanceCapacity.ps1'
 $ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
 $ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
+$ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
+$ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessment.ps1'
+$assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
@@ -279,11 +284,16 @@ if ($runtimeStarted) {
         $promotionPlanSchemaPath,
         $promotionReceiptSchemaPath,
         $ruleIntakeBundleSchemaPath,
+        $assessmentBaselinePath,
+        $assessmentBaselineSchemaPath,
         $instructionGeneratorPath,
         $instructionGenerationTestPath,
         $guidanceCapacityPath,
         $ruleIntakeBundlePath,
         $ruleIntakeTestPath,
+        $ruleIntakeAssessmentPath,
+        $ruleIntakeAssessmentTestPath,
+        $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
         $ruleWorkbenchIndexPath,
@@ -301,7 +311,7 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'lifecycle-tools'
     $lifecycleIssues = New-Object 'System.Collections.Generic.List[string]'
-    $lifecyclePaths = @($reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath)
+    $lifecyclePaths = @($reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath, $ruleIntakeAssessmentPath, $assessmentBaselinePublisherPath)
     foreach ($lifecyclePath in $lifecyclePaths) {
         if (-not (Test-Path -LiteralPath $lifecyclePath -PathType Leaf)) {
             $lifecycleIssues.Add("lifecycle command is missing: $lifecyclePath")
@@ -549,6 +559,40 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'rule-intake-contracts' -Issue "Hosted rule intake contracts are invalid: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'rule-intake-assessment'
+    try {
+        $assessmentBaselineContent = Get-Content -LiteralPath $assessmentBaselinePath -Raw
+        if (-not ($assessmentBaselineContent | Test-Json -SchemaFile $assessmentBaselineSchemaPath -ErrorAction Stop)) {
+            throw 'committed assessment baseline schema validation failed'
+        }
+        $assessmentBaseline = $assessmentBaselineContent | ConvertFrom-Json
+        $instructionCatalogSha256 = (Get-FileHash -LiteralPath $instructionCatalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($assessmentBaseline.hostedCatalogSha256 -ne $instructionCatalogSha256) {
+            throw 'committed assessment baseline does not target the current Hosted instruction catalog'
+        }
+        $baselineIdentities = @($assessmentBaseline.entries | ForEach-Object { "$($_.sourceType):$($_.id)" })
+        if (@($baselineIdentities | Sort-Object -Unique).Count -ne $baselineIdentities.Count) {
+            throw 'committed assessment baseline contains duplicate candidate identities'
+        }
+        $staleBaselineEntries = @($assessmentBaseline.entries | Where-Object { $_.sourceContentSha256 -ne $_.assessment.sourceContentSha256 })
+        if ($staleBaselineEntries.Count -gt 0) {
+            throw 'committed assessment baseline contains source-hash mismatches'
+        }
+
+        $assessmentTestOutput = @(& pwsh -NoProfile -File $ruleIntakeAssessmentTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($assessmentTestOutput | Out-String).Trim())
+        }
+        $assessmentTestResult = ($assessmentTestOutput | Out-String) | ConvertFrom-Json
+        if ($assessmentTestResult.status -ne 'passed') {
+            throw 'rule intake assessment regression suite reported failures'
+        }
+        Add-CheckResult -Name 'rule-intake-assessment' -Passed $true -Detail "Validated $($assessmentBaseline.entries.Count) committed baseline entries and passed $($assessmentTestResult.testCount) publication, shared reuse, incremental cache, changed-rule invalidation, evaluator retry, schema, and output-boundary tests without model calls."
+    }
+    catch {
+        Add-ValidationIssue -Name 'rule-intake-assessment' -Issue "Hosted rule intake assessment validation failed: $($_.Exception.Message)"
     }
 
     Start-ValidationCheck -Name 'rule-workbench'
@@ -895,7 +939,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

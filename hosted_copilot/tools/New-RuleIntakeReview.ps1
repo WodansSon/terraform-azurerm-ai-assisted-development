@@ -229,6 +229,21 @@ foreach ($source in @($hostedCatalog.sources)) {
     $currentContent = Get-UpstreamContent -Repository ([string]$hostedCatalog.upstreamSnapshot.repository) -Commit $currentUpstreamCommit -RelativePath $relativePath -Directory $UpstreamCurrentDirectory
     $currentHash = Get-ContentSha256 -Content $currentContent
     $changed = $currentHash -ne $baselineHash
+    $relatedHostedRules = @($hostedCatalog.rules | Where-Object { $_.status -eq 'active' -and $_.sourceIds -contains $source.id } | Sort-Object id | ForEach-Object {
+        $hostedRule = $_
+        [object[]]$placements = if ($placementsByRuleId.ContainsKey([string]$hostedRule.id)) {
+            @($placementsByRuleId[[string]$hostedRule.id].ToArray())
+        }
+        else {
+            @()
+        }
+        [pscustomobject]@{
+            id = [string]$hostedRule.id
+            status = [string]$hostedRule.status
+            text = [string]$hostedRule.text
+            placements = $placements
+        }
+    })
     $upstreamCandidates.Add([pscustomobject]@{
         id = [string]$source.id
         title = [string]$source.title
@@ -237,7 +252,8 @@ foreach ($source in @($hostedCatalog.sources)) {
         currentSha256 = $currentHash
         state = if ($changed) { 'changed' } else { 'current' }
         requiresReview = $changed
-        affectedHostedRuleIds = @($hostedCatalog.rules | Where-Object { $_.status -eq 'active' -and $_.sourceIds -contains $source.id } | ForEach-Object { [string]$_.id } | Sort-Object)
+        affectedHostedRuleIds = @($relatedHostedRules | ForEach-Object { [string]$_.id })
+        relatedHostedRules = $relatedHostedRules
         baselineContent = $baselineContent
         currentContent = $currentContent
     })

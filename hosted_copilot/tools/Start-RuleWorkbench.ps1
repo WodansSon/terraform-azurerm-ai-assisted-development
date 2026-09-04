@@ -7,6 +7,28 @@ param(
 
     [string]$BundlePath,
 
+    [string]$AssessmentCachePath = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/assessment-cache.json'),
+
+    [string]$AssessmentBaselinePath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-assessments/assessment-baseline.json'),
+
+    [string]$AssessmentModel = 'gpt-5.4',
+
+    [ValidateSet('low', 'medium', 'high', 'xhigh')]
+    [string]$AssessmentReasoningEffort = 'high',
+
+    [ValidateRange(1, 50)]
+    [int]$AssessmentBatchSize = 20,
+
+    [ValidateRange(1, 20)]
+    [int]$UpstreamAssessmentBatchSize = 5,
+
+    [ValidateRange(0, 3)]
+    [int]$AssessmentMaxRetries = 1,
+
+    [string]$EvaluatorCommand = 'copilot',
+
+    [switch]$ForceAssessment,
+
     [switch]$StageOnly,
 
     [switch]$NoLaunch,
@@ -23,7 +45,7 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
-$bundleGeneratorPath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
+$assessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -31,7 +53,7 @@ if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::Ord
     throw 'SiteDirectory must be outside the source repository'
 }
 
-foreach ($requiredPath in @($workbenchSource, $bundleGeneratorPath, $bundleSchemaPath)) {
+foreach ($requiredPath in @($workbenchSource, $assessmentPath, $bundleSchemaPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -46,15 +68,41 @@ foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
 
+$shutdownTokenBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)
+$shutdownToken = [Convert]::ToHexString($shutdownTokenBytes).ToLowerInvariant()
+$shutdownConfig = [ordered]@{ shutdownToken = $shutdownToken } | ConvertTo-Json -Compress
+[IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
+
 $stagedBundlePath = Join-Path $resolvedSiteDirectory 'rule-intake-review.json'
 $resolvedBundlePath = if ([string]::IsNullOrWhiteSpace($BundlePath)) { $null } else { [IO.Path]::GetFullPath($BundlePath) }
+$assessmentResult = $null
 
 function Update-StagedBundle {
     if ($null -eq $resolvedBundlePath) {
-        $bundleOutput = @(& pwsh -NoProfile -File $bundleGeneratorPath -OutputPath $stagedBundlePath -OutputFormat Text 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw "Rule intake bundle generation failed: $(($bundleOutput | Out-String).Trim())"
+        $assessmentArguments = @(
+            '-NoProfile',
+            '-File', $assessmentPath,
+            '-RepositoryRoot', $repositoryRoot,
+            '-OutputPath', $stagedBundlePath,
+            '-CachePath', $AssessmentCachePath,
+            '-BaselinePath', $AssessmentBaselinePath,
+            '-Model', $AssessmentModel,
+            '-ReasoningEffort', $AssessmentReasoningEffort,
+            '-BatchSize', $AssessmentBatchSize,
+            '-UpstreamBatchSize', $UpstreamAssessmentBatchSize,
+            '-MaxRetries', $AssessmentMaxRetries,
+            '-EvaluatorCommand', $EvaluatorCommand,
+            '-OutputFormat', 'Json'
+        )
+        if ($ForceAssessment) {
+            $assessmentArguments += '-Force'
         }
+        $bundleOutput = @(& pwsh @assessmentArguments 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Rule intake assessment failed: $(($bundleOutput | Out-String).Trim())"
+        }
+        $script:assessmentResult = ($bundleOutput | Out-String) | ConvertFrom-Json
     }
     else {
         if (-not (Test-Path -LiteralPath $resolvedBundlePath -PathType Leaf)) {
@@ -85,8 +133,10 @@ $result = [ordered]@{
     discoveredCandidateCount = $stagedCandidates.Count
     evaluatedCandidateCount = @($stagedCandidates | Where-Object { $_.PSObject.Properties['assessment'] -and $null -ne $_.assessment }).Count
     capacityReportCount = @($stagedBundle.guidanceCapacity.reports).Count
+    assessment = $assessmentResult
     readOnly = $true
     allowedMethods = @('GET', 'HEAD')
+    shutdownEndpoint = 'POST /shutdown'
     serving = -not $StageOnly
 }
 
@@ -100,6 +150,9 @@ if ($StageOnly) {
             Status = $result.status.ToUpperInvariant()
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
+            'Assessment Cache Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.cacheHitCount })
+            'Assessment Baseline Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.baselineHitCount })
+            'New Assessments' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.evaluatedCount })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -139,6 +192,20 @@ function Write-HttpResponse {
     $Stream.Flush()
 }
 
+function Test-ShutdownToken {
+    param(
+        [AllowNull()][string]$Candidate,
+        [Parameter(Mandatory = $true)][string]$Expected
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Candidate) -or $Candidate.Length -ne $Expected.Length) {
+        return $false
+    }
+    $candidateBytes = [Text.Encoding]::ASCII.GetBytes($Candidate)
+    $expectedBytes = [Text.Encoding]::ASCII.GetBytes($Expected)
+    return [Security.Cryptography.CryptographicOperations]::FixedTimeEquals($candidateBytes, $expectedBytes)
+}
+
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
 try {
     $listener.Start()
@@ -155,6 +222,9 @@ try {
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
+            'Assessment Cache Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.cacheHitCount })
+            'Assessment Baseline Hits' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.baselineHitCount })
+            'New Assessments' = $(if ($null -eq $assessmentResult) { '(prebuilt bundle)' } else { $assessmentResult.evaluatedCount })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'
@@ -163,7 +233,8 @@ try {
         Complete-ValidationTextOutput
     }
 
-    while ($true) {
+    $shutdownRequested = $false
+    while (-not $shutdownRequested) {
         $client = $listener.AcceptTcpClient()
         $stream = $null
         try {
@@ -173,7 +244,16 @@ try {
             if ([string]::IsNullOrWhiteSpace($requestLine)) {
                 continue
             }
-            while (-not [string]::IsNullOrEmpty($reader.ReadLine())) { }
+            $requestHeaders = @{}
+            while ($true) {
+                $headerLine = $reader.ReadLine()
+                if ([string]::IsNullOrEmpty($headerLine)) {
+                    break
+                }
+                if ($headerLine -match '^(?<name>[^:]+):\s*(?<value>.*)$') {
+                    $requestHeaders[[string]$Matches['name']] = [string]$Matches['value']
+                }
+            }
 
             if ($requestLine -notmatch '^(?<method>[A-Z]+) (?<target>\S+) HTTP/1\.[01]$') {
                 Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Bad Request')) -IncludeBody $true
@@ -181,15 +261,24 @@ try {
             }
 
             $method = [string]$Matches['method']
+            $requestUri = [Uri]("http://127.0.0.1$($Matches['target'])")
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/shutdown') {
+                $providedToken = [string]$requestHeaders['X-Workbench-Shutdown-Token']
+                if (-not (Test-ShutdownToken -Candidate $providedToken -Expected $shutdownToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                $shutdownBody = [Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')
+                Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownBody -IncludeBody $true
+                $shutdownRequested = $true
+                continue
+            }
+
             if ($method -notin @('GET', 'HEAD')) {
                 Write-HttpResponse -Stream $stream -StatusCode 405 -StatusText 'Method Not Allowed' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Method Not Allowed')) -IncludeBody $true
                 continue
             }
 
-            $requestUri = [Uri]("http://127.0.0.1$($Matches['target'])")
-            if ($method -eq 'GET' -and $requestUri.AbsolutePath -eq '/rule-intake-review.json' -and $requestUri.Query -match '(?:^\?|&)refresh=') {
-                $null = Update-StagedBundle
-            }
             $relativePath = [Uri]::UnescapeDataString($requestUri.AbsolutePath).TrimStart('/')
             if ([string]::IsNullOrWhiteSpace($relativePath)) {
                 $relativePath = 'index.html'
@@ -213,7 +302,10 @@ try {
         }
         catch {
             if ($null -ne $stream -and $stream.CanWrite) {
-                Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Internal Server Error')) -IncludeBody $true
+                try {
+                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Internal Server Error')) -IncludeBody $true
+                }
+                catch { }
             }
         }
         finally {
