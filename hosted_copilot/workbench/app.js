@@ -32,7 +32,8 @@ const state = {
     "candidate-sources": "",
     "assessment-results": ""
   },
-  candidateSorts: {}
+  candidateSorts: {},
+  assessmentSorts: {}
 };
 
 const elements = {};
@@ -41,6 +42,7 @@ let persistencePromise = Promise.resolve();
 let toastTimer;
 let rawPayloadChangeIndex = 0;
 let rawPayloadChangeCount = 0;
+let truncationTooltipFrame;
 
 const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 if (mobileDeviceDetected) document.documentElement.classList.add("mobile-unsupported");
@@ -55,10 +57,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 function captureElements() {
   for (const id of [
-    "snapshot-chip", "close-button", "export-button", "import-input", "catalog-count", "assessment-results-count", "plan-count",
-    "preview-status", "save-indicator", "metrics-band", "search-input", "plan-action-count",
-    "filter-count", "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
-    "assessment-results-filter-count", "assessment-results-list", "assessment-results-detail",
+    "snapshot-chip", "status-snapshot", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
+    "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
+    "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
+    "assessment-results-list", "assessment-results-detail",
     "return-catalog-button", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-diff", "preview-payload-diff", "preview-json", "raw-change-tools", "raw-change-count",
     "raw-change-position", "raw-previous-change", "raw-next-change", "copy-preview-button", "approver-name", "approval-requirements",
@@ -74,8 +76,14 @@ function bindEvents() {
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
   elements["close-button"].addEventListener("click", closeWorkbench);
-  elements["export-button"].addEventListener("click", exportDraft);
-  elements["import-input"].addEventListener("change", importDraft);
+  elements["export-button"].addEventListener("click", () => {
+    exportDraft();
+    elements["draft-menu"].removeAttribute("open");
+  });
+  elements["import-input"].addEventListener("change", async (event) => {
+    await importDraft(event);
+    elements["draft-menu"].removeAttribute("open");
+  });
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     button.addEventListener("click", () => setWorkspaceTab(button.dataset.workspaceTab));
@@ -104,6 +112,11 @@ function bindEvents() {
     handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
   elements["assessment-results-list"].addEventListener("click", (event) => {
+    const sortButton = event.target.closest("[data-assessment-sort]");
+    if (sortButton) {
+      updateAssessmentSort(sortButton);
+      return;
+    }
     const row = event.target.closest("[data-assessment-key]");
     if (row) {
       selectAssessmentResult(row.dataset.assessmentKey);
@@ -144,6 +157,7 @@ function bindEvents() {
   elements["copy-preview-button"].addEventListener("click", copyPreview);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
+  window.addEventListener("resize", scheduleTruncationTooltips);
 }
 
 function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, activateRow = null) {
@@ -615,27 +629,17 @@ function renderAll(shouldRenderAssessment = true) {
 
 function renderSnapshot() {
   const upstream = state.bundle.snapshots.upstream;
-  elements["snapshot-chip"].textContent = `${upstream.currentRef}@${upstream.currentCommit.slice(0, 8)}`;
-  elements["snapshot-chip"].title = `${upstream.repository} ${upstream.currentCommit}`;
+  elements["status-snapshot"].textContent = `${upstream.currentRef}@${upstream.currentCommit.slice(0, 8)}`;
+  elements["snapshot-chip"].title = `Source snapshot: ${upstream.repository} ${upstream.currentRef}@${upstream.currentCommit}`;
 }
 
 function renderMetrics() {
-  const planCount = getPlanCandidates().length;
   const excludedCount = getActiveExcludedCandidates().length;
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
-  const metrics = [
-    ["Hosted-capable inventory", state.candidates.length, `${excludedCount} inapplicable excluded`],
-    ["Mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length, "Active Hosted mappings"],
-    ["Not mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length, "No Hosted mapping"],
-    ["In plan", planCount, "Add, update, or retire"],
-    ["Test headroom", formatNumber(combined.budgetHeadroomTokens), `${combined.utilizationPercent}% utilized`]
-  ];
-  elements["metrics-band"].innerHTML = metrics.map(([label, value, note]) => `
-    <div class="metric">
-      <span class="metric-label">${escapeHtml(label)}</span>
-      <div class="metric-value">${escapeHtml(value)} <span class="metric-note">${escapeHtml(note)}</span></div>
-    </div>
-  `).join("");
+  elements["status-excluded"].textContent = formatNumber(excludedCount);
+  elements["status-mapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length);
+  elements["status-unmapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length);
+  elements["status-headroom"].textContent = formatNumber(combined.budgetHeadroomTokens);
 }
 
 function getFilteredCandidates() {
@@ -649,7 +653,6 @@ function getFilteredCandidates() {
 
 function renderCandidateList() {
   const filtered = getFilteredCandidates();
-  elements["filter-count"].textContent = `${formatNumber(filtered.length)} evaluated`;
   if (!filtered.length) {
     const message = state.candidates.length ? "No candidates match this search." : "No AI-evaluated candidates are present in this bundle.";
     elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No candidates available</h3><p>${escapeHtml(message)}</p></div>`;
@@ -659,7 +662,7 @@ function renderCandidateList() {
   const regularCandidates = filtered.filter((candidate) => !getApplicabilityOverride(candidate));
   const overrideGroup = overrideCandidates.length ? `
     <details class="candidate-source-root candidate-overrides-root" open>
-      <summary class="clickable"><i data-lucide="shield-check" aria-hidden="true"></i><strong>Overrides</strong><span>${overrideCandidates.length}</span></summary>
+      <summary class="clickable"><i data-lucide="shield-check" aria-hidden="true"></i><strong>Overrides</strong><span class="status-badge neutral type-compact">${overrideCandidates.length}</span></summary>
       ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
     </details>
   ` : "";
@@ -668,10 +671,7 @@ function renderCandidateList() {
     ["upstream", "Contributor Guidance"],
     ["maintainer", "Maintainer Proposals"]
   ];
-  elements["candidate-list"].innerHTML = `
-    <div class="eligibility-note"><strong>${formatNumber(getActiveExcludedCandidates().length)} inapplicable items excluded</strong><span>Workflow-only and non-review guidance is screened out before maintainer review.</span></div>
-    ${overrideGroup}
-  ` + sources.map(([sourceType, label]) => {
+  elements["candidate-list"].innerHTML = overrideGroup + sources.map(([sourceType, label]) => {
     const candidates = regularCandidates.filter((candidate) => candidate.sourceType === sourceType);
     if (!candidates.length) return "";
     const children = sourceType === "upstream"
@@ -679,7 +679,7 @@ function renderCandidateList() {
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     return `
       <details class="candidate-source-root" ${state.queries["candidate-sources"] ? "open" : ""}>
-        <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
+        <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span class="status-badge neutral type-compact">${candidates.length}</span></summary>
         ${children}
       </details>
     `;
@@ -694,7 +694,7 @@ function renderCandidateCategory(sourceType, category, candidates) {
       <summary class="clickable">
         <i data-lucide="folder" aria-hidden="true"></i>
         <strong>${escapeHtml(category)}</strong>
-        <span>${candidates.length}</span>
+        <span class="status-badge neutral type-compact">${candidates.length}</span>
       </summary>
       ${renderCandidateItems(sectionKey, candidates)}
     </details>
@@ -778,7 +778,6 @@ function getFilteredAssessmentCandidates() {
 function renderAssessmentResults() {
   if (!state.assessedCandidates.length) return;
   const filtered = getFilteredAssessmentCandidates();
-  elements["assessment-results-filter-count"].textContent = `${formatNumber(filtered.length)} excluded`;
   if (!filtered.length) {
     elements["assessment-results-list"].innerHTML = `<div class="empty-state compact"><h3>No assessment results</h3><p>No candidates match this outcome and search.</p></div>`;
   }
@@ -791,10 +790,12 @@ function renderAssessmentResults() {
     elements["assessment-results-list"].innerHTML = sources.map(([sourceType, label]) => {
       const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
       if (!candidates.length) return "";
+      const sectionKey = `assessment:${sourceType}`;
+      const sortedCandidates = sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey));
       return `
         <details class="candidate-source-root" ${state.queries["assessment-results"] ? "open" : ""}>
-          <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
-          <div class="candidate-category-items"><div class="assessment-results-header"><strong>Candidate</strong><span><strong>Outcome</strong><strong>Category</strong><strong>Recommendation</strong></span></div>${candidates.map(renderAssessmentResultRow).join("")}</div>
+          <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span class="status-badge neutral type-compact">${candidates.length}</span></summary>
+          <div class="candidate-category-items" data-assessment-section="${escapeHtml(sectionKey)}">${renderAssessmentResultsHeader(sectionKey)}${sortedCandidates.map(renderAssessmentResultRow).join("")}</div>
         </details>
       `;
     }).join("");
@@ -803,13 +804,65 @@ function renderAssessmentResults() {
   renderAssessmentResultDetail();
 }
 
+function renderAssessmentResultsHeader(sectionKey) {
+  const sort = getAssessmentSort(sectionKey);
+  const columns = [
+    ["candidate", "Candidate", "Candidate", "Source rule ID and title."],
+    ["state", "State", "Source State", "Lifecycle state relative to the source baseline."],
+    ["category", "Category", "Category", "AI-assigned Hosted category."],
+    ["recommendation", "Recommendation", "Recommendation", "AI-recommended action for maintainer review."]
+  ];
+  const button = ([key, label, accessibleLabel, help]) => {
+    const active = sort.field === key;
+    const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
+    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-assessment-sort="${key}" data-assessment-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? `<i data-lucide="chevron-${sort.direction === "ascending" ? "up" : "down"}" aria-hidden="true"></i>` : ""}</button>`;
+  };
+  return `<div class="assessment-results-header">${button(columns[0])}<span>${columns.slice(1).map(button).join("")}</span></div>`;
+}
+
+function getAssessmentSort(sectionKey) {
+  return state.assessmentSorts[sectionKey] || { field: "candidate", direction: "ascending" };
+}
+
+function updateAssessmentSort(button) {
+  const sectionKey = button.dataset.assessmentSection;
+  const field = button.dataset.assessmentSort;
+  const current = getAssessmentSort(sectionKey);
+  state.assessmentSorts[sectionKey] = {
+    field,
+    direction: current.field === field && current.direction === "ascending" ? "descending" : "ascending"
+  };
+  const group = button.closest(".candidate-category-items");
+  const candidates = Array.from(group.querySelectorAll(":scope > [data-assessment-key]"))
+    .map((row) => state.assessedCandidates.find((candidate) => candidate.key === row.dataset.assessmentKey))
+    .filter(Boolean);
+  const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-key]")).map((row) => [row.dataset.assessmentKey, row]));
+  sortAssessmentCandidates(candidates, state.assessmentSorts[sectionKey]).forEach((candidate) => group.appendChild(rowsByKey.get(candidate.key)));
+  group.querySelector(":scope > .assessment-results-header").outerHTML = renderAssessmentResultsHeader(sectionKey);
+  refreshIcons();
+}
+
+function sortAssessmentCandidates(candidates, sort) {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  const value = (candidate) => {
+    if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
+    if (sort.field === "state") return candidate.state;
+    if (sort.field === "category") return formatHostedCategory(candidate.assessment.hostedCategory);
+    return formatRecommendation(candidate.assessment.recommendation);
+  };
+  return [...candidates].sort((left, right) => {
+    const compared = collator.compare(value(left), value(right));
+    const directed = sort.direction === "ascending" ? compared : -compared;
+    return directed || collator.compare(left.id, right.id);
+  });
+}
+
 function renderAssessmentResultRow(candidate) {
   const assessment = candidate.assessment;
-  const eligible = assessment.hostedApplicable;
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
 }
@@ -1596,9 +1649,7 @@ function renderApprovalRequirements(readiness) {
 
 function renderCounts() {
   elements["catalog-count"].textContent = formatNumber(state.candidates.length);
-  elements["assessment-results-count"].textContent = formatNumber(getActiveExcludedCandidates().length);
   elements["plan-count"].textContent = formatNumber(getPlanCandidates().length);
-  elements["plan-action-count"].textContent = `${formatNumber(getPlanCandidates().length)} actions`;
 }
 
 function getPlanCandidates() {
@@ -1954,7 +2005,6 @@ function setSaveIndicator(text) {
 }
 
 function renderFatalError(error) {
-  elements["metrics-band"].innerHTML = "";
   elements["candidate-list"].innerHTML = "";
   elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench could not load</h2><p>${escapeHtml(error.message)}</p></div>`;
   setSaveIndicator("Bundle unavailable");
@@ -1980,6 +2030,32 @@ function showToast(message, error = false, action = null) {
 
 function refreshIcons() {
   if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
+  scheduleTruncationTooltips();
+}
+
+function scheduleTruncationTooltips() {
+  cancelAnimationFrame(truncationTooltipFrame);
+  truncationTooltipFrame = requestAnimationFrame(syncTruncationTooltips);
+}
+
+function syncTruncationTooltips() {
+  document.querySelectorAll("[data-truncation-tooltip]").forEach((node) => {
+    const clipped = node.getClientRects().length > 0
+      && (node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight);
+    if (clipped) {
+      node.title = node.textContent.trim();
+      return;
+    }
+    node.removeAttribute("title");
+    node.removeAttribute("data-truncation-tooltip");
+  });
+  document.querySelectorAll(".app-shell *").forEach((node) => {
+    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("title")) return;
+    if (getComputedStyle(node).textOverflow !== "ellipsis") return;
+    if (node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight) return;
+    node.title = node.textContent.trim();
+    node.setAttribute("data-truncation-tooltip", "");
+  });
 }
 
 function escapeHtml(value) {

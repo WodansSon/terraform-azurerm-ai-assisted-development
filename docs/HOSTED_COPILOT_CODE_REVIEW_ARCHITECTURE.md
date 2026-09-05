@@ -1,11 +1,11 @@
 # Hosted GitHub Copilot Code Review Architecture:
 
-This document defines the proposed architecture for a compact AzureRM compliance toolkit designed specifically for hosted GitHub Copilot code review.
+This document defines the architecture and current experiment implementation for a compact AzureRM compliance toolkit designed specifically for hosted GitHub Copilot code review.
 
 **This Repository Uses Two Canonical Product Names:**
 
 - **Interactive Toolkit:** The existing VS Code-oriented toolkit with prompts, routed skills, contracts, interactive workflows, the Interactive Toolkit installer, and the existing regression harness
-- **Hosted Toolkit:** The proposed compact GitHub Copilot code-review toolkit owned beneath `hosted_copilot/`
+- **Hosted Toolkit:** The compact GitHub Copilot code-review toolkit owned beneath `hosted_copilot/`
 
 The Hosted Toolkit is a separate product profile. It is not a reduced installation mode of the Interactive Toolkit.
 
@@ -32,7 +32,7 @@ This proves that the hosted GitHub Copilot runtime supplied and enforced a `110K
 
 GitHub and Microsoft Learn currently do not publish that numeric limit or define its accounting boundary. This architecture therefore treats the `110K` value as captured runtime behavior, not as a documented total model context-window limit or a stable public product guarantee.
 
-**Measurement of the Interactive Toolkit Explains That Result:**
+**The Initial Interactive Toolkit Measurement Explains That Result:**
 
 - An implementation Go file can match about `318 KB` of repository-wide and Go-scoped instruction content.
 - A Go acceptance-test file can match about `375 KB` because both general Go and test instructions apply.
@@ -53,10 +53,11 @@ The Interactive Toolkit's many broad `applyTo` files work for its routed workflo
 
 ## Status:
 
-- Design discussion only.
-- No Hosted Toolkit runtime assets are implemented in this repository.
-- Initial design-phase maintainer tooling is implemented: the Hosted Toolkit changelog, phase-aware validator, explicit ownership map, changed-toolkit dispatcher, and routing self-test.
-- The target implementation will be authored under `hosted_copilot/` in this repository as a copy-ready overlay for the provider fork.
+- The Experiment MVP is implemented under `hosted_copilot/` as a copy-ready overlay for the provider fork; it is not yet an adopted production toolkit.
+- Implemented runtime and deployment surfaces include compact repository, Go, test, and documentation instructions; the review skill; normalized catalog and deterministic generation; package manifest and installer; and complete Hosted validation.
+- Implemented maintenance surfaces include upstream drift detection, candidate collection, incremental semantic assessment with a committed baseline and local cache, the Hosted Rule Workbench, hash-bound approval export, controlled regression cases, paired-review lifecycle commands, and one adjudicated paired documentation result.
+- Remaining experiment work includes completing persisted intake decisions for the 349-rule Interactive baseline, collecting enough repeated paired evidence for an adoption decision, and deciding whether to implement repository-writing promotion and append-only audit receipts.
+- `Invoke-RulePromotion.ps1` and the promotion receipt directory are not implemented. The Workbench currently stops at a validated, hash-bound approval handoff and exposes no repository-write endpoint.
 - This document is repo-only maintainer guidance and must not be added to `installer/file-manifest.config`.
 
 ## Isolation Invariant:
@@ -66,8 +67,8 @@ The Hosted Toolkit must remain fully isolated from the Interactive Toolkit imple
 - Hosted Toolkit runtime files must not be added to the Interactive Toolkit installer manifest.
 - The Interactive Toolkit installer must not install, update, remove, or validate Hosted Toolkit files.
 - All Hosted product rules, semantic validators, regression test artifacts, documentation, runtime files, and operational scripts must live under `hosted_copilot/` in this repository. Repo-local validation presentation functions remain shared maintenance infrastructure.
-- Paths beneath `hosted_copilot/` must mirror their final paths in the target repository.
-- Installing the Hosted Toolkit means copying the contents of `hosted_copilot/` into the target repository root.
+- Manifest-owned runtime paths beneath `hosted_copilot/` must mirror their final paths in the target repository.
+- Installing the Hosted Toolkit means copying only the manifest-owned files from `hosted_copilot/` into matching relative paths beneath the target repository root.
 - Hosted generators, semantic validators, regression test artifacts, deployment state, and provenance must remain independent.
 - Repo-local validation and test report renderers may use shared presentation functions that do not participate in runtime behavior, generation, semantic decisions, deployment, or either toolkit package.
 - Hosted Toolkit runtime instructions must not import, load, or depend on Interactive Toolkit contracts, prompts, skills, schemas, or companion guidance.
@@ -83,7 +84,7 @@ The Interactive Toolkit was designed for VS Code workflows with explicit prompts
 
 Hosted GitHub Copilot code review combines all applicable repository guidance. Installing the Interactive Toolkit in a provider fork caused hosted review to fail with `Prompt too big after adding system message` while the hosted Copilot runtime reported `MaxPromptTokens=110000`.
 
-**The Current Source Payload Demonstrates Why:**
+**The Source Payload Measured During Initial Design Demonstrated Why:**
 
 - `.github/copilot-instructions.md` contains about `20 KB` and is treated as repository-wide guidance by hosted GitHub review.
 - An Interactive Toolkit `internal/**/*.go` review can match about `318 KB` of current repository-wide and Go-scoped instruction content before code, tool output, skills, or the pull request diff are considered.
@@ -145,10 +146,11 @@ The first implementation milestone is a controlled experiment, not production ad
 
 Prove that a compact Hosted Toolkit can complete useful AzureRM pull request reviews within the observed hosted prompt boundary and can outperform or complement contributor-guidance-only review on identical test cases without introducing unacceptable false positives.
 
-**Current Experiment Scaffold:**
+**Current Experiment Implementation:**
 
-- Implemented: Hosted changelog, phase-aware Hosted validator, toolkit ownership map, changed-toolkit dispatcher, routing self-test, and architecture authority
-- Not yet implemented: Hosted runtime instructions, review skill, package manifest, direct deployment script, controlled test-case execution, and scored experiment results
+- Implemented: Compact runtime instructions and review skill, normalized catalog and generation, direct source deployment, profile validation, candidate collection and semantic assessment, the Hosted Rule Workbench, controlled regression cases, paired-review lifecycle tooling, and one adjudicated paired documentation result
+- In progress: Persisted decisions for the complete Interactive intake baseline and repeated paired evidence across implementation, testing, and documentation cases
+- Not implemented: Repository-writing promotion, append-only promotion receipts, production CI rollout, and an adoption decision
 - Repository-only: The changed-toolkit dispatcher protects maintenance boundaries but is not an experiment success criterion
 
 **Required Experiment Artifacts:**
@@ -182,7 +184,7 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 
 During the experiment, normalized rule sources and deterministic generation are required so evaluation uses reproducible guidance without losing maintainer conventions. Generated runtime files remain committed and frozen by source commit. Production automation beyond read-only drift detection remains an adoption decision.
 
-## Target Hosted Package Layout:
+## Current Hosted Source Layout:
 
 `hosted_copilot/` is both the authoritative ownership boundary and the copy-ready repository overlay:
 
@@ -203,13 +205,16 @@ hosted_copilot/
     instruction-catalog.schema.json
     interactive-intake-ledger.json
     interactive-intake-ledger.schema.json
+    maintainer-rules/
+      documentation.rules.md
+      implementation.rules.md
+      testing.rules.md
     rule-intake-review.schema.json
     promotion-plan.schema.json
     promotion-receipt.schema.json
     rule-assessments/
       assessment-baseline.json
       assessment-baseline.schema.json
-    audit/
   regression/
     README.md
     cases/
@@ -218,20 +223,31 @@ hosted_copilot/
     results/
   tools/
     package-manifest.json
+    Capture-ReviewPair.ps1
+    Close-ReviewPair.ps1
     Install-Toolkit.ps1
     Generate-Instructions.ps1
+    Get-GuidanceCapacity.ps1
+    Import-PullRequest.ps1
+    Initialize-ReviewBases.ps1
     Invoke-RuleIntakeAssessment.ps1
-    Invoke-RulePromotion.ps1
+    New-ReviewPair.ps1
     New-RuleIntakeReview.ps1
     Publish-RuleIntakeAssessmentBaseline.ps1
+    Publish-TestCase.ps1
+    Review.Common.psm1
     Start-RuleWorkbench.ps1
     Test-InstructionGeneration.ps1
+    Test-ReviewResults.ps1
     Test-RuleIntakeAssessment.ps1
     Test-RuleIntakeReview.ps1
+    Test-RuleWorkbench.ps1
     Test-UpstreamSources.ps1
     Test-Toolkit.ps1
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
+    HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
+    HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md
   workbench/
     index.html
     app.js
@@ -239,21 +255,22 @@ hosted_copilot/
 ```
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
-- `copilot-rule-catalog/` owns normalized rules, shared rule assessments, intake decisions, promotion schemas, and append-only promotion receipts.
+- `copilot-rule-catalog/` owns normalized rules, source-only Maintainer Proposals, shared rule assessments, intake decisions, and promotion schemas. Append-only promotion receipts remain a possible future extension.
 - `regression/` owns controlled cases, schemas, and local experiment artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
-- `tools/` owns assessment, generation, validation, promotion, and deployment support.
-- `workbench/` owns the static local review interface. It is maintainer tooling and is not deployed into the target provider repository.
+- `tools/` owns assessment, generation, validation, paired-review lifecycle, evidence capture, and deployment support. Repository-writing promotion remains unimplemented.
+- `workbench/` owns the interactive local review interface built from static browser assets. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
 - `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
-- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit and its maintenance commands.
+- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit; the implementation guide and experiment runbook remain source-only maintainer documentation.
 - Generated path-specific instruction files are written directly beneath `hosted_copilot/.github/`, committed, and frozen by source commit. They must not be edited manually.
+- The promotion schemas define the planned write boundary, but `tools/Invoke-RulePromotion.ps1` and `copilot-rule-catalog/audit/` remain unimplemented until maintainers decide to proceed beyond approval export.
 
 Nothing under `hosted_copilot/` is Interactive Toolkit runtime payload.
 
 ## Copy-Ready Hosted Runtime:
 
-**GitHub Discovers Hosted Review Customizations Only from Supported Root `.github/` Paths. Copying the Contents of `hosted_copilot/` into the Target Repository Places the Runtime Files at Those Required Paths:**
+**GitHub Discovers Hosted Review Customizations Only from Supported Root `.github/` Paths. Installing the Manifest-Owned Files from `hosted_copilot/` Places the Runtime Files at Those Required Paths:**
 
 ```text
 .github/
@@ -267,7 +284,7 @@ Nothing under `hosted_copilot/` is Interactive Toolkit runtime payload.
       SKILL.md
 ```
 
-No path rewriting or second packaging layer is required. The relative path of every file beneath `hosted_copilot/` is its destination path in the target repository.
+No path rewriting or second packaging layer is required. Each manifest-owned file keeps its path relative to `hosted_copilot/` when installed into the target repository. Catalogs, maintenance tools, regression assets, source-only documentation, and the Workbench remain in this source repository unless the manifest explicitly adds them later.
 
 Files with the same names or roles in the Interactive Toolkit are not shared dependencies. The Interactive Toolkit installer must ignore the complete `hosted_copilot/` tree.
 
@@ -467,6 +484,8 @@ Maintainer proposal files are hand-authored source records, not runtime instruct
 
 The first Interactive baseline contains 349 active rules. All 349 must receive a persisted intake decision, even when their contract family appears unrelated to Hosted review. Direct implementation, testing, and documentation rules should be reviewed first, followed by cross-cutting review rules and then workflow-specific families. Contract-family routing is a review order, not permission to silently exclude rules.
 
+The current ledger captures the 349-rule source snapshot but contains no persisted decisions. Completing those decisions remains experiment work; the committed semantic assessment baseline does not replace the intake ledger.
+
 The Interactive rule catalog provides stable IDs, contract ownership, lifecycle, hashes, provenance, and source mappings. The hand-authored Interactive contracts remain authoritative for rule wording. Intake tooling must include the exact contract rule block in semantic evidence rather than treating the catalog title as complete rule text.
 
 ### Hosted-Owned Intake Ledger:
@@ -513,9 +532,15 @@ The Workbench uses IndexedDB for review bundles, read-only AI assessments, maint
 
 Semantic evaluation completes before a candidate enters either Workbench tree. Do not show an unevaluated candidate or synthesize placeholder scores. Directly below the shared search toolbar, a tab control switches between complete **Candidate Sources** and **Assessment Results** child workspaces. The search toolbar queries only the dataset owned by the selected tab. **Candidate Sources** contains AI-applicable candidates plus candidates provisionally reincluded by a maintainer and is the sole source for decisions and promotion-plan membership. Within Candidate Sources, connected **Candidates** and **Details** tabs replace one full-width view with the other. Candidate activation opens Details; returning to Candidates preserves tree expansion, selection, sorting, and scrolling; Details without a selection displays a **Select a candidate** empty state. **Assessment Results** uses the same always-visible nested-tab model: connected **Assessments** and **Details** tabs replace one full-width pane with the other at every supported viewport. Activating an assessment row opens Details, returning to Assessments preserves selection and row highlighting, and Details without a selection displays **Select an assessment result**. Applying a provisional override removes that row from active exclusions while preserving the original assessment and override record in persisted audit data.
 
-On desktop, keep the top bar and left stage rail fixed to the viewport. Within Catalog, keep metrics, search, outer workspace tabs, and the Candidates/Details tabs fixed while only the active candidate tree, assessment-result list, or detail form scrolls. Within Promotion Plan, keep the page header and Plan Projection fixed while the candidate table owns vertical and horizontal scrolling with sticky column headings. Within Preview, keep the page header and Draft Summary fixed while one right-hand review container scrolls Proposed Changes, Payload Changes, and Raw Selection Payload together. Below the desktop breakpoint, retain the document-flow responsive layout instead of forcing nested fixed-height regions.
+Present the Workbench as a specialized IDE using a product-owned dark theme whose initial shell language references VS Code Dark 2026: a compact title bar with yellow product braces, icon-only activity navigation, editor-style outer tabs, panel-style inner tabs, charcoal editor surfaces, and a compact bottom status bar. Scope its tokens under `theme-hosted-dark`; do not import or depend on an installed VS Code theme at runtime. Keep Workbench-specific semantic colors for recommendations, risk, readiness, and diffs. The title bar owns Draft options and the far-right Close Workbench action. The activity rail owns stage navigation only. The status bar owns source snapshot, autosave state, eligible and excluded counts, mapping counts, plan count, test-guidance headroom, and preview readiness; labels stay icon-first with accessible names and tooltips.
 
-Both outer tab children organize results beneath non-selectable **Interactive Toolkit**, **Contributor Guidance**, and **Maintainer Proposals** source roots. Switching outer tabs changes visibility only and preserves each tab's folders, selection, sort state, scroll position, rendered detail, and independent search query. Candidate-list column headers belong to each row-bearing subsection rather than floating globally above unrelated folders. Candidate Sources headers sort only their owning subsection, use compact labels, and default to Candidate ascending with a visible direction chevron. Assessment Results headers remain informational and are not sortable. Interactive and maintainer rules retain navigation-only category folders in the candidate view, while Contributor Guidance rules are direct children of their source root. Each eligible candidate shows source lifecycle and authoritative Hosted catalog status separately. `Mapped` means the bundle identifies one or more active Hosted rules; `Retired mapping` means only retired Hosted rules remain; `Not mapped` means no authoritative mapping exists. In Tokens, unsigned values show current guarded usage and signed values show an explicit action's estimated delta. When an overridden exclusion has no AI-generated token delta, estimate its maintained proposed text with the same guarded character-quarter method for Candidate, Details, Plan, and capacity displays. The eligible-tree checkbox controls only promotion-plan membership and never infers an action. Clicking or keyboard-activating a candidate row opens its complete source rule and AI assessment in the full-width Details view without changing plan membership or collapsing the tree. When a candidate or assessment-result row has focus, Up and Down Arrow move selection and focus to the previous or next visible row, clamp at list boundaries, and scroll the target into view. Folder summaries retain native disclosure-key behavior, and focused promotion-plan checkboxes retain native checkbox-key behavior.
+Typography is a viewport-independent theme invariant. Use `14px` regular text with a `20px` line height by default, `12px` regular text with a `16px` line height only for explicitly compact surfaces, and `14px` semibold text with a `20px` line height for semantic headings and emphasis. Do not add component-specific sizes or weights below that floor; preserve density with spacing and layout.
+
+On supported laptop and desktop widths, keep the title bar, activity rail, and status bar fixed to the viewport. Within Catalog, keep the compact search, outer workspace tabs, and Candidates/Details or Assessments/Details tabs fixed while only the active tree, assessment-result list, or detail form scrolls. Within Promotion Plan, keep the page header and Plan Projection fixed while the candidate table owns vertical and horizontal scrolling with sticky column headings. Within Preview, use a compact editor header, a full-height Approval properties pane, and one unframed right-hand review editor that scrolls Proposed Changes, Payload Changes, and Raw Selection Payload together.
+
+Both outer tab children organize results beneath non-selectable **Interactive Toolkit**, **Contributor Guidance**, and **Maintainer Proposals** source roots. Switching outer tabs changes visibility only and preserves each tab's folders, selection, sort state, scroll position, rendered detail, and independent search query. Column headers belong to each row-bearing subsection rather than floating globally above unrelated folders. Candidate Sources and Assessment Results share one sortable-header treatment, sort only their owning subsection, and default to Candidate ascending with a visible direction chevron. Candidate labels are left-aligned, remaining columns are centered, and chevrons occupy a reserved slot. Data headers use product theme surfaces rather than legacy view-specific colors. Summary and hierarchy counts use the shared neutral capsule, and visually ellipsized text exposes its complete text through a generated tooltip. Interactive and maintainer rules retain navigation-only category folders in the candidate view, while Contributor Guidance rules are direct children of their source root. Each eligible candidate shows source lifecycle and authoritative Hosted catalog status separately. `Mapped` means the bundle identifies one or more active Hosted rules; `Retired mapping` means only retired Hosted rules remain; `Not mapped` means no authoritative mapping exists. In Tokens, unsigned values show current guarded usage and signed values show an explicit action's estimated delta. When an overridden exclusion has no AI-generated token delta, estimate its maintained proposed text with the same guarded character-quarter method for Candidate, Details, Plan, and capacity displays. The eligible-tree checkbox controls only promotion-plan membership and never infers an action. Clicking or keyboard-activating a candidate row opens its complete source rule and AI assessment in the full-width Details view without changing plan membership or collapsing the tree. When a candidate or assessment-result row has focus, Up and Down Arrow move selection and focus to the previous or next visible row, clamp at list boundaries, and scroll the target into view. Folder summaries retain native disclosure-key behavior, and focused promotion-plan checkboxes retain native checkbox-key behavior.
+
+Assessment Results exposes Candidate, source lifecycle State, Category, and Recommendation. It does not repeat the invariant excluded Outcome in each row, and each subsection renders exactly one active sort state and direction chevron.
 
 An authenticated Hosted CODEOWNER can provisionally contest an AI exclusion from Assessment Results. The launcher resolves the current GitHub CLI identity and applicable CODEOWNERS entry; ordinary read-only use remains available when identity validation fails, while override controls fail closed with an actionable reason. A provisional override records the original and effective applicability, required rationale, authenticated GitHub login, timestamp, and source-content SHA-256 without mutating the AI assessment. Applying it atomically removes the row from active Assessment Results, adds it once to the dedicated **Overrides** group, and creates an unresolved in-plan decision without inferring Add, Update, or Retire. Undo, uncheck, and Remove Override atomically remove the override and decision, return the row to active exclusions, and clear stale selection highlights; Restore reinstates both records. Draft import and export plus the hash-bound approval selection carry the override. This is transparent trusted-maintainer discretion, not tamper-proof two-person enforcement; normal pull request review remains the governance layer and the future promotion planner must persist the override in its audit artifacts.
 
@@ -531,6 +556,8 @@ An authenticated Hosted CODEOWNER can provisionally contest an AI exclusion from
 Browser state is resumable working state, not repository authority. The current Workbench exports a hash-bound approval handoff, not a repository-ready promotion plan, and exposes no write endpoint. The future promotion planner must resolve section placement, rule IDs, generated-output hashes, source-baseline decisions, regression changes, and staged validation before producing the complete promotion plan. `Invoke-RulePromotion.ps1` must independently validate that plan, recompute its exact file-byte hash, verify source snapshots and repository preconditions, recreate the preview, and apply only that plan. It must fail before writing when any source, catalog, ledger, generated output, regression input, or expected hash has changed.
 
 ### Atomic Promotion And Audit:
+
+This section defines a possible post-Workbench write boundary. No promotion command or audit receipt directory is implemented; the current experiment ends at hash-bound approval export.
 
 A promotion is one coherent repository change containing approved catalog rules, section mappings, ledger decisions, accepted source baselines, required regression assets, and generated instructions. Source baseline acceptance must identify the semantic decision that authorizes it; a digest change alone is never sufficient.
 
@@ -833,55 +860,36 @@ The dispatcher accepts separate waiver inputs: `-InteractiveChangelogNotRequired
 
 Combined validation is a repository convenience, not a combined distribution gate. The Interactive Toolkit remains versioned, packaged, and released; the Hosted Toolkit remains directly deployed, independently validated, and recoverable from its source commit, ownership-manifest hash, and installed file hashes.
 
-## Rollout Direction:
+## Rollout Status And Direction:
 
-### Design and Inventory:
+### Implemented Experiment Foundation:
 
-- Inventory customization files in the target provider fork.
-- Measure the exact hosted payload currently loaded for implementation, tests, and documentation.
-- Identify the target repository and ownership model for hosted source rules and generated files.
-- Confirm CODEOWNERS and required-check capabilities.
+- Measured the Interactive payload and established the isolated Hosted ownership and token-budget model.
+- Implemented normalized rules, deterministic instruction generation, compact runtime guidance, package ownership, safe dry-run installation, and complete profile validation.
+- Implemented source drift detection, incremental semantic assessment, the local Workbench, controlled regression cases, paired-review lifecycle tooling, and evidence capture.
+- Protected `hosted_copilot/` and this architecture document through CODEOWNERS.
 
-### Rule Curation:
+### Active Experiment Work:
 
-- Select the smallest useful upstream baseline.
-- Inventory confirmed and inferred maintainer conventions.
-- Classify selected unprovenanced rules.
-- Exclude Interactive Toolkit orchestration safeguards.
-- Record mandatory documentation gaps explicitly.
+- Complete persisted decisions for the 349-rule Interactive intake baseline.
+- Run repeated paired comparisons across implementation, testing, and documentation cases with identical diffs and review effort.
+- Capture model and reasoning evidence when available, mark confounded comparisons explicitly, and measure expected findings, misses, duplicates, unexpected findings, and false positives.
+- Refine rules and budgets only from reviewed evidence while preserving the isolated runtime and deployment boundaries.
 
-### Generation and Validation:
+### Deferred Adoption Work:
 
-- Define the normalized rule schema.
-- Implement the PowerShell drift, generation, and validation commands.
-- Generate the isolated hosted runtime profile.
-- Add token-budget and dependency-boundary checks.
-- Maintain `Test-Toolkit.ps1`, Hosted Toolkit changelog validation, and phase-aware runtime gates as the Hosted Toolkit develops.
-- Maintain the repository-level changed-toolkit dispatcher, explicit ownership map, and routing self-test.
-- Migrate the Interactive Toolkit validator implementation to its canonical entrypoint while preserving the existing compatibility entrypoint.
-
-### Hosted Evaluation:
-
-- Test the profile on controlled pull requests in the fork.
-- Compare findings against known expected issues.
-- Run paired profile comparisons using identical test changes and review effort.
-- Capture model and reasoning evidence when available and mark mismatched pairs as confounded.
-- Measure context use, duplicate feedback, false positives, and missed defects.
-- Reduce or refine rules before expanding the profile.
-
-### Protected Adoption:
-
-- Generate runtime instructions directly under `hosted_copilot/.github/`.
 - Run `Install-Toolkit.ps1` in dry-run mode against the target repository.
 - Review and resolve every reported destination collision before installation.
-- Install the manifest-owned contents of `hosted_copilot/` into the target repository root without path transformation.
-- Commit the copied `.github/`, `tools/`, and hosted documentation paths in the target repository.
+- Install only the manifest-owned `.github/` runtime and Hosted user documentation into matching target paths.
+- Commit the installed runtime and user documentation in the target repository.
 - Require CODEOWNERS review for hosted policy changes.
 - Enable hosted Copilot review with custom instructions.
 - Monitor live reviews and update normalized rules through the isolated maintenance process.
+- Decide whether evidence justifies implementing repository-writing promotion and append-only audit receipts.
 
 ## Open Design Decisions:
 
+- After the Workbench stabilizes, add a repo-only cross-toolkit check that compares overlapping Interactive and Hosted upstream source IDs, URLs, and semantically reviewed hashes while allowing explicitly product-only sources. Evaluate a shared upstream source list as a separate follow-up; do not merge the rule catalogs or introduce a runtime dependency between toolkits.
 - The exact post-adoption mechanism for evolving the ownership manifest and installed-state schema.
 - The explicit approval mechanism for first-install collisions and locally modified package-owned files.
 - Whether GitHub publishes or support confirms which prompt components count toward `MaxPromptTokens`; until then, preserve the captured `110000` value and exact failure stage without asserting an exclusive system-message scope.
@@ -891,9 +899,9 @@ Combined validation is a repository convenience, not a combined distribution gat
 - The number of independent paired runs required before an unknown-model aggregate comparison is considered stable.
 - How live hosted review outcomes are captured for regression without treating comments as automatically correct guidance.
 
-## Success Criteria:
+## Adoption Criteria:
 
-**The Design Is Ready for Implementation When:**
+**The Experiment Is Ready for an Adoption Decision When:**
 
 - The Hosted Toolkit and Interactive Toolkit ownership boundaries are explicit
 - No Hosted Toolkit runtime dependency points into the Interactive Toolkit
