@@ -89,6 +89,16 @@ label.button {
   cursor: pointer;
 }
 
+.clickable {
+  cursor: pointer !important;
+}
+
+.clickable:disabled,
+.clickable.disabled,
+.clickable[aria-disabled="true"] {
+  cursor: not-allowed !important;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -582,15 +592,76 @@ h3 {
 }
 
 #candidate-sources-panel .catalog-layout {
-  grid-template-columns: minmax(460px, 0.82fr) minmax(680px, 1.18fr);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+#assessment-results-panel .catalog-layout {
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
 #candidate-sources-panel .assessment-panel {
   width: 100%;
-  min-width: min(680px, 100%);
+  min-width: 0;
   height: 100%;
   align-self: stretch;
+}
+
+.candidate-pane-switch {
+  display: flex;
+  gap: 9px;
+  margin: 10px 0 0;
+  padding: 0 6px;
+  align-items: end;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  border-radius: 0;
+}
+
+.candidate-pane-tab {
+  position: relative;
+  display: inline-flex;
+  min-height: 38px;
+  margin-bottom: -1px;
+  padding: 7px 18px 8px;
+  align-items: center;
+  gap: 7px;
+  color: #c6d4ff;
+  background: #101c30;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px 10px 0 0;
+  font-weight: 500;
+}
+
+.candidate-pane-tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.candidate-pane-tab.active {
+  z-index: 1;
+  color: #fff;
+  background: var(--surface);
+  border-color: #75839d;
+  border-bottom-color: var(--surface);
+}
+
+.candidate-pane-tab:not(.active):hover {
+  color: #fff;
+  background: #16243a;
+  border-color: #63728e;
+}
+
+.candidate-pane-tab:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.candidate-overrides-root > summary {
+  color: var(--accent-bright);
 }
 
 
@@ -1830,6 +1901,15 @@ p.subcontext-container {
   text-align: right;
 }
 
+.rationale-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rationale-save {
+  min-width: 108px;
+}
+
 .field-stack textarea.rule-text {
   min-height: 130px;
   font-family: "IBM Plex Mono", monospace;
@@ -1888,23 +1968,27 @@ p.subcontext-container {
 }
 
 .plan-column-source {
-  width: 120px;
+  width: 150px;
+}
+
+.plan-column-action {
+  width: 100px;
 }
 
 .plan-column-impact {
-  width: 68px;
-}
-
-.plan-column-cost {
   width: 84px;
 }
 
+.plan-column-cost {
+  width: 110px;
+}
+
 .plan-column-readiness {
-  width: 104px;
+  width: 130px;
 }
 
 .plan-column-actions {
-  width: 88px;
+  width: 100px;
 }
 
 .plan-table th,
@@ -1920,11 +2004,26 @@ p.subcontext-container {
   background: var(--surface-quiet);
   font-size: 0.7rem;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .plan-table td {
   font-size: 0.8rem;
   vertical-align: middle;
+}
+
+.plan-candidate-row td {
+  transition: background-color 120ms ease;
+}
+
+.plan-candidate-row:hover td,
+.plan-candidate-row:focus-visible td {
+  background: var(--accent-soft);
+}
+
+.plan-candidate-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .plan-table code,
@@ -1945,8 +2044,35 @@ p.subcontext-container {
   text-align: center;
 }
 
+.plan-source,
+.plan-action {
+  white-space: nowrap;
+}
+
 .plan-table th:last-child {
   text-align: center;
+}
+
+.plan-detail-link {
+  gap: 5px;
+  border: 1px solid var(--gold);
+  cursor: pointer;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.plan-detail-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+.plan-detail-link:hover {
+  background: rgba(255, 209, 102, 0.18);
+  box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.12);
+}
+
+.plan-detail-link:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
 }
 
 .plan-undo {
@@ -2095,6 +2221,53 @@ p.subcontext-container {
   color: var(--muted);
   font-size: 0.7rem;
   line-height: 1.45;
+}
+
+.approval-requirements {
+  display: grid;
+  margin: 2px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.approval-requirements-title {
+  padding: 10px 0 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.approval-requirement {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-top: 1px solid rgba(142, 160, 208, 0.12);
+  font-size: 0.75rem;
+}
+
+.approval-requirement svg {
+  width: 15px;
+  height: 15px;
+}
+
+.approval-requirement > span {
+  color: var(--muted);
+}
+
+.approval-requirement > strong {
+  color: var(--ink);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.approval-requirement.passed svg {
+  color: var(--success);
+}
+
+.approval-requirement.pending svg,
+.approval-requirement.pending > strong {
+  color: #ffd166;
 }
 
 .summary-list {
@@ -2355,6 +2528,13 @@ p.subcontext-container {
   white-space: pre;
 }
 
+.highlight-width-track {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  align-content: start;
+}
+
 .payload-empty {
   padding: 18px;
   color: var(--muted);
@@ -2382,6 +2562,59 @@ p.subcontext-container {
   font-size: 0.68rem;
 }
 
+.raw-change-tools,
+.raw-change-navigation,
+.raw-change-legend {
+  display: flex;
+  align-items: center;
+}
+
+.raw-change-tools {
+  gap: 12px;
+  margin-left: auto;
+}
+
+.raw-change-legend {
+  gap: 6px;
+  color: #8cda9d;
+  font-weight: 600;
+}
+
+.raw-change-legend::before {
+  width: 10px;
+  height: 10px;
+  background: rgba(46, 160, 67, 0.65);
+  border: 1px solid var(--success);
+  border-radius: 2px;
+  content: "";
+}
+
+.raw-change-navigation {
+  gap: 6px;
+}
+
+.raw-change-navigation .icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.raw-change-navigation .icon-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.raw-change-position {
+  min-width: 42px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.raw-change-tools + #copy-preview-button {
+  margin-left: 12px;
+}
+
 .preview-code pre {
   min-height: 260px;
   max-height: calc(100vh - 210px);
@@ -2393,6 +2626,61 @@ p.subcontext-container {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.74rem;
   line-height: 1.55;
+}
+
+#preview-json {
+  padding: 0;
+  white-space: normal;
+}
+
+.raw-json-line {
+  display: grid;
+  grid-template-columns: 54px 24px minmax(max-content, 1fr);
+  min-height: 22px;
+}
+
+.raw-json-line-number {
+  padding: 2px 10px;
+  color: var(--muted);
+  background: rgba(142, 160, 208, 0.07);
+  border-right: 1px solid var(--line);
+  text-align: right;
+  user-select: none;
+}
+
+.raw-json-line-number::before {
+  content: attr(data-line-number);
+}
+
+.raw-json-line-marker {
+  padding: 2px 6px;
+  color: var(--muted);
+  text-align: center;
+  user-select: none;
+}
+
+.raw-json-line code {
+  padding: 2px 12px 2px 0;
+  color: inherit;
+  font-family: inherit;
+  white-space: pre;
+}
+
+.raw-json-line.raw-json-added {
+  background: rgba(46, 160, 67, 0.2);
+}
+
+.raw-json-line.raw-json-added .raw-json-line-number {
+  color: #8cda9d;
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.raw-json-line.raw-json-added .raw-json-line-marker {
+  color: var(--success);
+}
+
+.raw-json-line.raw-json-added .raw-json-line-marker::before {
+  content: "+";
 }
 
 @media (max-width: 1180px) {
@@ -2458,6 +2746,115 @@ body * {
   font-family: "IBM Plex Sans", sans-serif !important;
 }
 
+@media (min-width: 901px) {
+  .app-shell {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .stage-nav {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #catalog-view.view.active {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+
+  #catalog-view > .workspace-tab-panel.active {
+    height: 100%;
+    min-height: 0;
+  }
+
+  #candidate-sources-panel.workspace-tab-panel.active {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  #assessment-results-panel.workspace-tab-panel.active {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  #candidate-sources-panel > .catalog-layout,
+  #assessment-results-panel > .catalog-layout {
+    height: 100%;
+    min-height: 0;
+  }
+
+  #candidate-sources-panel .candidate-panel,
+  #assessment-results-panel .candidate-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+
+  #candidate-sources-panel .candidate-list,
+  #assessment-results-panel .candidate-list {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  #candidate-sources-panel .assessment-panel,
+  #assessment-results-panel .assessment-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  #plan-view.view.active,
+  #preview-view.view.active {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+
+  #plan-view .plan-layout,
+  #preview-view .preview-layout {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  #plan-view .plan-table-wrap,
+  #preview-view .preview-code {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  #plan-view .plan-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  #plan-view .capacity-panel,
+  #preview-view .preview-summary {
+    align-self: start;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 190px minmax(0, 1fr);
@@ -2485,6 +2882,44 @@ body * {
 
   .plan-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plan-table-wrap {
+    overflow-x: auto;
+  }
+
+  .plan-table {
+    min-width: 900px;
+  }
+
+  .plan-column-source {
+    width: 140px;
+  }
+
+  .plan-column-action {
+    width: 90px;
+  }
+
+  .plan-column-impact {
+    width: 72px;
+  }
+
+  .plan-column-cost {
+    width: 100px;
+  }
+
+  .plan-column-readiness {
+    width: 120px;
+  }
+
+  .plan-column-actions {
+    width: 90px;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) {
+  #plan-view .plan-layout {
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
 }
 

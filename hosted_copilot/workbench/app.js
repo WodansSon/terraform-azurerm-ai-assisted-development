@@ -23,6 +23,9 @@ const state = {
   excludedCandidateCount: 0,
   activeKey: null,
   assessmentActiveKey: null,
+  candidatePane: "candidates",
+  assessmentPane: "assessments",
+  rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
   queries: {
@@ -36,6 +39,8 @@ const elements = {};
 let databasePromise;
 let persistencePromise = Promise.resolve();
 let toastTimer;
+let rawPayloadChangeIndex = 0;
+let rawPayloadChangeCount = 0;
 
 const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 if (mobileDeviceDetected) document.documentElement.classList.add("mobile-unsupported");
@@ -52,10 +57,12 @@ function captureElements() {
   for (const id of [
     "snapshot-chip", "close-button", "export-button", "import-input", "catalog-count", "assessment-results-count", "plan-count",
     "preview-status", "save-indicator", "metrics-band", "search-input", "plan-action-count",
-    "filter-count", "candidate-list", "assessment-panel", "candidate-sources-panel", "assessment-results-panel",
+    "filter-count", "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "assessment-results-filter-count", "assessment-results-list", "assessment-results-detail",
     "return-catalog-button", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
-    "preview-summary", "preview-diff", "preview-payload-diff", "preview-json", "copy-preview-button", "approver-name", "approve-export-button", "toast"
+    "preview-summary", "preview-diff", "preview-payload-diff", "preview-json", "raw-change-tools", "raw-change-count",
+    "raw-change-position", "raw-previous-change", "raw-next-change", "copy-preview-button", "approver-name", "approval-requirements",
+    "approve-export-button", "toast"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -73,6 +80,12 @@ function bindEvents() {
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     button.addEventListener("click", () => setWorkspaceTab(button.dataset.workspaceTab));
   });
+  document.querySelectorAll("[data-candidate-pane]").forEach((button) => {
+    button.addEventListener("click", () => showCandidatePane(button.dataset.candidatePane));
+  });
+  document.querySelectorAll("[data-assessment-pane]").forEach((button) => {
+    button.addEventListener("click", () => showAssessmentPane(button.dataset.assessmentPane));
+  });
   elements["candidate-list"].addEventListener("click", (event) => {
     const sortButton = event.target.closest("[data-candidate-sort]");
     if (sortButton) {
@@ -81,21 +94,28 @@ function bindEvents() {
     }
     if (event.target.closest('input[type="checkbox"], summary')) return;
     const row = event.target.closest("[data-candidate-key]");
-    if (row) selectCandidate(row.dataset.candidateKey);
+    if (row) {
+      selectCandidate(row.dataset.candidateKey);
+      showCandidatePane("details");
+    }
   });
   elements["candidate-list"].addEventListener("change", handleTreeSelection);
   elements["candidate-list"].addEventListener("keydown", (event) => {
-    handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate);
+    handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
   elements["assessment-results-list"].addEventListener("click", (event) => {
     const row = event.target.closest("[data-assessment-key]");
-    if (row) selectAssessmentResult(row.dataset.assessmentKey);
+    if (row) {
+      selectAssessmentResult(row.dataset.assessmentKey);
+      showAssessmentPane("details");
+    }
   });
   elements["assessment-results-list"].addEventListener("keydown", (event) => {
-    handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult);
+    handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
+  elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
   elements["plan-table-body"].addEventListener("click", (event) => {
     const undo = event.target.closest("[data-plan-undo]");
@@ -104,17 +124,29 @@ function bindEvents() {
       if (candidate) undoDecision(candidate);
       return;
     }
-    const link = event.target.closest("[data-plan-candidate]");
-    if (!link) return;
-    selectCandidate(link.dataset.planCandidate);
-    switchView("catalog");
+    const detail = event.target.closest("[data-plan-detail]");
+    if (detail) {
+      openPlanCandidate(detail.dataset.planDetail, "rationale");
+      return;
+    }
+    const action = event.target.closest("[data-plan-action]");
+    if (action) {
+      openPlanCandidate(action.dataset.planAction, "action");
+      return;
+    }
+    if (event.target.closest("button, input, a, label")) return;
+    const row = event.target.closest("[data-plan-row]");
+    if (row) openPlanCandidate(row.dataset.planRow);
   });
+  elements["plan-table-body"].addEventListener("keydown", handlePlanRowKeyboardNavigation);
+  elements["raw-previous-change"].addEventListener("click", () => navigateRawPayloadChange(rawPayloadChangeIndex - 1));
+  elements["raw-next-change"].addEventListener("click", () => navigateRawPayloadChange(rawPayloadChangeIndex + 1));
   elements["copy-preview-button"].addEventListener("click", copyPreview);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
 }
 
-function handleRowKeyboardNavigation(event, container, keyProperty, selectRow) {
+function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, activateRow = null) {
   if (event.target.matches('input[type="checkbox"]')) return;
   const keyAttribute = keyProperty.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
   const row = event.target.closest(`[data-${keyAttribute}]`);
@@ -122,6 +154,7 @@ function handleRowKeyboardNavigation(event, container, keyProperty, selectRow) {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     selectRow(row.dataset[keyProperty]);
+    activateRow?.();
     return;
   }
   if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
@@ -149,6 +182,7 @@ async function loadBundle() {
     const sessionId = getSessionId(bundle);
     const existing = await readSession(sessionId);
     state.session = existing?.schemaVersion === 3 ? existing : createSession(sessionId, bundle);
+    autofillApproverName();
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
     if (evaluatedCount !== discoveredCandidates.length) {
@@ -165,13 +199,18 @@ async function loadBundle() {
             ? formatHostedCategory(assessment.hostedCategory)
             : formatContractCategory(candidate.sourcePath)
     }));
+              repairOverridePlanMembership();
     state.excludedCandidateCount = assessedCandidates.filter(({ assessment }) => !assessment.hostedApplicable).length;
     refreshEffectiveCandidates();
     localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
     await persistSession();
     state.activeKey = null;
     state.assessmentActiveKey = null;
+    state.candidatePane = "candidates";
+    state.assessmentPane = "assessments";
     renderAll();
+    showCandidatePane("candidates");
+    showAssessmentPane("assessments");
     showToast("Workbench draft loaded");
   } catch (error) {
     renderFatalError(error);
@@ -292,6 +331,13 @@ function createSession(id, bundle) {
   };
 }
 
+function autofillApproverName() {
+  const login = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.login;
+  if (!String(state.session.approverName || "").trim() && login) {
+    state.session.approverName = String(login).slice(0, 120);
+  }
+}
+
 function getApplicabilityOverride(candidate) {
   const override = state.session.applicabilityOverrides?.[candidate.key];
   if (!override || override.sourceContentSha256 !== candidate.hash) return null;
@@ -312,6 +358,25 @@ function getEffectiveHostedApplicability(candidate) {
 
 function refreshEffectiveCandidates() {
   state.candidates = state.assessedCandidates.filter((candidate) => getEffectiveHostedApplicability(candidate));
+}
+
+function repairOverridePlanMembership() {
+  state.assessedCandidates.forEach((candidate) => {
+    if (!getApplicabilityOverride(candidate)) return;
+    const decision = getDecision(candidate);
+    if (decision.inPlan) return;
+    const { assessment, ...maintainerDecision } = decision;
+    state.session.decisions[candidate.key] = {
+      ...maintainerDecision,
+      inPlan: true,
+      sourceHash: candidate.hash,
+      updatedAt: new Date().toISOString()
+    };
+  });
+}
+
+function getActiveExcludedCandidates() {
+  return state.assessedCandidates.filter((candidate) => !candidate.assessment.hostedApplicable && !getApplicabilityOverride(candidate));
 }
 
 function defaultDecision(candidate) {
@@ -355,7 +420,7 @@ function getDecision(candidate) {
   return {
     ...saved,
     proposedText,
-    inPlan: saved.inPlan && isPromotionAction(saved.action),
+    inPlan: saved.inPlan,
     rationale: String(saved.rationale || "").slice(0, DECISION_RATIONALE_MAX_LENGTH),
     assessment: candidate.assessment || getPriorAssessment(candidate),
   };
@@ -423,16 +488,66 @@ function getAssessment(candidate, decision) {
 function updateDecision(candidate, changes) {
   const current = getDecision(candidate);
   const { assessment, ...maintainerDecision } = current;
-  state.session.decisions[candidate.key] = {
+  saveDecision(candidate, {
     ...maintainerDecision,
-    ...changes,
-    sourceHash: candidate.hash,
-    updatedAt: new Date().toISOString()
-  };
+    ...changes
+  });
+}
+
+function saveDecision(candidate, decision) {
+  if (decision) {
+    const { assessment, ...maintainerDecision } = decision;
+    state.session.decisions[candidate.key] = {
+      ...maintainerDecision,
+      sourceHash: candidate.hash,
+      updatedAt: new Date().toISOString()
+    };
+  } else {
+    delete state.session.decisions[candidate.key];
+  }
   state.session.updatedAt = new Date().toISOString();
   persistSession();
   syncCandidateTreeRows();
   renderDecisionOutputs();
+}
+
+function clearCandidateSelection(candidate) {
+  if (state.activeKey === candidate.key) state.activeKey = null;
+  if (state.assessmentActiveKey === candidate.key) state.assessmentActiveKey = null;
+  state.rationaleReturnView = null;
+}
+
+async function updateOverrideLifecycle(candidate, override, decision) {
+  if (override) state.session.applicabilityOverrides[candidate.key] = structuredClone(override);
+  else delete state.session.applicabilityOverrides[candidate.key];
+  if (decision) {
+    const { assessment, ...maintainerDecision } = decision;
+    state.session.decisions[candidate.key] = {
+      ...maintainerDecision,
+      sourceHash: candidate.hash,
+      updatedAt: new Date().toISOString()
+    };
+  } else {
+    delete state.session.decisions[candidate.key];
+  }
+  clearCandidateSelection(candidate);
+  state.session.updatedAt = new Date().toISOString();
+  refreshEffectiveCandidates();
+  await persistSession();
+  renderAll();
+  showCandidatePane("candidates");
+}
+
+async function resetCandidate(candidate) {
+  if (getApplicabilityOverride(candidate)) {
+    await updateOverrideLifecycle(candidate, null, null);
+    return;
+  }
+  saveDecision(candidate, null);
+  clearCandidateSelection(candidate);
+  await persistencePromise;
+  renderAll();
+  showCandidatePane("candidates");
 }
 
 function renderDecisionOutputs() {
@@ -461,6 +576,28 @@ function estimateGuardedTokens(text) {
   return Math.ceil(estimated * 1.25);
 }
 
+function getAssessmentTokenValue(candidate, assessment, decision = getDecision(candidate)) {
+  if (!getApplicabilityOverride(candidate) || assessment.guardedTokenDelta !== 0) return assessment.guardedTokenDelta;
+  return estimateGuardedTokens(decision.proposedText || candidate.text);
+}
+
+function getCandidateTokenValue(candidate, assessment) {
+  const decision = getDecision(candidate);
+  if (getApplicabilityOverride(candidate)) {
+    if (decision.action === "retire") return -estimateGuardedTokens(getCurrentHostedText(candidate));
+    return getAssessmentTokenValue(candidate, assessment, decision);
+  }
+  if (assessment.recommendation === "retire") return -estimateGuardedTokens(getCurrentHostedText(candidate));
+  if (["add", "update"].includes(assessment.recommendation)) return assessment.guardedTokenDelta;
+  return estimateGuardedTokens(getCurrentHostedText(candidate));
+}
+
+function formatCandidateTokenValue(candidate, assessment) {
+  const value = getCandidateTokenValue(candidate, assessment);
+  if (getApplicabilityOverride(candidate)) return isPromotionAction(getDecision(candidate).action) ? formatSignedNumber(value) : formatNumber(value);
+  return ["add", "update", "retire"].includes(assessment.recommendation) ? formatSignedNumber(value) : formatNumber(value);
+}
+
 function renderAll(shouldRenderAssessment = true) {
   if (!state.bundle || !state.session) return;
   renderSnapshot();
@@ -484,9 +621,10 @@ function renderSnapshot() {
 
 function renderMetrics() {
   const planCount = getPlanCandidates().length;
+  const excludedCount = getActiveExcludedCandidates().length;
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const metrics = [
-    ["Hosted-capable inventory", state.candidates.length, `${state.excludedCandidateCount} inapplicable excluded`],
+    ["Hosted-capable inventory", state.candidates.length, `${excludedCount} inapplicable excluded`],
     ["Mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length, "Active Hosted mappings"],
     ["Not mapped", state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length, "No Hosted mapping"],
     ["In plan", planCount, "Add, update, or retire"],
@@ -517,22 +655,31 @@ function renderCandidateList() {
     elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No candidates available</h3><p>${escapeHtml(message)}</p></div>`;
     return;
   }
+  const overrideCandidates = filtered.filter((candidate) => getApplicabilityOverride(candidate));
+  const regularCandidates = filtered.filter((candidate) => !getApplicabilityOverride(candidate));
+  const overrideGroup = overrideCandidates.length ? `
+    <details class="candidate-source-root candidate-overrides-root" open>
+      <summary class="clickable"><i data-lucide="shield-check" aria-hidden="true"></i><strong>Overrides</strong><span>${overrideCandidates.length}</span></summary>
+      ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
+    </details>
+  ` : "";
   const sources = [
     ["interactive", "Interactive Toolkit"],
     ["upstream", "Contributor Guidance"],
     ["maintainer", "Maintainer Proposals"]
   ];
   elements["candidate-list"].innerHTML = `
-    <div class="eligibility-note"><strong>${formatNumber(state.excludedCandidateCount)} inapplicable items excluded</strong><span>Workflow-only and non-review guidance is screened out before maintainer review.</span></div>
+    <div class="eligibility-note"><strong>${formatNumber(getActiveExcludedCandidates().length)} inapplicable items excluded</strong><span>Workflow-only and non-review guidance is screened out before maintainer review.</span></div>
+    ${overrideGroup}
   ` + sources.map(([sourceType, label]) => {
-    const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
+    const candidates = regularCandidates.filter((candidate) => candidate.sourceType === sourceType);
     if (!candidates.length) return "";
     const children = sourceType === "upstream"
       ? renderCandidateItems(`${sourceType}:all`, candidates, "contributor-candidates")
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     return `
       <details class="candidate-source-root" ${state.queries["candidate-sources"] ? "open" : ""}>
-        <summary><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
+        <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
         ${children}
       </details>
     `;
@@ -544,7 +691,7 @@ function renderCandidateCategory(sourceType, category, candidates) {
   const sectionKey = `${sourceType}:${category}`;
   return `
     <details class="candidate-category" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" ${open ? "open" : ""}>
-      <summary>
+      <summary class="clickable">
         <i data-lucide="folder" aria-hidden="true"></i>
         <strong>${escapeHtml(category)}</strong>
         <span>${candidates.length}</span>
@@ -562,17 +709,17 @@ function renderCandidateItems(sectionKey, candidates, extraClass = "") {
 function renderCandidateListHeader(sectionKey) {
   const sort = getCandidateSort(sectionKey);
   const columns = [
-    ["candidate", "Candidate", "Candidate"],
-    ["state", "State", "Source State"],
-    ["catalog", "Status", "Catalog Status"],
-    ["impact", "Impact", "Impact"],
-    ["cost", "Tokens", "Token Cost"],
-    ["recommendation", "Recommended", "Recommendation"]
+    ["candidate", "Candidate", "Candidate", "Source rule ID and title."],
+    ["state", "State", "Source State", "Lifecycle state of the source rule."],
+    ["catalog", "Status", "Catalog Status", "Current mapping in the Hosted catalog."],
+    ["impact", "Impact", "Impact", "Priority score balancing rule value and review risk."],
+    ["cost", "Tokens", "Token Usage", "Unsigned values show current guarded-token usage. Signed values show the estimated change if the recommended action is promoted."],
+    ["recommendation", "Recommended", "Recommendation", "AI-recommended action for maintainer review."]
   ];
-  const button = ([key, label, accessibleLabel]) => {
+  const button = ([key, label, accessibleLabel, help]) => {
     const active = sort.field === key;
     const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
-    return `<button class="candidate-sort-button ${active ? "active" : ""}" type="button" data-candidate-sort="${key}" data-candidate-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? `<i data-lucide="chevron-${sort.direction === "ascending" ? "up" : "down"}" aria-hidden="true"></i>` : ""}</button>`;
+    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-candidate-sort="${key}" data-candidate-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? `<i data-lucide="chevron-${sort.direction === "ascending" ? "up" : "down"}" aria-hidden="true"></i>` : ""}</button>`;
   };
   return `<div class="candidate-list-header"><span aria-hidden="true"></span>${button(columns[0])}<span class="candidate-list-header-summary">${columns.slice(1).map(button).join("")}</span></div>`;
 }
@@ -607,7 +754,7 @@ function sortCandidates(candidates, sort) {
     if (sort.field === "state") return candidate.state;
     if (sort.field === "catalog") return getCatalogStatus(candidate).label;
     if (sort.field === "impact") return calculateImpact(assessment.factors);
-    if (sort.field === "cost") return assessment.guardedTokenDelta;
+    if (sort.field === "cost") return getCandidateTokenValue(candidate, assessment);
     return formatRecommendation(assessment.recommendation);
   };
   return [...candidates].sort((left, right) => {
@@ -621,8 +768,7 @@ function sortCandidates(candidates, sort) {
 
 function getFilteredAssessmentCandidates() {
   const query = state.queries["assessment-results"].trim().toLowerCase();
-  return state.assessedCandidates.filter((candidate) => {
-    if (candidate.assessment.hostedApplicable) return false;
+  return getActiveExcludedCandidates().filter((candidate) => {
     if (!query) return true;
     return [candidate.id, candidate.title, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel, candidate.assessment.applicabilityRationale]
       .some((value) => String(value || "").toLowerCase().includes(query));
@@ -647,12 +793,13 @@ function renderAssessmentResults() {
       if (!candidates.length) return "";
       return `
         <details class="candidate-source-root" ${state.queries["assessment-results"] ? "open" : ""}>
-          <summary><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
+          <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span>${candidates.length}</span></summary>
           <div class="candidate-category-items"><div class="assessment-results-header"><strong>Candidate</strong><span><strong>Outcome</strong><strong>Category</strong><strong>Recommendation</strong></span></div>${candidates.map(renderAssessmentResultRow).join("")}</div>
         </details>
       `;
     }).join("");
   }
+  syncAssessmentResultRows();
   renderAssessmentResultDetail();
 }
 
@@ -660,7 +807,7 @@ function renderAssessmentResultRow(candidate) {
   const assessment = candidate.assessment;
   const eligible = assessment.hostedApplicable;
   return `
-    <div class="assessment-result-row ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
+    <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
       <span class="assessment-result-summary"><span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
@@ -710,7 +857,7 @@ function renderApplicabilityOverride(candidate) {
           <div class="override-record-heading"><strong>Provisional Override</strong><span class="status-badge warning">Reincluded</span></div>
           <p>${escapeHtml(override.rationale)}</p>
           <small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
-          <button class="button secondary" type="button" data-override-remove>Remove Override</button>
+          <button class="button secondary clickable" type="button" data-override-remove>Remove Override</button>
         </div>
         <div class="read-only-boundary"><i data-lucide="lock" aria-hidden="true"></i><span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
       </div>
@@ -723,14 +870,14 @@ function renderApplicabilityOverride(candidate) {
       <span class="section-label">Maintainer Override:</span>
       <div class="override-summary subcontext-container">
         <div><strong>Disagree with this exclusion?</strong><p>Contest the AI applicability decision and record a separate provisional maintainer correction.</p>${reason ? `<small>${escapeHtml(reason)}</small>` : ""}</div>
-        <button class="button secondary" type="button" data-override-open ${canOverride ? "" : "disabled"}><i data-lucide="message-square-warning" aria-hidden="true"></i>Contest Assessment</button>
+        <button class="button secondary clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}><i data-lucide="message-square-warning" aria-hidden="true"></i>Contest Assessment</button>
       </div>
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
-        <label class="override-outcome"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
+        <label class="override-outcome clickable"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
         <label class="override-rationale"><span class="control-subtitle">Override Rationale:</span><textarea maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
-        <div class="override-actions"><button class="button secondary" type="button" data-override-cancel>Cancel</button><button class="button primary" type="button" data-override-apply disabled>Apply Override</button></div>
+        <div class="override-actions"><button class="button secondary clickable" type="button" data-override-cancel>Cancel</button><button class="button primary clickable" type="button" data-override-apply disabled>Apply Override</button></div>
       </div>
       <div class="read-only-boundary"><i data-lucide="lock" aria-hidden="true"></i><span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
     </div>
@@ -761,11 +908,7 @@ async function handleApplicabilityOverrideClick(event) {
   const candidate = state.assessedCandidates.find((item) => item.key === section.dataset.overrideKey);
   if (!candidate) return;
   if (event.target.closest("[data-override-remove]")) {
-    delete state.session.applicabilityOverrides[candidate.key];
-    state.session.updatedAt = new Date().toISOString();
-    refreshEffectiveCandidates();
-    await persistSession();
-    renderAll(false);
+    await updateOverrideLifecycle(candidate, null, null);
     showToast("Provisional override removed");
     return;
   }
@@ -777,7 +920,7 @@ async function handleApplicabilityOverrideClick(event) {
     return;
   }
   if (!rationale) return;
-  state.session.applicabilityOverrides[candidate.key] = {
+  const override = {
     state: "provisional",
     sourceContentSha256: candidate.hash,
     originalHostedApplicable: false,
@@ -786,14 +929,9 @@ async function handleApplicabilityOverrideClick(event) {
     recordedAt: new Date().toISOString(),
     recordedBy: { type: "github-cli", login: identity.login }
   };
-  state.session.updatedAt = new Date().toISOString();
-  refreshEffectiveCandidates();
-  await persistSession();
-  state.activeKey = candidate.key;
-  renderAll(false);
+  await updateOverrideLifecycle(candidate, override, { ...defaultDecision(candidate), inPlan: true });
   setWorkspaceTab("candidate-sources");
-  selectCandidate(candidate.key);
-  showToast("Candidate provisionally reincluded");
+  showToast("Candidate moved to Overrides and added to plan");
 }
 
 function renderCandidateTreeRow(candidate) {
@@ -803,17 +941,21 @@ function renderCandidateTreeRow(candidate) {
   const catalogStatus = getCatalogStatus(candidate);
   const inPlan = decision.inPlan;
   return `
-    <div class="candidate-tree-row ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
-      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="Include ${escapeHtml(candidate.id)} action in promotion plan" title="${inPlan ? "Remove action from" : "Add action to"} promotion plan" ${inPlan ? "checked" : ""}>
+    <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
+      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove and reset" : "Add"} ${escapeHtml(candidate.id)} ${inPlan ? "from" : "in"} promotion plan" title="${inPlan ? "Remove candidate and reset its decision" : "Add candidate for action and rationale selection"}" ${inPlan ? "checked" : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatSignedNumber(assessment.guardedTokenDelta)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
 }
 
 function renderAssessment() {
   const candidate = getActiveCandidate();
-  if (!candidate) return;
+  if (!candidate) {
+    elements["assessment-panel"].innerHTML = `<div class="empty-state"><i data-lucide="mouse-pointer-square-dashed" aria-hidden="true"></i><h2>Select a candidate</h2><p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p></div>`;
+    refreshIcons();
+    return;
+  }
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   if (!assessment) {
@@ -821,7 +963,7 @@ function renderAssessment() {
     return;
   }
   const impact = assessment ? calculateImpact(assessment.factors) : null;
-  const draftCost = assessment.guardedTokenDelta;
+  const draftCost = getAssessmentTokenValue(candidate, assessment, decision);
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const projectedHeadroom = combined.budgetHeadroomTokens - draftCost;
   const catalogStatus = getCatalogStatus(candidate);
@@ -875,7 +1017,7 @@ function renderAssessment() {
         </div>
         <div class="score-strip">
           <div class="score-item impact"><span>Priority score</span><strong>${impact}</strong></div>
-          <div class="score-item cost"><span>Token cost</span><strong>${formatSignedNumber(draftCost)}</strong></div>
+          <div class="score-item cost"><span>Token cost</span><strong>${formatCandidateTokenValue(candidate, assessment)}</strong></div>
           <div class="score-item efficiency"><span>Headroom after</span><strong>${formatNumber(projectedHeadroom)}</strong></div>
         </div>
         ${renderPriorityAssessment(assessment)}
@@ -900,19 +1042,20 @@ function renderAssessment() {
             <fieldset class="action-options">
               <legend class="sr-only">Rule action</legend>
               ${allowedActions.map((action) => `
-                <label class="action-option ${decision.action === action ? "selected" : ""}">
+                <label class="action-option clickable ${decision.action === action ? "selected" : ""}">
                   <input type="radio" name="rule-action" data-rule-action="${escapeHtml(action)}" value="${escapeHtml(action)}" ${decision.action === action ? "checked" : ""}>
                   <span>${escapeHtml(formatRecommendation(action))}</span>
                 </label>
               `).join("")}
             </fieldset>
-            <label class="plan-toggle ${isPromotionAction(decision.action) ? "" : "disabled"}">
-              <input type="checkbox" data-plan-toggle ${decision.inPlan ? "checked" : ""} ${isPromotionAction(decision.action) ? "" : "disabled"}>
-              <span>Include this ${escapeHtml(formatRecommendation(decision.action).toLowerCase())} action in the promotion plan</span>
+            <label class="plan-toggle clickable">
+              <input type="checkbox" data-plan-toggle ${decision.inPlan ? "checked" : ""}>
+              <span>Include this candidate in the promotion plan</span>
             </label>
           </div>
           <div class="field-stack control-group rationale-control-group">
             <label><span class="control-subtitle">Decision Rationale:</span><textarea data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-describedby="decision-rationale-limit" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
+            <div class="rationale-actions"><button class="button secondary clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" title="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}><i data-lucide="save" aria-hidden="true"></i><span>Save</span></button></div>
           </div>
         </div>
       </div>
@@ -965,14 +1108,23 @@ function factorReadout(label, description, kind, value) {
 }
 
 function undoDecision(candidate) {
-  if (!getDecision(candidate).inPlan) return;
-  updateDecision(candidate, { inPlan: false });
-  showToast("Action removed from plan.", false, {
-    label: "Restore",
-    handler: () => {
-      updateDecision(candidate, { inPlan: true });
-      showToast("Action restored to plan");
-    }
+  const savedDecision = state.session.decisions[candidate.key];
+  if (!getDecision(candidate).inPlan || !savedDecision) return;
+  const decisionSnapshot = structuredClone(savedDecision);
+  const override = getApplicabilityOverride(candidate);
+  const overrideSnapshot = override ? structuredClone(override) : null;
+  resetCandidate(candidate).then(() => {
+    showToast(override ? "Override and plan item removed." : "Candidate removed and reset.", false, {
+      label: "Restore",
+      handler: () => {
+        if (overrideSnapshot) {
+          updateOverrideLifecycle(candidate, overrideSnapshot, decisionSnapshot).then(() => showToast("Override and plan item restored"));
+        } else {
+          saveDecision(candidate, decisionSnapshot);
+          showToast("Candidate restored to plan");
+        }
+      }
+    });
   });
 }
 
@@ -981,12 +1133,13 @@ function handleAssessmentInput(event) {
   if (!candidate) return;
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
-    updateDecision(candidate, { action, inPlan: isPromotionAction(action) });
+    updateDecision(candidate, { action });
     renderAssessment();
     return;
   }
   if (event.target.hasAttribute("data-plan-toggle")) {
-    updateDecision(candidate, { inPlan: event.target.checked });
+    if (event.target.checked) updateDecision(candidate, { inPlan: true });
+    else undoDecision(candidate);
     renderAssessment();
     return;
   }
@@ -999,8 +1152,23 @@ function handleAssessmentInput(event) {
     if (event.target.dataset.decisionField === "rationale") {
       const counter = elements["assessment-panel"].querySelector(".rationale-limit");
       if (counter) counter.textContent = `${value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
+      const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
+      if (save) save.disabled = !value.trim();
     }
     if (event.target.dataset.decisionField === "proposedText") refreshAssessmentScores(candidate);
+  }
+}
+
+async function handleAssessmentClick(event) {
+  if (!event.target.closest("[data-rationale-save]")) return;
+  const candidate = getActiveCandidate();
+  if (!candidate || !getDecision(candidate).rationale.trim()) return;
+  const returnToPlan = state.rationaleReturnView === "plan";
+  await persistencePromise;
+  showToast("Decision rationale saved");
+  if (returnToPlan) {
+    state.rationaleReturnView = null;
+    switchView("plan");
   }
 }
 
@@ -1008,13 +1176,13 @@ function refreshAssessmentScores(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   const impact = calculateImpact(assessment.factors);
-  const cost = assessment.guardedTokenDelta;
-  const efficiency = cost > 0 ? ((impact * 100) / cost).toFixed(1) : "n/a";
+  const cost = getAssessmentTokenValue(candidate, assessment, decision);
+  const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const scoreValues = elements["assessment-panel"].querySelectorAll(".score-item strong");
   if (scoreValues.length === 3) {
     scoreValues[0].textContent = impact;
-    scoreValues[1].textContent = cost;
-    scoreValues[2].textContent = efficiency;
+    scoreValues[1].textContent = formatCandidateTokenValue(candidate, assessment);
+    scoreValues[2].textContent = formatNumber(combined.budgetHeadroomTokens - cost);
   }
 }
 
@@ -1025,25 +1193,93 @@ function renderPlan() {
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
     const impact = assessment ? calculateImpact(assessment.factors) : null;
-    const cost = assessment?.guardedTokenDelta || 0;
-    const ready = assessment && decision.rationale.trim();
-    const readiness = ready ? "Ready" : assessment ? "Needs detail" : "Needs AI assessment";
+    const cost = getPlanTokenDisplay(candidate);
+    const actionRequired = !isPromotionAction(decision.action);
+    const rationaleRequired = !decision.rationale.trim();
+    const ready = assessment && !actionRequired && !rationaleRequired;
+    const readiness = actionRequired ? "Needs action" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment";
     return `
-      <tr>
-        <td><button class="candidate-link" type="button" data-plan-candidate="${escapeHtml(candidate.key)}">${escapeHtml(candidate.id)}</button><br>${escapeHtml(candidate.title)}</td>
-        <td><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span><br>${escapeHtml(candidate.sourceLabel)}</td>
+      <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(candidate.id)} candidate">
+        <td><span class="candidate-link">${escapeHtml(candidate.id)}</span><br>${escapeHtml(candidate.title)}</td>
+        <td class="plan-source">${escapeHtml(candidate.sourceLabel)}</td>
+        <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
-        <td><span class="status-badge ${ready ? "success" : "warning"}">${readiness}</span></td>
-        <td class="plan-actions"><button class="plan-undo" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" title="Undo decision and remove from promotion plan">Undo</button></td>
+        <td>${ready ? `<span class="status-badge success">${readiness}</span>` : actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" title="Open candidate and choose a rule action"><i data-lucide="pencil" aria-hidden="true"></i><span>${readiness}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" title="Open candidate and enter decision rationale"><i data-lucide="pencil" aria-hidden="true"></i><span>${readiness}</span></button>`}</td>
+        <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" title="Undo decision and remove from promotion plan">Undo</button></td>
       </tr>
     `;
   }).join("");
 }
 
+function getPlanTokenDisplay(candidate) {
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
+  if (!isPromotionAction(decision.action) && getApplicabilityOverride(candidate) && assessment) {
+    return `${formatNumber(getAssessmentTokenValue(candidate, assessment, decision))} est.`;
+  }
+  return formatSignedNumber(getPlanTokenDelta(candidate));
+}
+
+function openPlanCandidate(key, focusTarget = null) {
+  setWorkspaceTab("candidate-sources");
+  selectCandidate(key, "plan");
+  switchView("catalog");
+  showCandidatePane(focusTarget ? "details" : "candidates");
+  requestAnimationFrame(() => {
+    const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(key)}"]`);
+    if (!row) return;
+    row.closest("details.candidate-category")?.setAttribute("open", "");
+    row.closest("details.candidate-source-root")?.setAttribute("open", "");
+    requestAnimationFrame(() => {
+      if (focusTarget === "action") {
+        const actions = elements["assessment-panel"].querySelector(".action-options");
+        const control = actions?.querySelector("input:checked") || actions?.querySelector("input");
+        actions?.scrollIntoView({ block: "center", behavior: "smooth" });
+        control?.focus({ preventScroll: true });
+        return;
+      }
+      if (focusTarget === "rationale") {
+        const field = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
+        field?.scrollIntoView({ block: "center", behavior: "smooth" });
+        field?.focus({ preventScroll: true });
+        return;
+      }
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      row.focus({ preventScroll: true });
+    });
+  });
+}
+
+function handlePlanRowKeyboardNavigation(event) {
+  const row = event.target.closest("[data-plan-row]");
+  if (!row || event.target !== row || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  openPlanCandidate(row.dataset.planRow);
+}
+
+function getPlanTokenDelta(candidate) {
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
+  if (["add", "update"].includes(decision.action)) return assessment ? getAssessmentTokenValue(candidate, assessment, decision) : 0;
+  if (decision.action !== "retire") return 0;
+  const estimatedTokens = Math.ceil(getCurrentHostedText(candidate).length / 4);
+  return -Math.ceil(estimatedTokens * 1.25);
+}
+
+function getPlanAffectedSurfaces(candidate) {
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
+  if (["add", "update"].includes(decision.action)) return assessment?.affectedSurfaces || [];
+  if (decision.action !== "retire") return [];
+  const placementSurfaces = getCatalogStatus(candidate).rules
+    .flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId));
+  return placementSurfaces.length ? placementSurfaces : assessment?.affectedSurfaces || [];
+}
+
 function renderCapacity() {
   const reports = getCapacityReports().filter((report) => report.kind === "combined");
-  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getAssessment(candidate, getDecision(candidate)).guardedTokenDelta, 0);
+  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getPlanTokenDelta(candidate), 0);
   elements["capacity-panel"].innerHTML = `
     <p class="eyebrow">Plan projection</p>
     <h3>Guidance capacity</h3>
@@ -1075,8 +1311,7 @@ function getProjectedCapacityDelta(report) {
   }[report.name];
   if (!reportSurfaces) return 0;
   return getPlanCandidates().reduce((sum, candidate) => {
-    const assessment = getAssessment(candidate, getDecision(candidate));
-    return assessment.affectedSurfaces.some((surface) => reportSurfaces.has(surface)) ? sum + assessment.guardedTokenDelta : sum;
+    return getPlanAffectedSurfaces(candidate).some((surface) => reportSurfaces.has(surface)) ? sum + getPlanTokenDelta(candidate) : sum;
   }, 0);
 }
 
@@ -1101,17 +1336,97 @@ function renderPreview() {
   if (elements["approver-name"].value !== state.session.approverName) {
     elements["approver-name"].value = state.session.approverName || "";
   }
+  renderApprovalRequirements(readiness);
   elements["approve-export-button"].disabled = !ready;
   elements["preview-diff"].innerHTML = renderPreviewChanges(planCandidates);
   elements["preview-payload-diff"].innerHTML = renderPayloadChanges();
-  elements["preview-json"].textContent = JSON.stringify(buildApprovalPayload(), null, 2);
+  renderRawPayload(buildApprovalPayload());
+}
+
+function renderRawPayload(payload) {
+  const rawPayload = JSON.stringify(payload, null, 2);
+  const lines = rawPayload.split("\n");
+  const changes = getRawPayloadChanges(lines, payload.decisions);
+  const changedLines = new Map();
+  changes.forEach((change, changeIndex) => {
+    for (let lineIndex = change.start; lineIndex <= change.end; lineIndex += 1) changedLines.set(lineIndex, changeIndex);
+  });
+  const renderedLines = lines.map((line, lineIndex) => {
+    const changeIndex = changedLines.get(lineIndex);
+    const changed = changeIndex !== undefined;
+    const changeAttribute = changed && changes[changeIndex].start === lineIndex ? ` data-raw-change-index="${changeIndex}"` : "";
+    return `<span class="raw-json-line${changed ? " raw-json-added" : ""}"${changeAttribute}><span class="raw-json-line-number" data-line-number="${lineIndex + 1}" aria-hidden="true"></span><span class="raw-json-line-marker" aria-hidden="true"></span><code>${escapeHtml(line)}</code></span>`;
+  }).join("\n");
+  elements["preview-json"].innerHTML = `<span class="highlight-width-track">${renderedLines}</span>`;
+  if (elements["preview-json"].textContent !== rawPayload) throw new Error("raw payload rendering changed JSON content");
+
+  rawPayloadChangeIndex = 0;
+  rawPayloadChangeCount = changes.length;
+  elements["raw-change-tools"].hidden = rawPayloadChangeCount === 0;
+  elements["raw-change-count"].textContent = `${rawPayloadChangeCount} added or updated record${rawPayloadChangeCount === 1 ? "" : "s"}`;
+  if (rawPayloadChangeCount) {
+    navigateRawPayloadChange(0, "auto");
+  } else {
+    elements["preview-json"].scrollTop = 0;
+    updateRawPayloadChangeNavigation();
+  }
+}
+
+function getRawPayloadChanges(lines, decisions) {
+  const changes = [];
+  let inDecisions = false;
+  let decisionIndex = 0;
+  let start = null;
+  lines.forEach((line, lineIndex) => {
+    if (line === '  "decisions": [') {
+      inDecisions = true;
+      return;
+    }
+    if (!inDecisions) return;
+    if (start === null && line === "    {") {
+      start = lineIndex;
+      return;
+    }
+    if (start !== null && /^    }[,]?$/.test(line)) {
+      const decision = decisions[decisionIndex];
+      if (decision?.inPlan && (["add", "update"].includes(decision.action) || decision.applicabilityOverride)) {
+        changes.push({ start, end: lineIndex });
+      }
+      decisionIndex += 1;
+      start = null;
+      return;
+    }
+    if (start === null && /^  ][,]?$/.test(line)) inDecisions = false;
+  });
+  return changes;
+}
+
+function navigateRawPayloadChange(index, behavior = "smooth") {
+  if (!rawPayloadChangeCount) return;
+  rawPayloadChangeIndex = Math.max(0, Math.min(index, rawPayloadChangeCount - 1));
+  const target = elements["preview-json"].querySelector(`[data-raw-change-index="${rawPayloadChangeIndex}"]`);
+  const scrollTop = target.getBoundingClientRect().top - elements["preview-json"].getBoundingClientRect().top + elements["preview-json"].scrollTop;
+  elements["preview-json"].scrollTo({
+    top: Math.max(0, scrollTop),
+    behavior
+  });
+  updateRawPayloadChangeNavigation();
+}
+
+function updateRawPayloadChangeNavigation() {
+  elements["raw-change-position"].textContent = rawPayloadChangeCount ? `${rawPayloadChangeIndex + 1} of ${rawPayloadChangeCount}` : "";
+  elements["raw-previous-change"].disabled = rawPayloadChangeIndex === 0;
+  elements["raw-next-change"].disabled = !rawPayloadChangeCount || rawPayloadChangeIndex === rawPayloadChangeCount - 1;
 }
 
 function renderPreviewChanges(candidates) {
   if (!candidates.length) {
     return `<div class="empty-state compact"><i data-lucide="git-pull-request-draft" aria-hidden="true"></i><h3>No proposed changes</h3><p>Add an available rule action to the promotion plan to review its line-level diff.</p></div>`;
   }
-  return candidates.map((candidate) => {
+  const unresolved = candidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action));
+  const resolved = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action));
+  const warning = unresolved.length ? `<div class="empty-state compact"><i data-lucide="circle-alert" aria-hidden="true"></i><h3>${unresolved.length} action${unresolved.length === 1 ? "" : "s"} required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
+  return warning + resolved.map((candidate) => {
     const decision = getDecision(candidate);
     const currentText = getCurrentHostedText(candidate);
     const lines = decision.action === "add"
@@ -1144,7 +1459,7 @@ function renderRuleDiff(candidate, action, lines) {
     <section class="preview-change" aria-label="${escapeHtml(candidate.id)} proposed ${escapeHtml(action)}">
       <div class="preview-change-heading"><div><strong>${escapeHtml(candidate.id)}</strong><span>${escapeHtml(candidate.title)}</span></div><span class="recommendation-badge ${escapeHtml(action)}">${escapeHtml(formatRecommendation(action))}</span></div>
       <div class="diff-file-heading"><span>${escapeHtml(mappedRuleIds)}</span><span class="diff-stats"><span>+${additions}</span><span>-${deletions}</span></span></div>
-      <div class="diff-lines">${renderedLines}</div>
+      <div class="diff-lines"><div class="highlight-width-track">${renderedLines}</div></div>
     </section>
   `;
 }
@@ -1195,7 +1510,7 @@ function renderPayloadColumn(label, lines, type) {
   return `
     <div class="payload-column ${type}">
       <div class="payload-column-heading">${label}</div>
-      <div class="payload-code">${lines.map((line, index) => `<div class="payload-line"><span>${index + 1}</span><code>${escapeHtml(line)}</code></div>`).join("")}</div>
+      <div class="payload-code"><div class="highlight-width-track">${lines.map((line, index) => `<div class="payload-line"><span>${index + 1}</span><code>${escapeHtml(line)}</code></div>`).join("")}</div></div>
     </div>
   `;
 }
@@ -1241,26 +1556,47 @@ function diffTextLines(beforeText, afterText) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
-  const missingRationale = planCandidates.some((candidate) => {
+  const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
+  const missingRationaleCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
     return !getAssessment(candidate, decision) || !decision.rationale.trim();
-  });
+  }).length;
+  const missingRationale = missingRationaleCount > 0;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
   if (planCandidates.length === 0) status = "no actions";
+  else if (missingActionCount) status = "needs action";
   else if (missingRationale) status = "needs rationale";
   else if (!approverName) status = "needs approver";
   return {
     planCandidates,
     approverName,
+    missingActionCount,
+    missingRationaleCount,
     status,
-    ready: planCandidates.length > 0 && !missingRationale && Boolean(approverName)
+    ready: planCandidates.length > 0 && missingActionCount === 0 && !missingRationale && Boolean(approverName)
   };
+}
+
+function renderApprovalRequirements(readiness) {
+  const requirements = [
+    ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
+    ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
+    ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
+    ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
+  ];
+  elements["approval-requirements"].innerHTML = `<strong class="approval-requirements-title">Approval Requirements</strong>${requirements.map(([label, value, passed]) => `
+    <div class="approval-requirement ${passed ? "passed" : "pending"}">
+      <i data-lucide="${passed ? "circle-check" : "circle-alert"}" aria-hidden="true"></i>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("")}`;
 }
 
 function renderCounts() {
   elements["catalog-count"].textContent = formatNumber(state.candidates.length);
-  elements["assessment-results-count"].textContent = formatNumber(state.excludedCandidateCount);
+  elements["assessment-results-count"].textContent = formatNumber(getActiveExcludedCandidates().length);
   elements["plan-count"].textContent = formatNumber(getPlanCandidates().length);
   elements["plan-action-count"].textContent = `${formatNumber(getPlanCandidates().length)} actions`;
 }
@@ -1290,16 +1626,34 @@ function syncCandidateTreeRows() {
     const checkbox = row.querySelector("[data-decision-key]");
     if (checkbox) {
       checkbox.checked = inPlan;
-      checkbox.title = `${inPlan ? "Remove action from" : "Add action to"} promotion plan`;
+      checkbox.title = inPlan ? "Remove candidate and reset its decision" : "Add candidate for action and rationale selection";
+      checkbox.setAttribute("aria-label", `${inPlan ? "Remove and reset" : "Add"} ${candidate.id} ${inPlan ? "from" : "in"} promotion plan`);
     }
+    const assessment = candidate && getAssessment(candidate, getDecision(candidate));
+    const token = row.querySelector(".tree-cost");
+    if (assessment && token) token.textContent = formatCandidateTokenValue(candidate, assessment);
   });
 }
 
-function selectCandidate(key) {
+function selectCandidate(key, rationaleReturnView = null) {
   state.activeKey = key;
+  state.rationaleReturnView = rationaleReturnView;
   syncCandidateTreeRows();
   renderAssessment();
   refreshIcons();
+}
+
+function showCandidatePane(pane) {
+  const activePane = pane === "details" ? "details" : "candidates";
+  state.candidatePane = activePane;
+  const detailsActive = activePane === "details";
+  elements["candidate-panel"].hidden = detailsActive;
+  elements["assessment-panel"].hidden = !detailsActive;
+  document.querySelectorAll("[data-candidate-pane]").forEach((button) => {
+    const active = button.dataset.candidatePane === activePane;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
 }
 
 function updateFilter(value) {
@@ -1316,14 +1670,31 @@ function updateFilter(value) {
 
 function selectAssessmentResult(key) {
   state.assessmentActiveKey = key;
+  syncAssessmentResultRows();
+  renderAssessmentResultDetail();
+  refreshIcons();
+}
+
+function syncAssessmentResultRows() {
   elements["assessment-results-list"].querySelectorAll("[data-assessment-key]").forEach((row) => {
-    const active = row.dataset.assessmentKey === key;
+    const active = row.dataset.assessmentKey === state.assessmentActiveKey;
     row.classList.toggle("active", active);
     if (active) row.setAttribute("aria-current", "true");
     else row.removeAttribute("aria-current");
   });
-  renderAssessmentResultDetail();
-  refreshIcons();
+}
+
+function showAssessmentPane(pane) {
+  const activePane = pane === "details" ? "details" : "assessments";
+  state.assessmentPane = activePane;
+  const detailsActive = activePane === "details";
+  elements["assessment-results-list"].closest(".candidate-panel").hidden = detailsActive;
+  elements["assessment-results-detail"].hidden = !detailsActive;
+  document.querySelectorAll("[data-assessment-pane]").forEach((button) => {
+    const active = button.dataset.assessmentPane === activePane;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
 }
 
 function setWorkspaceTab(tab) {
@@ -1350,12 +1721,12 @@ function handleTreeSelection(event) {
   if (!candidateCheckbox) return;
   const candidate = state.candidates.find((item) => item.key === candidateCheckbox.dataset.decisionKey);
   if (!candidate) return;
-  const decision = getDecision(candidate);
-  const action = candidateCheckbox.checked && !isPromotionAction(decision.action)
-    ? getDefaultPlanAction(candidate, getAssessment(candidate, decision)?.recommendation)
-    : decision.action;
-  updateDecision(candidate, { action, inPlan: candidateCheckbox.checked && isPromotionAction(action) });
-  if (candidate.key === state.activeKey) renderAssessment();
+  if (candidateCheckbox.checked) {
+    updateDecision(candidate, { inPlan: true });
+    selectCandidate(candidate.key);
+  } else {
+    undoDecision(candidate);
+  }
 }
 
 function switchView(view) {
@@ -1508,6 +1879,7 @@ async function importDraft(event) {
       }
     }
     state.session.approverName = String(draft.approverName || "").slice(0, 120);
+    autofillApproverName();
     state.session.decisions = draft.decisions || {};
     state.session.applicabilityOverrides = draft.applicabilityOverrides || {};
     refreshEffectiveCandidates();
