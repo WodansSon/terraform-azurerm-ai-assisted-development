@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.schema.json",
+  "title": "Hosted Interactive Rule Intake Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "sourceSnapshot", "decisions"],
+  "properties": {
+    "$schema": { "const": "interactive-intake-ledger.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogPath", "catalogSha256", "capturedOn", "ruleCount"],
+      "properties": {
+        "catalogPath": { "const": "tools/interactive-rule-catalog/rule-catalog.json" },
+        "catalogSha256": { "$ref": "#/$defs/sha256Hash" },
+        "capturedOn": { "type": "string", "format": "date" },
+        "ruleCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ledgerDecision" }
+    }
+  },
+  "$defs": {
+    "sha256Hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scoringStatus"],
+      "properties": {
+        "scoringStatus": { "enum": ["scored", "not-applicable"] },
+        "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "scoringStatus": { "const": "scored" } } },
+          "then": {
+            "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["severity"] },
+                { "required": ["frequency"] },
+                { "required": ["breadth"] },
+                { "required": ["hostedDetectability"] },
+                { "required": ["evidenceStrength"] },
+                { "required": ["falsePositiveRisk"] },
+                { "required": ["redundancy"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "foundationalOverride": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rationale", "affectedHostedRuleIds", "affectedSurfaces"],
+      "properties": {
+        "rationale": { "type": "string", "minLength": 1 },
+        "affectedHostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ruleId" }
+        },
+        "affectedSurfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
+        }
+      }
+    },
+    "ruleId": {
+      "type": "string",
+      "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$"
+    },
+    "ledgerDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRuleId", "sourceContractPath", "sourceContentSha256", "sourceStatus", "decision", "rationale", "reviewedOn", "hostedRuleIds", "selectionFactors", "selectionRationale", "foundationalOverride"],
+      "properties": {
+        "sourceRuleId": { "$ref": "#/$defs/ruleId" },
+        "sourceContractPath": {
+          "type": "string",
+          "pattern": "^\\.github/instructions/[a-z0-9-]+-compliance-contract\\.instructions\\.md$"
+        },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "sourceStatus": { "enum": ["active", "deprecated", "retired"] },
+        "decision": { "enum": ["equivalent", "included", "excluded", "deferred"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "reviewedOn": { "type": "string", "format": "date" },
+        "hostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ruleId" }
+        },
+        "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
+        "selectionRationale": { "type": "string", "minLength": 1 },
+        "foundationalOverride": { "$ref": "#/$defs/foundationalOverride" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "enum": ["equivalent", "included"] } } },
+          "then": { "properties": { "hostedRuleIds": { "minItems": 1 } } },
+          "else": { "properties": { "hostedRuleIds": { "maxItems": 0 } } }
+        }
+      ]
+    }
+  }
+}

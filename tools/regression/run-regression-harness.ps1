@@ -13,6 +13,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
+$harnessStageNames = @(
+    'validate-artifacts',
+    'render-suite-text',
+    'render-suite-json',
+    'write-history-snapshot',
+    'summarize-history-text',
+    'summarize-history-json',
+    'write-provenance-report',
+    'write-summary'
+)
+$harnessStageNameWidth = Get-ValidationNameWidth -Names $harnessStageNames
+
 function Expand-ListParameter {
     param([string[]] $Value)
 
@@ -46,23 +61,6 @@ function Remove-LatestOutputs {
     Get-ChildItem -LiteralPath $LatestDirectory | Remove-Item -Force -Recurse
 }
 
-function Format-HarnessStatusLine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string] $Status,
-
-        [Parameter(Mandatory = $true)]
-        [string] $Name,
-
-        [Parameter(Mandatory = $true)]
-        [string] $Detail
-    )
-
-    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
-
-    return ("{0,-11}{1,-52}: {2}" -f $statusLabel, $Name, $Detail)
-}
-
 function Invoke-HarnessStage {
     param(
         [Parameter(Mandatory = $true)]
@@ -72,8 +70,12 @@ function Invoke-HarnessStage {
         [scriptblock] $Command
     )
 
+    if ($Name -notin $harnessStageNames) {
+        throw "regression harness stage is not registered for presentation: $Name"
+    }
+
     if ($Output -eq "text") {
-        Write-Host (Format-HarnessStatusLine -Status "running" -Name ("regression-harness/{0}" -f $Name) -Detail "IN PROGRESS")
+        Write-Host (Format-ValidationStatusLine -Status "running" -Name $Name -Detail "IN PROGRESS" -NameWidth $harnessStageNameWidth)
     }
 
     $started = Get-Date
@@ -84,7 +86,7 @@ function Invoke-HarnessStage {
     catch {
         if ($Output -eq "text") {
             $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
-            Write-Host (Format-HarnessStatusLine -Status "failed" -Name ("regression-harness/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+            Write-Host (Format-ValidationStatusLine -Status "failed" -Name $Name -Detail ("{0}s" -f $durationSeconds) -NameWidth $harnessStageNameWidth)
         }
 
         throw
@@ -92,7 +94,7 @@ function Invoke-HarnessStage {
 
     if ($Output -eq "text") {
         $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
-        Write-Host (Format-HarnessStatusLine -Status "passed" -Name ("regression-harness/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+        Write-Host (Format-ValidationStatusLine -Status "passed" -Name $Name -Detail ("{0}s" -f $durationSeconds) -NameWidth $harnessStageNameWidth)
     }
 
     return $result
@@ -121,6 +123,10 @@ if ($Task.Count -gt 0) {
 }
 if ($CaseStatus.Count -gt 0) {
     $sharedArguments.CaseStatus = $CaseStatus
+}
+
+if ($Output -eq "text") {
+    Write-ValidationSectionHeader -Title 'Regression harness'
 }
 
 $validationJson = Invoke-HarnessStage -Name "validate-artifacts" -Command {
@@ -206,20 +212,26 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression harness run complete"
-Write-Output "  Latest Directory : $LatestDirectory"
-Write-Output "  Validation JSON  : $validationJsonPath"
-Write-Output "  Suite Text       : $suiteTextPath"
-Write-Output "  Suite JSON       : $suiteJsonPath"
-Write-Output "  History Snapshot : $historySnapshotLatestPath"
-if (-not [string]::IsNullOrWhiteSpace($createdHistorySnapshotPath)) {
-    Write-Output "  History Archive  : $createdHistorySnapshotPath"
+$reportFields = [ordered]@{
+    'Latest Directory' = $LatestDirectory
+    'Validation JSON' = $validationJsonPath
+    'Suite Text' = $suiteTextPath
+    'Suite JSON' = $suiteJsonPath
+    'History Snapshot' = $historySnapshotLatestPath
 }
-Write-Output "  History Summary  : $historySummaryTextPath"
-Write-Output "  Provenance Report: $provenanceTextPath"
-Write-Output ""
-Write-Output "Latest metrics"
-Write-Output "  Cases Selected   : $($summary.suite.selectedCaseCount)"
-Write-Output "  Cases Scored     : $($summary.suite.scoredCaseCount)"
-Write-Output "  Snapshots Saved  : $($summary.history.snapshotCount)"
-Write-Output "  Provenance Cases : $($summary.provenance.caseCount)"
+if (-not [string]::IsNullOrWhiteSpace($createdHistorySnapshotPath)) {
+    $reportFields['History Archive'] = $createdHistorySnapshotPath
+}
+$reportFields['History Summary'] = $historySummaryTextPath
+$reportFields['Provenance Report'] = $provenanceTextPath
+
+Write-ValidationSectionHeader -Title 'Regression harness summary'
+Write-ValidationSummary -Fields $reportFields
+Write-ValidationSectionHeader -Title 'Latest metrics'
+Write-ValidationSummary -Fields ([ordered]@{
+    'Cases Selected' = $summary.suite.selectedCaseCount
+    'Cases Scored' = $summary.suite.scoredCaseCount
+    'Snapshots Saved' = $summary.history.snapshotCount
+    'Provenance Cases' = $summary.provenance.caseCount
+})
+Complete-ValidationTextOutput

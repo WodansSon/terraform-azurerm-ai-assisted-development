@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/promotion-plan.schema.json",
+  "title": "Hosted Rule Promotion Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "planId", "createdAt", "encoding", "hashAlgorithm", "preconditions", "ruleChanges", "ledgerChanges", "sourceBaselineChanges", "regressionChanges", "preview", "approval"],
+  "properties": {
+    "$schema": { "const": "promotion-plan.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "planId": { "type": "string", "format": "uuid" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "encoding": { "const": "utf-8" },
+    "hashAlgorithm": { "const": "sha256-file-bytes-v1" },
+    "preconditions": { "$ref": "#/$defs/preconditions" },
+    "ruleChanges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ruleChange" }
+    },
+    "ledgerChanges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ledgerChange" }
+    },
+    "sourceBaselineChanges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceBaselineChange" }
+    },
+    "regressionChanges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contentChange" }
+    },
+    "preview": { "$ref": "#/$defs/preview" },
+    "approval": { "$ref": "#/$defs/approval" }
+  },
+  "$defs": {
+    "sha256Hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitHash": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "ruleId": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "displayName"],
+      "properties": {
+        "type": { "enum": ["github-authenticated", "git-config", "manual"] },
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "approvedAt", "approvedBy", "method"],
+      "properties": {
+        "state": { "const": "approved" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedBy": { "$ref": "#/$defs/identity" },
+        "method": { "const": "hosted-rule-workbench" }
+      }
+    },
+    "preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "headCommit", "catalogSha256", "ledgerSha256", "generatedOutputs", "sourceSnapshots"],
+      "properties": {
+        "branch": { "type": "string", "minLength": 1 },
+        "headCommit": { "$ref": "#/$defs/gitHash" },
+        "catalogSha256": { "$ref": "#/$defs/sha256Hash" },
+        "ledgerSha256": { "$ref": "#/$defs/sha256Hash" },
+        "generatedOutputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/pathHash" }
+        },
+        "sourceSnapshots": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sourceSnapshot" }
+        }
+      }
+    },
+    "pathHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256Hash" }
+      }
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "sha256"],
+      "properties": {
+        "kind": { "enum": ["upstream-contributor", "interactive-rule"] },
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256Hash" }
+      }
+    },
+    "targetRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "origin", "status", "text", "provenance", "sourceIds", "evidenceIds", "selectionFactors", "selectionRationale", "foundationalOverride"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ruleId" },
+        "origin": { "enum": ["hosted-baseline-migration", "hosted-catalog-addition"] },
+        "status": { "const": "active" },
+        "text": { "type": "string", "minLength": 1 },
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["published-upstream-standard", "confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"] }
+        },
+        "sourceIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "evidenceIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "implementationModels": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["legacy", "typed", "framework"] } },
+        "documentationGap": { "type": "boolean" },
+        "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
+        "selectionRationale": { "type": "string", "minLength": 1 },
+        "foundationalOverride": { "$ref": "#/$defs/foundationalOverride" }
+      }
+    },
+    "ruleChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "hostedRuleId", "surfaceId", "sectionHeading", "sourceRefs", "rationale"],
+      "properties": {
+        "action": { "enum": ["add", "update", "retire"] },
+        "hostedRuleId": { "$ref": "#/$defs/ruleId" },
+        "surfaceId": { "enum": ["implementation", "testing", "documentation"] },
+        "sectionHeading": { "type": "string", "minLength": 1 },
+        "sourceRefs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "rationale": { "type": "string", "minLength": 1 },
+        "targetRule": { "$ref": "#/$defs/targetRule" },
+        "retirementReason": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "enum": ["add", "update"] } } },
+          "then": { "required": ["targetRule"] },
+          "else": { "required": ["retirementReason"] }
+        },
+        {
+          "if": { "properties": { "action": { "const": "add" } } },
+          "then": {
+            "properties": {
+              "targetRule": {
+                "properties": { "origin": { "const": "hosted-catalog-addition" } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scoringStatus"],
+      "properties": {
+        "scoringStatus": { "enum": ["scored", "not-applicable"] },
+        "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "scoringStatus": { "const": "scored" } } },
+          "then": { "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"] }
+        }
+      ]
+    },
+    "foundationalOverride": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rationale", "affectedHostedRuleIds", "affectedSurfaces"],
+      "properties": {
+        "rationale": { "type": "string", "minLength": 1 },
+        "affectedHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/ruleId" } },
+        "affectedSurfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
+        }
+      }
+    },
+    "ledgerChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRuleId", "sourceContractPath", "sourceContentSha256", "sourceStatus", "decision", "rationale", "reviewedOn", "hostedRuleIds", "selectionFactors", "selectionRationale", "foundationalOverride"],
+      "properties": {
+        "sourceRuleId": { "$ref": "#/$defs/ruleId" },
+        "sourceContractPath": { "$ref": "#/$defs/relativePath" },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
+        "sourceStatus": { "enum": ["active", "deprecated", "retired"] },
+        "decision": { "enum": ["equivalent", "included", "excluded", "deferred"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "reviewedOn": { "type": "string", "format": "date" },
+        "hostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/ruleId" } },
+        "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
+        "selectionRationale": { "type": "string", "minLength": 1 },
+        "foundationalOverride": { "$ref": "#/$defs/foundationalOverride" }
+      }
+    },
+    "sourceBaselineChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "beforeSha256", "afterSha256", "semanticDecisionRefs"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "beforeSha256": { "$ref": "#/$defs/sha256Hash" },
+        "afterSha256": { "$ref": "#/$defs/sha256Hash" },
+        "semanticDecisionRefs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "contentChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "path", "content", "sha256"],
+      "properties": {
+        "operation": { "enum": ["add", "update"] },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "content": { "type": "string" },
+        "sha256": { "$ref": "#/$defs/sha256Hash" }
+      }
+    },
+    "tokenReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "estimatedTokens", "guardedTokens", "budgetTokens", "budgetHeadroomTokens", "utilizationPercent", "estimatedTokenDelta", "guardedTokenDelta"],
+      "properties": {
+        "name": { "enum": ["repository", "go", "test", "documentation", "skill", "go-combined", "test-combined", "documentation-combined"] },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "guardedTokens": { "type": "integer", "minimum": 0 },
+        "budgetTokens": { "type": "integer", "minimum": 1 },
+        "budgetHeadroomTokens": { "type": "integer" },
+        "utilizationPercent": { "type": "number", "minimum": 0 },
+        "estimatedTokenDelta": { "type": "integer" },
+        "guardedTokenDelta": { "type": "integer" }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generatedAt", "files", "tokenReports", "validationStatus", "validationChecks"],
+      "properties": {
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "operation", "beforeSha256", "afterSha256", "diff"],
+            "properties": {
+              "path": { "$ref": "#/$defs/relativePath" },
+              "operation": { "enum": ["add", "update"] },
+              "beforeSha256": { "oneOf": [{ "$ref": "#/$defs/sha256Hash" }, { "type": "null" }] },
+              "afterSha256": { "$ref": "#/$defs/sha256Hash" },
+              "diff": { "type": "string" }
+            }
+          }
+        },
+        "tokenReports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tokenReport" } },
+        "validationStatus": { "const": "passed" },
+        "validationChecks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

@@ -15,6 +15,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 function Expand-ListParameter {
     param([string[]] $Value)
 
@@ -185,11 +188,15 @@ if ($Output -eq 'json') {
     return
 }
 
-Write-Output 'Regression provenance report generated'
-Write-Output "  Cases Included   : $($report.summary.caseCount)"
+$summaryFields = [ordered]@{
+    'Cases Included' = $report.summary.caseCount
+}
 if (-not [string]::IsNullOrWhiteSpace($JsonOutputPath)) {
-    Write-Output "  JSON Output      : $JsonOutputPath"
+    $summaryFields['JSON Output'] = $JsonOutputPath
 }
 if (-not [string]::IsNullOrWhiteSpace($MarkdownOutputPath)) {
-    Write-Output "  Markdown Output  : $MarkdownOutputPath"
+    $summaryFields['Markdown Output'] = $MarkdownOutputPath
 }
+Write-ValidationSectionHeader -Title 'Regression provenance report generated'
+Write-ValidationSummary -Fields $summaryFields
+Complete-ValidationTextOutput

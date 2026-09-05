@@ -1,0 +1,3954 @@
+{
+  "$schema": "rule-catalog.schema.json",
+  "schemaVersion": 1,
+  "catalogedOn": "2026-09-02",
+  "description": "Repository-maintenance-only provenance and lifecycle catalog for hand-authored Interactive Toolkit contract rules. Runtime contracts remain authoritative for rule wording and behavior.",
+  "rules": [
+    {
+      "id": "REVIEW-EVID-001",
+      "title": "Do not guess when evidence is required",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "105f5efe4c75fc4b13713f0fca29e763a5d8740158a83a2fcfb16a638c76d4a1",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-002",
+      "title": "Verify display artifacts before flagging formatting or encoding issues",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "07a94398f2bfd2c1775745743e7c8ce6bdb326279bc669c9fb6b83e723e06147",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-003",
+      "title": "Attribute policies to real sources",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3f3159837b2333bb236ab5a93ee9f10d8a300d1287edb3e6832e0b261ca09ab0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-004",
+      "title": "Discover contributor-guidance paths before claiming absence",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4d9f3bada8eff61300d93bca99e9840aea46a37ceee5e06852f2d84e3088175c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-005",
+      "title": "Perform post-tool verification silently",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "41f357a3649c35fa99ebe564feb0ecb93f4eaa36f7327c3f31b3dab20dd2ec5d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-006",
+      "title": "Every invocation is a fresh audit run",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a757c78642a7371aaef26084030d38339e7904a6f3ab96f49ddc10dee15a37e4",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-007",
+      "title": "Describe only current-run facts",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d8b035f8783a8f70db0dcb81d06f6536fddabddf12d9ffb6050d356044bf4100",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-008",
+      "title": "Do not reuse prior review body text",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f2a2a8149942f5b2d87218b14b9ac78118a1236103067beed0d17ba3683024c2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-009",
+      "title": "Do not use helper scripts for trivial deterministic checks",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5c69fda2c1b29a2f96b1121302200ad1ab39b235412b5ae34eb22c22e8374f01",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-EVID-010",
+      "title": "Do not invent prerequisite or validation scripts",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e4d5bad07186ad7dd00838ba21e8cfda4297ba26df66e5f98f67e063578243e0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-001",
+      "title": "Issues are for actual problems only",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6718dbf13dfba09d819cb5bfce7e6ba1c49e860031e236745d8206ff39213de1",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-001A",
+      "title": "Blocking classification requires concrete current-run harm",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "35f2eee2d0cbdb7bdc6dfac1bfe1e749c3f5e66a8f1fc2970c80a133adc33d2a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-001B",
+      "title": "Certain variant-ownership and lifecycle defects are blocking by definition",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0c9eee97de45f35f0e848b554c352e875b57268abaab923c8cf3dce10ebd71cf",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-001C",
+      "title": "Concrete optional-state drift on user-managed fields is blocking by definition",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fcf9d01eb24288096068635f2fd4c3087d6f5ba1bd5fe4672f96e0b2257a9dc2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-002",
+      "title": "Observations are non-blocking",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b84f655f6d6f5bef48a927196736fa82860eb48db214d7a3d990833fa8899d50",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-002A",
+      "title": "Evidence-backed non-blocking concerns must remain visible",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0d64a65b75b480384bbb0d30128588d0c0eadb11afef04f606c4fd1e43ee72fe",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-002B",
+      "title": "Update-shape and residual-state risks default to observations unless concrete harm is proven",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b727b701a1889d288829fadb4d531042e24d4465aac558190a1e45604f2be8ce",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-003",
+      "title": "Strengths must be factual",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "724cd179c85f7e9d73f83663065d4d9c0fa75bdfda6bb831d13ba8bc0db5c171",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-004",
+      "title": "One finding, one classification",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "85450ab6a0943b7d73e3c02a2dcddb16478526d1a5f15feda1e70631934e16c0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-005",
+      "title": "Fixes must be deterministic",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "263e5c3c4613d104fc822c362a8a236153d382900cfcf05cfeb0485ba752ea17",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-CLASS-006",
+      "title": "Final moderation owner integration boundary",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "967986d4ed6427be4f7b4ff5658513c777c706c7c605ac215d63d30a0c4f4de3",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-001",
+      "title": "Intermediate findings use one shared semantic shape",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "48de377ccf5995fa0df5f3e9d5aeb321cdf8b86da17c86ec1ea83e1e5b452d12",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-002",
+      "title": "Classification and visibility are workflow-owned fields",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "eb7032abeae1a8fe4e9415a775cd0de6f1692466723c7d46da6a169ac539fd9f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-003",
+      "title": "Routed passes may add or refine records, but must preserve shape",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a6ebc959b92ab375468fcb597872520e6ff427600f2bd3ab403fdfbfa67ce7f5",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-005",
+      "title": "Roles communicate through schema updates, not free-form debate",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dab4cbe3fb2d7e31dd80cf474ba359c07ef6dc222bf61724d4dc510a2b5106dc",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-006",
+      "title": "Reviewer-to-handoff serialization is mandatory before routed roles",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9ed7e54b55d3afb650385ab7c9ee801cd2a05dcc97bff8a77ce0609c0b8ab0ee",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-006A",
+      "title": "Mandatory issue-class concerns emit records immediately",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "82e231126b51d26cefbd22178bfa06602b3f72f61d14dfa03df3fc51024d95d4",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-HANDOFF-004",
+      "title": "The handoff shape is semantic, not transport-specific",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "96835d1b03bad09c4a2e51a4b990966413d0d9b4072e90e0bd04f1d29b4674b7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-001",
+      "title": "Build a deterministic coverage matrix before findings",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1fd1145dc0a687ba7732690f61cd77998640aa4d6dd5711a356e357443ea3618",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-001A",
+      "title": "Matrix build and matrix completion are separate phases",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4054c31936db38091fd1d5a2ad8a96d1d2494bdf6b0d67c94dda9f6474264273",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-002",
+      "title": "Changed implementation files use a fixed review order",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "47a7a6cf9885138116f2f44c4d91ced039a8c1f6fbe582fe5880b2db4d7c59ac",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-003",
+      "title": "New resources require overlap and ownership scans",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9db258b69622f9ae14be9b5905cdcab347cea86451eebfe4649c1cfa3ac8ff08",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-003A",
+      "title": "Variant-constrained ownership surfaces prioritize ownership and lifecycle first",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6b44ee4c48c7a578663f616172b1bc95428548030a481f617138a1666eee94da",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-004",
+      "title": "Provider reviews have mandatory issue-class checks",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c21d4867b5fee40511e15ae6b70b1b142ad328de2bfadcc6812bb3eddd22353e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-005",
+      "title": "Active-file bias is forbidden for initial routing",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c038e93d506fa4eb06aa47ebcba7eb4685df28a8bb59b7b0ec5da7e11f362b3e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-005A",
+      "title": "Family grouping prefers explicit code anchors over filename intuition",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "90d7ef78f48c26b0e7b42d772ee047b1d054d5508067ec2358a44dc638116cfa",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-006",
+      "title": "Findings cannot freeze before coverage completion",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c5535685993a476443f31104f686d0bfb18df6f591d40eb8fbf04fa2931729d7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-006A",
+      "title": "Router validation sub-phase is the canonical completion gate",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ee225592392a74dd8c492c141fd3162a0b9b3803c1f482adc29d110ab726556c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-006B",
+      "title": "Router owns post-review handoff-linkage validation before routed roles",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dd25f6dd21c37cdda0c1eb74d696235eb182027761aeed1e423333e1847e26d9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-COORD-007",
+      "title": "Routed roles start only after coverage completion",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e34cf5ed845026f7c6eb8e431599c33defa6a5beebfd10b04ca7b31cba8f8fd0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-001",
+      "title": "Review the full change-set in scope",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "da74f03115fa861a1d0817dd1034f93456c1423c48a8ca015ba6fbbf0dffc9db",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-002",
+      "title": "Classify changed files accurately",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b7924ae388be86ff3ec697d6ad3cc1cd337b340bbd341ed53c5e18443f2695c9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-003",
+      "title": "Self-review recursion prevention is explicit",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "df8f951908c7b83f0be02bd5fb9b39494089793b5215edee1726b4aa4b91f4e4",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-003A",
+      "title": "Local review scope should prefer the active local diff",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7b441e5f118c9801a69665cce18f526db735f2f9ecd380b4aeeb2a8456027109",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-004",
+      "title": "Committed review scope must prefer authoritative PR context",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dd016fce62220b7bb7ed5db2b121923f5b4ee41235faa5044a66b787339bc5b9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-FILE-005",
+      "title": "Vendored third-party files are non-actionable review scope",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ecef2f2830451c700636ad6fba563f1fa103c7b5dad572a1f02ec909fe2292c6",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-001",
+      "title": "Always review user-visible content quality",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e2609893e7434ceec87a977db1ea8813bfcec0feeb18bdf076a6eab1cb540c28",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-002",
+      "title": "Review command examples and snippets for plausibility",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "31aad6757f60a277c2b0805b3ddb6ecb11c747366d6dcc9ceb5a7f1403d01f8b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-003",
+      "title": "Installer and script changes must consider cross-platform drift",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "91b589bba966bf5963f1b959045b175ab0b06e6749a956a8c529333232c56e19",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-004",
+      "title": "Prompt, instruction, and skill changes must review determinism and alignment",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9a382353be9a305a40ff83de973b84ded370a99b732dcb8c1b781181b79901b2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-004A",
+      "title": "Reference docs under website/docs defer to the docs compliance contract",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b64a23bffc8b889784ea40c16d2b2ec554daa7ce6724dea1d6399f9b5e004711",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005",
+      "title": "Go implementation and acceptance-test files defer to scoped guidance",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "57e2f27b43f29fcaac2dacd27808b23c319190054f554b8f62177d1451096b24",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005A",
+      "title": "New resources must include required companion artifacts",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "888363c044adf6b20a0571018fbfaf787b6f2334f7c11b612492dfbcedc8f430",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005B",
+      "title": "Ephemeral resources and provider-defined functions must include their companions",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1cf982de924c7e888417bbce25a12e14e6442a33b017ef2f72309457b6ccecc6",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005C",
+      "title": "Singleton or get-only resources need exception-aware list review",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "261e2cc3bedb60170ccf56a69e0365b09b53f3fcdd4cd74b922ac2c265903a1b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005D",
+      "title": "Generic lifecycle/provider logging is reviewable when it adds no unique value",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f40312d544f3473dc32d6c9c27d9609b089132908ec66dbdb39f8053452750f7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005E",
+      "title": "New cross-resource ID fields must follow provider naming rules",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "aac2cad7a8372e2e223f18cb1ccee4215636103bb0246425878cc7772ce5dc3f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005F",
+      "title": "Update paths must not silently skip concurrent field changes",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e546b551a7d676f5a2d12858cc36deba6684343f8660a0bcf5111bc066d3310f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005G",
+      "title": "Create-time import guards and callback identity setup are reviewable",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "689db26bc732d491d909ee39cf2785620dabe106d5103f539b8c18dac69aa8f9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-005H",
+      "title": "Provider feature-flagged CRUD branch coverage is reviewable",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6d61ad439015d4f58a22bb12ac72334a32c2436755c9bbf3b580e663ca9e1c53",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SCOPE-006",
+      "title": "Manifest and bundle changes must match shipped content expectations",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "875e0d10d7a309b1aecf5ee9dc5b8a98ace226d945a591c7d1d4b50539c8e396",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-TEST-000",
+      "title": "Code review is not a test-execution workflow",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2238b223bce3cf55485373c5cc7699ac7ade80e9173c1d2765ab35b254236f93",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-TEST-001",
+      "title": "ImportStep guidance is evidence-based, not absolute",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9bcfb14d21a6e999622a640e4e75f03f356143fcb773c15d2305f9cee50a3d9a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-TEST-002",
+      "title": "RequiresImport patterns follow current contributor guidance",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5c15d6ddc20c920f080f3e33ff506370ff6198d1589e3823e5b0535c304f38ff",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-TEST-002A",
+      "title": "New managed resources should cover the upstream minimum resource test matrix",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b7b2895cdb63be973af14fbb68ad84ed9c34b4323b5650b9d718688747d77c83",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-TEST-003",
+      "title": "Embedded Terraform in acceptance tests must use repository-valid formatting",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "edd2c0c3f683105675bd2f094000bc1fd3c91098e0a6816198c2290e0748610b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OBS-001",
+      "title": "Boolean toggle schema preference is observation-only by default",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "773b2244bde16221faa7c8da4f0f214a6656b100cd113e83aa44b20cdf63fa12",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OBS-002",
+      "title": "StringIsNotEmpty alone is not automatically an Issue",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "94522cac29828098e1495c3db9579aeb18454a1084cc4bc99aee4af95ed54813",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-001",
+      "title": "Reviews must be evidence-forward",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "77bd551290329ae4068cd73caa609fd9ff9a08030ec7142e12d6784be47a4018",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-002",
+      "title": "Hard-stop messages are prompt-owned",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e493949af69c366aa9dd34f4730fa3cfa05917c2bf05106ab8c21a558cf27a83",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-003",
+      "title": "Missing evidence must be disclosed plainly",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "43db413fb10aa89290f5b5fb87c6f9e4bf6cb5c6aa279f610da9b9acd67660f2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-005",
+      "title": "Successful fresh runs must emit the full current template",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1e4b6bcbbb8d4836f1b0ceccdfebdb39296aca9cbfb5068ff462ff14ae370fd0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-006",
+      "title": "Freeze the review before emitting final output",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "51bc323546e6e80cef10c8b475edae570eda0c9ca25ce32e383f9de40e0c2bce",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-007",
+      "title": "Skill verification footer is allowed when skills were actually used",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "889078a9f2e5628afd8a561eed94b41c5c10c3e3e47720c44459de5a592f284a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-007A",
+      "title": "Normal successful routed reviews use one canonical stage sequence",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b0d870f53ae6f66e55060e33187d1b2b372023678da23cccffe599a9749eeeb8",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-007B",
+      "title": "Verification footer must be backed by an execution ledger",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "db05e3b57edb17bace03136b2f039da445e928957ababf99da0d4e22e31bea1a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-OUT-008",
+      "title": "Overall assessment must align with the final issues state",
+      "contractPath": ".github/instructions/code-review-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "08f470a44cc79576d70f59ba0eceb62cb796cb6a1b875c583b1ea1fb2b277d23",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EVID-001",
+      "title": "Do not guess when evidence is required",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5a2847bdda1854c9240e04d162e5d4c97edf9b5df83ac56ce18ee3a8920e77d5",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-OBS-001",
+      "title": "Prefer boolean `*_enabled` over string toggles (observation-only)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8d305fd880838f509125a43801f4c25ffd8d9c61cbf0f9b559d8f4b755935426",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-001",
+      "title": "Required frontmatter keys",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "bc7a682d504f0a9d99b5f5a833ef3e1fab9f088d57039a059f604417627de54c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-007",
+      "title": "Frontmatter must appear at the beginning of the file",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9f762cac883263019279f6104117b90608d0a2383cc4104fcfbe81544a037d3d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-003",
+      "title": "Resource `page_title` canonical format",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b035dcde14ead5aa41c4b915d4f6e9ae539daf6bcc0a3c84212c66c2686cfa62",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-002",
+      "title": "Data source `page_title` must include \"Data Source:\"",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2de94e7a776ccf5effed52d5a64e6cbb804364ba4a166877d1e9cf81243fef2d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-008",
+      "title": "List resource `page_title` canonical format",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "08466624b15b01bd94f05442eb1da0bc48cc25bc45c328895187ce3759ce2095",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-009",
+      "title": "Ephemeral resource `page_title` canonical format",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cd42552e1db2d01aa98101f63a3e08544b1ab546ec465935218e50170597687c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-010",
+      "title": "Function `page_title` canonical format",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a1ee8fea0e4ce35ef20763bd9adf75fa73fb847f22ed973c2b6fdeaaba4592b8",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-004",
+      "title": "Frontmatter `description` must match the doc type summary style",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e4260ec3595b669ef29b1e629cb5c160572a5026f41b4e4e11b4dff926466350",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-005",
+      "title": "`subcategory` must match the service website category",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "57d4d35fb3410da08c91fdb2a68babd4d30099525e24ebe03f6848dded370be1",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FM-006",
+      "title": "`layout` must be `azurerm`",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b566ae345089ce2c08c33a38cb1a4f241d79c496617262ac96d5a54b4d5292f9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-006",
+      "title": "Reference doc path and filename must match the Terraform name",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9ac9ac476786f177e8b50ac4b0f63480ad7c1ddbe18741f38f60e87abfaab460",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-001",
+      "title": "Required sections by doc type",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1267840b39fa9fdc6761bf8262f067cabe0a86f81d12c13291c128fbbc714365",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-002",
+      "title": "Section order",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2164647b868f9c1fd432c0b4bf4f46d1faa4d959588176b5d710f2a34c278976",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-003",
+      "title": "Timeouts section presence",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d91dd82425240e7526e79e56c26319e821d4c868820d17c4067a0eac2460b2a7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-004",
+      "title": "Document title heading by doc type",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "90e44df18f33f397fc0653efc0b19316fb2a62108f332c68b5303a96fd0c3bc1",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-005",
+      "title": "Summary sentence must appear directly below the title",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "db60732cbaa0584b0f8abaa937611d385d12c5af09a9e2e6f23fd00f9964b5fe",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-007",
+      "title": "Ephemeral-resource runtime support note",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "00461278742814297143f2c0e839386684947db3d6f6af515981194357c60950",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-STRUCT-008",
+      "title": "Function runtime support note",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f1725130bb9af8fb49fefd8c46c38e8165c2441f839ea847c1036a98a73797be",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FMT-001",
+      "title": "Canonical section intro lines",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1f3d1551e302dfa9f4164761134da8c42e7da212d8072b165c4e6811fd539b48",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FMT-002",
+      "title": "Backticks for arguments and values",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5952c01735aaf82282540c92ba41f921b3b1c72dd6fd46817eb1922a354e7229",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FMT-003",
+      "title": "Use the most specific code fence language",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fc819f311927e0e200d13da34aba356ca07bb1bc237d108340c68d65ba997282",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-FMT-004",
+      "title": "Outer fences must contain nested code fences safely",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "05b2c2a26dfd663f0da9d958f757de2b2b542b09eb6793ed1564b78fabc278db",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`",
+        "That guidance requires four backticks around an outer code block that contains nested code blocks"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-IMP-001",
+      "title": "Import example correctness",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1b92963f3343c16177b744fc72349f2b42856218e8a69507a9d5f3681de56881",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-IMP-002",
+      "title": "Import section must include standard wording and example",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a61deb429eb7caa695e02045195d4cd67fbef2ef0d71b6ce3a1b8343f0c72f1f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-IMP-003",
+      "title": "Import example determinism (stubs and placeholders)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ee631480b694ec6b7b74f9c9c92edc2a8c483e78136eb39b1410c828e6e923ab",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-001",
+      "title": "Block vs inline vs map parity",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8b22485ace8480642248740632e808defd9d0e7f29044cef7a4a5b9c433db02a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-005",
+      "title": "Primitive list/set parity",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c5954f1800cb0d2ab190a99c8eb35d97b8af922d463e2c6c0920fff19b367621",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-002",
+      "title": "Block placement and phrasing by section",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "79af7aab6f811823a525c973937d7c0be83b5e744b2fa76d94233d59f94a4e50",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-003",
+      "title": "Indefinite article for block headings",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a26a1c2f58341af5097b1043fadda763601612ae1ea34ad7f176055e5fc265ba",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-004",
+      "title": "Block subsections placement and ordering",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0412c5f2e301cf090f67f7c760e8be48fc164dd9225391dbc6b00521a7c9d4a7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-006",
+      "title": "Nested block argument ordering (Arguments Reference)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3355f22c424142feb94512bbd0a1a3ef1a30d7aa42961e0bbf0d331b31852c32",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-007",
+      "title": "Directional block references must match subsection position",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "50964318e53e81ab1a7524bb43794a9e6aa184f5e50ef6ec2c1fdfaeea2df5df",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to make subsection cross-references deterministic after block reordering",
+        "Enforced by this repository's docs contract rather than a clearly codified upstream wording rule"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-SHAPE-008",
+      "title": "Block subsection separators",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "65a70692f473237706263110ecc556365ca22c3c14fe897b956108556012cf6c",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to keep nested block sections visually stable and patch-ready during audits",
+        "Companion guidance and audits in this repository rely on this separator pattern for consistent rewrites"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-000",
+      "title": "Examples must be functional",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "43cfb18ec23f529982dd891476f5f1e589b5613b50b5972b9eb0de2e99b172b9",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`",
+        "That guidance says examples MUST be functional and should not error when a user runs `terraform plan`",
+        "Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` separates resource examples from data source lookup examples and explains that data source examples may assume the looked-up object already exists"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-EX-001",
+      "title": "Example Terraform config fences must be `hcl`",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "15c961317f6e10e1a6af15da8bb4552e8afd384b76ea907f2c7ffa68f18c63b7",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Code Fences`",
+        "That guidance says Terraform configuration should use `hcl` code fences and not `terraform`"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-EX-002",
+      "title": "Example Terraform CLI fences must be `shell` or `shell-session`",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "34bff02ee7f36b311c95509cc861e52c201773984a051e38aca48654af0a4854",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-003",
+      "title": "Resource examples must be self-contained",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "168b058945d08477049f4841151f8ef574882ab48c9e5b0ff2227cdf9818edae",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to stop audits from resolving broken examples by deleting Example content or leaving undeclared references behind",
+        "Reflected in this repository's docs review workflow for copy/pasteable examples",
+        "Scoped to resource docs because the upstream clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` distinguishes resource examples from data source lookup examples"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-020",
+      "title": "Example self-containedness must be transitive",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "10541f11d5f4cf4c05fd4d9c90769110d9ae69249000735fe306f02017ba5be6",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to prevent partial self-containedness fixes that still leave Example blocks unrunnable",
+        "Enforced for deterministic docs audits in this repository"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-021",
+      "title": "Preserve reference semantics in examples",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e06460396719a050c19998e6190d530072dc57c626d8347258bef536f43fdb67",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to stop Example repairs from inventing plausible-looking literal values that drift from real provider behavior",
+        "Works with `DOCS-EVID-001` to keep example rewrites evidence-based"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-019",
+      "title": "Do not replace Terraform references with invented literals",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "558e55841a69917887bf78e7c2222264711264577869920dcbbb21d2f12529e9",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added after repeated docs-audit failure modes where undeclared references were replaced with invented strings instead of real declarations",
+        "Reinforces `DOCS-EX-003` and `DOCS-EX-021` with a concrete prohibited shortcut"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-004",
+      "title": "Preserve required `depends_on` verbatim when rewriting examples",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5abe4e9fc71e557e3960e1f740f183ec96d8ae4b4f5ea4c9c135bdbcff7c96e9",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to preserve sequencing semantics already present in existing examples and notes",
+        "Prevents audits or rewrites from simplifying examples in ways that silently remove required ordering"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-017",
+      "title": "Do not introduce net-new `depends_on` without evidence",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5d52c2cc5c275707bdf1a7b10a22469b642553ca7a338535ee48c358bb668493",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to prevent speculative example fixes that add `depends_on` without proof",
+        "Works with `DOCS-EVID-001` to keep ordering guidance evidence-based"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-018",
+      "title": "Preserve example-adjacent notes when rewriting examples",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7d5faffa3d2322cbb81229b59feb550e7f5e36ff9bd43b7dd5dda61d5f67523e",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to stop rewrites from dropping neighboring notes that explain why the Example is structured a certain way",
+        "Keeps Example code and surrounding explanatory notes aligned during audits"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-005",
+      "title": "Examples must not hard-code secrets",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "21d430bad1a43a6d04efad783c98d6684fc08a80ebb8132140d0ebd93f52b899",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-006",
+      "title": "Example minimalism",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d1427f040c0e36d440059a5d45475b30ef3591b610c4d5d788a216d71973aeaa",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-007",
+      "title": "Example naming convention (nit-level)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "319865fc8f83e64349aa388230fece2b1d4893858c4e377754109bdaffdf9603",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-008",
+      "title": "Examples must not include `terraform` or `provider` blocks",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0ee3ee5bf7d7a6ec275342653b10148d217eb888f76d9a63c265d0d49decdc28",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`",
+        "That guidance says resource and data source examples should not define a `terraform` or `provider` block"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-EX-009",
+      "title": "Example HCL must be syntactically valid",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ca40c9e5c18b7151fec9cd0bcd0e6a679fa63251e81554e412f3f22f8a8942fb",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-010",
+      "title": "Example values must satisfy schema/implementation constraints",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3aa621e5e10f24093d1a578c5a4dd53218274808d611bf59df1eb16d6eecd7fb",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-011",
+      "title": "Examples must include all schema required arguments",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4e742e7b9caf3952db43fd95714a169dc3ade4a4158f1a4468833361e5e6d7ff",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-012",
+      "title": "Example sections must remain copy/pasteable Terraform",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "117a6ec76804300c6b250d640999a50b197e10c06b771a5f2d4092d1191c4a37",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to prevent audits from resolving broken examples by collapsing them into prose",
+        "Keeps `Example*` sections aligned with the repository's copy/pasteable-example expectation"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-013",
+      "title": "Example instance name convention (style)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f6eea2357b984c9ff3f538d3de17773bdbc234a3177953459f2ab4176b3904b2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-014",
+      "title": "Avoid multiple examples when possible",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "53be9f8204bc4f45b71d8e523de0c02671cd9cfc02d89375b2f4e84431799805",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-022",
+      "title": "Data source examples should demonstrate existing-object lookups",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "626343aea9faef6c55f85dbcf628c23922d8efa6977dc9373cd115af170713bf",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Examples`",
+        "Proposed clarification in `hashicorp/terraform-provider-azurerm` PR `#32299` adds an explicit resource-example versus data-source-example split and says data source examples may assume the looked-up object already exists"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-EX-023",
+      "title": "List-resource examples must demonstrate list queries",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "319295cd23d0ca316ccf0bc9667a4fd896eae8b3eb8d1a9dee5c23e7a7ec8654",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add documentation for this List Resource`",
+        "The upstream example there uses `list \"azurerm_network_profile\" \"example\"` blocks and shows multiple query-scope examples for the list resource"
+      ],
+      "sourceIds": [
+        "guide-list-resource"
+      ]
+    },
+    {
+      "id": "DOCS-EX-024",
+      "title": "Ephemeral-resource examples must demonstrate ephemeral reads",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "927369d5db02789cf858e76ece6615f0e289f76e4f4c1db8655c35424865e9e6",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "The tracked upstream contributor docs do not currently expose a dedicated contributor topic for ephemeral-resource reference pages",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_certificate.html.markdown`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-025",
+      "title": "Function examples must call provider-defined functions",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3af900f3c73a760999660da9b65c1f46281e99aa55384f5e3e809c929f63e80a",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-015",
+      "title": "Deterministic example name value derivation (nit-level)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1b4a7dbe6876ed6009ceaab4b47555f5f196772092f3c254b5916e9bdb43a42f",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to make example-name fixes deterministic across `/code-review-docs` and `/docs-writer`",
+        "Helps avoid ad hoc renames that vary from run to run when multiple valid-looking names are possible"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-EX-016",
+      "title": "Example values must respect ValidateFunc constraints",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3083aa1b103fe1d8e258a2b52b7923b9d6bce605e840bd10cf3b97b79ae27db6",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-001",
+      "title": "Note markers must match severity",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fe95bb72b6e79d98aa1a4f86f5a9a82d33462aeb4ce4718cb7b4611595e0e137",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-002",
+      "title": "Required conditional notes must be documented",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2945f1f559493304b43691b0c5cfd1a4f2842e5efc73fcf38c1674af4328fc10",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-005",
+      "title": "Conditional requirements must use `~> **Note:**`",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f9269361c77dde31a437af557ee317ed3f830225d79f73992e7a077d109ccf8d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-006",
+      "title": "ForceNew guidance must use `~> **Note:**`",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7a47f0b9fcfbfc2dbe9c9ff0669b80d40ed24bef1e76f9935fdf0bda81e9259a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-003",
+      "title": "Note formatting",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f58e225c4832b21b2c67c8c14957e3a8bc1e1aa01a263601067340265a85b627",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Notes`",
+        "That guidance says note blocks should follow the exact format `(->|~>|!>) **Note:**`"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-NOTE-004",
+      "title": "Note correctness",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1dcddfb5f158ce336ec0e9ebefb8781578d6c60bf741cb5cd6d471b5d1175e28",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-007",
+      "title": "Do not document breaking changes as notes",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "12cc26de7a2968824938fb93cd3cea962a4e57ab0dce257d4e0bd5df87550e47",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-008",
+      "title": "De-duplicate equivalent notes",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5fbc2409c5ec3b12014ab0611861752f505c2b30ee5103c73eb9ec590b8218ee",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-NOTE-009",
+      "title": "Data source, list-resource, ephemeral-resource, and function field notes are prohibited",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "244133ea84870ec88659bf9e22f363a4df82c26f05b57ec76dad455c02aad27d",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` prefers short, field-definitional data source bullets",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows concise query-argument bullets for list-resource docs",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/*.html.markdown` show concise ephemeral argument bullets plus only the top-level runtime-support note",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/*.html.markdown` show concise argument lists plus only the top-level runtime-support note",
+        "Added to keep `/code-review-docs` and `/docs-writer` deterministic and prevent drift toward over-explained non-resource docs"
+      ],
+      "sourceIds": [
+        "guide-list-resource"
+      ]
+    },
+    {
+      "id": "DOCS-ARG-001",
+      "title": "Schema parity (no invented or missing fields)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3835cb1aa33172535c473c938a45dca643b13bdb258da2e9075a68fcd38ebeba",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-002",
+      "title": "Required vs optional ordering",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "412de19c1ffab220c195c6c7191669eac8e0cad60476223964cb88b9fee24cbe",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Ordering`",
+        "That guidance defines ID-segment ordering, `location`, required arguments, then optional arguments with `tags` last"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-ARG-012",
+      "title": "List-resource query arguments should be ordered alphabetically",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f23472ad9511e80e4994bbbd17bcb8f446271d6af1d72f6e98608ddcf4b09277",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` shows `resource_group_name` before `subscription_id` in the list-resource `Argument Reference`",
+        "List-resource query config documents filters rather than resource identity fields, so the resource/data-source ID ordering pattern does not apply directly"
+      ],
+      "sourceIds": [
+        "guide-list-resource"
+      ]
+    },
+    {
+      "id": "DOCS-ARG-013",
+      "title": "Function argument lists must follow function signature order",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b47b0e72095fca0133748b3e91db665c70944c1f4efede49f972ad1a6d62134c",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "The tracked upstream contributor docs do not currently expose a dedicated contributor topic for provider-defined function reference pages",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`",
+        "Upstream provider docs under `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-003",
+      "title": "ForceNew behavior must be documented",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6138a714040c384466c141546ae98e5abaf839d578437bad5be48d522667d4f8",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-010",
+      "title": "ID-segment ordering must be evidence-based",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "94c4c2ac62928c1010003fa5ea4c1b61514858c8a48bba2353206952d8f1862d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-008",
+      "title": "Argument descriptions must be concise",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "945d314d7e044d389315d644713604c291ebde422ea95562b89d89e7c147a873",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Companion guidance in `.github/instructions/documentation-guidelines.instructions.md`",
+        "Contract rule `DOCS-NOTE-009` for data source field-level note prohibition"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-011",
+      "title": "Argument bullet concision is semantic, not numeric",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "132ec9279dd3fd646ed1d0345acb8e4b930495ba09622a03c9e625cc1e339d07",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions` requires concise descriptions and directs additional detail into notes",
+        "That same guidance requires standard sentences for constrained possible values, defaults, and ForceNew behavior, and its examples show multiple required semantic sentences remaining in argument bullets",
+        "Companion guidance in `.github/instructions/documentation-guidelines.instructions.md` keeps core semantics in the bullet and moves only supplemental caveats into notes"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-ARG-009",
+      "title": "ForceNew sentence placement",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "55547fa22c79411c1c217942b3ea496e1324a339b3255091ede544fcdbd026ea",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-006",
+      "title": "ForceNew sentence scope (resources vs data sources)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "828707bf6cc1c2a1440768f210dec25a96e4b9d88a0d6d83f4c104b2f38b2bfd",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-007",
+      "title": "Required arguments must be documented",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4f9f62bdaf1d00059d9d8e5135467716a9c16bc3b601c788929d178e9bceb857",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-004",
+      "title": "Defaults must be documented",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0901a083b0deaa314e6398df8278fd292eeb5a751554ead7e9161b451b545865",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ARG-005",
+      "title": "Validations must be documented (when constraining user input)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0a5715fc5f1dbae327c0c89bdb4eefdf8b84446114428392839a5474f987800f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ATTR-001",
+      "title": "Attributes ordering",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dd4c643eade107df62a2c020cdb97f09972a13581b7a6e6c79343c9b53602e1f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ATTR-002",
+      "title": "Computed attribute coverage",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2b08306e4471291808e039f5ee375f21cfc26269344d7d8581039502eb8a0c1d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ATTR-003",
+      "title": "Attribute descriptions must not include defaults/enums",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e290ceb303cbf6bf6fe894851eac74785b65873c1d8243cb7ef98b11462f2a1d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ATTR-004",
+      "title": "Do not special-case common fields in Attributes Reference",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c776b415dbb3856a23ef610a97a497c692e114114df07b9a72f33abb0009d5ab",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-ATTR-005",
+      "title": "Nested block attribute ordering (Attributes Reference)",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "df9138d15bc297c4841af5104c0e262a6de7e46b8bb153574d473ed4196fcab2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-WORD-003",
+      "title": "Resource vs data source summary sentence",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "146ea03c9f8f58a3cf0183f6a52f7276963b732998f1b5c0a57cb4ad9dc4c874",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-WORD-004",
+      "title": "`*_enabled` field phrasing",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7836f9efb99ca07c00b2c0e50385ad921a45a585702e9461bd60b27c11f55680",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-WORD-001",
+      "title": "ForceNew sentence",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fafa18456ea4b287505480a86acb03c00b1f6eb2a5147f624787777548e2a22f",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`",
+        "That guidance says ForceNew argument descriptions must end with `Changing this forces a new resource to be created.`"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-WORD-002",
+      "title": "Enum wording",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "da046b926d1975280fdbcc7fd24b617cdb9f4dce24e3e0fb692645efd07d760d",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-documentation-standards.md` under `Arguments` -> `Descriptions`",
+        "That guidance defines the canonical wording for enums, single-value constraints, and numeric ranges"
+      ],
+      "sourceIds": [
+        "reference-documentation-standards"
+      ]
+    },
+    {
+      "id": "DOCS-WORD-005",
+      "title": "Oxford comma for lists",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e11040760026687c7f12e4c8ec76529fb42e20eab4b460ff6a29eebe7edc0c1d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-WORD-006",
+      "title": "Use the canonical resource name in section prose",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a4a3ebb59da6fbd404efc16a382babd71c5c422d0163cfb8e504afbc1480541a",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to prevent generic service-object wording drift in `Attributes Reference`, `Timeouts`, and `Import`",
+        "Enforced through this repository's docs contract rather than a clearly codified upstream wording rule"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-WORD-007",
+      "title": "Use Azure proper-name capitalization in field prose",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2b115fe87a9bb113a1c51747b0fa9cec984decb9a9daf9d8ae25ec1c7531ac49",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Reviewer suggestion in hashicorp/terraform-provider-azurerm PR `#31957`, discussion `r3116933429`",
+        "Existing companion guidance examples in `.github/instructions/documentation-guidelines.instructions.md`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-TIMEOUT-001",
+      "title": "Duration readability",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c631027a2473797076d9f46ebedb3c3210c0fd0432be404825a120c7e182316e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-TIMEOUT-002",
+      "title": "Timeouts link format",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "34eb3f7a29dbf0fd938e1e4ed0924e8fe704b29b2497d4577a6fe73567a56d41",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-TIMEOUT-003",
+      "title": "New vs existing timeouts link enforcement",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9516cb01ca1478c0f1e7681ba57a3b7de79f5aa03dee7163c5e6c50376367caf",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-LANG-001",
+      "title": "Fix obvious typos and grammar",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "587bad1fe7e5e6c89f392ba46fa705fe6c5b6542701bac5b48c0ba410c71c56c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-LINK-001",
+      "title": "Locale-neutral Microsoft Learn links",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e361da613c9f84a756a8f7e5f0c197924919e6e5497b98e501bdaac29ca5c0e9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-DEPR-001",
+      "title": "Next-major deprecations",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e6111213296f57816d3bf9fbc149a159f0cc04c871656c621757655bdc702d73",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "DOCS-DEPR-002",
+      "title": "Legacy (non-vNext) fields must not be documented",
+      "contractPath": ".github/instructions/docs-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f253a370740bd51cef6661245b719711741b3080f5aa278fe77bc43c4ecd0d84",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-EVID-001",
+      "title": "Do not guess API model structure",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b5de2f877fd8180d18564a929a15fb7178cbf0b2829d8f66056eb0c511c69a81",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-EVID-002",
+      "title": "Use nearby implementations before inventing new patterns",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "17a0cf4e75124a13fcef8964706edb3368f47840de06c9c7334ab2f01f93e4bb",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-WF-001",
+      "title": "Prefer typed implementations for new work",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "42c93ab849d5a7da9ea5d8f8721c56c826663cfa2d947c0e180ec4a5d1ba992e",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`",
+        "Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations"
+      ],
+      "sourceIds": [
+        "best-practices"
+      ]
+    },
+    {
+      "id": "IMPL-WF-001A",
+      "title": "Identify the implementation model before suggesting code",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e8316bd49a2b740a937d5aeef600e160a5e51a39d7fc4ef1ba0933229e25305d",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resources use the framework list-resource pattern rather than the ordinary managed resource pattern",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says `pluginsdk.StateChangeConf` has been deprecated in favor of custom pollers for the relevant LRO scenarios"
+      ],
+      "sourceIds": [
+        "best-practices",
+        "guide-list-resource",
+        "guide-new-resource"
+      ]
+    },
+    {
+      "id": "IMPL-WF-002",
+      "title": "New resources must include resource identity and list-resource planning",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2400248bdecc8b7d1fce8961ac4b69b73958aad6cc3e8294f965ca8f99194c03",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 5 and Step 6 says Resource Identity and List Resource implementations are mandatory for all new resources",
+        "Upstream contributor guidance there says pull requests adding new resources without these will not pass CI checks unless a maintainer applies the `allow-without-list` or `list-not-supported` label",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resource implementations are mandatory for all new resources and are verified by the `enforce-list-resources` CI check"
+      ],
+      "sourceIds": [
+        "guide-list-resource",
+        "guide-new-resource"
+      ]
+    },
+    {
+      "id": "IMPL-WF-002A",
+      "title": "Existing resources retrofitting list support should add the full companion set together",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e02cb77d72dc1945fd987ee1834077c31b005ec90bcf8b5be983e902dcb834be",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` describes the full list-resource workflow: identity prerequisite, implementation, tests, and docs",
+        "Upstream provider PR `hashicorp/terraform-provider-azurerm#32192` (`List and identity implementation - azurerm_web_pubsub_custom_certificate`) is a concrete example of retrofitting an existing resource with Resource Identity, list implementation, list tests, and list-resource docs together"
+      ],
+      "sourceIds": [
+        "guide-list-resource"
+      ]
+    },
+    {
+      "id": "IMPL-WF-002B",
+      "title": "Create-time import checks must honor the overwrite feature gate",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "200b3e817c09e56d334988b25e6963d6c225a90001b5f9f0008c49ea5bd376fe",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` under the Create example says the existing-resource import check should only run unless the user has opted into `skip_import_check_on_create_and_allow_overwriting_existing_resources`.",
+        "That same upstream example shows the exact guard `if !metadata.Client.Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources { ... return metadata.ResourceRequiresImport(r.ResourceType(), id) }`, which is the typed-resource equivalent of this rule."
+      ],
+      "sourceIds": [
+        "guide-new-resource"
+      ]
+    },
+    {
+      "id": "IMPL-WF-002C",
+      "title": "Callback-based create flows must set identity when Resource Identity is supported",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2adc9fab3d1314e50d0520faa1e46a936bb4cd76e6f45a63cf5dac37a27bf9e5",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-identity.md` says Resource Identity data must be set right after the `id` attribute during create to prevent `Missing Resource Identity After Create` errors.",
+        "That same upstream guide explicitly says that when a resource uses a `CallbackThenPoll` method, the callback should be updated to `SetIDAndIdentityCallBack`, and the untyped example shows `sdk.SetIDAndIdentityCallback(meta, &id, d)`."
+      ],
+      "sourceIds": [
+        "guide-resource-identity"
+      ]
+    },
+    {
+      "id": "IMPL-WF-003",
+      "title": "New resources must include the required documentation companions",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ec43e451b581b790f60c8aacb7e63ab5a46e160ece28cca4a3c34645ba156ee1",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 10 says new resources must add documentation for the resource",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` Step 7 says list resources require manual documentation under `website/docs/list-resources/`",
+        "The same upstream workflow now makes list resources mandatory for all new resources unless a maintainer applies the documented exception path"
+      ],
+      "sourceIds": [
+        "guide-list-resource",
+        "guide-new-resource"
+      ]
+    },
+    {
+      "id": "IMPL-WF-004",
+      "title": "Ephemeral resources must follow the framework ephemeral pattern",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d9fd3cf2c682bf4d20f4c29a350b7ce3dbb64698739ddcfdbe5961d01bffe737",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/sdk/ephemeral_resource.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/registration.go`",
+        "Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-WF-005",
+      "title": "Provider-defined functions must follow the internal provider-function pattern",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "073375ee858365e7ac72f7da275dfa2cbd0d29ab95dbe8b4ef0f494b85764df1",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`",
+        "Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`",
+        "Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-SCHEMA-001",
+      "title": "Schema requirements must match real behavior",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "38bc9c6278ab3493b5986413e9513d7fca2c1f963bd8149fac80aa5881cd735c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-SCHEMA-002",
+      "title": "Common field ordering should follow provider conventions",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4620a3c15066f8e6e8837e9f30988034f9ee070fd173b4f9ff4bfcce086a5c11",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says schema fields should place ID fields first, then `location`, with `tags` last",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-data-source.md` applies the same ordering pattern to typed data sources"
+      ],
+      "sourceIds": [
+        "guide-new-data-source",
+        "guide-new-resource"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-003",
+      "title": "Generic fallback validators are last-resort, not the target state",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "af17a2c6b77413ff568412bd66b213c13affb219c50a7ede35eda069b6eb1132",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says string arguments must be validated, `StringNotEmpty` is only a minimum, and validation should ideally be more strict",
+        "Upstream contributor guidance there also says numeric arguments should specify a valid range",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says `validation.StringIsNotEmpty` is the minimum only when a stronger validation pattern cannot be determined"
+      ],
+      "sourceIds": [
+        "guide-new-fields-to-resource",
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-004",
+      "title": "Prefer SDK PossibleValues helpers for enum validation unless the real accepted subset is narrower",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "86994815108d8eb2b91090c6fe3629fddc74bc6cf4bbead850008bbbc53cacdb",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined"
+      ],
+      "sourceIds": [
+        "guide-new-fields-to-resource",
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-005",
+      "title": "Prefer inline composition; extract only genuinely complex bespoke validation",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "204d6766639ecee28f5988d8ea8a138572d7016dd60ec3af9b470af63c3102a8",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Accepted maintainer review precedent in `https://github.com/hashicorp/terraform-provider-azurerm/pull/33023#discussion_r3779746650` requested replacing a custom validator and its unit test with inline `validation.All(...)` and `validation.Any(...)` composition",
+        "Merged upstream implementation in `https://github.com/hashicorp/terraform-provider-azurerm/commit/e4dbe7e66af3ea58f7919b77c3d13b9da924ea97` applies that inline composition after maintainer approval",
+        "Current workspace regression fixtures retain service-local validator files with matching unit tests for genuinely complex bespoke logic while protecting readable inline helper composition"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-SCHEMA-006",
+      "title": "Normalize resource IDs before setting them into state",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c76def85e5fee149acc406fa5a82a0f846bb0373c2bc9ff3f85e2ef20f640390",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-ids.md` says Azure APIs can return resource IDs with inconsistent casing on static segments and that IDs should be parsed through their typed parser before setting into state to prevent phantom diffs",
+        "The same upstream guidance explicitly calls out both scoped resource IDs and IDs returned as properties in API responses as in-scope for this normalization rule"
+      ],
+      "sourceIds": [
+        "guide-resource-ids"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-007",
+      "title": "Preview fields should not be surfaced until they are GA",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c50c257dd0e8eb9653d8dd7fe627f52a736c953c68b2ca8c7d9558112ec7fbd3",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Preview Fields`",
+        "That guidance says preview fields should not be supported until they reach GA status"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-008",
+      "title": "Represent Azure `None`-style defaults as omission/null in schema design",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8b7e314edc5e749133fecd5ba370ba7794bbaed1433c5d55259fa87260918ce0",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`",
+        "That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-009",
+      "title": "Array schema should use `MinItems` and `MaxItems` when API constraints are known",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "79c991ca499caefbeb30eabc46f3ed909b465fdb14d41678f252986a034ab43e",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Array fields with MinItems and MaxItems`",
+        "That guidance says array fields should use `MinItems` and `MaxItems` to provide clear validation feedback"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-010",
+      "title": "Optional `TypeList` blocks with no required nested fields need explicit non-empty validation",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cfe8a10848619991b78631152a925d36ce11616cb47f8feef8f11b7dfc6f55ee",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation for TypeList fields with no Required fields`",
+        "That guidance shows `AtLeastOneOf`-style validation as the pattern for optional list blocks that would otherwise accept empty configuration"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-011",
+      "title": "Flatten single-property `MaxItems: 1` blocks unless there is evidence to keep the wrapper",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0c1d0b17a71fda9a06f0dae7e88106286631ae1962205bf5d093e8422e117fb6",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Flattening nested properties`",
+        "That guidance says single-property `MaxItems: 1` wrappers should usually be flattened unless the service team has confirmed more nested properties are imminent"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-012",
+      "title": "Portal-required fields should normally be `Required` unless API evidence says otherwise",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c79ce644563d1d25970baebef4ee2e15a233850de355f29c22046a581db7dc2e",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Required fields in Azure Portal vs API documentation`",
+        "That guidance says fields marked as required in the Azure Portal should be `Required` in Terraform unless the API accepts omission and still functions"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-013",
+      "title": "Use `GetRawConfig()` in `CustomizeDiff` when validation must distinguish configured values from unknown or zero values",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "651b8fd6209615f71681f484ef53c0ea1da0fa6296f2ce841a9461e6cccec075",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values` establishes `GetRawConfig()` as the baseline pattern when `d.Get()` or decoded values would make unknowns look unset",
+        "Terraform unknown values are common during planning, especially in `GetRawConfig()`-based `CustomizeDiff` validation",
+        "Raw `cty.Value` traversal without `IsKnown()` can panic when `LengthInt()`, `AsValueSlice()`, or similar shape-inspection methods are called on unknown values"
+      ],
+      "sourceIds": [
+        "best-practices"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-014",
+      "title": "Prefer marketed or portal terminology over raw API names when that improves the Terraform UX",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "02f5f102090b2e461ed98285a53abe9560abef904a52d4064b4f2b3e1c81a4c5",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Prefer Azure Portal terminology when it differs significantly from the REST API`",
+        "That guidance says users should be able to correlate Terraform configuration with the portal experience and should align with Azure CLI instead when the portal is not the primary experience"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-015",
+      "title": "Group semantically related arguments when a flat schema would scatter one conceptual setting family",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "96b9431352bcd4015b8327cfc3f305dfe6b60d42fd88ad27c3840e13dbed249c",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Group semantically related arguments`",
+        "That guidance says portal or CLI sectioning can justify grouping related Terraform settings to reduce cognitive load even though arguments are otherwise commonly ordered alphabetically"
+      ],
+      "sourceIds": [
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-016",
+      "title": "Avoid ambiguous collection-shaped schemas and name configured blocks by their real cardinality",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "03f1f4d86ac62cd73bb413bda6174f50166a8b01cb9fac83ef7e66e013b8b331",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Eliminate ambiguity in collection-typed arguments`",
+        "That guidance says ambiguous collection-based shapes should be redesigned so the Terraform schema does not permit multiple conflicting values for the same conceptual slot",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-naming.md` under `Singular and Plural Block Property Naming Conventions`",
+        "That guidance says configured blocks should generally use singular names, while primitive lists and computed multi-value collections should generally use plural names"
+      ],
+      "sourceIds": [
+        "reference-naming",
+        "schema-design-considerations"
+      ]
+    },
+    {
+      "id": "IMPL-SCHEMA-017",
+      "title": "Write-only attributes must use symmetric schema relationships and a positive version trigger",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8ba2db45ee4b19d0f4c33ef7b865de5b01a5b6f2dda8776f0f9a08517ec0fedb",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-write-only-attribute.md` under `Updating the Resource Schema`",
+        "That guidance uses symmetric `ConflictsWith` relationships between the original sensitive field and its write-only counterpart, symmetric `RequiredWith` relationships between the write-only field and its version trigger, and `validation.IntAtLeast(1)` on the version trigger",
+        "The same guide uses `pluginsdk.GetWriteOnly(...)` in create and trigger-gated update paths and persists the version trigger during read"
+      ],
+      "sourceIds": [
+        "guide-new-write-only-attribute"
+      ]
+    },
+    {
+      "id": "IMPL-PATCH-001",
+      "title": "Explicitly disable features in PATCH flows",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a8b0ea6df52d09fe76a2a7ef11183f2ff1c2f493b01a43838add91673ef5e01e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-ERR-001",
+      "title": "Use provider-standard error wording",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "72660b1752e97310a0c12bc46f31f7410d97adc466409f65b7c74ad73c2465ec",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-errors.md` for lowercase wrapped errors, `%+v`, and `errors.New(...)`",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` requiring argument names in error messages to be wrapped in backticks"
+      ],
+      "sourceIds": [
+        "guide-new-resource",
+        "reference-errors"
+      ]
+    },
+    {
+      "id": "IMPL-ERR-002",
+      "title": "Do not wrap comprehensive ID parser errors with redundant context",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "815d9ee489360c63299c6cc772f0371c30b0a4a54e7bf03b4e7fb0d8b923be22",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3137015087`: `since the id parser gives us a comprehensive error message, we don't need any other message with this`",
+        "The suggested maintainer change there replaces a redundant wrapped parser error with `return results, err`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-TEST-001",
+      "title": "Update tests when implementation behavior changes",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f20f1ce40562f175cc8329196ca015d87b0d42af8675ec85f2c365c4caa87082",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-TEST-002",
+      "title": "Prefer ImportStep plus existence checks when appropriate",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "031b6636ca8c55dfa1f974c2f37f612a271ad46a52d52e27e8397ff7193d6145",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-TEST-003",
+      "title": "Provider feature-flagged CRUD branch coverage",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5b824be4b15ac9442567a7f2ecd9d0e135ef3829f16ba5d1fcb83d92a1a751b6",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Feature-gated CRUD branches can leave default-path acceptance tests green while the non-default behavior remains unproven.",
+        "The provider acceptance harness already includes client callback patterns suitable for preparing pre-existing remote state when needed."
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-CODE-001",
+      "title": "Avoid unnecessary comments",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6dc6d7927c99eb04a4eb94e0bdb889810eea8e320b6277bad2659bb15b0ec51a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "IMPL-CODE-002",
+      "title": "Avoid redundant lifecycle/provider logging by default",
+      "contractPath": ".github/instructions/implementation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "169545f07d1700a9f20ae325811fa90ebe3841e8219b462af4b9200eb62de48c",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Maintainer review feedback in `hashicorp/terraform-provider-azurerm` PR `#32194` comment `discussion_r3256881651` says generic lifecycle logging is redundant with Terraform core native logging and should be removed",
+        "Maintainer PR `hashicorp/terraform-provider-azurerm#32423` (`provider: remove antiquated lifecycle logging patterns`) states lifecycle logging was inconsistent, implemented only by a minority of resources, and should likely live in the SDK if desired consistently",
+        "Maintainer follow-up discussion in PR `#32423` keeps the standardized not-found/removing-from-state diagnostic as the narrow acceptable exception"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-PRE-001",
+      "title": "Start from current evidence",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "053e4f257bc4d8df89ad0e7afc539538c656c4a67b61aaedcd3230d95cca2dd8",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "A fresh local snapshot avoids stale drafts without requiring a repository audit"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-PRE-002",
+      "title": "Restrict drafting to AzureRM",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "304988c1676ad7163290b419aa92dba7e234af407664f8981e13c0aac022bd53",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The title, template, checklist, and changelog rules are AzureRM-specific"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-PRE-003",
+      "title": "Trust direct Git branch evidence",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "daf884bcc22c662b2e218d2486c862568ab78d16e3580266eefbac3c7998105e",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Editor metadata can lag behind an actual branch switch"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-PRE-004",
+      "title": "Preserve repository state and minimize rounds",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ba44b1bd4915de8a02088e67e0edbdf949e59d6c61216e2030f8c4fae9629192",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Drafting is a developer shortcut and should not reproduce maintainer audit work"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-PRE-005",
+      "title": "Use a cheap stability guard",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fe87f73f7005ce124b6b68099f9cdb75947899913034a216bcd56e3bd3059818",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "A branch and status guard catches common concurrent changes without two expensive full-content fingerprints"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-BASE-001",
+      "title": "Use an existing local base",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "92f448530c01ecce1ed28fa8c9564fdec827574da2ecfaa333391bb3c76c6bfd",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "A local base is sufficient for a useful draft and avoids network latency or repository metadata changes"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-BASE-002",
+      "title": "Diff from the merge base",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d3ca991aa4cee70761fb5ea726c39f3fb3a2b45357c1f6cf5a145475148342d1",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Merge-base scope isolates the current branch change-set"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-BASE-003",
+      "title": "Recover a stale named base from local branch history",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f0142a2d300d488f91df3050ec34eeec376f646719c821ede9b3fe2d40eec606",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Fork main refs can lag behind upstream commits already incorporated below a coherent contributor stack",
+        "A feature branch can merge a newer mainline snapshot after contributor work has started; the integration merge's second parent represents that incorporated mainline without discarding pre-merge contributor commits",
+        "One local candidate plus a strict net-scope check avoids treating incorporated upstream history as pull request content without weakening mixed-branch protection"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-SCOPE-001",
+      "title": "Collect the complete local change-set once",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f0b41845989ee1ee593fd367a4461d4544ac3bcb6c0ce67c34edb9e3ccce01e8",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The draft must include committed and local in-progress changes"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-SCOPE-002",
+      "title": "Read only material evidence",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8660fdf2c54361114e68b272d5b6d6303870e31d8c830f32e2cdb9aea3352068",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Targeted reads preserve drafting quality without turning the run into code review"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-SCOPE-003",
+      "title": "Keep companions subordinate",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fd444add6c1e7710fc3645d31742b77f8dcd6f926e0e2be18ab7f89a41422b21",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-new-resource.md`",
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-resource-identity.md`",
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-list-resource.md`"
+      ],
+      "sourceIds": [
+        "guide-list-resource",
+        "guide-new-resource",
+        "guide-resource-identity"
+      ]
+    },
+    {
+      "id": "PRDESC-SCOPE-004",
+      "title": "Stop on unrelated primary changes",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e3fa46b074dc8caddca30b768c44eca994bea3a5fce1af86f98d23ea9bbc6f2e",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "One deterministic title cannot accurately represent unrelated primary changes",
+        "AzureRM resources can share provider helpers and cross-service dependencies, so package boundaries do not define pull request intent"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-EVID-001",
+      "title": "Make only supported claims",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a142db9ac31925102fd969d6d0ce3e50c7f67650129f55a29a93723e12b1b14b",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Conservative drafting prevents unsupported contributor claims"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-EVID-002",
+      "title": "Separate test existence from execution",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d24e1b1a2182b5a17f47f49140b205e486ffe315cd247f3e6c35f06b9f846e26",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-EVID-003",
+      "title": "Keep absent validation visible but non-blocking",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "59a385e2f6504e9aa099858018e5de9d6e958d2eb952f1566c1c01f26354aceb",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Draft generation must remain useful without automatically running acceptance tests"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-TITLE-001",
+      "title": "Select one title by fixed precedence",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "840a17133926ae65078cfe549c7895048a4513a4ca070d7b4b407ef256b0d765",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Stable precedence makes the title repeatable"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-TITLE-002",
+      "title": "Use exact new-surface shapes",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5a2989ee1edd3e64ca8c2347e0ace419a2e82a62644851d4aea134bac793d26d",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-TITLE-003",
+      "title": "Make existing-surface titles concrete",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "24072437b5cf7da485cc6b3fff9fdb310f9a97bf9b648219a05ed63c8ff2cbe2",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-TITLE-004",
+      "title": "Reject vague titles",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cabfd2fd8640e7355b2003175cde5f580478978f8d10de9936ac3a28d1da8167",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-BODY-001",
+      "title": "Preserve the current template",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1bb941262565675974dadb67c31d9bc7d6aa4053653592f481b5e7a27330410c",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The checked-out template is the body the developer will submit against",
+        "`https://github.com/hashicorp/terraform-provider-azurerm/blob/main/.github/pull_request_template.md`"
+      ],
+      "sourceIds": [
+        "pull-request-template"
+      ]
+    },
+    {
+      "id": "PRDESC-BODY-002",
+      "title": "Explain what and why",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7b5edc2ba1c9003a252a14114b5ae9b67580376fc27bddd6032c5364d954529f",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-BODY-003",
+      "title": "Fill standard sections conservatively",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "27ee1c9f3498e493418e2dd266d21c4002252658d6ea4b0cab92f651c6159c51",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Standard fallbacks keep the copy-ready body complete without invented claims"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-BODY-004",
+      "title": "Include minimal AI disclosure",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "84b3ba93de7ea3a20a707b39a2567e439a98578fe7dc60ec36b2a6560bd1a12f",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Invoking this workflow is direct AI assistance"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-CHECK-001",
+      "title": "Leave developer acknowledgements unchecked",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1e72f43f9bc9e95bc159b406ace0ed27976dbf820325992e2636899214247449",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Repository evidence cannot prove personal review or acknowledgement"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-CHECK-002",
+      "title": "Check description and documentation from content",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a598883c8ab89fcb5b2ff45c3783385bf8a444d6aae9ce70f0b93d3daeb54300",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-CHECK-003",
+      "title": "Check authored tests separately from passing tests",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f004f31a4794fac5dbcd3fa5349f6fe8d3493fe670203d3895fbf74865fb8e61",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/guide-opening-a-pr.md`"
+      ],
+      "sourceIds": [
+        "guide-opening-a-pr"
+      ]
+    },
+    {
+      "id": "PRDESC-CHECK-004",
+      "title": "Set pull request type from classified behavior",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d1f2fffb3be566dd28971486b3706a2b2e4dde22e3cf749f2e41ccf04dde7566",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Type follows classified behavior while breaking impact requires explicit evidence"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-CHANGELOG-001",
+      "title": "Recommend body content, not a repository edit",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3afa32f3cc1599b4e68b68469d9fa5f420f776cb2e3af696dec31dced3e0f255",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`"
+      ],
+      "sourceIds": [
+        "maintainer-merging"
+      ]
+    },
+    {
+      "id": "PRDESC-CHANGELOG-002",
+      "title": "Apply user-facing categories",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cdb8080fceee892a3097545c19e63a41a9d926159b6da1ba68b7c65715fd108d",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`"
+      ],
+      "sourceIds": [
+        "maintainer-merging"
+      ]
+    },
+    {
+      "id": "PRDESC-CHANGELOG-003",
+      "title": "Render automation-ready entries",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9c5ff8466cb303d9002e19189f5d2c06f44d8a31eeff1d634c6c2c5ff245e988",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`"
+      ],
+      "sourceIds": [
+        "maintainer-merging"
+      ]
+    },
+    {
+      "id": "PRDESC-CHANGELOG-004",
+      "title": "Do not invent breaking automation",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7636a1ca412a59e0eea1ee0a6dcfe75142839b050958ef5655ccfb4684728330",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "`https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/maintainer-merging.md`"
+      ],
+      "sourceIds": [
+        "maintainer-merging"
+      ]
+    },
+    {
+      "id": "PRDESC-CHANGELOG-005",
+      "title": "Keep companion implementation subordinate",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5dd0da318ea50a4afa5ebce9790ea0f604c731549ee7692000e825a5932d79b8",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Changelog recommendations should describe independently visible user behavior rather than implementation mechanics"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-ISSUE-001",
+      "title": "Include only confirmed references",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "42b5de203697291b9dd0d322b35b516184ea1816110be7f4ca76d57dd47a723b",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Search similarity does not prove issue resolution and is unnecessary for a drafting shortcut"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-OUT-001",
+      "title": "Emit one lean payload",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c0c6157a5610edc7d390d91f94fff22c53ec8a5d2e811a50e427fa6ddcff8b75",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "A small payload preserves deterministic presentation without carrying audit-only state"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-OUT-002",
+      "title": "Render four sections",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f42485936886d63f471ff606192197e6e6390c8bd66d752661305e72086f5263",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The output stays focused on content the developer can use"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-OUT-003",
+      "title": "End with the verification footer",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "55bafb94cee10383c9fd125099079a8593ef64e12d70d1cd65a1a6fc8424d0ba",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The footer proves the routed workflow completed"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-FAIL-001",
+      "title": "Stop on ineligible repository state",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2a08751fe830148d2c35ee3d33c5b428d2bfdaf2719d16fa3dd4135fcfff0946",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "These states cannot produce an eligible branch draft"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-FAIL-002",
+      "title": "Stop when no local comparison base exists",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fef7d251b9b11da1ecfa679dd28a743c1436ed43d909022718a06ab1f958c40a",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Scope cannot be classified without a local comparison origin"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-FAIL-003",
+      "title": "Stop on unrelated primary changes",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f3ecb4c8d5623e180427d532c8578f3b2192e4aa3cd4979c48e829a6cc39418c",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "The workflow must not hide branch-splitting ambiguity"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-FAIL-004",
+      "title": "Stop on repository changes during drafting",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "16af884d6fa154d9e177da27928569800725bba1bcb7dac559b3919b3cf5d6b3",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "A changed local snapshot should be retried by the developer rather than doubling workflow time"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "PRDESC-FAIL-005",
+      "title": "Stop on invalid handoff",
+      "contractPath": ".github/instructions/pr-description-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e7f00d23068236b49227bbef9572097317cfe9279231ffb27a8ba50f1aaa10b4",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Validation prevents malformed copy-ready output"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-001",
+      "title": "Advocate pass runs only after workflow findings exist",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "206316062c426352e33a8e3febef8bc3ba70d339292b0007e7d7ea5dd1fc7ac9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-002",
+      "title": "Advocate evaluates findings, not strengths",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8fbd618e7a14f6f30aae47d617a76dc38041d2e6cf92e194bf0b4aa99aef362f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-003",
+      "title": "Defenses require evidence, not speculation",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a351fd3d96940ddf03188790f59358cf66e4e0f57fd23a5d2d2ddd4c3a0bdcd6",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-004",
+      "title": "Trust-boundary defenses must identify existing guarantees",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8d9a789ed22547911d4d9ab805c56df7ed93032cf301636bc895ac65c074bf59",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-005",
+      "title": "Advocate records commentary, not outcomes",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "36e8274101042588fd6711f35245817be5fd0d1fa41b08924fc1c1120157d22a",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-006",
+      "title": "No finding may be silently dropped by the advocate pass",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e95352dd24798ed89a212a3aabc213003026fb78baac0f9ba97458e2f8e772bd",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-007",
+      "title": "Advocate defenses stay attached to the challenged finding",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2d914c0df7234e953c5ad4ec3362ccf08f949922e6fc1b3880f1f9fe3feefe82",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-008",
+      "title": "Inconclusive evidence favors narrower commentary",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "baae5f95c220afcedc16c1a1aa19b001177a6204a78cf9278aef41258d1fdc15",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ADV-009",
+      "title": "The advocate pass produces no separate output section",
+      "contractPath": ".github/instructions/review-advocate-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5a70f729ce4cdeecc87f7e2ed33f8af6928c8575062477562f23494d52ea608b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-001",
+      "title": "Architect evaluates direction, not line-level defects",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0bbfd7c4538006aed5220f1d7782296dc48a288e246338b2d1dcab80f8e6bb2b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-002",
+      "title": "Observation is the default classification",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "39f8ce1db5c4e48662411c52bb5cb98aa3b8810892bd6c3df5b3456896b733a0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-003",
+      "title": "Direction coverage is explicit",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9a9b76331647cbb315b5ec9103aa43734901fa048ae719d73ffdec64813aae3f",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-004",
+      "title": "Mandatory-source requirement for architectural Issues",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "8073042577a142129aa025eb81373571a7b4a03a6f8fcff99a9a414e49104d5c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-005",
+      "title": "Respect change-set scope boundaries",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "96e8421063e62fefacdf085e9cb6fb2e02af2bfb293db9dc5e981865dc1a07d2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-006",
+      "title": "Architect does not finalize outcomes",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "55db8c0543c245569a61dadd82aaf53a71b352eeb3ff223b4c3bcc94ac135c7d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-ARCH-007",
+      "title": "The architect pass produces no separate output section",
+      "contractPath": ".github/instructions/review-architect-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3a82e2b01d797738aa041eecb84cb405084692d83c438169bee9d5020f8f7d0d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-001",
+      "title": "Include linter execution data in every review payload",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "83262aaf00d0d7d2031d7b139d9af4b7e98a7b0825c0d11c18f6faf5fecbaf15",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-002",
+      "title": "Run azurerm-linter when the scoped changes include provider Go files",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6e6d459627af43564cd7fdc2c4808cf0ae125fa2b46a2c0928e3cc8116057f50",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-002A",
+      "title": "Local installation is required for linter execution",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "bdffc9b02dd38c156a5204145a64ad1eb5b437e095355c87e02c421b2154ef24",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-002B",
+      "title": "Execute azurerm-linter from the git repo root",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1c6c29f97f4e8fe639477559f6b482528105c0820eaec4933e0cfbc2c15caf63",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-002C",
+      "title": "Default to filtered mode first",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "12520477a5040db0f19514f42547abb7f0ec5e6d0c1a58ac1b513e1383ea3c99",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-002E",
+      "title": "Match linter invocation to the review type deterministically",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6484d84b27b7605ebd3c3265bb578b7d1c9a05e84b02ff85ff45857e88195de7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003",
+      "title": "Allowed azurerm-linter payload statuses",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "567b312bc6e43ab27bfee724d08891b61ae7aba3fdf585610209d95f1a3ac135",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003A",
+      "title": "Treat \"no packages to analyze\" as Not applicable when caused by zero changed files",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4afbb6290a9f7c7a4445570d267bfd21e0eccefb0d3528c783665208c7033a8c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003B",
+      "title": "Treat flag and usage parse errors as Not run due to invocation error",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2bd167a68a3794433e5bb8a26e709eb87177040121483baf3e9e9cf7a6fe61f0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003C",
+      "title": "Prefer JSON payloads when available",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0fb3606f3f1a567341cebb23986b315000ac3a3cc5fb9b7b307fe0699def94d3",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003D",
+      "title": "Only truly unclassifiable linter completion fails closed",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5399b690b27dcef98a0cdca8d354713fa1b8034b4fd8fcee1dbb6c4aa37138ab",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-003E",
+      "title": "Completed zero-issue runs are valid classifications",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "039a6ee0d2f08f916b409b38ae89be730d29e49f2acd606f9b3b311876ea93cd",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-004",
+      "title": "azurerm-linter findings are reported as issues",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "fb702f9dfd530b0af77522e6193069dca996244abe406dd0bc95e69cde90dece",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-005",
+      "title": "Populate scope and failure reasons explicitly",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "90f77902762b325d7bb2dba8170106113990ced1ac5327c8779ee341d9b40e2b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-005A",
+      "title": "Populate the linter payload from actual tool output",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "61ead6539b9fef7861a55d34c97f38c4d07adde454add38596b6ca5a45f96b34",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-005B",
+      "title": "Normalize finding lines when possible",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9363cc282e23d745c8b644be40c9f50d20fb9f90c227d8abfb9ab45a81d6a430",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-005C",
+      "title": "Persist and inspect full linter output deterministically",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ce217047a121e3ed9623be4fafee9a4e059b511e142350db80506523e538809d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-005D",
+      "title": "Do not claim absence without searching the full saved output",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "67b3a23cc961a16b7734a62ae878d0f17f0f29b806f2ea1a82a973ec5d919b6e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-LINT-006",
+      "title": "Prefer exact review-scope linting",
+      "contractPath": ".github/instructions/review-linter-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "30cbd6cee95369f530aff48cfbf763c0d6846b4a53d426a179ec59bba0f3c1f8",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-001",
+      "title": "Moderator synthesizes existing workflow findings, not a new independent review",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d3eeafc6c21cc57dfcef620cc515cdfe02b3d8a376b497d44540a241c4d7cfca",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-002",
+      "title": "Moderator consumes the shared handoff schema",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ce1376ee2458664211fa2f392b2ccf41a3a4c895118ee8187e39cde7b803ab60",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-002A",
+      "title": "Moderator owns deterministic presentation hints for surviving findings",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "246f8d904dcffd4a44b8c36842f90b2e8cf190542a6612121dbec84531ab1d06",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-002B",
+      "title": "Moderator owns final visibility",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3842ace8b6b9db275966453816ba0355b49f14b6896f42df54dda542f0d6444e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-002C",
+      "title": "Moderator owns visible issue and observation semantics",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "502eb259e7e62eb0eb93fcdc76f9b93dc25b3eb32d19ddbe580602de5e1c37e7",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-003",
+      "title": "Duplicate concerns merge into one strongest record",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e2b5848f992ec04f6d7a24ad35039dccdfcfe8c66beb4754c218639e1fb3dbd1",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-004",
+      "title": "Severity and wording normalization are evidence-bound",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "70c64ffee968a2b63ec65820ce3b03ed784fc92474193a0f63fdff9456f64249",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-004A",
+      "title": "Critical versus high severity is determined by present destructive or catastrophic harm",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b4e8df0eee8233fd9ceeccaf9dd2811bedad9e201897d23dd6226babf904ad72",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-004B",
+      "title": "Moderator consumes advocate commentary without inventing a second advocate pass",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e6f51cc708b41fc92d39dfb59ad8de50f05455f7cc466d456642a2a40e7a66d8",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-004C",
+      "title": "Presentation hints are evidence-bound",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "980c9847313e17fc712a8acb53c459232911b9ea716cbd1016014e080740fe55",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-005",
+      "title": "Final synthesis stays inside the downstream output contract",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d09d49f77b8fd71d2379d994ba440b58b99583d04e55324d708b476b47716b6e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-006",
+      "title": "Moderator routing must stay explicit",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f931a0f934ffa396eeeda6048b98c33dfdca1c0dbeebc33e231262f209533a23",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-007",
+      "title": "Moderator output is final synthesis, not role narration",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4a412ca9e3fadee3f0645a3cead5c774aa213a5acd20df4dbc0ecce8ea378a8d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-MOD-008",
+      "title": "Moderator output may prepare the render-only presentation layer",
+      "contractPath": ".github/instructions/review-moderator-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2e8d503424b664ff43f07a2efffedb1b4b6919d4d788c8d3861985448ac2108b",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-001",
+      "title": "Presentation is render-only",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0850fe059f797b5d0a1740ba70ee0edf61302c97d0607f2a4f2bd7c6782e93cf",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-002",
+      "title": "Presentation consumes the schema payload exactly",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0626e0906543c4f1c8a986579af945b0f03cfa05890598439d1ee985d2455507",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-002A",
+      "title": "`changeDescription` must be a change-focused review title",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1748309894440409c469dac0c5c209855470b9f9433071491705310ca5beef7e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-003",
+      "title": "Section order and headings are fixed",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ebe6fcb7060b3a658794eadbecfe30918bff9692a217cde26827c7aad64be69c",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-003A",
+      "title": "Canonical sample output block is the visual audit reference",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "433f07dadbd6c6e415f1a8a862103a7ffb062fbf22e33a86b14926384f5ec1a2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004",
+      "title": "Section bodies render from payload data only",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0e97712a94f4b57b0e3d92954035dfcef2c41d6483fd7089ade7914a505fdb15",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004A",
+      "title": "`MUST FIX` is the linter-action section",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "57df4064e9499727d31cf03cf593b4208b99430cceddcfde8091f3506daa7266",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004B",
+      "title": "Structured findings in issues and observations render as heading-based finding blocks",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "ff1eaf882944dc265f71fa36f91891bdfc1a1b3c285690e7644b49050baf75f5",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004C",
+      "title": "Presentation priority and review-type mappings remain active",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a051ac64f3a49c90fd03c064b477846bfb099453a43c850f04ac5352a171a709",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004D",
+      "title": "Shared output keeps the legacy explanatory sections",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "25b43d261ea83d9b4a09fd8541d46f7c6c8c9c89d80e4622b5d131c766e4966e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004E",
+      "title": "File references must stay stable and non-local",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "68ae6c138a6b6ff6e1c15dd92e5c4bb67645801a589af7250247e6c4fcb20b19",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004F",
+      "title": "Presentation is render-only and owns no review business logic",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "63b8ef29147cedcd87121bfc2dd390f7b5ab9344033e8f093c3be3d4030a2e9d",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-004L",
+      "title": "Linter execution report renders from structured payload fields",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7e6767cafac7c91f182f2da699b17daa63afd72e23ff641dc6c64d923bda15e6",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-005",
+      "title": "Footer rendering is deterministic",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "375fcc5a0003c8f6e0e42173194f1efded07a65a653d5b0cb5be5d83c622a226",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-006",
+      "title": "Prompt and renderer authority stay separated",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "713a8679b361923857e98bc5ea70f67c7eeb31ae60b2f76d42bfc0fde8446bc2",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-PRESENT-007",
+      "title": "Overall assessment must preserve frozen verdict semantics",
+      "contractPath": ".github/instructions/review-presentation-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "79d33cdb37018a66e67709fdd2740d286ca20eca88a13518ea973c069e768b88",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-001",
+      "title": "Skeptic pass augments, never replaces, the primary audit",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dde888758288fd47d2602c8d108ae770b4ea03729479c763cd41e205f6b44c9e",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-002",
+      "title": "Skeptic proposes findings only from evidence",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0bdb94314d4d50adcce545c858d762518a330afa1e48dafea296835625cdfc80",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-003",
+      "title": "Adversarial attack surface is explicit",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "224c17847d29f1b7b8195236824d0ddcc6feba044e0634af026ceaecb1a56184",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-004",
+      "title": "Issues must name a concrete failure scenario",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cd74da9e1b366457afdfe3ed7c073e9ac5011deae4f0eedc6e77f51fd17918d0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-005",
+      "title": "Skeptic does not finalize outcomes",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "40dcab7be9b80b927dc0e3429ba557bdb19e7ef9a41e71c92edb17632dc36eec",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-006",
+      "title": "No duplicate or redundant candidates",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "dd0673c5cfed74071b46d4740fa7d8a95028921619eac22db7da52c741f97af0",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-007",
+      "title": "One concern, one classification",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "1ceb0940a7189d38960d739db30ba1be544fe8fb77c27711cc96516b39ed3df3",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "REVIEW-SKEP-008",
+      "title": "The skeptic pass produces no separate output section",
+      "contractPath": ".github/instructions/review-skeptic-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "f7069eca22521c4a979adf4c1caa89066daee1990bc9fbc6e0be3daf2929e822",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-EVID-001",
+      "title": "Do not invent acceptance patterns",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2000725f7a4de1e6fdb0a83abb70496bc25b28417e7c87c3e5fc46113c529a72",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-WF-001",
+      "title": "Prefer narrow, scenario-focused test updates",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "b94f8037c39558f79f9e218fdd07918b46ed7055e2975ffcf3bdc466abf646d5",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-WF-002",
+      "title": "Resource acceptance tests should cover the core lifecycle by default",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "4583711ccfbc4c566a7b94ed2db9aea8112a8fc9e451712f6b6ed6c4c7eb7416",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 8 and Step 9 examples"
+      ],
+      "sourceIds": [
+        "guide-new-resource",
+        "reference-acceptance-testing"
+      ]
+    },
+    {
+      "id": "TEST-WF-002A",
+      "title": "Use resource-specific `preCheck` helpers for optional prerequisites",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "0dc2a61bd2b1e0c9b8d08e09e9c32e124f97774a2b65b363532043e36c81a1dc",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `PreCheck Helpers`",
+        "That guidance recommends receiver-based `preCheck(t *testing.T)` helpers, skipping when optional prerequisites are absent, and keeping the helper close to the tests that call it"
+      ],
+      "sourceIds": [
+        "reference-acceptance-testing"
+      ]
+    },
+    {
+      "id": "TEST-WF-003",
+      "title": "New resources with list resources should include list query coverage",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "374fcf5956045ddf14438354896acaaad181b9a32ca416e849c9ddfca03e33da",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add Acceptance Tests for this List Resource`",
+        "Upstream contributor guidance there shows Terraform 1.14 query-based tests as the expected validation path for list resources added alongside new resources"
+      ],
+      "sourceIds": [
+        "guide-list-resource"
+      ]
+    },
+    {
+      "id": "TEST-WF-004",
+      "title": "Ephemeral resource tests should use the framework ephemeral test pattern",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "388fc68f85d672c9cff058222f0202b8683d08118816766c518b2aecab573fb8",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral_test.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_certificate_ephemeral_test.go`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-WF-005",
+      "title": "Provider-defined functions should use focused framework unit tests",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "2313cf738ec7b1afba2bfefdf32b78eb4b84fcc0182117e336ea11693a5c08cd",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id_test.go`",
+        "Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id_test.go`"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-RUN-001",
+      "title": "Treat acceptance tests as real Azure activity",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "e67a4af96bc3934a92fccc30a051fff9632b0d1c51cd45cd597d77295d24f1f5",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-001",
+      "title": "Basic acceptance tests should prove existence",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "a050d16810d37ba1ff325c7f07f79fe0ab8186e6b49ba0ba00a8a711d6c972a9",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-002",
+      "title": "Prefer ImportStep for broad validation",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "c54f26c305f0457c33e13d5007bdfc046afdaa174e7269ac2d54382aa1088cfb",
+      "provenance": "unclassified",
+      "evidence": [],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-003",
+      "title": "Complete tests should cover the full supported shape when needed",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "5fc78ccc0f1b7c57f84d823e674e2eb4ecfde80b7c57561cba0abd670c0d4061",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Existing guidance in `.github/instructions/testing-guidelines.instructions.md` listing `Complete Test` in the essential resource-test set",
+        "Existing provider test organization guidance in `.github/instructions/testing-guidelines.instructions.md` that orders success scenarios around `basic`, `update`, and related lifecycle coverage"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-004",
+      "title": "RequiresImport coverage is part of the default resource test matrix",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "6186a1645bb8b877e0ec0c5138d65185de23f6ff9399baaca05e5a10a9af2ad3",
+      "provenance": "published-upstream-standard",
+      "evidence": [
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`",
+        "Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Example - Resource - Requires Import`"
+      ],
+      "sourceIds": [
+        "reference-acceptance-testing"
+      ]
+    },
+    {
+      "id": "TEST-PATTERN-005",
+      "title": "Do not add acctests for simple property validation when unit tests already cover it",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9029a89fbf80ae0e2745b637f1025bf7f5c54eafbbef087dc1638c4dc5a8c425",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3116940446`: `we don't normally add acctests for property validation and this is covered in the unit test already`",
+        "Existing testing guidance in `.github/instructions/testing-guidelines.instructions.md` already distinguishes targeted validation/error scenarios from broader lifecycle acceptance coverage"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-006",
+      "title": "Add acctests for CustomizeDiff logic so validation behavior is not left untested",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "128cb0d5b35c9c83a6df6858017e7e131827ee3c9bdb9d4aee81bc15c0abd745",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `CustomizeDiff Testing` says invalid field combinations should be covered with acceptance tests and notes that success scenarios are usually covered by the broader lifecycle test set",
+        "Existing local testing guidance explains that CustomizeDiff prevents invalid Azure API calls and is therefore regression-prone if left unexercised"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-007",
+      "title": "Inline one-use helper arguments in fmt.Sprintf-based config builders",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "9e15e23cd8a90fcd04ab8c47b78187bad9edfaf6b167cfaff427a941423862fe",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Maintainer review guidance in upstream PR `#28834`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`",
+        "That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals"
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-008",
+      "title": "Acctest helper struct names must stay canonical across all test variants",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "d53b274a76e6f763075b9c1d520d50ae038fc4c4ac57edf496924adc01e71ac8",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.",
+        "Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.",
+        "Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.",
+        "Local failure analysis for `azurerm_cdn_frontdoor_batch_rule_set` showed the narrower casing drift problem: the generator emitted `CdnFrontdoor...` while the hand-written helper used `CdnFrontDoor...`, and the correct fix was to align the canonical helper type so hand-written and generated tests matched rather than hand-editing the generated test or broadening shared generator behavior for a one-off case."
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-009",
+      "title": "Data source tests should prefer the associated resource complete config by default",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "7fb15decf59b7fc4d53ae1b836b0ed0a7b588f2243533cd2b24900f22a72c14e",
+      "provenance": "inferred-maintainer-convention",
+      "evidence": [
+        "Upstream contributor-doc PR `#32406` narrows the `fmt.Sprintf(...)` helper guidance without turning data source setup into a single mandatory helper shape, leaving room for defaulting to the fuller associated resource config while preserving scenario-based exceptions.",
+        "Data sources commonly assert computed fields exposed from the managed resource state, so preferring the associated resource `complete(data)` helper when it exists gives the AI a more deterministic default while still allowing narrower setup when the test intentionally targets a smaller shape."
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-010",
+      "title": "Embedded Terraform in acceptance tests must use repository-valid indentation",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "3f11763590c28fae9e01ebafad65c99ff5aaa3669b88265a7427703418a68883",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.",
+        "Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks."
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-011",
+      "title": "Provider feature-flagged CRUD branch coverage",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "80d3e054f220ae306de64691eb3eb961bb6cd691256b062292774b097df239b0",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "Provider feature flags can materially alter CRUD semantics without changing the default test matrix shape, so the default `basic`, `requiresImport`, `complete`, `update`, and import scenarios do not reliably prove the feature-enabled branch.",
+        "Existing acceptance harness helpers already support direct Azure setup through client callback checks, which is the provider-consistent way to prepare pre-existing remote state for these scenarios."
+      ],
+      "sourceIds": []
+    },
+    {
+      "id": "TEST-PATTERN-012",
+      "title": "Callback-based Azure pollers need explicit deadlines in acceptance setup helpers",
+      "contractPath": ".github/instructions/testing-compliance-contract.instructions.md",
+      "status": "active",
+      "contentSha256": "cac1ad6873580b5aecf2aa5427569e4846fdde7cb740dd75ff2d25c41976f1b5",
+      "provenance": "local-safeguard",
+      "evidence": [
+        "In target-provider `internal/acceptance/steps.go`, callback helpers invoke the callback with `client.StopContext`, which is not guaranteed to carry a deadline.",
+        "Azure polling helpers require a deadline-bearing context, so direct use of the callback `ctx` can fail with `the context used must have a deadline attached for polling purposes, but got no deadline`.",
+        "Durable Task fixes in `durable_task_scheduler_resource_test.go`, `durable_task_hub_resource_test.go`, and `durable_task_retention_policy_resource_test.go` resolved this exact failure mode by wrapping the callback `ctx` with `context.WithTimeout(ctx, 30*time.Minute)` before the poller call."
+      ],
+      "sourceIds": []
+    }
+  ]
+}

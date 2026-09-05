@@ -421,7 +421,12 @@ terraform-azurerm-ai-assisted-development/
 ├── tools/
 │   ├── check-upstream-contributor-drift.ps1
 │   ├── Get-PRReady.ps1
+│   ├── Test-ChangedToolkitRouting.ps1
+│   ├── Test-InteractiveRuleCatalog.ps1
 │   ├── Test-PRReady.ps1
+│   ├── toolkit-ownership.json
+│   ├── Validate-ChangedToolkits.ps1
+│   ├── Validate-InteractiveToolkit.ps1
 │   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
 │   ├── validate-changelog-taxonomy.ps1
@@ -429,6 +434,9 @@ terraform-azurerm-ai-assisted-development/
 │   ├── validate-contracts.ps1
 │   ├── verify-bundle-checksum.ps1
 │   ├── config/
+│   ├── interactive-rule-catalog/
+│   │   ├── rule-catalog.json
+│   │   └── rule-catalog.schema.json
 │   ├── BashAnalyzer/
 │   ├── PSAnalyzer/
 │   └── regression/
@@ -446,6 +454,12 @@ terraform-azurerm-ai-assisted-development/
 │       ├── scaffold-regression-result.ps1
 │       └── score-regression-case.ps1
 │
+├── hosted_copilot/
+│   ├── CHANGELOG.md
+│   ├── regression/
+│   └── tools/
+│       └── Test-Toolkit.ps1
+│
 ├── .vscode/
 │   └── settings.json
 │
@@ -457,13 +471,14 @@ terraform-azurerm-ai-assisted-development/
 
 ### Runtime Payload Vs. Repo-Only Maintenance
 
-The repository contains both shipped runtime guidance and repo-only maintainer tooling.
+The repository contains the shipped Interactive Toolkit runtime, preliminary Hosted Toolkit maintenance scaffolding, and shared repo-only maintainer tooling.
 
 - Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
 - Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
 - The shipped `pr-description` workflow is a four-phase local drafting shortcut: two canonical one-line direct-Git evidence batches issued once each, one concurrent direct-read plan that extracts a concise material behavior inventory from changed paths, one skill draft that represents each user-facing behavior once while preserving immutable template lines verbatim, an in-memory schema conformance check, and one cheap final `HEAD` and status check. The behavior inventory covers meaningful scope, lifecycle, ownership guards, computed outputs, list behavior, and state normalization without performing correctness assessment or defect discovery. When a stale named main ref produces an implausibly broad scope, one bounded local first-parent metadata pass and one replacement scope pass can isolate a narrower contributor stack; the second parent of the newest clear mainline integration merge takes precedence over the linear contributor-boundary fallback so merged mainline history is not drafted as PR content. Unsuccessful recovery retains the original scope for dependency analysis. Cross-service Resources and shared helpers remain one intent when direct evidence connects them, and only multiple independent user-facing intents that cannot share one honest title hard-stop. It does not retry Git batches in alternate syntax, search for known changed paths, enumerate tests merely to prove authored coverage, regenerate template prose or URLs, generate terminal scripts, fetch, search GitHub, reload upstream policy, run tests, scan alternate environments, or compute full-content fingerprints.
 - Repo-only maintenance surfaces stay in this repository and are not installed into target repos.
 - Repo-only surfaces include maintainer skills such as `ai-toolkit-maintenance` and `changelog-maintenance`, the `docs/` architecture and alignment references, and the validation and regression tooling under `tools/`.
+- The tracked Interactive rule catalog under `tools/interactive-rule-catalog/` owns provenance and `active`, `deprecated`, and `retired` lifecycle history for contract rule IDs. Contracts remain the hand-authored runtime authority and are not generated from the catalog.
 
 ### Validation And Regression Surfaces
 
@@ -472,12 +487,26 @@ The current repository architecture includes deterministic validation and benchm
 - `tools/Get-PRReady.ps1`: repo-only reporting of the current HashiCorp AzureRM Project readiness value, contributor, and timestamps for a pull request.
 - `tools/Test-PRReady.ps1`: deterministic offline regression coverage for project-readiness argument handling, help, output, and errors.
 - `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, project-readiness behavior, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
+- `tools/Validate-InteractiveToolkit.ps1`: canonical Interactive Toolkit validation entrypoint that currently delegates to the existing implementation.
+- `hosted_copilot/tools/Test-Toolkit.ps1`: phase-aware Hosted Toolkit validation for design authority, changelog structure, isolation, and runtime prerequisites.
+- `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.
+- `tools/toolkit-ownership.json`: ordered ownership map used by the changed-path dispatcher.
+- `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.
+- `tools/ValidationOutput.psm1`: shared repo-only presentation functions for validation section headers, summaries, status lines, tables, and terminal spacing.
+- `tools/Test-ValidationOutput.ps1`: exact output-contract coverage for the shared validation presentation functions.
+- `tools/Test-InteractiveRuleCatalog.ps1`: schema, lifecycle, contract-rule coverage, content-hash, upstream source-ID, and installer-exclusion validation for the repo-only Interactive rule catalog.
 - `tools/validate-architecture-layout.ps1`: fixed-width and border-padding validation for the System Architecture diagram.
 - `tools/validate-copied-markdown-links.ps1`: absolute HTTPS link validation for Markdown copied from the pull request template into pull request bodies.
 - `tools/validate-contracts.ps1`: contract structure and consumer wiring validation.
-- `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection.
+- `tools/check-upstream-contributor-drift.ps1`: deterministic upstream contributor drift detection using catalog source IDs for rule mappings and exact Markdown references for file mappings.
 - `tools/regression/`: adjudicated benchmark cases, fixtures, expected examples, scoring, run hydration, and history snapshots for prompt and contract regressions.
 - `docs/AI_REGRESSION_HARNESS.md`: the benchmark model and scoring philosophy behind the regression suite.
+
+#### Validation Output Contract
+
+Repo-local validation and test report renderers use `tools/ValidationOutput.psm1` rather than defining local presentation helpers. The module owns the fixed divider width, uppercase section headings and statuses, blank lines before and after section headers, aligned summary fields, status and duration tables, two-column tables, nested status indentation, aggregate `TOTAL` duration labels, and the final blank line before the shell prompt. Each orchestrator adds one indentation level when relaying child statuses and preserves existing indentation so dispatcher, profile, and child-stage hierarchy remains visible. JSON paths do not call presentation functions and remain machine-readable. Operational commands that scaffold, publish, install, or mutate review state keep command-specific output and are not validation report consumers.
+
+The module is shared repository-maintenance infrastructure. It is not included in the Interactive installer manifest or the Hosted package manifest. Hosted maintenance validators consume it only from the full source checkout; Hosted runtime instructions, catalogs, generation, deployment, and semantic validation remain independently owned.
 
 ### Prompt Files (high-level)
 
