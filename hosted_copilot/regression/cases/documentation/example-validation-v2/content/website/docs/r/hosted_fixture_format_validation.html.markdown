@@ -1,5 +1,5 @@
 ---
-subcategory: "Hosted Fixture"
+subcategory: "Base"
 layout: "azurerm"
 page_title: "Azure Resource Manager: azurerm_hosted_fixture"
 description: |-

@@ -388,6 +388,19 @@ The Hosted Toolkit must maintain normalized rules under `hosted_copilot/copilot-
 
 The entire `hosted_copilot/` tree is an isolated distribution source. It must not be added to the Interactive Toolkit installer layout.
 
+### Contributor Guide Precedence:
+
+The HashiCorp contributor guide under `contributing/` is the golden standard for what changed code must do. Normalized catalog rules are supplemental to it, not a parallel authority.
+
+**This Precedence Has Four Consequences:**
+
+- The review skill must enumerate and read every Markdown file under `contributing/` in full before producing any finding, and must report the review as blocked rather than silently skipping part of the guide.
+- A catalog rule that conflicts with the guide loses; the reviewer follows the guide and does not report the conflicting rule.
+- Each finding is attributed to the requirement that actually enforces it: the stable rule ID when a path-specific rule applies, and otherwise the contributor guide file and section.
+- Rules the guide already mandates should not be migrated into the catalog as new supplements. Existing catalog rules are not removed solely because the guide also covers them, because a citable stable rule ID carries independent value in hosted review output.
+
+Repository-wide instructions own the precedence statement and the trust boundary. The review skill owns the concrete guide-reading procedure. Neither restates the other.
+
 ### Provenance Classes:
 
 - `Published upstream standard`: explicitly stated by HashiCorp contributor guidance or prescribed through its canonical examples and templates. Template evidence is normative when it demonstrates the required contributor-facing shape rather than merely illustrating an optional style.
@@ -687,6 +700,13 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 - `AI Toolkit`: the adapted toolkit instruction and skill package
 
 Six paired test cases used the same head branch, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-case reuse, but they cannot isolate instruction-profile effectiveness from model capability.
+
+**The Current Lifecycle Commands Compare a Narrower Pair:**
+
+- `control-base` is the pinned provider commit with no review customization at all.
+- `hosted-base` is that same commit plus the Hosted overlay, which reads the contributor guide and loads the supplemental rules.
+
+That pairing answers whether the Hosted package outperforms no customization. It does not isolate the incremental value of the supplemental rules over the contributor guide alone, which would require a control overlay that reads the guide without loading the catalog rules.
 
 PR-title labels such as `[AI Toolkit][gpt-5.6-sol-xhigh]` are manually maintained experiment metadata. They are useful historical evidence but are not authoritative runtime attribution unless corroborated by a debug log or another product-generated record.
 
