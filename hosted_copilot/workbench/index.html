@@ -264,25 +264,26 @@
 
     <footer class="ide-statusbar type-compact" aria-label="Workbench status">
       <div class="status-cluster status-left">
-        <span class="status-item snapshot-chip" id="snapshot-chip" title="Source snapshot">
+        <span class="status-item target-chip" id="target-chip" data-status-tooltip="Promotion target" data-truncation-owner>
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-compact"></use></svg>
-          <span id="status-snapshot">Loading snapshot</span>
+          <span id="status-target">Resolving target</span>
         </span>
-        <span class="status-item save-indicator" title="Draft autosave state">
+        <span class="status-item save-indicator" data-status-tooltip="Draft autosave state">
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-check-compact"></use></svg>
           <span id="save-indicator">Draft not loaded</span>
         </span>
       </div>
       <div class="status-cluster status-right">
-        <span class="status-item" title="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection-small"></use></svg><span id="catalog-count">0</span></span>
-        <span class="status-item" title="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
-        <span class="status-item" title="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
-        <span class="status-item" title="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
-        <span class="status-item" title="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist-compact"></use></svg><span id="plan-count">0</span></span>
-        <span class="status-item" title="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
-        <span class="status-item" title="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
+        <span class="status-item" data-status-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection-small"></use></svg><span id="catalog-count">0</span></span>
+        <span class="status-item" data-status-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
+        <span class="status-item" data-status-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
+        <span class="status-item" data-status-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
+        <span class="status-item" data-status-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist-compact"></use></svg><span id="plan-count">0</span></span>
+        <span class="status-item" data-status-tooltip="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
+        <span class="status-item" data-status-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
       </div>
     </footer>
+    <div class="status-surface-tooltip type-compact" id="status-surface-tooltip" role="tooltip" aria-hidden="true"></div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

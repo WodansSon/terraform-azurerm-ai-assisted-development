@@ -81,6 +81,17 @@ $maintainerIdentity = [ordered]@{
     isCodeOwner = $false
     reason = 'GitHub CLI authentication is required to propose an applicability override.'
 }
+$targetRepository = [ordered]@{
+    status = 'unavailable'
+    repository = $null
+    branch = $null
+    commit = $null
+    upstreamRepository = $null
+    upstreamBranch = $null
+    aheadBy = $null
+    behindBy = $null
+    reason = 'GitHub CLI authentication is required to resolve the promotion target.'
+}
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 if ($null -ne $ghCommand) {
     $loginOutput = @(& $ghCommand.Source api user --jq .login 2>$null)
@@ -105,11 +116,44 @@ if ($null -ne $ghCommand) {
             isCodeOwner = $isCodeOwner
             reason = if ($isCodeOwner) { $null } else { 'The authenticated GitHub user is not a CODEOWNER for Hosted Toolkit changes.' }
         }
+
+        $repositoryName = "$login/terraform-provider-azurerm"
+        $repositoryOutput = @(& $ghCommand.Source api "repos/$repositoryName" 2>$null)
+        if ($LASTEXITCODE -eq 0) {
+            $repository = ($repositoryOutput | Out-String) | ConvertFrom-Json
+            $branch = [string]$repository.default_branch
+            $commitOutput = @(& $ghCommand.Source api "repos/$repositoryName/commits/$branch" --jq .sha 2>$null)
+            $commit = ($commitOutput | Select-Object -First 1).Trim()
+            if ($LASTEXITCODE -eq 0 -and $repository.fork -eq $true -and $repository.parent.full_name -eq 'hashicorp/terraform-provider-azurerm' -and $commit -match '^[0-9a-f]{40}$') {
+                $upstreamRepository = [string]$repository.parent.full_name
+                $upstreamBranch = [string]$repository.parent.default_branch
+                $comparisonOutput = @(& $ghCommand.Source api "repos/$upstreamRepository/compare/$upstreamBranch...$login`:$branch" 2>$null)
+                $comparison = if ($LASTEXITCODE -eq 0) { ($comparisonOutput | Out-String) | ConvertFrom-Json } else { $null }
+                $targetRepository = [ordered]@{
+                    status = 'validated'
+                    repository = [string]$repository.full_name
+                    branch = $branch
+                    commit = $commit
+                    upstreamRepository = $upstreamRepository
+                    upstreamBranch = $upstreamBranch
+                    aheadBy = if ($null -ne $comparison) { [int]$comparison.ahead_by } else { $null }
+                    behindBy = if ($null -ne $comparison) { [int]$comparison.behind_by } else { $null }
+                    reason = $null
+                }
+            }
+            else {
+                $targetRepository.reason = "The authenticated user's terraform-provider-azurerm repository is not a valid fork promotion target."
+            }
+        }
+        else {
+            $targetRepository.reason = "The authenticated user's terraform-provider-azurerm fork could not be resolved."
+        }
     }
 }
 $shutdownConfig = [ordered]@{
     shutdownToken = $shutdownToken
     maintainerIdentity = $maintainerIdentity
+    targetRepository = $targetRepository
 } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
 

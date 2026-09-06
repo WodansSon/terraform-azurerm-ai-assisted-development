@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 function captureElements() {
   for (const id of [
-    "snapshot-chip", "status-snapshot", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
+    "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
     "promotion-plan-stage", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
@@ -80,6 +80,12 @@ function captureElements() {
 }
 
 function bindEvents() {
+  document.querySelectorAll(".ide-statusbar .status-item").forEach((item) => {
+    item.addEventListener("mouseenter", () => showStatusTooltip(item));
+    item.addEventListener("mouseleave", hideStatusTooltip);
+    item.addEventListener("focusin", () => showStatusTooltip(item));
+    item.addEventListener("focusout", hideStatusTooltip);
+  });
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
@@ -168,7 +174,31 @@ function bindEvents() {
   elements["copy-preview-button"].addEventListener("click", copyPreview);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
+  window.addEventListener("resize", hideStatusTooltip);
   window.addEventListener("resize", scheduleTruncationTooltips);
+}
+
+function showStatusTooltip(item) {
+  const value = item.dataset.statusTooltip;
+  if (!value) return;
+
+  const tooltip = elements["status-surface-tooltip"];
+  tooltip.textContent = value;
+  tooltip.style.left = "8px";
+  tooltip.style.top = "8px";
+  tooltip.classList.add("visible");
+  tooltip.setAttribute("aria-hidden", "false");
+
+  const itemRect = item.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const left = Math.min(Math.max(8, itemRect.left), window.innerWidth - tooltipRect.width - 8);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.max(8, itemRect.top - tooltipRect.height - 6)}px`;
+}
+
+function hideStatusTooltip() {
+  elements["status-surface-tooltip"].classList.remove("visible");
+  elements["status-surface-tooltip"].setAttribute("aria-hidden", "true");
 }
 
 function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, activateRow = null) {
@@ -678,7 +708,7 @@ function formatCandidateTokenValue(candidate, assessment) {
 
 function renderAll(shouldRenderAssessment = true) {
   if (!state.bundle || !state.session) return;
-  renderSnapshot();
+  renderTarget();
   renderMetrics();
   renderCandidateList();
   if (shouldRenderAssessment) renderAssessment();
@@ -691,10 +721,27 @@ function renderAll(shouldRenderAssessment = true) {
   refreshPresentation();
 }
 
-function renderSnapshot() {
-  const upstream = state.bundle.snapshots.upstream;
-  elements["status-snapshot"].textContent = `${upstream.currentRef}@${upstream.currentCommit.slice(0, 8)}`;
-  elements["snapshot-chip"].title = `Source snapshot: ${upstream.repository} ${upstream.currentRef}@${upstream.currentCommit}`;
+function renderTarget() {
+  const target = globalThis.__HOSTED_RULE_WORKBENCH__?.targetRepository;
+  if (target?.status === "validated") {
+    const targetLabel = `${target.repository} ${target.branch}@${target.commit.slice(0, 8)}`;
+    const behindBy = Number(target.behindBy) || 0;
+    const aheadBy = Number(target.aheadBy) || 0;
+    const syncIndicators = [];
+    if (behindBy > 0) syncIndicators.push(`↓ ${behindBy}`);
+    if (aheadBy > 0) syncIndicators.push(`↑ ${aheadBy}`);
+    elements["status-target"].textContent = targetLabel;
+    elements["status-target"].removeAttribute("title");
+    elements["status-target"].removeAttribute("data-truncation-tooltip");
+    elements["target-chip"].classList.toggle("sync-behind", behindBy > 0);
+    elements["target-chip"].dataset.statusTooltip = [targetLabel, ...syncIndicators].join(" | ");
+    elements["target-chip"].setAttribute("aria-label", `${targetLabel}.${behindBy > 0 ? ` ${behindBy} commits behind ${target.upstreamRepository} ${target.upstreamBranch}.` : ""}${aheadBy > 0 ? ` ${aheadBy} commits ahead.` : ""}`);
+    return;
+  }
+  elements["status-target"].textContent = "Target unavailable";
+  elements["target-chip"].classList.remove("sync-behind");
+  elements["target-chip"].dataset.statusTooltip = target?.reason || "Promotion target could not be resolved";
+  elements["target-chip"].setAttribute("aria-label", elements["target-chip"].dataset.statusTooltip);
 }
 
 function renderMetrics() {
@@ -833,11 +880,19 @@ function renderCandidateList() {
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     return `
       <details class="candidate-source-root" ${state.queries["candidate-sources"] ? "open" : ""}>
-        <summary class="clickable">${icon("folder")}<strong>${label}</strong><span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
+        <summary class="clickable">${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
         ${children}
       </details>
     `;
   }).join("");
+}
+
+function renderSourceSummaryLabel(sourceType, label) {
+  const source = state.bundle.snapshots.upstream;
+  const provenance = sourceType === "upstream"
+    ? `<span class="source-provenance-pill type-compact" title="Contributor guidance source: ${escapeHtml(source.repository)} ${escapeHtml(source.currentRef)}@${escapeHtml(source.currentCommit)}">${escapeHtml(source.repository)} · ${escapeHtml(source.currentRef)}@${escapeHtml(source.currentCommit.slice(0, 8))}</span>`
+    : "";
+  return `<span class="source-summary-label"><strong>${escapeHtml(label)}</strong>${provenance}</span>`;
 }
 
 function renderCandidateCategory(sourceType, category, candidates) {
@@ -948,7 +1003,7 @@ function renderAssessmentResults() {
       const sortedCandidates = sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey));
       return `
         <details class="candidate-source-root" ${state.queries["assessment-results"] ? "open" : ""}>
-          <summary class="clickable">${icon("folder")}<strong>${label}</strong><span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span></summary>
+          <summary class="clickable">${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span></summary>
           <div class="candidate-category-items" data-assessment-section="${escapeHtml(sectionKey)}">${renderAssessmentResultsHeader(sectionKey)}${sortedCandidates.map(renderAssessmentResultRow).join("")}</div>
         </details>
       `;
@@ -2244,6 +2299,11 @@ function scheduleTruncationTooltips() {
 
 function syncTruncationTooltips() {
   document.querySelectorAll("[data-truncation-tooltip]").forEach((node) => {
+    if (node.closest("[data-truncation-owner]")) {
+      node.removeAttribute("title");
+      node.removeAttribute("data-truncation-tooltip");
+      return;
+    }
     const clipped = node.getClientRects().length > 0
       && (node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight);
     if (clipped) {
@@ -2254,7 +2314,7 @@ function syncTruncationTooltips() {
     node.removeAttribute("data-truncation-tooltip");
   });
   document.querySelectorAll(".app-shell *").forEach((node) => {
-    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("title")) return;
+    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("title") || node.closest("[data-truncation-owner]")) return;
     if (getComputedStyle(node).textOverflow !== "ellipsis") return;
     if (node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight) return;
     node.title = node.textContent.trim();

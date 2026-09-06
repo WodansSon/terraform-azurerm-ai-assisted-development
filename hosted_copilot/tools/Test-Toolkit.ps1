@@ -60,6 +60,7 @@ $ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessme
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
+$ruleWorkbenchLayoutTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchLayout.cjs'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
 $ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
 $ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
@@ -297,6 +298,7 @@ if ($runtimeStarted) {
         $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
+        $ruleWorkbenchLayoutTestPath,
         $ruleWorkbenchIndexPath,
         $ruleWorkbenchScriptPath,
         $ruleWorkbenchStylesPath,
@@ -614,7 +616,7 @@ if ($runtimeStarted) {
         if ($workbenchTestResult.status -ne 'passed') {
             throw 'rule Workbench regression suite reported failures'
         }
-        Add-CheckResult -Name 'rule-workbench' -Passed $true -Detail "Passed $($workbenchTestResult.testCount) static Workbench, browser-state, external-staging, and loopback read-only server tests."
+        Add-CheckResult -Name 'rule-workbench' -Passed $true -Detail "Passed $($workbenchTestResult.testCount) static Workbench, browser-state, breakpoint-boundary geometry, external-staging, and loopback read-only server tests."
     }
     catch {
         Add-ValidationIssue -Name 'rule-workbench' -Issue "Hosted Rule Workbench validation failed: $($_.Exception.Message)"

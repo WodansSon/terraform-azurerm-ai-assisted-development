@@ -987,7 +987,29 @@ h3 {
   text-align: center;
 }
 
-.candidate-source-root > summary > strong {
+.candidate-source-root > summary > .source-summary-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  text-align: left;
+}
+
+.source-provenance-pill {
+  max-width: min(440px, 42vw);
+  padding: 2px 8px;
+  overflow: hidden;
+  color: var(--success);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+  border-radius: 999px;
+}
+
+.candidate-source-root > summary > .source-summary-label > strong {
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -2778,7 +2800,7 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
   line-height: var(--line-height-default) !important;
 }
 
-@media (min-width: 901px) {
+@media (min-width: 768px) {
   html,
   body {
     width: 100%;
@@ -2916,6 +2938,10 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
 }
 
 @media (max-width: 1180px) {
+  .candidate-source-root > summary {
+    grid-template-columns: 18px minmax(0, 1fr) 108px;
+  }
+
   .catalog-toolbar {
     grid-template-columns: minmax(240px, 1fr) auto;
   }
@@ -3317,6 +3343,8 @@ html.theme-hosted-dark body .stage-count-badge {
   border-top: 1px solid var(--line);
   font-size: 11px;
   line-height: 1;
+  cursor: default;
+  user-select: none;
 }
 
 .status-cluster {
@@ -3344,6 +3372,22 @@ html.theme-hosted-dark body .stage-count-badge {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.target-chip {
+  overflow: hidden;
+}
+
+.target-chip.sync-behind,
+.target-chip.sync-behind:hover {
+  color: var(--gold);
+}
+
+#status-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-item svg {
   width: 13px;
   height: 13px;
@@ -3362,6 +3406,28 @@ html.theme-hosted-dark body .stage-count-badge {
 
 .save-indicator {
   color: #89d185;
+}
+
+.status-surface-tooltip {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(460px, calc(100vw - 16px));
+  padding: 5px 8px;
+  visibility: hidden;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  pointer-events: none;
+  background: #252526;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+}
+
+.status-surface-tooltip.visible {
+  visibility: visible;
+  opacity: 1;
 }
 
 .candidate-panel,
