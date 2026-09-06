@@ -53,8 +53,9 @@
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons.svg#codicon-collection"></use></svg>
         <span class="sr-only">Eligible candidates</span>
       </button>
-      <button class="stage-link clickable" type="button" data-view="plan" title="Promotion plan" aria-label="Promotion plan">
+      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" title="Promotion plan, 0 rules" aria-label="Promotion plan, 0 rules">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons.svg#codicon-new-session"></use></svg>
+        <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
         <span class="sr-only">Promotion plan</span>
       </button>
       <button class="stage-link clickable" type="button" data-view="preview" title="Preview" aria-label="Preview">
@@ -231,7 +232,11 @@
               <div id="preview-payload-diff"></div>
             </section>
             <details class="preview-raw-payload">
-              <summary class="clickable">Raw Selection Payload</summary>
+              <summary class="clickable">
+                <svg class="codicon disclosure-chevron disclosure-chevron-closed" aria-hidden="true"><use href="icons/codicons.svg#codicon-chevron-right-compact"></use></svg>
+                <svg class="codicon disclosure-chevron disclosure-chevron-open" aria-hidden="true"><use href="icons/codicons.svg#codicon-chevron-down-compact"></use></svg>
+                <span>Raw Selection Payload</span>
+              </summary>
               <div class="preview-raw-heading">
                 <span>JSON</span>
                 <div class="raw-change-tools" id="raw-change-tools" hidden>

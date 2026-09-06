@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function captureElements() {
   for (const id of [
     "snapshot-chip", "status-snapshot", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
+    "promotion-plan-stage", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count",
@@ -161,8 +162,9 @@ function bindEvents() {
     if (row) openPlanCandidate(row.dataset.planRow);
   });
   elements["plan-table-body"].addEventListener("keydown", handlePlanRowKeyboardNavigation);
-  elements["raw-previous-change"].addEventListener("click", () => navigateRawPayloadChange(rawPayloadChangeIndex - 1));
-  elements["raw-next-change"].addEventListener("click", () => navigateRawPayloadChange(rawPayloadChangeIndex + 1));
+  elements["raw-previous-change"].addEventListener("click", () => navigateRawPayloadDirection(-1));
+  elements["raw-next-change"].addEventListener("click", () => navigateRawPayloadDirection(1));
+  elements["preview-json"].addEventListener("scroll", updateRawPayloadChangeNavigation);
   elements["copy-preview-button"].addEventListener("click", copyPreview);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
@@ -1563,7 +1565,7 @@ function renderRawPayload(payload) {
   const renderedLines = lines.map((line, lineIndex) => {
     const changeIndex = changedLines.get(lineIndex);
     const changed = changeIndex !== undefined;
-    const changeAttribute = changed && changes[changeIndex].start === lineIndex ? ` data-raw-change-index="${changeIndex}"` : "";
+    const changeAttribute = changed ? ` data-raw-change-index="${changeIndex}"` : "";
     return `<span class="raw-json-line${changed ? " raw-json-added" : ""}"${changeAttribute}><span class="raw-json-line-number" data-line-number="${lineIndex + 1}" aria-hidden="true"></span><span class="raw-json-line-marker" aria-hidden="true"></span><code>${escapeHtml(line)}</code></span>`;
   }).join("\n");
   elements["preview-json"].innerHTML = `<span class="highlight-width-track">${renderedLines}</span>`;
@@ -1622,10 +1624,29 @@ function navigateRawPayloadChange(index, behavior = "smooth") {
   updateRawPayloadChangeNavigation();
 }
 
+function getRawPayloadChangeViewportPosition() {
+  if (!rawPayloadChangeCount) return "none";
+  const changeLines = elements["preview-json"].querySelectorAll(`[data-raw-change-index="${rawPayloadChangeIndex}"]`);
+  if (!changeLines.length) return "none";
+  const viewport = elements["preview-json"].getBoundingClientRect();
+  const firstLine = changeLines[0].getBoundingClientRect();
+  const lastLine = changeLines[changeLines.length - 1].getBoundingClientRect();
+  if (lastLine.bottom < viewport.top) return "above";
+  if (firstLine.top > viewport.bottom) return "below";
+  return "visible";
+}
+
+function navigateRawPayloadDirection(direction) {
+  const position = getRawPayloadChangeViewportPosition();
+  const snapToCurrent = (direction < 0 && position === "above") || (direction > 0 && position === "below");
+  navigateRawPayloadChange(rawPayloadChangeIndex + (snapToCurrent ? 0 : direction));
+}
+
 function updateRawPayloadChangeNavigation() {
+  const position = getRawPayloadChangeViewportPosition();
   elements["raw-change-position"].textContent = rawPayloadChangeCount ? `${rawPayloadChangeIndex + 1} of ${rawPayloadChangeCount}` : "";
-  elements["raw-previous-change"].disabled = rawPayloadChangeIndex === 0;
-  elements["raw-next-change"].disabled = !rawPayloadChangeCount || rawPayloadChangeIndex === rawPayloadChangeCount - 1;
+  elements["raw-previous-change"].disabled = !rawPayloadChangeCount || (rawPayloadChangeIndex === 0 && position !== "above");
+  elements["raw-next-change"].disabled = !rawPayloadChangeCount || (rawPayloadChangeIndex === rawPayloadChangeCount - 1 && position !== "below");
 }
 
 function renderPreviewChanges(candidates) {
@@ -1718,10 +1739,11 @@ function renderPayloadChanges() {
 }
 
 function renderPayloadColumn(label, lines, type) {
+  const marker = type === "add" ? "+" : "-";
   return `
     <div class="payload-column ${type}">
       <div class="payload-column-heading">${label}</div>
-      <div class="payload-code"><div class="highlight-width-track">${lines.map((line, index) => `<div class="payload-line"><span>${index + 1}</span><code>${escapeHtml(line)}</code></div>`).join("")}</div></div>
+      <div class="payload-code"><div class="highlight-width-track">${lines.map((line, index) => `<div class="payload-line"><span class="payload-line-number">${index + 1}</span><span class="payload-line-marker" aria-hidden="true">${marker}</span><code>${escapeHtml(line)}</code></div>`).join("")}</div></div>
     </div>
   `;
 }
@@ -1806,8 +1828,14 @@ function renderApprovalRequirements(readiness) {
 }
 
 function renderCounts() {
+  const planCount = getPlanCandidates().length;
   elements["catalog-count"].textContent = formatNumber(state.candidates.length);
-  elements["plan-count"].textContent = formatNumber(getPlanCandidates().length);
+  elements["plan-count"].textContent = formatNumber(planCount);
+  elements["plan-activity-count"].textContent = planCount > 999 ? "999+" : formatNumber(planCount);
+  elements["plan-activity-count"].hidden = planCount === 0;
+  const planCountLabel = `${formatNumber(planCount)} ${planCount === 1 ? "rule" : "rules"}`;
+  elements["promotion-plan-stage"].title = `Promotion plan, ${planCountLabel}`;
+  elements["promotion-plan-stage"].setAttribute("aria-label", `Promotion plan, ${planCountLabel}`);
 }
 
 function formatCountLabel(count, singular) {

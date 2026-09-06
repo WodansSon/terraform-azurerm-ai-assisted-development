@@ -721,6 +721,10 @@ h3 {
   padding: 12px 14px;
 }
 
+#candidate-panel > .panel-heading {
+  padding-block: 8px;
+}
+
 #plan-view > .page-heading,
 #preview-view > .page-heading {
   margin-bottom: 6px;
@@ -2310,9 +2314,9 @@ p.subcontext-container {
 
 .diff-file-heading {
   padding: 6px 10px;
-  color: #c6d4ff;
+  color: #e6edf3;
   background: var(--blue-soft);
-  border-bottom: 1px solid rgba(104, 198, 255, 0.3);
+  border-bottom: 1px solid var(--line);
   font-size: 0.7rem;
 }
 
@@ -2343,11 +2347,11 @@ p.subcontext-container {
 }
 
 .diff-line.add {
-  background: rgba(46, 160, 67, 0.2);
+  background: rgb(14, 42, 31);
 }
 
 .diff-line.delete {
-  background: rgba(248, 81, 73, 0.2);
+  background: rgb(54, 26, 33);
 }
 
 .diff-line-number {
@@ -2360,10 +2364,12 @@ p.subcontext-container {
 }
 
 .diff-line.add .diff-line-number {
+  color: #8cda9d;
   background: rgba(46, 160, 67, 0.15);
 }
 
 .diff-line.delete .diff-line-number {
+  color: #ffaaa5;
   background: rgba(248, 81, 73, 0.15);
 }
 
@@ -2453,25 +2459,49 @@ p.subcontext-container {
 
 .payload-line {
   display: grid;
-  grid-template-columns: 42px minmax(max-content, 1fr);
+  grid-template-columns: 42px 24px minmax(max-content, 1fr);
   min-height: 22px;
 }
 
 .payload-column.delete .payload-line {
-  background: rgba(248, 81, 73, 0.18);
+  background: rgb(54, 26, 33);
 }
 
 .payload-column.add .payload-line {
-  background: rgba(46, 160, 67, 0.18);
+  background: rgb(14, 42, 31);
 }
 
-.payload-line > span {
+.payload-line-number {
   padding: 3px 8px;
   color: var(--muted);
   background: rgba(142, 160, 208, 0.07);
   border-right: 1px solid var(--line);
   text-align: right;
   user-select: none;
+}
+
+.payload-column.delete .payload-line-number {
+  color: #ffaaa5;
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.payload-column.add .payload-line-number {
+  color: #8cda9d;
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.payload-line-marker {
+  padding: 3px 6px;
+  text-align: center;
+  user-select: none;
+}
+
+.payload-column.delete .payload-line-marker {
+  color: #ffaaa5;
+}
+
+.payload-column.add .payload-line-marker {
+  color: var(--success);
 }
 
 .payload-line code {
@@ -2499,12 +2529,35 @@ p.subcontext-container {
 }
 
 .preview-raw-payload > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 14px;
   color: #c6d4ff;
   background: #0f1c2d;
   cursor: pointer;
   font-size: 0.76rem;
   font-weight: 700;
+  list-style: none;
+}
+
+.preview-raw-payload > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+
+.disclosure-chevron-open,
+.preview-raw-payload[open] .disclosure-chevron-closed {
+  display: none;
+}
+
+.preview-raw-payload[open] .disclosure-chevron-open {
+  display: block;
 }
 
 .preview-raw-heading {
@@ -2552,7 +2605,7 @@ p.subcontext-container {
 }
 
 .raw-change-navigation .icon-button:disabled {
-  cursor: default;
+  cursor: default !important;
   opacity: 0.35;
 }
 
@@ -2708,6 +2761,17 @@ html.theme-hosted-dark .type-compact * {
 }
 
 html.theme-hosted-dark body :is(h1, h2, h3, strong, b, th, legend, .type-emphasis) {
+  font-size: var(--font-size-default) !important;
+  font-weight: 600 !important;
+  line-height: var(--line-height-default) !important;
+}
+
+html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle, .decision-badge, .recommendation-badge, .catalog-status) {
+  font-weight: 600 !important;
+}
+
+html.theme-hosted-dark body .plan-table .candidate-link,
+html.theme-hosted-dark body .preview-raw-payload > summary > span {
   font-size: var(--font-size-default) !important;
   font-weight: 600 !important;
   line-height: var(--line-height-default) !important;
@@ -3207,6 +3271,33 @@ pre,
 .stage-link svg {
   width: 24px;
   height: 24px;
+}
+
+.stage-count-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 5px;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  place-items: center;
+  color: #ffffff;
+  pointer-events: none;
+  background: var(--accent);
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  box-sizing: border-box;
+}
+
+.stage-count-badge[hidden] {
+  display: none;
+}
+
+html.theme-hosted-dark body .stage-count-badge {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  line-height: 14px !important;
 }
 
 .workspace {

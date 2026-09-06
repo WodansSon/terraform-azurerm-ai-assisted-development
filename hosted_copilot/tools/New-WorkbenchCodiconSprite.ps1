@@ -15,6 +15,8 @@ $iconNames = @(
     'checklist',
     'checklist-compact',
     'chevron-down',
+    'chevron-down-compact',
+    'chevron-right-compact',
     'chevron-up',
     'circle-slash',
     'circle-slash-compact',
