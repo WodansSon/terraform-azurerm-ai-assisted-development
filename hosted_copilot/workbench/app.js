@@ -48,7 +48,7 @@ let truncationTooltipFrame;
 
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
-  return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons.svg#codicon-${name}"></use></svg>`;
+  return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
 }
 
 const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);

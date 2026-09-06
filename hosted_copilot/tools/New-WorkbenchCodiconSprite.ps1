@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string] $IconDirectory = (Join-Path $PSScriptRoot '..\workbench\icons')
+    [string] $IconDirectory = (Join-Path $PSScriptRoot '..\workbench\icons\codicons')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'WorkbenchIconPreview.ps1')
 
 $commit = '1c47ab36a4bb845c437866405c2fa67b8ca0fe36'
 $iconNames = @(
@@ -87,13 +88,15 @@ $sprite = @(
     $symbols
     '</svg>'
 ) -join "`n"
-$spritePath = Join-Path $IconDirectory 'codicons.svg'
+$spritePath = Join-Path $IconDirectory 'sprite.svg'
 Set-Content -LiteralPath $spritePath -Value $sprite -Encoding utf8NoBOM
+$previewPngPath = New-WorkbenchIconPreview -IconDirectory $IconDirectory -FamilyName 'Visual Studio Code Codicons' -Commit $commit -SymbolPrefix 'codicon' -IconNames $iconNames
 
 [pscustomobject]@{
     Status = 'generated'
     Commit = $commit
     IconCount = $iconNames.Count
     SpritePath = $spritePath
+    PreviewPngPath = $previewPngPath
     LicensePath = (Join-Path $IconDirectory 'LICENSE.txt')
 }

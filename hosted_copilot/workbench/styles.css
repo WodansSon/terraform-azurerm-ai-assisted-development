@@ -193,7 +193,8 @@ h3 {
   letter-spacing: 0;
 }
 
-.codicon {
+.codicon,
+.octicon {
   display: block;
   width: 16px;
   height: 16px;

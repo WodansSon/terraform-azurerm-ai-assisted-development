@@ -20,6 +20,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- Improved Workbench usability across supported viewports with consistent Hosted dark-theme presentation, locally owned VS Code Codicons, accessible typography, local scrolling, shared sortable headers, neutral status treatments, a compact Promotion Plan activity badge with exact footer counts, GitHub-familiar diff gutters and scroll-aware raw-change navigation, complete truncation tooltips, non-duplicated status information, and reliable Candidate, Details, Assessment, Plan, and Preview workflows.
+- Improved Workbench usability across supported viewports with consistent Hosted dark-theme presentation, independently owned VS Code Codicon and GitHub Primer Octicon families with visible PNG inventories, accessible typography, local scrolling, shared sortable headers, neutral status treatments, a compact Promotion Plan activity badge with exact footer counts, GitHub-familiar diff gutters and scroll-aware raw-change navigation, complete truncation tooltips, non-duplicated status information, and reliable Candidate, Details, Assessment, Plan, and Preview workflows.
 - Made interactive startup report semantic-assessment progress before staging and server readiness while preserving machine-readable automation output.
 - Corrected experiment and validation reliability for supported GitHub review effort levels, cross-platform pull-request file capture, complete contributor-source drift coverage, and deterministic Mermaid rendering dependencies.
