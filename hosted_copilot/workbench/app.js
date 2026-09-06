@@ -3,6 +3,8 @@
 const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
+const SESSION_SCHEMA_VERSION = 4;
+const APPROVAL_PAYLOAD_SCHEMA_VERSION = 3;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
 const FACTORS = [
@@ -44,6 +46,11 @@ let rawPayloadChangeIndex = 0;
 let rawPayloadChangeCount = 0;
 let truncationTooltipFrame;
 
+function icon(name) {
+  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
+  return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons.svg#codicon-${name}"></use></svg>`;
+}
+
 const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 if (mobileDeviceDetected) document.documentElement.classList.add("mobile-unsupported");
 
@@ -52,7 +59,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   captureElements();
   bindEvents();
   await loadBundle();
-  refreshIcons();
+  refreshPresentation();
 });
 
 function captureElements() {
@@ -60,6 +67,7 @@ function captureElements() {
     "snapshot-chip", "status-snapshot", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
+    "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count",
     "assessment-results-list", "assessment-results-detail",
     "return-catalog-button", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-diff", "preview-payload-diff", "preview-json", "raw-change-tools", "raw-change-count",
@@ -85,6 +93,7 @@ function bindEvents() {
     elements["draft-menu"].removeAttribute("open");
   });
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
+  elements["bulk-actions"].addEventListener("click", handleBulkActionsClick);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     button.addEventListener("click", () => setWorkspaceTab(button.dataset.workspaceTab));
   });
@@ -195,7 +204,7 @@ async function loadBundle() {
     const discoveredCandidates = normalizeCandidates(bundle);
     const sessionId = getSessionId(bundle);
     const existing = await readSession(sessionId);
-    state.session = existing?.schemaVersion === 3 ? existing : createSession(sessionId, bundle);
+    state.session = existing?.schemaVersion === SESSION_SCHEMA_VERSION ? existing : createSession(sessionId, bundle);
     autofillApproverName();
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
@@ -247,7 +256,7 @@ async function closeWorkbench() {
     document.body.innerHTML = `
       <main class="shutdown-state">
         <span class="brand-mark" aria-hidden="true">HR</span>
-        <p class="eyebrow">Hosted Rule Workbench</p>
+        <p class="eyebrow">Hosted Copilot Rule Manager</p>
         <h1>Workbench closed</h1>
         <p>The local server has stopped. This tab can be closed.</p>
       </main>
@@ -334,15 +343,45 @@ function getSessionId(bundle) {
 
 function createSession(id, bundle) {
   return {
-    schemaVersion: 3,
+    schemaVersion: SESSION_SCHEMA_VERSION,
     id,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     snapshots: bundle.snapshots,
     approverName: "",
     decisions: {},
-    applicabilityOverrides: {}
+    applicabilityOverrides: {},
+    bulkOperations: []
   };
+}
+
+function createPlanMembership(source = "none", bulkOperationId = null) {
+  return {
+    inPlan: source !== "none",
+    planMembershipSource: source,
+    bulkOperationId: source === "bulk" ? bulkOperationId : null
+  };
+}
+
+function isValidBulkOperation(operation) {
+  return operation
+    && typeof operation.id === "string"
+    && Boolean(operation.id)
+    && typeof operation.createdAt === "string"
+    && operation.scope === "current-results"
+    && ["add", "update", "actionable"].includes(operation.recommendationScope)
+    && typeof operation.query === "string"
+    && Array.isArray(operation.candidateKeys)
+    && operation.candidateKeys.length > 0
+    && operation.candidateKeys.every((key) => typeof key === "string" && Boolean(key));
+}
+
+function isValidPlanMembership(decision, candidateKey, operations = state.session.bulkOperations) {
+  if (decision.inPlan === false) return decision.planMembershipSource === "none" && decision.bulkOperationId === null;
+  if (decision.inPlan !== true) return false;
+  if (["manual", "override"].includes(decision.planMembershipSource)) return decision.bulkOperationId === null;
+  if (decision.planMembershipSource !== "bulk" || typeof decision.bulkOperationId !== "string") return false;
+  return operations.some((operation) => operation.id === decision.bulkOperationId && operation.candidateKeys.includes(candidateKey));
 }
 
 function autofillApproverName() {
@@ -378,11 +417,11 @@ function repairOverridePlanMembership() {
   state.assessedCandidates.forEach((candidate) => {
     if (!getApplicabilityOverride(candidate)) return;
     const decision = getDecision(candidate);
-    if (decision.inPlan) return;
+    if (decision.inPlan && decision.planMembershipSource === "override") return;
     const { assessment, ...maintainerDecision } = decision;
     state.session.decisions[candidate.key] = {
       ...maintainerDecision,
-      inPlan: true,
+      ...createPlanMembership("override"),
       sourceHash: candidate.hash,
       updatedAt: new Date().toISOString()
     };
@@ -398,7 +437,7 @@ function defaultDecision(candidate) {
   return {
     sourceHash: candidate.hash,
     action: "no-change",
-    inPlan: false,
+    ...createPlanMembership(),
     rationale: "",
     proposedText: assessment?.proposedText || (candidate.sourceType === "upstream" ? "" : extractRuleBody(candidate.text)),
     assessment,
@@ -430,11 +469,13 @@ function getDecision(candidate) {
   if (!saved || saved.sourceHash !== candidate.hash) return defaultDecision(candidate);
   const proposedText = String(saved.proposedText ?? defaultDecision(candidate).proposedText);
   const allowedActions = getAllowedActions(candidate, proposedText);
-  if (!allowedActions.includes(saved.action) || typeof saved.inPlan !== "boolean") return defaultDecision(candidate);
+  if (!allowedActions.includes(saved.action) || !isValidPlanMembership(saved, candidate.key)) return defaultDecision(candidate);
   return {
     ...saved,
     proposedText,
     inPlan: saved.inPlan,
+    planMembershipSource: saved.planMembershipSource,
+    bulkOperationId: saved.bulkOperationId,
     rationale: String(saved.rationale || "").slice(0, DECISION_RATIONALE_MAX_LENGTH),
     assessment: candidate.assessment || getPriorAssessment(candidate),
   };
@@ -502,10 +543,30 @@ function getAssessment(candidate, decision) {
 function updateDecision(candidate, changes) {
   const current = getDecision(candidate);
   const { assessment, ...maintainerDecision } = current;
+  const promotesManualMembership = changes.inPlan === true
+    || (current.inPlan && current.planMembershipSource === "bulk" && Object.keys(changes).some((key) => key !== "inPlan"));
+  if (promotesManualMembership) removeCandidateFromBulkOperations(candidate.key);
   saveDecision(candidate, {
     ...maintainerDecision,
-    ...changes
+    ...changes,
+    ...(promotesManualMembership ? createPlanMembership("manual") : {})
   });
+}
+
+function removeCandidateFromBulkOperations(candidateKey) {
+  state.session.bulkOperations = state.session.bulkOperations
+    .map((operation) => ({ ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey) }))
+    .filter((operation) => operation.candidateKeys.length > 0);
+}
+
+function restoreBulkOperationMembership(candidateKey, operationSnapshot) {
+  if (!operationSnapshot) return;
+  const existing = state.session.bulkOperations.find((operation) => operation.id === operationSnapshot.id);
+  if (existing) {
+    if (!existing.candidateKeys.includes(candidateKey)) existing.candidateKeys.push(candidateKey);
+    return;
+  }
+  state.session.bulkOperations.push({ ...operationSnapshot, candidateKeys: [candidateKey] });
 }
 
 function saveDecision(candidate, decision) {
@@ -553,6 +614,7 @@ async function updateOverrideLifecycle(candidate, override, decision) {
 }
 
 async function resetCandidate(candidate) {
+  removeCandidateFromBulkOperations(candidate.key);
   if (getApplicabilityOverride(candidate)) {
     await updateOverrideLifecycle(candidate, null, null);
     return;
@@ -571,7 +633,7 @@ function renderDecisionOutputs() {
   renderPreview();
   renderCounts();
   setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
-  refreshIcons();
+  refreshPresentation();
 }
 
 function calculateImpact(factors) {
@@ -624,7 +686,7 @@ function renderAll(shouldRenderAssessment = true) {
   renderPreview();
   renderCounts();
   setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
-  refreshIcons();
+  refreshPresentation();
 }
 
 function renderSnapshot() {
@@ -651,8 +713,98 @@ function getFilteredCandidates() {
   });
 }
 
+function getBulkActionCandidates(recommendationScope) {
+  const recommendations = recommendationScope === "actionable" ? ["add", "update"] : [recommendationScope];
+  return getFilteredCandidates().filter((candidate) => {
+    const decision = getDecision(candidate);
+    const assessment = getAssessment(candidate, decision);
+    return !decision.inPlan
+      && recommendations.includes(assessment.recommendation)
+      && getAllowedActions(candidate, decision.proposedText).includes(assessment.recommendation);
+  });
+}
+
+function getLatestBulkOperation() {
+  return state.session.bulkOperations.at(-1) || null;
+}
+
+function renderBulkActions() {
+  const filtered = getFilteredCandidates();
+  const addCandidates = getBulkActionCandidates("add");
+  const updateCandidates = getBulkActionCandidates("update");
+  const actionableCandidates = getBulkActionCandidates("actionable");
+  elements["bulk-scope-count"].textContent = formatCountLabel(filtered.length, "Candidate");
+  elements["bulk-add-count"].textContent = formatCountLabel(addCandidates.length, "Candidate");
+  elements["bulk-update-count"].textContent = formatCountLabel(updateCandidates.length, "Candidate");
+  elements["bulk-actionable-count"].textContent = formatCountLabel(actionableCandidates.length, "Candidate");
+  elements["bulk-actions"].querySelector('[data-bulk-scope="add"]').disabled = addCandidates.length === 0;
+  elements["bulk-actions"].querySelector('[data-bulk-scope="update"]').disabled = updateCandidates.length === 0;
+  elements["bulk-actions"].querySelector('[data-bulk-scope="actionable"]').disabled = actionableCandidates.length === 0;
+  const latest = getLatestBulkOperation();
+  elements["bulk-undo"].disabled = !latest;
+  elements["bulk-undo-count"].textContent = latest ? formatCountLabel(latest.candidateKeys.length, "Candidate") : "None";
+}
+
+function handleBulkActionsClick(event) {
+  const scopeButton = event.target.closest("[data-bulk-scope]");
+  if (scopeButton) {
+    applyBulkSelection(scopeButton.dataset.bulkScope);
+    return;
+  }
+  if (event.target.closest("[data-bulk-undo]")) undoBulkOperation(getLatestBulkOperation()?.id);
+}
+
+function applyBulkSelection(recommendationScope) {
+  const candidates = getBulkActionCandidates(recommendationScope);
+  if (!candidates.length) return;
+  const operation = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    scope: "current-results",
+    recommendationScope,
+    query: state.queries["candidate-sources"],
+    candidateKeys: candidates.map((candidate) => candidate.key)
+  };
+  state.session.bulkOperations.push(operation);
+  candidates.forEach((candidate) => {
+    const { assessment, ...decision } = getDecision(candidate);
+    state.session.decisions[candidate.key] = {
+      ...decision,
+      ...createPlanMembership("bulk", operation.id),
+      sourceHash: candidate.hash,
+      updatedAt: operation.createdAt
+    };
+  });
+  state.session.updatedAt = operation.createdAt;
+  persistSession();
+  elements["bulk-actions"].removeAttribute("open");
+  renderAll();
+  showToast(`${formatCountLabel(candidates.length, "Candidate")} added to the promotion plan.`, false, {
+    label: "Undo",
+    handler: () => undoBulkOperation(operation.id)
+  });
+}
+
+function undoBulkOperation(operationId) {
+  const operation = state.session.bulkOperations.find((item) => item.id === operationId);
+  if (!operation) return;
+  let removed = 0;
+  operation.candidateKeys.forEach((key) => {
+    const decision = state.session.decisions[key];
+    if (decision?.planMembershipSource !== "bulk" || decision.bulkOperationId !== operation.id) return;
+    delete state.session.decisions[key];
+    removed += 1;
+  });
+  state.session.bulkOperations = state.session.bulkOperations.filter((item) => item.id !== operation.id);
+  state.session.updatedAt = new Date().toISOString();
+  persistSession();
+  renderAll();
+  showToast(`${formatCountLabel(removed, "Candidate")} removed by bulk Undo.`);
+}
+
 function renderCandidateList() {
   const filtered = getFilteredCandidates();
+  renderBulkActions();
   if (!filtered.length) {
     const message = state.candidates.length ? "No candidates match this search." : "No AI-evaluated candidates are present in this bundle.";
     elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No candidates available</h3><p>${escapeHtml(message)}</p></div>`;
@@ -662,7 +814,7 @@ function renderCandidateList() {
   const regularCandidates = filtered.filter((candidate) => !getApplicabilityOverride(candidate));
   const overrideGroup = overrideCandidates.length ? `
     <details class="candidate-source-root candidate-overrides-root" open>
-      <summary class="clickable"><i data-lucide="shield-check" aria-hidden="true"></i><strong>Overrides</strong><span class="status-badge neutral type-compact">${overrideCandidates.length}</span></summary>
+      <summary class="clickable">${icon("shield")}<strong>Overrides</strong><span class="status-badge neutral count-badge type-compact">${formatCountLabel(overrideCandidates.length, "Override")}</span></summary>
       ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
     </details>
   ` : "";
@@ -679,7 +831,7 @@ function renderCandidateList() {
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     return `
       <details class="candidate-source-root" ${state.queries["candidate-sources"] ? "open" : ""}>
-        <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span class="status-badge neutral type-compact">${candidates.length}</span></summary>
+        <summary class="clickable">${icon("folder")}<strong>${label}</strong><span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
         ${children}
       </details>
     `;
@@ -692,9 +844,9 @@ function renderCandidateCategory(sourceType, category, candidates) {
   return `
     <details class="candidate-category" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" ${open ? "open" : ""}>
       <summary class="clickable">
-        <i data-lucide="folder" aria-hidden="true"></i>
+        ${icon("folder")}
         <strong>${escapeHtml(category)}</strong>
-        <span class="status-badge neutral type-compact">${candidates.length}</span>
+        <span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span>
       </summary>
       ${renderCandidateItems(sectionKey, candidates)}
     </details>
@@ -719,7 +871,7 @@ function renderCandidateListHeader(sectionKey) {
   const button = ([key, label, accessibleLabel, help]) => {
     const active = sort.field === key;
     const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
-    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-candidate-sort="${key}" data-candidate-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? `<i data-lucide="chevron-${sort.direction === "ascending" ? "up" : "down"}" aria-hidden="true"></i>` : ""}</button>`;
+    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-candidate-sort="${key}" data-candidate-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? icon(`chevron-${sort.direction === "ascending" ? "up" : "down"}`) : ""}</button>`;
   };
   return `<div class="candidate-list-header"><span aria-hidden="true"></span>${button(columns[0])}<span class="candidate-list-header-summary">${columns.slice(1).map(button).join("")}</span></div>`;
 }
@@ -743,7 +895,7 @@ function updateCandidateSort(button) {
   const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-candidate-key]")).map((row) => [row.dataset.candidateKey, row]));
   sortCandidates(candidates, state.candidateSorts[sectionKey]).forEach((candidate) => group.appendChild(rowsByKey.get(candidate.key)));
   group.querySelector(":scope > .candidate-list-header").outerHTML = renderCandidateListHeader(sectionKey);
-  refreshIcons();
+  refreshPresentation();
 }
 
 function sortCandidates(candidates, sort) {
@@ -794,7 +946,7 @@ function renderAssessmentResults() {
       const sortedCandidates = sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey));
       return `
         <details class="candidate-source-root" ${state.queries["assessment-results"] ? "open" : ""}>
-          <summary class="clickable"><i data-lucide="folder" aria-hidden="true"></i><strong>${label}</strong><span class="status-badge neutral type-compact">${candidates.length}</span></summary>
+          <summary class="clickable">${icon("folder")}<strong>${label}</strong><span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span></summary>
           <div class="candidate-category-items" data-assessment-section="${escapeHtml(sectionKey)}">${renderAssessmentResultsHeader(sectionKey)}${sortedCandidates.map(renderAssessmentResultRow).join("")}</div>
         </details>
       `;
@@ -815,7 +967,7 @@ function renderAssessmentResultsHeader(sectionKey) {
   const button = ([key, label, accessibleLabel, help]) => {
     const active = sort.field === key;
     const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
-    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-assessment-sort="${key}" data-assessment-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? `<i data-lucide="chevron-${sort.direction === "ascending" ? "up" : "down"}" aria-hidden="true"></i>` : ""}</button>`;
+    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-assessment-sort="${key}" data-assessment-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? icon(`chevron-${sort.direction === "ascending" ? "up" : "down"}`) : ""}</button>`;
   };
   return `<div class="assessment-results-header">${button(columns[0])}<span>${columns.slice(1).map(button).join("")}</span></div>`;
 }
@@ -839,7 +991,7 @@ function updateAssessmentSort(button) {
   const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-key]")).map((row) => [row.dataset.assessmentKey, row]));
   sortAssessmentCandidates(candidates, state.assessmentSorts[sectionKey]).forEach((candidate) => group.appendChild(rowsByKey.get(candidate.key)));
   group.querySelector(":scope > .assessment-results-header").outerHTML = renderAssessmentResultsHeader(sectionKey);
-  refreshIcons();
+  refreshPresentation();
 }
 
 function sortAssessmentCandidates(candidates, sort) {
@@ -870,7 +1022,7 @@ function renderAssessmentResultRow(candidate) {
 function renderAssessmentResultDetail() {
   const candidate = state.assessedCandidates.find((item) => item.key === state.assessmentActiveKey);
   if (!candidate) {
-    elements["assessment-results-detail"].innerHTML = `<div class="empty-state"><i data-lucide="clipboard-check" aria-hidden="true"></i><h2>Select an assessment result</h2><p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p></div>`;
+    elements["assessment-results-detail"].innerHTML = `<div class="empty-state">${icon("checklist")}<h2>Select an assessment result</h2><p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p></div>`;
     return;
   }
   const assessment = candidate.assessment;
@@ -912,7 +1064,7 @@ function renderApplicabilityOverride(candidate) {
           <small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
           <button class="button secondary clickable" type="button" data-override-remove>Remove Override</button>
         </div>
-        <div class="read-only-boundary"><i data-lucide="lock" aria-hidden="true"></i><span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
+        <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
       </div>
     `;
   }
@@ -923,7 +1075,7 @@ function renderApplicabilityOverride(candidate) {
       <span class="section-label">Maintainer Override:</span>
       <div class="override-summary subcontext-container">
         <div><strong>Disagree with this exclusion?</strong><p>Contest the AI applicability decision and record a separate provisional maintainer correction.</p>${reason ? `<small>${escapeHtml(reason)}</small>` : ""}</div>
-        <button class="button secondary clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}><i data-lucide="message-square-warning" aria-hidden="true"></i>Contest Assessment</button>
+        <button class="button secondary clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}>${icon("warning")}Contest Assessment</button>
       </div>
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
@@ -932,7 +1084,7 @@ function renderApplicabilityOverride(candidate) {
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
         <div class="override-actions"><button class="button secondary clickable" type="button" data-override-cancel>Cancel</button><button class="button primary clickable" type="button" data-override-apply disabled>Apply Override</button></div>
       </div>
-      <div class="read-only-boundary"><i data-lucide="lock" aria-hidden="true"></i><span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
+      <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
     </div>
   `;
 }
@@ -982,7 +1134,7 @@ async function handleApplicabilityOverrideClick(event) {
     recordedAt: new Date().toISOString(),
     recordedBy: { type: "github-cli", login: identity.login }
   };
-  await updateOverrideLifecycle(candidate, override, { ...defaultDecision(candidate), inPlan: true });
+  await updateOverrideLifecycle(candidate, override, { ...defaultDecision(candidate), ...createPlanMembership("override") });
   setWorkspaceTab("candidate-sources");
   showToast("Candidate moved to Overrides and added to plan");
 }
@@ -1005,8 +1157,8 @@ function renderCandidateTreeRow(candidate) {
 function renderAssessment() {
   const candidate = getActiveCandidate();
   if (!candidate) {
-    elements["assessment-panel"].innerHTML = `<div class="empty-state"><i data-lucide="mouse-pointer-square-dashed" aria-hidden="true"></i><h2>Select a candidate</h2><p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p></div>`;
-    refreshIcons();
+    elements["assessment-panel"].innerHTML = `<div class="empty-state">${icon("list-selection")}<h2>Select a candidate</h2><p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p></div>`;
+    refreshPresentation();
     return;
   }
   const decision = getDecision(candidate);
@@ -1108,7 +1260,7 @@ function renderAssessment() {
           </div>
           <div class="field-stack control-group rationale-control-group">
             <label><span class="control-subtitle">Decision Rationale:</span><textarea data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-describedby="decision-rationale-limit" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
-            <div class="rationale-actions"><button class="button secondary clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" title="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}><i data-lucide="save" aria-hidden="true"></i><span>Save</span></button></div>
+            <div class="rationale-actions"><button class="button secondary clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" title="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}>${icon("save")}<span>Save</span></button></div>
           </div>
         </div>
       </div>
@@ -1164,6 +1316,9 @@ function undoDecision(candidate) {
   const savedDecision = state.session.decisions[candidate.key];
   if (!getDecision(candidate).inPlan || !savedDecision) return;
   const decisionSnapshot = structuredClone(savedDecision);
+  const bulkOperationSnapshot = decisionSnapshot.planMembershipSource === "bulk"
+    ? structuredClone(state.session.bulkOperations.find((operation) => operation.id === decisionSnapshot.bulkOperationId) || null)
+    : null;
   const override = getApplicabilityOverride(candidate);
   const overrideSnapshot = override ? structuredClone(override) : null;
   resetCandidate(candidate).then(() => {
@@ -1173,6 +1328,7 @@ function undoDecision(candidate) {
         if (overrideSnapshot) {
           updateOverrideLifecycle(candidate, overrideSnapshot, decisionSnapshot).then(() => showToast("Override and plan item restored"));
         } else {
+          restoreBulkOperationMembership(candidate.key, bulkOperationSnapshot);
           saveDecision(candidate, decisionSnapshot);
           showToast("Candidate restored to plan");
         }
@@ -1254,12 +1410,12 @@ function renderPlan() {
     return `
       <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(candidate.id)} candidate">
         <td><span class="candidate-link">${escapeHtml(candidate.id)}</span><br>${escapeHtml(candidate.title)}</td>
-        <td class="plan-source">${escapeHtml(candidate.sourceLabel)}</td>
+        <td class="plan-source">${escapeHtml(candidate.sourceLabel)}<br><span class="status-badge neutral plan-membership-badge">${escapeHtml(capitalize(decision.planMembershipSource))}</span></td>
         <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
-        <td>${ready ? `<span class="status-badge success">${readiness}</span>` : actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" title="Open candidate and choose a rule action"><i data-lucide="pencil" aria-hidden="true"></i><span>${readiness}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" title="Open candidate and enter decision rationale"><i data-lucide="pencil" aria-hidden="true"></i><span>${readiness}</span></button>`}</td>
-        <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" title="Undo decision and remove from promotion plan">Undo</button></td>
+        <td>${ready ? `<span class="status-badge success">${readiness}</span>` : actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" title="Open candidate and choose a rule action">${icon("edit")}<span>${readiness}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" title="Open candidate and enter decision rationale">${icon("edit")}<span>${readiness}</span></button>`}</td>
+        <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" title="Undo decision and remove from promotion plan">${icon("discard")}</button></td>
       </tr>
     `;
   }).join("");
@@ -1474,11 +1630,11 @@ function updateRawPayloadChangeNavigation() {
 
 function renderPreviewChanges(candidates) {
   if (!candidates.length) {
-    return `<div class="empty-state compact"><i data-lucide="git-pull-request-draft" aria-hidden="true"></i><h3>No proposed changes</h3><p>Add an available rule action to the promotion plan to review its line-level diff.</p></div>`;
+    return `<div class="empty-state compact">${icon("git-pull-request-draft")}<h3>No proposed changes</h3><p>Add an available rule action to the promotion plan to review its line-level diff.</p></div>`;
   }
   const unresolved = candidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action));
   const resolved = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action));
-  const warning = unresolved.length ? `<div class="empty-state compact"><i data-lucide="circle-alert" aria-hidden="true"></i><h3>${unresolved.length} action${unresolved.length === 1 ? "" : "s"} required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
+  const warning = unresolved.length ? `<div class="empty-state compact">${icon("warning")}<h3>${unresolved.length} action${unresolved.length === 1 ? "" : "s"} required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
   return warning + resolved.map((candidate) => {
     const decision = getDecision(candidate);
     const currentText = getCurrentHostedText(candidate);
@@ -1524,6 +1680,7 @@ function renderPayloadChanges() {
     const before = {
       action: baseline.action,
       inPlan: baseline.inPlan,
+      planMembership: { source: baseline.planMembershipSource, bulkOperationId: baseline.bulkOperationId },
       rationale: baseline.rationale,
       proposedText: baseline.proposedText,
       applicabilityOverride: null
@@ -1531,6 +1688,7 @@ function renderPayloadChanges() {
     const after = {
       action: current.action,
       inPlan: current.inPlan,
+      planMembership: { source: current.planMembershipSource, bulkOperationId: current.bulkOperationId },
       rationale: current.rationale,
       proposedText: current.proposedText,
       applicabilityOverride: getApplicabilityOverride(candidate)
@@ -1640,7 +1798,7 @@ function renderApprovalRequirements(readiness) {
   ];
   elements["approval-requirements"].innerHTML = `<strong class="approval-requirements-title">Approval Requirements</strong>${requirements.map(([label, value, passed]) => `
     <div class="approval-requirement ${passed ? "passed" : "pending"}">
-      <i data-lucide="${passed ? "circle-check" : "circle-alert"}" aria-hidden="true"></i>
+      ${icon(passed ? "pass" : "warning")}
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
@@ -1650,6 +1808,10 @@ function renderApprovalRequirements(readiness) {
 function renderCounts() {
   elements["catalog-count"].textContent = formatNumber(state.candidates.length);
   elements["plan-count"].textContent = formatNumber(getPlanCandidates().length);
+}
+
+function formatCountLabel(count, singular) {
+  return `${formatNumber(count)} ${count === 1 ? singular : `${singular}s`}`;
 }
 
 function getPlanCandidates() {
@@ -1691,7 +1853,7 @@ function selectCandidate(key, rationaleReturnView = null) {
   state.rationaleReturnView = rationaleReturnView;
   syncCandidateTreeRows();
   renderAssessment();
-  refreshIcons();
+  refreshPresentation();
 }
 
 function showCandidatePane(pane) {
@@ -1716,14 +1878,14 @@ function updateFilter(value) {
     state.assessmentActiveKey = null;
     renderAssessmentResults();
   }
-  refreshIcons();
+  refreshPresentation();
 }
 
 function selectAssessmentResult(key) {
   state.assessmentActiveKey = key;
   syncAssessmentResultRows();
   renderAssessmentResultDetail();
-  refreshIcons();
+  refreshPresentation();
 }
 
 function syncAssessmentResultRows() {
@@ -1764,7 +1926,7 @@ function setWorkspaceTab(tab) {
   elements["search-input"].placeholder = tab === "candidate-sources"
     ? "Search sources, categories, or rules"
     : "Search excluded assessment results";
-  refreshIcons();
+  refreshPresentation();
 }
 
 function handleTreeSelection(event) {
@@ -1789,29 +1951,31 @@ function switchView(view) {
     renderCapacity();
   }
   if (view === "preview") renderPreview();
-  refreshIcons();
+  refreshPresentation();
 }
 
 function buildDraftExport() {
   return {
-    schemaVersion: 3,
+    schemaVersion: SESSION_SCHEMA_VERSION,
     kind: "hosted-rule-workbench-draft",
     sessionId: state.session.id,
     exportedAt: new Date().toISOString(),
     snapshots: state.session.snapshots,
     approverName: state.session.approverName || "",
     decisions: state.session.decisions,
-    applicabilityOverrides: state.session.applicabilityOverrides
+    applicabilityOverrides: state.session.applicabilityOverrides,
+    bulkOperations: state.session.bulkOperations
   };
 }
 
 function buildApprovalPayload() {
   return {
-    schemaVersion: 2,
+    schemaVersion: APPROVAL_PAYLOAD_SCHEMA_VERSION,
     kind: "hosted-rule-promotion-selection",
     sessionId: state.session.id,
     snapshots: state.session.snapshots,
     inapplicableCandidateCount: state.excludedCandidateCount,
+    bulkOperations: state.session.bulkOperations,
     decisions: state.candidates.map((candidate) => {
       const decision = getDecision(candidate);
       const assessment = getAssessment(candidate, decision);
@@ -1826,6 +1990,10 @@ function buildApprovalPayload() {
         mappedHostedRuleIds: getCatalogStatus(candidate).rules.map((rule) => rule.id),
         action: decision.action,
         inPlan: decision.inPlan,
+        planMembership: {
+          source: decision.planMembershipSource,
+          bulkOperationId: decision.bulkOperationId
+        },
         rationale: decision.rationale.trim(),
         proposedText: decision.proposedText,
         recommendation: assessment.recommendation,
@@ -1848,7 +2016,7 @@ function handleApproverInput(event) {
   persistSession();
   renderPreview();
   setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
-  refreshIcons();
+  refreshPresentation();
 }
 
 async function approveAndExport() {
@@ -1906,7 +2074,7 @@ async function importDraft(event) {
     if (draft.kind !== "hosted-rule-workbench-draft" || draft.sessionId !== state.session.id) {
       throw new Error("The draft belongs to a different source snapshot.");
     }
-    if (draft.schemaVersion !== 3) {
+    if (draft.schemaVersion !== SESSION_SCHEMA_VERSION) {
       throw new Error("The draft version is not supported.");
     }
     if (!draft.decisions || typeof draft.decisions !== "object" || Array.isArray(draft.decisions)) {
@@ -1914,6 +2082,9 @@ async function importDraft(event) {
     }
     if (!draft.applicabilityOverrides || typeof draft.applicabilityOverrides !== "object" || Array.isArray(draft.applicabilityOverrides)) {
       throw new Error("The draft applicability overrides are invalid.");
+    }
+    if (!Array.isArray(draft.bulkOperations) || draft.bulkOperations.some((operation) => !isValidBulkOperation(operation)) || new Set(draft.bulkOperations.map((operation) => operation.id)).size !== draft.bulkOperations.length) {
+      throw new Error("The draft bulk operations are invalid.");
     }
     const overriddenCandidateKeys = new Set();
     for (const [key, override] of Object.entries(draft.applicabilityOverrides)) {
@@ -1925,14 +2096,20 @@ async function importDraft(event) {
     }
     for (const [key, decision] of Object.entries(draft.decisions)) {
       const candidate = state.assessedCandidates.find((item) => item.key === key);
-      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || typeof decision.inPlan !== "boolean" || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH) {
+      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH) {
         throw new Error(`The draft decision for ${key} is invalid.`);
+      }
+    }
+    for (const operation of draft.bulkOperations) {
+      if (operation.candidateKeys.some((key) => draft.decisions[key]?.planMembershipSource !== "bulk" || draft.decisions[key]?.bulkOperationId !== operation.id)) {
+        throw new Error(`The draft bulk operation ${operation.id} is inconsistent with its decisions.`);
       }
     }
     state.session.approverName = String(draft.approverName || "").slice(0, 120);
     autofillApproverName();
     state.session.decisions = draft.decisions || {};
     state.session.applicabilityOverrides = draft.applicabilityOverrides || {};
+    state.session.bulkOperations = draft.bulkOperations;
     refreshEffectiveCandidates();
     state.session.updatedAt = new Date().toISOString();
     await persistSession();
@@ -2028,8 +2205,7 @@ function showToast(message, error = false, action = null) {
   toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2800);
 }
 
-function refreshIcons() {
-  if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
+function refreshPresentation() {
   scheduleTruncationTooltips();
 }
 

@@ -16,9 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Made the normalized catalog authoritative for generated path-specific guidance, applicability, provenance, and active-rule rendering, with direct source deployment and exact installed-file tracking.
 - Standardized Hosted validation and test reporting with the Interactive Toolkit execution-state presentation and adopted a guarded four-characters-per-token capacity estimate with 25% safety headroom.
+- Added current-results Bulk Actions with persisted membership provenance and operation-scoped Undo, while preserving individually selected or subsequently reviewed plan entries.
 
 ### Fixed
 
-- Improved Workbench usability across supported viewports with consistent Hosted dark-theme presentation, accessible typography, local scrolling, shared sortable headers, neutral status treatments, complete truncation tooltips, non-duplicated status information, and reliable Candidate, Details, Assessment, Plan, and Preview workflows.
+- Improved Workbench usability across supported viewports with consistent Hosted dark-theme presentation, locally owned VS Code Codicons, accessible typography, local scrolling, shared sortable headers, neutral status treatments, complete truncation tooltips, non-duplicated status information, and reliable Candidate, Details, Assessment, Plan, and Preview workflows.
 - Made interactive startup report semantic-assessment progress before staging and server readiness while preserving machine-readable automation output.
 - Corrected experiment and validation reliability for supported GitHub review effort levels, cross-platform pull-request file capture, complete contributor-source drift coverage, and deterministic Mermaid rendering dependencies.

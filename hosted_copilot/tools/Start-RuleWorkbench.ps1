@@ -47,6 +47,7 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
+$workbenchIconSource = Join-Path $workbenchSource 'icons'
 $assessmentPath = [IO.Path]::GetFullPath($AssessmentScriptPath)
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
@@ -55,7 +56,7 @@ if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::Ord
     throw 'SiteDirectory must be outside the source repository'
 }
 
-foreach ($requiredPath in @($workbenchSource, $assessmentPath, $bundleSchemaPath)) {
+foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $assessmentPath, $bundleSchemaPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -65,10 +66,11 @@ if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
 
-$ownedAssetNames = @('index.html', 'app.js', 'styles.css')
+$ownedAssetNames = @('index.html', 'app.js', 'styles.css', 'favicon.svg')
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
+Copy-Item -LiteralPath $workbenchIconSource -Destination $resolvedSiteDirectory -Recurse -Force
 
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)
@@ -343,6 +345,7 @@ try {
                 '.html' { 'text/html; charset=utf-8' }
                 '.js' { 'text/javascript; charset=utf-8' }
                 '.css' { 'text/css; charset=utf-8' }
+                '.svg' { 'image/svg+xml' }
                 '.json' { 'application/json; charset=utf-8' }
                 default { 'application/octet-stream' }
             }
