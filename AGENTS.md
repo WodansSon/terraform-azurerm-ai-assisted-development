@@ -28,6 +28,14 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Prefer removing duplicated meaning over adding more wording when the same behavior already has an authoritative owner.
 - Start prose in every Markdown bullet with a capital letter. If a bullet begins with inline code or another Markdown marker, preserve the literal or marker syntax, but capitalize the first visible prose word when applicable.
 
+## Sensitive Data Handling
+
+- Never write, persist, commit, stage, log, echo, render, paste, or include real credentials or secret material in repository files, generated artifacts, fixtures, caches, command output, browser-visible surfaces, tool responses, or chat responses. This includes API, access, refresh, session, and personal-access tokens; passwords; private or signing keys; connection strings; authorization headers; and equivalent authentication material.
+- Treat commands that could print credentials or secret-bearing configuration as unsafe by default. Query only non-sensitive fields, suppress secret values at the source, and report redacted metadata rather than capturing output and masking it afterward.
+- Never repeat an accidentally exposed secret in analysis, summaries, diagnostics, examples, or remediation instructions. Refer to it only by type and location, redact any unavoidable excerpt, stop further propagation, and tell the maintainer to revoke or rotate it through the owning system.
+- Use synthetic placeholders in tests and documentation. Do not copy real values into sanitized fixtures, regression captures, screenshots, terminal transcripts, browser storage, or generated logs.
+- Allow an ephemeral least-privilege capability value only when an explicitly designed local runtime requires it. Keep it outside tracked files, prevent it from appearing in logs and chat, scope it to the minimum operation and lifetime, and remove its temporary storage when the runtime ends.
+
 ## Ownership Discipline
 
 - Repo-wide ad hoc collaboration behavior belongs in this file.

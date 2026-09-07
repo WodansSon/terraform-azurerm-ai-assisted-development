@@ -23,3 +23,4 @@ tools/regression/results/history/
 # Hosted Toolkit generated review artifacts
 hosted_copilot/regression/raw/
 hosted_copilot/regression/results/
+hosted_copilot/tools/node_modules/

@@ -61,13 +61,13 @@ $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAs
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
 $ruleWorkbenchLayoutTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchLayout.cjs'
+$nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
+$nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
 $ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
 $ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
 $upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'Test-UpstreamSources.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
-$mermaidCliPackage = '@mermaid-js/mermaid-cli@11.16.0'
-$puppeteerPackage = 'puppeteer@24.15.0'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -299,6 +299,8 @@ if ($runtimeStarted) {
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
         $ruleWorkbenchLayoutTestPath,
+        $nodePackageManifestPath,
+        $nodePackageLockPath,
         $ruleWorkbenchIndexPath,
         $ruleWorkbenchScriptPath,
         $ruleWorkbenchStylesPath,
@@ -398,8 +400,48 @@ if ($runtimeStarted) {
     }
     if (Test-Path -LiteralPath $reviewPairCloserPath -PathType Leaf) {
         $closerContent = Get-Content -LiteralPath $reviewPairCloserPath -Raw
-        if ($closerContent -notmatch '\[switch\]\$Close' -or $closerContent -notmatch 'AllowMissingCapture' -or $closerContent -notmatch 'Assert-HostedReviewWritableFork') {
-            $lifecycleIssues.Add('pair cleanup must require Close, preserve its missing-capture override, and enforce the writable-fork guard')
+        if ($closerContent -notmatch '\[switch\]\$Close' -or $closerContent -notmatch 'AllowMissingCapture' -or $closerContent -notmatch 'Assert-HostedReviewWritableFork' -or $closerContent -notmatch 'Assert-ReviewPairBranchTopology') {
+            $lifecycleIssues.Add('pair cleanup must require Close, preserve its missing-capture override, enforce the writable-fork guard, and constrain branch deletion to tool-owned namespaces')
+        }
+        try {
+            $closerTokens = $null
+            $closerParseErrors = $null
+            $closerAst = [System.Management.Automation.Language.Parser]::ParseFile($reviewPairCloserPath, [ref]$closerTokens, [ref]$closerParseErrors)
+            $topologyFunction = $closerAst.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Assert-ReviewPairBranchTopology'
+                }, $true)
+            if ($null -eq $topologyFunction) {
+                throw 'Assert-ReviewPairBranchTopology was not found'
+            }
+            & {
+                param($functionDefinition)
+
+                . ([scriptblock]::Create($functionDefinition))
+                $validPair = [pscustomobject]@{
+                    caseId = 'source-pr-42'
+                    runId = 'security-check'
+                    control = [pscustomobject]@{ head = 'control-review/source-pr-42/security-check' }
+                    hosted = [pscustomobject]@{ head = 'hosted-review/source-pr-42/security-check' }
+                }
+                $valid = Assert-ReviewPairBranchTopology -Pair $validPair
+                if ($valid.controlHead -ne $validPair.control.head -or $valid.hostedHead -ne $validPair.hosted.head) {
+                    throw 'valid tool-owned pair topology was rejected'
+                }
+                $validPair.control.head = 'unrelated-maintainer-branch'
+                try {
+                    $null = Assert-ReviewPairBranchTopology -Pair $validPair
+                    throw 'pair cleanup accepted an unrelated branch'
+                }
+                catch {
+                    if ($_.Exception.Message -eq 'pair cleanup accepted an unrelated branch') {
+                        throw
+                    }
+                }
+            } $topologyFunction.Extent.Text
+        }
+        catch {
+            $lifecycleIssues.Add("pair cleanup branch topology validation failed: $($_.Exception.Message)")
         }
     }
     if (Test-Path -LiteralPath $reviewCommonModulePath -PathType Leaf) {
@@ -715,6 +757,38 @@ if ($runtimeStarted) {
         Add-SkippedCheck -Name 'manifest-sources' -Detail 'Manifest source validation requires a valid package manifest.'
     }
 
+    Start-ValidationCheck -Name 'payload-secret-patterns'
+    if ($null -ne $manifestConfig) {
+        $secretIssues = New-Object 'System.Collections.Generic.List[string]'
+        $secretPatterns = [ordered]@{
+            'GitHub personal access token' = 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
+            'AWS access key' = 'AKIA[0-9A-Z]{16}'
+            'Private key' = '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
+        }
+        foreach ($file in @($manifestConfig.files)) {
+            $relativePath = ([string]$file).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $hostedRoot $relativePath))
+            if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+                continue
+            }
+            $content = Get-Content -LiteralPath $sourcePath -Raw
+            foreach ($pattern in $secretPatterns.GetEnumerator()) {
+                if ($content -match $pattern.Value) {
+                    $secretIssues.Add("$($pattern.Key) material found in deployable payload file: $file")
+                }
+            }
+        }
+        if ($secretIssues.Count -eq 0) {
+            Add-CheckResult -Name 'payload-secret-patterns' -Passed $true -Detail 'Deployable Hosted payload files contain no recognizable GitHub tokens, AWS access keys, or private keys.'
+        }
+        else {
+            Add-ValidationIssue -Name 'payload-secret-patterns' -Issue ($secretIssues -join '; ')
+        }
+    }
+    else {
+        Add-ValidationIssue -Name 'payload-secret-patterns' -Issue 'Payload secret scanning requires a valid package manifest.'
+    }
+
     Start-ValidationCheck -Name 'guidance-budgets'
     if ((Test-Path -LiteralPath $repositoryInstructionsPath) -and (Test-Path -LiteralPath $goInstructionsPath) -and (Test-Path -LiteralPath $testInstructionsPath) -and (Test-Path -LiteralPath $documentationInstructionsPath) -and (Test-Path -LiteralPath $reviewSkillPath)) {
         try {
@@ -748,8 +822,11 @@ if ($runtimeStarted) {
     Start-ValidationCheck -Name 'installer-dry-run'
     if ((Test-Path -LiteralPath $installerPath -PathType Leaf) -and $null -ne $manifestConfig) {
         $tempRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("hosted-toolkit-validation-" + [guid]::NewGuid().ToString('N'))
+        $junctionTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("hosted-toolkit-junction-target-" + [guid]::NewGuid().ToString('N'))
+        $junctionPath = Join-Path $tempRepo '.github'
         try {
             $null = New-Item -ItemType Directory -Path $tempRepo
+            $null = New-Item -ItemType Directory -Path $junctionTarget
             $gitCommand = Get-Command git -ErrorAction SilentlyContinue
             if ($null -eq $gitCommand) {
                 throw 'git was not found on PATH'
@@ -769,14 +846,29 @@ if ($runtimeStarted) {
             if (@(Get-ChildItem -LiteralPath $tempRepo -Force | Where-Object Name -ne '.git').Count -ne 0) {
                 throw 'installer dry run wrote files to the target repository'
             }
-            Add-CheckResult -Name 'installer-dry-run' -Passed $true -Detail 'Installer dry run planned Hosted additions without writing to a temporary target.'
+            $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+            $null = New-Item -ItemType $linkType -Path $junctionPath -Target $junctionTarget
+            $junctionOutput = @(& pwsh -NoProfile -File $installerPath -RepoDirectory $tempRepo -Install -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -eq 0) {
+                throw 'installer accepted a target path that traverses a symbolic link or junction'
+            }
+            if (@(Get-ChildItem -LiteralPath $junctionTarget -Recurse -File).Count -ne 0) {
+                throw 'installer wrote files outside the target repository through a symbolic link or junction'
+            }
+            Add-CheckResult -Name 'installer-dry-run' -Passed $true -Detail 'Installer dry run remained read-only and installation rejected linked target paths before any outside write.'
         }
         catch {
             Add-ValidationIssue -Name 'installer-dry-run' -Issue "Hosted installer dry run failed: $($_.Exception.Message)"
         }
         finally {
+            if (Test-Path -LiteralPath $junctionPath) {
+                Remove-Item -LiteralPath $junctionPath -Force
+            }
             if (Test-Path -LiteralPath $tempRepo) {
                 Remove-Item -LiteralPath $tempRepo -Recurse -Force
+            }
+            if (Test-Path -LiteralPath $junctionTarget) {
+                Remove-Item -LiteralPath $junctionTarget -Recurse -Force
             }
             $global:LASTEXITCODE = 0
         }
@@ -950,7 +1042,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }
@@ -987,21 +1079,20 @@ else {
     Add-SkippedCheck -Name 'architecture-style' -Detail 'Architecture style validation requires the architecture document.'
 }
 
-$npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
-if ($null -eq $npxCommand) {
-    $npxCommand = Get-Command 'npx' -ErrorAction SilentlyContinue
-}
+$validationBinDirectory = Join-Path $PSScriptRoot 'node_modules/.bin'
+$markdownCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'markdownlint-cli2.cmd' } else { 'markdownlint-cli2' })
+$mermaidCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'mmdc.cmd' } else { 'mmdc' })
 
-if ($null -eq $npxCommand) {
+if (-not (Test-Path -LiteralPath $markdownCommand -PathType Leaf)) {
     Start-ValidationCheck -Name 'markdown'
-    Add-ValidationIssue -Name 'markdown' -Issue 'npx was not found on PATH'
+    Add-ValidationIssue -Name 'markdown' -Issue 'The lock-installed markdownlint-cli2 executable was not found; run the rule-workbench check to install validation dependencies.'
 }
 else {
     Start-ValidationCheck -Name 'markdown'
     Push-Location $repoRoot
     try {
         $global:LASTEXITCODE = 0
-        $markdownOutput = @(& $npxCommand.Source -y --prefer-offline markdownlint-cli2 'hosted_copilot/**/*.md' 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md' --config '.github/.markdownlint.json' 2>&1)
+        $markdownOutput = @(& $markdownCommand 'hosted_copilot/**/*.md' '#hosted_copilot/tools/node_modules' 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md' --config '.github/.markdownlint.json' 2>&1)
         $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     }
     finally {
@@ -1016,9 +1107,9 @@ else {
     }
 }
 
-if ($null -eq $npxCommand) {
+if (-not (Test-Path -LiteralPath $mermaidCommand -PathType Leaf)) {
     Start-ValidationCheck -Name 'mermaid'
-    Add-ValidationIssue -Name 'mermaid' -Issue 'npx was not found on PATH'
+    Add-ValidationIssue -Name 'mermaid' -Issue 'The lock-installed Mermaid CLI executable was not found; run the rule-workbench check to install validation dependencies.'
 }
 else {
     Start-ValidationCheck -Name 'mermaid'
@@ -1031,8 +1122,10 @@ else {
         if ($useLinuxCiPuppeteerConfig) {
             @{ args = @('--no-sandbox', '--disable-setuid-sandbox') } | ConvertTo-Json | Set-Content -LiteralPath $puppeteerConfigPath -Encoding utf8NoBOM
         }
+        $validationDependencyRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'node_modules'))
+        $validationDependencyPrefix = $validationDependencyRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
         $markdownPaths = @(
-            Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse
+            Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse | Where-Object { -not $_.FullName.StartsWith($validationDependencyPrefix, [System.StringComparison]::OrdinalIgnoreCase) }
             Get-Item -LiteralPath $architecturePath
         )
         $mermaidBlockCount = 0
@@ -1048,11 +1141,11 @@ else {
                 Set-Content -LiteralPath $inputPath -Value $mermaidMatch.Groups[1].Value -Encoding utf8NoBOM
 
                 $global:LASTEXITCODE = 0
-                $mermaidArguments = @('-y', '--prefer-offline', '-p', $mermaidCliPackage, '-p', $puppeteerPackage, 'mmdc', '-i', $inputPath, '-o', $outputPath, '-b', 'transparent')
+                $mermaidArguments = @('-i', $inputPath, '-o', $outputPath, '-b', 'transparent')
                 if ($useLinuxCiPuppeteerConfig) {
                     $mermaidArguments += @('--puppeteerConfigFile', $puppeteerConfigPath)
                 }
-                $mermaidOutput = @(& $npxCommand.Source @mermaidArguments 2>&1)
+                $mermaidOutput = @(& $mermaidCommand @mermaidArguments 2>&1)
                 $mermaidExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
                 if ($mermaidExitCode -ne 0) {
                     throw "Mermaid rendering failed for $($markdownPath.FullName): $((($mermaidOutput | Out-String).Trim()))"
@@ -1063,7 +1156,7 @@ else {
             }
         }
 
-        Add-CheckResult -Name 'mermaid' -Passed $true -Detail "Rendered $mermaidBlockCount Mermaid diagrams with $mermaidCliPackage and $puppeteerPackage."
+        Add-CheckResult -Name 'mermaid' -Passed $true -Detail "Rendered $mermaidBlockCount Mermaid diagrams with integrity-locked Mermaid CLI and Puppeteer dependencies."
     }
     catch {
         Add-ValidationIssue -Name 'mermaid' -Issue "Hosted Toolkit Mermaid validation failed: $($_.Exception.Message)"

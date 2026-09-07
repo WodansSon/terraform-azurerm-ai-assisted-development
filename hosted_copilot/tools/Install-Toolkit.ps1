@@ -36,6 +36,32 @@ function Test-PathWithinRoot {
     return $Path.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Assert-PathHasNoReparsePoints {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Root
+    )
+
+    $relativePath = [System.IO.Path]::GetRelativePath($Root, $Path)
+    $currentPath = $Root
+    foreach ($segment in $relativePath.Split([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) {
+        if ([string]::IsNullOrWhiteSpace($segment)) {
+            continue
+        }
+        $currentPath = Join-Path $currentPath $segment
+        if (-not (Test-Path -LiteralPath $currentPath)) {
+            continue
+        }
+        $item = Get-Item -LiteralPath $currentPath -Force
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Path traverses a symbolic link or junction: $currentPath"
+        }
+    }
+}
+
 function Get-Sha256Hash {
     param(
         [Parameter(Mandatory = $true)]
@@ -86,6 +112,7 @@ $installedStatePath = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoDire
 if (-not (Test-PathWithinRoot -Path $installedStatePath -Root $resolvedRepoDirectory)) {
     throw "installedStatePath escapes RepoDirectory: $($manifestConfig.installedStatePath)"
 }
+Assert-PathHasNoReparsePoints -Path $installedStatePath -Root $resolvedRepoDirectory
 
 $installedState = $null
 $installedFiles = @{}
@@ -128,6 +155,8 @@ foreach ($file in @($manifestConfig.files)) {
     if (-not (Test-PathWithinRoot -Path $targetPath -Root $resolvedRepoDirectory)) {
         throw "Manifest path escapes RepoDirectory: $relativePath"
     }
+    Assert-PathHasNoReparsePoints -Path $sourcePath -Root $hostedRoot
+    Assert-PathHasNoReparsePoints -Path $targetPath -Root $resolvedRepoDirectory
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         throw "Manifest source file was not found: $relativePath"
     }
@@ -197,6 +226,8 @@ if ($Install -and $issues.Count -eq 0) {
         if (-not (Test-Path -LiteralPath $targetDirectory)) {
             $null = New-Item -ItemType Directory -Path $targetDirectory -Force
         }
+        Assert-PathHasNoReparsePoints -Path $sourcePath -Root $hostedRoot
+        Assert-PathHasNoReparsePoints -Path $targetPath -Root $resolvedRepoDirectory
 
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
         $installedHash = Get-Sha256Hash -Path $targetPath
@@ -209,6 +240,7 @@ if ($Install -and $issues.Count -eq 0) {
     if (-not (Test-Path -LiteralPath $stateDirectory)) {
         $null = New-Item -ItemType Directory -Path $stateDirectory -Force
     }
+    Assert-PathHasNoReparsePoints -Path $installedStatePath -Root $resolvedRepoDirectory
 
     $stateConfig = [ordered]@{
         schemaVersion = 1

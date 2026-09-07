@@ -653,6 +653,7 @@ The commands enforce the following contract:
 - Deploy the Hosted overlay only to `hosted-base` through `Install-Toolkit.ps1`.
 - Require each canonical source PR to target `test-content`, then apply its exact diff independently to Control and Hosted review heads.
 - Guard every mutation so it can target only the authenticated user's writable fork of HashiCorp's AzureRM provider.
+- Derive disposable review heads from validated case and run identifiers, require exact `control-review/` and `hosted-review/` namespaces during cleanup, and reject any pair record that names unrelated branches.
 - Refuse to continue when changed-file sets or diff hashes differ.
 - Push all three persistent bases and both temporary mirror heads, then open the control pull request against `control-base` and the Hosted pull request against `hosted-base` only after the pair passes validation.
 - Record branch names, base and head commits, source commit, manifest hash, test-case identity, diff hash, pull request URLs, review effort, request timestamps, and observed model evidence.
@@ -719,6 +720,7 @@ The installer and validator consume this shared schema rather than defining para
 - Fail closed when an unowned destination already exists.
 - Require explicit approval before replacing a collision or locally modified package-owned file.
 - Compute source hashes from the current checkout and verify every copied file against its computed source hash.
+- Reject source and destination paths that traverse symbolic links, junctions, or other filesystem reparse points, both during planning and immediately before each write.
 - Record installed hashes and source commit for later ownership checks.
 
 The Hosted installer must not call, import, overwrite, or otherwise depend on the Interactive Toolkit installer or `installer/file-manifest.config`.
@@ -744,13 +746,14 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 - Review-focused skill metadata
 - Package-manifest schema and complete owned-file coverage
 - Manifest source containment, existence, and hashability
+- Deployable-payload scanning for recognizable GitHub tokens, AWS access keys, and private-key material
 - Installer-computed source and installed-state hash agreement
 - No Interactive Toolkit runtime dependencies
 - No Hosted `VERSION` or release bundle
 - Per-file and cumulative token budgets
 - Installer dry-run behavior against a temporary target
 - Markdown validity
-- Mermaid rendering with explicitly pinned, supported Mermaid CLI and Puppeteer versions
+- Mermaid rendering and browser geometry checks through exact direct versions and transitive integrity hashes in the checked-in Node package lock
 - Controlled test-case schema and result completeness
 - Local result schema conformance and recomputed adjudication totals when result records are present
 - Git-ignored raw captures, readable pair summaries, and result records with no generated evidence tracked in source

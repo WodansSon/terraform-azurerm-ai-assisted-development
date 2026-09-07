@@ -27,6 +27,33 @@ function Invoke-Git {
     return $output
 }
 
+function Assert-ReviewPairBranchTopology {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Pair
+    )
+
+    $runId = [string]$Pair.runId
+    $caseId = [string]$Pair.caseId
+    if ($runId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw "Pair record runId is invalid: $runId"
+    }
+    if ($caseId -notmatch '^source-pr-[1-9][0-9]*$') {
+        throw "Pair record caseId is not a tool-owned source pull request: $caseId"
+    }
+
+    $expectedControlHead = "control-review/$caseId/$runId"
+    $expectedHostedHead = "hosted-review/$caseId/$runId"
+    if ([string]$Pair.control.head -ne $expectedControlHead -or [string]$Pair.hosted.head -ne $expectedHostedHead) {
+        throw 'Pair record head branches are outside the tool-owned review namespaces'
+    }
+
+    return [pscustomobject]@{
+        controlHead = $expectedControlHead
+        hostedHead = $expectedHostedHead
+    }
+}
+
 $resolvedRepoDirectory = [IO.Path]::GetFullPath($RepoDirectory)
 $resolvedPairPath = [IO.Path]::GetFullPath($PairPath)
 $gitCommand = Get-Command git -ErrorAction SilentlyContinue
@@ -54,10 +81,13 @@ if ($Close) {
         throw "Writable fork guard resolved $($target.repository), not pair repository $repository"
     }
 }
-$controlHead = [string]$pair.control.head
-$hostedHead = [string]$pair.hosted.head
+$branchTopology = Assert-ReviewPairBranchTopology -Pair $pair
+$controlHead = $branchTopology.controlHead
+$hostedHead = $branchTopology.hostedHead
 $controlBase = [string]$pair.control.base
 $hostedBase = [string]$pair.hosted.base
+$null = Invoke-Git check-ref-format "refs/heads/$controlHead"
+$null = Invoke-Git check-ref-format "refs/heads/$hostedHead"
 if ($controlHead -eq $controlBase -or $controlHead -eq $hostedBase -or $hostedHead -eq $controlBase -or $hostedHead -eq $hostedBase) {
     throw 'Pair record attempts to delete a persistent base branch'
 }

@@ -20,7 +20,8 @@ $octiconGeneratorPath = Join-Path $PSScriptRoot 'New-WorkbenchOcticonSprite.ps1'
 $iconPreviewPath = Join-Path $PSScriptRoot 'WorkbenchIconPreview.ps1'
 $launcherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $layoutTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchLayout.cjs'
-$puppeteerPackage = 'puppeteer@24.15.0'
+$nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
+$nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -65,6 +66,27 @@ function New-CapacityReport {
 
 try {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
+    $nodeLockConfig = Get-Content -LiteralPath $nodePackageLockPath -Raw | ConvertFrom-Json -AsHashtable
+    $directDependencies = @($nodePackageConfig.devDependencies.PSObject.Properties)
+    $lockIntegrityValid = $nodeLockConfig['lockfileVersion'] -eq 3 -and $directDependencies.Count -gt 0
+    foreach ($dependency in $directDependencies) {
+        $lockedVersion = [string]$nodeLockConfig['packages']['']['devDependencies'][$dependency.Name]
+        $lockedPackage = $nodeLockConfig['packages']["node_modules/$($dependency.Name)"]
+        $lockIntegrityValid = $lockIntegrityValid -and $lockedVersion -eq [string]$dependency.Value -and -not [string]::IsNullOrWhiteSpace([string]$lockedPackage['integrity'])
+    }
+    if (-not $lockIntegrityValid) {
+        throw 'Node validation dependencies are not fully covered by the versioned integrity lock'
+    }
+    $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
+    $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
+    $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --no-audit --no-fund 2>&1)
+    $dependencyExitCode = $LASTEXITCODE
+    $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-Path -LiteralPath $nodePackageLockPath -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/puppeteer/package.json') -PathType Leaf)
+    Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed the integrity-locked Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graph." } else { ($dependencyOutput | Out-String).Trim() })
+    if (-not $lockedDependencyValid) {
+        throw 'locked browser validation dependencies could not be installed'
+    }
     $bundlePath = Join-Path $tempRoot 'rule-intake-review.json'
     $capacityReports = @(
         New-CapacityReport -Name 'repository' -Kind 'file'
@@ -379,8 +401,8 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $assessmentLaunchValid = $launcherContent -match 'Invoke-RuleIntakeAssessment\.ps1' -and $launcherContent -match '\$null -eq \$resolvedBundlePath' -and $launcherContent -match '''-CachePath'', \$AssessmentCachePath' -and $launcherContent -match '''-BaselinePath'', \$AssessmentBaselinePath' -and $launcherContent -match '''-Model'', \$AssessmentModel' -and $launcherContent -match '\$assessmentOutputFormat = if \(\$OutputFormat -eq ''Text''\) \{ ''Text'' \} else \{ ''Json'' \}' -and $launcherContent -match "Write-Host '\[RUNNING\].*assessment" -and $launcherContent -match '& pwsh @assessmentArguments 2>&1 \| ForEach-Object \{ Write-Host \$_ \}' -and $launcherContent -match "Write-Host '\[PASSED\].*assessment" -and $launcherContent -match 'Rule intake assessment failed'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Text launches visibly complete candidate assessment before Workbench staging, JSON launches remain machine-readable, and an explicit BundlePath remains a model-free staging path.'
 
-    $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
-    Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, serves static GET and HEAD requests, and exposes only a token-authenticated process shutdown lifecycle endpoint.'
+    $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
+    Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, rejects non-loopback Host values, serves only local runtime assets through GET and HEAD, and exposes one token-authenticated shutdown endpoint.'
 
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
@@ -404,8 +426,11 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         if (-not $serverReady) {
             throw 'loopback test server did not become ready'
         }
-        $npmExecutable = (Get-Command npm.cmd -ErrorAction Stop).Source
-        $layoutTestOutput = @(& $npmExecutable exec --yes --prefer-offline --package $puppeteerPackage -- node $layoutTestPath $shutdownUrl 2>&1)
+        $misdirectedRequest = Invoke-WebRequest -Uri "$shutdownUrl/shutdown-config.js" -Headers @{ Host = 'attacker.example' } -SkipHttpErrorCheck
+        $hostValidationValid = $misdirectedRequest.StatusCode -eq 421 -and $misdirectedRequest.Content -eq 'Misdirected Request'
+        Add-TestResult -Name 'loopback-host-validation' -Passed $hostValidationValid -Detail 'An unrecognized Host cannot read staged Workbench files or the per-launch shutdown token through DNS rebinding.'
+        $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
+        $layoutTestOutput = @(& $nodeExecutable $layoutTestPath $shutdownUrl 2>&1)
         $layoutTestExitCode = $LASTEXITCODE
         $layoutTestResult = if ($layoutTestExitCode -eq 0) { ($layoutTestOutput | Out-String) | ConvertFrom-Json } else { $null }
         $layoutValid = $layoutTestExitCode -eq 0 -and $layoutTestResult.status -eq 'passed' -and $layoutTestResult.viewportCount -eq 9 -and $layoutTestResult.assertionCount -eq 241

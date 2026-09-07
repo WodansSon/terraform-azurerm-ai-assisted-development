@@ -274,7 +274,7 @@ function Write-HttpResponse {
         "Content-Type: $ContentType",
         "Content-Length: $($Body.Length)",
         'Cache-Control: no-store',
-        "Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+        "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
         'X-Content-Type-Options: nosniff',
         'Referrer-Policy: no-referrer',
         'Connection: close',
@@ -304,6 +304,7 @@ function Test-ShutdownToken {
 }
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
+$allowedHosts = @("127.0.0.1:$Port", "localhost:$Port")
 try {
     $listener.Start()
     if (-not $NoLaunch) {
@@ -357,6 +358,11 @@ try {
 
             $method = [string]$Matches['method']
             $requestUri = [Uri]("http://127.0.0.1$($Matches['target'])")
+            $requestHost = [string]$requestHeaders['Host']
+            if ([string]::IsNullOrWhiteSpace($requestHost) -or $requestHost.Trim() -notin $allowedHosts) {
+                Write-HttpResponse -Stream $stream -StatusCode 421 -StatusText 'Misdirected Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Misdirected Request')) -IncludeBody $true
+                continue
+            }
             if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/shutdown') {
                 $providedToken = [string]$requestHeaders['X-Workbench-Shutdown-Token']
                 if (-not (Test-ShutdownToken -Candidate $providedToken -Expected $shutdownToken)) {

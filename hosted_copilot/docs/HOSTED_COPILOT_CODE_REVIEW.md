@@ -49,7 +49,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/Install-Toolkit.ps1 `
   -Install
 ```
 
-Use `-Force` only after reviewing a reported unowned collision or a locally modified package-owned file. The installer merges owned files into existing directories and does not replace unrelated `.github/`, `docs/`, or `tools/` content.
+Use `-Force` only after reviewing a reported unowned collision or a locally modified package-owned file. The installer merges owned files into existing directories, does not replace unrelated `.github/`, `docs/`, or `tools/` content, and rejects owned paths that traverse symbolic links or junctions.
 
 ## Validation:
 
@@ -59,7 +59,7 @@ Validate the Hosted source package with:
 pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, upstream drift, manifest ownership, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer dry-run safety, and test-case integrity. Use `-SkipUpstreamDrift` only for explicit offline diagnosis.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, upstream drift, manifest ownership, deployable-payload secret scanning, lockfile-backed browser tooling, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer linked-path rejection, and test-case integrity. Use `-SkipUpstreamDrift` only for explicit offline diagnosis.
 
 ## Repository Settings:
 

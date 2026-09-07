@@ -1,12 +1,5 @@
-const path = require("path");
-
 function resolvePuppeteer() {
-  const packageRoots = (process.env.PATH || "")
-    .split(path.delimiter)
-    .filter((entry) => entry.includes("_npx"))
-    .map((entry) => path.dirname(entry));
-
-  return require(require.resolve("puppeteer", { paths: packageRoots }));
+  return require("puppeteer");
 }
 
 function assert(condition, message) {
