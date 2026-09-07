@@ -4,6 +4,7 @@ html.theme-hosted-dark {
   --paper: #121314;
   --surface: #191a1b;
   --surface-quiet: #191a1b;
+  --context-header: #0f1c2d;
   --line: #2a2b2c;
   --line-strong: #333536;
   --accent: #3994bc;
@@ -41,9 +42,11 @@ html.theme-hosted-dark {
   --font-size-default: 14px;
   --font-size-ui: 13px;
   --font-size-compact: 12px;
+  --font-size-detail-title: 20px;
   --line-height-default: 20px;
   --line-height-ui: 18px;
   --line-height-compact: 16px;
+  --line-height-detail-title: 24px;
   color: var(--ink);
   background: var(--paper);
   color-scheme: dark;
@@ -520,6 +523,10 @@ h3 {
   color: var(--accent-bright);
 }
 
+.candidate-overrides-root > summary > strong {
+  text-transform: uppercase;
+}
+
 
 .assessment-results-header,
 .assessment-result-row {
@@ -546,7 +553,7 @@ h3 {
 .assessment-results-header > span,
 .assessment-result-summary {
   display: grid;
-  grid-template-columns: 84px 116px 156px;
+  grid-template-columns: 84px 116px 156px 110px;
   align-items: center;
   gap: 9px;
   text-align: center;
@@ -575,6 +582,72 @@ h3 {
 .assessment-result-summary {
   color: var(--muted);
   font-size: 0.64rem;
+}
+
+.assessment-override-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.assessment-override-pill {
+  min-width: 76px;
+  justify-content: center;
+}
+
+button.assessment-override-pill {
+  appearance: none;
+  cursor: pointer;
+}
+
+.assessment-override-chevron,
+.assessment-override-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.assessment-override-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px 10px 44px;
+  background: var(--surface-quiet);
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid var(--gold);
+}
+
+.assessment-override-inline[hidden] {
+  display: none;
+}
+
+.assessment-override-inline-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.assessment-override-inline-copy strong {
+  color: var(--gold);
+}
+
+.assessment-override-inline-copy p,
+.assessment-override-inline-copy small {
+  margin: 0;
+}
+
+.assessment-override-inline-copy small {
+  color: var(--muted);
+  font-size: var(--font-size-compact);
+  line-height: var(--line-height-compact);
+}
+
+.assessment-override-remove {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
 }
 
 .read-only-boundary {
@@ -699,8 +772,15 @@ h3 {
   gap: 12px;
 }
 
-.override-record .button {
-  justify-self: end;
+.override-record-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.override-record-actions .icon-button {
+  width: 32px;
+  height: 32px;
 }
 
 .candidate-panel,
@@ -911,6 +991,14 @@ h3 {
   grid-template-columns: 70px 84px 76px 76px 132px;
   align-items: center;
   column-gap: 9px;
+}
+
+.candidate-list-header > span[aria-hidden="true"] {
+  display: none;
+}
+
+.candidate-list-header > .candidate-sort-button {
+  grid-column: 1 / 3;
 }
 
 .tree-impact,
@@ -1348,6 +1436,25 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   max-height: calc(100vh - 244px);
 }
 
+#candidate-sources-panel .assessment-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+:is(#candidate-sources-panel .assessment-panel, #assessment-results-detail) > .assessment-content {
+  min-height: 0;
+  padding: 0 16px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#assessment-results-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .assessment-content {
   padding: 16px;
 }
@@ -1361,9 +1468,27 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   border-bottom: 1px solid var(--line);
 }
 
+.assessment-title > div {
+  min-width: 0;
+}
+
 .assessment-title h2 {
   margin-top: 5px;
-  font-size: 1.25rem;
+}
+
+.assessment-title-statuses {
+  display: inline-flex;
+  min-width: 150px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+:is(#candidate-sources-panel .assessment-panel, #assessment-results-detail) > .assessment-title {
+  padding: 12px 16px 14px;
+  background: var(--context-header);
+  border-bottom-color: var(--line-strong);
 }
 
 .source-line {
@@ -1371,6 +1496,11 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   gap: 7px;
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+.detail-identity {
+  color: var(--accent-bright);
+  text-transform: uppercase;
 }
 
 .section-block {
@@ -1386,11 +1516,8 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   display: block;
   margin-bottom: 10px;
   color: var(--ink);
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.35;
   letter-spacing: 0;
-  text-transform: none;
+  text-transform: uppercase;
 }
 
 .evidence-box {
@@ -1451,9 +1578,6 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
 
 .control-subtitle {
   color: var(--ink);
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1.35;
 }
 
 .action-plan-group {
@@ -1982,6 +2106,7 @@ p.subcontext-container {
 
 .plan-table {
   width: 100%;
+  min-width: 1000px;
   table-layout: fixed;
   border-collapse: collapse;
 }
@@ -2369,7 +2494,7 @@ p.subcontext-container {
 .preview-change-heading,
 .payload-change-heading {
   padding: 10px 12px;
-  background: #0f1c2d;
+  background: var(--context-header);
   border-bottom: 1px solid var(--line-strong);
 }
 
@@ -2489,7 +2614,7 @@ p.subcontext-container {
 
 .payload-review-heading {
   padding: 11px 14px;
-  background: #0f1c2d;
+  background: var(--context-header);
 }
 
 .payload-review-heading > div {
@@ -2626,7 +2751,7 @@ p.subcontext-container {
 .preview-raw-payload > summary {
   padding: 10px 14px;
   color: #c6d4ff;
-  background: #0f1c2d;
+  background: var(--context-header);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -2890,6 +3015,18 @@ html.theme-hosted-dark body :is(h1, h2, h3, strong, b, th, legend, .type-emphasi
   line-height: var(--line-height-default) !important;
 }
 
+html.theme-hosted-dark body .detail-rule-title {
+  font-size: var(--font-size-detail-title) !important;
+  font-weight: 600 !important;
+  line-height: var(--line-height-detail-title) !important;
+}
+
+html.theme-hosted-dark body :is(.detail-identity, .detail-identity > span, .section-label, .control-subtitle) {
+  font-size: var(--font-size-default) !important;
+  font-weight: 600 !important;
+  line-height: var(--line-height-default) !important;
+}
+
 html.theme-hosted-dark .type-ui,
 html.theme-hosted-dark .type-ui * {
   font-size: var(--font-size-ui) !important;
@@ -3032,7 +3169,14 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
     height: 100%;
     min-height: 0;
     max-height: none;
-    overflow-y: auto;
+  }
+
+  #candidate-sources-panel .assessment-panel {
+    overflow: hidden;
+  }
+
+  #assessment-results-panel #assessment-results-detail {
+    overflow: hidden;
   }
 
   #plan-view.view.active,
@@ -3252,7 +3396,7 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-shell,
   .toast {
     display: none;

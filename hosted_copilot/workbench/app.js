@@ -25,6 +25,7 @@ const state = {
   excludedCandidateCount: 0,
   activeKey: null,
   assessmentActiveKey: null,
+  assessmentOverrideExpandedKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
   rationaleReturnView: null,
@@ -66,7 +67,7 @@ function renderSortButton(column, sort, dataAttributes) {
   return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" ${attributes} aria-label="Sort by ${escapeHtml(accessibleLabel)}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span class="sort-label">${escapeHtml(label)}</span><span class="sort-indicator" aria-hidden="true">${icon(`chevron-${active && sort.direction === "ascending" ? "up" : "down"}`)}</span></button>`;
 }
 
-const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const mobileDeviceDetected = window.matchMedia("(max-width: 767.98px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 if (mobileDeviceDetected) document.documentElement.classList.add("mobile-unsupported");
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -142,10 +143,26 @@ function bindEvents() {
   elements["candidate-list"].addEventListener("keydown", (event) => {
     handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
-  elements["assessment-results-list"].addEventListener("click", (event) => {
+  elements["assessment-results-list"].addEventListener("click", async (event) => {
     const sortButton = event.target.closest("[data-assessment-sort]");
     if (sortButton) {
       updateAssessmentSort(sortButton);
+      return;
+    }
+    const overrideToggle = event.target.closest("[data-assessment-override-toggle]");
+    if (overrideToggle) {
+      const key = overrideToggle.dataset.assessmentOverrideToggle;
+      state.assessmentOverrideExpandedKey = state.assessmentOverrideExpandedKey === key ? null : key;
+      syncAssessmentOverrideDisclosures();
+      return;
+    }
+    const overrideRemove = event.target.closest("[data-assessment-override-remove]");
+    if (overrideRemove) {
+      const candidate = state.assessedCandidates.find((item) => item.key === overrideRemove.dataset.assessmentOverrideRemove);
+      if (!candidate) return;
+      state.assessmentOverrideExpandedKey = null;
+      await updateOverrideLifecycle(candidate, null, null);
+      showToast("Provisional override removed");
       return;
     }
     const row = event.target.closest("[data-assessment-key]");
@@ -155,6 +172,7 @@ function bindEvents() {
     }
   });
   elements["assessment-results-list"].addEventListener("keydown", (event) => {
+    if (event.target.closest("[data-assessment-override-toggle], [data-assessment-override-remove]")) return;
     handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
@@ -608,6 +626,12 @@ function updateDecision(candidate, changes) {
   });
 }
 
+function removePlanMembership(candidate) {
+  const { assessment, ...maintainerDecision } = getDecision(candidate);
+  removeCandidateFromBulkOperations(candidate.key);
+  saveDecision(candidate, { ...maintainerDecision, ...createPlanMembership() });
+}
+
 function removeCandidateFromBulkOperations(candidateKey) {
   state.session.bulkOperations = state.session.bulkOperations
     .map((operation) => ({ ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey) }))
@@ -638,7 +662,14 @@ function saveDecision(candidate, decision) {
   state.session.updatedAt = new Date().toISOString();
   persistSession();
   syncCandidateTreeRows();
+  syncAssessmentPlanToggle(candidate);
   renderDecisionOutputs();
+}
+
+function syncAssessmentPlanToggle(candidate) {
+  if (state.activeKey !== candidate.key) return;
+  const control = elements["assessment-panel"].querySelector("[data-plan-toggle]");
+  if (control) control.checked = getDecision(candidate).inPlan;
 }
 
 function clearCandidateSelection(candidate) {
@@ -993,7 +1024,7 @@ function sortCandidates(candidates, sort) {
 
 function getFilteredAssessmentCandidates() {
   const query = state.queries["assessment-results"].trim().toLowerCase();
-  return getActiveExcludedCandidates().filter((candidate) => {
+  return state.assessedCandidates.filter((candidate) => !candidate.assessment.hostedApplicable).filter((candidate) => {
     if (!query) return true;
     return [candidate.id, candidate.title, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel, candidate.assessment.applicabilityRationale]
       .some((value) => String(value || "").toLowerCase().includes(query));
@@ -1035,7 +1066,8 @@ function renderAssessmentResultsHeader(sectionKey) {
     ["candidate", "Candidate", "Candidate", "Source rule ID and title."],
     ["state", "State", "Source State", "Lifecycle state relative to the source baseline."],
     ["category", "Category", "Category", "AI-assigned Hosted category."],
-    ["recommendation", "Recommendation", "Recommendation", "AI-recommended action for maintainer review."]
+    ["recommendation", "Recommendation", "Recommendation", "AI-recommended action for maintainer review."],
+    ["override", "Override", "Override", "Maintainer override state."]
   ];
   const button = (column) => renderSortButton(column, sort, { "assessment-sort": column[0], "assessment-section": sectionKey });
   return `<div class="assessment-results-header">${button(columns[0])}<span>${columns.slice(1).map(button).join("")}</span></div>`;
@@ -1058,7 +1090,12 @@ function updateAssessmentSort(button) {
     .map((row) => state.assessedCandidates.find((candidate) => candidate.key === row.dataset.assessmentKey))
     .filter(Boolean);
   const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-key]")).map((row) => [row.dataset.assessmentKey, row]));
-  sortAssessmentCandidates(candidates, state.assessmentSorts[sectionKey]).forEach((candidate) => group.appendChild(rowsByKey.get(candidate.key)));
+  const overridesByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-override-for]")).map((panel) => [panel.dataset.assessmentOverrideFor, panel]));
+  sortAssessmentCandidates(candidates, state.assessmentSorts[sectionKey]).forEach((candidate) => {
+    group.appendChild(rowsByKey.get(candidate.key));
+    const panel = overridesByKey.get(candidate.key);
+    if (panel) group.appendChild(panel);
+  });
   group.querySelector(":scope > .assessment-results-header").outerHTML = renderAssessmentResultsHeader(sectionKey);
   refreshPresentation();
 }
@@ -1069,7 +1106,8 @@ function sortAssessmentCandidates(candidates, sort) {
     if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
     if (sort.field === "state") return candidate.state;
     if (sort.field === "category") return formatHostedCategory(candidate.assessment.hostedCategory);
-    return formatRecommendation(candidate.assessment.recommendation);
+    if (sort.field === "recommendation") return formatRecommendation(candidate.assessment.recommendation);
+    return getApplicabilityOverride(candidate) ? "contested" : "none";
   };
   return [...candidates].sort((left, right) => {
     const compared = collator.compare(value(left), value(right));
@@ -1080,12 +1118,35 @@ function sortAssessmentCandidates(candidates, sort) {
 
 function renderAssessmentResultRow(candidate) {
   const assessment = candidate.assessment;
+  const override = getApplicabilityOverride(candidate);
+  const expanded = override && state.assessmentOverrideExpandedKey === candidate.key;
+  const overrideStatus = override
+    ? `<button class="status-badge warning assessment-override-pill clickable" type="button" data-assessment-override-toggle="${escapeHtml(candidate.key)}" aria-expanded="${expanded}" aria-controls="assessment-override-${escapeHtml(candidate.key)}"><span>Contested</span><span class="assessment-override-chevron" aria-hidden="true">${icon(expanded ? "chevron-down" : "chevron-right")}</span></button>`
+    : `<span class="status-badge neutral assessment-override-pill">None</span>`;
+  const overridePanel = override ? `
+    <div class="assessment-override-inline" id="assessment-override-${escapeHtml(candidate.key)}" data-assessment-override-for="${escapeHtml(candidate.key)}" ${expanded ? "" : "hidden"}>
+      <div class="assessment-override-inline-copy"><strong>Provisional Override</strong><p>${escapeHtml(override.rationale)}</p><small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small></div>
+      <button class="icon-button clickable assessment-override-remove" type="button" data-assessment-override-remove="${escapeHtml(candidate.key)}" aria-label="Remove Override" title="Remove Override">${icon("discard")}</button>
+    </div>
+  ` : "";
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
+    ${overridePanel}
   `;
+}
+
+function syncAssessmentOverrideDisclosures() {
+  elements["assessment-results-list"].querySelectorAll("[data-assessment-override-toggle]").forEach((button) => {
+    const expanded = button.dataset.assessmentOverrideToggle === state.assessmentOverrideExpandedKey;
+    button.setAttribute("aria-expanded", String(expanded));
+    button.querySelector(".assessment-override-chevron").innerHTML = icon(expanded ? "chevron-down" : "chevron-right");
+  });
+  elements["assessment-results-list"].querySelectorAll("[data-assessment-override-for]").forEach((panel) => {
+    panel.hidden = panel.dataset.assessmentOverrideFor !== state.assessmentOverrideExpandedKey;
+  });
 }
 
 function renderAssessmentResultDetail() {
@@ -1101,15 +1162,15 @@ function renderAssessmentResultDetail() {
     ? catalogStatus.rules.map((rule) => `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p></div>`).join("")
     : `<div class="overlap-item subcontext-container empty-mapping">No Hosted rule is mapped to this source candidate.</div>`;
   elements["assessment-results-detail"].innerHTML = `
-    <div class="assessment-content">
-      <div class="assessment-title">
-        <div>
-          <div class="source-line"><span>${escapeHtml(candidate.sourceLabel)}</span><span>/</span><span>${escapeHtml(candidate.id)}</span></div>
-          <h2>${escapeHtml(candidate.title)}</h2>
-          <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
-        </div>
-        <span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span>
+    <div class="assessment-title">
+      <div>
+        <div class="source-line detail-identity"><span>${escapeHtml(candidate.sourceLabel)}</span><span>/</span><span>${escapeHtml(candidate.id)}</span></div>
+        <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
+        <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
+      <span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span>
+    </div>
+    <div class="assessment-content">
       <div class="section-block"><span class="section-label">Source Rule:</span><pre class="evidence-box">${escapeHtml(candidate.text)}</pre>${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}</div>
       <div class="section-block"><span class="section-label">Applicability Decision:</span><div class="ai-evaluation-summary subcontext-container"><div class="ai-evaluation-heading"><strong>${eligible ? "Eligible for candidate catalog" : "Excluded from candidate catalog"}</strong><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">Recommend ${escapeHtml(formatRecommendation(assessment.recommendation))}</span></div><p>${escapeHtml(assessment.applicabilityRationale)}</p></div></div>
       <div class="section-block"><span class="section-label">AI Evaluation:</span><h3>${escapeHtml(assessment.summary)}</h3><p class="coverage-summary">${escapeHtml(assessment.impactDescription)}</p>${renderPriorityAssessment(assessment)}</div>
@@ -1128,10 +1189,9 @@ function renderApplicabilityOverride(candidate) {
       <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
         <span class="section-label">Maintainer Override:</span>
         <div class="override-record subcontext-container">
-          <div class="override-record-heading"><strong>Provisional Override</strong><span class="status-badge warning">Reincluded</span></div>
-          <p>${escapeHtml(override.rationale)}</p>
+          <div class="override-record-heading"><strong>Provisional Override</strong><span class="override-record-actions"><span class="status-badge warning">Reincluded</span><button class="icon-button clickable" type="button" data-override-remove aria-label="Remove Override" title="Remove Override">${icon("discard")}</button></span></div>
+          <label class="override-rationale"><span class="control-subtitle">Override Rationale:</span><textarea readonly>${escapeHtml(override.rationale)}</textarea></label>
           <small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
-          <button class="button secondary clickable" type="button" data-override-remove>Remove Override</button>
         </div>
         <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
       </div>
@@ -1216,7 +1276,7 @@ function renderCandidateTreeRow(candidate) {
   const inPlan = decision.inPlan;
   return `
     <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
-      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove and reset" : "Add"} ${escapeHtml(candidate.id)} ${inPlan ? "from" : "in"} promotion plan" title="${inPlan ? "Remove candidate and reset its decision" : "Add candidate for action and rationale selection"}" ${inPlan ? "checked" : ""}>
+      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove" : "Add"} ${escapeHtml(candidate.id)} ${inPlan ? "from" : "to"} promotion plan" title="${inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan"}" ${inPlan ? "checked" : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
       <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
@@ -1253,21 +1313,23 @@ function renderAssessment() {
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
 
   elements["assessment-panel"].innerHTML = `
-    <div class="assessment-content">
-      <div class="assessment-title">
-        <div>
-          <div class="source-line">
-            <span>${escapeHtml(candidate.sourceLabel)}</span>
-            <span>/</span>
-            <span>${escapeHtml(candidate.id)}</span>
-            <span class="candidate-state ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span>
-          </div>
-          <h2>${escapeHtml(candidate.title)}</h2>
-          <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
+    <div class="assessment-title">
+      <div>
+        <div class="source-line detail-identity">
+          <span>${escapeHtml(candidate.sourceLabel)}</span>
+          <span>/</span>
+          <span>${escapeHtml(candidate.id)}</span>
         </div>
-        <span class="decision-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span>
+        <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
+        <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
+      <span class="assessment-title-statuses">
+        <span class="candidate-state ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span>
+        <span class="decision-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span>
+      </span>
+    </div>
 
+    <div class="assessment-content">
       <div class="section-block">
         <span class="section-label">Source Rule:</span>
         <pre class="evidence-box">${escapeHtml(candidate.text)}</pre>
@@ -1396,13 +1458,12 @@ function handleAssessmentInput(event) {
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
     updateDecision(candidate, { action });
-    renderAssessment();
+    syncAssessmentActionControls(candidate);
     return;
   }
   if (event.target.hasAttribute("data-plan-toggle")) {
     if (event.target.checked) updateDecision(candidate, { inPlan: true });
-    else undoDecision(candidate);
-    renderAssessment();
+    else removePlanMembership(candidate);
     return;
   }
   if (event.target.dataset.decisionField) {
@@ -1419,6 +1480,21 @@ function handleAssessmentInput(event) {
     }
     if (event.target.dataset.decisionField === "proposedText") refreshAssessmentScores(candidate);
   }
+}
+
+function syncAssessmentActionControls(candidate) {
+  const decision = getDecision(candidate);
+  elements["assessment-panel"].querySelectorAll("[data-rule-action]").forEach((control) => {
+    const selected = control.dataset.ruleAction === decision.action;
+    control.checked = selected;
+    control.closest(".action-option")?.classList.toggle("selected", selected);
+  });
+  const badge = elements["assessment-panel"].querySelector(":scope > .assessment-title .decision-badge");
+  if (badge) {
+    badge.className = `decision-badge ${decision.action}`;
+    badge.textContent = formatRecommendation(decision.action);
+  }
+  refreshAssessmentScores(candidate);
 }
 
 async function handleAssessmentClick(event) {
@@ -1509,7 +1585,7 @@ function sortPlanCandidates(candidates, sort) {
     if (sort.field === "type") return decision.planMembershipSource;
     if (sort.field === "action") return formatRecommendation(decision.action);
     if (sort.field === "impact") return assessment ? calculateImpact(assessment.factors) : Number.NEGATIVE_INFINITY;
-    if (sort.field === "cost") return getPlanTokenSortValue(candidate, decision, assessment);
+    if (sort.field === "cost") return getPlanTokenValue(candidate);
     return getPlanReadiness(candidate).label;
   };
   return [...candidates].sort((left, right) => {
@@ -1533,7 +1609,9 @@ function getPlanReadiness(candidate) {
   };
 }
 
-function getPlanTokenSortValue(candidate, decision, assessment) {
+function getPlanTokenValue(candidate) {
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
   if (!isPromotionAction(decision.action) && getApplicabilityOverride(candidate) && assessment) {
     return getAssessmentTokenValue(candidate, assessment, decision);
   }
@@ -1541,12 +1619,17 @@ function getPlanTokenSortValue(candidate, decision, assessment) {
 }
 
 function getPlanTokenDisplay(candidate) {
-  const decision = getDecision(candidate);
-  const assessment = getAssessment(candidate, decision);
-  if (!isPromotionAction(decision.action) && getApplicabilityOverride(candidate) && assessment) {
-    return `${formatNumber(getAssessmentTokenValue(candidate, assessment, decision))} est.`;
-  }
-  return formatSignedNumber(getPlanTokenDelta(candidate));
+  return formatSignedNumber(getPlanTokenValue(candidate));
+}
+
+function scrollCandidateDetailTargetIntoView(target) {
+  const scroller = elements["assessment-panel"].querySelector(":scope > .assessment-content");
+  if (!target || !scroller) return;
+  const scrollerRect = scroller.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetTop = scroller.scrollTop + targetRect.top - scrollerRect.top;
+  const centeredOffset = Math.max(0, (scroller.clientHeight - targetRect.height) / 2);
+  scroller.scrollTo({ top: Math.max(0, targetTop - centeredOffset), behavior: "smooth" });
 }
 
 function openPlanCandidate(key, focusTarget = null) {
@@ -1563,13 +1646,13 @@ function openPlanCandidate(key, focusTarget = null) {
       if (focusTarget === "action") {
         const actions = elements["assessment-panel"].querySelector(".action-options");
         const control = actions?.querySelector("input:checked") || actions?.querySelector("input");
-        actions?.scrollIntoView({ block: "center", behavior: "smooth" });
+        scrollCandidateDetailTargetIntoView(actions);
         control?.focus({ preventScroll: true });
         return;
       }
       if (focusTarget === "rationale") {
         const field = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
-        field?.scrollIntoView({ block: "center", behavior: "smooth" });
+        scrollCandidateDetailTargetIntoView(field);
         field?.focus({ preventScroll: true });
         return;
       }
@@ -1607,7 +1690,7 @@ function getPlanAffectedSurfaces(candidate) {
 
 function renderCapacity() {
   const reports = getCapacityReports().filter((report) => report.kind === "combined");
-  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getPlanTokenDelta(candidate), 0);
+  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getPlanTokenValue(candidate), 0);
   elements["capacity-panel"].innerHTML = `
     <p class="eyebrow">Plan projection</p>
     <h3>Guidance capacity</h3>
@@ -2005,8 +2088,8 @@ function syncCandidateTreeRows() {
     const checkbox = row.querySelector("[data-decision-key]");
     if (checkbox) {
       checkbox.checked = inPlan;
-      checkbox.title = inPlan ? "Remove candidate and reset its decision" : "Add candidate for action and rationale selection";
-      checkbox.setAttribute("aria-label", `${inPlan ? "Remove and reset" : "Add"} ${candidate.id} ${inPlan ? "from" : "in"} promotion plan`);
+      checkbox.title = inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan";
+      checkbox.setAttribute("aria-label", `${inPlan ? "Remove" : "Add"} ${candidate.id} ${inPlan ? "from" : "to"} promotion plan`);
     }
     const assessment = candidate && getAssessment(candidate, getDecision(candidate));
     const token = row.querySelector(".tree-cost");
@@ -2065,6 +2148,11 @@ function syncAssessmentResultRows() {
 
 function showAssessmentPane(pane) {
   const activePane = pane === "details" ? "details" : "assessments";
+  if (activePane === "assessments" && state.assessmentPane === "details") {
+    state.assessmentActiveKey = null;
+    syncAssessmentResultRows();
+    renderAssessmentResultDetail();
+  }
   state.assessmentPane = activePane;
   const detailsActive = activePane === "details";
   elements["assessment-results-list"].closest(".candidate-panel").hidden = detailsActive;
@@ -2105,7 +2193,7 @@ function handleTreeSelection(event) {
     updateDecision(candidate, { inPlan: true });
     selectCandidate(candidate.key);
   } else {
-    undoDecision(candidate);
+    removePlanMembership(candidate);
   }
 }
 

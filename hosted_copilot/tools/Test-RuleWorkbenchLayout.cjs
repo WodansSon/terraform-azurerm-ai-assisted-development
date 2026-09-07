@@ -26,7 +26,9 @@ async function activateAssessmentDetails(page) {
   await page.evaluate(() => {
     document.querySelector('[data-workspace-tab="assessment-results"]').click();
     document.querySelector('[data-assessment-pane="details"]').click();
-    const panel = document.querySelector("#assessment-results-panel .assessment-panel");
+    const detail = document.querySelector("#assessment-results-detail");
+    detail.innerHTML = '<div class="assessment-title"><div><div class="source-line detail-identity"><span>Interactive rule</span><span>/</span><span>LAYOUT-PROBE</span></div><h2 class="detail-rule-title">Assessment layout probe</h2></div><span class="status-badge warning">Excluded</span></div><div class="assessment-content"></div>';
+    const panel = detail.querySelector(":scope > .assessment-content");
     const probe = document.createElement("div");
     probe.dataset.layoutProbe = "assessment";
     probe.style.height = "1600px";
@@ -73,6 +75,192 @@ async function assertContainedScroll(page, width, name, ownerSelector, fixedSele
   assert(result.ownerScrollHeight > result.ownerClientHeight, `${width}px ${name}: designated pane is not scrollable`);
   assert(result.ownerScrollTop > 0, `${width}px ${name}: designated pane did not accept scroll`);
   assert(result.fixedTopAfter === result.fixedTop, `${width}px ${name}: fixed view controls moved with pane content`);
+}
+
+async function assertRuleActionPreservesContext(page, width) {
+  const before = await page.evaluate(() => {
+    const body = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
+    const control = [...document.querySelectorAll(".action-options [data-rule-action]")]
+      .find((item) => !item.checked && !item.disabled);
+    if (!control) return { controlAvailable: false };
+    const bodyRect = body.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    const controlTop = body.scrollTop + controlRect.top - bodyRect.top;
+    body.scrollTop = Math.max(0, controlTop - (body.clientHeight - controlRect.height) / 2);
+    control.focus({ preventScroll: true });
+    body.dataset.ruleActionContextProbe = "true";
+    return {
+      controlAvailable: true,
+      action: control.dataset.ruleAction,
+      scrollTop: body.scrollTop,
+      scrollHeight: body.scrollHeight,
+      clientHeight: body.clientHeight,
+    };
+  });
+
+  assert(before.controlAvailable, `${width}px Rule Action: no alternative action is available`);
+  await page.click(`.action-options [data-rule-action="${before.action}"]`);
+
+  const result = await page.evaluate(({ action, scrollTop }) => {
+    const currentBody = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
+    const control = document.querySelector(`.action-options [data-rule-action="${action}"]`);
+    const selectedBadge = document.querySelector("#candidate-sources-panel .assessment-title .decision-badge");
+    const bodyPreserved = currentBody.dataset.ruleActionContextProbe === "true";
+    delete currentBody.dataset.ruleActionContextProbe;
+    return {
+      bodyPreserved,
+      scrollPreserved: Math.abs(currentBody.scrollTop - scrollTop) < 0.1,
+      scrollTopBefore: scrollTop,
+      scrollTopAfter: currentBody.scrollTop,
+      scrollHeightAfter: currentBody.scrollHeight,
+      clientHeightAfter: currentBody.clientHeight,
+      focusPreserved: document.activeElement === control,
+      selectionPreserved: control.checked && selectedBadge?.textContent.trim().toLowerCase().replaceAll(" ", "-") === control.dataset.ruleAction,
+    };
+  }, before);
+
+  assert(result.bodyPreserved, `${width}px Rule Action: Details body was replaced`);
+  assert(result.scrollPreserved, `${width}px Rule Action ${before.action}: Details scroll position changed from ${result.scrollTopBefore}/${before.scrollHeight}/${before.clientHeight} to ${result.scrollTopAfter}/${result.scrollHeightAfter}/${result.clientHeightAfter}`);
+  assert(result.focusPreserved, `${width}px Rule Action: selected radio lost focus`);
+  assert(result.selectionPreserved, `${width}px Rule Action: selected action and header badge diverged`);
+}
+
+async function assertPlanTogglePreservesContext(page, width) {
+  const before = await page.evaluate(() => {
+    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
+    const body = panel.querySelector(":scope > .assessment-content");
+    const control = body.querySelector("[data-plan-toggle]");
+    if (!control || control.checked) return { controlAvailable: false };
+    const bodyRect = body.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    const controlTop = body.scrollTop + controlRect.top - bodyRect.top;
+    body.scrollTop = Math.max(0, controlTop - (body.clientHeight - controlRect.height) / 2);
+    control.focus({ preventScroll: true });
+    body.dataset.planToggleContextProbe = "true";
+    return {
+      controlAvailable: true,
+      scrollTop: body.scrollTop,
+      headerHeight: panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height,
+    };
+  });
+
+  assert(before.controlAvailable, `${width}px Promotion Plan toggle: unchecked control is unavailable`);
+  await page.click("#candidate-sources-panel [data-plan-toggle]");
+
+  const result = await page.evaluate(({ scrollTop, headerHeight }) => {
+    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
+    const currentBody = panel.querySelector(":scope > .assessment-content");
+    const control = currentBody.querySelector("[data-plan-toggle]");
+    const bodyPreserved = currentBody.dataset.planToggleContextProbe === "true";
+    return {
+      bodyPreserved,
+      scrollPreserved: Math.abs(currentBody.scrollTop - scrollTop) < 0.1,
+      focusPreserved: document.activeElement === control,
+      selectionPreserved: control.checked,
+      headerPreserved: Math.abs(panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height - headerHeight) < 0.1,
+    };
+  }, before);
+
+  assert(result.bodyPreserved, `${width}px Promotion Plan toggle: Details body was replaced`);
+  assert(result.scrollPreserved, `${width}px Promotion Plan toggle: Details scroll position changed`);
+  assert(result.focusPreserved, `${width}px Promotion Plan toggle: checkbox lost focus`);
+  assert(result.selectionPreserved, `${width}px Promotion Plan toggle: checkbox selection was not retained`);
+  assert(result.headerPreserved, `${width}px Promotion Plan toggle: fixed header height changed`);
+
+  await page.click("#candidate-sources-panel [data-plan-toggle]");
+  const removed = await page.evaluate(({ scrollTop, headerHeight }) => {
+    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
+    const currentBody = panel.querySelector(":scope > .assessment-content");
+    const control = currentBody.querySelector("[data-plan-toggle]");
+    const result = {
+      bodyPreserved: currentBody.dataset.planToggleContextProbe === "true",
+      scrollPreserved: Math.abs(currentBody.scrollTop - scrollTop) < 0.1,
+      focusPreserved: document.activeElement === control,
+      selectionRemoved: !control.checked,
+      detailsPreserved: document.querySelector('[data-candidate-pane="details"]')?.getAttribute("aria-selected") === "true",
+      headerPreserved: Math.abs(panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height - headerHeight) < 0.1,
+    };
+    delete currentBody.dataset.planToggleContextProbe;
+    return result;
+  }, before);
+
+  assert(removed.bodyPreserved, `${width}px Promotion Plan toggle removal: Details body was replaced`);
+  assert(removed.scrollPreserved, `${width}px Promotion Plan toggle removal: Details scroll position changed`);
+  assert(removed.focusPreserved, `${width}px Promotion Plan toggle removal: checkbox lost focus`);
+  assert(removed.selectionRemoved, `${width}px Promotion Plan toggle removal: checkbox remained selected`);
+  assert(removed.detailsPreserved, `${width}px Promotion Plan toggle removal: navigation left Details`);
+  assert(removed.headerPreserved, `${width}px Promotion Plan toggle removal: fixed header height changed`);
+
+  await page.evaluate(async () => {
+    const sessionId = localStorage.getItem("hosted-rule-workbench.active-session");
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("hosted-rule-workbench");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const request = database.transaction("sessions", "readonly").objectStore("sessions").get(sessionId);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+  });
+}
+
+async function assertPlanMembershipSynchronizesAcrossPanes(page, width) {
+  const before = await page.evaluate(() => {
+    const detailsBody = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
+    const detailsToggle = detailsBody.querySelector("[data-plan-toggle]");
+    const activeRow = document.querySelector("#candidate-list [data-candidate-key][aria-current=\"true\"]");
+    if (!detailsToggle || !activeRow || detailsToggle.checked) return { controlsAvailable: false };
+    detailsToggle.click();
+    return {
+      controlsAvailable: true,
+      candidateKey: activeRow.dataset.candidateKey,
+      detailsChecked: detailsToggle.checked,
+      treeChecked: activeRow.querySelector("[data-decision-key]").checked,
+    };
+  });
+
+  assert(before.controlsAvailable, `${width}px Membership synchronization: controls are unavailable`);
+  assert(before.detailsChecked && before.treeChecked, `${width}px Membership synchronization: Details check did not update the tree`);
+
+  await page.click('[data-candidate-pane="candidates"]');
+  await page.evaluate((candidateKey) => {
+    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
+    row.closest("details.candidate-source-root").open = true;
+    const category = row.closest("details.candidate-category");
+    if (category) category.open = true;
+  }, before.candidateKey);
+
+  const openState = await page.evaluate((candidateKey) => {
+    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
+    return {
+      sourceOpen: row.closest("details.candidate-source-root").open,
+      categoryOpen: row.closest("details.candidate-category")?.open ?? true,
+    };
+  }, before.candidateKey);
+  await page.click(`#candidate-list [data-candidate-key="${before.candidateKey}"] [data-decision-key]`);
+
+  const treeResult = await page.evaluate((candidateKey) => {
+    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
+    return {
+      unchecked: !row.querySelector("[data-decision-key]").checked,
+      selected: row.getAttribute("aria-current") === "true",
+      sourceOpen: row.closest("details.candidate-source-root").open,
+      categoryOpen: row.closest("details.candidate-category")?.open ?? true,
+    };
+  }, before.candidateKey);
+  assert(treeResult.unchecked, `${width}px Membership synchronization: tree checkbox remained checked`);
+  assert(treeResult.selected, `${width}px Membership synchronization: active tree selection changed`);
+  assert(treeResult.sourceOpen === openState.sourceOpen && treeResult.categoryOpen === openState.categoryOpen, `${width}px Membership synchronization: tree disclosures collapsed`);
+
+  await page.click('[data-candidate-pane="details"]');
+  const detailsResult = await page.evaluate(() => ({
+    unchecked: !document.querySelector("#candidate-sources-panel [data-plan-toggle]").checked,
+    detailsActive: document.querySelector('[data-candidate-pane="details"]')?.getAttribute("aria-selected") === "true",
+  }));
+  assert(detailsResult.unchecked && detailsResult.detailsActive, `${width}px Membership synchronization: tree uncheck did not update Details`);
 }
 
 async function assertStatusTooltip(page, width) {
@@ -142,11 +330,17 @@ async function run() {
       assertionCount += 6;
 
       await activateCandidateDetails(page);
-      await assertContainedScroll(page, width, "Candidate Details", "#candidate-sources-panel .assessment-panel", ".candidate-pane-switch");
+      await assertContainedScroll(page, width, "Candidate Details", "#candidate-sources-panel .assessment-content", "#candidate-sources-panel .assessment-panel > .assessment-title");
+      assertionCount += 6;
+      await assertRuleActionPreservesContext(page, width);
+      assertionCount += 5;
+      await assertPlanTogglePreservesContext(page, width);
+      assertionCount += 6;
+      await assertPlanMembershipSynchronizesAcrossPanes(page, width);
       assertionCount += 6;
 
       await activateAssessmentDetails(page);
-      await assertContainedScroll(page, width, "Assessment Details", "#assessment-results-panel .assessment-panel", ".assessment-pane-switch");
+      await assertContainedScroll(page, width, "Assessment Details", "#assessment-results-detail > .assessment-content", "#assessment-results-detail > .assessment-title");
       assertionCount += 6;
 
       await activateViewWithProbe(page, "plan", "#plan-view .plan-table-wrap");
