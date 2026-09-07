@@ -35,7 +35,8 @@ const state = {
     "assessment-results": ""
   },
   candidateSorts: {},
-  assessmentSorts: {}
+  assessmentSorts: {},
+  planSort: { field: "candidate", direction: "ascending" }
 };
 
 const elements = {};
@@ -49,6 +50,20 @@ let truncationTooltipFrame;
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
+}
+
+function renderPreviewEmptyState(iconName, title, message, className = "") {
+  return `<div class="empty-state compact preview-empty-state ${escapeHtml(className)}">${icon(iconName)}<h3>${escapeHtml(title)}</h3><p>${escapeHtml(message)}</p></div>`;
+}
+
+function renderSortButton(column, sort, dataAttributes) {
+  const [key, label, accessibleLabel, help] = column;
+  const active = sort.field === key;
+  const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
+  const attributes = Object.entries(dataAttributes)
+    .map(([name, value]) => `data-${name}="${escapeHtml(value)}"`)
+    .join(" ");
+  return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" ${attributes} aria-label="Sort by ${escapeHtml(accessibleLabel)}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span class="sort-label">${escapeHtml(label)}</span><span class="sort-indicator" aria-hidden="true">${icon(`chevron-${active && sort.direction === "ascending" ? "up" : "down"}`)}</span></button>`;
 }
 
 const mobileDeviceDetected = window.matchMedia("(max-width: 767px)").matches || navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
@@ -70,10 +85,10 @@ function captureElements() {
     "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count",
     "assessment-results-list", "assessment-results-detail",
-    "return-catalog-button", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
-    "preview-summary", "preview-diff", "preview-payload-diff", "preview-json", "raw-change-tools", "raw-change-count",
+    "return-catalog-button", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
+    "preview-summary", "preview-diff", "preview-payload-diff", "preview-raw-heading", "raw-payload-empty", "preview-json", "raw-change-tools", "raw-change-count",
     "raw-change-position", "raw-previous-change", "raw-next-change", "copy-preview-button", "approver-name", "approval-requirements",
-    "approve-export-button", "toast"
+    "approve-export-button", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -168,12 +183,20 @@ function bindEvents() {
     if (row) openPlanCandidate(row.dataset.planRow);
   });
   elements["plan-table-body"].addEventListener("keydown", handlePlanRowKeyboardNavigation);
+  elements["plan-table-head"].addEventListener("click", (event) => {
+    const sortButton = event.target.closest("[data-plan-sort]");
+    if (sortButton) updatePlanSort(sortButton);
+  });
   elements["raw-previous-change"].addEventListener("click", () => navigateRawPayloadDirection(-1));
   elements["raw-next-change"].addEventListener("click", () => navigateRawPayloadDirection(1));
   elements["preview-json"].addEventListener("scroll", updateRawPayloadChangeNavigation);
   elements["copy-preview-button"].addEventListener("click", copyPreview);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
+  elements["toast-close"].addEventListener("click", dismissNotification);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && elements.toast.classList.contains("visible")) dismissNotification();
+  });
   window.addEventListener("resize", hideStatusTooltip);
   window.addEventListener("resize", scheduleTruncationTooltips);
 }
@@ -828,10 +851,7 @@ function applyBulkSelection(recommendationScope) {
   persistSession();
   elements["bulk-actions"].removeAttribute("open");
   renderAll();
-  showToast(`${formatCountLabel(candidates.length, "Candidate")} added to the promotion plan.`, false, {
-    label: "Undo",
-    handler: () => undoBulkOperation(operation.id)
-  });
+  showToast(`${formatCountLabel(candidates.length, "Candidate")} added to the promotion plan.`);
 }
 
 function undoBulkOperation(operationId) {
@@ -856,7 +876,7 @@ function renderCandidateList() {
   renderBulkActions();
   if (!filtered.length) {
     const message = state.candidates.length ? "No candidates match this search." : "No AI-evaluated candidates are present in this bundle.";
-    elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No candidates available</h3><p>${escapeHtml(message)}</p></div>`;
+    elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No Candidates Available</h3><p>${escapeHtml(message)}</p></div>`;
     return;
   }
   const overrideCandidates = filtered.filter((candidate) => getApplicabilityOverride(candidate));
@@ -925,11 +945,7 @@ function renderCandidateListHeader(sectionKey) {
     ["cost", "Tokens", "Token Usage", "Unsigned values show current guarded-token usage. Signed values show the estimated change if the recommended action is promoted."],
     ["recommendation", "Recommended", "Recommendation", "AI-recommended action for maintainer review."]
   ];
-  const button = ([key, label, accessibleLabel, help]) => {
-    const active = sort.field === key;
-    const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
-    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-candidate-sort="${key}" data-candidate-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? icon(`chevron-${sort.direction === "ascending" ? "up" : "down"}`) : ""}</button>`;
-  };
+  const button = (column) => renderSortButton(column, sort, { "candidate-sort": column[0], "candidate-section": sectionKey });
   return `<div class="candidate-list-header"><span aria-hidden="true"></span>${button(columns[0])}<span class="candidate-list-header-summary">${columns.slice(1).map(button).join("")}</span></div>`;
 }
 
@@ -988,7 +1004,7 @@ function renderAssessmentResults() {
   if (!state.assessedCandidates.length) return;
   const filtered = getFilteredAssessmentCandidates();
   if (!filtered.length) {
-    elements["assessment-results-list"].innerHTML = `<div class="empty-state compact"><h3>No assessment results</h3><p>No candidates match this outcome and search.</p></div>`;
+    elements["assessment-results-list"].innerHTML = `<div class="empty-state compact"><h3>No Assessment Results</h3><p>No candidates match this outcome and search.</p></div>`;
   }
   else {
     const sources = [
@@ -1021,11 +1037,7 @@ function renderAssessmentResultsHeader(sectionKey) {
     ["category", "Category", "Category", "AI-assigned Hosted category."],
     ["recommendation", "Recommendation", "Recommendation", "AI-recommended action for maintainer review."]
   ];
-  const button = ([key, label, accessibleLabel, help]) => {
-    const active = sort.field === key;
-    const nextDirection = active && sort.direction === "ascending" ? "descending" : "ascending";
-    return `<button class="candidate-sort-button clickable ${active ? "active" : ""}" type="button" data-assessment-sort="${key}" data-assessment-section="${escapeHtml(sectionKey)}" aria-label="Sort by ${accessibleLabel}, ${nextDirection}" title="${escapeHtml(help)}" ${active ? 'aria-pressed="true"' : ""}><span>${label}</span>${active ? icon(`chevron-${sort.direction === "ascending" ? "up" : "down"}`) : ""}</button>`;
-  };
+  const button = (column) => renderSortButton(column, sort, { "assessment-sort": column[0], "assessment-section": sectionKey });
   return `<div class="assessment-results-header">${button(columns[0])}<span>${columns.slice(1).map(button).join("")}</span></div>`;
 }
 
@@ -1079,7 +1091,7 @@ function renderAssessmentResultRow(candidate) {
 function renderAssessmentResultDetail() {
   const candidate = state.assessedCandidates.find((item) => item.key === state.assessmentActiveKey);
   if (!candidate) {
-    elements["assessment-results-detail"].innerHTML = `<div class="empty-state">${icon("checklist")}<h2>Select an assessment result</h2><p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p></div>`;
+    elements["assessment-results-detail"].innerHTML = `<div class="empty-state">${icon("checklist")}<h2>Select an Assessment Result</h2><p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p></div>`;
     return;
   }
   const assessment = candidate.assessment;
@@ -1132,7 +1144,7 @@ function renderApplicabilityOverride(candidate) {
       <span class="section-label">Maintainer Override:</span>
       <div class="override-summary subcontext-container">
         <div><strong>Disagree with this exclusion?</strong><p>Contest the AI applicability decision and record a separate provisional maintainer correction.</p>${reason ? `<small>${escapeHtml(reason)}</small>` : ""}</div>
-        <button class="button secondary clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}>${icon("warning")}Contest Assessment</button>
+        <button class="button warning-action clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}>${icon("chat-sparkle-error")}Contest Assessment</button>
       </div>
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
@@ -1214,14 +1226,14 @@ function renderCandidateTreeRow(candidate) {
 function renderAssessment() {
   const candidate = getActiveCandidate();
   if (!candidate) {
-    elements["assessment-panel"].innerHTML = `<div class="empty-state">${icon("list-selection")}<h2>Select a candidate</h2><p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p></div>`;
+    elements["assessment-panel"].innerHTML = `<div class="empty-state">${icon("tasklist")}<h2>Select a Candidate</h2><p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p></div>`;
     refreshPresentation();
     return;
   }
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   if (!assessment) {
-    elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>AI assessment unavailable</h2><p>This candidate is not ready for maintainer review and should not appear in the evaluated candidate tree.</p></div>`;
+    elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>AI Assessment Unavailable</h2><p>This candidate is not ready for maintainer review and should not appear in the evaluated candidate tree.</p></div>`;
     return;
   }
   const impact = assessment ? calculateImpact(assessment.factors) : null;
@@ -1372,25 +1384,9 @@ function factorReadout(label, description, kind, value) {
 function undoDecision(candidate) {
   const savedDecision = state.session.decisions[candidate.key];
   if (!getDecision(candidate).inPlan || !savedDecision) return;
-  const decisionSnapshot = structuredClone(savedDecision);
-  const bulkOperationSnapshot = decisionSnapshot.planMembershipSource === "bulk"
-    ? structuredClone(state.session.bulkOperations.find((operation) => operation.id === decisionSnapshot.bulkOperationId) || null)
-    : null;
   const override = getApplicabilityOverride(candidate);
-  const overrideSnapshot = override ? structuredClone(override) : null;
   resetCandidate(candidate).then(() => {
-    showToast(override ? "Override and plan item removed." : "Candidate removed and reset.", false, {
-      label: "Restore",
-      handler: () => {
-        if (overrideSnapshot) {
-          updateOverrideLifecycle(candidate, overrideSnapshot, decisionSnapshot).then(() => showToast("Override and plan item restored"));
-        } else {
-          restoreBulkOperationMembership(candidate.key, bulkOperationSnapshot);
-          saveDecision(candidate, decisionSnapshot);
-          showToast("Candidate restored to plan");
-        }
-      }
-    });
+    showToast(override ? "Override and plan item removed." : "Candidate removed and reset.");
   });
 }
 
@@ -1453,29 +1449,95 @@ function refreshAssessmentScores(candidate) {
 }
 
 function renderPlan() {
-  const planCandidates = getPlanCandidates();
+  const planCandidates = sortPlanCandidates(getPlanCandidates(), state.planSort);
+  elements["plan-table-head"].innerHTML = renderPlanHeader();
   elements["empty-plan"].hidden = planCandidates.length > 0;
   elements["plan-table-body"].innerHTML = planCandidates.map((candidate) => {
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
     const impact = assessment ? calculateImpact(assessment.factors) : null;
     const cost = getPlanTokenDisplay(candidate);
-    const actionRequired = !isPromotionAction(decision.action);
-    const rationaleRequired = !decision.rationale.trim();
-    const ready = assessment && !actionRequired && !rationaleRequired;
-    const readiness = actionRequired ? "Needs action" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment";
+    const readiness = getPlanReadiness(candidate);
     return `
       <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(candidate.id)} candidate">
-        <td><span class="candidate-link">${escapeHtml(candidate.id)}</span><br>${escapeHtml(candidate.title)}</td>
-        <td class="plan-source">${escapeHtml(candidate.sourceLabel)}<br><span class="status-badge neutral plan-membership-badge">${escapeHtml(capitalize(decision.planMembershipSource))}</span></td>
+        <td class="plan-candidate"><span class="candidate-link">${escapeHtml(candidate.id)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
+        <td class="plan-source">${escapeHtml(formatTitleCase(candidate.sourceLabel))}</td>
+        <td class="plan-type"><span class="status-badge neutral plan-membership-badge">${escapeHtml(formatTitleCase(decision.planMembershipSource))}</span></td>
         <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
-        <td>${ready ? `<span class="status-badge success">${readiness}</span>` : actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" title="Open candidate and choose a rule action">${icon("edit")}<span>${readiness}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" title="Open candidate and enter decision rationale">${icon("edit")}<span>${readiness}</span></button>`}</td>
+        <td>${readiness.ready ? `<span class="status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" title="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" title="Open candidate and enter decision rationale">${icon("edit")}<span>${readiness.label}</span></button>`}</td>
         <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" title="Undo decision and remove from promotion plan">${icon("discard")}</button></td>
       </tr>
     `;
   }).join("");
+}
+
+function renderPlanHeader() {
+  const columns = [
+    ["candidate", "Candidate", "Candidate", "Rule ID and title."],
+    ["source", "Source", "Source", "Origin of the candidate rule."],
+    ["type", "Type", "Type", "How the candidate entered the promotion plan."],
+    ["action", "Action", "Action", "Selected promotion action."],
+    ["impact", "Impact", "Impact", "Priority score for the candidate."],
+    ["cost", "Draft Cost", "Draft Cost", "Estimated guarded-token change."],
+    ["readiness", "Readiness", "Readiness", "Remaining work before approval."]
+  ];
+  const headers = columns.map((column) => {
+    const active = state.planSort.field === column[0];
+    return `<th scope="col" ${active ? `aria-sort="${state.planSort.direction}"` : ""}>${renderSortButton(column, state.planSort, { "plan-sort": column[0] })}</th>`;
+  }).join("");
+  return `<tr>${headers}<th scope="col">Controls</th></tr>`;
+}
+
+function updatePlanSort(button) {
+  const field = button.dataset.planSort;
+  state.planSort = {
+    field,
+    direction: state.planSort.field === field && state.planSort.direction === "ascending" ? "descending" : "ascending"
+  };
+  renderPlan();
+}
+
+function sortPlanCandidates(candidates, sort) {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  const value = (candidate) => {
+    const decision = getDecision(candidate);
+    const assessment = getAssessment(candidate, decision);
+    if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
+    if (sort.field === "source") return candidate.sourceLabel;
+    if (sort.field === "type") return decision.planMembershipSource;
+    if (sort.field === "action") return formatRecommendation(decision.action);
+    if (sort.field === "impact") return assessment ? calculateImpact(assessment.factors) : Number.NEGATIVE_INFINITY;
+    if (sort.field === "cost") return getPlanTokenSortValue(candidate, decision, assessment);
+    return getPlanReadiness(candidate).label;
+  };
+  return [...candidates].sort((left, right) => {
+    const leftValue = value(left);
+    const rightValue = value(right);
+    const compared = typeof leftValue === "number" ? leftValue - rightValue : collator.compare(leftValue, rightValue);
+    const directed = sort.direction === "ascending" ? compared : -compared;
+    return directed || collator.compare(left.id, right.id);
+  });
+}
+
+function getPlanReadiness(candidate) {
+  const decision = getDecision(candidate);
+  const assessment = getAssessment(candidate, decision);
+  const actionRequired = !isPromotionAction(decision.action);
+  const rationaleRequired = !decision.rationale.trim();
+  return {
+    actionRequired,
+    ready: Boolean(assessment) && !actionRequired && !rationaleRequired,
+    label: actionRequired ? "Needs action" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
+  };
+}
+
+function getPlanTokenSortValue(candidate, decision, assessment) {
+  if (!isPromotionAction(decision.action) && getApplicabilityOverride(candidate) && assessment) {
+    return getAssessmentTokenValue(candidate, assessment, decision);
+  }
+  return getPlanTokenDelta(candidate);
 }
 
 function getPlanTokenDisplay(candidate) {
@@ -1613,6 +1675,27 @@ function renderRawPayload(payload) {
   const rawPayload = JSON.stringify(payload, null, 2);
   const lines = rawPayload.split("\n");
   const changes = getRawPayloadChanges(lines, payload.decisions);
+  const hasChanges = changes.length > 0;
+
+  rawPayloadChangeIndex = 0;
+  rawPayloadChangeCount = changes.length;
+  elements["preview-raw-heading"].hidden = !hasChanges;
+  elements["raw-payload-empty"].hidden = hasChanges;
+  elements["preview-json"].hidden = !hasChanges;
+  elements["raw-change-tools"].hidden = !hasChanges;
+  elements["raw-change-count"].textContent = `${rawPayloadChangeCount} added or updated record${rawPayloadChangeCount === 1 ? "" : "s"}`;
+
+  if (!hasChanges) {
+    elements["raw-payload-empty"].innerHTML = renderPreviewEmptyState(
+      "json",
+      "No Raw Payload Changes",
+      "Add or update a Promotion Plan item to review its generated selection payload."
+    );
+    elements["preview-json"].scrollTop = 0;
+    updateRawPayloadChangeNavigation();
+    return;
+  }
+
   const changedLines = new Map();
   changes.forEach((change, changeIndex) => {
     for (let lineIndex = change.start; lineIndex <= change.end; lineIndex += 1) changedLines.set(lineIndex, changeIndex);
@@ -1625,17 +1708,7 @@ function renderRawPayload(payload) {
   }).join("\n");
   elements["preview-json"].innerHTML = `<span class="highlight-width-track">${renderedLines}</span>`;
   if (elements["preview-json"].textContent !== rawPayload) throw new Error("raw payload rendering changed JSON content");
-
-  rawPayloadChangeIndex = 0;
-  rawPayloadChangeCount = changes.length;
-  elements["raw-change-tools"].hidden = rawPayloadChangeCount === 0;
-  elements["raw-change-count"].textContent = `${rawPayloadChangeCount} added or updated record${rawPayloadChangeCount === 1 ? "" : "s"}`;
-  if (rawPayloadChangeCount) {
-    navigateRawPayloadChange(0, "auto");
-  } else {
-    elements["preview-json"].scrollTop = 0;
-    updateRawPayloadChangeNavigation();
-  }
+  navigateRawPayloadChange(0, "auto");
 }
 
 function getRawPayloadChanges(lines, decisions) {
@@ -1706,11 +1779,15 @@ function updateRawPayloadChangeNavigation() {
 
 function renderPreviewChanges(candidates) {
   if (!candidates.length) {
-    return `<div class="empty-state compact">${icon("git-pull-request-draft")}<h3>No proposed changes</h3><p>Add an available rule action to the promotion plan to review its line-level diff.</p></div>`;
+    return renderPreviewEmptyState(
+      "git-pull-request-draft",
+      "No Proposed Changes",
+      "Add an available rule action to the promotion plan to review its line-level diff."
+    );
   }
   const unresolved = candidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action));
   const resolved = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action));
-  const warning = unresolved.length ? `<div class="empty-state compact">${icon("warning")}<h3>${unresolved.length} action${unresolved.length === 1 ? "" : "s"} required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
+  const warning = unresolved.length ? `<div class="empty-state compact warning-state">${icon("warning")}<h3>${unresolved.length} Action${unresolved.length === 1 ? "" : "s"} Required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
   return warning + resolved.map((candidate) => {
     const decision = getDecision(candidate);
     const currentText = getCurrentHostedText(candidate);
@@ -1777,13 +1854,19 @@ function renderPayloadChanges() {
       after: Object.fromEntries(changedKeys.map((key) => [key, after[key]]))
     };
   }).filter(Boolean);
-  if (!changes.length) return `<div class="payload-empty">No selection payload changes.</div>`;
+  if (!changes.length) {
+    return renderPreviewEmptyState(
+      "diff",
+      "No Payload Changes",
+      "Add or update a Promotion Plan item to review its selection payload changes."
+    );
+  }
   return changes.map(({ candidate, before, after }) => {
     const beforeLines = JSON.stringify(before, null, 2).split("\n");
     const afterLines = JSON.stringify(after, null, 2).split("\n");
     return `
       <section class="payload-change" aria-label="${escapeHtml(candidate.id)} selection payload changes">
-        <div class="payload-change-heading"><strong>${escapeHtml(candidate.id)}</strong><span>${escapeHtml(candidate.title)}</span></div>
+        <div class="payload-change-heading"><div><strong>${escapeHtml(candidate.id)}</strong><span>${escapeHtml(candidate.title)}</span></div></div>
         <div class="payload-columns">
           ${renderPayloadColumn("Default", beforeLines, "delete")}
           ${renderPayloadColumn("Current", afterLines, "add")}
@@ -1888,9 +1971,9 @@ function renderCounts() {
   elements["plan-count"].textContent = formatNumber(planCount);
   elements["plan-activity-count"].textContent = planCount > 999 ? "999+" : formatNumber(planCount);
   elements["plan-activity-count"].hidden = planCount === 0;
-  const planCountLabel = `${formatNumber(planCount)} ${planCount === 1 ? "rule" : "rules"}`;
-  elements["promotion-plan-stage"].title = `Promotion plan, ${planCountLabel}`;
-  elements["promotion-plan-stage"].setAttribute("aria-label", `Promotion plan, ${planCountLabel}`);
+  const planLabel = `Promotion Plan (${formatNumber(planCount)})`;
+  elements["promotion-plan-stage"].title = planLabel;
+  elements["promotion-plan-stage"].setAttribute("aria-label", planLabel);
 }
 
 function formatCountLabel(count, singular) {
@@ -1995,6 +2078,7 @@ function showAssessmentPane(pane) {
 
 function setWorkspaceTab(tab) {
   if (!['candidate-sources', 'assessment-results'].includes(tab)) return;
+  dismissNotification();
   state.workspaceTab = tab;
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     const active = button.dataset.workspaceTab === tab;
@@ -2026,6 +2110,7 @@ function handleTreeSelection(event) {
 }
 
 function switchView(view) {
+  dismissNotification();
   state.currentView = view;
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
@@ -2266,26 +2351,25 @@ function setSaveIndicator(text) {
 
 function renderFatalError(error) {
   elements["candidate-list"].innerHTML = "";
-  elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench could not load</h2><p>${escapeHtml(error.message)}</p></div>`;
+  elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench Could Not Load</h2><p>${escapeHtml(error.message)}</p></div>`;
   setSaveIndicator("Bundle unavailable");
   showToast(error.message, true);
 }
 
-function showToast(message, error = false, action = null) {
+function dismissNotification() {
   clearTimeout(toastTimer);
-  const text = document.createElement("span");
-  text.textContent = message;
-  elements.toast.replaceChildren(text);
-  if (action) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = action.label;
-    button.addEventListener("click", action.handler, { once: true });
-    elements.toast.append(button);
-  }
+  toastTimer = undefined;
+  elements.toast.classList.remove("visible");
+}
+
+function showToast(message, error = false) {
+  dismissNotification();
+  elements["toast-message"].textContent = message;
   elements.toast.classList.toggle("error", error);
+  elements.toast.setAttribute("role", error ? "alert" : "status");
+  elements.toast.setAttribute("aria-live", error ? "assertive" : "polite");
   elements.toast.classList.add("visible");
-  toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2800);
+  if (!error) toastTimer = setTimeout(dismissNotification, 8000);
 }
 
 function refreshPresentation() {
@@ -2343,6 +2427,10 @@ function formatSignedNumber(value) {
 function capitalize(value) {
   const text = String(value || "");
   return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+function formatTitleCase(value) {
+  return String(value || "").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
 
 function formatRecommendation(value) {

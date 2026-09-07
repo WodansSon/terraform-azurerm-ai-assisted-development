@@ -49,18 +49,18 @@
     </header>
 
     <aside class="stage-nav" aria-label="Workbench stages">
-      <button class="stage-link active clickable" type="button" data-view="catalog" title="Eligible candidates" aria-label="Eligible candidates">
+      <button class="stage-link active clickable" type="button" data-view="catalog" title="Eligible Candidates" aria-label="Eligible Candidates">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg>
-        <span class="sr-only">Eligible candidates</span>
+        <span class="sr-only">Eligible Candidates</span>
       </button>
-      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" title="Promotion plan, 0 rules" aria-label="Promotion plan, 0 rules">
+      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" title="Promotion Plan (0)" aria-label="Promotion Plan (0)">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
         <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
-        <span class="sr-only">Promotion plan</span>
+        <span class="sr-only">Promotion Plan</span>
       </button>
-      <button class="stage-link clickable" type="button" data-view="preview" title="Preview" aria-label="Preview">
+      <button class="stage-link clickable" type="button" data-view="preview" title="Promotion Preview" aria-label="Promotion Preview">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-open-preview"></use></svg>
-        <span class="sr-only">Preview</span>
+        <span class="sr-only">Promotion Preview</span>
       </button>
     </aside>
 
@@ -106,13 +106,13 @@
                   </div>
                 </details>
               </div>
-              <div class="candidate-list type-compact" id="candidate-list"></div>
+              <div class="candidate-list type-ui" id="candidate-list"></div>
             </section>
 
             <section class="assessment-panel" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" aria-live="polite" hidden>
               <div class="empty-state">
-                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-list-selection"></use></svg>
-                <h2>Select a candidate</h2>
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-tasklist"></use></svg>
+                <h2>Select a Candidate</h2>
                 <p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p>
               </div>
             </section>
@@ -133,13 +133,13 @@
               <div class="panel-heading">
                 <h2 id="assessment-results-heading">Assessment Results:</h2>
               </div>
-              <div class="candidate-list type-compact" id="assessment-results-list"></div>
+              <div class="candidate-list type-ui" id="assessment-results-list"></div>
             </section>
 
             <section class="assessment-panel" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" aria-live="polite" hidden>
               <div class="empty-state">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist"></use></svg>
-                <h2>Select an assessment result</h2>
+                <h2>Select an Assessment Result</h2>
                 <p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p>
               </div>
             </section>
@@ -157,32 +157,23 @@
         </div>
         <div class="plan-layout">
           <section class="plan-table-wrap">
-            <table class="plan-table type-compact">
+            <table class="plan-table type-ui">
               <colgroup>
                 <col class="plan-column-candidate">
                 <col class="plan-column-source">
+                <col class="plan-column-type">
                 <col class="plan-column-action">
                 <col class="plan-column-impact">
                 <col class="plan-column-cost">
                 <col class="plan-column-readiness">
                 <col class="plan-column-actions">
               </colgroup>
-              <thead>
-                <tr>
-                  <th>Candidate</th>
-                  <th>Source</th>
-                  <th>Action</th>
-                  <th>Impact</th>
-                  <th>Draft cost</th>
-                  <th>Readiness</th>
-                  <th>Controls</th>
-                </tr>
-              </thead>
+              <thead id="plan-table-head"></thead>
               <tbody id="plan-table-body"></tbody>
             </table>
             <div class="empty-state compact" id="empty-plan">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-inbox"></use></svg>
-              <h3>No proposed changes</h3>
+              <h3>No Proposed Changes</h3>
               <p>Choose an add, update, or retire action to add it to this plan.</p>
             </div>
           </section>
@@ -196,14 +187,14 @@
           <span class="status-badge warning preview-approval-badge" id="approval-badge">Not staged</span>
         </div>
         <div class="preview-layout">
-          <section class="preview-summary type-compact">
+          <section class="preview-summary type-ui">
             <div class="preview-sidebar-title">
               <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
               <span>Approval</span>
             </div>
             <div id="preview-summary"></div>
             <div class="approval-controls">
-              <label for="approver-name">Approver name</label>
+              <label for="approver-name">Approver Name</label>
               <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
               <section class="approval-requirements" id="approval-requirements" aria-label="Approval requirements"></section>
               <button class="button primary clickable" id="approve-export-button" type="button" disabled>
@@ -213,31 +204,42 @@
               <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
             </div>
           </section>
-          <section class="preview-code type-compact">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Change review</p>
-                <h3>Proposed Changes</h3>
-              </div>
-            </div>
-            <div class="preview-diff" id="preview-diff"></div>
-            <section class="payload-review" aria-labelledby="payload-review-heading">
-              <div class="payload-review-heading">
+          <section class="preview-code type-editor">
+            <details class="preview-proposed-review preview-review-disclosure" open>
+              <summary class="panel-heading clickable">
+                <div>
+                  <p class="eyebrow">Change review</p>
+                  <h3>Proposed Changes</h3>
+                </div>
+                <span class="preview-section-chevron" aria-hidden="true">
+                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
+                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
+                </span>
+              </summary>
+              <div class="preview-diff" id="preview-diff"></div>
+            </details>
+            <details class="payload-review preview-review-disclosure" aria-labelledby="payload-review-heading" open>
+              <summary class="payload-review-heading clickable">
                 <div>
                   <p class="eyebrow">Selection review</p>
                   <h3 id="payload-review-heading">Payload Changes</h3>
                 </div>
-                <span>Default / Current</span>
-              </div>
-              <div id="preview-payload-diff"></div>
-            </section>
-            <details class="preview-raw-payload">
-              <summary class="clickable">
-                <svg class="octicon disclosure-chevron disclosure-chevron-closed" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
-                <svg class="octicon disclosure-chevron disclosure-chevron-open" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
-                <span>Raw Selection Payload</span>
+                <span class="preview-section-chevron" aria-hidden="true">
+                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
+                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
+                </span>
               </summary>
-              <div class="preview-raw-heading">
+              <div id="preview-payload-diff"></div>
+            </details>
+            <details class="preview-raw-payload preview-review-disclosure" open>
+              <summary class="clickable">
+                <span>Raw Selection Payload</span>
+                <span class="preview-section-chevron" aria-hidden="true">
+                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
+                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
+                </span>
+              </summary>
+              <div class="preview-raw-heading" id="preview-raw-heading">
                 <span>JSON</span>
                 <div class="raw-change-tools" id="raw-change-tools" hidden>
                   <span class="raw-change-legend" id="raw-change-count"></span>
@@ -255,6 +257,7 @@
                   <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-copy-16"></use></svg>
                 </button>
               </div>
+              <div id="raw-payload-empty" hidden></div>
               <pre id="preview-json"></pre>
             </details>
           </section>
@@ -274,11 +277,11 @@
         </span>
       </div>
       <div class="status-cluster status-right">
-        <span class="status-item" data-status-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection-small"></use></svg><span id="catalog-count">0</span></span>
+        <span class="status-item" data-status-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
         <span class="status-item" data-status-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
         <span class="status-item" data-status-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
         <span class="status-item" data-status-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
-        <span class="status-item" data-status-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist-compact"></use></svg><span id="plan-count">0</span></span>
+        <span class="status-item" data-status-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></span>
         <span class="status-item" data-status-tooltip="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
         <span class="status-item" data-status-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
       </div>
@@ -286,6 +289,9 @@
     <div class="status-surface-tooltip type-compact" id="status-surface-tooltip" role="tooltip" aria-hidden="true"></div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="toast-message" id="toast-message"></span>
+    <button class="toast-close clickable" id="toast-close" type="button" aria-label="Dismiss Notification" title="Dismiss Notification"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg></button>
+  </div>
 </body>
 </html>
