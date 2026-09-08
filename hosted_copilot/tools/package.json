@@ -5,6 +5,7 @@
   "description": "Locked browser dependencies for Hosted Toolkit validation",
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "11.16.0",
+    "@playwright/test": "1.63.0",
     "markdownlint-cli2": "0.23.2",
     "puppeteer": "25.9.0"
   }

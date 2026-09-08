@@ -5,6 +5,7 @@ This directory owns controlled Hosted review cases, the paired-result schema, an
 ## Tracked Assets:
 
 - `cases/` contains repository-shaped canonical content trees with expected findings.
+- `workbench/` contains schema-backed browser behavior mappings, target Playwright journeys, and a temporary Puppeteer consumer of the same current viewport suite.
 - `schema/paired-review-result.schema.json` defines adjudicated paired result records.
 - `../tools/Initialize-ReviewBases.ps1` creates or verifies the three persistent bases.
 - `../tools/Publish-TestCase.ps1` creates or updates a synthetic source PR against `test-content`.

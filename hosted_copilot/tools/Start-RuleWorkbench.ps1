@@ -3,6 +3,9 @@ param(
     [ValidateRange(1024, 65535)]
     [int]$Port = 43143,
 
+    [ValidateRange(1, 2147483647)]
+    [int]$OwnerProcessId,
+
     [string]$SiteDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'hosted-rule-workbench/site'),
 
     [string]$BundlePath,
@@ -79,7 +82,7 @@ $maintainerIdentity = [ordered]@{
     status = 'unavailable'
     login = $null
     isCodeOwner = $false
-    reason = 'GitHub CLI authentication is required to propose an applicability override.'
+    reason = 'GitHub CLI authentication is required for CODEOWNER-only Workbench actions.'
 }
 $targetRepository = [ordered]@{
     status = 'unavailable'
@@ -331,7 +334,20 @@ try {
 
     $shutdownRequested = $false
     while (-not $shutdownRequested) {
-        $client = $listener.AcceptTcpClient()
+        if ($OwnerProcessId -and -not (Get-Process -Id $OwnerProcessId -ErrorAction SilentlyContinue)) {
+            break
+        }
+        $acceptTask = $listener.AcceptTcpClientAsync()
+        while (-not $acceptTask.Wait(250)) {
+            if ($OwnerProcessId -and -not (Get-Process -Id $OwnerProcessId -ErrorAction SilentlyContinue)) {
+                $shutdownRequested = $true
+                break
+            }
+        }
+        if ($shutdownRequested) {
+            break
+        }
+        $client = $acceptTask.GetAwaiter().GetResult()
         $stream = $null
         try {
             $stream = $client.GetStream()

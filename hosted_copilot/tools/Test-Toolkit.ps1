@@ -60,7 +60,11 @@ $ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessme
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
-$ruleWorkbenchLayoutTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchLayout.cjs'
+$ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
+$ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
+$ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.schema.json'
+$ruleWorkbenchPlaywrightRunnerPath = Join-Path $hostedRoot 'regression/workbench/playwright/run.cjs'
+$ruleWorkbenchLayoutTestPath = Join-Path $hostedRoot 'regression/workbench/puppeteer/Test-RuleWorkbenchLayout.cjs'
 $nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
 $nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
@@ -298,6 +302,10 @@ if ($runtimeStarted) {
         $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
+        $ruleWorkbenchHeadedTestPath,
+        $ruleWorkbenchBehaviorManifestPath,
+        $ruleWorkbenchBehaviorManifestSchemaPath,
+        $ruleWorkbenchPlaywrightRunnerPath,
         $ruleWorkbenchLayoutTestPath,
         $nodePackageManifestPath,
         $nodePackageLockPath,

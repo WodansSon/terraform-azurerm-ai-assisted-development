@@ -10,6 +10,11 @@ $ErrorActionPreference = 'Stop'
 
 $commit = '1c47ab36a4bb845c437866405c2fa67b8ca0fe36'
 $iconNames = @(
+    'arrow-circle-down',
+    'arrow-circle-left',
+    'arrow-circle-right',
+    'arrow-circle-up',
+    'arrow-circle-up-sparkle',
     'arrow-left',
     'chat-sparkle-error',
     'check',
@@ -29,6 +34,7 @@ $iconNames = @(
     'debug-disconnect',
     'debug-disconnect-compact',
     'diff',
+    'diff-modified',
     'discard',
     'discard-all',
     'download',

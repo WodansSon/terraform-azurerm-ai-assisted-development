@@ -3,8 +3,8 @@
 const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
-const SESSION_SCHEMA_VERSION = 4;
-const APPROVAL_PAYLOAD_SCHEMA_VERSION = 3;
+const SESSION_SCHEMA_VERSION = 5;
+const APPROVAL_PAYLOAD_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
 const FACTORS = [
@@ -84,7 +84,7 @@ function captureElements() {
     "promotion-plan-stage", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
-    "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count",
+    "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
     "assessment-results-list", "assessment-results-detail",
     "return-catalog-button", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-diff", "preview-payload-diff", "preview-raw-heading", "raw-payload-empty", "preview-json", "raw-change-tools", "raw-change-count",
@@ -96,6 +96,8 @@ function captureElements() {
 }
 
 function bindEvents() {
+  document.addEventListener("pointerover", handleSourceProvenancePointerOver);
+  document.addEventListener("pointerout", handleSourceProvenancePointerOut);
   document.querySelectorAll(".ide-statusbar .status-item").forEach((item) => {
     item.addEventListener("mouseenter", () => showStatusTooltip(item));
     item.addEventListener("mouseleave", hideStatusTooltip);
@@ -117,6 +119,7 @@ function bindEvents() {
   });
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
   elements["bulk-actions"].addEventListener("click", handleBulkActionsClick);
+  elements["bulk-actions"].addEventListener("mouseleave", handleBulkActionsMouseLeave);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     button.addEventListener("click", () => setWorkspaceTab(button.dataset.workspaceTab));
   });
@@ -239,6 +242,40 @@ function showStatusTooltip(item) {
   const left = Math.min(Math.max(8, itemRect.left), window.innerWidth - tooltipRect.width - 8);
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${Math.max(8, itemRect.top - tooltipRect.height - 6)}px`;
+}
+
+function handleSourceProvenancePointerOver(event) {
+  const pill = event.target.closest?.(".source-provenance-pill");
+  if (!pill || pill.contains(event.relatedTarget)) return;
+  showSourceProvenanceTooltip(pill, event.clientX);
+}
+
+function handleSourceProvenancePointerOut(event) {
+  const pill = event.target.closest?.(".source-provenance-pill");
+  if (!pill || pill.contains(event.relatedTarget)) return;
+  hideStatusTooltip();
+}
+
+function showSourceProvenanceTooltip(pill, anchorX) {
+  const value = pill.dataset.sourceProvenanceTooltip;
+  if (!value) return;
+
+  const tooltip = elements["status-surface-tooltip"];
+  tooltip.textContent = value;
+  tooltip.style.left = "8px";
+  tooltip.style.top = "8px";
+  tooltip.classList.add("visible");
+  tooltip.setAttribute("aria-hidden", "false");
+
+  const pillRect = pill.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const left = Math.floor(Math.min(Math.max(8, anchorX), window.innerWidth - tooltipRect.width - 8));
+  const below = pillRect.bottom + 6;
+  const top = below + tooltipRect.height + 8 <= window.innerHeight
+    ? below
+    : Math.max(8, pillRect.top - tooltipRect.height - 6);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function hideStatusTooltip() {
@@ -450,9 +487,19 @@ function isValidBulkOperation(operation) {
     && operation.scope === "current-results"
     && ["add", "update", "actionable"].includes(operation.recommendationScope)
     && typeof operation.query === "string"
+    && operation.recordedBy?.type === "github-cli"
+    && typeof operation.recordedBy.login === "string"
+    && Boolean(operation.recordedBy.login)
+    && operation.candidateSourceHashes
+    && typeof operation.candidateSourceHashes === "object"
+    && !Array.isArray(operation.candidateSourceHashes)
     && Array.isArray(operation.candidateKeys)
     && operation.candidateKeys.length > 0
-    && operation.candidateKeys.every((key) => typeof key === "string" && Boolean(key));
+    && new Set(operation.candidateKeys).size === operation.candidateKeys.length
+    && Object.keys(operation.candidateSourceHashes).length === operation.candidateKeys.length
+    && operation.candidateKeys.every((key) => typeof key === "string"
+      && Boolean(key)
+      && /^[a-f0-9]{64}$/.test(operation.candidateSourceHashes[key]));
 }
 
 function isValidPlanMembership(decision, candidateKey, operations = state.session.bulkOperations) {
@@ -468,6 +515,11 @@ function autofillApproverName() {
   if (!String(state.session.approverName || "").trim() && login) {
     state.session.approverName = String(login).slice(0, 120);
   }
+}
+
+function getValidatedCodeOwnerIdentity() {
+  const identity = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity;
+  return identity?.status === "validated" && identity.isCodeOwner === true && Boolean(identity.login) ? identity : null;
 }
 
 function getApplicabilityOverride(candidate) {
@@ -576,7 +628,7 @@ function renderDetailHeaderActions(statuses) {
   return `
     <div class="detail-header-actions">
       <span class="assessment-title-statuses">${statuses}</span>
-      <button class="icon-button clickable detail-back-to-top" type="button" data-detail-back-to-top aria-label="Back to top" title="Back to top" disabled>${icon("fold-up")}</button>
+      <button class="icon-button clickable detail-back-to-top" type="button" data-detail-back-to-top aria-label="Back to top" title="Back to top" disabled>${icon("arrow-circle-up")}</button>
     </div>
   `;
 }
@@ -664,7 +716,11 @@ function removePlanMembership(candidate) {
 
 function removeCandidateFromBulkOperations(candidateKey) {
   state.session.bulkOperations = state.session.bulkOperations
-    .map((operation) => ({ ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey) }))
+    .map((operation) => {
+      const candidateSourceHashes = { ...operation.candidateSourceHashes };
+      delete candidateSourceHashes[candidateKey];
+      return { ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey), candidateSourceHashes };
+    })
     .filter((operation) => operation.candidateKeys.length > 0);
 }
 
@@ -672,10 +728,17 @@ function restoreBulkOperationMembership(candidateKey, operationSnapshot) {
   if (!operationSnapshot) return;
   const existing = state.session.bulkOperations.find((operation) => operation.id === operationSnapshot.id);
   if (existing) {
-    if (!existing.candidateKeys.includes(candidateKey)) existing.candidateKeys.push(candidateKey);
+    if (!existing.candidateKeys.includes(candidateKey)) {
+      existing.candidateKeys.push(candidateKey);
+      existing.candidateSourceHashes[candidateKey] = operationSnapshot.candidateSourceHashes[candidateKey];
+    }
     return;
   }
-  state.session.bulkOperations.push({ ...operationSnapshot, candidateKeys: [candidateKey] });
+  state.session.bulkOperations.push({
+    ...operationSnapshot,
+    candidateKeys: [candidateKey],
+    candidateSourceHashes: { [candidateKey]: operationSnapshot.candidateSourceHashes[candidateKey] }
+  });
 }
 
 function saveDecision(candidate, decision) {
@@ -692,6 +755,7 @@ function saveDecision(candidate, decision) {
   state.session.updatedAt = new Date().toISOString();
   persistSession();
   syncCandidateTreeRows();
+  renderBulkActions();
   syncAssessmentPlanToggle(candidate);
   renderDecisionOutputs();
 }
@@ -849,6 +913,7 @@ function getFilteredCandidates() {
 function getBulkActionCandidates(recommendationScope) {
   const recommendations = recommendationScope === "actionable" ? ["add", "update"] : [recommendationScope];
   return getFilteredCandidates().filter((candidate) => {
+    if (state.session.decisions[candidate.key]) return false;
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
     return !decision.inPlan
@@ -862,6 +927,8 @@ function getLatestBulkOperation() {
 }
 
 function renderBulkActions() {
+  const identity = getValidatedCodeOwnerIdentity();
+  const unavailableReason = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.";
   const filtered = getFilteredCandidates();
   const addCandidates = getBulkActionCandidates("add");
   const updateCandidates = getBulkActionCandidates("update");
@@ -870,12 +937,21 @@ function renderBulkActions() {
   elements["bulk-add-count"].textContent = formatCountLabel(addCandidates.length, "Candidate");
   elements["bulk-update-count"].textContent = formatCountLabel(updateCandidates.length, "Candidate");
   elements["bulk-actionable-count"].textContent = formatCountLabel(actionableCandidates.length, "Candidate");
-  elements["bulk-actions"].querySelector('[data-bulk-scope="add"]').disabled = addCandidates.length === 0;
-  elements["bulk-actions"].querySelector('[data-bulk-scope="update"]').disabled = updateCandidates.length === 0;
-  elements["bulk-actions"].querySelector('[data-bulk-scope="actionable"]').disabled = actionableCandidates.length === 0;
+  const setBulkCommandState = (selector, count) => {
+    const button = elements["bulk-actions"].querySelector(selector);
+    button.disabled = !identity || count === 0;
+    button.title = identity ? "" : unavailableReason;
+  };
+  setBulkCommandState('[data-bulk-scope="add"]', addCandidates.length);
+  setBulkCommandState('[data-bulk-scope="update"]', updateCandidates.length);
+  setBulkCommandState('[data-bulk-scope="actionable"]', actionableCandidates.length);
   const latest = getLatestBulkOperation();
-  elements["bulk-undo"].disabled = !latest;
+  elements["bulk-undo"].disabled = !identity || !latest;
+  elements["bulk-undo"].title = identity ? "" : unavailableReason;
   elements["bulk-undo-count"].textContent = latest ? formatCountLabel(latest.candidateKeys.length, "Candidate") : "None";
+  elements["bulk-actions-note"].textContent = identity
+    ? "Bulk actions accept evaluated recommendations with attributed decision rationale."
+    : unavailableReason;
 }
 
 function handleBulkActionsClick(event) {
@@ -887,7 +963,36 @@ function handleBulkActionsClick(event) {
   if (event.target.closest("[data-bulk-undo]")) undoBulkOperation(getLatestBulkOperation()?.id);
 }
 
+function handleBulkActionsMouseLeave() {
+  elements["bulk-actions"].removeAttribute("open");
+}
+
+function renderBulkSelectionOutputs() {
+  syncCandidateTreeRows();
+  renderBulkActions();
+  renderAssessment();
+  renderDecisionOutputs();
+}
+
+function getBulkDecisionRationale(candidate, recommendation) {
+  if (recommendation === "add") {
+    const coverage = getCatalogStatus(candidate).key === "retired"
+      ? "has only retired Hosted catalog coverage"
+      : "has no active Hosted catalog mapping";
+    return `Bulk accepted the AI recommendation to Add. This candidate is applicable and ${coverage}.`;
+  }
+  if (recommendation === "update") {
+    return "Bulk accepted the AI recommendation to Update. This candidate is applicable, has active Hosted catalog coverage, and the evaluated source guidance differs.";
+  }
+  throw new Error(`Unsupported bulk recommendation: ${recommendation}`);
+}
+
 function applyBulkSelection(recommendationScope) {
+  const identity = getValidatedCodeOwnerIdentity();
+  if (!identity) {
+    showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
+    return;
+  }
   const candidates = getBulkActionCandidates(recommendationScope);
   if (!candidates.length) return;
   const operation = {
@@ -896,13 +1001,17 @@ function applyBulkSelection(recommendationScope) {
     scope: "current-results",
     recommendationScope,
     query: state.queries["candidate-sources"],
-    candidateKeys: candidates.map((candidate) => candidate.key)
+    candidateKeys: candidates.map((candidate) => candidate.key),
+    candidateSourceHashes: Object.fromEntries(candidates.map((candidate) => [candidate.key, candidate.hash])),
+    recordedBy: { type: "github-cli", login: identity.login }
   };
   state.session.bulkOperations.push(operation);
   candidates.forEach((candidate) => {
     const { assessment, ...decision } = getDecision(candidate);
     state.session.decisions[candidate.key] = {
       ...decision,
+      action: assessment.recommendation,
+      rationale: getBulkDecisionRationale(candidate, assessment.recommendation),
       ...createPlanMembership("bulk", operation.id),
       sourceHash: candidate.hash,
       updatedAt: operation.createdAt
@@ -911,11 +1020,15 @@ function applyBulkSelection(recommendationScope) {
   state.session.updatedAt = operation.createdAt;
   persistSession();
   elements["bulk-actions"].removeAttribute("open");
-  renderAll();
+  renderBulkSelectionOutputs();
   showToast(`${formatCountLabel(candidates.length, "Candidate")} added to the promotion plan.`);
 }
 
 function undoBulkOperation(operationId) {
+  if (!getValidatedCodeOwnerIdentity()) {
+    showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
+    return;
+  }
   const operation = state.session.bulkOperations.find((item) => item.id === operationId);
   if (!operation) return;
   let removed = 0;
@@ -928,8 +1041,44 @@ function undoBulkOperation(operationId) {
   state.session.bulkOperations = state.session.bulkOperations.filter((item) => item.id !== operation.id);
   state.session.updatedAt = new Date().toISOString();
   persistSession();
-  renderAll();
+  renderBulkSelectionOutputs();
   showToast(`${formatCountLabel(removed, "Candidate")} removed by bulk Undo.`);
+}
+
+function getCandidateDecoration(candidate) {
+  if (!getDecision(candidate).inPlan) return null;
+  const ready = getPlanReadiness(candidate).ready;
+  return {
+    status: ready ? "ready" : "needs-input",
+    description: ready ? "Selected, ready for promotion" : "Selected, needs input before promotion"
+  };
+}
+
+function getCandidateAggregateDecoration(candidates) {
+  const selected = candidates.filter((candidate) => getDecision(candidate).inPlan);
+  if (!selected.length) return null;
+  const needsInput = selected.filter((candidate) => !getPlanReadiness(candidate).ready).length;
+  return {
+    status: needsInput ? "needs-input" : "ready",
+    description: needsInput
+      ? `${formatNumber(selected.length)} selected, ${formatNumber(needsInput)} ${needsInput === 1 ? "needs" : "need"} input`
+      : `${formatNumber(selected.length)} selected, all ready for promotion`
+  };
+}
+
+function renderCandidateDecoration(decoration, className) {
+  const hidden = decoration ? "" : " hidden";
+  const title = decoration ? ` title="${escapeHtml(decoration.description)}"` : "";
+  const description = decoration ? escapeHtml(decoration.description) : "";
+  return `<svg class="codicon ${className}" aria-hidden="true"${title}${hidden}><use href="icons/codicons/sprite.svg#codicon-diff-modified"></use></svg><span class="candidate-decoration-description sr-only">${description}</span>`;
+}
+
+function renderCandidateAggregateAttributes(decoration) {
+  return decoration ? ` data-selection-status="${decoration.status}" title="${escapeHtml(decoration.description)}"` : "";
+}
+
+function candidateAggregateClass(decoration) {
+  return decoration ? ` candidate-aggregate-${decoration.status}` : "";
 }
 
 function renderCandidateList() {
@@ -942,9 +1091,10 @@ function renderCandidateList() {
   }
   const overrideCandidates = filtered.filter((candidate) => getApplicabilityOverride(candidate));
   const regularCandidates = filtered.filter((candidate) => !getApplicabilityOverride(candidate));
+  const overrideDecoration = getCandidateAggregateDecoration(overrideCandidates);
   const overrideGroup = overrideCandidates.length ? `
-    <details class="candidate-source-root candidate-overrides-root" open>
-      <summary class="clickable">${icon("shield")}<strong>Overrides</strong><span class="status-badge neutral count-badge type-compact">${formatCountLabel(overrideCandidates.length, "Override")}</span></summary>
+    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides" open>
+      <summary class="clickable"${renderCandidateAggregateAttributes(overrideDecoration)}>${icon("shield")}<span class="candidate-parent-label"><strong>Overrides</strong>${renderCandidateDecoration(overrideDecoration, "candidate-parent-decoration-icon")}</span><span class="status-badge neutral count-badge type-compact">${formatCountLabel(overrideCandidates.length, "Override")}</span></summary>
       ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
     </details>
   ` : "";
@@ -959,31 +1109,36 @@ function renderCandidateList() {
     const children = sourceType === "upstream"
       ? renderCandidateItems(`${sourceType}:all`, candidates, "contributor-candidates")
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
+    const decoration = getCandidateAggregateDecoration(candidates);
     return `
-      <details class="candidate-source-root" ${state.queries["candidate-sources"] ? "open" : ""}>
-        <summary class="clickable">${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
+      <details class="candidate-source-root${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" ${state.queries["candidate-sources"] ? "open" : ""}>
+        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}${renderSourceSummaryLabel(sourceType, label, decoration)}<span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
         ${children}
       </details>
     `;
   }).join("");
 }
 
-function renderSourceSummaryLabel(sourceType, label) {
+function renderSourceSummaryLabel(sourceType, label, decoration) {
   const source = state.bundle.snapshots.upstream;
+  const shortCommit = source.currentCommit.slice(0, 8);
+  const provenanceLabel = `${source.repository} · ${source.currentRef}@${shortCommit}`;
   const provenance = sourceType === "upstream"
-    ? `<span class="source-provenance-pill type-compact" title="Contributor guidance source: ${escapeHtml(source.repository)} ${escapeHtml(source.currentRef)}@${escapeHtml(source.currentCommit)}">${escapeHtml(source.repository)} · ${escapeHtml(source.currentRef)}@${escapeHtml(source.currentCommit.slice(0, 8))}</span>`
+    ? `<span class="source-provenance-pill type-compact" data-source-provenance-tooltip="${escapeHtml(provenanceLabel)}">${escapeHtml(provenanceLabel)}</span>`
     : "";
-  return `<span class="source-summary-label"><strong>${escapeHtml(label)}</strong>${provenance}</span>`;
+  const selection = decoration === undefined ? "" : renderCandidateDecoration(decoration, "candidate-parent-decoration-icon");
+  return `<span class="source-summary-label"><strong>${escapeHtml(label)}</strong>${provenance}${selection}</span>`;
 }
 
 function renderCandidateCategory(sourceType, category, candidates) {
   const open = Boolean(state.queries["candidate-sources"]);
   const sectionKey = `${sourceType}:${category}`;
+  const decoration = getCandidateAggregateDecoration(candidates);
   return `
-    <details class="candidate-category" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" ${open ? "open" : ""}>
-      <summary class="clickable">
+    <details class="candidate-category${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" ${open ? "open" : ""}>
+      <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>
         ${icon("folder")}
-        <strong>${escapeHtml(category)}</strong>
+        <span class="candidate-parent-label"><strong>${escapeHtml(category)}</strong>${renderCandidateDecoration(decoration, "candidate-parent-decoration-icon")}</span>
         <span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span>
       </summary>
       ${renderCandidateItems(sectionKey, candidates)}
@@ -1227,7 +1382,7 @@ function renderApplicabilityOverride(candidate) {
       </div>
     `;
   }
-  const canOverride = identity?.status === "validated" && identity.isCodeOwner === true && Boolean(identity.login);
+  const canOverride = Boolean(getValidatedCodeOwnerIdentity());
   const reason = canOverride ? "" : identity?.reason || "GitHub CLI authentication and Hosted CODEOWNER membership are required.";
   return `
     <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
@@ -1277,10 +1432,10 @@ async function handleApplicabilityOverrideClick(event) {
     return;
   }
   if (!event.target.closest("[data-override-apply]")) return;
-  const identity = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity;
+  const identity = getValidatedCodeOwnerIdentity();
   const rationale = section.querySelector("textarea").value.trim();
-  if (identity?.status !== "validated" || identity.isCodeOwner !== true || !identity.login) {
-    showToast(identity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
+  if (!identity) {
+    showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
     return;
   }
   if (!rationale) return;
@@ -1304,10 +1459,11 @@ function renderCandidateTreeRow(candidate) {
   const impact = calculateImpact(assessment.factors);
   const catalogStatus = getCatalogStatus(candidate);
   const inPlan = decision.inPlan;
+  const decoration = getCandidateDecoration(candidate);
   return `
-    <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
+    <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""} ${decoration ? `candidate-decoration-${decoration.status}` : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
       <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove" : "Add"} ${escapeHtml(candidate.id)} ${inPlan ? "from" : "to"} promotion plan" title="${inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan"}" ${inPlan ? "checked" : ""}>
-      <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
+      <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small>${renderCandidateDecoration(decoration, "candidate-decoration-icon")}</span>
       <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
@@ -2118,6 +2274,17 @@ function syncCandidateTreeRows() {
     if (active) row.setAttribute("aria-current", "true");
     else row.removeAttribute("aria-current");
     row.classList.toggle("in-plan", inPlan);
+    const decoration = candidate ? getCandidateDecoration(candidate) : null;
+    row.classList.toggle("candidate-decoration-ready", decoration?.status === "ready");
+    row.classList.toggle("candidate-decoration-needs-input", decoration?.status === "needs-input");
+    const decorationIcon = row.querySelector(".candidate-decoration-icon");
+    const decorationDescription = row.querySelector(".candidate-decoration-description");
+    if (decorationIcon) {
+      decorationIcon.toggleAttribute("hidden", !decoration);
+      if (decoration) decorationIcon.title = decoration.description;
+      else decorationIcon.removeAttribute("title");
+    }
+    if (decorationDescription) decorationDescription.textContent = decoration?.description || "";
     const checkbox = row.querySelector("[data-decision-key]");
     if (checkbox) {
       checkbox.checked = inPlan;
@@ -2127,6 +2294,34 @@ function syncCandidateTreeRows() {
     const assessment = candidate && getAssessment(candidate, getDecision(candidate));
     const token = row.querySelector(".tree-cost");
     if (assessment && token) token.textContent = formatCandidateTokenValue(candidate, assessment);
+  });
+  syncCandidateTreeAggregates();
+}
+
+function syncCandidateTreeAggregates() {
+  elements["candidate-list"].querySelectorAll("details.candidate-source-root, details.candidate-category").forEach((disclosure) => {
+    const candidates = [...disclosure.querySelectorAll("[data-candidate-key]")]
+      .map((row) => state.candidates.find((candidate) => candidate.key === row.dataset.candidateKey))
+      .filter(Boolean);
+    const decoration = getCandidateAggregateDecoration(candidates);
+    disclosure.classList.toggle("candidate-aggregate-ready", decoration?.status === "ready");
+    disclosure.classList.toggle("candidate-aggregate-needs-input", decoration?.status === "needs-input");
+    const summary = disclosure.querySelector(":scope > summary");
+    if (decoration) {
+      summary.dataset.selectionStatus = decoration.status;
+      summary.title = decoration.description;
+    } else {
+      delete summary.dataset.selectionStatus;
+      summary.removeAttribute("title");
+    }
+    const decorationIcon = summary.querySelector(".candidate-parent-decoration-icon");
+    const decorationDescription = summary.querySelector(".candidate-decoration-description");
+    if (decorationIcon) {
+      decorationIcon.toggleAttribute("hidden", !decoration);
+      if (decoration) decorationIcon.title = decoration.description;
+      else decorationIcon.removeAttribute("title");
+    }
+    if (decorationDescription) decorationDescription.textContent = decoration?.description || "";
   });
 }
 
@@ -2390,7 +2585,9 @@ async function importDraft(event) {
       }
     }
     for (const operation of draft.bulkOperations) {
-      if (operation.candidateKeys.some((key) => draft.decisions[key]?.planMembershipSource !== "bulk" || draft.decisions[key]?.bulkOperationId !== operation.id)) {
+      if (operation.candidateKeys.some((key) => draft.decisions[key]?.planMembershipSource !== "bulk"
+        || draft.decisions[key]?.bulkOperationId !== operation.id
+        || draft.decisions[key]?.sourceHash !== operation.candidateSourceHashes[key])) {
         throw new Error(`The draft bulk operation ${operation.id} is inconsistent with its decisions.`);
       }
     }
@@ -2504,7 +2701,7 @@ function scheduleTruncationTooltips() {
 
 function syncTruncationTooltips() {
   document.querySelectorAll("[data-truncation-tooltip]").forEach((node) => {
-    if (node.closest("[data-truncation-owner]")) {
+    if (node.hasAttribute("data-source-provenance-tooltip") || node.closest("[data-truncation-owner]")) {
       node.removeAttribute("title");
       node.removeAttribute("data-truncation-tooltip");
       return;
@@ -2519,7 +2716,7 @@ function syncTruncationTooltips() {
     node.removeAttribute("data-truncation-tooltip");
   });
   document.querySelectorAll(".app-shell *").forEach((node) => {
-    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("title") || node.closest("[data-truncation-owner]")) return;
+    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("title") || node.hasAttribute("data-source-provenance-tooltip") || node.closest("[data-truncation-owner]")) return;
     if (getComputedStyle(node).textOverflow !== "ellipsis") return;
     if (node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight) return;
     node.title = node.textContent.trim();
