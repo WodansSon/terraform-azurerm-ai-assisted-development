@@ -263,6 +263,51 @@ async function assertPlanMembershipSynchronizesAcrossPanes(page, width) {
   assert(detailsResult.unchecked && detailsResult.detailsActive, `${width}px Membership synchronization: tree uncheck did not update Details`);
 }
 
+async function assertRationaleSaveLayout(page, width) {
+  const result = await page.evaluate(() => {
+    const heading = document.querySelector("#candidate-sources-panel .rationale-heading");
+    const label = heading?.querySelector(".control-subtitle");
+    const button = heading?.querySelector("[data-rationale-save]");
+    const icon = button?.querySelector("svg");
+    const draftButton = document.querySelector(".title-draft-menu > summary");
+    if (!heading || !label || !button || !icon || !draftButton) return { available: false };
+
+    const originalDisabled = button.disabled;
+    button.disabled = false;
+    const enabledStyle = getComputedStyle(button);
+    const draftStyle = getComputedStyle(draftButton);
+    const buttonRect = button.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+    const headingRect = heading.getBoundingClientRect();
+    const toolbarVisualMatch = ["height", "padding", "color", "backgroundColor", "border", "borderRadius"]
+      .every((property) => enabledStyle[property] === draftStyle[property]);
+    const enabledCursor = enabledStyle.cursor;
+    button.disabled = true;
+    const disabledCursor = getComputedStyle(button).cursor;
+    button.disabled = originalDisabled;
+
+    return {
+      available: true,
+      accessibleIconOnly: !button.textContent.trim()
+        && button.getAttribute("aria-label")?.startsWith("Save decision rationale")
+        && button.title.startsWith("Save")
+        && icon.querySelector("use")?.getAttribute("href")?.endsWith("#codicon-save"),
+      toolbarVisualMatch: toolbarVisualMatch && buttonRect.width === 34 && buttonRect.height === 34,
+      baselineAligned: Math.abs(iconRect.bottom - labelRect.bottom) < 0.1,
+      cursorsCorrect: enabledCursor === "pointer" && disabledCursor === "default",
+      contained: labelRect.right <= buttonRect.left && buttonRect.right <= headingRect.right && heading.scrollWidth <= heading.clientWidth,
+    };
+  });
+
+  assert(result.available, `${width}px Decision Rationale save: control is unavailable`);
+  assert(result.accessibleIconOnly, `${width}px Decision Rationale save: icon-only accessibility contract is invalid`);
+  assert(result.toolbarVisualMatch, `${width}px Decision Rationale save: toolbar style or hit target diverged from Draft options`);
+  assert(result.baselineAligned, `${width}px Decision Rationale save: icon and label bottom edges are not aligned`);
+  assert(result.cursorsCorrect, `${width}px Decision Rationale save: enabled or disabled cursor is incorrect`);
+  assert(result.contained, `${width}px Decision Rationale save: label and action overlap or overflow`);
+}
+
 async function assertStatusTooltip(page, width) {
   const item = await page.$("#status-headroom").then((node) => node.evaluateHandle((element) => element.parentElement));
   const box = await item.boundingBox();
@@ -337,6 +382,8 @@ async function run() {
       await assertPlanTogglePreservesContext(page, width);
       assertionCount += 6;
       await assertPlanMembershipSynchronizesAcrossPanes(page, width);
+      assertionCount += 6;
+      await assertRationaleSaveLayout(page, width);
       assertionCount += 6;
 
       await activateAssessmentDetails(page);

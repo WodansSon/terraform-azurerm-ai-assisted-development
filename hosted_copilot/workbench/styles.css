@@ -1478,11 +1478,41 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
 
 .assessment-title-statuses {
   display: inline-flex;
-  min-width: 150px;
-  flex: 0 0 auto;
+  width: 270px;
+  flex: 0 0 270px;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.detail-header-actions {
+  display: grid;
+  width: 270px;
+  flex: 0 0 270px;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-self: stretch;
+  justify-items: end;
+  gap: 8px;
+}
+
+.detail-header-actions > .assessment-title-statuses {
+  width: auto;
+  flex: none;
+}
+
+.detail-back-to-top {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  align-self: end;
+  color: #fff;
+  background: var(--context-header);
+  border-color: var(--accent);
+  border-radius: 50%;
+}
+
+.detail-back-to-top:disabled {
+  cursor: default !important;
 }
 
 :is(#candidate-sources-panel .assessment-panel, #assessment-results-detail) > .assessment-title {
@@ -2041,13 +2071,33 @@ p.subcontext-container {
   text-align: right;
 }
 
-.rationale-actions {
+.rationale-heading {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 10px;
 }
 
-.rationale-save {
-  min-width: 108px;
+.rationale-heading > .control-subtitle {
+  margin-right: auto;
+}
+
+.rationale-heading .rationale-save {
+  flex: 0 0 auto;
+}
+
+.rationale-heading .rationale-save svg {
+  transform: translateY(2px);
+}
+
+.rationale-heading .rationale-save:disabled {
+  cursor: default !important;
+  opacity: 0.52;
+}
+
+.rationale-heading .rationale-save:disabled:hover {
+  color: var(--muted);
+  background: transparent;
 }
 
 .field-stack textarea.rule-text {
@@ -2981,13 +3031,43 @@ p.subcontext-container {
   min-height: 100vh;
   margin: 0 auto;
   align-content: center;
-  justify-items: start;
+  justify-items: center;
   gap: 10px;
+  text-align: center;
+}
+
+.shutdown-brand-lockup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.shutdown-brand-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  color: #ffff00;
+  fill: currentColor;
 }
 
 .shutdown-state h1,
 .shutdown-state p {
   margin: 0;
+}
+
+.shutdown-state .shutdown-product-name {
+  color: var(--ink);
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  line-height: 26px !important;
+}
+
+html.theme-hosted-dark body .shutdown-state > h1 {
+  color: var(--ink);
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 22px !important;
 }
 
 .shutdown-state > p:last-child {

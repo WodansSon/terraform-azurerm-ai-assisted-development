@@ -34,6 +34,7 @@ $iconNames = @(
     'download',
     'edit',
     'ellipsis',
+    'fold-up',
     'folder',
     'git-branch-compact',
     'git-commit',

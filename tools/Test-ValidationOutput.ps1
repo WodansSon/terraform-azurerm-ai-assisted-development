@@ -133,6 +133,7 @@ $presentationConsumers = @(
     'regression/write-regression-provenance-report.ps1',
     '../hosted_copilot/tools/Test-InstructionGeneration.ps1',
     '../hosted_copilot/tools/Test-ReviewResults.ps1',
+    '../hosted_copilot/tools/Test-RuleWorkbench.ps1',
     '../hosted_copilot/tools/Test-Toolkit.ps1',
     '../hosted_copilot/tools/Test-UpstreamSources.ps1'
 )

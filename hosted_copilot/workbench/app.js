@@ -179,6 +179,10 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
+  [elements["assessment-panel"], elements["assessment-results-detail"]].forEach((panel) => {
+    panel.addEventListener("click", handleDetailBackToTopClick);
+    panel.addEventListener("scroll", handleDetailContentScroll, true);
+  });
   elements["plan-table-body"].addEventListener("click", (event) => {
     const undo = event.target.closest("[data-plan-undo]");
     if (undo) {
@@ -328,9 +332,11 @@ async function closeWorkbench() {
     if (!response.ok) throw new Error(`Shutdown request failed with ${response.status}`);
     document.body.innerHTML = `
       <main class="shutdown-state">
-        <span class="brand-mark" aria-hidden="true">HR</span>
-        <p class="eyebrow">Hosted Copilot Rule Manager</p>
-        <h1>Workbench closed</h1>
+        <div class="shutdown-brand-lockup">
+          <svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2C3.89543 2 3 2.89543 3 4V6.00469C3 6.53494 2.99231 6.79889 2.91088 7.00209C2.84826 7.15835 2.71576 7.33309 2.2764 7.55276C2.10701 7.63745 2 7.81058 2 7.99997C2 8.18935 2.10699 8.36249 2.27638 8.44719C2.71569 8.66685 2.84809 8.84151 2.91076 8.99819C2.99233 9.20211 3 9.46732 3 10L3 12C3 13.1046 3.89543 14 5 14C5.27614 14 5.5 13.7761 5.5 13.5C5.5 13.2239 5.27614 13 5 13C4.44772 13 4 12.5523 4 12L4.00003 9.94145C4.00033 9.49235 4.00065 9.03033 3.83924 8.6268C3.74212 8.384 3.59654 8.17962 3.40072 8.00002C3.59646 7.82057 3.74199 7.61645 3.83912 7.37408C4.00065 6.971 4.00033 6.51001 4.00003 6.063L4 4C4 3.44772 4.44772 3 5 3C5.27614 3 5.5 2.77614 5.5 2.5C5.5 2.22386 5.27614 2 5 2ZM11 2C12.1046 2 13 2.89543 13 4V6.00469C13 6.53494 13.0077 6.79889 13.0891 7.00209C13.1517 7.15835 13.2842 7.33309 13.7236 7.55276C13.893 7.63745 14 7.81058 14 7.99997C14 8.18935 13.893 8.36249 13.7236 8.44719C13.2843 8.66685 13.1519 8.84151 13.0892 8.99819C13.0077 9.20211 13 9.46732 13 10V12C13 13.1046 12.1046 14 11 14C10.7239 14 10.5 13.7761 10.5 13.5C10.5 13.2239 10.7239 13 11 13C11.5523 13 12 12.5523 12 12L12 9.94145C11.9997 9.49235 11.9994 9.03033 12.1608 8.6268C12.2579 8.384 12.4035 8.17962 12.5993 8.00002C12.4035 7.82057 12.258 7.61645 12.1609 7.37408C11.9993 6.971 11.9997 6.51001 12 6.063L12 4C12 3.44772 11.5523 3 11 3C10.7239 3 10.5 2.77614 10.5 2.5C10.5 2.22386 10.7239 2 11 2Z"/></svg>
+          <p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>
+        </div>
+        <h1>Workbench Closed</h1>
         <p>The local server has stopped. This tab can be closed.</p>
       </main>
     `;
@@ -558,8 +564,32 @@ function getCatalogStatus(candidate) {
   const activeRules = candidate.relatedHostedRules.filter((rule) => rule.status === "active");
   const retiredRules = candidate.relatedHostedRules.filter((rule) => rule.status === "retired");
   if (activeRules.length) return { key: "mapped", label: "Mapped", rules: activeRules };
-  if (retiredRules.length) return { key: "retired", label: "Retired Mapping", rules: retiredRules };
+  if (retiredRules.length) return { key: "retired", label: "Retired", rules: retiredRules };
   return { key: "unmapped", label: "Not Mapped", rules: [] };
+}
+
+function renderCatalogStatusBadge(catalogStatus) {
+  return `<span class="catalog-status ${escapeHtml(catalogStatus.key)}">${escapeHtml(catalogStatus.label)}</span>`;
+}
+
+function renderDetailHeaderActions(statuses) {
+  return `
+    <div class="detail-header-actions">
+      <span class="assessment-title-statuses">${statuses}</span>
+      <button class="icon-button clickable detail-back-to-top" type="button" data-detail-back-to-top aria-label="Back to top" title="Back to top" disabled>${icon("fold-up")}</button>
+    </div>
+  `;
+}
+
+function renderMappedHostedRules(catalogStatus, includePlacements = false) {
+  if (!catalogStatus.rules.length) return "";
+  const mappedRules = catalogStatus.rules.map((rule) => {
+    const placements = rule.placements?.length
+      ? rule.placements.map((placement) => `${placement.surfaceId} / ${placement.sectionHeading}`).join("; ")
+      : "Placement unavailable in source bundle";
+    return `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p>${includePlacements ? `<small>${escapeHtml(placements)}</small>` : ""}</div>`;
+  }).join("");
+  return `<div class="section-block"><span class="section-label">Mapped Hosted Rules:</span><div class="overlap-list">${mappedRules}</div></div>`;
 }
 
 function getAllowedActions(candidate, proposedText = defaultDecision(candidate).proposedText) {
@@ -1158,9 +1188,6 @@ function renderAssessmentResultDetail() {
   const assessment = candidate.assessment;
   const eligible = assessment.hostedApplicable;
   const catalogStatus = getCatalogStatus(candidate);
-  const mappedRules = catalogStatus.rules.length
-    ? catalogStatus.rules.map((rule) => `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p></div>`).join("")
-    : `<div class="overlap-item subcontext-container empty-mapping">No Hosted rule is mapped to this source candidate.</div>`;
   elements["assessment-results-detail"].innerHTML = `
     <div class="assessment-title">
       <div>
@@ -1168,13 +1195,16 @@ function renderAssessmentResultDetail() {
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
         <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
-      <span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span>
+      ${renderDetailHeaderActions(`
+        <span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span>
+        ${renderCatalogStatusBadge(catalogStatus)}
+      `)}
     </div>
     <div class="assessment-content">
       <div class="section-block"><span class="section-label">Source Rule:</span><pre class="evidence-box">${escapeHtml(candidate.text)}</pre>${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}</div>
+      ${renderMappedHostedRules(catalogStatus)}
       <div class="section-block"><span class="section-label">Applicability Decision:</span><div class="ai-evaluation-summary subcontext-container"><div class="ai-evaluation-heading"><strong>${eligible ? "Eligible for candidate catalog" : "Excluded from candidate catalog"}</strong><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">Recommend ${escapeHtml(formatRecommendation(assessment.recommendation))}</span></div><p>${escapeHtml(assessment.applicabilityRationale)}</p></div></div>
       <div class="section-block"><span class="section-label">AI Evaluation:</span><h3>${escapeHtml(assessment.summary)}</h3><p class="coverage-summary">${escapeHtml(assessment.impactDescription)}</p>${renderPriorityAssessment(assessment)}</div>
-      <div class="section-block"><span class="section-label">Hosted Catalog Status:</span><div class="catalog-status-heading"><strong>${catalogStatus.rules.length ? `${catalogStatus.rules.length} mapped rule${catalogStatus.rules.length === 1 ? "" : "s"}` : "No authoritative mapping"}</strong><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span></div><div class="overlap-list">${mappedRules}</div></div>
       <div class="section-block"><span class="section-label">Related Hosted Coverage:</span><p class="coverage-summary evidence-summary-box subcontext-container">${escapeHtml(assessment.currentHostedCoverage)}</p></div>
       ${renderApplicabilityOverride(candidate)}
     </div>
@@ -1301,14 +1331,6 @@ function renderAssessment() {
   const combined = getCapacityReports().find((report) => report.name === "test-combined");
   const projectedHeadroom = combined.budgetHeadroomTokens - draftCost;
   const catalogStatus = getCatalogStatus(candidate);
-  const mappedRules = catalogStatus.rules.length
-    ? catalogStatus.rules.map((rule) => {
-      const placements = rule.placements?.length
-        ? rule.placements.map((placement) => `${placement.surfaceId} / ${placement.sectionHeading}`).join("; ")
-        : "Placement unavailable in source bundle";
-      return `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p><small>${escapeHtml(placements)}</small></div>`;
-    }).join("")
-    : `<div class="overlap-item subcontext-container empty-mapping">No Hosted rule is mapped to this source candidate.</div>`;
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
 
@@ -1323,10 +1345,11 @@ function renderAssessment() {
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
         <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
-      <span class="assessment-title-statuses">
+      ${renderDetailHeaderActions(`
         <span class="candidate-state ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span>
         <span class="decision-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span>
-      </span>
+        ${renderCatalogStatusBadge(catalogStatus)}
+      `)}
     </div>
 
     <div class="assessment-content">
@@ -1336,11 +1359,7 @@ function renderAssessment() {
         ${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}
       </div>
 
-      <div class="section-block">
-        <span class="section-label">Hosted Catalog Status:</span>
-        <div class="catalog-status-heading"><strong>${catalogStatus.rules.length ? `${catalogStatus.rules.length} mapped rule${catalogStatus.rules.length === 1 ? "" : "s"}` : "No authoritative mapping"}</strong><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span></div>
-        <div class="overlap-list">${mappedRules}</div>
-      </div>
+      ${renderMappedHostedRules(catalogStatus, true)}
 
       <div class="section-block">
         <span class="section-label">AI Evaluation:</span>
@@ -1390,8 +1409,8 @@ function renderAssessment() {
             </label>
           </div>
           <div class="field-stack control-group rationale-control-group">
-            <label><span class="control-subtitle">Decision Rationale:</span><textarea data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-describedby="decision-rationale-limit" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
-            <div class="rationale-actions"><button class="button secondary clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" title="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}>${icon("save")}<span>Save</span></button></div>
+            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" title="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}>${icon("save")}</button></div>
+            <label><textarea data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
           </div>
         </div>
       </div>
@@ -1482,6 +1501,20 @@ function handleAssessmentInput(event) {
   }
 }
 
+
+function handleDetailBackToTopClick(event) {
+  const button = event.target.closest("[data-detail-back-to-top]");
+  if (!button || button.disabled) return;
+  const content = button.closest(".assessment-panel")?.querySelector(":scope > .assessment-content");
+  content?.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function handleDetailContentScroll(event) {
+  const content = event.target;
+  if (!(content instanceof Element) || !content.matches(".assessment-content")) return;
+  const button = content.parentElement?.querySelector(":scope > .assessment-title [data-detail-back-to-top]");
+  if (button) button.disabled = content.scrollTop <= 1;
+}
 function syncAssessmentActionControls(candidate) {
   const decision = getDecision(candidate);
   elements["assessment-panel"].querySelectorAll("[data-rule-action]").forEach((control) => {
