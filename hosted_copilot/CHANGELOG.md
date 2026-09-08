@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - Hardened release boundaries by rejecting linked-path installer escapes, blocking loopback DNS rebinding, constraining review cleanup to tool-owned branch namespaces, scanning deployable files for recognizable credentials and private keys, and integrity-locking Node validation dependencies.
+- Kept required CI deterministic by moving live Hosted upstream-source drift detection to the explicit maintainer audit while continuing to validate the committed source catalog and pinned baseline.
+- Made Workbench icon preview generation portable across Windows and Linux by replacing Edge-only process launch with locked headless Puppeteer and exercising both icon families in temporary CI staging.
 - Improved Workbench usability across supported viewports with stable navigation context, accessible controls, hierarchical readiness cues, reliable Bulk Actions, clearer status feedback, and consistent Candidate, Details, Assessment, Plan, and Preview workflows.
 - Made interactive startup report semantic-assessment progress before staging and server readiness while preserving machine-readable automation output.
 - Corrected experiment and validation reliability for supported GitHub review effort levels, cross-platform pull-request file capture, complete contributor-source drift coverage, and deterministic Mermaid rendering dependencies.

@@ -24,7 +24,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
-            ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness
+            ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness -SkipInteractiveUpstreamDrift -SkipHostedUpstreamDrift
             exit $LASTEXITCODE
           }
 
@@ -39,18 +39,18 @@ jobs:
               exit $LASTEXITCODE
             }
 
-            ./tools/Validate-ChangedToolkits.ps1 -ChangedPaths $changedPaths -SkipInteractiveRegressionHarness
+            ./tools/Validate-ChangedToolkits.ps1 -ChangedPaths $changedPaths -SkipInteractiveRegressionHarness -SkipInteractiveUpstreamDrift -SkipHostedUpstreamDrift
             exit $LASTEXITCODE
           }
 
           $validationFailed = $false
 
-          & pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipRegressionHarness
+          & pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipRegressionHarness -SkipUpstreamDrift
           if ($LASTEXITCODE -ne 0) {
             $validationFailed = $true
           }
 
-          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
+          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1 -SkipUpstreamDrift
           if ($LASTEXITCODE -ne 0) {
             $validationFailed = $true
           }

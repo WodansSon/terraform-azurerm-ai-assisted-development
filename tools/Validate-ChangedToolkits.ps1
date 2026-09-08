@@ -20,7 +20,9 @@ param(
 
     [switch]$SkipInteractiveRegressionHarness,
 
-    [switch]$SkipInteractiveUpstreamDrift
+    [switch]$SkipInteractiveUpstreamDrift,
+
+    [switch]$SkipHostedUpstreamDrift
 )
 
 Set-StrictMode -Version Latest
@@ -389,7 +391,10 @@ if (-not $PlanOnly -and $unknownPaths.Count -eq 0) {
     }
 
     if ($runHosted) {
-        $executions.Add((Invoke-ProfileValidator -Name 'Hosted Toolkit' -Path $hostedValidatorPath))
+        $hostedArguments = @()
+        if ($SkipHostedUpstreamDrift) { $hostedArguments += '-SkipUpstreamDrift' }
+
+        $executions.Add((Invoke-ProfileValidator -Name 'Hosted Toolkit' -Path $hostedValidatorPath -Arguments $hostedArguments))
     }
 }
 

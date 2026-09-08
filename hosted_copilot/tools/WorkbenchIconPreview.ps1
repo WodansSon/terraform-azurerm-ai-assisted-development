@@ -18,14 +18,11 @@ function New-WorkbenchIconPreview {
         [string[]]$IconNames
     )
 
-    $edgePath = @(
-        (Get-Command msedge -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1)
-        $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe' })
-        $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe' })
-    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
-    if (-not $edgePath) {
-        throw 'Microsoft Edge is required to generate the icon preview PNG.'
+    $rendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
+    if (-not (Test-Path -LiteralPath $rendererPath -PathType Leaf)) {
+        throw "Workbench icon preview renderer was not found: $rendererPath"
     }
+    $nodeCommand = Get-Command node -ErrorAction Stop
 
     $spritePath = Join-Path $IconDirectory 'sprite.svg'
     $spriteContent = Get-Content -LiteralPath $spritePath -Raw
@@ -59,19 +56,16 @@ $($cards -join "`n")
 "@
     $previewSvgPath = Join-Path $IconDirectory 'preview.svg'
     $previewPngPath = Join-Path $IconDirectory 'preview.png'
-    $temporaryProfile = Join-Path ([IO.Path]::GetTempPath()) ('workbench-icon-preview-' + [guid]::NewGuid().ToString('N'))
     try {
         Set-Content -LiteralPath $previewSvgPath -Value $previewSvg -Encoding utf8NoBOM
         Remove-Item -LiteralPath $previewPngPath -Force -ErrorAction SilentlyContinue
-        $previewUri = [Uri]::new([IO.Path]::GetFullPath($previewSvgPath)).AbsoluteUri
-        $arguments = @('--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', "--user-data-dir=$temporaryProfile", "--window-size=$width,$height", "--screenshot=$previewPngPath", $previewUri)
-        $process = Start-Process -FilePath $edgePath -ArgumentList $arguments -Wait -PassThru
-        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $previewPngPath -PathType Leaf)) {
-            throw "Failed to generate '$previewPngPath'."
+        $rendererOutput = @(& $nodeCommand.Source $rendererPath $previewSvgPath $previewPngPath $width $height 2>&1)
+        $rendererExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        if ($rendererExitCode -ne 0 -or -not (Test-Path -LiteralPath $previewPngPath -PathType Leaf)) {
+            throw "Failed to generate '$previewPngPath': $(($rendererOutput | Out-String).Trim())"
         }
     }
     finally {
-        Remove-Item -LiteralPath $temporaryProfile -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $previewSvgPath -Force -ErrorAction SilentlyContinue
     }
 

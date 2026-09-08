@@ -61,6 +61,7 @@ $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAs
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
 $ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
+$ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
 $ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
 $ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.schema.json'
 $ruleWorkbenchPlaywrightRunnerPath = Join-Path $hostedRoot 'regression/workbench/playwright/run.cjs'
@@ -303,6 +304,7 @@ if ($runtimeStarted) {
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
         $ruleWorkbenchHeadedTestPath,
+        $ruleWorkbenchIconPreviewRendererPath,
         $ruleWorkbenchBehaviorManifestPath,
         $ruleWorkbenchBehaviorManifestSchemaPath,
         $ruleWorkbenchPlaywrightRunnerPath,

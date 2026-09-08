@@ -59,7 +59,7 @@ Validate the Hosted source package with:
 pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
 ```
 
-The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, upstream drift, manifest ownership, deployable-payload secret scanning, lockfile-backed browser tooling, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer linked-path rejection, and test-case integrity. Use `-SkipUpstreamDrift` only for explicit offline diagnosis.
+The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, manifest ownership, deployable-payload secret scanning, lockfile-backed browser tooling, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer linked-path rejection, and test-case integrity. Required CI uses `-SkipUpstreamDrift` because live upstream content is a moving external input. Run `Test-UpstreamSources.ps1 -FailOnDrift` explicitly for the fail-closed maintainer audit before accepting a new upstream baseline.
 
 ## Repository Settings:
 

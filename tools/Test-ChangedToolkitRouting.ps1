@@ -8,11 +8,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $dispatcherPath = Join-Path $PSScriptRoot 'Validate-ChangedToolkits.ps1'
+$workflowPath = Join-Path $PSScriptRoot '../.github/workflows/contracts-validation.yml'
 $validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $results = New-Object 'System.Collections.Generic.List[object]'
 
 $dispatcherContent = Get-Content -LiteralPath $dispatcherPath -Raw
+$workflowContent = Get-Content -LiteralPath $workflowPath -Raw
 $relayContractPresent = $dispatcherContent -match '\$childOutputFormat = if \(\$OutputFormat -eq ''Text''\)' -and
     $dispatcherContent -match '\^\\s\*\\\[\(RUNNING\|PASSED\|FAILED\|SKIPPED\)\\\]' -and
     $dispatcherContent -match 'Write-Host \(Add-ValidationIndent -Line \(\[string\]\$_\)\)' -and
@@ -30,9 +32,19 @@ $relayContractPresent = $dispatcherContent -match '\$childOutputFormat = if \(\$
     $dispatcherContent -notmatch 'Write-ValidationStatusTable -Rows .* -TotalDuration' -and
     $dispatcherContent -match "Write-ValidationSectionHeader -Title 'Execution failures'" -and
     $dispatcherContent -match 'Write-ValidationTwoColumnTable -Rows' -and
+    $dispatcherContent -match '\[switch\]\$SkipHostedUpstreamDrift' -and
+    $dispatcherContent -match 'if \(\$SkipHostedUpstreamDrift\) \{ \$hostedArguments \+= ''-SkipUpstreamDrift'' \}' -and
+    $dispatcherContent -match 'Invoke-ProfileValidator -Name ''Hosted Toolkit'' -Path \$hostedValidatorPath -Arguments \$hostedArguments' -and
     $dispatcherContent -match 'Complete-ValidationTextOutput'
 if (-not $relayContractPresent) {
     $issues.Add('dispatcher text mode must relay child execution states and consume the shared validation presentation contract without local formatter copies')
+}
+
+$ciDriftRoutingPresent = [regex]::Matches($workflowContent, 'Validate-ChangedToolkits\.ps1[^\r\n]*-SkipInteractiveUpstreamDrift[^\r\n]*-SkipHostedUpstreamDrift').Count -eq 2 -and
+    [regex]::Matches($workflowContent, 'Validate-InteractiveToolkit\.ps1[^\r\n]*-SkipUpstreamDrift').Count -eq 1 -and
+    [regex]::Matches($workflowContent, 'hosted_copilot/tools/Test-Toolkit\.ps1[^\r\n]*-SkipUpstreamDrift').Count -eq 1
+if (-not $ciDriftRoutingPresent) {
+    $issues.Add('required CI must skip both live upstream drift audits in pull-request, push, and workflow-dispatch validation paths')
 }
 
 if (-not (Test-Path -LiteralPath $validationOutputModulePath -PathType Leaf)) {
