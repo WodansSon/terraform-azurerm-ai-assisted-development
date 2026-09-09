@@ -377,6 +377,21 @@ foreach ($surface in @($hostedCatalog.surfaces)) {
 }
 
 $upstreamCandidates = New-Object 'System.Collections.Generic.List[object]'
+$hostedRules = @($hostedCatalog.rules | Sort-Object id | ForEach-Object {
+    $hostedRule = $_
+    [object[]]$placements = if ($placementsByRuleId.ContainsKey([string]$hostedRule.id)) {
+        @($placementsByRuleId[[string]$hostedRule.id].ToArray())
+    }
+    else {
+        @()
+    }
+    [pscustomobject]@{
+        id = [string]$hostedRule.id
+        status = [string]$hostedRule.status
+        text = [string]$hostedRule.text
+        placements = $placements
+    }
+})
 foreach ($source in @($hostedCatalog.sources)) {
     $relativePath = Get-UpstreamRelativePath -RawUrl ([string]$source.rawUrl)
     $baselineContent = Get-UpstreamContent -Repository ([string]$hostedCatalog.upstreamSnapshot.repository) -Commit ([string]$hostedCatalog.upstreamSnapshot.baselineCommit) -RelativePath $relativePath -Directory $UpstreamBaselineDirectory
@@ -515,7 +530,7 @@ foreach ($state in @('new', 'changed', 'retired', 'deferred', 'current')) {
 $currentInteractiveCatalogHash = Get-FileSha256 -Path $resolvedInteractiveCatalogPath
 $result = [ordered]@{
     '$schema' = 'rule-intake-review.schema.json'
-    schemaVersion = 1
+    schemaVersion = 2
     generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
     readOnly = $true
     refreshMode = 'regenerate-read-only-bundle'
@@ -552,6 +567,7 @@ $result = [ordered]@{
         maintainerStateCounts = $maintainerStateCounts
     }
     guidanceCapacity = $guidanceCapacity
+    hostedRules = $hostedRules
     upstreamCandidates = $upstreamCandidates.ToArray()
     interactiveCandidates = $interactiveCandidates.ToArray()
     maintainerCandidates = $maintainerCandidates

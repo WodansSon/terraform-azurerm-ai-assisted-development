@@ -108,7 +108,7 @@ function Write-Bundle {
     )
     $bundle = [ordered]@{
         '$schema' = 'rule-intake-review.schema.json'
-        schemaVersion = 1
+        schemaVersion = 2
         generatedAt = '2026-09-03T00:00:00Z'
         readOnly = $true
         refreshMode = 'regenerate-read-only-bundle'
@@ -138,6 +138,7 @@ function Write-Bundle {
             reportCount = 8
             reports = $reports
         }
+        hostedRules = @()
         upstreamCandidates = @()
         interactiveCandidates = $candidates
         maintainerCandidates = @()
@@ -207,28 +208,34 @@ $records = @($batch.candidates | ForEach-Object {
     }
     [ordered]@{
         id = $_.id
-        assessment = [ordered]@{
-            hostedApplicable = $applicable
-            applicabilityRationale = if ($applicable) { "Rule $($_.id) controls native Hosted review findings." } else { "Rule $($_.id) is workflow commentary outside native Hosted review." }
-            hostedCategory = if ($applicable) { 'review-classification-and-evidence' } else { 'not-applicable' }
-            recommendation = if ($applicable) { 'add' } else { 'exclude' }
-            summary = "Candidate-specific assessment for $($_.id)."
-            impactDescription = "Candidate $($_.id) has independently evaluated review impact."
-            currentHostedCoverage = "Candidate $($_.id) was compared with the current Hosted catalog."
-            affectedSurfaces = $affectedSurfaces.ToArray()
-            guardedTokenDelta = if ($applicable) { 12 } else { 0 }
-            proposedText = if ($applicable) { "Apply $($_.id) during Hosted review." } else { '' }
-            selectionFactors = [ordered]@{
-                severity = if ($applicable) { 4 } else { 1 }
-                frequency = 3
-                breadth = if ($applicable) { 4 } else { 1 }
-                hostedDetectability = if ($applicable) { 5 } else { 0 }
-                evidenceStrength = 4
-                falsePositiveRisk = if ($applicable) { 1 } else { 4 }
-                redundancy = 1
+        assessments = @(
+            [ordered]@{
+                assessmentId = $_.id
+                title = $_.title
+                candidateState = $_.state
+                targetHostedRuleId = $null
+                hostedApplicable = $applicable
+                applicabilityRationale = if ($applicable) { "Rule $($_.id) controls native Hosted review findings." } else { "Rule $($_.id) is workflow commentary outside native Hosted review." }
+                hostedCategory = if ($applicable) { 'review-classification-and-evidence' } else { 'not-applicable' }
+                recommendation = if ($applicable) { 'add' } else { 'exclude' }
+                summary = "Candidate-specific assessment for $($_.id)."
+                impactDescription = "Candidate $($_.id) has independently evaluated review impact."
+                currentHostedCoverage = "Candidate $($_.id) was compared with the current Hosted catalog."
+                affectedSurfaces = $affectedSurfaces.ToArray()
+                guardedTokenDelta = if ($applicable) { 12 } else { 0 }
+                proposedText = if ($applicable) { "Apply $($_.id) during Hosted review." } else { '' }
+                selectionFactors = [ordered]@{
+                    severity = if ($applicable) { 4 } else { 1 }
+                    frequency = 3
+                    breadth = if ($applicable) { 4 } else { 1 }
+                    hostedDetectability = if ($applicable) { 5 } else { 0 }
+                    evidenceStrength = 4
+                    falsePositiveRisk = if ($applicable) { 1 } else { 4 }
+                    redundancy = 1
+                }
+                selectionRationale = "Severity, frequency, breadth, detectability, evidence, false-positive risk, and redundancy were independently scored for $($_.id)."
             }
-            selectionRationale = "Severity, frequency, breadth, detectability, evidence, false-positive risk, and redundancy were independently scored for $($_.id)."
-        }
+        )
     }
 })
 [IO.File]::WriteAllText($OutputPath, ($records | ConvertTo-Json -Depth 12) + "`n", [Text.UTF8Encoding]::new($false))

@@ -4,16 +4,20 @@
   "title": "Hosted Rule Intake Review Bundle",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "upstreamCandidates", "interactiveCandidates", "maintainerCandidates"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "hostedRules", "upstreamCandidates", "interactiveCandidates", "maintainerCandidates"],
   "properties": {
     "$schema": { "const": "rule-intake-review.schema.json" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "readOnly": { "const": true },
     "refreshMode": { "const": "regenerate-read-only-bundle" },
     "snapshots": { "$ref": "#/$defs/snapshots" },
     "summary": { "$ref": "#/$defs/summary" },
     "guidanceCapacity": { "$ref": "#/$defs/guidanceCapacity" },
+    "hostedRules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relatedHostedRule" }
+    },
     "upstreamCandidates": {
       "type": "array",
       "items": { "$ref": "#/$defs/upstreamCandidate" }
@@ -182,8 +186,17 @@
     "aiAssessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
+      "required": ["assessmentId", "title", "candidateState", "targetHostedRuleId", "status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
       "properties": {
+        "assessmentId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "candidateState": { "enum": ["new", "changed", "retired", "deferred", "current"] },
+        "targetHostedRuleId": {
+          "oneOf": [
+            { "$ref": "#/$defs/ruleId" },
+            { "type": "null" }
+          ]
+        },
         "status": { "const": "evaluated" },
         "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
         "assessedAt": { "type": "string", "format": "date-time" },
@@ -242,7 +255,10 @@
         "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
         "baselineContent": { "type": "string" },
         "currentContent": { "type": "string" },
-        "assessment": { "$ref": "#/$defs/aiAssessment" }
+        "assessments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/aiAssessment" }
+        }
       }
     },
     "interactiveCandidate": {
@@ -264,7 +280,12 @@
         "changeReasons": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "priorDecision": { "type": ["object", "null"] },
         "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
-        "assessment": { "$ref": "#/$defs/aiAssessment" }
+        "assessments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/aiAssessment" }
+        }
       }
     },
     "maintainerCandidate": {
@@ -284,7 +305,12 @@
         "state": { "enum": ["new", "changed", "retired", "current"] },
         "requiresReview": { "type": "boolean" },
         "relatedHostedRules": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedRule" } },
-        "assessment": { "$ref": "#/$defs/aiAssessment" }
+        "assessments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/aiAssessment" }
+        }
       }
     }
   }

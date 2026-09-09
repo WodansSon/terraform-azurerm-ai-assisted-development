@@ -126,7 +126,7 @@ async function run({ page, baseUrl, assert, playback }) {
       const overrideRow = root.querySelector(`[data-candidate-key="${candidate.key}"]`);
       const summary = root.querySelector(":scope > summary");
       const modified = resolveColor("--modified-resource");
-      const needsInputValid = summary.title === "1 selected, 1 needs input"
+      const needsInputValid = summary.dataset.workbenchTooltip === "1 selected, 1 needs input"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), overrideRow.querySelector(".candidate-tree-copy strong"), overrideRow.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === modified);
 
@@ -137,7 +137,7 @@ async function run({ page, baseUrl, assert, playback }) {
       };
       syncCandidateTreeRows();
       const added = resolveColor("--added-resource");
-      const readyValid = summary.title === "1 selected, all ready for promotion"
+      const readyValid = summary.dataset.workbenchTooltip === "1 selected, all ready for promotion"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), overrideRow.querySelector(".candidate-tree-copy strong"), overrideRow.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === added);
       return { needsInputValid, readyValid };

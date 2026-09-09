@@ -639,7 +639,10 @@ if ($runtimeStarted) {
         if (@($baselineIdentities | Sort-Object -Unique).Count -ne $baselineIdentities.Count) {
             throw 'committed assessment baseline contains duplicate candidate identities'
         }
-        $staleBaselineEntries = @($assessmentBaseline.entries | Where-Object { $_.sourceContentSha256 -ne $_.assessment.sourceContentSha256 })
+        $staleBaselineEntries = @($assessmentBaseline.entries | Where-Object {
+            $entry = $_
+            @($entry.assessments | Where-Object { $_.sourceContentSha256 -ne $entry.sourceContentSha256 }).Count -gt 0
+        })
         if ($staleBaselineEntries.Count -gt 0) {
             throw 'committed assessment baseline contains source-hash mismatches'
         }

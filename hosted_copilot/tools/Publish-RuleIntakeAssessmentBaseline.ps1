@@ -58,25 +58,25 @@ foreach ($source in @(
             throw "Assessment bundle contains duplicate candidate identity: $identity"
         }
         $identities[$identity] = $true
-        if (-not $candidate.PSObject.Properties['assessment'] -or $null -eq $candidate.assessment) {
+        if (-not $candidate.PSObject.Properties['assessments'] -or ($source.sourceType -ne 'upstream' -and @($candidate.assessments).Count -ne 1)) {
             throw "Assessment bundle candidate is not evaluated: $identity"
         }
         $sourceHash = [string]$candidate.($source.hashProperty)
-        if ([string]$candidate.assessment.sourceContentSha256 -ne $sourceHash) {
+        if (@($candidate.assessments | Where-Object { [string]$_.sourceContentSha256 -ne $sourceHash }).Count -gt 0) {
             throw "Assessment bundle candidate has a stale assessment: $identity"
         }
         $entries.Add([pscustomobject][ordered]@{
             sourceType = $source.sourceType
             id = [string]$candidate.id
             sourceContentSha256 = $sourceHash
-            assessment = $candidate.assessment
+            assessments = @($candidate.assessments)
         })
     }
 }
 
 $baseline = [ordered]@{
     '$schema' = 'assessment-baseline.schema.json'
-    schemaVersion = 1
+    schemaVersion = 2
     generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
     hostedCatalogSha256 = [string]$bundle.snapshots.hostedCatalogSha256
     sourceBundleSha256 = Get-ContentSha256 -Content $bundleContent

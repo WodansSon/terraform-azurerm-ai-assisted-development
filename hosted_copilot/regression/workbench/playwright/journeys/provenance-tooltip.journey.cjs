@@ -20,7 +20,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const box = await pill.boundingBox();
   const contract = await pill.evaluate((node) => ({
     text: node.textContent.trim(),
-    tooltip: node.dataset.sourceProvenanceTooltip,
+    tooltip: node.dataset.workbenchTooltip,
     title: node.getAttribute("title")
   }));
   assert(contract.text === contract.tooltip && /^[^@]+@[0-9a-f]{8}$/.test(contract.text), "tooltip does not retain the complete concise short-SHA provenance");

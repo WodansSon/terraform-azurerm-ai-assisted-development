@@ -40,6 +40,41 @@
       "journey": "playwright/journeys/provenance-tooltip.journey.cjs"
     },
     {
+      "id": "WB-UX-CONTRIBUTOR-001",
+      "title": "Contributor documents are non-actionable candidate parents",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CONTRIBUTOR-002",
+      "title": "Contributor document requirements are independent rule candidates",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CONTRIBUTOR-003",
+      "title": "Update preview and payload use one semantic Hosted target",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SEARCH-001",
+      "title": "Candidate search preserves the tree and navigates to the best match",
+      "journey": "playwright/journeys/candidate-search-navigation.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-001",
+      "title": "Scrollbars hide while idle and reveal on interaction",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-002",
+      "title": "Scrollbar reveal and hide use asymmetric timing",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-003",
+      "title": "Scrollbars retain flat arrowless stable geometry",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
       "id": "WB-UX-OWNERSHIP-001",
       "title": "Bulk Add creates a bulk-owned ready green hierarchy",
       "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"

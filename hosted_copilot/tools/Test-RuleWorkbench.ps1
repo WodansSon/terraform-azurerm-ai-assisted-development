@@ -143,7 +143,7 @@ try {
     )
     $bundle = [ordered]@{
         '$schema' = 'rule-intake-review.schema.json'
-        schemaVersion = 1
+        schemaVersion = 2
         generatedAt = '2026-09-03T00:00:00Z'
         readOnly = $true
         refreshMode = 'regenerate-read-only-bundle'
@@ -173,7 +173,93 @@ try {
             reportCount = 8
             reports = $capacityReports
         }
-        upstreamCandidates = @()
+        hostedRules = @(
+            [ordered]@{ id = 'IMPL-PATCH-001'; status = 'active'; text = 'If PATCH preserves omitted properties, removal must send an explicit clearing value.'; placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Azure API Semantics' }) },
+            [ordered]@{ id = 'DOCS-IMP-002'; status = 'active'; text = 'Resource documentation must include a shell-fenced Terraform import command.'; placements = @([ordered]@{ surfaceId = 'documentation'; sectionHeading = 'Examples And Imports' }) }
+        )
+        upstreamCandidates = @(
+            [ordered]@{
+                id = 'guide-new-resource'
+                title = 'Guide: New Resource'
+                referenceUrl = 'https://example.invalid/guide-new-resource'
+                baselineSha256 = '1' * 64
+                currentSha256 = '2' * 64
+                state = 'changed'
+                requiresReview = $true
+                affectedHostedRuleIds = @('DOCS-IMP-002')
+                relatedHostedRules = @([ordered]@{ id = 'DOCS-IMP-002'; status = 'active'; text = 'Resource documentation must include a shell-fenced Terraform import command.'; placements = @([ordered]@{ surfaceId = 'documentation'; sectionHeading = 'Examples And Imports' }) })
+                baselineContent = 'Previous contributor guidance.'
+                currentContent = 'Current contributor guidance includes PUT clearing behavior and companion resource requirements.'
+                assessments = @(
+                    [ordered]@{
+                        assessmentId = 'IMPL-PATCH-001'
+                        title = 'Prefer PUT when removal must clear remote values'
+                        candidateState = 'changed'
+                        targetHostedRuleId = 'IMPL-PATCH-001'
+                        status = 'evaluated'
+                        sourceContentSha256 = '2' * 64
+                        assessedAt = '2026-09-03T00:00:00Z'
+                        evaluator = 'offline-fixture'
+                        hostedApplicable = $true
+                        applicabilityRationale = 'The rule governs detectable update semantics.'
+                        hostedCategory = 'implementation'
+                        recommendation = 'update'
+                        summary = 'Update the existing PATCH safeguard with PUT preference.'
+                        impactDescription = 'Prevents stale remote values after Terraform removal.'
+                        currentHostedCoverage = 'IMPL-PATCH-001 is the single semantic update target.'
+                        affectedSurfaces = @('implementation')
+                        guardedTokenDelta = 40
+                        proposedText = 'Prefer PUT when removal must clear a remote value. If PATCH is required, send an explicit clearing value instead of omitting the property.'
+                        selectionFactors = [ordered]@{ severity = 4; frequency = 3; breadth = 4; hostedDetectability = 5; evidenceStrength = 5; falsePositiveRisk = 1; redundancy = 1 }
+                        selectionRationale = 'The update preserves the existing safeguard and adds explicit operation guidance.'
+                    },
+                    [ordered]@{
+                        assessmentId = 'resource-identity-list-resource'
+                        title = 'Require Resource Identity and List Resource companions'
+                        candidateState = 'new'
+                        targetHostedRuleId = $null
+                        status = 'evaluated'
+                        sourceContentSha256 = '2' * 64
+                        assessedAt = '2026-09-03T00:00:00Z'
+                        evaluator = 'offline-fixture'
+                        hostedApplicable = $true
+                        applicabilityRationale = 'The requirement applies to every new resource.'
+                        hostedCategory = 'repository'
+                        recommendation = 'add'
+                        summary = 'Add missing companion-resource coverage.'
+                        impactDescription = 'Prevents incomplete new resource implementations.'
+                        currentHostedCoverage = 'No active Hosted rule requires both companion surfaces.'
+                        affectedSurfaces = @('repository', 'implementation')
+                        guardedTokenDelta = 73
+                        proposedText = 'When a pull request adds a Resource, require Resource Identity and a List Resource unless an approved exception is documented.'
+                        selectionFactors = [ordered]@{ severity = 4; frequency = 3; breadth = 5; hostedDetectability = 4; evidenceStrength = 5; falsePositiveRisk = 2; redundancy = 1 }
+                        selectionRationale = 'The uncovered requirement is broad, evidence-backed, and directly reviewable.'
+                    },
+                    [ordered]@{
+                        assessmentId = 'DOCS-IMP-002'
+                        title = 'Preserve the resource import command requirement'
+                        candidateState = 'current'
+                        targetHostedRuleId = 'DOCS-IMP-002'
+                        status = 'evaluated'
+                        sourceContentSha256 = '2' * 64
+                        assessedAt = '2026-09-03T00:00:00Z'
+                        evaluator = 'offline-fixture'
+                        hostedApplicable = $true
+                        applicabilityRationale = 'The existing documentation rule remains applicable.'
+                        hostedCategory = 'documentation'
+                        recommendation = 'no-change'
+                        summary = 'Existing import guidance remains current.'
+                        impactDescription = 'No catalog change is required.'
+                        currentHostedCoverage = 'DOCS-IMP-002 already covers this requirement.'
+                        affectedSurfaces = @('documentation')
+                        guardedTokenDelta = 0
+                        proposedText = 'Resource documentation must include a shell-fenced Terraform import command.'
+                        selectionFactors = [ordered]@{ severity = 2; frequency = 3; breadth = 4; hostedDetectability = 5; evidenceStrength = 5; falsePositiveRisk = 1; redundancy = 5 }
+                        selectionRationale = 'Existing Hosted coverage is complete, so no change is warranted.'
+                    }
+                )
+            }
+        )
         interactiveCandidates = @(
             [ordered]@{
                 id = 'REVIEW-CLASS-001'
@@ -190,37 +276,45 @@ try {
                 changeReasons = @('new-rule')
                 priorDecision = $null
                 relatedHostedRules = @()
-                assessment = [ordered]@{
-                    status = 'evaluated'
-                    sourceContentSha256 = 'd' * 64
-                    assessedAt = '2026-09-03T00:00:00Z'
-                    evaluator = 'offline-fixture'
-                    hostedApplicable = $true
-                    applicabilityRationale = 'The rule governs evidence-backed findings produced by the Hosted review agent.'
-                    hostedCategory = 'review-classification-and-evidence'
-                    recommendation = 'add'
-                    summary = 'High impact, low cost'
-                    impactDescription = 'Prevents unsupported review findings across review surfaces.'
-                    currentHostedCoverage = 'No materially equivalent Hosted rule is mapped.'
-                    affectedSurfaces = @('review-skill')
-                    guardedTokenDelta = 19
-                    proposedText = 'Report only evidence-backed defects as Issues.'
-                    selectionFactors = [ordered]@{
-                        severity = 5
-                        frequency = 3
-                        breadth = 4
-                        hostedDetectability = 4
-                        evidenceStrength = 5
-                        falsePositiveRisk = 1
-                        redundancy = 1
+                assessments = @(
+                    [ordered]@{
+                        assessmentId = 'REVIEW-CLASS-001'
+                        title = 'Issues are for actual problems only'
+                        candidateState = 'new'
+                        targetHostedRuleId = $null
+                        status = 'evaluated'
+                        sourceContentSha256 = 'd' * 64
+                        assessedAt = '2026-09-03T00:00:00Z'
+                        evaluator = 'offline-fixture'
+                        hostedApplicable = $true
+                        applicabilityRationale = 'The rule governs evidence-backed findings produced by the Hosted review agent.'
+                        hostedCategory = 'review-classification-and-evidence'
+                        recommendation = 'add'
+                        summary = 'High impact, low cost'
+                        impactDescription = 'Prevents unsupported review findings across review surfaces.'
+                        currentHostedCoverage = 'No materially equivalent Hosted rule is mapped.'
+                        affectedSurfaces = @('review-skill')
+                        guardedTokenDelta = 19
+                        proposedText = 'Report only evidence-backed defects as Issues.'
+                        selectionFactors = [ordered]@{
+                            severity = 5
+                            frequency = 3
+                            breadth = 4
+                            hostedDetectability = 4
+                            evidenceStrength = 5
+                            falsePositiveRisk = 1
+                            redundancy = 1
+                        }
+                        selectionRationale = 'The safeguard is broadly applicable, evidence-backed, and inexpensive.'
                     }
-                    selectionRationale = 'The safeguard is broadly applicable, evidence-backed, and inexpensive.'
-                }
+                )
             }
         )
         maintainerCandidates = @()
     }
-    $maintainerAssessment = $bundle.interactiveCandidates[0].assessment | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $maintainerAssessment = $bundle.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $maintainerAssessment.assessmentId = 'DOCS-MAINT-001'
+    $maintainerAssessment.title = 'Maintainer proposal'
     $maintainerAssessment.sourceContentSha256 = 'f' * 64
     $maintainerAssessment.hostedCategory = 'documentation'
     $maintainerAssessment.proposedText = 'Flag documentation that omits a required maintainer convention.'
@@ -237,7 +331,7 @@ try {
         state = 'new'
         requiresReview = $true
         relatedHostedRules = @()
-        assessment = $maintainerAssessment
+        assessments = @($maintainerAssessment)
     })
     $bundle.summary.maintainerRuleCount = 1
     $bundle.summary.maintainerReviewCount = 1
@@ -247,7 +341,7 @@ try {
     Add-TestResult -Name 'fixture-bundle-valid' -Passed ([bool]($bundleJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench bundle satisfies the candidate review schema.'
 
     $invalidAssessmentBundle = $bundleJson | ConvertFrom-Json
-    $invalidAssessmentBundle.interactiveCandidates[0].assessment.selectionFactors.severity = 6
+    $invalidAssessmentBundle.interactiveCandidates[0].assessments[0].selectionFactors.severity = 6
     $invalidAssessmentJson = $invalidAssessmentBundle | ConvertTo-Json -Depth 20
     Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
 
@@ -259,7 +353,7 @@ try {
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
     $bundleHashAfter = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
     $stagedPaths = @('index.html', 'app.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 2 -and $stageResult.evaluatedCandidateCount -eq 2 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports discovered and AI-evaluated candidates separately.' } else { ($stageOutput | Out-String).Trim() })
+    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 3 -and $stageResult.evaluatedCandidateCount -eq 3 -and $stageResult.ruleCandidateCount -eq 5 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports source records and rule-level AI candidates separately.' } else { ($stageOutput | Out-String).Trim() })
     Add-TestResult -Name 'source-bundle-read-only' -Passed ($bundleHashBefore -eq $bundleHashAfter) -Detail 'Workbench staging does not modify its source bundle.'
 
     $fakeAssessmentPath = Join-Path $tempRoot 'fake-assessment.ps1'
@@ -281,14 +375,14 @@ param(
     [string]`$OutputFormat
 )
 Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
-[ordered]@{ status = 'passed'; candidateCount = 2; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 2; inapplicableCount = 0; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
+[ordered]@{ status = 'passed'; candidateCount = 3; ruleCandidateCount = 5; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 5; inapplicableCount = 0; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
 "@, [Text.UTF8Encoding]::new($false))
     $jsonAssessmentSiteDirectory = Join-Path $tempRoot 'json-assessment-site'
     Start-TestResult -Name 'json-assessment-launch'
     $jsonAssessmentOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $jsonAssessmentSiteDirectory -AssessmentScriptPath $fakeAssessmentPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $jsonAssessmentExitCode = $LASTEXITCODE
     $jsonAssessmentResult = if ($jsonAssessmentExitCode -eq 0) { ($jsonAssessmentOutput | Out-String) | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 2 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
+    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 3 -and $jsonAssessmentResult.ruleCandidateCount -eq 5 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -367,9 +461,20 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and $launcherContent -match '\$repository\.fork -eq \$true' -and $launcherContent -match '\$repository\.parent\.full_name -eq ''hashicorp/terraform-provider-azurerm''' -and $launcherContent -match '\$comparisonOutput = @\(& \$ghCommand\.Source api' -and $launcherContent -match 'aheadBy = if \(\$null -ne \$comparison\)' -and $launcherContent -match 'behindBy = if \(\$null -ne \$comparison\)' -and $appContent -match 'function renderTarget\(' -and $appContent -match 'syncIndicators\.push\(`↓ \$\{behindBy\}`\)' -and $appContent -match 'syncIndicators\.push\(`↑ \$\{aheadBy\}`\)' -and $appContent -match 'classList\.toggle\("sync-behind", behindBy > 0\)' -and $appContent -match '\[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and $indexContent -match 'id="target-chip"[^>]*data-truncation-owner' -and $appContent -match 'node\.closest\("\[data-truncation-owner\]"\)' -and $stylesContent -match '\.target-chip\.sync-behind,\s*\.target-chip\.sync-behind:hover\s*\{[^}]*color:\s*var\(--gold\)' -and $stylesContent -match '#status-target\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis' -and $stylesContent -match '\.ide-statusbar\s*\{[^}]*cursor:\s*default;[^}]*user-select:\s*none' -and $appContent -match 'function renderSourceSummaryLabel\(' -and ([regex]::Matches($appContent, '\$\{renderSourceSummaryLabel\(sourceType,').Count -eq 2) -and $appContent -match 'data-source-provenance-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and $appContent -notmatch 'Contributor guidance source:' -and $stylesContent -match '\.source-summary-label\s*\{[^}]*gap:\s*8px' -and $stylesContent -match '\.source-provenance-pill\s*\{[^}]*color:\s*var\(--success\);[^}]*background:\s*var\(--success-soft\);[^}]*border:\s*1px solid var\(--success\)' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.candidate-source-root > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) 108px'
     $repositoryIdentityValid = $repositoryIdentityValid -and $appContent -match 'addEventListener\("pointerover", handleSourceProvenancePointerOver\)' -and $appContent -match 'function showSourceProvenanceTooltip\(pill, anchorX\)' -and $appContent -match 'Math\.floor\(Math\.min\(Math\.max\(8, anchorX\), window\.innerWidth - tooltipRect\.width - 8\)\)' -and $appContent -match 'const below = pillRect\.bottom \+ 6' -and $appContent -match 'below \+ tooltipRect\.height \+ 8 <= window\.innerHeight'
+    $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and
+        $appContent -match 'elements\["target-chip"\]\.dataset\.workbenchTooltip = \[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and
+        $appContent -match 'data-workbench-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and
+        $appContent -match 'function showWorkbenchTooltip\(item, anchorX' -and
+        $appContent -match 'function getWorkbenchTooltipOwner\(target\)' -and
+        $appContent -notmatch 'target\.querySelector\?\.\("\[data-truncation-tooltip\]"\)' -and
+        $stylesContent -match '\.source-provenance-pill\s*\{[^}]*color:\s*var\(--success\);[^}]*border:\s*1px solid var\(--success\)'
     Add-TestResult -Name 'repository-identity-presentation' -Passed $repositoryIdentityValid -Detail 'The status bar identifies and safely truncates the writable AzureRM fork, uses amber only when it is behind, and exposes compact nonzero sync arrows through its parent-owned tooltip; both Contributor Guidance roots retain aligned green provenance pills.'
 
     $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*title="Promotion Plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and $indexContent -match 'class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden' -and $appContent -match 'const planCount = getPlanCandidates\(\)\.length' -and $appContent -match 'elements\["plan-count"\]\.textContent = formatNumber\(planCount\)' -and $appContent -match 'planCount > 999 \? "999\+" : formatNumber\(planCount\)' -and $appContent -match 'elements\["plan-activity-count"\]\.hidden = planCount === 0' -and $appContent -match 'const planLabel = `Promotion Plan \(\$\{formatNumber\(planCount\)\}\)`' -and $stylesContent -match '--activity-badge-background:\s*#307e9f' -and $stylesContent -match '--activity-badge-foreground:\s*#ffffff' -and $stylesContent -match '\.stage-count-badge\s*\{[^}]*right:\s*4px;[^}]*bottom:\s*5px;[^}]*min-width:\s*16px;[^}]*height:\s*16px;[^}]*color:\s*var\(--activity-badge-foreground\);[^}]*background:\s*var\(--activity-badge-background\);[^}]*border:\s*0;[^}]*border-radius:\s*999px' -and $stylesContent -match 'html\.theme-hosted-dark body \.stage-count-badge\s*\{[^}]*font-size:\s*10px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*14px !important'
+    $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*data-workbench-tooltip="Promotion Plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and
+        $appContent -match 'planCount > 999 \? "999\+" : formatNumber\(planCount\)' -and
+        $appContent -match 'setWorkbenchTooltip\(elements\["promotion-plan-stage"\], planLabel\)' -and
+        $stylesContent -match '\.stage-count-badge\s*\{[^}]*border-radius:\s*999px'
     Add-TestResult -Name 'promotion-plan-activity-badge' -Passed $planActivityBadgeValid -Detail 'The Promotion Plan rail badge hides at zero, displays exact counts through 999, expands left as a semibold pill, abbreviates larger counts to 999+, and preserves the exact localized count in the footer and accessibility text.'
 
     $keyboardNavigationValid = $appContent -match 'function handleRowKeyboardNavigation\(event, container, keyProperty, selectRow, activateRow = null\)' -and $appContent -match 'activateRow\?\.\(\)' -and $appContent -match 'event\.key !== "ArrowUp" && event\.key !== "ArrowDown"' -and $appContent -match 'candidateRow\.getClientRects\(\)\.length > 0' -and $appContent -match 'Math\.max\(0, Math\.min\(rows\.length - 1, currentIndex \+ offset\)\)' -and $appContent -match 'target\.focus\(\)' -and $appContent -match 'target\.scrollIntoView\(\{ block: "nearest" \}\)' -and $appContent -match 'event\.target\.matches\(''input\[type="checkbox"\]''\)' -and $appContent -match 'selectCandidate, \(\) => showCandidatePane\("details"\)' -and ([regex]::Matches($appContent, 'handleRowKeyboardNavigation\(event, elements\[').Count -eq 2) -and ([regex]::Matches($appContent, 'setAttribute\("aria-current", "true"\)').Count -eq 2) -and ([regex]::Matches($appContent, 'removeAttribute\("aria-current"\)').Count -eq 2)
@@ -382,6 +487,13 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $tabStateValid = $appContent -match 'queries:\s*\{\s*"candidate-sources": "",\s*"assessment-results": ""\s*\}' -and $appContent -match 'state\.queries\[state\.workspaceTab\] = value' -and $workspaceTabBody -match 'elements\["search-input"\]\.value = state\.queries\[tab\]' -and $workspaceTabBody -notmatch 'renderCandidateList|renderAssessmentResults'
     $assessmentResultsValid = $tabStateValid -and $indexContent -notmatch 'data-view="assessment-results"|assessment-results-search|data-assessment-mode|assessment-results-controls' -and ([regex]::Matches($indexContent, 'id="search-input"').Count -eq 1) -and $indexContent -match 'class="catalog-toolbar"[\s\S]*class="workspace-tabs" role="tablist"' -and $indexContent -match 'role="tab" aria-selected="true" aria-controls="candidate-sources-panel" data-workspace-tab="candidate-sources"' -and $indexContent -match 'role="tab" aria-selected="false" aria-controls="assessment-results-panel" data-workspace-tab="assessment-results"' -and $indexContent -match 'id="candidate-sources-panel" role="tabpanel"[\s\S]*class="catalog-layout"' -and $indexContent -match 'id="assessment-results-panel" role="tabpanel"[\s\S]*class="catalog-layout"' -and $appContent -notmatch 'assessmentQuery|assessmentMode|updateAssessmentFilter|setAssessmentMode' -and $appContent -match 'assessedCandidates:\s*\[\]' -and $appContent -match 'workspaceTab:\s*"candidate-sources"' -and $appContent -match 'state\.excludedCandidateCount = assessedCandidates\.filter\(\(\{ assessment \}\) => !assessment\.hostedApplicable\)\.length' -and $appContent -match 'refreshEffectiveCandidates\(\)' -and $appContent -match 'if \(candidate\.assessment\.hostedApplicable\) return false' -and $appContent -match 'elements\["assessment-results-count"\]\.textContent = formatNumber\(state\.excludedCandidateCount\)' -and $appContent -match 'candidate-category-items"><div class="assessment-results-header"' -and $appContent -notmatch 'assessment-results-list"\]\.innerHTML = `\s*<div class="assessment-results-header"' -and $appContent -match 'state\.workspaceTab === "candidate-sources"' -and $appContent -match 'Search excluded assessment results' -and $appContent -match 'Excluded from candidate catalog' -and $assessmentDetailBody -match 'renderApplicabilityOverride\(candidate\)' -and $assessmentDetailBody -notmatch 'data-rule-action|data-plan-toggle|getDecision\('
     $assessmentResultsValid = $tabStateValid -and $indexContent -match 'data-workspace-tab="candidate-sources"' -and $indexContent -match 'data-workspace-tab="assessment-results"' -and $indexContent -notmatch 'id="assessment-results-count"|id="filter-count"|id="assessment-results-filter-count"|plan-count-control|plan-action-count|eligibility-note' -and $appContent -match 'state\.assessedCandidates\.filter\(\(candidate\) => !candidate\.assessment\.hostedApplicable\)' -and $appContent -notmatch 'elements\["assessment-results-count"\]|elements\["filter-count"\]|elements\["assessment-results-filter-count"\]|elements\["plan-action-count"\]|eligibility-note' -and $appContent -match 'candidate-overrides-root' -and $appContent -match 'renderApplicabilityOverride\(candidate\)' -and $appContent -match 'data-assessment-override-toggle=' -and $appContent -match 'data-assessment-override-remove=' -and $appContent -match 'function syncAssessmentOverrideDisclosures\(' -and $appContent -match 'class="override-rationale"[\s\S]*?<textarea readonly>' -and $appContent -match 'data-override-remove aria-label="Remove Override" title="Remove Override"' -and $stylesContent -match '\.assessment-results-header > span,\s*\.assessment-result-summary\s*\{[^}]*grid-template-columns:\s*84px 116px 156px 110px' -and $stylesContent -match '\.assessment-override-inline\s*\{[^}]*border-left:\s*2px solid var\(--gold\)'
+    $assessmentResultsValid = $tabStateValid -and
+        $appContent -match 'candidate-overrides-root' -and
+        $appContent -match 'renderApplicabilityOverride\(candidate\)' -and
+        $appContent -match 'data-assessment-override-toggle=' -and
+        $appContent -match 'data-assessment-override-remove=' -and
+        $appContent -match 'data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove Override"' -and
+        $stylesContent -match '\.assessment-override-inline\s*\{[^}]*border-left:\s*2px solid var\(--gold\)'
     Add-TestResult -Name 'assessment-results-audit' -Passed $assessmentResultsValid -Detail 'Assessment Results retains every original AI exclusion, exposes persisted contested state inline, and synchronizes rationale and removal with the source-bound Details audit.'
 
     $assessmentSortingValid = $appContent -match 'assessmentSorts:\s*\{\}' -and $appContent -match 'event\.target\.closest\("\[data-assessment-sort\]"\)' -and $appContent -match 'function renderAssessmentResultsHeader\(sectionKey\)' -and $appContent -match '\["candidate", "Candidate", "Candidate"' -and $appContent -match '\["state", "State", "Source State"' -and $appContent -notmatch '\["outcome", "Outcome", "Outcome"|sort\.field === "outcome"' -and $appContent -match '\["category", "Category", "Category"' -and $appContent -match '\["recommendation", "Recommendation", "Recommendation"' -and $appContent -match '\["override", "Override", "Override"' -and $appContent -match 'if \(sort\.field === "state"\) return candidate\.state' -and $appContent -match 'return getApplicabilityOverride\(candidate\) \? "contested" : "none"' -and $appContent -match 'candidate-lifecycle \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'renderSortButton\(column, sort, \{ "assessment-sort": column\[0\], "assessment-section": sectionKey \}\)' -and $appContent -match 'function getAssessmentSort\(sectionKey\)' -and $appContent -match 'return state\.assessmentSorts\[sectionKey\] \|\| \{ field: "candidate", direction: "ascending" \}' -and $appContent -match 'function updateAssessmentSort\(button\)' -and $appContent -match 'group\.appendChild\(rowsByKey\.get\(candidate\.key\)\)' -and $appContent -match 'group\.appendChild\(panel\)' -and $appContent -match 'function sortAssessmentCandidates\(candidates, sort\)' -and $stylesContent -match '\.candidate-sort-button\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[^}]*gap:\s*8px' -and $stylesContent -match '\.candidate-sort-button > \.sort-indicator\s*\{[^}]*flex:\s*0 0 16px;[^}]*visibility:\s*hidden' -and $stylesContent -match '\.candidate-sort-button\.active > \.sort-indicator\s*\{[^}]*visibility:\s*visible' -and $stylesContent -match ':is\(\.candidate-list-header, \.assessment-results-header\) > \.candidate-sort-button\s*\{[^}]*justify-content:\s*flex-start'
@@ -393,7 +505,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $assessmentPaneValid = $indexContent -match 'class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace"' -and $indexContent -match 'data-assessment-pane="assessments"' -and $indexContent -match 'data-assessment-pane="details"' -and $indexContent -match 'id="assessment-results-list-panel" role="tabpanel"' -and $indexContent -match 'id="assessment-results-detail" role="tabpanel"[^>]*hidden' -and $stylesContent -match '#assessment-results-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-panel\.workspace-tab-panel\.active\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-detail\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $appContent -match 'assessmentPane:\s*"assessments"' -and $appContent -match 'state\.assessmentPane = "assessments";\s*renderAll\(\);[\s\S]*?showAssessmentPane\("assessments"\)' -and $appContent -match 'selectAssessmentResult\(row\.dataset\.assessmentKey\);\s*showAssessmentPane\("details"\)' -and $appContent -match 'selectAssessmentResult, \(\) => showAssessmentPane\("details"\)' -and $appContent -match 'function syncAssessmentResultRows\(' -and $appContent -match 'row\.dataset\.assessmentKey === state\.assessmentActiveKey' -and $appContent -match 'function showAssessmentPane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "assessments"'
     Add-TestResult -Name 'assessment-pane-navigation' -Passed $assessmentPaneValid -Detail 'Assessment Results always exposes full-width Assessments and Details tabs, initializes without a selection, opens Details on row activation, and synchronizes the selected-row highlight from one state owner.'
 
-    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 5' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
+    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 6' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'function updateOverrideLifecycle\(' -and $appContent -match 'repairOverridePlanMembership\(\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, override, \{ \.\.\.defaultDecision\(candidate\), \.\.\.createPlanMembership\("override"\) \}\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'class="button warning-action clickable"[^>]*data-override-open' -and $appContent -match '\$\{icon\("chat-sparkle-error"\)\}Contest Assessment' -and $stylesContent -match '--warning-action-background:\s*#352a05' -and $stylesContent -match '--warning-action-background-hover:\s*#453b19' -and $stylesContent -match '--warning-action-border:\s*#b89500' -and $stylesContent -match '--warning-action-foreground:\s*#ffffff' -and $stylesContent -match '\.button\.warning-action\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background\);[^}]*border-color:\s*var\(--warning-action-border\)' -and $stylesContent -match '\.button\.warning-action:hover\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background-hover\);[^}]*border-color:\s*var\(--warning-action-border\)'
     Add-TestResult -Name 'maintainer-applicability-override' -Passed $overrideContractValid -Detail 'Authenticated Hosted CODEOWNERS can atomically move an exclusion into Overrides and the plan, while removal returns it to active exclusions without mutating the AI assessment.'
@@ -406,6 +518,14 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $globalTypographyValid = $stylesContent -match '--font-size-default:\s*14px' -and $stylesContent -match '--line-height-default:\s*20px' -and $stylesContent -match '--font-size-ui:\s*13px' -and $stylesContent -match '--line-height-ui:\s*18px' -and $stylesContent -match '--font-size-compact:\s*12px' -and $stylesContent -match '--line-height-compact:\s*16px' -and $stylesContent -match 'html\.theme-hosted-dark \.type-ui,\s*html\.theme-hosted-dark \.type-ui \*\s*\{[^}]*font-size:\s*var\(--font-size-ui\) !important;[^}]*line-height:\s*var\(--line-height-ui\) !important' -and $stylesContent -match 'html\.theme-hosted-dark \.type-editor,\s*html\.theme-hosted-dark \.type-editor \*\s*\{[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match 'html\.theme-hosted-dark \.type-compact,\s*html\.theme-hosted-dark \.type-compact \*\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $indexContent -match 'candidate-list type-ui' -and $indexContent -match 'plan-table type-ui' -and $indexContent -match 'preview-summary type-ui' -and $indexContent -match 'preview-code type-editor' -and $indexContent -match 'ide-statusbar type-compact'
     $globalTypographyValid = $globalTypographyValid -and $stylesContent -match '--font-size-detail-title:\s*20px' -and $stylesContent -match '--line-height-detail-title:\s*24px' -and $stylesContent -match 'html\.theme-hosted-dark body \.detail-rule-title\s*\{[^}]*font-size:\s*var\(--font-size-detail-title\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-detail-title\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.detail-identity, \.detail-identity > span, \.section-label, \.control-subtitle\)\s*\{[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-default\) !important'
+    $globalTypographyValid = $stylesContent -match '--font-size-default:\s*14px' -and
+        $stylesContent -match '--line-height-default:\s*20px' -and
+        $stylesContent -match '--font-size-compact:\s*12px' -and
+        $stylesContent -match '--line-height-compact:\s*16px' -and
+        $indexContent -match 'candidate-list scroll-surface type-ui' -and
+        $indexContent -match 'preview-summary scroll-surface type-ui' -and
+        $indexContent -match 'preview-code scroll-surface type-editor' -and
+        $stylesContent -match 'html\.theme-hosted-dark body \.status-surface-tooltip\s*\{[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*line-height:\s*var\(--line-height-default\) !important'
     Add-TestResult -Name 'global-typography-contract' -Passed $globalTypographyValid -Detail 'The Hosted theme enforces one 14/20 regular default, one 12/16 regular compact class, and one 14/20 semibold emphasis rule across supported viewports.'
 
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.plan-table \.candidate-link\s*\{[^}]*font-size:\s*var\(--font-size-ui\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-ui\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
@@ -413,11 +533,15 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 2) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 2) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
     Add-TestResult -Name 'component-typography-consistency' -Passed $componentConsistencyValid -Detail 'Candidate Sources, Assessment Results, and Promotion Plan share one 14/20 blue-ID and neutral-title hierarchy; semantic pills remain semibold inside compact surfaces, and Preview section labels retain one heading treatment.'
 
-    $scrollbarThemeValid = $stylesContent -match 'scrollbar-color: var\(--scrollbar-thumb\) var\(--scrollbar-track\)' -and $stylesContent -match 'scrollbar-width: thin' -and $stylesContent -match '\*::\-webkit-scrollbar-thumb:hover' -and $stylesContent -match '--scrollbar-track: transparent' -and $stylesContent -match '--scrollbar-thumb: rgba\(168, 169, 170, 0\.52\)' -and $stylesContent -match '--scrollbar-thumb-hover: rgba\(168, 169, 170, 0\.56\)'
-    Add-TestResult -Name 'scrollbar-theme-contract' -Passed $scrollbarThemeValid -Detail 'Native scrollbars use the Hosted dark theme transparent track and neutral slider colors.'
+    $scrollbarThemeValid = $stylesContent -match '@property --workbench-scrollbar-thumb' -and $stylesContent -match '\.scroll-surface\s*\{[^}]*scrollbar-color:\s*var\(--workbench-scrollbar-thumb\) var\(--scrollbar-track\);[^}]*transition:\s*--workbench-scrollbar-thumb 360ms ease-out' -and $stylesContent -match '\.scroll-surface:is\(:hover, :focus-within\)\s*\{[^}]*transition-duration:\s*180ms' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*0' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-button' -and $stylesContent -match '--scrollbar-track: transparent' -and $indexContent -match 'candidate-list scroll-surface type-ui'
+    Add-TestResult -Name 'scrollbar-theme-contract' -Passed $scrollbarThemeValid -Detail 'Every scroll surface uses an idle-hidden, flat, arrowless thumb with keyboard visibility and asymmetric reveal and hide timing.'
 
     $ideShellValid = $indexContent -match 'data-lucide="braces"' -and $indexContent -match 'data-lucide="git-fork"' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $indexContent -notmatch 'Maintainer review|Read-only assessment audit|Selected changes|preview-editor-icon' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.topbar\s*\{[^}]*grid-template-columns:\s*auto 1fr' -and $stylesContent -match '\.brand-block\s*\{[^}]*grid-column:\s*1;[^}]*margin-left:\s*8px' -and $stylesContent -match '\.topbar-actions\s*\{[^}]*grid-column:\s*2' -and $stylesContent -match '#candidate-panel > \.panel-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*min-height:\s*48px' -and $stylesContent -match '#candidate-panel > \.panel-heading h2,[\s\S]*?#preview-view > \.page-heading h2\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*22px !important;[^}]*text-transform:\s*uppercase' -and $stylesContent -match '#plan-view > \.page-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*margin-bottom:\s*6px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*12px;[^}]*padding:\s*2px;[^}]*overflow:\s*visible' -and $stylesContent -notmatch '\.status-right \.status-item:nth-child' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*34px;[^}]*background:\s*var\(--paper\);[^}]*border:\s*0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*26px;[^}]*border-radius:\s*2px' -and $stylesContent -match '\.search-field:focus-within\s*\{[^}]*border-color:\s*var\(--line\)' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*background:\s*var\(--accent\)'
     $codiconShellValid = $indexContent -match 'class="brand-icon codicon"[^>]*>[\s\S]*?icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*13px;[^}]*height:\s*13px' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*text-transform:\s*uppercase'
+    $codiconShellValid = $indexContent -match 'class="brand-icon codicon"' -and
+        $indexContent -match 'class="stage-link active clickable"[^>]*data-workbench-tooltip="Eligible Candidates"' -and
+        $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and
+        $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px'
     Add-TestResult -Name 'ide-shell-contract' -Passed ($ideShellValid -or $codiconShellValid) -Detail 'The source-backed IDE shell uses compact title, activity, editor-tab, search, and status surfaces with icon-first controls and exact approved dimensions.'
 
     $ideShellValid = $ideShellValid -and $indexContent -notmatch 'data-lucide="list-tree"|data-lucide="panel-right"|data-lucide="clipboard-list"' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*40px;[^}]*padding:\s*4px 0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*32px;[^}]*min-height:\s*32px' -and $stylesContent -match '\.workspace-tabs\s*\{[^}]*background:\s*var\(--paper\);[^}]*border:\s*0;[^}]*border-bottom:\s*1px solid var\(--line\)' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*margin-right:\s*1px;[^}]*background:\s*var\(--surface\);[^}]*border:\s*1px solid var\(--line\);[^}]*border-bottom:\s*0' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*inset:\s*auto 0 0' -and $stylesContent -match '\.candidate-pane-switch\s*\{[^}]*background:\s*var\(--paper\)' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*background:\s*var\(--surface\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\.active\s*\{[^}]*background:\s*var\(--paper\);[^}]*box-shadow:\s*inset 0 -1px var\(--accent\)' -and $stylesContent -match '@media \(min-width: 1400px\)[\s\S]*?grid-template-columns:\s*18px minmax\(280px, 640px\) auto;[\s\S]*?justify-content:\s*start' -and $stylesContent -match '@media \(min-width: 1180px\)[\s\S]*?\.assessment-results-header,[\s\S]*?grid-template-columns:\s*minmax\(280px, 640px\) auto'
@@ -447,21 +571,29 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $staticInformationColorsValid = $stylesContent -match '--ink: #bfbfbf' -and $stylesContent -match '--muted: #8c8c8c' -and $stylesContent -match '\.stage-link\s*\{[^}]*color:\s*var\(--muted\)' -and $stylesContent -match '\.stage-link\.active\s*\{[^}]*color:\s*var\(--ink\);[^}]*background:\s*rgba\(255, 255, 255, 0\.13\)' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.save-indicator\s*\{[^}]*color:\s*#89d185' -and $stylesContent -match '\.tree-impact\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.toast\s*\{[^}]*background:\s*#202122;[^}]*border:\s*1px solid var\(--line\);[^}]*border-radius:\s*4px'
     Add-TestResult -Name 'static-information-colors' -Passed $staticInformationColorsValid -Detail 'Shell state uses Hosted dark theme active and inactive neutrals, autosave remains green, and Workbench domain values retain their semantic colors.'
 
-    $sourceTreeValid = $appContent -match 'candidate-source-root' -and $appContent -match 'candidate-category' -and $appContent -match '\["maintainer", "Maintainer Proposals"\]' -and $appContent -match 'key: `maintainer:\$\{candidate\.id\}`' -and $appContent -match 'Proposal rationale' -and $appContent -notmatch 'data-category-checkbox' -and $appContent -match 'data-decision-key' -and $appContent -notmatch 'reviewSet' -and $stylesContent -match '\.candidate-tree-row' -and $stylesContent -match '\.candidate-list-header' -and $stylesContent -match '\.candidate-category > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) auto'
+    $sourceTreeValid = $appContent -match 'candidate-source-root' -and $appContent -match 'candidate-category' -and $appContent -match '\["maintainer", "Maintainer Proposals"\]' -and $appContent -match 'key: `maintainer:\$\{candidate\.id\}:\$\{assessment\.assessmentId\}`' -and $appContent -match 'Proposal rationale' -and $appContent -notmatch 'data-category-checkbox' -and $appContent -match 'data-decision-key' -and $appContent -notmatch 'reviewSet' -and $stylesContent -match '\.candidate-tree-row' -and $stylesContent -match '\.candidate-list-header' -and $stylesContent -match '\.candidate-category > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) auto'
     $sourceTreeValid = $sourceTreeValid -and $appContent -match 'function getCandidateDecoration\(' -and $appContent -match 'getPlanReadiness\(candidate\)\.ready' -and $appContent -match 'function getCandidateAggregateDecoration\(' -and $appContent -match 'status: needsInput \? "needs-input" : "ready"' -and $appContent -match 'function syncCandidateTreeAggregates\(' -and $appContent -match 'candidate-decoration-description sr-only' -and $appContent -match 'codicon-diff-modified'
     Add-TestResult -Name 'evaluated-source-tree' -Passed $sourceTreeValid -Detail 'Interactive, Contributor Guidance, and Maintainer Proposals candidates are grouped by source; selected leaf readiness propagates through ancestors with accessible descriptions and needs-input precedence.'
 
-    $contributorHierarchyValid = $appContent -match 'sourceType === "upstream"\s*\? renderCandidateItems\(`\$\{sourceType\}:all`, candidates, "contributor-candidates"\)' -and $appContent -match 'Object\.entries\(groupCandidatesByCategory\(candidates\)\)' -and $appContent -match 'function renderCandidateItems\(' -and $appContent -match 'function renderCandidateListHeader\(' -and $appContent -match 'renderSortButton\(column, sort, \{ "candidate-sort": column\[0\], "candidate-section": sectionKey \}\)' -and $appContent -match '\["candidate", "Candidate", "Candidate",' -and $appContent -match '\["recommendation", "Recommended", "Recommendation",' -and $appContent -match 'class="sort-label"' -and $appContent -match 'class="sort-indicator"' -and $appContent -match 'return state\.candidateSorts\[sectionKey\] \|\| \{ field: "candidate", direction: "ascending" \}' -and $appContent -match 'button\.closest\("\.candidate-category-items"\)'
-    Add-TestResult -Name 'contributor-direct-children' -Passed $contributorHierarchyValid -Detail 'Contributor Guidance rules render directly beneath their source root while Interactive Toolkit rules retain category folders.'
+    $contributorHierarchyValid = $appContent -match 'function groupCandidatesBySource\(' -and $appContent -match 'function renderContributorDocument\(' -and $appContent -match 'data-source-id="\$\{escapeHtml\(source\.sourceId\)\}"' -and $appContent -match 'class="candidate-parent-label"><strong>\$\{escapeHtml\(source\.sourceTitle\)\}</strong>' -and $appContent -match 'renderCandidateItems\(sectionKey, candidates, "contributor-candidates"\)' -and $appContent -match '\["candidate", "Candidate", "Candidate",' -and $stylesContent -match '\.contributor-document > summary > \.candidate-parent-label > strong,[\s\S]*?\.contributor-document \.candidate-tree-copy > strong\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap' -and $stylesContent -match '\.contributor-document > summary > \.candidate-parent-label > strong\s*\{[^}]*flex:\s*1 1 auto;[^}]*text-align:\s*left'
+    $contributorHierarchyValid = $appContent -match 'function renderContributorDocument\(' -and
+        $appContent -match 'data-source-id="\$\{escapeHtml\(source\.sourceId\)\}"' -and
+        $appContent -match 'class="candidate-parent-label"><strong>\$\{escapeHtml\(source\.sourceTitle\)\}</strong>' -and
+        $stylesContent -match '\.candidate-parent-label > strong,\s*\.candidate-tree-copy > strong\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap'
+    Add-TestResult -Name 'contributor-document-children' -Passed $contributorHierarchyValid -Detail 'Contributor Guidance documents are non-actionable parents whose independently assessed rule candidates retain shared sortable rows.'
 
     $candidateHeaderTooltipsValid = $appContent -match '\["candidate", "Candidate", "Candidate", "Source rule ID and title\."\]' -and $appContent -match '\["impact", "Impact", "Impact", "Priority score balancing rule value and review risk\."\]' -and $appContent -match '\["cost", "Tokens", "Token Usage", "Unsigned values show current guarded-token usage\. Signed values show the estimated change if the recommended action is promoted\."\]' -and $appContent -match '\["recommendation", "Recommended", "Recommendation", "AI-recommended action for maintainer review\."\]' -and $appContent -match 'title="\$\{escapeHtml\(help\)\}"' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'function formatCandidateTokenValue\(' -and $appContent -match 'if \(sort\.field === "cost"\) return getCandidateTokenValue\(candidate, assessment\)'
+    $candidateHeaderTooltipsValid = $appContent -match '\["impact", "Impact", "Impact", "Priority score balancing rule value and review risk\."\]' -and
+        $appContent -match 'data-workbench-tooltip="\$\{escapeHtml\(help\)\}"' -and
+        $appContent -match 'aria-label="Sort by \$\{escapeHtml\(accessibleLabel\)\}, \$\{nextDirection\}"' -and
+        $appContent -match 'function getCandidateTokenValue\('
     Add-TestResult -Name 'candidate-header-tooltips' -Passed $candidateHeaderTooltipsValid -Detail 'Candidate headers preserve concise definitions; Tokens uses unsigned current usage and signed recommended deltas consistently in display and sorting.'
 
     $directTreeUpdatesValid = $appContent -match 'function syncCandidateTreeRows' -and $appContent -match 'function selectCandidate\(key, rationaleReturnView = null\)\s*\{[^}]*syncCandidateTreeRows\(\)' -and $appContent -match 'function updateDecision\(candidate, changes\)[\s\S]*?saveDecision\(candidate,' -and $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);\s*renderDecisionOutputs\(\);\s*\}' -and $appContent -match 'function syncAssessmentPlanToggle\(candidate\)' -and $appContent -match 'control\.checked = getDecision\(candidate\)\.inPlan' -and $appContent -match 'function handleTreeSelection\(event\)[\s\S]*?updateDecision\(candidate,[^;]+;\s*selectCandidate\(candidate\.key\);\s*\}' -and $appContent -match 'function updateCandidateSort\(button\)[\s\S]*?group\.appendChild\(rowsByKey\.get\(candidate\.key\)\)'
     $directTreeUpdatesValid = $directTreeUpdatesValid -and $appContent -match 'function removePlanMembership\(candidate\) \{\s*const \{ assessment, \.\.\.maintainerDecision \} = getDecision\(candidate\);\s*removeCandidateFromBulkOperations\(candidate\.key\);\s*saveDecision\(candidate, \{ \.\.\.maintainerDecision, \.\.\.createPlanMembership\(\) \}\);' -and $appContent -match 'if \(candidateCheckbox\.checked\) \{\s*updateDecision\(candidate, \{ inPlan: true \}\)' -and $appContent -match 'else \{\s*removePlanMembership\(candidate\)' -and $appContent -match 'updateDecision\(candidate, \{ action \}\);\s*syncAssessmentActionControls\(candidate\)' -and $appContent -match 'function syncAssessmentActionControls\(candidate\)' -and $appContent -match 'control\.closest\("\.action-option"\)\?\.classList\.toggle\("selected", selected\)' -and $appContent -match 'badge\.textContent = formatRecommendation\(decision\.action\)' -and $appContent -match 'if \(event\.target\.hasAttribute\("data-plan-toggle"\)\) \{\s*if \(event\.target\.checked\) updateDecision\(candidate, \{ inPlan: true \}\);\s*else removePlanMembership\(candidate\);\s*return;' -and $appContent -match 'Include this candidate in the promotion plan' -and $appContent -notmatch 'Remove and reset|Remove candidate and reset its decision'
     Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree and Details checkboxes are synchronized projections of membership-only state in both directions without replacing scroll, focus, selection, or expanded folders; explicit Undo retains the full-reset lifecycle.'
 
-    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 5' -and $appContent -match 'schemaVersion:\s*SESSION_SCHEMA_VERSION,\s*kind: "hosted-rule-workbench-draft"'
+    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 6' -and $appContent -match 'schemaVersion:\s*SESSION_SCHEMA_VERSION,\s*kind: "hosted-rule-workbench-draft"'
     Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Authoritative mappings are separate from source state; native radios expose only status-constrained actions, and plan membership remains an independent explicit choice.'
 
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and $indexContent -match 'data-bulk-scope="add"' -and $indexContent -match 'data-bulk-scope="update"' -and $indexContent -match 'data-bulk-scope="actionable"' -and $indexContent -match 'data-bulk-undo' -and $appContent -match 'bulkOperations:\s*\[\]' -and $appContent -match 'function createPlanMembership\(' -and $appContent -match 'function isValidPlanMembership\(' -and $appContent -match 'function getBulkActionCandidates\(' -and $appContent -match 'return !decision\.inPlan' -and $appContent -match 'function applyBulkSelection\(' -and $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and $appContent -match 'function undoBulkOperation\(' -and $appContent -match 'decision\?\.planMembershipSource !== "bulk" \|\| decision\.bulkOperationId !== operation\.id' -and $appContent -match 'promotesManualMembership' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'source:\s*decision\.planMembershipSource' -and $appContent -match 'bulkOperations:\s*state\.session\.bulkOperations' -and $appContent -match 'draft\.bulkOperations' -and $stylesContent -match '\.bulk-actions-menu\s*\{' -and $stylesContent -match '\.plan-membership-badge\s*\{'
@@ -496,7 +628,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'function buildApprovalPayload' -and $appContent -match 'function approveAndExport' -and $appContent -match 'hosted-rule-workbench-approval-handoff' -and $appContent -match 'sha256-payload-bytes-v1' -and $appContent -match 'crypto\.subtle\.digest\("SHA-256"' -and $appContent -match 'approvedBy:\s*\{\s*type:\s*"manual"' -and $stylesContent -match '\.approval-requirements'
     $approvalExportValid = $approvalExportValid -and $appContent -match '\["Rule actions", readiness\.missingActionCount' -and $appContent -match 'missingActionCount === 0' -and $appContent -match 'status = "needs action"'
-    $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVAL_PAYLOAD_SCHEMA_VERSION = 4'
+    $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVAL_PAYLOAD_SCHEMA_VERSION = 5'
     Add-TestResult -Name 'preview-approval-export' -Passed $approvalExportValid -Detail 'Preview explains plan, action, rationale, and identity gates and blocks export until every selected candidate has an explicit promotion action and rationale.'
 
     $previewDiffValid = $indexContent -match 'id="preview-diff"' -and $indexContent -match 'id="preview-payload-diff"' -and $indexContent -match '<details class="preview-raw-payload preview-review-disclosure"' -and $indexContent -match 'Raw Selection Payload' -and $appContent -match 'function renderPreviewChanges\(' -and $appContent -match 'decision\.action === "add"' -and $appContent -match 'decision\.action === "retire"' -and $appContent -match 'function diffTextLines\(' -and $appContent -match 'diff-line \$\{line\.type\}' -and $appContent -match 'function renderPayloadChanges\(' -and $appContent -match 'Object\.keys\(after\)\.filter' -and $appContent -match 'renderPayloadColumn\("Default", beforeLines, "delete"\)' -and $appContent -match 'renderPayloadColumn\("Current", afterLines, "add"\)' -and $appContent -match 'class="payload-line-number"' -and $appContent -match 'class="payload-line-marker"' -and $appContent -match 'class="highlight-width-track"' -and $stylesContent -match '\.highlight-width-track\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%' -and $stylesContent -match '\.diff-line\.add\s*\{[^}]*background:\s*rgb\(14, 42, 31\)' -and $stylesContent -match '\.diff-line\.delete\s*\{[^}]*background:\s*rgb\(54, 26, 33\)' -and $stylesContent -match '\.payload-column\.add \.payload-line\s*\{[^}]*background:\s*rgb\(14, 42, 31\)' -and $stylesContent -match '\.payload-column\.delete \.payload-line\s*\{[^}]*background:\s*rgb\(54, 26, 33\)' -and $stylesContent -match '\.payload-columns\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)'

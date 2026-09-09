@@ -298,7 +298,7 @@ async function assertRationaleSaveLayout(page, width) {
       available: true,
       accessibleIconOnly: !button.textContent.trim()
         && button.getAttribute("aria-label")?.startsWith("Save decision rationale")
-        && button.title.startsWith("Save")
+        && button.dataset.workbenchTooltip.startsWith("Save")
         && icon.querySelector("use")?.getAttribute("href")?.endsWith("#codicon-save"),
       toolbarVisualMatch: toolbarVisualMatch && buttonRect.width === 34 && buttonRect.height === 34,
       baselineAligned: Math.abs(iconRect.bottom - labelRect.bottom) < 0.1,
@@ -326,7 +326,7 @@ async function assertRationaleSaveLayout(page, width) {
 async function assertOverridesDecoration(page, width) {
   const result = await page.evaluate(() => {
     const sessionSnapshot = structuredClone(state.session);
-    const candidate = getBulkActionCandidates("actionable")[0];
+    const candidate = state.candidates.find((item) => item.assessment.hostedApplicable);
     const assessment = getAssessment(candidate, getDecision(candidate));
     const resolveColor = (token) => {
       const probe = document.createElement("span");
@@ -356,7 +356,7 @@ async function assertOverridesDecoration(page, width) {
       const needsInputColor = resolveColor("--modified-resource");
       const needsInputValid = root.classList.contains("candidate-aggregate-needs-input")
         && row.classList.contains("candidate-decoration-needs-input")
-        && summary.title === "1 selected, 1 needs input"
+        && summary.dataset.workbenchTooltip === "1 selected, 1 needs input"
         && summary.querySelector(".candidate-decoration-description").textContent === "1 selected, 1 needs input"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === needsInputColor);
@@ -370,7 +370,7 @@ async function assertOverridesDecoration(page, width) {
       const readyColor = resolveColor("--added-resource");
       const readyValid = root.classList.contains("candidate-aggregate-ready")
         && row.classList.contains("candidate-decoration-ready")
-        && summary.title === "1 selected, all ready for promotion"
+        && summary.dataset.workbenchTooltip === "1 selected, all ready for promotion"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === readyColor);
 
@@ -470,7 +470,8 @@ async function assertBulkActionsPreserveContext(page, width) {
       && JSON.stringify(state.session.decisions[manualCandidate.key]) === manualDecisionBefore;
 
     const decoratedRow = [...candidateList.querySelectorAll("[data-candidate-key]")]
-      .find((row) => operation.candidateKeys.includes(row.dataset.candidateKey) && row.closest("details.candidate-category"));
+      .find((row) => operation.candidateKeys.includes(row.dataset.candidateKey)
+        && row.closest("details.candidate-category")?.dataset.category);
     const decoratedCandidate = state.candidates.find((candidate) => candidate.key === decoratedRow.dataset.candidateKey);
     const decoratedCategory = decoratedRow.closest("details.candidate-category");
     const decoratedSource = decoratedRow.closest("details.candidate-source-root");
@@ -504,10 +505,10 @@ async function assertBulkActionsPreserveContext(page, width) {
       && Math.abs(sourceSummary.querySelector(".source-summary-label").getBoundingClientRect().right - sourceIcon.getBoundingClientRect().right) < 0.1
       && Math.abs(sourceSummary.querySelector(".count-badge").getBoundingClientRect().left - sourceIcon.getBoundingClientRect().right - 8) < 0.1;
     const decorationAccessibilityValid = leafIcon.getAttribute("aria-hidden") === "true"
-      && leafIcon.title === "Selected, ready for promotion"
+      && leafIcon.dataset.workbenchTooltip === "Selected, ready for promotion"
       && decoratedRow.querySelector(".candidate-decoration-description").textContent === "Selected, ready for promotion"
-      && categorySummary.title.endsWith("all ready for promotion")
-      && sourceSummary.title.endsWith("all ready for promotion");
+      && categorySummary.dataset.workbenchTooltip.endsWith("all ready for promotion")
+      && sourceSummary.dataset.workbenchTooltip.endsWith("all ready for promotion");
 
     const originalRationale = state.session.decisions[decoratedCandidate.key].rationale;
     state.session.decisions[decoratedCandidate.key].rationale = "";
@@ -517,15 +518,15 @@ async function assertBulkActionsPreserveContext(page, width) {
       && decoratedSource.classList.contains("candidate-aggregate-needs-input")
       && [decoratedRow.querySelector(".candidate-tree-copy strong"), leafIcon, categorySummary.querySelector("strong"), categoryIcon, sourceSummary.querySelector("strong"), sourceIcon]
         .every((node) => getComputedStyle(node).color === modifiedColor)
-      && leafIcon.title === "Selected, needs input before promotion"
-      && categorySummary.title.endsWith("1 needs input")
-      && sourceSummary.title.endsWith("1 needs input");
+      && leafIcon.dataset.workbenchTooltip === "Selected, needs input before promotion"
+      && categorySummary.dataset.workbenchTooltip.endsWith("1 needs input")
+      && sourceSummary.dataset.workbenchTooltip.endsWith("1 needs input");
     state.session.decisions[decoratedCandidate.key].rationale = originalRationale;
     syncCandidateTreeRows();
 
     const source = [...document.querySelectorAll("#candidate-list > details.candidate-source-root")]
-      .find((node) => node.querySelector("details.candidate-category"));
-    const category = source.querySelector("details.candidate-category");
+      .find((node) => node.querySelector('details.candidate-category[data-category]'));
+    const category = source.querySelector('details.candidate-category[data-category]');
     source.open = true;
     category.open = true;
     const sourceType = source.dataset.sourceType;
@@ -666,7 +667,7 @@ async function assertSourceProvenanceTooltip(page, width) {
     return pills.length > 0 && pills.every((item) => {
       const text = item.textContent.trim();
       return !item.hasAttribute("title")
-        && item.dataset.sourceProvenanceTooltip === text
+        && item.dataset.workbenchTooltip === text
         && /^[^@]+@[0-9a-f]{8}$/.test(text)
         && !text.startsWith("Contributor guidance source:");
     });

@@ -22,13 +22,13 @@
 
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-block" title="Hosted Copilot Rule Manager">
+      <div class="brand-block" data-workbench-tooltip="Hosted Copilot Rule Manager">
         <svg class="brand-icon codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-json"></use></svg>
         <h1>HOSTED COPILOT RULE MANAGER</h1>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions scroll-surface">
         <details class="title-draft-menu" id="draft-menu">
-          <summary class="titlebar-icon clickable" title="Draft options" aria-label="Draft options">
+          <summary class="titlebar-icon clickable" data-workbench-tooltip="Draft options" aria-label="Draft options">
             <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-ellipsis"></use></svg>
           </summary>
           <div class="title-draft-popover">
@@ -43,7 +43,7 @@
             <input id="import-input" type="file" accept="application/json" hidden>
           </div>
         </details>
-        <button class="titlebar-icon clickable" id="close-button" type="button" title="Close Workbench" aria-label="Close Workbench">
+        <button class="titlebar-icon clickable" id="close-button" type="button" data-workbench-tooltip="Close Workbench" aria-label="Close Workbench">
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-sign-out"></use></svg>
           <span class="sr-only">Close Workbench</span>
         </button>
@@ -51,16 +51,16 @@
     </header>
 
     <aside class="stage-nav" aria-label="Workbench stages">
-      <button class="stage-link active clickable" type="button" data-view="catalog" title="Eligible Candidates" aria-label="Eligible Candidates">
+      <button class="stage-link active clickable" type="button" data-view="catalog" data-workbench-tooltip="Eligible Candidates" aria-label="Eligible Candidates">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg>
         <span class="sr-only">Eligible Candidates</span>
       </button>
-      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" title="Promotion Plan (0)" aria-label="Promotion Plan (0)">
+      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" data-workbench-tooltip="Promotion Plan (0)" aria-label="Promotion Plan (0)">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
         <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
         <span class="sr-only">Promotion Plan</span>
       </button>
-      <button class="stage-link clickable" type="button" data-view="preview" title="Promotion Preview" aria-label="Promotion Preview">
+      <button class="stage-link clickable" type="button" data-view="preview" data-workbench-tooltip="Promotion Preview" aria-label="Promotion Preview">
         <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-open-preview"></use></svg>
         <span class="sr-only">Promotion Preview</span>
       </button>
@@ -95,7 +95,7 @@
               <div class="panel-heading">
                 <h2 id="candidate-heading">Candidate Sources:</h2>
                 <details class="bulk-actions" id="bulk-actions">
-                  <summary class="bulk-actions-trigger clickable" title="Bulk Actions" aria-label="Bulk Actions">
+                  <summary class="bulk-actions-trigger clickable" data-workbench-tooltip="Bulk Actions" aria-label="Bulk Actions">
                     <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-list-selection"></use></svg>
                   </summary>
                   <div class="bulk-actions-menu">
@@ -108,10 +108,10 @@
                   </div>
                 </details>
               </div>
-              <div class="candidate-list type-ui" id="candidate-list"></div>
+              <div class="candidate-list scroll-surface type-ui" id="candidate-list"></div>
             </section>
 
-            <section class="assessment-panel" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" aria-live="polite" hidden>
+            <section class="assessment-panel scroll-surface" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" aria-live="polite" hidden>
               <div class="empty-state">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-tasklist"></use></svg>
                 <h2>Select a Candidate</h2>
@@ -135,10 +135,10 @@
               <div class="panel-heading">
                 <h2 id="assessment-results-heading">Assessment Results:</h2>
               </div>
-              <div class="candidate-list type-ui" id="assessment-results-list"></div>
+              <div class="candidate-list scroll-surface type-ui" id="assessment-results-list"></div>
             </section>
 
-            <section class="assessment-panel" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" aria-live="polite" hidden>
+            <section class="assessment-panel scroll-surface" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" aria-live="polite" hidden>
               <div class="empty-state">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist"></use></svg>
                 <h2>Select an Assessment Result</h2>
@@ -158,7 +158,7 @@
           </button>
         </div>
         <div class="plan-layout">
-          <section class="plan-table-wrap">
+          <section class="plan-table-wrap scroll-surface">
             <table class="plan-table type-ui">
               <colgroup>
                 <col class="plan-column-candidate">
@@ -179,7 +179,7 @@
               <p>Choose an add, update, or retire action to add it to this plan.</p>
             </div>
           </section>
-          <aside class="capacity-panel type-compact" id="capacity-panel"></aside>
+          <aside class="capacity-panel scroll-surface type-compact" id="capacity-panel"></aside>
         </div>
       </section>
 
@@ -189,7 +189,7 @@
           <span class="status-badge warning preview-approval-badge" id="approval-badge">Not staged</span>
         </div>
         <div class="preview-layout">
-          <section class="preview-summary type-ui">
+          <section class="preview-summary scroll-surface type-ui">
             <div class="preview-sidebar-title">
               <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
               <span>Approval</span>
@@ -206,7 +206,7 @@
               <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
             </div>
           </section>
-          <section class="preview-code type-editor">
+          <section class="preview-code scroll-surface type-editor">
             <details class="preview-proposed-review preview-review-disclosure" open>
               <summary class="panel-heading clickable">
                 <div>
@@ -246,21 +246,21 @@
                 <div class="raw-change-tools" id="raw-change-tools" hidden>
                   <span class="raw-change-legend" id="raw-change-count"></span>
                   <div class="raw-change-navigation" aria-label="Raw payload change navigation">
-                    <button class="icon-button clickable" id="raw-previous-change" type="button" title="Previous added or updated record" aria-label="Previous added or updated record">
+                    <button class="icon-button clickable" id="raw-previous-change" type="button" data-workbench-tooltip="Previous added or updated record" aria-label="Previous added or updated record">
                       <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-up"></use></svg>
                     </button>
                     <span class="raw-change-position" id="raw-change-position" aria-live="polite"></span>
-                    <button class="icon-button clickable" id="raw-next-change" type="button" title="Next added or updated record" aria-label="Next added or updated record">
+                    <button class="icon-button clickable" id="raw-next-change" type="button" data-workbench-tooltip="Next added or updated record" aria-label="Next added or updated record">
                       <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-down"></use></svg>
                     </button>
                   </div>
                 </div>
-                <button class="icon-button clickable" id="copy-preview-button" type="button" title="Copy selection payload" aria-label="Copy selection payload">
+                <button class="icon-button clickable" id="copy-preview-button" type="button" data-workbench-tooltip="Copy selection payload" aria-label="Copy selection payload">
                   <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-copy-16"></use></svg>
                 </button>
               </div>
               <div id="raw-payload-empty" hidden></div>
-              <pre id="preview-json"></pre>
+              <pre class="scroll-surface" id="preview-json"></pre>
             </details>
           </section>
         </div>
@@ -269,23 +269,23 @@
 
     <footer class="ide-statusbar type-compact" aria-label="Workbench status">
       <div class="status-cluster status-left">
-        <span class="status-item target-chip" id="target-chip" data-status-tooltip="Promotion target" data-truncation-owner>
+        <span class="status-item target-chip" id="target-chip" data-workbench-tooltip="Promotion target" data-truncation-owner>
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-compact"></use></svg>
           <span id="status-target">Resolving target</span>
         </span>
-        <span class="status-item save-indicator" data-status-tooltip="Draft autosave state">
+        <span class="status-item save-indicator" data-workbench-tooltip="Draft autosave state">
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-check-compact"></use></svg>
           <span id="save-indicator">Draft not loaded</span>
         </span>
       </div>
       <div class="status-cluster status-right">
-        <span class="status-item" data-status-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
-        <span class="status-item" data-status-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
-        <span class="status-item" data-status-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
-        <span class="status-item" data-status-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
-        <span class="status-item" data-status-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></span>
-        <span class="status-item" data-status-tooltip="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
-        <span class="status-item" data-status-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
+        <span class="status-item" data-workbench-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
       </div>
     </footer>
     <div class="status-surface-tooltip type-compact" id="status-surface-tooltip" role="tooltip" aria-hidden="true"></div>
@@ -293,7 +293,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true">
     <span class="toast-message" id="toast-message"></span>
-    <button class="toast-close clickable" id="toast-close" type="button" aria-label="Dismiss Notification" title="Dismiss Notification"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg></button>
+    <button class="toast-close clickable" id="toast-close" type="button" aria-label="Dismiss Notification" data-workbench-tooltip="Dismiss Notification"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg></button>
   </div>
 </body>
 </html>

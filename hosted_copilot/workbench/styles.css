@@ -54,33 +54,59 @@ html.theme-hosted-dark {
   color-scheme: dark;
 }
 
+@property --workbench-scrollbar-thumb {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 * {
   box-sizing: border-box;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.scroll-surface {
+  --workbench-scrollbar-thumb: transparent;
+  scrollbar-color: var(--workbench-scrollbar-thumb) var(--scrollbar-track);
   scrollbar-width: thin;
+  transition: --workbench-scrollbar-thumb 360ms ease-out;
 }
 
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+.scroll-surface:is(:hover, :focus-within) {
+  --workbench-scrollbar-thumb: var(--scrollbar-thumb);
+  transition-duration: 180ms;
 }
 
-*::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
+@supports selector(::-webkit-scrollbar) {
+  .scroll-surface {
+    scrollbar-color: auto;
+    scrollbar-width: auto;
+  }
 
-*::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border: 2px solid transparent;
-  border-radius: 5px;
-}
+  .scroll-surface::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
 
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
+  .scroll-surface::-webkit-scrollbar-thumb {
+    background-color: var(--workbench-scrollbar-thumb);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 0;
+  }
 
-*::-webkit-scrollbar-corner {
-  background: var(--scrollbar-track);
+  .scroll-surface::-webkit-scrollbar-button,
+  .scroll-surface::-webkit-scrollbar-button:single-button {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+    appearance: none;
+  }
+
+  .scroll-surface::-webkit-scrollbar-track,
+  .scroll-surface::-webkit-scrollbar-corner {
+    background: var(--scrollbar-track);
+  }
 }
 
 [hidden] {
@@ -1153,7 +1179,22 @@ button.assessment-override-pill {
 .candidate-parent-label {
   display: flex;
   min-width: 0;
+  overflow: hidden;
   align-items: center;
+  text-align: left;
+}
+
+.candidate-parent-label > strong,
+.candidate-tree-copy > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-parent-label > strong {
+  flex: 1 1 auto;
+  text-align: left;
 }
 
 .candidate-parent-decoration-icon {
@@ -1220,6 +1261,11 @@ button.assessment-override-pill {
 }
 
 .candidate-tree-row.active {
+  box-shadow: 3px 0 0 var(--accent) inset;
+}
+
+.candidate-tree-row.search-match:not(.active) {
+  background: var(--accent-soft);
   box-shadow: 3px 0 0 var(--accent) inset;
 }
 
@@ -3879,7 +3925,7 @@ html.theme-hosted-dark body .stage-count-badge {
   position: fixed;
   z-index: 1000;
   width: max-content;
-  max-width: min(460px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   padding: 5px 8px;
   visibility: hidden;
   overflow-wrap: anywhere;
@@ -3890,6 +3936,12 @@ html.theme-hosted-dark body .stage-count-badge {
   border-radius: 2px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   opacity: 0;
+}
+
+html.theme-hosted-dark body .status-surface-tooltip {
+  font-size: var(--font-size-default) !important;
+  font-weight: 400 !important;
+  line-height: var(--line-height-default) !important;
 }
 
 .status-surface-tooltip.visible {
