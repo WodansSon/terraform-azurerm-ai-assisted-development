@@ -30,6 +30,21 @@
       "journey": "playwright/journeys/candidate-decorations.journey.cjs"
     },
     {
+      "id": "WB-UX-STICKY-001",
+      "title": "Candidate tree preserves sticky source category and column context",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-002",
+      "title": "Collapsed candidate branches do not paint stale sticky content",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-003",
+      "title": "Candidate rows settle below stable sticky ancestry",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
       "id": "WB-UX-PROVENANCE-001",
       "title": "Contributor provenance tooltip retains concise complete text",
       "journey": "playwright/journeys/provenance-tooltip.journey.cjs"

@@ -958,7 +958,7 @@ function navigateCandidateSearch({ scroll = true } = {}) {
   row.closest("details.candidate-category")?.setAttribute("open", "");
   row.closest("details.candidate-source-root")?.setAttribute("open", "");
   row.classList.add("search-match");
-  if (scroll) requestAnimationFrame(() => row.scrollIntoView({ block: "center", behavior: "smooth" }));
+  if (scroll) row.scrollIntoView({ block: "center" });
 }
 
 function getBulkActionCandidates(recommendationScope) {
@@ -1142,7 +1142,7 @@ function renderCandidateList() {
   const regularCandidates = state.candidates.filter((candidate) => !getApplicabilityOverride(candidate));
   const overrideDecoration = getCandidateAggregateDecoration(overrideCandidates);
   const overrideGroup = overrideCandidates.length ? `
-    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides" open>
+    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides">
       <summary class="clickable"${renderCandidateAggregateAttributes(overrideDecoration)}>${icon("shield")}<span class="candidate-parent-label"><strong>Overrides</strong>${renderCandidateDecoration(overrideDecoration, "candidate-parent-decoration-icon")}</span><span class="status-badge neutral count-badge type-compact">${formatCountLabel(overrideCandidates.length, "Override")}</span></summary>
       ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
     </details>

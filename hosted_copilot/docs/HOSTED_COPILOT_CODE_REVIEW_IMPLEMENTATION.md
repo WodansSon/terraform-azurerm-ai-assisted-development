@@ -460,6 +460,9 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-TREE-003`: Completed selection propagates ready state.
 - `WB-UX-TREE-004`: Trailing decorations preserve capped tree geometry and collapsed status.
 - `WB-UX-TREE-005`: Overrides root and leaf share aggregate readiness decoration.
+- `WB-UX-STICKY-001`: Candidate tree preserves sticky source, category, and column context.
+- `WB-UX-STICKY-002`: Collapsed candidate branches do not paint stale sticky content.
+- `WB-UX-STICKY-003`: Candidate rows settle below stable sticky ancestry.
 - `WB-UX-PROVENANCE-001`: Contributor provenance tooltip retains concise complete text.
 - `WB-UX-PROVENANCE-002`: Contributor provenance tooltip anchors and clamps inside the viewport.
 - `WB-UX-CONTRIBUTOR-001`: Contributor documents are non-actionable candidate parents.
