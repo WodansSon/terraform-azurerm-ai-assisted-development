@@ -34,6 +34,8 @@ param(
 
     [switch]$TrustEmbeddedAssessments,
 
+    [switch]$RepairMissingFields,
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
 )
@@ -70,6 +72,10 @@ foreach ($requiredPath in @($collectorPath, $catalogPath, $bundleSchemaPath, $ba
 $hostedCatalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
 $activeHostedRuleIds = @($hostedCatalog.rules | Where-Object status -eq 'active' | ForEach-Object { [string]$_.id })
 $knownHostedRuleIds = @($hostedCatalog.rules | ForEach-Object { [string]$_.id })
+$hostedRulesById = @{}
+foreach ($rule in @($hostedCatalog.rules)) {
+    $hostedRulesById[[string]$rule.id] = $rule
+}
 
 function Get-ContentSha256 {
     param(
@@ -101,6 +107,46 @@ function Get-AssessmentIdentity {
     )
 
     return "$SourceType`:$Id"
+}
+
+function Get-ProposalOwnerKey {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceType,
+        [Parameter(Mandatory = $true)][string]$CandidateId,
+        [Parameter(Mandatory = $true)][string]$AssessmentId
+    )
+
+    return "$SourceType`:$CandidateId`:$AssessmentId"
+}
+
+function Add-AssessmentProposalReservations {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Owners,
+        [Parameter(Mandatory = $true)][string]$SourceType,
+        [Parameter(Mandatory = $true)][string]$CandidateId,
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyCollection()][object[]]$Assessments,
+        [switch]$ValidateOnly
+    )
+
+    $pendingOwners = @{}
+    foreach ($assessment in $Assessments) {
+        $proposedHostedRuleId = [string]$assessment.proposedHostedRuleId
+        $targetHostedRuleId = [string]$assessment.targetHostedRuleId
+        if ([string]::IsNullOrWhiteSpace($proposedHostedRuleId) -or $proposedHostedRuleId -eq $targetHostedRuleId) {
+            continue
+        }
+        $ownerKey = Get-ProposalOwnerKey -SourceType $SourceType -CandidateId $CandidateId -AssessmentId ([string]$assessment.assessmentId)
+        if (($Owners.ContainsKey($proposedHostedRuleId) -and $Owners[$proposedHostedRuleId] -ne $ownerKey) -or ($pendingOwners.ContainsKey($proposedHostedRuleId) -and $pendingOwners[$proposedHostedRuleId] -ne $ownerKey)) {
+            return $false
+        }
+        $pendingOwners[$proposedHostedRuleId] = $ownerKey
+    }
+    if (-not $ValidateOnly) {
+        foreach ($entry in $pendingOwners.GetEnumerator()) {
+            $Owners[$entry.Key] = $entry.Value
+        }
+    }
+    return $true
 }
 
 function Get-ContextKey {
@@ -182,6 +228,7 @@ $semanticAssessmentProperties = @(
     'title',
     'candidateState',
     'targetHostedRuleId',
+    'proposedHostedRuleId',
     'hostedApplicable',
     'applicabilityRationale',
     'hostedCategory',
@@ -195,8 +242,9 @@ $semanticAssessmentProperties = @(
     'selectionFactors',
     'selectionRationale'
 )
+$repairAssessmentProperties = @('assessmentId', 'proposedHostedRuleId', 'proposedText', 'hostedCategory', 'affectedSurfaces')
 $fullAssessmentProperties = @('status', 'sourceContentSha256', 'assessedAt', 'evaluator') + $semanticAssessmentProperties
-$allowedCategories = @('repository', 'review-classification-and-evidence', 'implementation', 'testing', 'documentation', 'not-applicable')
+$allowedCategories = @('repository', 'review-classification-and-evidence', 'implementation', 'testing', 'documentation')
 $allowedRecommendations = @('add', 'update', 'retire', 'no-change', 'exclude', 'defer')
 $allowedSurfaces = @('repository', 'implementation', 'testing', 'documentation', 'review-skill')
 
@@ -247,8 +295,18 @@ function Assert-SemanticAssessment {
     elseif (-not [string]::IsNullOrWhiteSpace($targetHostedRuleId) -and $targetHostedRuleId -notin $knownHostedRuleIds) {
         throw "$Context property targetHostedRuleId does not identify a Hosted rule"
     }
-    if ($Assessment.recommendation -in @('add', 'update') -and [string]::IsNullOrWhiteSpace([string]$Assessment.proposedText)) {
-        throw "$Context property proposedText must contain the complete proposed Hosted rule for $($Assessment.recommendation)"
+    $proposedHostedRuleId = [string]$Assessment.proposedHostedRuleId
+    if ([string]::IsNullOrWhiteSpace($proposedHostedRuleId) -or $proposedHostedRuleId.Length -gt 32 -or $proposedHostedRuleId -notmatch '^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$') {
+        throw "$Context property proposedHostedRuleId must contain a valid Hosted rule ID"
+    }
+    if ($proposedHostedRuleId -in $knownHostedRuleIds -and $proposedHostedRuleId -ne $targetHostedRuleId) {
+        throw "$Context property proposedHostedRuleId collides with an existing Hosted rule"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($targetHostedRuleId) -and $proposedHostedRuleId -ne $targetHostedRuleId -and $Assessment.recommendation -notin @('update', 'retire')) {
+        throw "$Context property proposedHostedRuleId can differ from targetHostedRuleId only for update or retire"
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Assessment.proposedText)) {
+        throw "$Context property proposedText must contain the complete proposed Hosted rule"
     }
     if ($Assessment.guardedTokenDelta -isnot [long]) {
         throw "$Context property guardedTokenDelta must be an integer"
@@ -264,13 +322,13 @@ function Assert-SemanticAssessment {
             throw "$Context factor $factorName must be an integer from 0 through 5"
         }
     }
+    if ($surfaces.Count -eq 0) {
+        throw "$Context must identify at least one affected surface for the proposed Hosted rule"
+    }
     if (-not $Assessment.hostedApplicable) {
-        if ($Assessment.hostedCategory -ne 'not-applicable' -or $Assessment.recommendation -ne 'exclude' -or $surfaces.Count -ne 0 -or $Assessment.guardedTokenDelta -ne 0 -or $Assessment.proposedText -ne '') {
+        if ($Assessment.recommendation -ne 'exclude' -or $Assessment.guardedTokenDelta -ne 0) {
             throw "$Context does not satisfy the non-applicable assessment contract"
         }
-    }
-    elseif ($Assessment.hostedCategory -eq 'not-applicable' -or $surfaces.Count -eq 0) {
-        throw "$Context does not satisfy the applicable assessment contract"
     }
 }
 
@@ -301,14 +359,15 @@ function Assert-FullAssessment {
 
 function Assert-SemanticAssessmentSet {
     param(
-        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Assessments,
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyCollection()][object[]]$Assessments,
         [Parameter(Mandatory = $true)][string]$SourceType,
         [Parameter(Mandatory = $true)][string]$Context,
         [switch]$Full,
         [string]$SourceHash
     )
 
-    if ($SourceType -ne 'upstream' -and $Assessments.Count -ne 1) {
+    $assessmentCount = @($Assessments).Count
+    if ($SourceType -ne 'upstream' -and $assessmentCount -ne 1) {
         throw "$Context must contain exactly one rule-level assessment for $SourceType input"
     }
     $assessmentIds = @{}
@@ -335,6 +394,79 @@ function Assert-SemanticAssessmentSet {
     }
 }
 
+function Get-AssessmentRepairFields {
+    param(
+        [Parameter(Mandatory = $true)][object]$Assessment
+    )
+
+    $fields = New-Object 'System.Collections.Generic.List[string]'
+    $targetHostedRuleId = [string]$Assessment.targetHostedRuleId
+    $proposedHostedRuleId = [string]$Assessment.proposedHostedRuleId
+    if ([string]::IsNullOrWhiteSpace($proposedHostedRuleId) -or $proposedHostedRuleId.Length -gt 32 -or $proposedHostedRuleId -notmatch '^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$' -or ($proposedHostedRuleId -in $knownHostedRuleIds -and $proposedHostedRuleId -ne $targetHostedRuleId)) {
+        $fields.Add('proposedHostedRuleId')
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Assessment.proposedText)) {
+        $fields.Add('proposedText')
+    }
+    if ([string]$Assessment.hostedCategory -notin $allowedCategories) {
+        $fields.Add('hostedCategory')
+    }
+    $surfaces = @($Assessment.affectedSurfaces)
+    if ($surfaces.Count -eq 0 -or @($surfaces | Where-Object { $_ -notin $allowedSurfaces }).Count -gt 0 -or @($surfaces | Sort-Object -Unique).Count -ne $surfaces.Count) {
+        $fields.Add('affectedSurfaces')
+    }
+    return $fields.ToArray()
+}
+
+function Assert-RepairableAssessmentSet {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Assessments,
+        [Parameter(Mandatory = $true)][string]$SourceType,
+        [Parameter(Mandatory = $true)][string]$SourceHash,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $validationAssessments = @($Assessments | ForEach-Object {
+        $assessment = $_ | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $repairFields = @(Get-AssessmentRepairFields -Assessment $assessment)
+        if ('proposedHostedRuleId' -in $repairFields) {
+            $replacementId = if (-not [string]::IsNullOrWhiteSpace([string]$assessment.targetHostedRuleId)) { [string]$assessment.targetHostedRuleId } else { 'REPAIR-TEMP-999' }
+            $assessment | Add-Member -NotePropertyName proposedHostedRuleId -NotePropertyValue $replacementId -Force
+        }
+        if ('proposedText' -in $repairFields) {
+            $assessment | Add-Member -NotePropertyName proposedText -NotePropertyValue 'Temporary complete Hosted rule used only for repair validation.' -Force
+        }
+        if ('hostedCategory' -in $repairFields) {
+            $assessment | Add-Member -NotePropertyName hostedCategory -NotePropertyValue 'repository' -Force
+        }
+        if ('affectedSurfaces' -in $repairFields) {
+            $assessment | Add-Member -NotePropertyName affectedSurfaces -NotePropertyValue @('repository') -Force
+        }
+        $assessment
+    })
+    Assert-SemanticAssessmentSet -Assessments $validationAssessments -SourceType $SourceType -SourceHash $SourceHash -Context $Context -Full
+}
+
+function Get-DeterministicallyRepairedAssessments {
+    param(
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyCollection()][object[]]$Assessments
+    )
+
+    return @($Assessments | ForEach-Object {
+        $assessment = $_ | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $targetHostedRuleId = [string]$assessment.targetHostedRuleId
+        if (-not [string]::IsNullOrWhiteSpace($targetHostedRuleId)) {
+            if ([string]::IsNullOrWhiteSpace([string]$assessment.proposedHostedRuleId)) {
+                $assessment | Add-Member -NotePropertyName proposedHostedRuleId -NotePropertyValue $targetHostedRuleId -Force
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$assessment.proposedText) -and $hostedRulesById.ContainsKey($targetHostedRuleId)) {
+                $assessment | Add-Member -NotePropertyName proposedText -NotePropertyValue ([string]$hostedRulesById[$targetHostedRuleId].text) -Force
+            }
+        }
+        $assessment
+    })
+}
+
 $promptContract = @'
 Read the candidate batch, current Hosted instruction catalog, and assessment schema at the exact paths provided below. Assess every candidate in the batch against the current Hosted instruction catalog. This is a semantic maintenance review, not fixture generation.
 
@@ -347,9 +479,10 @@ The assessments array must contain one object for every independently enforceabl
 - title
 - candidateState
 - targetHostedRuleId
+- proposedHostedRuleId
 - hostedApplicable (boolean)
 - applicabilityRationale (non-empty string)
-- hostedCategory (repository, review-classification-and-evidence, implementation, testing, documentation, or not-applicable)
+- hostedCategory (repository, review-classification-and-evidence, implementation, testing, or documentation)
 - recommendation (add, update, retire, no-change, exclude, or defer)
 - summary (candidate-specific non-empty string)
 - impactDescription (candidate-specific non-empty string)
@@ -360,7 +493,14 @@ The assessments array must contain one object for every independently enforceabl
 - selectionFactors (severity, frequency, breadth, hostedDetectability, evidenceStrength, falsePositiveRisk, and redundancy; each an integer from 0 through 5)
 - selectionRationale (non-empty string explaining why every factor value supports the recommendation)
 
-Use a stable assessmentId containing only letters, digits, and hyphens. For an existing Hosted rule, use its exact rule ID as assessmentId and targetHostedRuleId. For a new rule, use a concise lowercase semantic slug as assessmentId and null targetHostedRuleId. Set candidateState to changed for an update, new for an add, retired for a retirement, deferred for a deferred decision, and current when an existing rule does not change. Update and retire must identify exactly one active targetHostedRuleId. Add must use null targetHostedRuleId. No-change may identify an existing target or use null when no catalog rule is involved. An update proposedText must be the complete replacement rule and preserve every still-valid safeguard from the target rule. Compare exact rule meaning, evidence, and failure condition against all current Hosted rules. Do not assign uniform or default factors. Do not invent evidence. A non-applicable candidate must use hostedCategory=not-applicable, recommendation=exclude, affectedSurfaces=[], guardedTokenDelta=0, and proposedText="". Use guardedTokenDelta=0 for no-change, exclude, and defer. Proposed add or update wording must be concise, enforceable Hosted review guidance. The source record ID must exactly match the input.
+Use a stable assessmentId containing only letters, digits, and hyphens. For an existing Hosted rule, use its exact rule ID as assessmentId and targetHostedRuleId. For a new rule, use a concise lowercase semantic slug as assessmentId and null targetHostedRuleId. Every assessment must propose one complete Hosted rule independently from its recommendation: provide concise enforceable proposedText, a real hostedCategory, at least one affectedSurface, and a semantically meaningful proposedHostedRuleId that is at most 32 characters and matches `^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$`. When targetHostedRuleId is present, proposedHostedRuleId must default to that target ID; use a different unused ID only when the semantic proposal intentionally renames an updated or retired target. When targetHostedRuleId is null, generate an unused proposedHostedRuleId even for no-change, exclude, or defer so a later maintainer override starts from a complete proposal. Proposed IDs must not reuse any active or retired catalog ID unless they identify that assessment's exact targetHostedRuleId. Set candidateState to changed for an update, new for an add, retired for a retirement, deferred for a deferred decision, and current when an existing rule does not change. Update and retire must identify exactly one active targetHostedRuleId. Add must use null targetHostedRuleId. No-change may identify an existing target or use null when no catalog rule is involved. An update proposedText must be the complete replacement rule and preserve every still-valid safeguard from the target rule. Compare exact rule meaning, evidence, and failure condition against all current Hosted rules. Do not assign uniform or default factors. Do not invent evidence. A non-applicable candidate must use recommendation=exclude and guardedTokenDelta=0, but must still preserve its complete proposed Hosted rule, best-fit Hosted category, and affected surfaces for maintainer review. Use guardedTokenDelta=0 for no-change, exclude, and defer. The source record ID must exactly match the input.
+'@
+$repairPromptContract = @'
+Read the candidate repair batch and current Hosted instruction catalog at the exact paths provided below. Repair only the explicitly requested assessment fields. This is a field-level migration of existing semantic assessments, not a reassessment.
+
+Return only a raw JSON array with one object per candidate, in input order. Each object must contain exactly `id` and `repairs`. Each repair must contain exactly `assessmentId`, `proposedHostedRuleId`, `proposedText`, `hostedCategory`, and `affectedSurfaces`.
+
+Preserve the existing recommendation, applicability decision, factors, rationale, target identity, and every other assessment field. Use the existing assessment and source evidence to supply a concise, complete, enforceable proposed Hosted rule. `hostedCategory` must be repository, review-classification-and-evidence, implementation, testing, or documentation. `affectedSurfaces` must contain one or more unique values from repository, implementation, testing, documentation, or review-skill. `proposedHostedRuleId` must be at most 32 characters and match `^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$`. When targetHostedRuleId exists, proposedHostedRuleId must equal it unless the existing assessment explicitly requires a rename. Otherwise generate an unused ID that does not appear in `reservedHostedRuleIds`. Return a repair for every requested assessment and no others. The source record ID and assessmentId values must match the packet exactly.
 '@
 $schemaContent = Get-Content -LiteralPath $bundleSchemaPath -Raw
 $evaluatorContractHash = Get-ContentSha256 -Content ($promptContract + "`n" + (Get-ContentSha256 -Content $schemaContent))
@@ -393,12 +533,25 @@ $hostedCatalogHash = [string]$bundle.snapshots.hostedCatalogSha256
 
 $baselineByIdentity = @{}
 $baselineCatalogMatches = $false
+$baseline = $null
 if (Test-Path -LiteralPath $resolvedBaselinePath -PathType Leaf) {
     $baselineContent = Get-Content -LiteralPath $resolvedBaselinePath -Raw
-    if (-not ($baselineContent | Test-Json -SchemaFile $baselineSchemaPath -ErrorAction Stop)) {
+    $baselineSchemaValid = $false
+    try {
+        $baselineSchemaValid = [bool]($baselineContent | Test-Json -SchemaFile $baselineSchemaPath -ErrorAction Stop)
+    }
+    catch {
+        if (-not $RepairMissingFields) {
+            throw
+        }
+    }
+    if (-not $baselineSchemaValid -and -not $RepairMissingFields) {
         throw "Assessment baseline does not satisfy its schema: $resolvedBaselinePath"
     }
     $baseline = $baselineContent | ConvertFrom-Json
+    if ($null -eq $baseline.PSObject.Properties['hostedCatalogSha256'] -or $null -eq $baseline.PSObject.Properties['entries']) {
+        throw "Assessment baseline does not contain the repairable baseline envelope: $resolvedBaselinePath"
+    }
     $baselineCatalogMatches = [string]$baseline.hostedCatalogSha256 -eq $hostedCatalogHash
     if ($baselineCatalogMatches) {
         foreach ($entry in @($baseline.entries)) {
@@ -415,14 +568,54 @@ if (Test-Path -LiteralPath $resolvedBaselinePath -PathType Leaf) {
     }
 }
 
-$cacheEntries = New-Object 'System.Collections.Generic.List[object]'
-if (Test-Path -LiteralPath $resolvedCachePath -PathType Leaf) {
-    $cache = Get-Content -LiteralPath $resolvedCachePath -Raw | ConvertFrom-Json
-    if ($cache.schemaVersion -ne 2 -or $null -eq $cache.entries) {
-        throw "Assessment cache is invalid: $resolvedCachePath"
+$proposedHostedRuleIdOwners = @{}
+foreach ($knownHostedRuleId in $knownHostedRuleIds) {
+    $proposedHostedRuleIdOwners[$knownHostedRuleId] = "catalog:$knownHostedRuleId"
+}
+if ($null -ne $baseline) {
+    foreach ($baselineEntry in @($baseline.entries)) {
+        $null = Add-AssessmentProposalReservations -Owners $proposedHostedRuleIdOwners -SourceType ([string]$baselineEntry.sourceType) -CandidateId ([string]$baselineEntry.id) -Assessments @($baselineEntry.assessments)
     }
-    foreach ($entry in @($cache.entries)) {
-        $cacheEntries.Add($entry)
+}
+
+$cacheEntries = New-Object 'System.Collections.Generic.List[object]'
+$cacheReset = $false
+if (Test-Path -LiteralPath $resolvedCachePath -PathType Leaf) {
+    $cache = $null
+    try {
+        $cache = Get-Content -LiteralPath $resolvedCachePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        $cacheReset = $true
+    }
+
+    $cacheIsCurrent = -not $cacheReset -and
+        $null -ne $cache -and
+        $null -ne $cache.PSObject.Properties['schemaVersion'] -and
+        [string]$cache.schemaVersion -eq '2' -and
+        $null -ne $cache.PSObject.Properties['entries'] -and
+        $null -ne $cache.entries
+    if ($cacheIsCurrent) {
+        foreach ($entry in @($cache.entries)) {
+            if ($null -eq $entry -or $null -eq $entry.PSObject.Properties['contextKey']) {
+                $cacheIsCurrent = $false
+                break
+            }
+        }
+    }
+
+    if ($cacheIsCurrent) {
+        foreach ($entry in @($cache.entries)) {
+            $cacheEntries.Add($entry)
+        }
+    }
+    else {
+        $cacheReset = $true
+        Write-JsonAtomically -Path $resolvedCachePath -Value ([ordered]@{
+            schemaVersion = 2
+            updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+            entries = @()
+        })
     }
 }
 
@@ -455,29 +648,63 @@ foreach ($source in @(
 $assessmentSetsByIdentity = @{}
 $cacheHitCount = 0
 $baselineHitCount = 0
+$repairHitCount = 0
+$deterministicRepairCount = 0
 $seededCount = 0
 $pending = New-Object 'System.Collections.Generic.List[object]'
+$repairPending = New-Object 'System.Collections.Generic.List[object]'
 foreach ($record in $candidateRecords.ToArray()) {
     $assessments = $null
+    $assessmentSetResolved = $false
     if (-not $Force -and $cacheByContextKey.ContainsKey($record.contextKey)) {
         $cacheEntry = $cacheByContextKey[$record.contextKey]
-        if ($cacheEntry.PSObject.Properties['assessments'] -and $null -ne $cacheEntry.assessments) {
+        if ($cacheEntry.PSObject.Properties['assessments']) {
             $assessments = @($cacheEntry.assessments)
             Assert-SemanticAssessmentSet -Assessments $assessments -SourceType $record.sourceType -SourceHash $record.sourceHash -Context "Cached assessments $($record.identity)" -Full
-            $cacheHitCount++
-        }
-    }
-    if ($null -eq $assessments -and -not $Force -and $baselineByIdentity.ContainsKey($record.identity)) {
-        $baselineEntry = $baselineByIdentity[$record.identity]
-        if ([string]$baselineEntry.sourceContentSha256 -eq $record.sourceHash) {
-            $assessments = @($baselineEntry.assessments)
-            if ($null -ne $assessments) {
-                Assert-SemanticAssessmentSet -Assessments $assessments -SourceType $record.sourceType -SourceHash $record.sourceHash -Context "Baseline assessments $($record.identity)" -Full
-                $baselineHitCount++
+            if (Add-AssessmentProposalReservations -Owners $proposedHostedRuleIdOwners -SourceType $record.sourceType -CandidateId ([string]$record.candidate.id) -Assessments $assessments) {
+                $cacheHitCount++
+                $assessmentSetResolved = $true
+            }
+            else {
+                $assessments = $null
             }
         }
     }
-    if ($null -eq $assessments -and -not $Force -and $TrustEmbeddedAssessments -and $record.candidate.PSObject.Properties['assessments'] -and $null -ne $record.candidate.assessments) {
+    if (-not $assessmentSetResolved -and -not $Force -and $baselineByIdentity.ContainsKey($record.identity)) {
+        $baselineEntry = $baselineByIdentity[$record.identity]
+        if ([string]$baselineEntry.sourceContentSha256 -eq $record.sourceHash) {
+            $assessments = if ($RepairMissingFields) { @(Get-DeterministicallyRepairedAssessments -Assessments @($baselineEntry.assessments)) } else { @($baselineEntry.assessments) }
+            $repairRequests = @($assessments | ForEach-Object {
+                $fields = @(Get-AssessmentRepairFields -Assessment $_)
+                if ($fields.Count -gt 0) {
+                    [pscustomobject][ordered]@{
+                        assessmentId = [string]$_.assessmentId
+                        fields = $fields
+                    }
+                }
+            })
+            if ($RepairMissingFields -and $repairRequests.Count -gt 0) {
+                Assert-RepairableAssessmentSet -Assessments $assessments -SourceType $record.sourceType -SourceHash $record.sourceHash -Context "Repairable baseline assessments $($record.identity)"
+                $record | Add-Member -NotePropertyName repairAssessments -NotePropertyValue $assessments -Force
+                $record | Add-Member -NotePropertyName repairRequests -NotePropertyValue $repairRequests -Force
+                $repairPending.Add($record)
+                $assessments = $null
+                $repairHitCount++
+            }
+            else {
+                Assert-SemanticAssessmentSet -Assessments $assessments -SourceType $record.sourceType -SourceHash $record.sourceHash -Context "Baseline assessments $($record.identity)" -Full
+                if (-not (Add-AssessmentProposalReservations -Owners $proposedHostedRuleIdOwners -SourceType $record.sourceType -CandidateId ([string]$record.candidate.id) -Assessments $assessments)) {
+                    throw "Baseline assessments $($record.identity) contain a colliding proposed Hosted rule ID"
+                }
+                $baselineHitCount++
+                $assessmentSetResolved = $true
+                if ($RepairMissingFields -and (@($baselineEntry.assessments | ForEach-Object { @(Get-AssessmentRepairFields -Assessment $_) }).Count -gt 0)) {
+                    $deterministicRepairCount++
+                }
+            }
+        }
+    }
+    if (-not $assessmentSetResolved -and -not $record.PSObject.Properties['repairAssessments'] -and -not $Force -and $TrustEmbeddedAssessments -and $record.candidate.PSObject.Properties['assessments']) {
         $assessments = @($record.candidate.assessments)
         Assert-SemanticAssessmentSet -Assessments $assessments -SourceType $record.sourceType -SourceHash $record.sourceHash -Context "Embedded assessments $($record.identity)" -Full
         $cacheEntries.Add([pscustomobject]@{
@@ -492,9 +719,10 @@ foreach ($record in $candidateRecords.ToArray()) {
             assessments = $assessments
         })
         $seededCount++
+        $assessmentSetResolved = $true
     }
 
-    if ($null -eq $assessments) {
+    if (-not $assessmentSetResolved -and -not $record.PSObject.Properties['repairAssessments']) {
         $pending.Add($record)
     }
     else {
@@ -522,11 +750,22 @@ if ($seededCount -gt 0) {
 
 $assessmentBatches = New-Object 'System.Collections.Generic.List[object]'
 foreach ($sourceType in @('interactive', 'maintainer', 'upstream')) {
+    $sourceRepairPending = @($repairPending.ToArray() | Where-Object sourceType -eq $sourceType)
+    $sourceRepairBatchSize = if ($sourceType -eq 'upstream') { $UpstreamBatchSize } else { $BatchSize }
+    for ($sourceOffset = 0; $sourceOffset -lt $sourceRepairPending.Count; $sourceOffset += $sourceRepairBatchSize) {
+        $sourceLastIndex = [Math]::Min($sourceOffset + $sourceRepairBatchSize - 1, $sourceRepairPending.Count - 1)
+        $assessmentBatches.Add([pscustomobject]@{
+            mode = 'repair'
+            sourceType = $sourceType
+            records = @($sourceRepairPending[$sourceOffset..$sourceLastIndex])
+        })
+    }
     $sourcePending = @($pending.ToArray() | Where-Object sourceType -eq $sourceType)
     $sourceBatchSize = if ($sourceType -eq 'upstream') { $UpstreamBatchSize } else { $BatchSize }
     for ($sourceOffset = 0; $sourceOffset -lt $sourcePending.Count; $sourceOffset += $sourceBatchSize) {
         $sourceLastIndex = [Math]::Min($sourceOffset + $sourceBatchSize - 1, $sourcePending.Count - 1)
         $assessmentBatches.Add([pscustomobject]@{
+            mode = 'full'
             sourceType = $sourceType
             records = @($sourcePending[$sourceOffset..$sourceLastIndex])
         })
@@ -535,12 +774,13 @@ foreach ($sourceType in @('interactive', 'maintainer', 'upstream')) {
 
 [int]$batchCount = $assessmentBatches.Count
 $evaluatedCount = 0
+$repairedCount = 0
 try {
     for ($batchIndex = 0; $batchIndex -lt $assessmentBatches.Count; $batchIndex++) {
         [int]$batchNumber = $batchIndex + 1
         $batch = $assessmentBatches[$batchIndex]
         $batchRecords = @($batch.records)
-        $batchId = 'batch-{0:D3}' -f $batchNumber
+        $batchId = '{0}-{1:D3}' -f $batch.mode, $batchNumber
         $batchDirectory = Join-Path $runDirectory $batchId
         New-Item -ItemType Directory -Path $batchDirectory -Force | Out-Null
         $batchPath = Join-Path $batchDirectory 'candidates.json'
@@ -549,12 +789,25 @@ try {
         $batchSchemaPath = Join-Path $batchDirectory 'assessment-schema.json'
         Copy-Item -LiteralPath $catalogPath -Destination $batchCatalogPath -Force
         Copy-Item -LiteralPath $bundleSchemaPath -Destination $batchSchemaPath -Force
-        $packetCandidates = @($batchRecords | ForEach-Object { $_.candidate | Select-Object * -ExcludeProperty assessment })
+        $packetCandidates = if ($batch.mode -eq 'repair') {
+            @($batchRecords | ForEach-Object {
+                [pscustomobject][ordered]@{
+                    candidate = $_.candidate | Select-Object * -ExcludeProperty assessment, assessments
+                    existingAssessments = @($_.repairAssessments)
+                    repairRequests = @($_.repairRequests)
+                }
+            })
+        }
+        else {
+            @($batchRecords | ForEach-Object { $_.candidate | Select-Object * -ExcludeProperty assessment, assessments })
+        }
         Write-JsonAtomically -Path $batchPath -Value ([ordered]@{
             batchId = $batchId
+            mode = $batch.mode
             sourceType = $batch.sourceType
             candidateCount = $batchRecords.Count
             hostedCatalogSha256 = $hostedCatalogHash
+            reservedHostedRuleIds = @($proposedHostedRuleIdOwners.Keys | Sort-Object)
             candidates = $packetCandidates
         })
 
@@ -578,8 +831,9 @@ try {
                     if ($null -eq $command) {
                         throw "Evaluator command was not found: $EvaluatorCommand"
                     }
+                    $batchPromptContract = if ($batch.mode -eq 'repair') { $repairPromptContract } else { $promptContract }
                     $attemptPrompt = @"
-$promptContract
+$batchPromptContract
 
 Candidate batch path: $batchPath
 Hosted instruction catalog path: $batchCatalogPath
@@ -624,17 +878,68 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
                 }
                 $recordsById = @{}
                 foreach ($semanticRecord in $semanticRecords) {
-                    Assert-ExactProperties -Value $semanticRecord -Expected @('id', 'assessments') -Context "Evaluator record in $batchId"
+                    $expectedRecordProperties = if ($batch.mode -eq 'repair') { @('id', 'repairs') } else { @('id', 'assessments') }
+                    Assert-ExactProperties -Value $semanticRecord -Expected $expectedRecordProperties -Context "Evaluator record in $batchId"
                     $id = [string]$semanticRecord.id
                     if ($recordsById.ContainsKey($id)) {
                         throw "Evaluator returned duplicate candidate $id in $batchId"
                     }
-                    Assert-SemanticAssessmentSet -Assessments @($semanticRecord.assessments) -SourceType ([string]$batch.sourceType) -Context "Evaluator assessments $id"
+                    if ($batch.mode -eq 'repair') {
+                        $batchRecord = @($batchRecords | Where-Object { [string]$_.candidate.id -eq $id })[0]
+                        if ($null -eq $batchRecord) {
+                            throw "Evaluator returned unknown repair candidate $id in $batchId"
+                        }
+                        $repairRequestsById = @{}
+                        foreach ($repairRequest in @($batchRecord.repairRequests)) {
+                            $repairRequestsById[[string]$repairRequest.assessmentId] = $repairRequest
+                        }
+                        $seenRepairIds = @{}
+                        foreach ($repair in @($semanticRecord.repairs)) {
+                            Assert-ExactProperties -Value $repair -Expected $repairAssessmentProperties -Context "Evaluator repair $id in $batchId"
+                            $assessmentId = [string]$repair.assessmentId
+                            if (-not $repairRequestsById.ContainsKey($assessmentId) -or $seenRepairIds.ContainsKey($assessmentId)) {
+                                throw "Evaluator returned an unknown or duplicate assessment repair $id/$assessmentId in $batchId"
+                            }
+                            $seenRepairIds[$assessmentId] = $true
+                        }
+                        if ($seenRepairIds.Count -ne $repairRequestsById.Count) {
+                            throw "Evaluator omitted one or more assessment repairs for $id in $batchId"
+                        }
+                    }
+                    else {
+                        Assert-SemanticAssessmentSet -Assessments @($semanticRecord.assessments) -SourceType ([string]$batch.sourceType) -Context "Evaluator assessments $id"
+                    }
                     $recordsById[$id] = $semanticRecord
                 }
                 foreach ($batchRecord in $batchRecords) {
                     if (-not $recordsById.ContainsKey([string]$batchRecord.candidate.id)) {
                         throw "Evaluator omitted candidate $($batchRecord.candidate.id) in $batchId"
+                    }
+                }
+                $attemptProposalOwners = @{}
+                foreach ($entry in $proposedHostedRuleIdOwners.GetEnumerator()) {
+                    $attemptProposalOwners[$entry.Key] = $entry.Value
+                }
+                foreach ($batchRecord in $batchRecords) {
+                    if ($batch.mode -eq 'repair') {
+                        $repairsById = @{}
+                        foreach ($repair in @($recordsById[[string]$batchRecord.candidate.id].repairs)) {
+                            $repairsById[[string]$repair.assessmentId] = $repair
+                        }
+                        $proposalAssessments = @($batchRecord.repairAssessments | ForEach-Object {
+                            $assessmentId = [string]$_.assessmentId
+                            [pscustomobject]@{
+                                assessmentId = $assessmentId
+                                targetHostedRuleId = $_.targetHostedRuleId
+                                proposedHostedRuleId = $repairsById[$assessmentId].proposedHostedRuleId
+                            }
+                        })
+                    }
+                    else {
+                        $proposalAssessments = @($recordsById[[string]$batchRecord.candidate.id].assessments)
+                    }
+                    if (-not (Add-AssessmentProposalReservations -Owners $attemptProposalOwners -SourceType $batchRecord.sourceType -CandidateId ([string]$batchRecord.candidate.id) -Assessments $proposalAssessments)) {
+                        throw "Evaluator returned a colliding proposed Hosted rule ID for $($batchRecord.identity) in $batchId"
                     }
                 }
                 break
@@ -654,20 +959,60 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
             $recordsById[[string]$semanticRecord.id] = $semanticRecord
         }
         foreach ($batchRecord in $batchRecords) {
-            $assessmentSet = @($recordsById[[string]$batchRecord.candidate.id].assessments | ForEach-Object {
-                $semanticAssessment = $_
-                $assessment = [ordered]@{
-                    status = 'evaluated'
-                    sourceContentSha256 = $batchRecord.sourceHash
-                    assessedAt = $assessedAt
-                    evaluator = $evaluatorName
+            if ($batch.mode -eq 'repair') {
+                $repairsById = @{}
+                foreach ($repair in @($recordsById[[string]$batchRecord.candidate.id].repairs)) {
+                    $repairsById[[string]$repair.assessmentId] = $repair
                 }
-                foreach ($propertyName in $semanticAssessmentProperties) {
-                    $assessment[$propertyName] = $semanticAssessment.$propertyName
+                $repairRequestsById = @{}
+                foreach ($repairRequest in @($batchRecord.repairRequests)) {
+                    $repairRequestsById[[string]$repairRequest.assessmentId] = $repairRequest
                 }
-                [pscustomobject]$assessment
-            })
+                $assessmentSet = @($batchRecord.repairAssessments | ForEach-Object {
+                    $assessment = $_ | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+                    $assessmentId = [string]$assessment.assessmentId
+                    if ($repairRequestsById.ContainsKey($assessmentId)) {
+                        $repair = $repairsById[$assessmentId]
+                        foreach ($field in @($repairRequestsById[$assessmentId].fields)) {
+                            if ($field -eq 'affectedSurfaces') {
+                                $assessment.affectedSurfaces = [string[]]@($repair.affectedSurfaces)
+                                continue
+                            }
+                            $value = $repair.$field
+                            if ($assessment.PSObject.Properties[$field]) {
+                                $assessment.$field = $value
+                            }
+                            else {
+                                $assessment | Add-Member -NotePropertyName $field -NotePropertyValue $value
+                            }
+                        }
+                        $assessment.assessedAt = $assessedAt
+                        $assessment.evaluator = $evaluatorName
+                    }
+                    $assessment
+                })
+                $repairedCount++
+            }
+            else {
+                $assessmentSet = @($recordsById[[string]$batchRecord.candidate.id].assessments | ForEach-Object {
+                    $semanticAssessment = $_
+                    $assessment = [ordered]@{
+                        status = 'evaluated'
+                        sourceContentSha256 = $batchRecord.sourceHash
+                        assessedAt = $assessedAt
+                        evaluator = $evaluatorName
+                    }
+                    foreach ($propertyName in $semanticAssessmentProperties) {
+                        $assessment[$propertyName] = $semanticAssessment.$propertyName
+                    }
+                    [pscustomobject]$assessment
+                })
+                $evaluatedCount++
+            }
             Assert-SemanticAssessmentSet -Assessments $assessmentSet -SourceType $batchRecord.sourceType -SourceHash $batchRecord.sourceHash -Context "Generated assessments $($batchRecord.identity)" -Full
+            if (-not (Add-AssessmentProposalReservations -Owners $proposedHostedRuleIdOwners -SourceType $batchRecord.sourceType -CandidateId ([string]$batchRecord.candidate.id) -Assessments $assessmentSet)) {
+                throw "Generated assessments $($batchRecord.identity) contain a colliding proposed Hosted rule ID"
+            }
             $assessmentSetsByIdentity[$batchRecord.identity] = $assessmentSet
             $cacheEntries.Add([pscustomobject]@{
                 contextKey = $batchRecord.contextKey
@@ -680,7 +1025,6 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
                 reasoningEffort = $ReasoningEffort
                 assessments = $assessmentSet
             })
-            $evaluatedCount++
         }
 
         $activeContextKeys = @($candidateRecords.ToArray().contextKey)
@@ -707,6 +1051,21 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
         $record.candidate | Add-Member -NotePropertyName assessments -NotePropertyValue @($assessmentSetsByIdentity[$record.identity]) -Force
     }
 
+    $proposedHostedRuleIds = @{}
+    foreach ($record in $candidateRecords.ToArray()) {
+        foreach ($assessment in @($record.candidate.assessments)) {
+            $proposedHostedRuleId = [string]$assessment.proposedHostedRuleId
+            $targetHostedRuleId = [string]$assessment.targetHostedRuleId
+            if ($proposedHostedRuleId -eq $targetHostedRuleId) {
+                continue
+            }
+            if ($proposedHostedRuleIds.ContainsKey($proposedHostedRuleId)) {
+                throw "Proposed Hosted rule ID $proposedHostedRuleId is assigned to both $($proposedHostedRuleIds[$proposedHostedRuleId]) and $($record.identity)"
+            }
+            $proposedHostedRuleIds[$proposedHostedRuleId] = $record.identity
+        }
+    }
+
     $resultJson = $bundle | ConvertTo-Json -Depth 60
     if (-not ($resultJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) {
         throw 'Assessed rule intake bundle schema validation failed'
@@ -724,11 +1083,17 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
         outputPath = $resolvedOutputPath
         cachePath = $resolvedCachePath
         candidateCount = $allCandidates.Count
+        cacheReset = $cacheReset
         cacheHitCount = $cacheHitCount
         baselineHitCount = $baselineHitCount
+        repairCandidateCount = $repairHitCount
+        deterministicRepairCount = $deterministicRepairCount
+        repairedCount = $repairedCount
         seededCount = $seededCount
         evaluatedCount = $evaluatedCount
         batchCount = $batchCount
+        repairBatchCount = @($assessmentBatches | Where-Object mode -eq 'repair').Count
+        fullBatchCount = @($assessmentBatches | Where-Object mode -eq 'full').Count
         ruleCandidateCount = $allRuleAssessments.Count
         applicableCount = @($allRuleAssessments | Where-Object hostedApplicable).Count
         inapplicableCount = @($allRuleAssessments | Where-Object { -not $_.hostedApplicable }).Count
@@ -747,11 +1112,17 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
             Status = $summary.status.ToUpperInvariant()
             Candidates = $summary.candidateCount
             'Rule Candidates' = $summary.ruleCandidateCount
+            'Cache Reset' = $summary.cacheReset
             'Cache Hits' = $summary.cacheHitCount
             'Baseline Hits' = $summary.baselineHitCount
+            'Repair Candidates' = $summary.repairCandidateCount
+            'Deterministic Repairs' = $summary.deterministicRepairCount
+            'Semantic Repairs' = $summary.repairedCount
             Seeded = $summary.seededCount
             Evaluated = $summary.evaluatedCount
             Batches = $summary.batchCount
+            'Repair Batches' = $summary.repairBatchCount
+            'Full Batches' = $summary.fullBatchCount
             Applicable = $summary.applicableCount
             Inapplicable = $summary.inapplicableCount
             Model = $summary.model

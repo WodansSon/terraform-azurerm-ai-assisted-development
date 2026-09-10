@@ -7,7 +7,7 @@
   "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "guidanceCapacity", "hostedRules", "upstreamCandidates", "interactiveCandidates", "maintainerCandidates"],
   "properties": {
     "$schema": { "const": "rule-intake-review.schema.json" },
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "readOnly": { "const": true },
     "refreshMode": { "const": "regenerate-read-only-bundle" },
@@ -34,7 +34,7 @@
   "$defs": {
     "sha256Hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "gitHash": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "ruleId": { "type": "string", "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+    "ruleId": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
     "snapshots": {
       "type": "object",
       "additionalProperties": false,
@@ -186,7 +186,7 @@
     "aiAssessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["assessmentId", "title", "candidateState", "targetHostedRuleId", "status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
+      "required": ["assessmentId", "title", "candidateState", "targetHostedRuleId", "proposedHostedRuleId", "status", "sourceContentSha256", "assessedAt", "evaluator", "hostedApplicable", "applicabilityRationale", "hostedCategory", "recommendation", "summary", "impactDescription", "currentHostedCoverage", "affectedSurfaces", "guardedTokenDelta", "proposedText", "selectionFactors", "selectionRationale"],
       "properties": {
         "assessmentId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
         "title": { "type": "string", "minLength": 1 },
@@ -197,13 +197,14 @@
             { "type": "null" }
           ]
         },
+        "proposedHostedRuleId": { "$ref": "#/$defs/ruleId" },
         "status": { "const": "evaluated" },
         "sourceContentSha256": { "$ref": "#/$defs/sha256Hash" },
         "assessedAt": { "type": "string", "format": "date-time" },
         "evaluator": { "type": "string", "minLength": 1 },
         "hostedApplicable": { "type": "boolean" },
         "applicabilityRationale": { "type": "string", "minLength": 1 },
-        "hostedCategory": { "enum": ["repository", "review-classification-and-evidence", "implementation", "testing", "documentation", "not-applicable"] },
+        "hostedCategory": { "enum": ["repository", "review-classification-and-evidence", "implementation", "testing", "documentation"] },
         "recommendation": { "enum": ["add", "update", "retire", "no-change", "exclude", "defer"] },
         "summary": { "type": "string", "minLength": 1 },
         "impactDescription": { "type": "string", "minLength": 1 },
@@ -214,28 +215,20 @@
           "items": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] }
         },
         "guardedTokenDelta": { "type": "integer" },
-        "proposedText": { "type": "string" },
+        "proposedText": { "type": "string", "minLength": 1 },
         "selectionFactors": { "$ref": "#/$defs/selectionFactors" },
         "selectionRationale": { "type": "string", "minLength": 1 }
       },
       "allOf": [
         {
-          "if": { "properties": { "hostedApplicable": { "const": true } }, "required": ["hostedApplicable"] },
-          "then": {
-            "properties": {
-              "hostedCategory": { "not": { "const": "not-applicable" } },
-              "affectedSurfaces": { "minItems": 1 }
-            }
-          },
-          "else": {
-            "properties": {
-              "hostedCategory": { "const": "not-applicable" },
-              "recommendation": { "const": "exclude" },
-              "affectedSurfaces": { "maxItems": 0 },
-              "guardedTokenDelta": { "const": 0 },
-              "proposedText": { "const": "" }
-            }
+          "properties": {
+            "proposedHostedRuleId": { "type": "string" },
+            "affectedSurfaces": { "minItems": 1 }
           }
+        },
+        {
+          "if": { "properties": { "hostedApplicable": { "const": false } }, "required": ["hostedApplicable"] },
+          "then": { "properties": { "recommendation": { "const": "exclude" }, "guardedTokenDelta": { "const": 0 } } }
         }
       ]
     },

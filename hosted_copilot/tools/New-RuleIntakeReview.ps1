@@ -530,7 +530,7 @@ foreach ($state in @('new', 'changed', 'retired', 'deferred', 'current')) {
 $currentInteractiveCatalogHash = Get-FileSha256 -Path $resolvedInteractiveCatalogPath
 $result = [ordered]@{
     '$schema' = 'rule-intake-review.schema.json'
-    schemaVersion = 2
+    schemaVersion = 3
     generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
     readOnly = $true
     refreshMode = 'regenerate-read-only-bundle'

@@ -9,6 +9,10 @@ async function waitForWorkbench(page) {
   await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0);
 }
 
+async function waitForWorkbenchTooltip(page) {
+  await page.waitForFunction(() => document.querySelector("#status-surface-tooltip")?.classList.contains("visible"));
+}
+
 async function settleLayout(page, browserDriver, label) {
   if (browserDriver.beforeValidation) await browserDriver.beforeValidation(page, label);
   await page.evaluate(async () => {
@@ -356,7 +360,8 @@ async function assertOverridesDecoration(page, width) {
       const needsInputColor = resolveColor("--modified-resource");
       const needsInputValid = root.classList.contains("candidate-aggregate-needs-input")
         && row.classList.contains("candidate-decoration-needs-input")
-        && summary.dataset.workbenchTooltip === "1 selected, 1 needs input"
+        && !summary.hasAttribute("data-workbench-tooltip")
+        && summary.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, 1 needs input"
         && summary.querySelector(".candidate-decoration-description").textContent === "1 selected, 1 needs input"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === needsInputColor);
@@ -370,7 +375,8 @@ async function assertOverridesDecoration(page, width) {
       const readyColor = resolveColor("--added-resource");
       const readyValid = root.classList.contains("candidate-aggregate-ready")
         && row.classList.contains("candidate-decoration-ready")
-        && summary.dataset.workbenchTooltip === "1 selected, all ready for promotion"
+        && !summary.hasAttribute("data-workbench-tooltip")
+        && summary.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, all ready for promotion"
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === readyColor);
 
@@ -507,8 +513,10 @@ async function assertBulkActionsPreserveContext(page, width) {
     const decorationAccessibilityValid = leafIcon.getAttribute("aria-hidden") === "true"
       && leafIcon.dataset.workbenchTooltip === "Selected, ready for promotion"
       && decoratedRow.querySelector(".candidate-decoration-description").textContent === "Selected, ready for promotion"
-      && categorySummary.dataset.workbenchTooltip.endsWith("all ready for promotion")
-      && sourceSummary.dataset.workbenchTooltip.endsWith("all ready for promotion");
+      && !categorySummary.hasAttribute("data-workbench-tooltip")
+      && !sourceSummary.hasAttribute("data-workbench-tooltip")
+      && categorySummary.querySelector(".count-badge").dataset.workbenchTooltip.endsWith("all ready for promotion")
+      && sourceSummary.querySelector(".count-badge").dataset.workbenchTooltip.endsWith("all ready for promotion");
 
     const originalRationale = state.session.decisions[decoratedCandidate.key].rationale;
     state.session.decisions[decoratedCandidate.key].rationale = "";
@@ -519,8 +527,8 @@ async function assertBulkActionsPreserveContext(page, width) {
       && [decoratedRow.querySelector(".candidate-tree-copy strong"), leafIcon, categorySummary.querySelector("strong"), categoryIcon, sourceSummary.querySelector("strong"), sourceIcon]
         .every((node) => getComputedStyle(node).color === modifiedColor)
       && leafIcon.dataset.workbenchTooltip === "Selected, needs input before promotion"
-      && categorySummary.dataset.workbenchTooltip.endsWith("1 needs input")
-      && sourceSummary.dataset.workbenchTooltip.endsWith("1 needs input");
+      && categorySummary.querySelector(".count-badge").dataset.workbenchTooltip.endsWith("1 needs input")
+      && sourceSummary.querySelector(".count-badge").dataset.workbenchTooltip.endsWith("1 needs input");
     state.session.decisions[decoratedCandidate.key].rationale = originalRationale;
     syncCandidateTreeRows();
 
@@ -619,9 +627,11 @@ async function assertStatusTooltip(page, width) {
   const box = await item.boundingBox();
 
   async function enterFrom(side) {
+    const anchorX = side === "right" ? box.x + box.width - 2 : box.x + 2;
     await page.mouse.move(side === "right" ? box.x + box.width + 24 : box.x - 24, box.y + box.height / 2);
-    await page.mouse.move(side === "right" ? box.x + box.width - 2 : box.x + 2, box.y + box.height / 2);
-    return page.evaluate(() => {
+    await page.mouse.move(anchorX, box.y + box.height / 2);
+    await waitForWorkbenchTooltip(page);
+    return page.evaluate((pointerX) => {
       const tooltip = document.querySelector("#status-surface-tooltip");
       const statusbar = document.querySelector(".ide-statusbar");
       const rect = tooltip.getBoundingClientRect();
@@ -633,10 +643,11 @@ async function assertStatusTooltip(page, width) {
         top: rect.top,
         bottom: rect.bottom,
         width: rect.width,
+        expectedLeft: Math.floor(Math.min(Math.max(8, pointerX - rect.width / 2), innerWidth - rect.width - 8)),
         statusTop: statusbar.getBoundingClientRect().top,
         nativeTitleCount: document.querySelectorAll(".ide-statusbar .status-item[title]").length,
       };
-    });
+    }, anchorX);
   }
 
   const fromRight = await enterFrom("right");
@@ -645,7 +656,7 @@ async function assertStatusTooltip(page, width) {
   assert(fromRight.text === "Test guidance headroom" && fromLeft.text === fromRight.text, `${width}px status tooltip: tooltip text is incorrect`);
   assert(fromRight.left >= 0 && fromRight.right <= width && fromRight.top >= 0, `${width}px status tooltip: tooltip leaves the rendered canvas`);
   assert(fromRight.bottom < fromRight.statusTop, `${width}px status tooltip: tooltip is not above the status bar`);
-  assert(Math.abs(fromRight.left - fromLeft.left) < 0.1 && Math.abs(fromRight.width - fromLeft.width) < 0.1, `${width}px status tooltip: entry direction changes tooltip geometry`);
+  assert(Math.abs(fromRight.left - fromRight.expectedLeft) < 0.1 && Math.abs(fromLeft.left - fromLeft.expectedLeft) < 0.1, `${width}px status tooltip: pointer-centered placement is incorrect`);
   assert(fromRight.nativeTitleCount === 0, `${width}px status tooltip: native status titles remain active`);
 }
 
@@ -676,12 +687,13 @@ async function assertSourceProvenanceTooltip(page, width) {
   async function enterAt(entryX) {
     await page.mouse.move(box.x - 12, box.y + box.height / 2);
     await page.mouse.move(entryX, box.y + box.height / 2);
+    await waitForWorkbenchTooltip(page);
     return page.evaluate((anchorX) => {
       const owner = document.querySelector("#source-provenance-tooltip-probe .source-provenance-pill");
       const tooltip = document.querySelector("#status-surface-tooltip");
       const ownerRect = owner.getBoundingClientRect();
       const tooltipRect = tooltip.getBoundingClientRect();
-      const expectedLeft = Math.floor(Math.min(Math.max(8, anchorX), innerWidth - tooltipRect.width - 8));
+      const expectedLeft = Math.floor(Math.min(Math.max(8, anchorX - tooltipRect.width / 2), innerWidth - tooltipRect.width - 8));
       return {
         visible: getComputedStyle(tooltip).visibility === "visible",
         textMatches: tooltip.textContent === owner.textContent.trim(),
@@ -696,14 +708,20 @@ async function assertSourceProvenanceTooltip(page, width) {
 
   const leftEntry = await enterAt(box.x + 2);
   const rightEntry = await enterAt(box.x + box.width - 2);
-  const fallback = await page.evaluate(() => {
+  await page.evaluate(() => {
     const source = document.querySelector("#source-provenance-tooltip-probe .source-provenance-pill");
     const probe = source.cloneNode(true);
+    probe.id = "source-provenance-tooltip-fallback";
     probe.style.position = "fixed";
     probe.style.right = "4px";
     probe.style.bottom = "4px";
     document.body.appendChild(probe);
-    showSourceProvenanceTooltip(probe, innerWidth - 4);
+  });
+  const fallbackBox = await page.$("#source-provenance-tooltip-fallback").then((probe) => probe.boundingBox());
+  await page.mouse.move(fallbackBox.x + fallbackBox.width / 2, fallbackBox.y + fallbackBox.height / 2);
+  await waitForWorkbenchTooltip(page);
+  const fallback = await page.evaluate(() => {
+    const probe = document.querySelector("#source-provenance-tooltip-fallback");
     const probeRect = probe.getBoundingClientRect();
     const tooltipRect = document.querySelector("#status-surface-tooltip").getBoundingClientRect();
     const result = {
@@ -712,7 +730,6 @@ async function assertSourceProvenanceTooltip(page, width) {
       verticallyContained: tooltipRect.top >= 8,
     };
     probe.remove();
-    hideStatusTooltip();
     return result;
   });
   await page.evaluate(() => document.querySelector("#source-provenance-tooltip-probe").remove());

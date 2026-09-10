@@ -34,6 +34,8 @@ param(
 
     [switch]$ForceAssessment,
 
+    [switch]$RepairMissingAssessmentFields,
+
     [switch]$StageOnly,
 
     [switch]$NoLaunch,
@@ -184,6 +186,9 @@ function Update-StagedBundle {
         )
         if ($ForceAssessment) {
             $assessmentArguments += '-Force'
+        }
+        if ($RepairMissingAssessmentFields) {
+            $assessmentArguments += '-RepairMissingFields'
         }
         if ($OutputFormat -eq 'Text') {
             Write-Host '[RUNNING]  assessment                  : Collecting candidates and resolving AI assessments'

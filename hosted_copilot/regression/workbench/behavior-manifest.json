@@ -45,6 +45,21 @@
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
     },
     {
+      "id": "WB-UX-STICKY-004",
+      "title": "Candidate sorting preserves tree position and disclosure state",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-005",
+      "title": "Static candidate headers mirror folder disclosure state",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-006",
+      "title": "Sibling folder expansion preserves tree position",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
       "id": "WB-UX-PROVENANCE-001",
       "title": "Contributor provenance tooltip retains concise complete text",
       "journey": "playwright/journeys/provenance-tooltip.journey.cjs"
@@ -67,6 +82,26 @@
     {
       "id": "WB-UX-CONTRIBUTOR-003",
       "title": "Update preview and payload use one semantic Hosted target",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-001",
+      "title": "Add candidates retain one proposed Hosted rule identity across views and exports",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-002",
+      "title": "Proposed Hosted rule identity validation blocks colliding Add decisions",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-003",
+      "title": "Proposed Hosted rule identity feedback remains stable at the supported viewport boundary",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-004",
+      "title": "Mapped candidates expose and export their resulting Hosted identity",
       "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
     },
     {
@@ -106,7 +141,7 @@
     },
     {
       "id": "WB-UX-OWNERSHIP-004",
-      "title": "Unselecting manual decisions restores neutral hierarchy without losing edits",
+      "title": "Unselecting manual decisions removes preview projections and restores neutral hierarchy without losing edits",
       "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
     },
     {

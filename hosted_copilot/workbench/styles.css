@@ -573,7 +573,7 @@ h3 {
   color: var(--accent-bright);
 }
 
-.candidate-overrides-root > summary > strong {
+.candidate-overrides-root > summary .candidate-parent-label > strong {
   text-transform: uppercase;
 }
 
@@ -804,10 +804,11 @@ button.assessment-override-pill {
   line-height: 1.45;
 }
 
-.override-actions {
+.override-inline-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .override-record {
@@ -875,7 +876,74 @@ button.assessment-override-pill {
 }
 
 #candidate-panel > .panel-heading {
+  position: relative;
+  z-index: 6;
   padding-block: 8px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--surface);
+}
+
+#candidate-panel {
+  position: relative;
+}
+
+.candidate-sticky-stack {
+  position: absolute;
+  z-index: 5;
+  height: 117px;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.candidate-sticky-stack[hidden] {
+  display: none;
+}
+
+.candidate-sticky-layer {
+  position: absolute;
+  inset: 0 0 auto;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.candidate-sticky-layer.active {
+  visibility: visible;
+}
+
+.candidate-sticky-layer.active > details > summary {
+  pointer-events: auto;
+}
+
+#candidate-list .candidate-sticky-original-hidden {
+  visibility: hidden;
+}
+
+.candidate-sticky-stack .candidate-source-root > summary,
+.candidate-sticky-stack .candidate-category > summary,
+.candidate-sticky-stack .candidate-list-header {
+  position: static;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.candidate-sticky-layer .override-source-folder > summary .candidate-parent-label > strong {
+  text-transform: uppercase;
+}
+
+.candidate-sticky-layer .override-origin-folder > summary {
+  padding-left: 44px;
+}
+
+#candidate-list .candidate-overrides-root .override-origin-folder > .override-candidates > .candidate-list-header,
+#candidate-list .candidate-overrides-root .override-origin-folder > .override-candidates > .candidate-tree-row,
+#candidate-sticky-stack .candidate-list-header[data-sticky-depth="3"] {
+  padding-left: 68px;
 }
 
 #plan-view > .page-heading,
@@ -1018,7 +1086,7 @@ button.assessment-override-pill {
   overflow-y: auto;
   isolation: isolate;
   scroll-padding-top: 117px;
-  scroll-snap-type: y proximity;
+  scroll-snap-type: none;
   scrollbar-gutter: stable;
 }
 
@@ -1133,6 +1201,15 @@ button.assessment-override-pill {
   list-style: none;
 }
 
+.candidate-category[data-tree-depth="2"] > summary {
+  top: 82px;
+  padding-left: 44px;
+}
+
+.candidate-category-items[data-tree-depth="3"] > .candidate-list-header {
+  top: 122px;
+}
+
 .candidate-source-root > summary::-webkit-details-marker,
 .candidate-category > summary::-webkit-details-marker {
   display: none;
@@ -1156,6 +1233,13 @@ button.assessment-override-pill {
   grid-template-columns: 18px minmax(0, 1fr) auto;
   padding: 8px 12px 8px 24px;
   background: var(--surface);
+}
+
+#candidate-list [data-tree-depth] > summary,
+#candidate-list [data-tree-depth] > .candidate-list-header {
+  position: static;
+  top: auto;
+  z-index: auto;
 }
 
 .candidate-category:not([open]) > .candidate-category-items {
@@ -1252,6 +1336,11 @@ button.assessment-override-pill {
 }
 
 .candidate-source-root > summary > .source-summary-label > strong {
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.candidate-overrides-root > .override-source-folder > summary .candidate-parent-label > strong {
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -1775,6 +1864,54 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   border-radius: 4px;
 }
 
+.proposed-hosted-rule-id-control {
+  display: grid;
+  gap: 10px;
+}
+
+.proposed-hosted-rule-id-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  line-height: 1.45;
+}
+
+.proposed-hosted-rule-id-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.proposed-hosted-rule-id-validation {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--success);
+  font-size: 0.68rem;
+  line-height: 16px;
+}
+
+.proposed-hosted-rule-id-validation.invalid {
+  color: var(--red);
+}
+
+.proposed-hosted-rule-id-validation .codicon {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+}
+
+.proposed-hosted-rule-id-meta .rationale-limit {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .action-options {
   display: flex;
   flex-wrap: wrap;
@@ -2101,22 +2238,34 @@ p.subcontext-container {
   background: rgba(2, 10, 24, 0.6);
 }
 
-.factor-line.value .factor-meter::-webkit-progress-value,
+.factor-line.value .factor-meter::-webkit-progress-value {
+  background: var(--success);
+}
+
 .factor-line.value .factor-meter::-moz-progress-bar {
   background: var(--success);
 }
 
-.factor-line.penalty.risk-low .factor-meter::-webkit-progress-value,
+.factor-line.penalty.risk-low .factor-meter::-webkit-progress-value {
+  background: var(--success);
+}
+
 .factor-line.penalty.risk-low .factor-meter::-moz-progress-bar {
   background: var(--success);
 }
 
-.factor-line.penalty.risk-moderate .factor-meter::-webkit-progress-value,
+.factor-line.penalty.risk-moderate .factor-meter::-webkit-progress-value {
+  background: var(--gold);
+}
+
 .factor-line.penalty.risk-moderate .factor-meter::-moz-progress-bar {
   background: var(--gold);
 }
 
-.factor-line.penalty.risk-high .factor-meter::-webkit-progress-value,
+.factor-line.penalty.risk-high .factor-meter::-webkit-progress-value {
+  background: var(--red);
+}
+
 .factor-line.penalty.risk-high .factor-meter::-moz-progress-bar {
   background: var(--red);
 }
@@ -2135,6 +2284,7 @@ p.subcontext-container {
 }
 
 .factor-value {
+  align-self: center;
   text-align: right;
   font-weight: 600;
 }
@@ -2152,7 +2302,7 @@ p.subcontext-container {
 }
 
 .factor-line.penalty.risk-high .factor-value {
-  color: #ffaaa5;
+  color: var(--red);
 }
 
 .score-strip {
@@ -3961,8 +4111,25 @@ html.theme-hosted-dark body .status-surface-tooltip {
 }
 
 .status-surface-tooltip.visible {
+  animation: workbench-tooltip-fade-in 100ms linear;
   visibility: visible;
   opacity: 1;
+}
+
+@keyframes workbench-tooltip-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-surface-tooltip.visible {
+    animation: none;
+  }
 }
 
 .candidate-panel,

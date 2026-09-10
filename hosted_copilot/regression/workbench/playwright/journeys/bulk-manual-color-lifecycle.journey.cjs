@@ -110,6 +110,19 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(unselected.decision.action === "add" && unselected.decision.rationale.startsWith("Maintainer manually confirmed"), "Unselect did not preserve the Manual action and rationale");
     assert(unselected.leaf.color === accentColor && unselected.leaf.iconHidden && !unselected.leaf.description, "Unselected leaf did not return to neutral blue");
     assert(!unselected.category.classes.includes("candidate-aggregate-") && !unselected.source.classes.includes("candidate-aggregate-"), "Unselected ancestors retained aggregate decoration");
+
+    await page.locator('[data-view="preview"]').click();
+    const preview = await page.evaluate(() => ({
+      proposedChangeCount: document.querySelectorAll("#preview-diff .preview-change").length,
+      payloadChangeCount: document.querySelectorAll("#preview-payload-diff .payload-change").length,
+      rawPayloadVisible: !document.querySelector("#preview-json").hidden,
+      proposedEmptyTitle: document.querySelector("#preview-diff .preview-empty-state h3")?.textContent,
+      payloadEmptyTitle: document.querySelector("#preview-payload-diff .preview-empty-state h3")?.textContent,
+      rawEmptyTitle: document.querySelector("#raw-payload-empty .preview-empty-state h3")?.textContent
+    }));
+    assert(preview.proposedChangeCount === 0 && preview.proposedEmptyTitle === "No Proposed Changes", "Unselected decision remained in Proposed Changes");
+    assert(preview.payloadChangeCount === 0 && preview.payloadEmptyTitle === "No Payload Changes", "Unselected decision remained in Payload Changes");
+    assert(!preview.rawPayloadVisible && preview.rawEmptyTitle === "No Raw Payload Changes", "Unselected decision remained in Raw Selection Payload");
   } finally {
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;

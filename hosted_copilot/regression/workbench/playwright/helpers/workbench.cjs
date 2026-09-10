@@ -23,4 +23,8 @@ async function getCssTokenColor(page, token) {
   }, token);
 }
 
-module.exports = { openWorkbench, getCssTokenColor };
+async function waitForWorkbenchTooltip(page) {
+  await page.waitForFunction(() => document.querySelector("#status-surface-tooltip")?.classList.contains("visible"));
+}
+
+module.exports = { openWorkbench, getCssTokenColor, waitForWorkbenchTooltip };

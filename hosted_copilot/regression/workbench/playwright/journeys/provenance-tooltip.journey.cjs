@@ -1,4 +1,4 @@
-const { openWorkbench } = require("../helpers/workbench.cjs");
+const { openWorkbench, waitForWorkbenchTooltip } = require("../helpers/workbench.cjs");
 
 const behaviorIds = ["WB-UX-PROVENANCE-001", "WB-UX-PROVENANCE-002"];
 
@@ -29,6 +29,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const enterAt = async (entryX) => {
     await page.mouse.move(box.x - 12, box.y + box.height / 2);
     await page.mouse.move(entryX, box.y + box.height / 2);
+    await waitForWorkbenchTooltip(page);
     return page.evaluate((anchorX) => {
       const owner = document.querySelector("#source-provenance-tooltip-probe .source-provenance-pill");
       const tooltip = document.querySelector("#status-surface-tooltip");
@@ -39,7 +40,7 @@ async function run({ page, baseUrl, assert, playback }) {
         textMatches: tooltip.textContent === owner.textContent.trim(),
         left: tooltipRect.left,
         right: tooltipRect.right,
-        expectedLeft: Math.floor(Math.min(Math.max(8, anchorX), innerWidth - tooltipRect.width - 8)),
+        expectedLeft: Math.floor(Math.min(Math.max(8, anchorX - tooltipRect.width / 2), innerWidth - tooltipRect.width - 8)),
         belowGap: tooltipRect.top - ownerRect.bottom
       };
     }, entryX);
@@ -52,14 +53,21 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(Math.abs(rightEntry.left - rightEntry.expectedLeft) < 0.1 && rightEntry.right <= 760.1, "right-side pointer entry is not clamped to the 8px viewport inset");
   assert(Math.abs(leftEntry.belowGap - 6) < 0.1 && Math.abs(rightEntry.belowGap - 6) < 0.1, "tooltip does not prefer placement 6px below the pill");
 
-  const fallback = await page.evaluate(() => {
+  await page.evaluate(() => {
     const source = document.querySelector("#source-provenance-tooltip-probe .source-provenance-pill");
     const probe = source.cloneNode(true);
+    probe.id = "source-provenance-tooltip-fallback";
     probe.style.position = "fixed";
     probe.style.right = "4px";
     probe.style.bottom = "4px";
     document.body.appendChild(probe);
-    showSourceProvenanceTooltip(probe, innerWidth - 4);
+  });
+  const fallbackProbe = page.locator("#source-provenance-tooltip-fallback");
+  const fallbackBox = await fallbackProbe.boundingBox();
+  await page.mouse.move(fallbackBox.x + fallbackBox.width / 2, fallbackBox.y + fallbackBox.height / 2);
+  await waitForWorkbenchTooltip(page);
+  const fallback = await page.evaluate(() => {
+    const probe = document.querySelector("#source-provenance-tooltip-fallback");
     const probeRect = probe.getBoundingClientRect();
     const tooltipRect = document.querySelector("#status-surface-tooltip").getBoundingClientRect();
     const result = {
@@ -68,7 +76,6 @@ async function run({ page, baseUrl, assert, playback }) {
       verticallyContained: tooltipRect.top >= 8
     };
     probe.remove();
-    hideStatusTooltip();
     return result;
   });
   assert(Math.abs(fallback.aboveGap - 6) < 0.1 && fallback.horizontallyContained && fallback.verticallyContained, "tooltip does not flip above when insufficient space remains below");

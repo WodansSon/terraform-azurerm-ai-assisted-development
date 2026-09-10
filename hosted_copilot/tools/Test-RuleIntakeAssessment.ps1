@@ -108,7 +108,7 @@ function Write-Bundle {
     )
     $bundle = [ordered]@{
         '$schema' = 'rule-intake-review.schema.json'
-        schemaVersion = 2
+        schemaVersion = 3
         generatedAt = '2026-09-03T00:00:00Z'
         readOnly = $true
         refreshMode = 'regenerate-read-only-bundle'
@@ -151,14 +151,16 @@ function Invoke-Assessment {
         [Parameter(Mandatory = $true)][string]$InputPath,
         [Parameter(Mandatory = $true)][string]$OutputPath,
         [Parameter(Mandatory = $true)][string]$CachePath,
-        [string]$BaselinePath,
+        [string]$BaselinePath = (Join-Path $tempRoot 'absent-baseline.json'),
         [int]$BatchSize = 1,
-        [int]$MaxRetries = 0
+        [int]$MaxRetries = 0,
+        [switch]$RepairMissingFields
     )
 
     $arguments = @('-NoProfile', '-File', $assessmentPath, '-BundlePath', $InputPath, '-OutputPath', $OutputPath, '-CachePath', $CachePath, '-EvaluatorScriptPath', $fakeEvaluatorPath, '-BatchSize', $BatchSize, '-MaxRetries', $MaxRetries, '-OutputFormat', 'Json')
-    if (-not [string]::IsNullOrWhiteSpace($BaselinePath)) {
-        $arguments += @('-BaselinePath', $BaselinePath)
+    $arguments += @('-BaselinePath', $BaselinePath)
+    if ($RepairMissingFields) {
+        $arguments += '-RepairMissingFields'
     }
     $output = @(& pwsh @arguments 2>&1)
     if ($LASTEXITCODE -ne 0) {
@@ -170,7 +172,7 @@ function Invoke-Assessment {
 try {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     $assessmentContent = Get-Content -LiteralPath $assessmentPath -Raw
-    $constrainedEvaluatorValid = $assessmentContent -match '--available-tools=view' -and $assessmentContent -match '--output-format json' -and $assessmentContent -match '--disallow-temp-dir' -and $assessmentContent -match '-C \$batchDirectory' -and $assessmentContent -match '\$assistantMessage\.model -ne \$Model' -and $assessmentContent -notmatch '--allow-all|--allow-all-tools|--allow-all-paths|--yolo'
+    $constrainedEvaluatorValid = $assessmentContent -match '--available-tools=view' -and $assessmentContent -match '--output-format json' -and $assessmentContent -match '--disallow-temp-dir' -and $assessmentContent -match '-C \$batchDirectory' -and $assessmentContent -match '\$assistantMessage\.model -ne \$Model' -and $assessmentContent -match 'field-level migration of existing semantic assessments' -and $assessmentContent -notmatch '--allow-all|--allow-all-tools|--allow-all-paths|--yolo'
     Add-TestResult -Name 'copilot-evaluator-constrained' -Passed $constrainedEvaluatorValid -Detail 'Real Copilot assessment uses structured output and an isolated batch directory with only the read-only view tool exposed.'
 
     $bundlePath = Join-Path $tempRoot 'bundle.json'
@@ -200,12 +202,37 @@ if (-not [string]::IsNullOrWhiteSpace($env:FAKE_EVALUATOR_FAIL_ONCE) -and (Test-
     [IO.File]::WriteAllText($OutputPath, "{invalid`n", [Text.UTF8Encoding]::new($false))
     return
 }
-$records = @($batch.candidates | ForEach-Object {
+$records = if ($batch.mode -eq 'repair') {
+    @($batch.candidates | ForEach-Object {
+        $packet = $_
+        [ordered]@{
+            id = $packet.candidate.id
+            repairs = @($packet.repairRequests | ForEach-Object {
+                $request = $_
+                $existing = @($packet.existingAssessments | Where-Object assessmentId -eq $request.assessmentId)[0]
+                $proposedIdFamily = (($packet.candidate.id -replace '[^A-Za-z0-9]+', '-').ToUpperInvariant()).Trim('-')
+                if ($proposedIdFamily.Length -gt 23) {
+                    $proposedIdFamily = $proposedIdFamily.Substring(0, 23).TrimEnd('-')
+                }
+                [ordered]@{
+                    assessmentId = $request.assessmentId
+                    proposedHostedRuleId = if ([string]::IsNullOrWhiteSpace([string]$existing.targetHostedRuleId)) { "REPAIR-$proposedIdFamily-001" } else { [string]$existing.targetHostedRuleId }
+                    proposedText = "Apply repaired $($request.assessmentId) guidance during Hosted review."
+                    hostedCategory = 'review-classification-and-evidence'
+                    affectedSurfaces = @('review-skill')
+                }
+            })
+        }
+    })
+}
+else {
+    @($batch.candidates | ForEach-Object {
     $applicable = $_.id -ne 'REVIEW-CLASS-002'
-    $affectedSurfaces = New-Object 'System.Collections.Generic.List[string]'
-    if ($applicable) {
-        $affectedSurfaces.Add('review-skill')
+    $proposedIdFamily = (($_.id -replace '[^A-Za-z0-9]+', '-').ToUpperInvariant()).Trim('-')
+    if ($proposedIdFamily.Length -gt 23) {
+        $proposedIdFamily = $proposedIdFamily.Substring(0, 23).TrimEnd('-')
     }
+    $affectedSurfaces = @('review-skill')
     [ordered]@{
         id = $_.id
         assessments = @(
@@ -214,16 +241,17 @@ $records = @($batch.candidates | ForEach-Object {
                 title = $_.title
                 candidateState = $_.state
                 targetHostedRuleId = $null
+                proposedHostedRuleId = "CAND-$proposedIdFamily-001"
                 hostedApplicable = $applicable
                 applicabilityRationale = if ($applicable) { "Rule $($_.id) controls native Hosted review findings." } else { "Rule $($_.id) is workflow commentary outside native Hosted review." }
-                hostedCategory = if ($applicable) { 'review-classification-and-evidence' } else { 'not-applicable' }
+                hostedCategory = 'review-classification-and-evidence'
                 recommendation = if ($applicable) { 'add' } else { 'exclude' }
                 summary = "Candidate-specific assessment for $($_.id)."
                 impactDescription = "Candidate $($_.id) has independently evaluated review impact."
                 currentHostedCoverage = "Candidate $($_.id) was compared with the current Hosted catalog."
-                affectedSurfaces = $affectedSurfaces.ToArray()
+                affectedSurfaces = $affectedSurfaces
                 guardedTokenDelta = if ($applicable) { 12 } else { 0 }
-                proposedText = if ($applicable) { "Apply $($_.id) during Hosted review." } else { '' }
+                proposedText = "Apply $($_.id) during Hosted review."
                 selectionFactors = [ordered]@{
                     severity = if ($applicable) { 4 } else { 1 }
                     frequency = 3
@@ -237,7 +265,8 @@ $records = @($batch.candidates | ForEach-Object {
             }
         )
     }
-})
+    })
+}
 [IO.File]::WriteAllText($OutputPath, ($records | ConvertTo-Json -Depth 12) + "`n", [Text.UTF8Encoding]::new($false))
 '@
     [IO.File]::WriteAllText($fakeEvaluatorPath, $fakeEvaluator, [Text.UTF8Encoding]::new($false))
@@ -294,6 +323,61 @@ else {
     $baselineReuseCalls = @(if (Test-Path -LiteralPath $baselineReuseLogPath -PathType Leaf) { Get-Content -LiteralPath $baselineReuseLogPath })
     Add-TestResult -Name 'fresh-machine-reuses-baseline' -Passed ($baselineReuse.baselineHitCount -eq 2 -and $baselineReuse.cacheHitCount -eq 0 -and $baselineReuse.evaluatedCount -eq 0 -and $baselineReuse.batchCount -eq 0 -and $baselineReuseCalls.Count -eq 0) -Detail 'A machine with no local cache receives every unchanged assessment from the committed baseline without invoking an evaluator.'
 
+    $repairRoot = Join-Path $tempRoot 'field-repair'
+    New-Item -ItemType Directory -Path $repairRoot -Force | Out-Null
+    $legacyBaselinePath = Join-Path $repairRoot 'legacy-baseline.json'
+    $legacyBaseline = $baselineContent | ConvertFrom-Json
+    $legacyAssessment = @($legacyBaseline.entries | Where-Object id -eq 'REVIEW-CLASS-002')[0].assessments[0]
+    $preservedSelectionRationale = [string]$legacyAssessment.selectionRationale
+    $legacyAssessment.proposedHostedRuleId = $null
+    $legacyAssessment.proposedText = ''
+    $legacyAssessment.hostedCategory = 'not-applicable'
+    $legacyAssessment.affectedSurfaces = @()
+    [IO.File]::WriteAllText($legacyBaselinePath, ($legacyBaseline | ConvertTo-Json -Depth 30) + "`n", [Text.UTF8Encoding]::new($false))
+    $repairLogPath = Join-Path $repairRoot 'calls.log'
+    $repairOutputPath = Join-Path $repairRoot 'repaired.json'
+    $env:FAKE_EVALUATOR_CALL_LOG = $repairLogPath
+    $repair = Invoke-Assessment -InputPath $bundlePath -OutputPath $repairOutputPath -CachePath (Join-Path $repairRoot 'cache.json') -BaselinePath $legacyBaselinePath -BatchSize 20 -RepairMissingFields
+    $repairedBundleContent = Get-Content -LiteralPath $repairOutputPath -Raw
+    $repairedBundle = $repairedBundleContent | ConvertFrom-Json
+    $repairedAssessment = @($repairedBundle.interactiveCandidates | Where-Object id -eq 'REVIEW-CLASS-002')[0].assessments[0]
+    $repairCalls = @(Get-Content -LiteralPath $repairLogPath)
+    $smartRepairPassed = $repair.repairCandidateCount -eq 1 -and
+        $repair.repairedCount -eq 1 -and
+        $repair.evaluatedCount -eq 0 -and
+        $repair.repairBatchCount -eq 1 -and
+        $repair.fullBatchCount -eq 0 -and
+        $repair.baselineHitCount -eq 1 -and
+        $repairCalls.Count -eq 1 -and
+        $repairedAssessment.recommendation -eq 'exclude' -and
+        $repairedAssessment.selectionRationale -eq $preservedSelectionRationale -and
+        -not [string]::IsNullOrWhiteSpace([string]$repairedAssessment.proposedHostedRuleId) -and
+        -not [string]::IsNullOrWhiteSpace([string]$repairedAssessment.proposedText) -and
+        [bool]($repairedBundleContent | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)
+    Add-TestResult -Name 'missing-fields-repaired-only' -Passed $smartRepairPassed -Detail 'Smart assessment repairs only missing proposal fields, preserves existing semantic judgments, reuses complete baseline records, and performs no full reassessment.'
+
+    $invalidCacheRecoveryPassed = $true
+    foreach ($invalidCacheCase in @(
+        [pscustomobject]@{ name = 'legacy'; content = '{"schemaVersion":1,"entries":[]}' },
+        [pscustomobject]@{ name = 'malformed'; content = '{invalid' }
+    )) {
+        $invalidCachePath = Join-Path $baselineRoot "$($invalidCacheCase.name)-cache.json"
+        $invalidCacheLogPath = Join-Path $baselineRoot "$($invalidCacheCase.name)-cache-calls.log"
+        [IO.File]::WriteAllText($invalidCachePath, $invalidCacheCase.content, [Text.UTF8Encoding]::new($false))
+        $env:FAKE_EVALUATOR_CALL_LOG = $invalidCacheLogPath
+        try {
+            $invalidCacheReuse = Invoke-Assessment -InputPath $bundlePath -OutputPath (Join-Path $baselineRoot "$($invalidCacheCase.name)-cache-reused.json") -CachePath $invalidCachePath -BaselinePath $baselinePath
+            $recoveredCache = Get-Content -LiteralPath $invalidCachePath -Raw | ConvertFrom-Json
+            $invalidCacheCalls = @(if (Test-Path -LiteralPath $invalidCacheLogPath -PathType Leaf) { Get-Content -LiteralPath $invalidCacheLogPath })
+            $invalidCacheRecoveryPassed = $invalidCacheRecoveryPassed -and $invalidCacheReuse.cacheReset -and $invalidCacheReuse.baselineHitCount -eq 2 -and $invalidCacheReuse.evaluatedCount -eq 0 -and $invalidCacheReuse.batchCount -eq 0 -and $invalidCacheCalls.Count -eq 0 -and $recoveredCache.schemaVersion -eq 2 -and @($recoveredCache.entries).Count -eq 0
+        }
+        catch {
+            $invalidCacheRecoveryPassed = $false
+        }
+    }
+    Add-TestResult -Name 'invalid-local-cache-recovered' -Passed $invalidCacheRecoveryPassed -Detail 'Legacy and malformed disposable caches are atomically reset before the committed baseline is reused without invoking an evaluator.'
+
+    $env:FAKE_EVALUATOR_CALL_LOG = $callLogPath
     $cachedOutputPath = Join-Path $tempRoot 'cached-assessed.json'
     $cached = Invoke-Assessment -InputPath $bundlePath -OutputPath $cachedOutputPath -CachePath $cachePath
     $cachedCalls = @(Get-Content -LiteralPath $callLogPath)
@@ -305,7 +389,7 @@ else {
     $collectorCachePath = Join-Path $collectorRoot 'cache.json'
     $collectorLogPath = Join-Path $collectorRoot 'calls.log'
     $env:FAKE_EVALUATOR_CALL_LOG = $collectorLogPath
-    $collectorOutput = @(& pwsh -NoProfile -File $assessmentPath -CollectorScriptPath $fakeCollectorPath -OutputPath $collectorOutputPath -CachePath $collectorCachePath -EvaluatorScriptPath $fakeEvaluatorPath -BatchSize 2 -OutputFormat Json 2>&1)
+    $collectorOutput = @(& pwsh -NoProfile -File $assessmentPath -CollectorScriptPath $fakeCollectorPath -BaselinePath (Join-Path $tempRoot 'absent-baseline.json') -OutputPath $collectorOutputPath -CachePath $collectorCachePath -EvaluatorScriptPath $fakeEvaluatorPath -BatchSize 2 -OutputFormat Json 2>&1)
     $collectorExitCode = $LASTEXITCODE
     $collectorResult = if ($collectorExitCode -eq 0) { ($collectorOutput | Out-String) | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'collector-file-handoff' -Passed ($collectorExitCode -eq 0 -and $collectorResult.evaluatedCount -eq 2 -and $collectorResult.batchCount -eq 1 -and (Test-Path -LiteralPath $collectorOutputPath -PathType Leaf)) -Detail 'Default collection writes and reads a temporary bundle file instead of transporting large JSON through stdout.'
@@ -357,6 +441,19 @@ else {
     $mixedBaselineResult = if ($LASTEXITCODE -eq 0) { ($mixedBaselineOutput | Out-String) | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'maintainer-baseline-publication' -Passed ($null -ne $mixedBaselineResult -and $mixedBaselineResult.maintainerCount -eq 1 -and $mixedBaselineResult.entryCount -eq 4) -Detail 'Baseline publication generates a hash-bound maintainer assessment entry from the assessed bundle.'
 
+    $emptyUpstreamBundlePath = Join-Path $mixedRoot 'empty-upstream-assessed.json'
+    $emptyUpstreamBundle = Get-Content -LiteralPath $mixedAssessedPath -Raw | ConvertFrom-Json
+    $emptyUpstreamBundle.upstreamCandidates[0].assessments = @()
+    [IO.File]::WriteAllText($emptyUpstreamBundlePath, ($emptyUpstreamBundle | ConvertTo-Json -Depth 30) + "`n", [Text.UTF8Encoding]::new($false))
+    $emptyUpstreamBaselinePath = Join-Path $mixedRoot 'empty-upstream-baseline.json'
+    $emptyUpstreamPublishOutput = @(& pwsh -NoProfile -File $baselinePublisherPath -BundlePath $emptyUpstreamBundlePath -BaselinePath $emptyUpstreamBaselinePath -Publish -OutputFormat Json 2>&1)
+    $emptyUpstreamPublishExitCode = $LASTEXITCODE
+    $emptyUpstreamLogPath = Join-Path $mixedRoot 'empty-upstream-calls.log'
+    $env:FAKE_EVALUATOR_CALL_LOG = $emptyUpstreamLogPath
+    $emptyUpstreamReuse = if ($emptyUpstreamPublishExitCode -eq 0) { Invoke-Assessment -InputPath $mixedBundlePath -OutputPath (Join-Path $mixedRoot 'empty-upstream-reused.json') -CachePath (Join-Path $mixedRoot 'empty-upstream-cache.json') -BaselinePath $emptyUpstreamBaselinePath -BatchSize 50 } else { $null }
+    $emptyUpstreamCalls = @(if (Test-Path -LiteralPath $emptyUpstreamLogPath -PathType Leaf) { Get-Content -LiteralPath $emptyUpstreamLogPath })
+    Add-TestResult -Name 'empty-upstream-assessment-reused' -Passed ($emptyUpstreamPublishExitCode -eq 0 -and $emptyUpstreamReuse.baselineHitCount -eq 4 -and $emptyUpstreamReuse.evaluatedCount -eq 0 -and $emptyUpstreamReuse.batchCount -eq 0 -and $emptyUpstreamCalls.Count -eq 0) -Detail 'A schema-valid upstream source with no enforceable rules remains a resolved empty assessment set and does not invoke the evaluator.'
+
     $env:FAKE_EVALUATOR_CALL_LOG = $callLogPath
     Write-Bundle -Path $changedBundlePath -SecondHash ('f' * 64)
     $changedOutputPath = Join-Path $tempRoot 'changed-assessed.json'
@@ -391,7 +488,7 @@ else {
     $env:FAKE_EVALUATOR_CALL_LOG = $failureLogPath
     $env:FAKE_EVALUATOR_FAIL_ONCE = ''
     $env:FAKE_EVALUATOR_ALWAYS_FAIL = '1'
-    $failureOutput = @(& pwsh -NoProfile -File $assessmentPath -BundlePath $bundlePath -OutputPath $failureOutputPath -CachePath $failureCachePath -EvaluatorScriptPath $fakeEvaluatorPath -BatchSize 2 -MaxRetries 1 -OutputFormat Json 2>&1)
+    $failureOutput = @(& pwsh -NoProfile -File $assessmentPath -BundlePath $bundlePath -BaselinePath (Join-Path $tempRoot 'absent-baseline.json') -OutputPath $failureOutputPath -CachePath $failureCachePath -EvaluatorScriptPath $fakeEvaluatorPath -BatchSize 2 -MaxRetries 1 -OutputFormat Json 2>&1)
     $failureExitCode = $LASTEXITCODE
     $failureCalls = @(Get-Content -LiteralPath $failureLogPath)
     Add-TestResult -Name 'malformed-output-fails-closed' -Passed ($failureExitCode -ne 0 -and $failureCalls.Count -eq 2 -and -not (Test-Path -LiteralPath $failureOutputPath)) -Detail 'Persistently malformed evaluator output exhausts bounded retries and does not write a final bundle.'

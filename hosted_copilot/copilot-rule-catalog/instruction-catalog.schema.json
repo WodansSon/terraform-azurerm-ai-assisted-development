@@ -90,7 +90,7 @@
                 "ruleIds": {
                   "type": "array",
                   "minItems": 1,
-                  "items": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
+                  "items": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
                 }
               }
             }
@@ -107,7 +107,7 @@
         "additionalProperties": false,
         "required": ["id", "origin", "status", "text", "provenance", "sourceIds", "evidenceIds"],
         "properties": {
-          "id": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" },
+          "id": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" },
           "origin": { "enum": ["hosted-baseline-migration", "hosted-catalog-addition"] },
           "status": { "enum": ["active", "retired"] },
           "text": { "type": "string", "minLength": 1 },
@@ -176,7 +176,7 @@
                   "affectedHostedRuleIds": {
                     "type": "array",
                     "uniqueItems": true,
-                    "items": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
+                    "items": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" }
                   },
                   "affectedSurfaces": {
                     "type": "array",

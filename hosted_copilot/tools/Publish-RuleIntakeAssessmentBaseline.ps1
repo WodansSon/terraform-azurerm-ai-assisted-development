@@ -76,7 +76,7 @@ foreach ($source in @(
 
 $baseline = [ordered]@{
     '$schema' = 'assessment-baseline.schema.json'
-    schemaVersion = 2
+    schemaVersion = 3
     generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
     hostedCatalogSha256 = [string]$bundle.snapshots.hostedCatalogSha256
     sourceBundleSha256 = Get-ContentSha256 -Content $bundleContent

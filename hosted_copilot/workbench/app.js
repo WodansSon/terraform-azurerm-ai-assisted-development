@@ -3,10 +3,14 @@
 const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
-const SESSION_SCHEMA_VERSION = 6;
-const APPROVAL_PAYLOAD_SCHEMA_VERSION = 5;
+const RULE_INTAKE_REVIEW_SCHEMA_VERSION = 3;
+const SESSION_SCHEMA_VERSION = 7;
+const APPROVAL_PAYLOAD_SCHEMA_VERSION = 7;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
+const PROPOSED_HOSTED_RULE_ID_MAX_LENGTH = 32;
+const PROPOSED_HOSTED_RULE_ID_PATTERN = /^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$/;
+const WORKBENCH_TOOLTIP_DELAY_MS = 500;
 const FACTORS = [
   ["severity", "Severity", "Harm caused when this defect is missed", "value"],
   ["frequency", "Frequency", "How often this defect appears in provider changes", "value"],
@@ -47,6 +51,27 @@ let toastTimer;
 let rawPayloadChangeIndex = 0;
 let rawPayloadChangeCount = 0;
 let truncationTooltipFrame;
+let proposedHostedRuleIdValidationTimer;
+let candidateSortRestoreFrame;
+const workbenchTooltip = {
+  anchorX: 0,
+  owner: null,
+  showTimer: 0,
+  suppressedOwner: null
+};
+const candidateDisclosureScroll = {
+  restoreFrame: 0,
+  scrollTop: 0,
+  snapSuspended: false
+};
+const candidateStickyStack = {
+  activeLayer: null,
+  forceUpdate: false,
+  originalRows: [],
+  scrollFrame: 0,
+  slotOwners: [],
+  slotRows: []
+};
 
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
@@ -83,7 +108,7 @@ function captureElements() {
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
     "promotion-plan-stage", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
-    "candidate-list", "candidate-panel", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
+    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
     "assessment-results-list", "assessment-results-detail",
     "return-catalog-button", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
@@ -97,7 +122,9 @@ function captureElements() {
 
 function bindEvents() {
   document.addEventListener("pointerover", handleWorkbenchTooltipPointerOver);
+  document.addEventListener("pointermove", handleWorkbenchTooltipPointerMove);
   document.addEventListener("pointerout", handleWorkbenchTooltipPointerOut);
+  document.addEventListener("pointerdown", handleWorkbenchTooltipPointerDown);
   document.addEventListener("focusin", handleWorkbenchTooltipFocusIn);
   document.addEventListener("focusout", handleWorkbenchTooltipFocusOut);
   document.querySelectorAll("[data-view]").forEach((button) => {
@@ -138,7 +165,18 @@ function bindEvents() {
       showCandidatePane("details");
     }
   });
+  elements["candidate-list"].addEventListener("click", handleCandidateDisclosureClick, true);
   elements["candidate-list"].addEventListener("change", handleTreeSelection);
+  elements["candidate-list"].addEventListener("scroll", () => updateCandidateStickyStack());
+  elements["candidate-list"].addEventListener("toggle", () => scheduleCandidateStickyStackUpdate(true), true);
+  elements["candidate-sticky-stack"].addEventListener("click", handleCandidateStickyDisclosureClick);
+  elements["candidate-sticky-stack"].addEventListener("wheel", handleCandidateStickyWheel, { passive: false });
+  [elements["candidate-list"], elements["candidate-sticky-stack"]].forEach((container) => {
+    container.addEventListener("wheel", restoreCandidateDisclosureSnap, true);
+    container.addEventListener("touchstart", restoreCandidateDisclosureSnap, true);
+    container.addEventListener("pointerdown", handleCandidateDisclosurePointerDown, true);
+    container.addEventListener("keydown", restoreCandidateDisclosureSnap, true);
+  });
   elements["candidate-list"].addEventListener("keydown", (event) => {
     handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
@@ -178,6 +216,7 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
+  elements["assessment-panel"].addEventListener("focusout", handleAssessmentFocusOut);
   [elements["assessment-panel"], elements["assessment-results-detail"]].forEach((panel) => {
     panel.addEventListener("click", handleDetailBackToTopClick);
     panel.addEventListener("scroll", handleDetailContentScroll, true);
@@ -220,9 +259,10 @@ function bindEvents() {
   });
   window.addEventListener("resize", hideStatusTooltip);
   window.addEventListener("resize", scheduleTruncationTooltips);
+  window.addEventListener("resize", () => scheduleCandidateStickyStackUpdate(true));
 }
 
-function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left) {
+function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left + item.getBoundingClientRect().width / 2) {
   const value = item.dataset.workbenchTooltip || (item.hasAttribute("data-truncation-tooltip") ? item.textContent.trim() : "");
   if (!value) return;
 
@@ -235,7 +275,7 @@ function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left)
 
   const itemRect = item.getBoundingClientRect();
   const tooltipRect = tooltip.getBoundingClientRect();
-  const left = Math.floor(Math.min(Math.max(8, anchorX), Math.max(8, window.innerWidth - tooltipRect.width - 8)));
+  const left = Math.floor(Math.min(Math.max(8, anchorX - tooltipRect.width / 2), Math.max(8, window.innerWidth - tooltipRect.width - 8)));
   const below = itemRect.bottom + 6;
   const top = below + tooltipRect.height + 8 <= window.innerHeight
     ? below
@@ -249,36 +289,63 @@ function getWorkbenchTooltipOwner(target) {
     || null;
 }
 
+function cancelWorkbenchTooltipShow() {
+  if (workbenchTooltip.showTimer) window.clearTimeout(workbenchTooltip.showTimer);
+  workbenchTooltip.showTimer = 0;
+}
+
+function scheduleWorkbenchTooltip(owner, anchorX) {
+  cancelWorkbenchTooltipShow();
+  workbenchTooltip.owner = owner;
+  workbenchTooltip.anchorX = anchorX;
+  workbenchTooltip.showTimer = window.setTimeout(() => {
+    workbenchTooltip.showTimer = 0;
+    if (workbenchTooltip.owner !== owner || workbenchTooltip.suppressedOwner === owner || !owner.matches(":hover, :focus")) return;
+    showWorkbenchTooltip(owner, workbenchTooltip.anchorX);
+  }, WORKBENCH_TOOLTIP_DELAY_MS);
+}
+
 function handleWorkbenchTooltipPointerOver(event) {
   const owner = getWorkbenchTooltipOwner(event.target);
   if (!owner || owner.contains(event.relatedTarget)) return;
-  showWorkbenchTooltip(owner, event.clientX);
+  if (workbenchTooltip.suppressedOwner === owner) return;
+  workbenchTooltip.suppressedOwner = null;
+  scheduleWorkbenchTooltip(owner, event.clientX);
+}
+
+function handleWorkbenchTooltipPointerMove(event) {
+  const owner = getWorkbenchTooltipOwner(event.target);
+  if (owner && workbenchTooltip.owner === owner && workbenchTooltip.showTimer) workbenchTooltip.anchorX = event.clientX;
 }
 
 function handleWorkbenchTooltipPointerOut(event) {
   const owner = getWorkbenchTooltipOwner(event.target);
   if (!owner || owner.contains(event.relatedTarget)) return;
+  if (workbenchTooltip.suppressedOwner === owner) workbenchTooltip.suppressedOwner = null;
+  hideStatusTooltip();
+}
+
+function handleWorkbenchTooltipPointerDown(event) {
+  const owner = getWorkbenchTooltipOwner(event.target);
+  if (!owner) return;
+  workbenchTooltip.suppressedOwner = owner;
   hideStatusTooltip();
 }
 
 function handleWorkbenchTooltipFocusIn(event) {
   const owner = getWorkbenchTooltipOwner(event.target);
-  if (owner) showWorkbenchTooltip(owner);
+  if (!owner || workbenchTooltip.suppressedOwner === owner || owner.matches(":hover")) return;
+  const rect = owner.getBoundingClientRect();
+  scheduleWorkbenchTooltip(owner, rect.left + rect.width / 2);
 }
 
 function handleWorkbenchTooltipFocusOut(event) {
   if (getWorkbenchTooltipOwner(event.target)) hideStatusTooltip();
 }
 
-function showStatusTooltip(item) {
-  showWorkbenchTooltip(item);
-}
-
-function showSourceProvenanceTooltip(pill, anchorX) {
-  showWorkbenchTooltip(pill, anchorX);
-}
-
 function hideStatusTooltip() {
+  cancelWorkbenchTooltipShow();
+  workbenchTooltip.owner = null;
   elements["status-surface-tooltip"].classList.remove("visible");
   elements["status-surface-tooltip"].setAttribute("aria-hidden", "true");
 }
@@ -324,7 +391,7 @@ async function loadBundle() {
     const discoveredCandidates = normalizeCandidates(bundle);
     const sessionId = getSessionId(bundle);
     const existing = await readSession(sessionId);
-    state.session = existing?.schemaVersion === SESSION_SCHEMA_VERSION ? existing : createSession(sessionId, bundle);
+    state.session = migrateSession(existing, discoveredCandidates) || createSession(sessionId, bundle);
     autofillApproverName();
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
@@ -390,7 +457,7 @@ async function closeWorkbench() {
 }
 
 function validateBundle(bundle) {
-  if (!bundle || bundle.readOnly !== true || bundle.refreshMode !== "regenerate-read-only-bundle") {
+  if (!bundle || bundle.schemaVersion !== RULE_INTAKE_REVIEW_SCHEMA_VERSION || bundle.readOnly !== true || bundle.refreshMode !== "regenerate-read-only-bundle") {
     throw new Error("The candidate bundle does not satisfy the read-only Workbench contract.");
   }
   if (!bundle.guidanceCapacity || bundle.guidanceCapacity.reportCount !== 8) {
@@ -497,6 +564,19 @@ function createSession(id, bundle) {
   };
 }
 
+function migrateSession(session, candidates) {
+  if (!session) return null;
+  if (session.schemaVersion === SESSION_SCHEMA_VERSION) return session;
+  if (session.schemaVersion !== 6) return null;
+  const migrated = structuredClone(session);
+  for (const [key, decision] of Object.entries(migrated.decisions || {})) {
+    const candidate = candidates.find((item) => item.key === key);
+    decision.proposedHostedRuleId = String(decision.proposedHostedRuleId ?? candidate?.assessment?.proposedHostedRuleId ?? "");
+  }
+  migrated.schemaVersion = SESSION_SCHEMA_VERSION;
+  return migrated;
+}
+
 function createPlanMembership(source = "none", bulkOperationId = null) {
   return {
     inPlan: source !== "none",
@@ -597,6 +677,7 @@ function defaultDecision(candidate) {
     ...createPlanMembership(),
     rationale: "",
     proposedText: assessment?.proposedText || (candidate.sourceType === "upstream" ? "" : extractRuleBody(candidate.text)),
+    proposedHostedRuleId: String(assessment?.proposedHostedRuleId || ""),
     assessment,
     updatedAt: new Date().toISOString()
   };
@@ -624,18 +705,52 @@ function extractRuleBody(text) {
 function getDecision(candidate) {
   const saved = state.session.decisions[candidate.key];
   if (!saved || saved.sourceHash !== candidate.hash) return defaultDecision(candidate);
-  const proposedText = String(saved.proposedText ?? defaultDecision(candidate).proposedText);
+  const defaults = defaultDecision(candidate);
+  const proposedText = String(saved.proposedText ?? defaults.proposedText);
   const allowedActions = getAllowedActions(candidate, proposedText);
   if (!allowedActions.includes(saved.action) || !isValidPlanMembership(saved, candidate.key)) return defaultDecision(candidate);
   return {
     ...saved,
     proposedText,
+    proposedHostedRuleId: String(saved.proposedHostedRuleId ?? defaults.proposedHostedRuleId),
     inPlan: saved.inPlan,
     planMembershipSource: saved.planMembershipSource,
     bulkOperationId: saved.bulkOperationId,
     rationale: String(saved.rationale || "").slice(0, DECISION_RATIONALE_MAX_LENGTH),
     assessment: candidate.assessment || getPriorAssessment(candidate),
   };
+}
+
+function getProposedHostedRuleIdValidation(candidate, value, decisions = state.session.decisions) {
+  const proposedHostedRuleId = String(value || "").trim();
+  if (!proposedHostedRuleId) return { valid: false, message: "Proposed Hosted Rule ID is required." };
+  if (proposedHostedRuleId.length > PROPOSED_HOSTED_RULE_ID_MAX_LENGTH) {
+    return { valid: false, message: `Proposed Hosted Rule ID must be ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters or fewer.` };
+  }
+  if (!PROPOSED_HOSTED_RULE_ID_PATTERN.test(proposedHostedRuleId)) {
+    return { valid: false, message: "Use a Hosted rule ID such as REVIEW-EVID-001." };
+  }
+  const targetHostedRuleId = candidate.assessment.targetHostedRuleId;
+  if ((state.bundle?.hostedRules || []).some((rule) => rule.id === proposedHostedRuleId) && proposedHostedRuleId !== targetHostedRuleId) {
+    return { valid: false, message: `${proposedHostedRuleId} is already assigned to an existing Hosted rule.` };
+  }
+  if (proposedHostedRuleId === targetHostedRuleId) return { valid: true, message: "Proposed Hosted Rule ID is valid." };
+  const collision = state.assessedCandidates.some((otherCandidate) => {
+    if (otherCandidate.key === candidate.key) return false;
+    const saved = decisions?.[otherCandidate.key];
+    const otherProposedHostedRuleId = saved?.sourceHash === otherCandidate.hash
+      ? saved.proposedHostedRuleId
+      : otherCandidate.assessment.proposedHostedRuleId;
+    return String(otherProposedHostedRuleId || "").trim() === proposedHostedRuleId;
+  });
+  if (collision) return { valid: false, message: `${proposedHostedRuleId} is already assigned to another proposed Hosted rule.` };
+  return { valid: true, message: "Proposed Hosted Rule ID is valid." };
+}
+
+function getEffectiveHostedRuleId(candidate) {
+  const decision = getDecision(candidate);
+  if (getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId).valid) return decision.proposedHostedRuleId.trim();
+  return candidate.assessment.proposedHostedRuleId || candidate.assessment.targetHostedRuleId || candidate.assessment.assessmentId;
 }
 
 function getCatalogStatus(candidate) {
@@ -931,7 +1046,7 @@ function getFilteredCandidates() {
   const query = state.queries["candidate-sources"].trim().toLowerCase();
   return state.candidates.filter((candidate) => {
     if (!query) return true;
-    return [candidate.id, candidate.title, candidate.sourceId, candidate.sourceTitle, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel]
+    return [getEffectiveHostedRuleId(candidate), candidate.id, candidate.title, candidate.sourceId, candidate.sourceTitle, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 }
@@ -940,13 +1055,13 @@ function getBestCandidateSearchMatch() {
   const query = state.queries["candidate-sources"].trim().toLowerCase();
   if (!query) return null;
   const rank = (candidate) => {
-    const values = [candidate.id, candidate.sourceId, candidate.title, candidate.sourceTitle]
+    const values = [getEffectiveHostedRuleId(candidate), candidate.id, candidate.sourceId, candidate.title, candidate.sourceTitle]
       .map((value) => String(value || "").toLowerCase());
     if (values.some((value) => value === query)) return 0;
     if (values.some((value) => value.startsWith(query))) return 1;
     return 2;
   };
-  return getFilteredCandidates().sort((left, right) => rank(left) - rank(right) || left.id.localeCompare(right.id))[0] || null;
+  return getFilteredCandidates().sort((left, right) => rank(left) - rank(right) || getEffectiveHostedRuleId(left).localeCompare(getEffectiveHostedRuleId(right)))[0] || null;
 }
 
 function navigateCandidateSearch({ scroll = true } = {}) {
@@ -955,8 +1070,9 @@ function navigateCandidateSearch({ scroll = true } = {}) {
   if (!candidate) return;
   const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
   if (!row) return;
-  row.closest("details.candidate-category")?.setAttribute("open", "");
-  row.closest("details.candidate-source-root")?.setAttribute("open", "");
+  for (let ancestor = row.parentElement; ancestor && ancestor !== elements["candidate-list"]; ancestor = ancestor.parentElement) {
+    if (ancestor.matches("details.candidate-category, details.candidate-source-root")) ancestor.setAttribute("open", "");
+  }
   row.classList.add("search-match");
   if (scroll) row.scrollIntoView({ block: "center" });
 }
@@ -1117,22 +1233,284 @@ function getCandidateAggregateDecoration(candidates) {
   };
 }
 
-function renderCandidateDecoration(decoration, className) {
+function renderCandidateDecoration(decoration, className, includeTooltip = true) {
   const hidden = decoration ? "" : " hidden";
-  const tooltip = decoration ? ` data-workbench-tooltip="${escapeHtml(decoration.description)}"` : "";
+  const tooltip = decoration && includeTooltip ? ` data-workbench-tooltip="${escapeHtml(decoration.description)}"` : "";
   const description = decoration ? escapeHtml(decoration.description) : "";
   return `<svg class="codicon ${className}" aria-hidden="true"${tooltip}${hidden}><use href="icons/codicons/sprite.svg#codicon-diff-modified"></use></svg><span class="candidate-decoration-description sr-only">${description}</span>`;
 }
 
+function renderCandidateAggregateDecoration(decoration) {
+  return renderCandidateDecoration(decoration, "candidate-parent-decoration-icon", false);
+}
+
 function renderCandidateAggregateAttributes(decoration) {
-  return decoration ? ` data-selection-status="${decoration.status}" data-workbench-tooltip="${escapeHtml(decoration.description)}"` : "";
+  return decoration ? ` data-selection-status="${decoration.status}"` : "";
+}
+
+function renderCandidateCountBadge(count, singular, decoration) {
+  const tooltip = decoration ? ` data-workbench-tooltip="${escapeHtml(decoration.description)}"` : "";
+  return `<span class="status-badge neutral count-badge type-compact"${tooltip}>${formatCountLabel(count, singular)}</span>`;
 }
 
 function candidateAggregateClass(decoration) {
   return decoration ? ` candidate-aggregate-${decoration.status}` : "";
 }
 
+function getCandidateStickyNaturalTop(node) {
+  let top = 0;
+  for (let current = node; current && current !== elements["candidate-list"]; current = current.offsetParent) {
+    top += current.offsetTop;
+  }
+  return top;
+}
+
+function getCandidateStickyRow(owner) {
+  return owner.matches("details")
+    ? owner.querySelector(":scope > summary")
+    : owner.querySelector(":scope > .candidate-list-header");
+}
+
+function selectCandidateStickyOwner(parent, depth, threshold, useFirstAsFallback = false) {
+  const owners = [...parent.querySelectorAll(`:scope > [data-tree-depth="${depth}"]`)];
+  let selected = useFirstAsFallback ? owners[0] || null : null;
+  owners.forEach((owner) => {
+    const row = getCandidateStickyRow(owner);
+    if (row && getCandidateStickyNaturalTop(row) <= threshold + 1) selected = owner;
+  });
+  return selected;
+}
+
+function resolveCandidateStickyStack() {
+  const scroller = elements["candidate-list"];
+  const sourceRoots = [...scroller.querySelectorAll(':scope > details.candidate-source-root[data-tree-depth="0"]')];
+  const slots = [];
+  let prefixHeight = 0;
+  let owner = null;
+  sourceRoots.forEach((source) => {
+    const row = getCandidateStickyRow(source);
+    if (!row || (slots.length && getCandidateStickyNaturalTop(row) > scroller.scrollTop + prefixHeight + 1)) return;
+    slots.push({ depth: 0, owner: source, row });
+    prefixHeight += row.offsetHeight;
+    owner = source;
+  });
+  if (!owner?.open) return slots;
+  let depth = 1;
+  while (owner.open) {
+    owner = selectCandidateStickyOwner(owner, depth, scroller.scrollTop + prefixHeight);
+    if (!owner) break;
+    const row = getCandidateStickyRow(owner);
+    if (!row) break;
+    slots.push({ depth, owner, row });
+    prefixHeight += row.offsetHeight;
+    if (!owner.matches("details") || !owner.open) break;
+    depth += 1;
+  }
+  return slots;
+}
+
+function createCandidateStickySlot(slot) {
+  if (!slot.owner.matches("details")) {
+    const header = slot.row.cloneNode(true);
+    header.dataset.stickyDepth = String(slot.depth);
+    return header;
+  }
+  const shell = document.createElement("details");
+  shell.className = slot.owner.className;
+  shell.open = slot.owner.open;
+  shell.dataset.stickyDepth = String(slot.depth);
+  if (slot.depth === 0) shell.dataset.stickySource = "";
+  else shell.dataset.stickyCategoryIndex = String([...slot.owner.parentElement.children].indexOf(slot.owner));
+  shell.appendChild(slot.row.cloneNode(true));
+  return shell;
+}
+
+function createCandidateStickyLayer(slots) {
+  const layer = document.createElement("div");
+  layer.className = "candidate-sticky-layer";
+  slots.forEach((slot) => layer.appendChild(createCandidateStickySlot(slot)));
+  return layer;
+}
+
+function restoreCandidateStickyOriginalRows() {
+  candidateStickyStack.originalRows.forEach((row) => row.classList.remove("candidate-sticky-original-hidden"));
+  candidateStickyStack.originalRows = [];
+}
+
+function hideCandidateStickyOriginalRows() {
+  candidateStickyStack.slotRows.forEach((row) => {
+    if (!row?.isConnected) return;
+    row.classList.add("candidate-sticky-original-hidden");
+    candidateStickyStack.originalRows.push(row);
+  });
+}
+
+function handleCandidateStickyDisclosureClick(event) {
+  const summary = event.target.closest(".candidate-sticky-layer.active > details > summary");
+  if (!summary || !elements["candidate-sticky-stack"].contains(summary)) return;
+  event.preventDefault();
+  const slot = summary.parentElement;
+  const slotIndex = [...candidateStickyStack.activeLayer.children].indexOf(slot);
+  const owner = candidateStickyStack.slotOwners[slotIndex];
+  if (!owner?.matches("details")) return;
+  const scrollTop = elements["candidate-list"].scrollTop;
+  suspendCandidateDisclosureSnap();
+  owner.open = !owner.open;
+  updateCandidateStickyStack({ force: true });
+  elements["candidate-list"].scrollTop = scrollTop;
+}
+
+function handleCandidateStickyWheel(event) {
+  if (!event.deltaY) return;
+  const multiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? elements["candidate-list"].clientHeight : 1;
+  elements["candidate-list"].scrollTop += event.deltaY * multiplier;
+  event.preventDefault();
+}
+
+function handleCandidateDisclosureClick(event) {
+  if (!event.target.closest("summary")) return;
+  suspendCandidateDisclosureSnap();
+}
+
+function handleCandidateDisclosurePointerDown(event) {
+  if (event.target.closest("summary")) return;
+  restoreCandidateDisclosureSnap();
+}
+
+function suspendCandidateDisclosureSnap() {
+  const scroller = elements["candidate-list"];
+  if (candidateDisclosureScroll.restoreFrame) cancelAnimationFrame(candidateDisclosureScroll.restoreFrame);
+  candidateDisclosureScroll.scrollTop = scroller.scrollTop;
+  candidateDisclosureScroll.snapSuspended = true;
+  scroller.classList.add("disclosure-changing");
+  candidateDisclosureScroll.restoreFrame = requestAnimationFrame(() => {
+    scroller.scrollTop = candidateDisclosureScroll.scrollTop;
+    candidateDisclosureScroll.restoreFrame = requestAnimationFrame(() => {
+      scroller.scrollTop = candidateDisclosureScroll.scrollTop;
+      candidateDisclosureScroll.restoreFrame = 0;
+    });
+  });
+}
+
+function restoreCandidateDisclosureSnap() {
+  if (!candidateDisclosureScroll.snapSuspended) return;
+  candidateDisclosureScroll.snapSuspended = false;
+  elements["candidate-list"].classList.remove("disclosure-changing");
+}
+
+function resetCandidateDisclosureScroll() {
+  if (candidateDisclosureScroll.restoreFrame) cancelAnimationFrame(candidateDisclosureScroll.restoreFrame);
+  candidateDisclosureScroll.restoreFrame = 0;
+  candidateDisclosureScroll.snapSuspended = false;
+  elements["candidate-list"].classList.remove("disclosure-changing");
+}
+
+function positionCandidateStickyStack() {
+  const panelRect = elements["candidate-panel"].getBoundingClientRect();
+  const headingRect = elements["candidate-panel"].querySelector(":scope > .panel-heading").getBoundingClientRect();
+  const listRect = elements["candidate-list"].getBoundingClientRect();
+  elements["candidate-sticky-stack"].style.top = `${headingRect.bottom - panelRect.top - 1}px`;
+  elements["candidate-sticky-stack"].style.left = `${listRect.left - panelRect.left}px`;
+  elements["candidate-sticky-stack"].style.right = `${panelRect.right - listRect.right + elements["candidate-list"].offsetWidth - elements["candidate-list"].clientWidth}px`;
+}
+
+function sameCandidateStickySlots(slots) {
+  return slots.length === candidateStickyStack.slotOwners.length
+    && slots.every((slot, index) => candidateStickyStack.slotOwners[index] === slot.owner && candidateStickyStack.slotRows[index] === slot.row);
+}
+
+function syncCandidateStickyStackGeometry() {
+  positionCandidateStickyStack();
+  const stackHeight = [...candidateStickyStack.activeLayer.children]
+    .reduce((height, slot) => height + slot.getBoundingClientRect().height, 0);
+  elements["candidate-sticky-stack"].style.height = `${stackHeight}px`;
+  elements["candidate-list"].style.scrollPaddingTop = `${stackHeight}px`;
+  const rootHeight = [...elements["candidate-list"].querySelectorAll(':scope > details.candidate-source-root[data-tree-depth="0"]')]
+    .reduce((height, root) => height + root.querySelector(":scope > summary").offsetHeight, 0);
+  elements["candidate-list"].style.paddingBottom = `${Math.max(0, elements["candidate-list"].clientHeight - rootHeight)}px`;
+}
+
+function candidateStickySameDepthSiblings(owner) {
+  if (!owner?.parentElement) return [];
+  return [...owner.parentElement.children]
+    .filter((sibling) => sibling.hasAttribute("data-tree-depth") && sibling.dataset.treeDepth === owner.dataset.treeDepth);
+}
+
+function isCandidateStickyTerminalBranch(owner) {
+  for (let current = owner; current && current !== elements["candidate-list"]; current = current.parentElement.closest("[data-tree-depth]")) {
+    if (candidateStickySameDepthSiblings(current).at(-1) !== current) return false;
+  }
+  return true;
+}
+
+function clampCandidateStickyTerminalRow() {
+  const owner = candidateStickyStack.slotOwners.at(-1);
+  if (!owner?.classList.contains("candidate-category-items")) return false;
+  const folder = owner.parentElement;
+  if (!isCandidateStickyTerminalBranch(folder)) return false;
+  const lastRow = [...owner.querySelectorAll(":scope > .candidate-tree-row")].at(-1);
+  if (!lastRow) return false;
+  const correction = elements["candidate-sticky-stack"].getBoundingClientRect().bottom - lastRow.getBoundingClientRect().top;
+  if (correction <= 0.5) return false;
+  elements["candidate-list"].scrollTop = Math.max(0, elements["candidate-list"].scrollTop - correction);
+  return true;
+}
+
+function updateCandidateStickyStack({ force = false, allowClamp = true } = {}) {
+  restoreCandidateStickyOriginalRows();
+  const slots = resolveCandidateStickyStack();
+  if (!slots.length) {
+    resetCandidateStickyStack();
+    return;
+  }
+  if (force || !candidateStickyStack.activeLayer?.isConnected || !sameCandidateStickySlots(slots)) {
+    const nextLayer = createCandidateStickyLayer(slots);
+    const previousLayer = candidateStickyStack.activeLayer;
+    elements["candidate-sticky-stack"].appendChild(nextLayer);
+    nextLayer.getBoundingClientRect();
+    nextLayer.classList.add("active");
+    previousLayer?.classList.remove("active");
+    candidateStickyStack.activeLayer = nextLayer;
+    candidateStickyStack.slotOwners = slots.map((slot) => slot.owner);
+    candidateStickyStack.slotRows = slots.map((slot) => slot.row);
+    previousLayer?.remove();
+    elements["candidate-sticky-stack"].hidden = false;
+  }
+  syncCandidateStickyStackGeometry();
+  hideCandidateStickyOriginalRows();
+  if (allowClamp && clampCandidateStickyTerminalRow()) updateCandidateStickyStack({ force: true, allowClamp: false });
+}
+
+function scheduleCandidateStickyStackUpdate(force = false) {
+  candidateStickyStack.forceUpdate ||= force;
+  if (candidateStickyStack.scrollFrame) return;
+  candidateStickyStack.scrollFrame = requestAnimationFrame(() => {
+    candidateStickyStack.scrollFrame = 0;
+    const shouldForce = candidateStickyStack.forceUpdate;
+    candidateStickyStack.forceUpdate = false;
+    updateCandidateStickyStack({ force: shouldForce });
+  });
+}
+
+function resetCandidateStickyStack() {
+  if (candidateStickyStack.scrollFrame) cancelAnimationFrame(candidateStickyStack.scrollFrame);
+  restoreCandidateStickyOriginalRows();
+  candidateStickyStack.scrollFrame = 0;
+  candidateStickyStack.forceUpdate = false;
+  candidateStickyStack.activeLayer?.remove();
+  candidateStickyStack.activeLayer = null;
+  candidateStickyStack.slotOwners = [];
+  candidateStickyStack.slotRows = [];
+  elements["candidate-sticky-stack"].replaceChildren();
+  elements["candidate-sticky-stack"].style.removeProperty("height");
+  elements["candidate-list"].style.removeProperty("scroll-padding-top");
+  elements["candidate-list"].style.removeProperty("padding-bottom");
+  elements["candidate-sticky-stack"].hidden = true;
+}
+
 function renderCandidateList() {
+  resetCandidateDisclosureScroll();
+  resetCandidateStickyStack();
   renderBulkActions();
   if (!state.candidates.length) {
     elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No Candidates Available</h3><p>No AI-evaluated candidates are present in this bundle.</p></div>`;
@@ -1142,9 +1520,9 @@ function renderCandidateList() {
   const regularCandidates = state.candidates.filter((candidate) => !getApplicabilityOverride(candidate));
   const overrideDecoration = getCandidateAggregateDecoration(overrideCandidates);
   const overrideGroup = overrideCandidates.length ? `
-    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides">
-      <summary class="clickable"${renderCandidateAggregateAttributes(overrideDecoration)}>${icon("shield")}<span class="candidate-parent-label"><strong>Overrides</strong>${renderCandidateDecoration(overrideDecoration, "candidate-parent-decoration-icon")}</span><span class="status-badge neutral count-badge type-compact">${formatCountLabel(overrideCandidates.length, "Override")}</span></summary>
-      ${renderCandidateItems("overrides:all", overrideCandidates, "override-candidates")}
+    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides" data-tree-depth="0" open>
+      <summary class="clickable"${renderCandidateAggregateAttributes(overrideDecoration)}>${icon("shield")}<span class="candidate-parent-label"><strong>OVERRIDES</strong>${renderCandidateAggregateDecoration(overrideDecoration)}</span>${renderCandidateCountBadge(overrideCandidates.length, "Override", overrideDecoration)}</summary>
+      ${renderOverrideSourceGroups(overrideCandidates)}
     </details>
   ` : "";
   const sources = [
@@ -1160,13 +1538,56 @@ function renderCandidateList() {
       : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
     const decoration = getCandidateAggregateDecoration(candidates);
     return `
-      <details class="candidate-source-root${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}">
-        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}${renderSourceSummaryLabel(sourceType, label, decoration)}<span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span></summary>
+      <details class="candidate-source-root${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-tree-depth="0">
+        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}${renderSourceSummaryLabel(sourceType, label, decoration)}${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}</summary>
         ${children}
       </details>
     `;
   }).join("");
   navigateCandidateSearch({ scroll: false });
+  updateCandidateStickyStack({ force: true, immediate: true });
+}
+
+function renderOverrideSourceGroups(candidates) {
+  const sources = [
+    ["interactive", "Interactive Toolkit"],
+    ["upstream", "Contributor Guidance"],
+    ["maintainer", "Maintainer Proposals"]
+  ];
+  return sources.map(([sourceType, label]) => {
+    const sourceCandidates = candidates.filter((candidate) => candidate.sourceType === sourceType);
+    if (!sourceCandidates.length) return "";
+    const decoration = getCandidateAggregateDecoration(sourceCandidates);
+    const origins = sourceType === "upstream"
+      ? Object.entries(groupCandidatesBySource(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([, members]) => renderOverrideOrigin(sourceType, members[0].sourceId, members[0].sourceTitle, members)).join("")
+      : Object.entries(groupOverrideCandidatesByCategory(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderOverrideOrigin(sourceType, category, category, members)).join("");
+    return `
+      <details class="candidate-category override-source-folder${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-tree-depth="1" open>
+        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>${renderCandidateCountBadge(sourceCandidates.length, "Override", decoration)}</summary>
+        ${origins}
+      </details>
+    `;
+  }).join("");
+}
+
+function groupOverrideCandidatesByCategory(candidates) {
+  return candidates.reduce((groups, candidate) => {
+    const category = candidate.sourceType === "interactive"
+      ? formatHostedCategory(candidate.assessment.hostedCategory)
+      : candidate.category;
+    (groups[category] ||= []).push(candidate);
+    return groups;
+  }, {});
+}
+
+function renderOverrideOrigin(sourceType, originKey, label, candidates) {
+  const decoration = getCandidateAggregateDecoration(candidates);
+  return `
+    <details class="candidate-category override-origin-folder${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-override-origin="${escapeHtml(originKey)}" data-tree-depth="2" open>
+      <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>${renderCandidateCountBadge(candidates.length, "Override", decoration)}</summary>
+      ${renderCandidateItems(`overrides:${sourceType}:${originKey}`, candidates, "override-candidates", 3)}
+    </details>
+  `;
 }
 
 function groupCandidatesBySource(candidates) {
@@ -1181,11 +1602,11 @@ function renderContributorDocument(candidates) {
   const sectionKey = `upstream:${source.sourceId}`;
   const decoration = getCandidateAggregateDecoration(candidates);
   return `
-    <details class="candidate-category contributor-document${candidateAggregateClass(decoration)}" data-source-type="upstream" data-source-id="${escapeHtml(source.sourceId)}">
+    <details class="candidate-category contributor-document${candidateAggregateClass(decoration)}" data-source-type="upstream" data-source-id="${escapeHtml(source.sourceId)}" data-tree-depth="1">
       <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>
         ${icon("folder")}
-        <span class="candidate-parent-label"><strong>${escapeHtml(source.sourceTitle)}</strong>${renderCandidateDecoration(decoration, "candidate-parent-decoration-icon")}</span>
-        <span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span>
+        <span class="candidate-parent-label"><strong>${escapeHtml(source.sourceTitle)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>
+        ${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}
       </summary>
       ${renderCandidateItems(sectionKey, candidates, "contributor-candidates")}
     </details>
@@ -1199,7 +1620,7 @@ function renderSourceSummaryLabel(sourceType, label, decoration) {
   const provenance = sourceType === "upstream"
     ? `<span class="source-provenance-pill type-compact" data-workbench-tooltip="${escapeHtml(provenanceLabel)}">${escapeHtml(provenanceLabel)}</span>`
     : "";
-  const selection = decoration === undefined ? "" : renderCandidateDecoration(decoration, "candidate-parent-decoration-icon");
+  const selection = decoration === undefined ? "" : renderCandidateAggregateDecoration(decoration);
   return `<span class="source-summary-label"><strong>${escapeHtml(label)}</strong>${provenance}${selection}</span>`;
 }
 
@@ -1207,26 +1628,26 @@ function renderCandidateCategory(sourceType, category, candidates) {
   const sectionKey = `${sourceType}:${category}`;
   const decoration = getCandidateAggregateDecoration(candidates);
   return `
-    <details class="candidate-category${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}">
+    <details class="candidate-category${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" data-tree-depth="1">
       <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>
         ${icon("folder")}
-        <span class="candidate-parent-label"><strong>${escapeHtml(category)}</strong>${renderCandidateDecoration(decoration, "candidate-parent-decoration-icon")}</span>
-        <span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Candidate")}</span>
+        <span class="candidate-parent-label"><strong>${escapeHtml(category)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>
+        ${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}
       </summary>
       ${renderCandidateItems(sectionKey, candidates)}
     </details>
   `;
 }
 
-function renderCandidateItems(sectionKey, candidates, extraClass = "") {
+function renderCandidateItems(sectionKey, candidates, extraClass = "", treeDepth = 2) {
   const sortedCandidates = sortCandidates(candidates, getCandidateSort(sectionKey));
-  return `<div class="candidate-category-items ${extraClass}" data-candidate-section="${escapeHtml(sectionKey)}">${renderCandidateListHeader(sectionKey)}${sortedCandidates.map(renderCandidateTreeRow).join("")}</div>`;
+  return `<div class="candidate-category-items ${extraClass}" data-candidate-section="${escapeHtml(sectionKey)}" data-tree-depth="${treeDepth}">${renderCandidateListHeader(sectionKey, treeDepth)}${sortedCandidates.map(renderCandidateTreeRow).join("")}</div>`;
 }
 
-function renderCandidateListHeader(sectionKey) {
+function renderCandidateListHeader(sectionKey, treeDepth = 2) {
   const sort = getCandidateSort(sectionKey);
   const columns = [
-    ["candidate", "Candidate", "Candidate", "Source rule ID and title."],
+    ["candidate", "Candidate", "Candidate", "Proposed or mapped Hosted rule ID and title."],
     ["state", "State", "Source State", "Lifecycle state of the source rule."],
     ["catalog", "Status", "Catalog Status", "Current mapping in the Hosted catalog."],
     ["impact", "Impact", "Impact", "Priority score balancing rule value and review risk."],
@@ -1234,7 +1655,7 @@ function renderCandidateListHeader(sectionKey) {
     ["recommendation", "Recommended", "Recommendation", "AI-recommended action for maintainer review."]
   ];
   const button = (column) => renderSortButton(column, sort, { "candidate-sort": column[0], "candidate-section": sectionKey });
-  return `<div class="candidate-list-header"><span aria-hidden="true"></span>${button(columns[0])}<span class="candidate-list-header-summary">${columns.slice(1).map(button).join("")}</span></div>`;
+  return `<div class="candidate-list-header" data-tree-depth="${treeDepth}"><span aria-hidden="true"></span>${button(columns[0])}<span class="candidate-list-header-summary">${columns.slice(1).map(button).join("")}</span></div>`;
 }
 
 function getCandidateSort(sectionKey) {
@@ -1254,16 +1675,32 @@ function updateCandidateSort(button) {
     .map((row) => state.candidates.find((candidate) => candidate.key === row.dataset.candidateKey))
     .filter(Boolean);
   const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-candidate-key]")).map((row) => [row.dataset.candidateKey, row]));
-  sortCandidates(candidates, state.candidateSorts[sectionKey]).forEach((candidate) => group.appendChild(rowsByKey.get(candidate.key)));
-  group.querySelector(":scope > .candidate-list-header").outerHTML = renderCandidateListHeader(sectionKey);
+  const scroller = elements["candidate-list"];
+  const scrollTop = scroller.scrollTop;
+  const fragment = document.createDocumentFragment();
+  if (candidateSortRestoreFrame) cancelAnimationFrame(candidateSortRestoreFrame);
+  scroller.classList.add("sorting");
+  sortCandidates(candidates, state.candidateSorts[sectionKey]).forEach((candidate) => fragment.appendChild(rowsByKey.get(candidate.key)));
+  group.appendChild(fragment);
+  group.querySelector(":scope > .candidate-list-header").outerHTML = renderCandidateListHeader(sectionKey, Number(group.dataset.treeDepth));
+  scroller.scrollTop = scrollTop;
   refreshPresentation();
+  candidateSortRestoreFrame = requestAnimationFrame(() => {
+    scroller.scrollTop = scrollTop;
+    candidateSortRestoreFrame = requestAnimationFrame(() => {
+      scroller.classList.remove("sorting");
+      scroller.scrollTop = scrollTop;
+      candidateSortRestoreFrame = null;
+    });
+  });
+  scheduleCandidateStickyStackUpdate(true);
 }
 
 function sortCandidates(candidates, sort) {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
   const value = (candidate) => {
     const assessment = getAssessment(candidate, getDecision(candidate));
-    if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
+    if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "state") return candidate.state;
     if (sort.field === "catalog") return getCatalogStatus(candidate).label;
     if (sort.field === "impact") return calculateImpact(assessment.factors);
@@ -1275,7 +1712,7 @@ function sortCandidates(candidates, sort) {
     const rightValue = value(right);
     const compared = typeof leftValue === "number" ? leftValue - rightValue : collator.compare(leftValue, rightValue);
     const directed = sort.direction === "ascending" ? compared : -compared;
-    return directed || collator.compare(left.id, right.id);
+    return directed || collator.compare(getEffectiveHostedRuleId(left), getEffectiveHostedRuleId(right));
   });
 }
 
@@ -1283,7 +1720,7 @@ function getFilteredAssessmentCandidates() {
   const query = state.queries["assessment-results"].trim().toLowerCase();
   return state.assessedCandidates.filter((candidate) => !candidate.assessment.hostedApplicable).filter((candidate) => {
     if (!query) return true;
-    return [candidate.id, candidate.title, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel, candidate.assessment.applicabilityRationale]
+    return [getEffectiveHostedRuleId(candidate), candidate.id, candidate.title, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel, candidate.assessment.applicabilityRationale]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 }
@@ -1360,7 +1797,7 @@ function updateAssessmentSort(button) {
 function sortAssessmentCandidates(candidates, sort) {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
   const value = (candidate) => {
-    if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
+    if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "state") return candidate.state;
     if (sort.field === "category") return formatHostedCategory(candidate.assessment.hostedCategory);
     if (sort.field === "recommendation") return formatRecommendation(candidate.assessment.recommendation);
@@ -1369,7 +1806,7 @@ function sortAssessmentCandidates(candidates, sort) {
   return [...candidates].sort((left, right) => {
     const compared = collator.compare(value(left), value(right));
     const directed = sort.direction === "ascending" ? compared : -compared;
-    return directed || collator.compare(left.id, right.id);
+    return directed || collator.compare(getEffectiveHostedRuleId(left), getEffectiveHostedRuleId(right));
   });
 }
 
@@ -1388,7 +1825,7 @@ function renderAssessmentResultRow(candidate) {
   ` : "";
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
-      <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small></span>
+      <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
       <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
     ${overridePanel}
@@ -1418,7 +1855,7 @@ function renderAssessmentResultDetail() {
   elements["assessment-results-detail"].innerHTML = `
     <div class="assessment-title">
       <div>
-        <div class="source-line detail-identity"><span>${escapeHtml(candidate.sourceLabel)}</span><span>/</span><span>${escapeHtml(candidate.id)}</span></div>
+        <div class="source-line detail-identity"><span>${escapeHtml(candidate.sourceLabel)}</span><span>/</span><span>${escapeHtml(getEffectiveHostedRuleId(candidate))}</span></div>
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
         <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
@@ -1433,6 +1870,7 @@ function renderAssessmentResultDetail() {
       <div class="section-block"><span class="section-label">Applicability Decision:</span><div class="ai-evaluation-summary subcontext-container"><div class="ai-evaluation-heading"><strong>${eligible ? "Eligible for candidate catalog" : "Excluded from candidate catalog"}</strong><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">Recommend ${escapeHtml(formatRecommendation(assessment.recommendation))}</span></div><p>${escapeHtml(assessment.applicabilityRationale)}</p></div></div>
       <div class="section-block"><span class="section-label">AI Evaluation:</span><h3>${escapeHtml(assessment.summary)}</h3><p class="coverage-summary">${escapeHtml(assessment.impactDescription)}</p>${renderPriorityAssessment(assessment)}</div>
       <div class="section-block"><span class="section-label">Related Hosted Coverage:</span><p class="coverage-summary evidence-summary-box subcontext-container">${escapeHtml(assessment.currentHostedCoverage)}</p></div>
+      <div class="section-block"><span class="section-label">Proposed Hosted Rule:</span><div class="overlap-item subcontext-container"><div><strong>${escapeHtml(assessment.proposedHostedRuleId)}</strong><span class="status-badge neutral">Generated</span></div><p>${escapeHtml(assessment.proposedText)}</p></div></div>
       ${renderApplicabilityOverride(candidate)}
     </div>
   `;
@@ -1466,9 +1904,8 @@ function renderApplicabilityOverride(candidate) {
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
         <label class="override-outcome clickable"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
-        <label class="override-rationale"><span class="control-subtitle">Override Rationale:</span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
+        <label class="override-rationale"><span class="rationale-heading"><span class="control-subtitle">Override Rationale:</span><span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply Override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel Override">${icon("close")}</button></span></span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
-        <div class="override-actions"><button class="button secondary clickable" type="button" data-override-cancel>Cancel</button><button class="button primary clickable" type="button" data-override-apply disabled>Apply Override</button></div>
       </div>
       <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
     </div>
@@ -1528,14 +1965,15 @@ async function handleApplicabilityOverrideClick(event) {
 function renderCandidateTreeRow(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
+  const displayId = getEffectiveHostedRuleId(candidate);
   const impact = calculateImpact(assessment.factors);
   const catalogStatus = getCatalogStatus(candidate);
   const inPlan = decision.inPlan;
   const decoration = getCandidateDecoration(candidate);
   return `
     <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""} ${decoration ? `candidate-decoration-${decoration.status}` : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
-      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove" : "Add"} ${escapeHtml(candidate.id)} ${inPlan ? "from" : "to"} promotion plan" data-workbench-tooltip="${inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan"}" ${inPlan ? "checked" : ""}>
-      <span class="candidate-tree-copy"><strong>${escapeHtml(candidate.id)}</strong><small>${escapeHtml(candidate.title)}</small>${renderCandidateDecoration(decoration, "candidate-decoration-icon")}</span>
+      <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove" : "Add"} ${escapeHtml(displayId)} ${inPlan ? "from" : "to"} promotion plan" data-workbench-tooltip="${inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan"}" ${inPlan ? "checked" : ""}>
+      <span class="candidate-tree-copy"><strong>${escapeHtml(displayId)}</strong><small>${escapeHtml(candidate.title)}</small>${renderCandidateDecoration(decoration, "candidate-decoration-icon")}</span>
       <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
@@ -1561,6 +1999,8 @@ function renderAssessment() {
   const catalogStatus = getCatalogStatus(candidate);
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
+  const displayId = getEffectiveHostedRuleId(candidate);
+  const proposedHostedRuleIdValidation = getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId);
 
   elements["assessment-panel"].innerHTML = `
     <div class="assessment-title">
@@ -1568,7 +2008,7 @@ function renderAssessment() {
         <div class="source-line detail-identity">
           <span>${escapeHtml(candidate.sourceLabel)}</span>
           <span>/</span>
-          <span>${escapeHtml(candidate.id)}</span>
+          <span>${escapeHtml(displayId)}</span>
         </div>
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
         <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
@@ -1631,6 +2071,14 @@ function renderAssessment() {
                 </label>
               `).join("")}
             </fieldset>
+            <div class="proposed-hosted-rule-id-control" data-proposed-hosted-rule-id-control>
+              <label for="proposed-hosted-rule-id" class="control-subtitle">Proposed Hosted Rule ID:</label>
+              <input id="proposed-hosted-rule-id" class="proposed-hosted-rule-id-input" type="text" data-decision-field="proposedHostedRuleId" maxlength="${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH}" value="${escapeHtml(decision.proposedHostedRuleId)}" aria-invalid="${!proposedHostedRuleIdValidation.valid}" aria-describedby="proposed-hosted-rule-id-status proposed-hosted-rule-id-limit" ${candidate.assessment.targetHostedRuleId ? "readonly" : ""}>
+              <div class="proposed-hosted-rule-id-meta">
+                <span id="proposed-hosted-rule-id-status" class="proposed-hosted-rule-id-validation ${proposedHostedRuleIdValidation.valid ? "valid" : "invalid"}" role="status" aria-live="polite" data-validation-key="${escapeHtml(`${proposedHostedRuleIdValidation.valid}:${proposedHostedRuleIdValidation.message}`)}">${icon(proposedHostedRuleIdValidation.valid ? "check-compact" : "circle-slash-compact")}<span>${escapeHtml(proposedHostedRuleIdValidation.message)}</span></span>
+                <small class="rationale-limit" id="proposed-hosted-rule-id-limit">${decision.proposedHostedRuleId.length} / ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters</small>
+              </div>
+            </div>
             <label class="plan-toggle clickable">
               <input type="checkbox" data-plan-toggle ${decision.inPlan ? "checked" : ""}>
               <span>Include this candidate in the promotion plan</span>
@@ -1714,6 +2162,14 @@ function handleAssessmentInput(event) {
     return;
   }
   if (event.target.dataset.decisionField) {
+    if (event.target.dataset.decisionField === "proposedHostedRuleId") {
+      const value = event.target.value.slice(0, PROPOSED_HOSTED_RULE_ID_MAX_LENGTH);
+      event.target.value = value;
+      updateProposedHostedRuleIdCounter(value.length);
+      clearTimeout(proposedHostedRuleIdValidationTimer);
+      proposedHostedRuleIdValidationTimer = setTimeout(() => commitProposedHostedRuleId(candidate, event.target, value), 300);
+      return;
+    }
     const value = event.target.dataset.decisionField === "rationale"
       ? event.target.value.slice(0, DECISION_RATIONALE_MAX_LENGTH)
       : event.target.value;
@@ -1727,6 +2183,39 @@ function handleAssessmentInput(event) {
     }
     if (event.target.dataset.decisionField === "proposedText") refreshAssessmentScores(candidate);
   }
+}
+
+function handleAssessmentFocusOut(event) {
+  if (event.target.dataset.decisionField !== "proposedHostedRuleId") return;
+  const candidate = getActiveCandidate();
+  if (!candidate) return;
+  clearTimeout(proposedHostedRuleIdValidationTimer);
+  commitProposedHostedRuleId(candidate, event.target, event.target.value);
+}
+
+function commitProposedHostedRuleId(candidate, field, value) {
+  if (!field.isConnected || state.activeKey !== candidate.key) return;
+  updateDecision(candidate, { proposedHostedRuleId: value });
+  updateProposedHostedRuleIdValidation(candidate, field, value);
+  const detailId = elements["assessment-panel"].querySelector(":scope > .assessment-title .detail-identity span:last-child");
+  if (detailId) detailId.textContent = getEffectiveHostedRuleId(candidate);
+}
+
+function updateProposedHostedRuleIdCounter(length) {
+  const counter = elements["assessment-panel"].querySelector("#proposed-hosted-rule-id-limit");
+  if (counter) counter.textContent = `${length} / ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters`;
+}
+
+function updateProposedHostedRuleIdValidation(candidate, field, value) {
+  const validation = getProposedHostedRuleIdValidation(candidate, value);
+  const status = elements["assessment-panel"].querySelector("#proposed-hosted-rule-id-status");
+  field.setAttribute("aria-invalid", String(!validation.valid));
+  if (!status) return;
+  const validationKey = `${validation.valid}:${validation.message}`;
+  if (status.dataset.validationKey === validationKey) return;
+  status.dataset.validationKey = validationKey;
+  status.className = `proposed-hosted-rule-id-validation ${validation.valid ? "valid" : "invalid"}`;
+  status.innerHTML = `${icon(validation.valid ? "check-compact" : "circle-slash-compact")}<span>${escapeHtml(validation.message)}</span>`;
 }
 
 
@@ -1755,6 +2244,9 @@ function syncAssessmentActionControls(candidate) {
     badge.className = `decision-badge ${decision.action}`;
     badge.textContent = formatRecommendation(decision.action);
   }
+  const proposedHostedRuleIdControl = elements["assessment-panel"].querySelector("[data-proposed-hosted-rule-id-control]");
+  const proposedHostedRuleIdField = proposedHostedRuleIdControl?.querySelector('[data-decision-field="proposedHostedRuleId"]');
+  if (proposedHostedRuleIdField) updateProposedHostedRuleIdValidation(candidate, proposedHostedRuleIdField, proposedHostedRuleIdField.value);
   refreshAssessmentScores(candidate);
 }
 
@@ -1795,15 +2287,16 @@ function renderPlan() {
     const impact = assessment ? calculateImpact(assessment.factors) : null;
     const cost = getPlanTokenDisplay(candidate);
     const readiness = getPlanReadiness(candidate);
+    const displayId = getEffectiveHostedRuleId(candidate);
     return `
-      <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(candidate.id)} candidate">
-        <td class="plan-candidate"><span class="candidate-link">${escapeHtml(candidate.id)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
+      <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(displayId)} candidate">
+        <td class="plan-candidate"><span class="candidate-link">${escapeHtml(displayId)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
         <td class="plan-source">${escapeHtml(formatTitleCase(candidate.sourceLabel))}</td>
         <td class="plan-type"><span class="status-badge neutral plan-membership-badge">${escapeHtml(formatTitleCase(decision.planMembershipSource))}</span></td>
         <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
-        <td>${readiness.ready ? `<span class="status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(candidate.id)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Enter decision rationale for ${escapeHtml(candidate.id)}" data-workbench-tooltip="Open candidate and enter decision rationale">${icon("edit")}<span>${readiness.label}</span></button>`}</td>
+        <td>${readiness.ready ? `<span class="status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Complete required fields for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and complete required fields">${icon("edit")}<span>${readiness.label}</span></button>`}</td>
         <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" data-workbench-tooltip="Undo decision and remove from promotion plan">${icon("discard")}</button></td>
       </tr>
     `;
@@ -1841,7 +2334,7 @@ function sortPlanCandidates(candidates, sort) {
   const value = (candidate) => {
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
-    if (sort.field === "candidate") return `${candidate.id} ${candidate.title}`;
+    if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "source") return candidate.sourceLabel;
     if (sort.field === "type") return decision.planMembershipSource;
     if (sort.field === "action") return formatRecommendation(decision.action);
@@ -1854,7 +2347,7 @@ function sortPlanCandidates(candidates, sort) {
     const rightValue = value(right);
     const compared = typeof leftValue === "number" ? leftValue - rightValue : collator.compare(leftValue, rightValue);
     const directed = sort.direction === "ascending" ? compared : -compared;
-    return directed || collator.compare(left.id, right.id);
+    return directed || collator.compare(getEffectiveHostedRuleId(left), getEffectiveHostedRuleId(right));
   });
 }
 
@@ -1862,11 +2355,13 @@ function getPlanReadiness(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   const actionRequired = !isPromotionAction(decision.action);
+  const proposedHostedRuleIdRequired = isPromotionAction(decision.action) && !getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId).valid;
   const rationaleRequired = !decision.rationale.trim();
   return {
     actionRequired,
-    ready: Boolean(assessment) && !actionRequired && !rationaleRequired,
-    label: actionRequired ? "Needs action" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
+    proposedHostedRuleIdRequired,
+    ready: Boolean(assessment) && !actionRequired && !proposedHostedRuleIdRequired && !rationaleRequired,
+    label: actionRequired ? "Needs action" : proposedHostedRuleIdRequired ? "Needs valid rule ID" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
   };
 }
 
@@ -2011,7 +2506,7 @@ function renderPreview() {
   renderApprovalRequirements(readiness);
   elements["approve-export-button"].disabled = !ready;
   elements["preview-diff"].innerHTML = renderPreviewChanges(planCandidates);
-  elements["preview-payload-diff"].innerHTML = renderPayloadChanges();
+  elements["preview-payload-diff"].innerHTML = renderPayloadChanges(planCandidates);
   renderRawPayload(buildApprovalPayload());
 }
 
@@ -2160,7 +2655,7 @@ function renderRuleDiff(candidate, action, lines) {
     const description = line.type === "add" ? `Added line ${newLine}` : line.type === "delete" ? `Removed line ${oldLine}` : `Unchanged line ${newLine}`;
     return `<div class="diff-line ${line.type}" aria-label="${description}"><span class="diff-line-number">${oldNumber}</span><span class="diff-line-number">${newNumber}</span><span class="diff-marker" aria-hidden="true">${marker}</span><code>${escapeHtml(line.text || " ")}</code></div>`;
   }).join("");
-  const mappedRuleIds = candidate.assessment.targetHostedRuleId || "New Hosted rule";
+  const mappedRuleIds = action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || "New Hosted rule";
   const sourceId = candidate.sourceType === "upstream" ? candidate.sourceId.toUpperCase() : candidate.id;
   return `
     <section class="preview-change" aria-label="${escapeHtml(candidate.id)} proposed ${escapeHtml(action)}">
@@ -2171,8 +2666,8 @@ function renderRuleDiff(candidate, action, lines) {
   `;
 }
 
-function renderPayloadChanges() {
-  const changes = state.candidates.map((candidate) => {
+function renderPayloadChanges(candidates) {
+  const changes = candidates.map((candidate) => {
     const current = getDecision(candidate);
     const baseline = defaultDecision(candidate);
     const before = {
@@ -2181,6 +2676,7 @@ function renderPayloadChanges() {
       planMembership: { source: baseline.planMembershipSource, bulkOperationId: baseline.bulkOperationId },
       rationale: baseline.rationale,
       proposedText: baseline.proposedText,
+      proposedHostedRuleId: baseline.proposedHostedRuleId,
       applicabilityOverride: null
     };
     const after = {
@@ -2189,6 +2685,7 @@ function renderPayloadChanges() {
       planMembership: { source: current.planMembershipSource, bulkOperationId: current.bulkOperationId },
       rationale: current.rationale,
       proposedText: current.proposedText,
+      proposedHostedRuleId: current.proposedHostedRuleId,
       applicabilityOverride: getApplicabilityOverride(candidate)
     };
     const changedKeys = Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
@@ -2211,7 +2708,7 @@ function renderPayloadChanges() {
     const afterLines = JSON.stringify(after, null, 2).split("\n");
     return `
       <section class="payload-change" aria-label="${escapeHtml(candidate.id)} selection payload changes">
-        <div class="payload-change-heading"><div><strong>${escapeHtml(candidate.id)}</strong><span>${escapeHtml(candidate.title)}</span></div></div>
+        <div class="payload-change-heading"><div><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><span>${escapeHtml(candidate.title)}</span></div></div>
         <div class="payload-columns">
           ${renderPayloadColumn("Default", beforeLines, "delete")}
           ${renderPayloadColumn("Current", afterLines, "add")}
@@ -2273,6 +2770,7 @@ function diffTextLines(beforeText, afterText) {
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
   const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
+  const invalidProposedHostedRuleIdCount = planCandidates.filter((candidate) => getPlanReadiness(candidate).proposedHostedRuleIdRequired).length;
   const missingRationaleCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
     return !getAssessment(candidate, decision) || !decision.rationale.trim();
@@ -2282,15 +2780,17 @@ function getPreviewReadiness() {
   let status = "ready";
   if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
+  else if (invalidProposedHostedRuleIdCount) status = "needs valid rule ID";
   else if (missingRationale) status = "needs rationale";
   else if (!approverName) status = "needs approver";
   return {
     planCandidates,
     approverName,
     missingActionCount,
+    invalidProposedHostedRuleIdCount,
     missingRationaleCount,
     status,
-    ready: planCandidates.length > 0 && missingActionCount === 0 && !missingRationale && Boolean(approverName)
+    ready: planCandidates.length > 0 && missingActionCount === 0 && invalidProposedHostedRuleIdCount === 0 && !missingRationale && Boolean(approverName)
   };
 }
 
@@ -2298,6 +2798,7 @@ function renderApprovalRequirements(readiness) {
   const requirements = [
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
+    ["Proposed rule IDs", readiness.invalidProposedHostedRuleIdCount ? `${readiness.invalidProposedHostedRuleIdCount} invalid` : "Valid", readiness.planCandidates.length > 0 && readiness.invalidProposedHostedRuleIdCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
     ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
   ];
@@ -2361,8 +2862,10 @@ function syncCandidateTreeRows() {
     if (checkbox) {
       checkbox.checked = inPlan;
       setWorkbenchTooltip(checkbox, inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan");
-      checkbox.setAttribute("aria-label", `${inPlan ? "Remove" : "Add"} ${candidate.id} ${inPlan ? "from" : "to"} promotion plan`);
+      checkbox.setAttribute("aria-label", `${inPlan ? "Remove" : "Add"} ${getEffectiveHostedRuleId(candidate)} ${inPlan ? "from" : "to"} promotion plan`);
     }
+    const candidateId = row.querySelector(".candidate-tree-copy strong");
+    if (candidateId) candidateId.textContent = getEffectiveHostedRuleId(candidate);
     const assessment = candidate && getAssessment(candidate, getDecision(candidate));
     const token = row.querySelector(".tree-cost");
     if (assessment && token) token.textContent = formatCandidateTokenValue(candidate, assessment);
@@ -2381,17 +2884,18 @@ function syncCandidateTreeAggregates() {
     const summary = disclosure.querySelector(":scope > summary");
     if (decoration) {
       summary.dataset.selectionStatus = decoration.status;
-      setWorkbenchTooltip(summary, decoration.description);
     } else {
       delete summary.dataset.selectionStatus;
-      setWorkbenchTooltip(summary, "");
     }
+    setWorkbenchTooltip(summary, "");
     const decorationIcon = summary.querySelector(".candidate-parent-decoration-icon");
+    const countBadge = summary.querySelector(".count-badge");
     const decorationDescription = summary.querySelector(".candidate-decoration-description");
     if (decorationIcon) {
       decorationIcon.toggleAttribute("hidden", !decoration);
-      setWorkbenchTooltip(decorationIcon, decoration?.description || "");
+      setWorkbenchTooltip(decorationIcon, "");
     }
+    if (countBadge) setWorkbenchTooltip(countBadge, decoration?.description || "");
     if (decorationDescription) decorationDescription.textContent = decoration?.description || "";
   });
 }
@@ -2545,6 +3049,7 @@ function buildApprovalPayload() {
         sourceContentSha256: candidate.hash,
         catalogStatus: getCatalogStatus(candidate).key,
         hostedRuleId: candidate.assessment.targetHostedRuleId,
+        proposedHostedRuleId: decision.proposedHostedRuleId.trim(),
         action: decision.action,
         inPlan: decision.inPlan,
         planMembership: {
@@ -2627,12 +3132,11 @@ async function importDraft(event) {
   event.target.value = "";
   if (!file) return;
   try {
-    const draft = JSON.parse(await file.text());
+    const importedDraft = JSON.parse(await file.text());
+    const draft = migrateSession(importedDraft, state.assessedCandidates);
+    if (!draft) throw new Error("The draft version is not supported.");
     if (draft.kind !== "hosted-rule-workbench-draft" || draft.sessionId !== state.session.id) {
       throw new Error("The draft belongs to a different source snapshot.");
-    }
-    if (draft.schemaVersion !== SESSION_SCHEMA_VERSION) {
-      throw new Error("The draft version is not supported.");
     }
     if (!draft.decisions || typeof draft.decisions !== "object" || Array.isArray(draft.decisions)) {
       throw new Error("The draft decisions are invalid.");
@@ -2653,7 +3157,7 @@ async function importDraft(event) {
     }
     for (const [key, decision] of Object.entries(draft.decisions)) {
       const candidate = state.assessedCandidates.find((item) => item.key === key);
-      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH) {
+      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH || typeof decision.proposedHostedRuleId !== "string" || decision.proposedHostedRuleId.length > PROPOSED_HOSTED_RULE_ID_MAX_LENGTH || !getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId, draft.decisions).valid || (candidate.assessment.targetHostedRuleId && decision.proposedHostedRuleId !== candidate.assessment.targetHostedRuleId)) {
         throw new Error(`The draft decision for ${key} is invalid.`);
       }
     }
