@@ -2,7 +2,6 @@
   "use strict";
 
   const BOUNDARY_EPSILON = 1;
-  const MAX_STICKY_HEIGHT_RATIO = 0.4;
   const MAX_STICKY_ROW_COUNT = 7;
 
   function syncAttributes(target, source) {
@@ -293,7 +292,7 @@
         if (!transition.settled) break;
         if (this.view.adapter.accumulateRoots === true) accumulatedRoots += 1;
       }
-      return stickyNodes.map((node, stickySlot) => ({
+      return stickyNodes.slice(0, MAX_STICKY_ROW_COUNT).map((node, stickySlot) => ({
         node,
         nodeId: node.id,
         treeDepth: node.depth,
@@ -358,6 +357,7 @@
       this.renderNaturalRows();
       this.viewport.scrollTop = scrollTop;
       this.stickyController.update();
+      if (!this.stickyController.state.length) this.renderStickyState([]);
     }
 
     refresh({ preserveScroll = true } = {}) {
@@ -374,10 +374,14 @@
       const existing = new Map(Array.from(this.rowsContainer.children).map((row) => [row.dataset.nodeId, row]));
       const desired = this.layout.entries.map((entry) => {
         let row = existing.get(entry.node.id);
-        if (!row || row.hierarchicalNode !== entry.node) {
-          const replacement = this.adapter.renderRow(entry.node, "natural");
-          if (row) row.replaceWith(replacement);
-          row = replacement;
+        const rendered = this.adapter.renderRow(entry.node, "natural");
+        if (row && row.tagName === rendered.tagName && row.namespaceURI === rendered.namespaceURI) {
+          patchNode(row, rendered);
+        } else if (row) {
+          row.replaceWith(rendered);
+          row = rendered;
+        } else {
+          row = rendered;
         }
         row.hierarchicalNode = entry.node;
         row.classList.add("hierarchical-view-row");
@@ -414,6 +418,30 @@
       if (changed) this.renderNaturalRows(false);
     }
 
+    getPrewarmedStickyState() {
+      let longestPath = [];
+      const visit = (node, path) => {
+        if (!node.stickyEligible) return;
+        const nextPath = [...path, node];
+        if (nextPath.length > longestPath.length) longestPath = nextPath;
+        if (node.expanded) node.children.forEach((child) => visit(child, nextPath));
+      };
+      this.model.roots.forEach((root) => visit(root, []));
+      let position = 0;
+      return longestPath.slice(0, MAX_STICKY_ROW_COUNT).map((node, stickySlot) => {
+        const entry = {
+          node,
+          nodeId: node.id,
+          treeDepth: node.depth,
+          stickySlot,
+          height: node.rowHeight,
+          position
+        };
+        position += node.rowHeight;
+        return entry;
+      });
+    }
+
     syncStickyWidth() {
       const viewportWidth = this.viewport.getBoundingClientRect().width;
       const rowsWidth = this.rowsContainer.getBoundingClientRect().width;
@@ -435,22 +463,24 @@
     }
 
     renderStickyState(inputState) {
-      const maxHeight = this.viewport.clientHeight * MAX_STICKY_HEIGHT_RATIO;
-      const state = [];
-      let height = 0;
-      for (const entry of inputState.slice(0, MAX_STICKY_ROW_COUNT)) {
-        if (state.length && entry.position + entry.height > maxHeight) break;
-        state.push(entry);
-        height = Math.max(height, entry.position + entry.height);
-      }
+      const state = inputState;
       if (!state.length) {
-        this.stickyContainer.hidden = true;
-        this.stickyContainer.replaceChildren();
+        this.stickyContainer.hidden = false;
+        this.stickyContainer.style.visibility = "hidden";
+        this.reconcileStickyRows(this.getPrewarmedStickyState());
         this.stickyContainer.style.height = "0px";
         this.renderedStickyState = [];
         return;
       }
       this.stickyContainer.hidden = false;
+      this.stickyContainer.style.visibility = "visible";
+      this.reconcileStickyRows(state);
+      const height = state.reduce((bottom, entry) => Math.max(bottom, entry.position + entry.height), 0);
+      this.stickyContainer.style.height = `${height}px`;
+      this.renderedStickyState = state;
+    }
+
+    reconcileStickyRows(state) {
       const rows = Array.from(this.stickyContainer.children);
       state.forEach((entry, index) => {
         let row = rows[index];
@@ -481,8 +511,6 @@
       for (let index = this.stickyContainer.children.length - 1; index >= state.length; index -= 1) {
         this.stickyContainer.children[index].remove();
       }
-      this.stickyContainer.style.height = `${height}px`;
-      this.renderedStickyState = state;
     }
 
     onClick(event) {
@@ -502,6 +530,7 @@
         this.renderNaturalRows();
         this.viewport.scrollTop = collapseAnchor;
         this.stickyController.update();
+        if (!this.stickyController.state.length) this.renderStickyState([]);
         return;
       }
       this.adapter.handleAction?.(node, event, row.closest(".hierarchical-view-sticky-row") ? "sticky" : "natural");
@@ -538,6 +567,7 @@
       this.stickyContainer.replaceChildren();
       this.stickyContainer.style.removeProperty("height");
       this.stickyContainer.style.removeProperty("right");
+      this.stickyContainer.style.removeProperty("visibility");
       this.stickyContainer.hidden = true;
     }
   }
