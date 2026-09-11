@@ -1,4 +1,4 @@
-const { openWorkbench } = require("../helpers/workbench.cjs");
+const { openWorkbench, revealCandidate, waitForWorkbenchTooltip } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-CONTRIBUTOR-001",
@@ -15,18 +15,19 @@ async function run({ page, baseUrl, assert, playback }) {
   await playback.show(page, "Contributor guidance rule candidates");
 
   const structure = await page.evaluate(() => {
-    const documentNode = document.querySelector('[data-source-id="guide-new-resource"]');
-    const summary = documentNode?.querySelector(":scope > summary");
-    const rows = [...(documentNode?.querySelectorAll(":scope > .candidate-category-items > [data-candidate-key]") || [])];
+    const documentNode = candidateHierarchicalView.model.nodes.find((node) => node.kind === "folder" && node.data.candidates?.some((candidate) => candidate.sourceId === "guide-new-resource"));
+    revealCandidateInTree(documentNode.data.candidates[0].key);
+    const row = document.querySelector(`#candidate-list [data-node-id="${CSS.escape(documentNode.id)}"]`);
+    const candidates = documentNode.data.candidates;
     return {
       documentExists: Boolean(documentNode),
-      parentActionable: Boolean(summary?.querySelector('input, [data-candidate-key], [data-decision-key]')),
-      sourceId: documentNode?.dataset.sourceId,
-      sourceTitle: summary?.querySelector(".candidate-parent-label strong")?.textContent,
-      parentUsesSharedLabel: Boolean(summary?.querySelector(".candidate-parent-label")),
-      parentHasSubtext: Boolean(summary?.querySelector("small")),
-      candidateCount: rows.length,
-      candidateIds: rows.map((row) => row.querySelector(".candidate-tree-copy strong")?.textContent),
+      parentActionable: Boolean(row?.querySelector('input, [data-candidate-key], [data-decision-key]')),
+      sourceId: candidates[0]?.sourceId,
+      sourceTitle: row?.querySelector(".candidate-parent-label strong")?.textContent,
+      parentUsesSharedLabel: Boolean(row?.querySelector(".candidate-parent-label")),
+      parentHasSubtext: Boolean(row?.querySelector("small")),
+      candidateCount: candidates.length,
+      candidateIds: candidates.map((candidate) => getEffectiveHostedRuleId(candidate)),
       updateCandidate: state.candidates.find((candidate) => candidate.assessment.targetHostedRuleId === "IMPL-PATCH-001")?.key,
       addCandidate: state.candidates.find((candidate) => candidate.assessment.assessmentId === "resource-identity-list-resource")?.key,
       addTarget: state.candidates.find((candidate) => candidate.assessment.assessmentId === "resource-identity-list-resource")?.assessment.targetHostedRuleId
@@ -58,6 +59,9 @@ async function run({ page, baseUrl, assert, playback }) {
     };
     state.assessedCandidates.push(probe);
     state.assessmentActiveKey = probe.key;
+    const sourceNodeId = `assessment:source:${probe.sourceType}`;
+    const previousSourceExpansion = assessmentExpansionState.has(sourceNodeId) ? assessmentExpansionState.get(sourceNodeId) : null;
+    assessmentExpansionState.set(sourceNodeId, true);
     renderAssessmentResults();
     const row = document.querySelector(`[data-assessment-key="${CSS.escape(probe.key)}"]`);
     const detail = document.querySelector("#assessment-results-detail");
@@ -75,6 +79,8 @@ async function run({ page, baseUrl, assert, playback }) {
     };
     state.assessedCandidates.pop();
     state.assessmentActiveKey = null;
+    if (previousSourceExpansion === null) assessmentExpansionState.delete(sourceNodeId);
+    else assessmentExpansionState.set(sourceNodeId, previousSourceExpansion);
     renderAssessmentResults();
     return result;
   });
@@ -218,17 +224,16 @@ async function run({ page, baseUrl, assert, playback }) {
   }, structure.updateCandidate);
   await openWorkbench(page, baseUrl);
 
+  await revealCandidate(page, structure.updateCandidate);
+
   const truncation = await page.evaluate(() => {
-    const documentNode = document.querySelector('[data-source-id="guide-new-resource"]');
-    const sourceRoot = documentNode.closest("details.candidate-source-root");
-    sourceRoot.open = true;
-    documentNode.open = true;
-    const summary = documentNode.querySelector(":scope > summary");
-    const title = summary.querySelector(".candidate-parent-label strong");
-    const pill = summary.querySelector(".count-badge");
+    const documentNode = candidateHierarchicalView.model.nodes.find((node) => node.kind === "folder" && node.data.candidates?.some((candidate) => candidate.sourceId === "guide-new-resource"));
+    const row = document.querySelector(`#candidate-list [data-node-id="${CSS.escape(documentNode.id)}"]`);
+    const title = row.querySelector(".candidate-parent-label strong");
+    const pill = row.querySelector(".count-badge");
     title.textContent = `${title.textContent} Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua`;
     syncTruncationTooltips();
-    const childId = [...documentNode.querySelectorAll("[data-candidate-key] .candidate-tree-copy strong")]
+    const childId = [...document.querySelectorAll("#candidate-list [data-candidate-key] .candidate-tree-copy strong")]
       .find((node) => node.textContent === "REVIEW-REPO-001");
     const titleRect = title.getBoundingClientRect();
     const pillRect = pill.getBoundingClientRect();
@@ -242,7 +247,7 @@ async function run({ page, baseUrl, assert, playback }) {
         textAlign: titleStyle.textAlign,
         textOverflow: titleStyle.textOverflow,
         whiteSpace: titleStyle.whiteSpace,
-        rowHeight: summary.getBoundingClientRect().height,
+        rowHeight: row.getBoundingClientRect().height,
         gapToPill: pillRect.left - titleRect.right,
         overlapsPill: titleRect.right > pillRect.left
       },
@@ -261,8 +266,9 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(Math.abs(truncation.parent.rowHeight - 40) < 0.1 && truncation.parent.gapToPill >= 7.9 && !truncation.parent.overlapsPill, "long contributor parent title changes row geometry or overlaps its count pill");
   assert(truncation.child.clipped && truncation.child.textOverflow === "ellipsis" && truncation.child.whiteSpace === "nowrap" && truncation.child.title === null && truncation.child.generatedTooltip, "long contributor child ID does not ellipsize through the shared tooltip contract");
 
-  const parentTitle = page.locator('[data-source-id="guide-new-resource"] > summary .candidate-parent-label > strong');
+  const parentTitle = page.locator('#candidate-list [data-node-id="candidate:folder:upstream:guide-new-resource"] .candidate-parent-label > strong');
   await parentTitle.hover({ position: { x: 20, y: 10 } });
+  await waitForWorkbenchTooltip(page);
   const tooltip = await page.evaluate(() => {
     const node = document.querySelector("#status-surface-tooltip");
     const rect = node.getBoundingClientRect();

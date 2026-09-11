@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param(
+    [string]$Run,
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
 )
@@ -34,6 +36,13 @@ $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
+$supportedFocusedRuns = @('loopback-host-validation', 'browser-behavior-manifest', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
+
+function Test-ShouldRun {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    return [string]::IsNullOrWhiteSpace($Run) -or $Run -eq $Name
+}
 
 function Start-TestResult {
     param(
@@ -107,6 +116,11 @@ if ($OutputFormat -eq 'Text') {
 }
 
 try {
+    if (-not [string]::IsNullOrWhiteSpace($Run) -and $Run -notin $supportedFocusedRuns) {
+        $supportedRunList = ($supportedFocusedRuns | ForEach-Object { "      - '$_'" }) -join "`n"
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail "Requested Workbench test suite '$Run' is not supported.`n`n    SUPPORTED SUITES:`n`n$supportedRunList"
+    }
+    else {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
     $nodeLockConfig = Get-Content -LiteralPath $nodePackageLockPath -Raw | ConvertFrom-Json -AsHashtable
@@ -120,15 +134,38 @@ try {
     if (-not $lockIntegrityValid) {
         throw 'Node validation dependencies are not fully covered by the versioned integrity lock'
     }
-    $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
-    $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
-    Start-TestResult -Name 'locked-browser-dependencies'
-    $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --no-audit --no-fund 2>&1)
-    $dependencyExitCode = $LASTEXITCODE
-    $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-Path -LiteralPath $nodePackageLockPath -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
-    Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed integrity-locked Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graphs." } else { ($dependencyOutput | Out-String).Trim() })
-    if (-not $lockedDependencyValid) {
-        throw 'locked browser validation dependencies could not be installed'
+    if ([string]::IsNullOrWhiteSpace($Run)) {
+        $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
+        $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
+        Start-TestResult -Name 'locked-browser-dependencies'
+        $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --no-audit --no-fund 2>&1)
+        $dependencyExitCode = $LASTEXITCODE
+        $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-Path -LiteralPath $nodePackageLockPath -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
+        Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed integrity-locked Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graphs." } else { ($dependencyOutput | Out-String).Trim() })
+        if (-not $lockedDependencyValid) {
+            throw 'locked browser validation dependencies could not be installed'
+        }
+    }
+    else {
+        $requiredBrowserPackages = if ($Run -eq 'browser-playwright-journeys') {
+            @('@playwright/test', 'puppeteer')
+        }
+        elseif ($Run -in @('browser-viewport-layout', 'browser-framework-coverage')) {
+            @('puppeteer')
+        }
+        else {
+            @()
+        }
+        foreach ($packageName in $requiredBrowserPackages) {
+            $installedPackagePath = Join-Path $PSScriptRoot "node_modules/$packageName/package.json"
+            if (-not (Test-Path -LiteralPath $installedPackagePath -PathType Leaf)) {
+                throw "Focused browser validation requires installed package '$packageName'; run the complete Workbench suite once to install locked dependencies"
+            }
+            $installedPackage = Get-Content -LiteralPath $installedPackagePath -Raw | ConvertFrom-Json
+            if ([string]$installedPackage.version -ne [string]$nodePackageConfig.devDependencies.$packageName) {
+                throw "Focused browser validation requires locked $packageName version $($nodePackageConfig.devDependencies.$packageName), found $($installedPackage.version)"
+            }
+        }
     }
     $bundlePath = Join-Path $tempRoot 'rule-intake-review.json'
     $capacityReports = @(
@@ -343,6 +380,7 @@ try {
     $bundle.summary.maintainerStateCounts.new = 1
     $bundleJson = $bundle | ConvertTo-Json -Depth 20
     [IO.File]::WriteAllText($bundlePath, $bundleJson + "`n", [Text.UTF8Encoding]::new($false))
+    if ([string]::IsNullOrWhiteSpace($Run)) {
     Add-TestResult -Name 'fixture-bundle-valid' -Passed ([bool]($bundleJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench bundle satisfies the candidate review schema.'
 
     $invalidAssessmentBundle = $bundleJson | ConvertFrom-Json
@@ -357,7 +395,7 @@ try {
     $stageExitCode = $LASTEXITCODE
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
     $bundleHashAfter = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
-    $stagedPaths = @('index.html', 'app.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
+    $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
     Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 3 -and $stageResult.evaluatedCandidateCount -eq 3 -and $stageResult.ruleCandidateCount -eq 5 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports source records and rule-level AI candidates separately.' } else { ($stageOutput | Out-String).Trim() })
     Add-TestResult -Name 'source-bundle-read-only' -Passed ($bundleHashBefore -eq $bundleHashAfter) -Detail 'Workbench staging does not modify its source bundle.'
 
@@ -392,6 +430,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
+    $hierarchicalViewContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'hierarchical-view.js') -Raw
     $stylesContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'styles.css') -Raw
     $faviconContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'favicon.svg') -Raw
     $generatedSpriteContent = Get-Content -LiteralPath (Join-Path $codiconRoot 'sprite.svg') -Raw
@@ -516,9 +555,31 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $stylesContent -match '\.factor-line\.penalty\.risk-moderate \.factor-meter::\-webkit-progress-value\s*\{[^}]*background:\s*var\(--gold\)' -and
         $stylesContent -match '\.factor-line\.penalty\.risk-high \.factor-value\s*\{[^}]*color:\s*var\(--red\)' -and
         $stylesContent -match '\.assessment-override-inline\s*\{[^}]*border-left:\s*2px solid var\(--gold\)'
+    $assessmentResultsValid = $tabStateValid -and
+        $appContent -match 'function buildAssessmentTreeNodes\(' -and
+        $appContent -match 'state\.assessedCandidates\.filter\(\(candidate\) => !candidate\.assessment\.hostedApplicable\)' -and
+        $appContent -match 'children: state\.assessmentOverrideExpandedKey === candidate\.key && getApplicabilityOverride\(candidate\)' -and
+        $appContent -match 'kind: "detail"' -and
+        $appContent -match 'function renderAssessmentHierarchyRow\(' -and
+        $appContent -match 'data-assessment-override-toggle=' -and
+        $appContent -match 'data-assessment-override-remove=' -and
+        $appContent -match 'renderApplicabilityOverride\(candidate\)' -and
+        $stylesContent -match '\.assessment-override-inline\s*\{[^}]*border-left:\s*2px solid var\(--gold\)'
     Add-TestResult -Name 'assessment-results-audit' -Passed $assessmentResultsValid -Detail 'Assessment Results retains every original AI exclusion, exposes persisted contested state inline, and synchronizes rationale and removal with the source-bound Details audit.'
 
     $assessmentSortingValid = $appContent -match 'assessmentSorts:\s*\{\}' -and $appContent -match 'event\.target\.closest\("\[data-assessment-sort\]"\)' -and $appContent -match 'function renderAssessmentResultsHeader\(sectionKey\)' -and $appContent -match '\["candidate", "Candidate", "Candidate"' -and $appContent -match '\["state", "State", "Source State"' -and $appContent -notmatch '\["outcome", "Outcome", "Outcome"|sort\.field === "outcome"' -and $appContent -match '\["category", "Category", "Category"' -and $appContent -match '\["recommendation", "Recommendation", "Recommendation"' -and $appContent -match '\["override", "Override", "Override"' -and $appContent -match 'if \(sort\.field === "state"\) return candidate\.state' -and $appContent -match 'return getApplicabilityOverride\(candidate\) \? "contested" : "none"' -and $appContent -match 'candidate-lifecycle \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'renderSortButton\(column, sort, \{ "assessment-sort": column\[0\], "assessment-section": sectionKey \}\)' -and $appContent -match 'function getAssessmentSort\(sectionKey\)' -and $appContent -match 'return state\.assessmentSorts\[sectionKey\] \|\| \{ field: "candidate", direction: "ascending" \}' -and $appContent -match 'function updateAssessmentSort\(button\)' -and $appContent -match 'group\.appendChild\(rowsByKey\.get\(candidate\.key\)\)' -and $appContent -match 'group\.appendChild\(panel\)' -and $appContent -match 'function sortAssessmentCandidates\(candidates, sort\)' -and $stylesContent -match '\.candidate-sort-button\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[^}]*gap:\s*8px' -and $stylesContent -match '\.candidate-sort-button > \.sort-indicator\s*\{[^}]*flex:\s*0 0 16px;[^}]*visibility:\s*hidden' -and $stylesContent -match '\.candidate-sort-button\.active > \.sort-indicator\s*\{[^}]*visibility:\s*visible' -and $stylesContent -match ':is\(\.candidate-list-header, \.assessment-results-header\) > \.candidate-sort-button\s*\{[^}]*justify-content:\s*flex-start'
+    $assessmentSortingValid = $appContent -match 'assessmentSorts:\s*\{\}' -and
+        $appContent -match 'function renderAssessmentResultsHeader\(sectionKey\)' -and
+        $appContent -match '\["candidate", "Candidate", "Candidate"' -and
+        $appContent -match '\["state", "State", "Source State"' -and
+        $appContent -match '\["category", "Category", "Category"' -and
+        $appContent -match '\["recommendation", "Recommendation", "Recommendation"' -and
+        $appContent -match '\["override", "Override", "Override"' -and
+        $appContent -match 'sortAssessmentCandidates\(candidates, getAssessmentSort\(sectionKey\)\)' -and
+        $appContent -match 'function updateAssessmentSort\(button\)' -and
+        $appContent -match 'assessmentHierarchicalView\.refresh\(\)' -and
+        $appContent -match 'function sortAssessmentCandidates\(candidates, sort\)' -and
+        $stylesContent -match '\.candidate-sort-button\.active > \.sort-indicator\s*\{[^}]*visibility:\s*visible'
     Add-TestResult -Name 'assessment-results-sorting' -Passed $assessmentSortingValid -Detail 'Each Assessment Results source group independently sorts Candidate, State, Category, Recommendation, and Override without detaching expanded override audits from their rows.'
 
     $sharedPresentationUtilitiesValid =
@@ -541,6 +602,17 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $appContent -match 'function syncTruncationTooltips\(\)' -and
         $appContent -match 'getComputedStyle\(node\)\.textOverflow !== "ellipsis"' -and
         $appContent -match 'node\.setAttribute\("data-truncation-tooltip", ""\)' -and
+        $appContent -notmatch 'MutationObserver'
+    $sharedPresentationUtilitiesValid =
+        $appContent -match 'function renderCandidateCountBadge\(count, singular, decoration\)' -and
+        $appContent -match 'function renderSourceSummaryLabel\(' -and
+        $appContent -match 'function formatCountLabel\(count, singular\)' -and
+        $appContent -match '\$\{formatNumber\(candidates\.length\)\} Excluded' -and
+        $stylesContent -match '\.status-badge\.count-badge\s*\{[^}]*background:\s*#007acc' -and
+        $stylesContent -match '\.hierarchical-parent-row\s*\{[^}]*background:\s*var\(--surface\)' -and
+        $stylesContent -match '\.candidate-source-row > \.source-summary-label > strong\s*\{[^}]*text-transform:\s*uppercase' -and
+        $stylesContent -match '\.panel-heading,\s*\.candidate-list-header,\s*\.assessment-results-header,\s*\.plan-table th,\s*\.payload-column-heading\s*\{[^}]*background:\s*var\(--surface\)' -and
+        $appContent -match 'function syncTruncationTooltips\(\)' -and
         $appContent -notmatch 'MutationObserver'
     Add-TestResult -Name 'shared-presentation-utilities' -Passed $sharedPresentationUtilitiesValid -Detail 'Sortable list headers, neutral count pills, dark data headers, and truncation tooltips are shared presentation behaviors rather than view-specific exceptions.'
 
@@ -615,6 +687,18 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $sourceTreeValid = $appContent -match 'candidate-source-root' -and $appContent -match 'candidate-category' -and $appContent -match '\["maintainer", "Maintainer Proposals"\]' -and $appContent -match 'key: `maintainer:\$\{candidate\.id\}:\$\{assessment\.assessmentId\}`' -and $appContent -match 'Proposal rationale' -and $appContent -notmatch 'data-category-checkbox' -and $appContent -match 'data-decision-key' -and $appContent -notmatch 'reviewSet' -and $stylesContent -match '\.candidate-tree-row' -and $stylesContent -match '\.candidate-list-header' -and $stylesContent -match '\.candidate-category > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) auto'
     $sourceTreeValid = $sourceTreeValid -and $appContent -match 'function getCandidateDecoration\(' -and $appContent -match 'getPlanReadiness\(candidate\)\.ready' -and $appContent -match 'function getCandidateAggregateDecoration\(' -and $appContent -match 'status: needsInput \? "needs-input" : "ready"' -and $appContent -match 'function syncCandidateTreeAggregates\(' -and $appContent -match 'candidate-decoration-description sr-only' -and $appContent -match 'codicon-diff-modified'
+    $sourceTreeValid = $appContent -match 'function buildCandidateTreeNodes\(' -and
+        $appContent -match '\["maintainer", "Maintainer Proposals"\]' -and
+        $appContent -match 'kind: "source"' -and
+        $appContent -match 'kind: "folder"' -and
+        $appContent -match 'function renderCandidateHierarchyRow\(' -and
+        $appContent -match 'function getCandidateDecoration\(' -and
+        $appContent -match 'function getCandidateAggregateDecoration\(' -and
+        $appContent -match 'status: needsInput \? "needs-input" : "ready"' -and
+        $appContent -match 'function syncCandidateTreeAggregates\(' -and
+        $appContent -match 'candidate-decoration-description sr-only' -and
+        $stylesContent -match '\.candidate-source-row\s*\{' -and
+        $stylesContent -match '\.candidate-folder-row\s*\{'
     Add-TestResult -Name 'evaluated-source-tree' -Passed $sourceTreeValid -Detail 'Interactive, Contributor Guidance, and Maintainer Proposals candidates are grouped by source; selected leaf readiness propagates through ancestors with accessible descriptions and needs-input precedence.'
 
     $contributorHierarchyValid = $appContent -match 'function groupCandidatesBySource\(' -and $appContent -match 'function renderContributorDocument\(' -and $appContent -match 'data-source-id="\$\{escapeHtml\(source\.sourceId\)\}"' -and $appContent -match 'class="candidate-parent-label"><strong>\$\{escapeHtml\(source\.sourceTitle\)\}</strong>' -and $appContent -match 'renderCandidateItems\(sectionKey, candidates, "contributor-candidates"\)' -and $appContent -match '\["candidate", "Candidate", "Candidate",' -and $stylesContent -match '\.contributor-document > summary > \.candidate-parent-label > strong,[\s\S]*?\.contributor-document \.candidate-tree-copy > strong\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap' -and $stylesContent -match '\.contributor-document > summary > \.candidate-parent-label > strong\s*\{[^}]*flex:\s*1 1 auto;[^}]*text-align:\s*left'
@@ -622,6 +706,12 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $appContent -match 'data-source-id="\$\{escapeHtml\(source\.sourceId\)\}"' -and
         $appContent -match 'class="candidate-parent-label"><strong>\$\{escapeHtml\(source\.sourceTitle\)\}</strong>' -and
         $stylesContent -match '\.candidate-parent-label > strong,\s*\.candidate-tree-copy > strong\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap'
+    $contributorHierarchyValid = $appContent -match 'function groupCandidatesBySource\(' -and
+        $appContent -match 'sourceType === "upstream" \? groupCandidatesBySource\(candidates\)' -and
+        $appContent -match 'sourceType === "upstream" \? members\[0\]\.sourceTitle : groupKey' -and
+        $appContent -match 'extraClass: sourceType === "upstream" \? "contributor-document" : ""' -and
+        $appContent -match 'children: buildCandidateLeafNodes\(sectionKey, candidates, override\)' -and
+        $stylesContent -match '\.candidate-parent-label > strong,\s*\.candidate-tree-copy > strong\s*\{[^}]*text-overflow:\s*ellipsis'
     Add-TestResult -Name 'contributor-document-children' -Passed $contributorHierarchyValid -Detail 'Contributor Guidance documents are non-actionable parents whose independently assessed rule candidates retain shared sortable rows.'
 
     $candidateHeaderTooltipsValid = $appContent -match '\["candidate", "Candidate", "Candidate", "Source rule ID and title\."\]' -and $appContent -match '\["impact", "Impact", "Impact", "Priority score balancing rule value and review risk\."\]' -and $appContent -match '\["cost", "Tokens", "Token Usage", "Unsigned values show current guarded-token usage\. Signed values show the estimated change if the recommended action is promoted\."\]' -and $appContent -match '\["recommendation", "Recommended", "Recommendation", "AI-recommended action for maintainer review\."\]' -and $appContent -match 'title="\$\{escapeHtml\(help\)\}"' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'function formatCandidateTokenValue\(' -and $appContent -match 'if \(sort\.field === "cost"\) return getCandidateTokenValue\(candidate, assessment\)'
@@ -633,6 +723,14 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $directTreeUpdatesValid = $appContent -match 'function syncCandidateTreeRows' -and $appContent -match 'function selectCandidate\(key, rationaleReturnView = null\)\s*\{[^}]*syncCandidateTreeRows\(\)' -and $appContent -match 'function updateDecision\(candidate, changes\)[\s\S]*?saveDecision\(candidate,' -and $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);\s*renderDecisionOutputs\(\);\s*\}' -and $appContent -match 'function syncAssessmentPlanToggle\(candidate\)' -and $appContent -match 'control\.checked = getDecision\(candidate\)\.inPlan' -and $appContent -match 'function handleTreeSelection\(event\)[\s\S]*?updateDecision\(candidate,[^;]+;\s*selectCandidate\(candidate\.key\);\s*\}' -and $appContent -match 'function updateCandidateSort\(button\)[\s\S]*?group\.appendChild\(rowsByKey\.get\(candidate\.key\)\)'
     $directTreeUpdatesValid = $directTreeUpdatesValid -and $appContent -match 'function removePlanMembership\(candidate\) \{\s*const \{ assessment, \.\.\.maintainerDecision \} = getDecision\(candidate\);\s*removeCandidateFromBulkOperations\(candidate\.key\);\s*saveDecision\(candidate, \{ \.\.\.maintainerDecision, \.\.\.createPlanMembership\(\) \}\);' -and $appContent -match 'if \(candidateCheckbox\.checked\) \{\s*updateDecision\(candidate, \{ inPlan: true \}\)' -and $appContent -match 'else \{\s*removePlanMembership\(candidate\)' -and $appContent -match 'updateDecision\(candidate, \{ action \}\);\s*syncAssessmentActionControls\(candidate\)' -and $appContent -match 'function syncAssessmentActionControls\(candidate\)' -and $appContent -match 'control\.closest\("\.action-option"\)\?\.classList\.toggle\("selected", selected\)' -and $appContent -match 'badge\.textContent = formatRecommendation\(decision\.action\)' -and $appContent -match 'if \(event\.target\.hasAttribute\("data-plan-toggle"\)\) \{\s*if \(event\.target\.checked\) updateDecision\(candidate, \{ inPlan: true \}\);\s*else removePlanMembership\(candidate\);\s*return;' -and $appContent -match 'Include this candidate in the promotion plan' -and $appContent -notmatch 'Remove and reset|Remove candidate and reset its decision'
+    $directTreeUpdatesValid = $appContent -match 'function syncCandidateTreeRows' -and
+        $appContent -match 'function selectCandidate\(key, rationaleReturnView = null\)\s*\{[^}]*syncCandidateTreeRows\(\)' -and
+        $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);' -and
+        $appContent -match 'control\.checked = getDecision\(candidate\)\.inPlan' -and
+        $appContent -match 'function updateCandidateSort\(button\)[\s\S]*?candidateHierarchicalView\.refresh\(\)' -and
+        $hierarchicalViewContent -match 'target\.checked = source\.checked' -and
+        $hierarchicalViewContent -match 'const existing = new Map\(Array\.from\(this\.rowsContainer\.children\)' -and
+        $hierarchicalViewContent -match 'patchNode\(row, rendered\)'
     Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree and Details checkboxes are synchronized projections of membership-only state in both directions without replacing scroll, focus, selection, or expanded folders; explicit Undo retains the full-reset lifecycle.'
 
     $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'schemaVersion:\s*SESSION_SCHEMA_VERSION,\s*kind: "hosted-rule-workbench-draft"'
@@ -643,6 +741,16 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $bulkActionsValid = $bulkActionsValid -and $indexContent -match 'id="bulk-actions-note"' -and $appContent -match 'function getValidatedCodeOwnerIdentity\(' -and $appContent -match 'button\.disabled = !identity \|\| count === 0' -and $appContent -match 'if \(state\.session\.decisions\[candidate\.key\]\) return false' -and $appContent -match 'function getBulkDecisionRationale\(' -and $appContent -match 'action: assessment\.recommendation' -and $appContent -match 'rationale: getBulkDecisionRationale\(candidate, assessment\.recommendation\)'
     $bulkActionsValid = $bulkActionsValid -and $appContent -match 'candidateSourceHashes: Object\.fromEntries' -and $appContent -match 'recordedBy: \{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'operation\.recordedBy\?\.type === "github-cli"' -and $appContent -match 'draft\.decisions\[key\]\?\.sourceHash !== operation\.candidateSourceHashes\[key\]'
     $bulkActionsValid = $bulkActionsValid -and $stylesContent -match '\.bulk-actions-menu::before\s*\{[^}]*top:\s*-5px;[^}]*height:\s*5px;[^}]*content:\s*""' -and $stylesContent -match '\.bulk-actions-menu button:disabled\s*\{[^}]*cursor:\s*default !important'
+    $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and
+        $appContent -match 'bulkOperations:\s*\[\]' -and
+        $appContent -match 'function applyBulkSelection\(' -and
+        $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and
+        $appContent -match 'function undoBulkOperation\(' -and
+        $appContent -match 'function renderBulkSelectionOutputs\(\) \{\s*syncCandidateTreeRows\(\);' -and
+        $appContent -match 'const overrideRootId = "candidate:source:overrides"' -and
+        $appContent -match 'const sourceId = `candidate:source:\$\{sourceType\}`' -and
+        $appContent -match 'recordedBy: \{ type: "github-cli", login: identity\.login \}' -and
+        $appContent -match 'candidateSourceHashes: Object\.fromEntries'
     Add-TestResult -Name 'bulk-plan-membership' -Passed $bulkActionsValid -Detail 'CODEOWNER-only Bulk Actions create complete recommendation-aligned decisions with deterministic rationale and actor/hash provenance, preserve manual decisions, promote subsequent edits to manual ownership, and undo only entries still owned by the matching operation.'
 
     $capacityProjectionValid = $appContent -match 'Plan projection' -and $appContent -match 'getProjectedCapacityDelta' -and $appContent -match 'projectedGuardedTokens' -and $appContent -match 'projectedHeadroomTokens' -and $appContent -match 'function renderDecisionOutputs\(\)[\s\S]*?renderPlan\(\);[\s\S]*?renderCapacity\(\);[\s\S]*?renderPreview\(\);[\s\S]*?renderCounts\(\);' -and $appContent -match 'function resetCandidate\(' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)' -and $appContent -match 'saveDecision\(candidate, null\)' -and $appContent -match 'clearCandidateSelection\(candidate\)' -and $appContent -match 'if \(\["add", "update"\]\.includes\(decision\.action\)\)' -and $appContent -match 'if \(decision\.action !== "retire"\) return 0' -and $appContent -match 'function showToast\(message, error = false\)' -and $appContent -match 'if \(!error\) toastTimer = setTimeout\(dismissNotification, 8000\)' -and $appContent -notmatch 'showToast\([^\n]+, false, \{' -and $indexContent -match 'id="toast-close"[^>]*aria-label="Dismiss Notification"' -and $stylesContent -match '\.toast\.visible\s*\{[^}]*pointer-events:\s*auto'
@@ -651,10 +759,25 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $semanticColorsValid = $stylesContent -match '\.recommendation-badge\s*\{[^}]*background:\s*#303b60;[^}]*border:\s*1px solid #7f91c4' -and $stylesContent -match '\.recommendation-badge\.add\s*\{[^}]*background:\s*#174638' -and $stylesContent -match '\.recommendation-badge\.exclude\s*\{[^}]*background:\s*#4a252b' -and $stylesContent -match '\.recommendation-badge\.defer\s*\{[^}]*background:\s*#493812' -and $stylesContent -match '\.candidate-lifecycle,\s*\.candidate-state\s*\{[^}]*border:\s*1px solid #7f91c4' -and $stylesContent -match '\.candidate-tree-row\.in-plan:not\(\.active\)\s*\{[^}]*background:\s*rgba\(97, 226, 148, 0\.06\)' -and $stylesContent -match '\.catalog-status\.mapped' -and $stylesContent -match '\.action-option\.selected' -and $stylesContent -match '\.plan-undo:hover\s*\{[^}]*background:\s*#31506b'
     $semanticColorsValid = $semanticColorsValid -and $stylesContent -match '--added-resource:\s*#78a680' -and $stylesContent -match '--modified-resource:\s*#e2c08d' -and $stylesContent -match '\.candidate-parent-decoration-icon\s*\{[^}]*margin-left:\s*auto' -and $stylesContent -match '\.candidate-tree-copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 16px' -and $stylesContent -match 'candidate-decoration-needs-input[\s\S]*color:\s*var\(--modified-resource\) !important'
+    $semanticColorsValid = $stylesContent -match '--added-resource:\s*#78a680' -and
+        $stylesContent -match '--modified-resource:\s*#e2c08d' -and
+        $stylesContent -match '\.hierarchical-parent-row\.candidate-aggregate-ready[\s\S]*?color:\s*var\(--added-resource\)' -and
+        $stylesContent -match '\.hierarchical-parent-row\.candidate-aggregate-needs-input[\s\S]*?color:\s*var\(--modified-resource\)' -and
+        $stylesContent -match '\.candidate-parent-decoration-icon\s*\{[^}]*margin-left:\s*auto' -and
+        $stylesContent -match '\.candidate-tree-copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 16px'
     Add-TestResult -Name 'semantic-color-contract' -Passed $semanticColorsValid -Detail 'Lifecycle, recommendation, catalog mapping, selected action, plan membership, and Undo states use readable semantic colors and visible borders.'
 
     $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*not-allowed !important' -and $stylesContent -match '\.raw-change-navigation \.icon-button:disabled\s*\{[^}]*cursor:\s*default !important' -and $indexContent -match 'stage-link active clickable' -and $indexContent -match '<summary class="clickable">[\s\S]*?Raw Selection Payload[\s\S]*?</summary>' -and $appContent -match 'assessment-result-row clickable' -and $appContent -match 'candidate-tree-row clickable' -and $appContent -match 'action-option clickable' -and $appContent -match 'plan-detail-link clickable'
-    Add-TestResult -Name 'clickable-cursor-affordance' -Passed $clickableAffordanceValid -Detail 'Static and generated command, navigation, disclosure, row, and option controls share an explicit pointer cursor; unavailable raw change navigation retains the normal arrow while other disabled commands remain not-allowed.'
+    $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and
+        $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
+        $stylesContent -match '\.raw-change-navigation \.icon-button:disabled\s*\{[^}]*cursor:\s*default !important' -and
+        $indexContent -match '<summary class="clickable">[\s\S]*?Raw Selection Payload' -and
+        $appContent -match 'hierarchical-parent-row[^"]*clickable' -and
+        $appContent -match 'assessment-result-row clickable' -and
+        $appContent -match 'candidate-tree-row clickable' -and
+        $appContent -match 'action-option clickable' -and
+        $appContent -match 'plan-detail-link clickable'
+    Add-TestResult -Name 'clickable-cursor-affordance' -Passed $clickableAffordanceValid -Detail 'Static and generated command, navigation, disclosure, row, and option controls share an explicit pointer cursor while unavailable commands retain the normal arrow.'
 
     $planColumnsValid = $indexContent -match '<col class="plan-column-source">\s*<col class="plan-column-action">' -and $indexContent -match '<th>Source</th>\s*<th>Action</th>' -and $indexContent -match '<th>Controls</th>' -and $appContent -match '<td class="plan-source">' -and $appContent -match '<td class="plan-action">' -and $appContent -match '<tr class="plan-candidate-row clickable"[^>]*tabindex="0"[^>]*data-plan-row=' -and $appContent -match '<span class="candidate-link">' -and $appContent -notmatch '<button class="candidate-link' -and $appContent -match 'function handlePlanRowKeyboardNavigation\(' -and $stylesContent -match '\.plan-candidate-row:hover td,[\s\S]*?background:\s*var\(--accent-soft\)' -and $stylesContent -match '\.plan-table\s*\{[^}]*table-layout:\s*fixed' -and $stylesContent -match '\.plan-table th\s*\{[^}]*white-space:\s*nowrap' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.plan-table\s*\{\s*min-width:\s*900px' -and $stylesContent -match '\.plan-table th:last-child\s*\{[^}]*text-align:\s*center'
     $planColumnsValid = $indexContent -match '<col class="plan-column-source">\s*<col class="plan-column-type">\s*<col class="plan-column-action">' -and $appContent -match 'function renderPlanHeader\(' -and $appContent -match '\["type", "Type", "Type", "How the candidate entered the promotion plan\."\]' -and $appContent -match 'renderSortButton\(column, state\.planSort, \{ "plan-sort": column\[0\] \}\)' -and $appContent -match '<td class="plan-source">\$\{escapeHtml\(formatTitleCase\(candidate\.sourceLabel\)\)\}</td>' -and $appContent -match '<td class="plan-type"><span class="status-badge neutral plan-membership-badge">' -and $appContent -match '<tr class="plan-candidate-row clickable"[^>]*tabindex="0"[^>]*data-plan-row=' -and $appContent -match '<span class="candidate-link">' -and $appContent -match '<span class="plan-candidate-title">' -and $appContent -match 'function handlePlanRowKeyboardNavigation\(' -and $stylesContent -match '\.plan-column-type\s*\{[^}]*width:\s*90px' -and $stylesContent -match '\.plan-table :is\(th, td\):not\(:first-child\):not\(:last-child\)\s*\{[^}]*text-align:\s*center' -and $stylesContent -match '\.plan-table :is\(th, td\):last-child\s*\{[^}]*text-align:\s*left' -and $stylesContent -match '\.plan-table th:first-child \.candidate-sort-button\s*\{[^}]*justify-content:\s*flex-start;[^}]*text-align:\s*left' -and $stylesContent -match '\.plan-candidate-row:hover td,[\s\S]*?background:\s*var\(--accent-soft\)' -and $stylesContent -match '\.plan-table\s*\{[^}]*min-width:\s*1000px;[^}]*table-layout:\s*fixed' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.plan-table\s*\{\s*min-width:\s*900px'
@@ -663,6 +786,17 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-rationale-save' -and $appContent -notmatch '<span>Save</span>' -and $appContent -match 'Save decision rationale and return to Promotion Plan' -and $appContent -match 'Save and return to Promotion Plan' -and $appContent -match 'save\.disabled = !value\.trim\(\)' -and $appContent -match 'await persistencePromise' -and $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)' -and $stylesContent -match '\.plan-detail-link:focus-visible' -and $stylesContent -match '\.rationale-heading'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-plan-action=' -and $appContent -match 'openPlanCandidate\(action\.dataset\.planAction, "action"\)' -and $appContent -match 'focusTarget === "action"' -and $appContent -match 'function scrollCandidateDetailTargetIntoView\(' -and ([regex]::Matches($appContent, 'scrollCandidateDetailTargetIntoView\(').Count -eq 3) -and $appContent -match 'control\?\.focus' -and $appContent -match 'class="assessment-title-statuses"' -and $stylesContent -match '#candidate-sources-panel \.assessment-panel\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto'
+    $planDetailValid = $appContent -match 'data-plan-detail=' -and
+        $appContent -match 'data-plan-action=' -and
+        $appContent -match 'function revealCandidateInTree\(' -and
+        $appContent -match 'function openPlanCandidate\(' -and
+        $appContent -match 'revealCandidateInTree\(key\)' -and
+        $appContent -match 'focusTarget === "action"' -and
+        $appContent -match 'focusTarget === "rationale"' -and
+        $appContent -match 'control\?\.focus' -and
+        $appContent -match 'field\?\.focus' -and
+        $appContent -match 'data-rationale-save' -and
+        $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)'
     Add-TestResult -Name 'promotion-plan-detail-routing' -Passed $planDetailValid -Detail 'Needs action opens and focuses Rule Actions while persistent rule identity remains fixed above the contained Details scroller; Needs rationale focuses Decision Rationale; Save returns plan-origin edits after persistence.'
 
     $planTokenDeltaValid = $appContent -match 'function getAssessmentTokenValue\(' -and $appContent -match '!getApplicabilityOverride\(candidate\) \|\| assessment\.guardedTokenDelta !== 0' -and $appContent -match 'estimateGuardedTokens\(decision\.proposedText \|\| candidate\.text\)' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'if \(getApplicabilityOverride\(candidate\)\)' -and $appContent -match 'function getPlanTokenValue\(' -and $appContent -match 'function getPlanTokenDisplay\(' -and $appContent -match 'return formatSignedNumber\(getPlanTokenValue\(candidate\)\)' -and $appContent -match 'function getPlanTokenDelta\(' -and $appContent -match 'getAssessmentTokenValue\(candidate, assessment, decision\)' -and $appContent -match 'return -Math\.ceil\(estimatedTokens \* 1\.25\)' -and $appContent -match 'function getPlanAffectedSurfaces\(' -and $appContent -match 'placementSurfaces\.length \? placementSurfaces : assessment\?\.affectedSurfaces' -and $appContent -match '<td class="mono">\$\{cost\}</td>' -and $appContent -match 'token\.textContent = formatCandidateTokenValue\(candidate, assessment\)' -and $appContent -match 'sum \+ getPlanTokenValue\(candidate\)'
@@ -692,6 +826,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
     Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, rejects non-loopback Host values, serves only local runtime assets through GET and HEAD, and exposes one token-authenticated shutdown endpoint.'
+    }
 
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
@@ -715,48 +850,69 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         if (-not $serverReady) {
             throw 'loopback test server did not become ready'
         }
-        Start-TestResult -Name 'loopback-host-validation'
-        $misdirectedRequest = Invoke-WebRequest -Uri "$shutdownUrl/shutdown-config.js" -Headers @{ Host = 'attacker.example' } -SkipHttpErrorCheck
-        $hostValidationValid = $misdirectedRequest.StatusCode -eq 421 -and $misdirectedRequest.Content -eq 'Misdirected Request'
-        Add-TestResult -Name 'loopback-host-validation' -Passed $hostValidationValid -Detail 'An unrecognized Host cannot read staged Workbench files or the per-launch shutdown token through DNS rebinding.'
+        if (Test-ShouldRun -Name 'loopback-host-validation') {
+            Start-TestResult -Name 'loopback-host-validation'
+            $misdirectedRequest = Invoke-WebRequest -Uri "$shutdownUrl/shutdown-config.js" -Headers @{ Host = 'attacker.example' } -SkipHttpErrorCheck
+            $hostValidationValid = $misdirectedRequest.StatusCode -eq 421 -and $misdirectedRequest.Content -eq 'Misdirected Request'
+            Add-TestResult -Name 'loopback-host-validation' -Passed $hostValidationValid -Detail 'An unrecognized Host cannot read staged Workbench files or the per-launch shutdown token through DNS rebinding.'
+        }
         $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
-        Start-TestResult -Name 'browser-behavior-manifest'
         $behaviorManifestContent = Get-Content -LiteralPath $behaviorManifestPath -Raw
         $behaviorManifest = $behaviorManifestContent | ConvertFrom-Json
         $behaviorIds = @($behaviorManifest.behaviors | ForEach-Object { [string]$_.id })
         $journeyPaths = @($behaviorManifest.behaviors | ForEach-Object { Join-Path $workbenchRegressionRoot ([string]$_.journey) } | Sort-Object -Unique)
         $implementationContractContent = Get-Content -LiteralPath $implementationContractPath -Raw
         $behaviorManifestValid = [bool]($behaviorManifestContent | Test-Json -SchemaFile $behaviorManifestSchemaPath -ErrorAction Stop) -and @($behaviorIds | Sort-Object -Unique).Count -eq $behaviorIds.Count -and @($journeyPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and @($behaviorIds | Where-Object { $implementationContractContent -notmatch [regex]::Escape($_) }).Count -eq 0
-        Add-TestResult -Name 'browser-behavior-manifest' -Passed $behaviorManifestValid -Detail "Mapped $($behaviorIds.Count) authoritative Workbench behavior IDs to $($journeyPaths.Count) Playwright journeys."
-        if (-not $behaviorManifestValid) {
+        if (Test-ShouldRun -Name 'browser-behavior-manifest') {
+            Start-TestResult -Name 'browser-behavior-manifest'
+            Add-TestResult -Name 'browser-behavior-manifest' -Passed $behaviorManifestValid -Detail "Mapped $($behaviorIds.Count) authoritative Workbench behavior IDs to $($journeyPaths.Count) Playwright journeys."
+        }
+        if (-not $behaviorManifestValid -and ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage'))) {
             throw 'Workbench browser behavior manifest is invalid'
         }
-        Start-TestResult -Name 'browser-playwright-journeys'
-        $playwrightOutput = @(& $nodeExecutable $playwrightRunnerPath $shutdownUrl 2>&1)
-        $playwrightExitCode = $LASTEXITCODE
-        $playwrightResult = if ($playwrightExitCode -eq 0) { ($playwrightOutput | Out-String) | ConvertFrom-Json } else { $null }
-        $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $journeyPaths.Count -and $playwrightResult.behaviorCount -eq $behaviorIds.Count -and $playwrightResult.assertionCount -gt 0 -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9
-        Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) behavior IDs." } else { ($playwrightOutput | Out-String).Trim() })
-        Start-TestResult -Name 'browser-viewport-layout'
-        $layoutTestOutput = @(& $nodeExecutable $layoutTestPath $shutdownUrl 2>&1)
-        $layoutTestExitCode = $LASTEXITCODE
-        $layoutTestResult = if ($layoutTestExitCode -eq 0) { ($layoutTestOutput | Out-String) | ConvertFrom-Json } else { $null }
-        $layoutValid = $layoutTestExitCode -eq 0 -and $layoutTestResult.status -eq 'passed' -and $layoutTestResult.viewportCount -eq 9 -and $layoutTestResult.assertionCount -gt 0
-        Add-TestResult -Name 'browser-viewport-layout' -Passed $layoutValid -Detail $(if ($layoutTestExitCode -eq 0) { 'Browser geometry preserves mobile rejection and contained Candidate Details, Assessment Details, Plan, and Preview scrolling across every breakpoint boundary.' } else { ($layoutTestOutput | Out-String).Trim() })
-        $browserCoverageValid = $playwrightValid -and $layoutValid -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
-        Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
+        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage')) {
+            if (Test-ShouldRun -Name 'browser-playwright-journeys') { Start-TestResult -Name 'browser-playwright-journeys' }
+            $playwrightOutput = @(& $nodeExecutable $playwrightRunnerPath $shutdownUrl 2>&1)
+            $playwrightExitCode = $LASTEXITCODE
+            $playwrightResult = if ($playwrightExitCode -eq 0) { ($playwrightOutput | Out-String) | ConvertFrom-Json } else { $null }
+            $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $journeyPaths.Count -and $playwrightResult.behaviorCount -eq $behaviorIds.Count -and $playwrightResult.assertionCount -gt 0 -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9
+            if (Test-ShouldRun -Name 'browser-playwright-journeys') {
+                Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) behavior IDs." } else { ($playwrightOutput | Out-String).Trim() })
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-viewport-layout', 'browser-framework-coverage')) {
+            if (Test-ShouldRun -Name 'browser-viewport-layout') { Start-TestResult -Name 'browser-viewport-layout' }
+            $layoutTestOutput = @(& $nodeExecutable $layoutTestPath $shutdownUrl 2>&1)
+            $layoutTestExitCode = $LASTEXITCODE
+            $layoutTestResult = if ($layoutTestExitCode -eq 0) { ($layoutTestOutput | Out-String) | ConvertFrom-Json } else { $null }
+            $layoutValid = $layoutTestExitCode -eq 0 -and $layoutTestResult.status -eq 'passed' -and $layoutTestResult.viewportCount -eq 9 -and $layoutTestResult.assertionCount -gt 0
+            if (Test-ShouldRun -Name 'browser-viewport-layout') {
+                Add-TestResult -Name 'browser-viewport-layout' -Passed $layoutValid -Detail $(if ($layoutTestExitCode -eq 0) { 'Browser geometry preserves mobile rejection and contained Candidate Details, Assessment Details, Plan, and Preview scrolling across every breakpoint boundary.' } else { ($layoutTestOutput | Out-String).Trim() })
+            }
+        }
+        if (Test-ShouldRun -Name 'browser-framework-coverage') {
+            $browserCoverageValid = $playwrightValid -and $layoutValid -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
+            Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
+        }
         $shutdownConfigContent = Get-Content -LiteralPath (Join-Path $shutdownSiteDirectory 'shutdown-config.js') -Raw
         if ($shutdownConfigContent -notmatch '"shutdownToken":"(?<token>[0-9a-f]{64})"') {
             throw 'staged shutdown token was not found'
         }
-        Start-TestResult -Name 'authenticated-server-shutdown'
         $shutdownToken = [string]$Matches['token']
-        $unauthorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -SkipHttpErrorCheck
-        $unrelatedPost = Invoke-WebRequest -Uri "$shutdownUrl/" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
+        if (Test-ShouldRun -Name 'authenticated-server-shutdown') {
+            Start-TestResult -Name 'authenticated-server-shutdown'
+            $unauthorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -SkipHttpErrorCheck
+            $unrelatedPost = Invoke-WebRequest -Uri "$shutdownUrl/" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
+        }
         $authorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
         $completedJob = Wait-Job -Job $serverJob -Timeout 10
-        $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unrelatedPost.StatusCode -eq 405 -and $authorizedShutdown.StatusCode -eq 200 -and $null -ne $completedJob -and $serverJob.State -eq 'Completed'
-        Add-TestResult -Name 'authenticated-server-shutdown' -Passed $shutdownLifecycleValid -Detail 'Only the per-launch token can stop the loopback server; unauthorized shutdown and unrelated POST requests remain rejected.'
+        if (Test-ShouldRun -Name 'authenticated-server-shutdown') {
+            $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unrelatedPost.StatusCode -eq 405 -and $authorizedShutdown.StatusCode -eq 200 -and $null -ne $completedJob -and $serverJob.State -eq 'Completed'
+            Add-TestResult -Name 'authenticated-server-shutdown' -Passed $shutdownLifecycleValid -Detail 'Only the per-launch token can stop the loopback server; unauthorized shutdown and unrelated POST requests remain rejected.'
+        }
+        elseif ($authorizedShutdown.StatusCode -ne 200 -or $null -eq $completedJob -or $serverJob.State -ne 'Completed') {
+            throw 'Focused Workbench validation could not stop its owned server cleanly'
+        }
     }
     finally {
         if ($serverJob.State -notin @('Completed', 'Failed', 'Stopped')) {
@@ -765,11 +921,14 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         Remove-Job -Job $serverJob -Force
     }
 
-    $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
-    Start-TestResult -Name 'repository-staging-rejected'
-    $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -BundlePath $bundlePath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
-    $repositoryStagingRejected = $LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $repositorySiteDirectory)
-    Add-TestResult -Name 'repository-staging-rejected' -Passed $repositoryStagingRejected -Detail 'The launcher rejects generated staging output inside the source repository.'
+    if ([string]::IsNullOrWhiteSpace($Run)) {
+        $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
+        Start-TestResult -Name 'repository-staging-rejected'
+        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -BundlePath $bundlePath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $repositoryStagingRejected = $LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $repositorySiteDirectory)
+        Add-TestResult -Name 'repository-staging-rejected' -Passed $repositoryStagingRejected -Detail 'The launcher rejects generated staging output inside the source repository.'
+    }
+    }
 }
 catch {
     $issues.Add($_.Exception.Message)
@@ -784,6 +943,8 @@ finally {
 $result = [ordered]@{
     status = if ($issues.Count -eq 0) { 'passed' } else { 'failed' }
     testCount = $results.Count
+    passedCount = @($results | Where-Object status -eq 'passed').Count
+    failedCount = @($results | Where-Object status -eq 'failed').Count
     issueCount = $issues.Count
     tests = $results.ToArray()
     issues = $issues.ToArray()
@@ -797,10 +958,9 @@ else {
     Write-ValidationSummary -Fields ([ordered]@{
         Status = $result.status.ToUpperInvariant()
         Tests = $result.testCount
-        'Issue Count' = $result.issueCount
+        Passed = $result.passedCount
+        Failed = $result.failedCount
     })
-    Write-ValidationSectionHeader -Title 'Workbench tests'
-    Write-ValidationTwoColumnTable -Rows @($results.ToArray()) -FirstHeader 'status' -FirstProperty 'status' -SecondHeader 'test' -SecondProperty 'name' -UppercaseFirst
     if ($issues.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {

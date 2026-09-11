@@ -51,7 +51,7 @@ async function run({ page, baseUrl, assert, playback }) {
   await page.waitForTimeout(210);
   const hidden = await sample();
 
-  await page.locator("#candidate-list summary").first().focus();
+  await page.locator("#candidate-list .hierarchical-parent-row").first().focus();
   await page.waitForTimeout(220);
   const focused = await sample();
 

@@ -1,4 +1,4 @@
-const { openWorkbench, getCssTokenColor } = require("../helpers/workbench.cjs");
+const { openWorkbench, getCandidateHierarchy, getCssTokenColor } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-OWNERSHIP-001",
@@ -8,22 +8,21 @@ const behaviorIds = [
 ];
 
 async function inspectCandidate(page, candidateKey) {
-  return page.evaluate((key) => {
+  const hierarchy = await getCandidateHierarchy(page, candidateKey);
+  return page.evaluate(({ key, hierarchy }) => {
     const candidate = state.candidates.find((item) => item.key === key);
     const decision = getDecision(candidate);
     const row = document.querySelector(`[data-candidate-key="${key}"]`);
-    const category = row.closest("details.candidate-category");
-    const source = row.closest("details.candidate-source-root");
-    const inspectNode = (node, labelSelector, iconSelector) => {
-      const summary = node.querySelector(":scope > summary");
-      const label = summary.querySelector(labelSelector);
-      const icon = summary.querySelector(iconSelector);
+    const parentRows = hierarchy.parentIds.map((id) => document.querySelector(`#candidate-list [data-node-id="${CSS.escape(id)}"]`));
+    const inspectNode = (parentRow) => {
+      const label = parentRow.querySelector(".candidate-parent-label > strong, .source-summary-label > strong");
+      const icon = parentRow.querySelector(".candidate-parent-decoration-icon");
       return {
-        classes: node.className,
+        classes: parentRow.className,
         color: getComputedStyle(label).color,
         iconColor: getComputedStyle(icon).color,
         iconHidden: icon.hasAttribute("hidden"),
-        description: summary.querySelector(".candidate-decoration-description").textContent
+        description: parentRow.querySelector(".candidate-decoration-description").textContent
       };
     };
     const leafIcon = row.querySelector(".candidate-decoration-icon");
@@ -44,10 +43,10 @@ async function inspectCandidate(page, candidateKey) {
         iconHidden: leafIcon.hasAttribute("hidden"),
         description: row.querySelector(".candidate-decoration-description").textContent
       },
-      category: inspectNode(category, ".candidate-parent-label > strong", ".candidate-parent-decoration-icon"),
-      source: inspectNode(source, ".source-summary-label > strong", ".candidate-parent-decoration-icon")
+      category: inspectNode(parentRows.at(-1)),
+      source: inspectNode(parentRows[0])
     };
-  }, candidateKey);
+  }, { key: candidateKey, hierarchy });
 }
 
 function hierarchyMatches(snapshot, status, color) {

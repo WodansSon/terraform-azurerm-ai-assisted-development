@@ -1046,25 +1046,36 @@ function getBestCandidateSearchMatch() {
   return getFilteredCandidates().sort((left, right) => rank(left) - rank(right) || getEffectiveHostedRuleId(left).localeCompare(getEffectiveHostedRuleId(right)))[0] || null;
 }
 
+function revealCandidateInTree(key) {
+  if (!candidateHierarchicalView) return null;
+  const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === key);
+  if (!node) return null;
+  let changed = false;
+  for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+    if (!ancestor.children.length || ancestor.expanded) continue;
+    ancestor.expanded = true;
+    candidateExpansionState.set(ancestor.id, true);
+    changed = true;
+  }
+  if (changed) {
+    candidateHierarchicalView.model.flatten();
+    candidateHierarchicalView.layout.recalculate();
+    candidateHierarchicalView.renderNaturalRows();
+    candidateHierarchicalView.stickyController.update();
+  }
+  return node;
+}
+
 function navigateCandidateSearch({ scroll = true } = {}) {
   elements["candidate-list"].querySelectorAll(".candidate-tree-row.search-match").forEach((row) => row.classList.remove("search-match"));
   const candidate = getBestCandidateSearchMatch();
   if (!candidate) return;
   if (candidateHierarchicalView) {
-    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidate.key);
+    const node = revealCandidateInTree(candidate.key);
     if (!node) return;
-    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
-      if (!ancestor.children.length) continue;
-      ancestor.expanded = true;
-      candidateExpansionState.set(ancestor.id, true);
-    }
-    candidateHierarchicalView.model.flatten();
-    candidateHierarchicalView.layout.recalculate();
-    candidateHierarchicalView.renderNaturalRows();
     const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
     row?.classList.add("search-match");
     if (scroll) elements["candidate-list"].scrollTop = Math.max(0, node.layoutTop - (elements["candidate-list"].clientHeight - node.rowHeight) / 2);
-    candidateHierarchicalView.stickyController.update();
     return;
   }
   const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
@@ -1934,6 +1945,7 @@ function renderAssessment() {
 }
 
 function renderPriorityAssessment(assessment) {
+  const factors = assessment.selectionFactors || assessment.factors;
   return `
     <div class="assessment-details-heading">
       <div><strong>Assessment Details:</strong><p>AI-adjudicated evidence. Maintainers can review these values but cannot edit them.</p></div>
@@ -1951,13 +1963,13 @@ function renderPriorityAssessment(assessment) {
       <section class="factor-group value">
         <div class="factor-group-heading"><strong>Rule Value:</strong><span class="direction-badge positive">Adds to Impact</span></div>
         <div class="factor-grid">
-          ${FACTORS.filter(([, , , kind]) => kind === "value").map(([name, label, description, kind]) => factorReadout(label, description, kind, assessment.factors[name])).join("")}
+          ${FACTORS.filter(([, , , kind]) => kind === "value").map(([name, label, description, kind]) => factorReadout(label, description, kind, factors[name])).join("")}
         </div>
       </section>
       <section class="factor-group penalty">
         <div class="factor-group-heading"><strong>Review Risk:</strong><span class="direction-badge negative">Reduces Impact</span></div>
         <div class="factor-grid">
-          ${FACTORS.filter(([, , , kind]) => kind === "penalty").map(([name, label, description, kind]) => factorReadout(label, description, kind, assessment.factors[name])).join("")}
+          ${FACTORS.filter(([, , , kind]) => kind === "penalty").map(([name, label, description, kind]) => factorReadout(label, description, kind, factors[name])).join("")}
         </div>
       </section>
     </div>
@@ -2240,10 +2252,8 @@ function openPlanCandidate(key, focusTarget = null) {
   switchView("catalog");
   showCandidatePane(focusTarget ? "details" : "candidates");
   requestAnimationFrame(() => {
+    revealCandidateInTree(key);
     const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(key)}"]`);
-    if (!row) return;
-    row.closest("details.candidate-category")?.setAttribute("open", "");
-    row.closest("details.candidate-source-root")?.setAttribute("open", "");
     requestAnimationFrame(() => {
       if (focusTarget === "action") {
         const actions = elements["assessment-panel"].querySelector(".action-options");
@@ -2258,6 +2268,7 @@ function openPlanCandidate(key, focusTarget = null) {
         field?.focus({ preventScroll: true });
         return;
       }
+      if (!row) return;
       row.scrollIntoView({ block: "center", behavior: "smooth" });
       row.focus({ preventScroll: true });
     });

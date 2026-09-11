@@ -26,10 +26,9 @@ async function activateCandidateDetails(page) {
     document.querySelector('[data-view="catalog"]').click();
     document.querySelector('[data-workspace-tab="candidate-sources"]').click();
     document.querySelector('[data-candidate-pane="candidates"]').click();
-    const source = [...document.querySelectorAll("#candidate-list > details.candidate-source-root")]
-      .find((item) => item.querySelector("[data-candidate-key]"));
-    source.open = true;
-    source.querySelector("[data-candidate-key]").click();
+    const candidate = state.candidates[0];
+    revealCandidateInTree(candidate.key);
+    document.querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`).click();
   });
 }
 
@@ -238,33 +237,37 @@ async function assertPlanMembershipSynchronizesAcrossPanes(page, width) {
 
   await page.click('[data-candidate-pane="candidates"]');
   await page.evaluate((candidateKey) => {
-    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
-    row.closest("details.candidate-source-root").open = true;
-    const category = row.closest("details.candidate-category");
-    if (category) category.open = true;
+    revealCandidateInTree(candidateKey);
   }, before.candidateKey);
 
   const openState = await page.evaluate((candidateKey) => {
-    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
+    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidateKey);
+    const ancestors = [];
+    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.children.length) ancestors.push([ancestor.id, ancestor.expanded]);
+    }
     return {
-      sourceOpen: row.closest("details.candidate-source-root").open,
-      categoryOpen: row.closest("details.candidate-category")?.open ?? true,
+      ancestors,
     };
   }, before.candidateKey);
   await page.click(`#candidate-list [data-candidate-key="${before.candidateKey}"] [data-decision-key]`);
 
   const treeResult = await page.evaluate((candidateKey) => {
     const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
+    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidateKey);
+    const ancestors = [];
+    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.children.length) ancestors.push([ancestor.id, ancestor.expanded]);
+    }
     return {
       unchecked: !row.querySelector("[data-decision-key]").checked,
       selected: row.getAttribute("aria-current") === "true",
-      sourceOpen: row.closest("details.candidate-source-root").open,
-      categoryOpen: row.closest("details.candidate-category")?.open ?? true,
+      ancestors,
     };
   }, before.candidateKey);
   assert(treeResult.unchecked, `${width}px Membership synchronization: tree checkbox remained checked`);
   assert(treeResult.selected, `${width}px Membership synchronization: active tree selection changed`);
-  assert(treeResult.sourceOpen === openState.sourceOpen && treeResult.categoryOpen === openState.categoryOpen, `${width}px Membership synchronization: tree disclosures collapsed`);
+  assert(JSON.stringify(treeResult.ancestors) === JSON.stringify(openState.ancestors), `${width}px Membership synchronization: tree disclosures collapsed`);
 
   await page.click('[data-candidate-pane="details"]');
   const detailsResult = await page.evaluate(() => ({
@@ -330,8 +333,10 @@ async function assertRationaleSaveLayout(page, width) {
 async function assertOverridesDecoration(page, width) {
   const result = await page.evaluate(() => {
     const sessionSnapshot = structuredClone(state.session);
-    const candidate = state.candidates.find((item) => item.assessment.hostedApplicable);
+    const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.candidates[0];
     const assessment = getAssessment(candidate, getDecision(candidate));
+    const noOverridesInitially = !candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
+      && !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]');
     const resolveColor = (token) => {
       const probe = document.createElement("span");
       probe.style.color = `var(${token})`;
@@ -352,11 +357,13 @@ async function assertOverridesDecoration(page, width) {
         recordedBy: { type: "github-cli", login: "fixture-codeowner" }
       };
       state.session.decisions[candidate.key] = { ...defaultDecision(candidate), ...createPlanMembership("override") };
+      refreshEffectiveCandidates();
       renderCandidateList();
 
-      const root = document.querySelector("#candidate-list > .candidate-overrides-root");
-      const row = root.querySelector(`[data-candidate-key="${candidate.key}"]`);
-      const summary = root.querySelector(":scope > summary");
+      revealCandidateInTree(candidate.key);
+      const root = document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]');
+      const row = document.querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
+      const summary = root;
       const needsInputColor = resolveColor("--modified-resource");
       const needsInputValid = root.classList.contains("candidate-aggregate-needs-input")
         && row.classList.contains("candidate-decoration-needs-input")
@@ -368,8 +375,8 @@ async function assertOverridesDecoration(page, width) {
 
       state.session.decisions[candidate.key] = {
         ...state.session.decisions[candidate.key],
-        action: assessment.recommendation,
-        rationale: getBulkDecisionRationale(candidate, assessment.recommendation)
+        action: getDefaultPlanAction(candidate, assessment.recommendation),
+        rationale: "Viewport regression override is ready for promotion."
       };
       syncCandidateTreeRows();
       const readyColor = resolveColor("--added-resource");
@@ -380,16 +387,18 @@ async function assertOverridesDecoration(page, width) {
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === readyColor);
 
-      return { needsInputValid, readyValid };
+      return { noOverridesInitially, needsInputValid, readyValid };
     } finally {
       state.session = sessionSnapshot;
+      refreshEffectiveCandidates();
       renderCandidateList();
     }
   });
 
+  assert(result.noOverridesInitially, `${width}px Overrides decorations: an Overrides hierarchy exists without a provisional override`);
   assert(result.needsInputValid, `${width}px Overrides decorations: needs-input state or singular description is incorrect`);
   assert(result.readyValid, `${width}px Overrides decorations: ready state did not color the root label, icon, and leaf consistently`);
-  const cleanedUp = await page.evaluate(() => !document.querySelector("#candidate-list > .candidate-overrides-root"));
+  const cleanedUp = await page.evaluate(() => !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]'));
   assert(cleanedUp, `${width}px Overrides decorations: regression probe did not restore the candidate tree`);
 }
 
@@ -434,7 +443,7 @@ async function assertBulkActionsPreserveContext(page, width) {
 
   const result = await page.evaluate(async () => {
     const candidateList = document.querySelector("#candidate-list");
-    const firstRow = candidateList.querySelector("[data-candidate-key]");
+    const firstRow = candidateList.querySelector(".hierarchical-view-row");
     const sessionSnapshot = structuredClone(state.session);
     state.session.decisions = {};
     state.session.bulkOperations = [];
@@ -452,11 +461,18 @@ async function assertBulkActionsPreserveContext(page, width) {
       rootChildReplacements += records.filter((record) => record.type === "childList").length;
     });
     observer.observe(candidateList, { childList: true });
-    candidateList.querySelectorAll("details").forEach((node) => { node.open = false; });
+    candidateHierarchicalView.model.nodes.forEach((node) => {
+      if (!node.children.length) return;
+      node.expanded = false;
+      candidateExpansionState.set(node.id, false);
+    });
+    candidateHierarchicalView.model.flatten();
+    candidateHierarchicalView.layout.recalculate();
+    candidateHierarchicalView.renderNaturalRows();
     const planCountBefore = Object.values(state.session.decisions).filter((decision) => decision.inPlan).length;
     document.querySelector('#bulk-actions [data-bulk-scope="actionable"]').click();
-    const remainedCollapsedAfterAdd = !document.querySelector("#candidate-list details[open]");
-    const firstRowPreservedAfterAdd = candidateList.querySelector("[data-candidate-key]") === firstRow;
+    const remainedCollapsedAfterAdd = candidateHierarchicalView.model.nodes.filter((node) => node.children.length).every((node) => !node.expanded);
+    const firstRowPreservedAfterAdd = candidateList.querySelector(".hierarchical-view-row") === firstRow;
     const disabledCursor = getComputedStyle(document.querySelector('#bulk-actions [data-bulk-scope="actionable"]')).cursor;
     const operation = getLatestBulkOperation();
     const bulkDecisionsComplete = operation.candidateKeys.every((key) => {
@@ -475,15 +491,19 @@ async function assertBulkActionsPreserveContext(page, width) {
     const manualDecisionPreserved = !operation.candidateKeys.includes(manualCandidate.key)
       && JSON.stringify(state.session.decisions[manualCandidate.key]) === manualDecisionBefore;
 
-    const decoratedRow = [...candidateList.querySelectorAll("[data-candidate-key]")]
-      .find((row) => operation.candidateKeys.includes(row.dataset.candidateKey)
-        && row.closest("details.candidate-category")?.dataset.category);
+    const decoratedKey = operation.candidateKeys.find((key) => candidateHierarchicalView.model.nodes.some((node) => node.data?.candidate?.key === key));
+    revealCandidateInTree(decoratedKey);
+    const decoratedRow = candidateList.querySelector(`[data-candidate-key="${CSS.escape(decoratedKey)}"]`);
     const decoratedCandidate = state.candidates.find((candidate) => candidate.key === decoratedRow.dataset.candidateKey);
-    const decoratedCategory = decoratedRow.closest("details.candidate-category");
-    const decoratedSource = decoratedRow.closest("details.candidate-source-root");
+    const decoratedNode = candidateHierarchicalView.model.nodes.find((node) => node.data?.candidate?.key === decoratedKey);
+    const decoratedCategoryNode = decoratedNode.parent.parent;
+    let decoratedSourceNode = decoratedNode;
+    while (decoratedSourceNode.parent) decoratedSourceNode = decoratedSourceNode.parent;
+    const decoratedCategory = candidateList.querySelector(`[data-node-id="${CSS.escape(decoratedCategoryNode.id)}"]`);
+    const decoratedSource = candidateList.querySelector(`[data-node-id="${CSS.escape(decoratedSourceNode.id)}"]`);
     const leafIcon = decoratedRow.querySelector(".candidate-decoration-icon");
-    const categorySummary = decoratedCategory.querySelector(":scope > summary");
-    const sourceSummary = decoratedSource.querySelector(":scope > summary");
+    const categorySummary = decoratedCategory;
+    const sourceSummary = decoratedSource;
     const categoryIcon = categorySummary.querySelector(".candidate-parent-decoration-icon");
     const sourceIcon = sourceSummary.querySelector(".candidate-parent-decoration-icon");
     const resolveColor = (token) => {
@@ -532,22 +552,21 @@ async function assertBulkActionsPreserveContext(page, width) {
     state.session.decisions[decoratedCandidate.key].rationale = originalRationale;
     syncCandidateTreeRows();
 
-    const source = [...document.querySelectorAll("#candidate-list > details.candidate-source-root")]
-      .find((node) => node.querySelector('details.candidate-category[data-category]'));
-    const category = source.querySelector('details.candidate-category[data-category]');
-    source.open = true;
-    category.open = true;
-    const sourceType = source.dataset.sourceType;
-    const categoryName = category.dataset.category;
+    decoratedSourceNode.expanded = true;
+    decoratedCategoryNode.expanded = true;
+    candidateExpansionState.set(decoratedSourceNode.id, true);
+    candidateExpansionState.set(decoratedCategoryNode.id, true);
+    const sourceId = decoratedSourceNode.id;
+    const categoryId = decoratedCategoryNode.id;
     document.querySelector("#bulk-actions").open = true;
     document.querySelector("#bulk-undo").click();
     await persistencePromise;
     await new Promise((resolve) => setTimeout(resolve, 200));
     observer.disconnect();
-    const firstRowPreservedAfterUndo = candidateList.querySelector("[data-candidate-key]") === firstRow;
+    const firstRowPreservedAfterUndo = candidateList.querySelector(".hierarchical-view-row") === firstRow;
 
-    const restoredSource = document.querySelector(`#candidate-list > details.candidate-source-root[data-source-type="${sourceType}"]`);
-    const restoredCategory = restoredSource?.querySelector(`details.candidate-category[data-category="${categoryName}"]`);
+    const restoredSource = candidateHierarchicalView.model.nodesById.get(sourceId);
+    const restoredCategory = candidateHierarchicalView.model.nodesById.get(categoryId);
     const toast = document.querySelector("#toast").getBoundingClientRect();
     const statusbar = document.querySelector(".ide-statusbar").getBoundingClientRect();
     const planRestored = Object.values(state.session.decisions).filter((decision) => decision.inPlan).length === planCountBefore;
@@ -593,7 +612,7 @@ async function assertBulkActionsPreserveContext(page, width) {
       treeDomPreserved: rootChildReplacements === 0
         && firstRowPreservedAfterAdd
         && firstRowPreservedAfterUndo,
-      disclosuresPreserved: restoredSource?.open && restoredCategory?.open,
+      disclosuresPreserved: restoredSource?.expanded && restoredCategory?.expanded,
       planRestored,
       rationaleEditPromotedToManual,
       actionEditPromotedToManual,

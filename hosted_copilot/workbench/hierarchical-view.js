@@ -13,6 +13,10 @@
         target.setAttribute(attribute.name, attribute.value);
       }
     });
+    if (target.tagName === "INPUT" && ["checkbox", "radio"].includes(target.type)) {
+      target.checked = source.checked;
+      target.indeterminate = source.indeterminate;
+    }
   }
 
   function patchNode(target, source) {
@@ -467,36 +471,41 @@
       if (!state.length) {
         this.stickyContainer.hidden = false;
         this.stickyContainer.style.visibility = "hidden";
-        this.reconcileStickyRows(this.getPrewarmedStickyState());
+        this.reconcileStickyRows(this.getPrewarmedStickyState(), []);
         this.stickyContainer.style.height = "0px";
         this.renderedStickyState = [];
         return;
       }
       this.stickyContainer.hidden = false;
       this.stickyContainer.style.visibility = "visible";
-      this.reconcileStickyRows(state);
+      this.reconcileStickyRows(state, state);
       const height = state.reduce((bottom, entry) => Math.max(bottom, entry.position + entry.height), 0);
       this.stickyContainer.style.height = `${height}px`;
       this.renderedStickyState = state;
     }
 
-    reconcileStickyRows(state) {
-      const rows = Array.from(this.stickyContainer.children);
-      state.forEach((entry, index) => {
-        let row = rows[index];
-        if (row?.hierarchicalNode !== entry.node) {
-          const rendered = this.adapter.renderRow(entry.node, "sticky");
-          if (row && row.tagName === rendered.tagName && row.namespaceURI === rendered.namespaceURI) {
-            patchNode(row, rendered);
-          } else if (row) {
-            row.replaceWith(rendered);
-            row = rendered;
-          } else {
-            this.stickyContainer.appendChild(rendered);
-            row = rendered;
-          }
-          row.hierarchicalNode = entry.node;
+    syncNaturalFocusOwnership(state) {
+      const stickyNodeIds = new Set(state.map((entry) => entry.nodeId));
+      Array.from(this.rowsContainer.children).forEach((row) => {
+        row.toggleAttribute("inert", stickyNodeIds.has(row.dataset.nodeId));
+      });
+    }
+
+    reconcileStickyRows(state, interactiveState = state) {
+      const focused = this.stickyContainer.contains(document.activeElement) ? document.activeElement : null;
+      const focusedRow = focused?.closest(".hierarchical-view-sticky-row");
+      const focusedNodeId = focusedRow?.dataset.nodeId || null;
+      const focusedSlot = Number.parseInt(focusedRow?.dataset.stickySlot || "0", 10);
+      const existing = new Map(Array.from(this.stickyContainer.children).map((row) => [row.dataset.nodeId, row]));
+      const desired = state.map((entry) => {
+        let row = existing.get(entry.nodeId);
+        const rendered = this.adapter.renderRow(entry.node, "sticky");
+        if (row && row.tagName === rendered.tagName && row.namespaceURI === rendered.namespaceURI) {
+          patchNode(row, rendered);
+        } else {
+          row = rendered;
         }
+        row.hierarchicalNode = entry.node;
         row.classList.add("hierarchical-view-sticky-row");
         row.dataset.nodeId = entry.nodeId;
         row.dataset.treeDepth = String(entry.treeDepth);
@@ -507,10 +516,31 @@
         if (toggle && toggle.getAttribute("aria-expanded") !== String(entry.node.expanded)) {
           toggle.setAttribute("aria-expanded", String(entry.node.expanded));
         }
+        return row;
       });
-      for (let index = this.stickyContainer.children.length - 1; index >= state.length; index -= 1) {
-        this.stickyContainer.children[index].remove();
+      const desiredRows = new Set(desired);
+      Array.from(this.stickyContainer.children).forEach((row) => {
+        if (!desiredRows.has(row)) row.remove();
+      });
+      desired.forEach((row, index) => {
+        const current = this.stickyContainer.children[index];
+        if (current !== row) this.stickyContainer.insertBefore(row, current || null);
+      });
+      this.syncNaturalFocusOwnership(interactiveState);
+      if (!focusedNodeId || interactiveState.some((entry) => entry.nodeId === focusedNodeId)) return;
+      const replacementEntry = interactiveState[Math.min(focusedSlot, interactiveState.length - 1)];
+      const replacementRow = replacementEntry ? desired.find((row) => row.dataset.nodeId === replacementEntry.nodeId) : null;
+      let focusTarget = replacementRow;
+      if (focused?.dataset.candidateSort) {
+        focusTarget = replacementRow?.querySelector(`[data-candidate-sort="${CSS.escape(focused.dataset.candidateSort)}"]`);
+      } else if (focused?.dataset.assessmentSort) {
+        focusTarget = replacementRow?.querySelector(`[data-assessment-sort="${CSS.escape(focused.dataset.assessmentSort)}"]`);
       }
+      if (!focusTarget) {
+        const naturalRow = this.rowsContainer.querySelector(`[data-node-id="${CSS.escape(focusedNodeId)}"]`);
+        focusTarget = naturalRow?.matches("button, [tabindex]") ? naturalRow : naturalRow?.querySelector("button, [tabindex]");
+      }
+      focusTarget?.focus({ preventScroll: true });
     }
 
     onClick(event) {

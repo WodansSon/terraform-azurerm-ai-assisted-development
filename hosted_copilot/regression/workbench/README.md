@@ -28,6 +28,14 @@ Run the complete Workbench suite:
 pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbench.ps1
 ```
 
+Run one browser suite with the same owned synthetic fixture and server lifecycle:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbench.ps1 -Run browser-playwright-journeys
+```
+
+Supported focused suites are `loopback-host-validation`, `browser-behavior-manifest`, `browser-playwright-journeys`, `browser-viewport-layout`, `browser-framework-coverage`, and `authenticated-server-shutdown`. Focused browser-engine runs reuse installed dependencies when their versions match the lock; run the complete suite once when those packages are unavailable or stale.
+
 The Hosted Toolkit profile invokes the same suite through `Test-Toolkit.ps1`.
 
 ## Visible Playback

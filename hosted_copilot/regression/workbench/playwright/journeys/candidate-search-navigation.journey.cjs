@@ -4,17 +4,18 @@ const behaviorIds = ["WB-UX-SEARCH-001"];
 
 async function getSearchState(page) {
   return page.evaluate(() => {
-    const roots = [...document.querySelectorAll("#candidate-list > details.candidate-source-root")];
+    const roots = candidateHierarchicalView.model.roots.filter((node) => node.data.sourceType !== "overrides");
     const match = document.querySelector("#candidate-list .candidate-tree-row.search-match");
+    const matchNode = candidateHierarchicalView.model.nodes.find((node) => node.data?.candidate?.key === match?.dataset.candidateKey);
     const scroller = document.querySelector("#candidate-list");
     const scrollerRect = scroller.getBoundingClientRect();
     const matchRect = match?.getBoundingClientRect();
     return {
-      rootTypes: roots.map((root) => root.dataset.sourceType),
-      openRootTypes: roots.filter((root) => root.open).map((root) => root.dataset.sourceType),
+      rootTypes: roots.map((root) => root.data.sourceType),
+      openRootTypes: roots.filter((root) => root.expanded).map((root) => root.data.sourceType),
       matchKey: match?.dataset.candidateKey || null,
       matchVisible: Boolean(matchRect && matchRect.bottom > scrollerRect.top && matchRect.top < scrollerRect.bottom),
-      openParentCount: match ? [...match.closest("#candidate-list").querySelectorAll("details[open]")].filter((node) => node.contains(match)).length : 0
+      openParentCount: matchNode ? [...function* () { for (let node = matchNode.parent; node; node = node.parent) if (node.children.length && node.expanded) yield node; }()].length : 0
     };
   });
 }
@@ -23,7 +24,7 @@ async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
   await playback.show(page, "Candidate search navigation");
 
-  const initialRootTypes = await page.locator("#candidate-list > details.candidate-source-root").evaluateAll((roots) => roots.map((root) => root.dataset.sourceType));
+  const initialRootTypes = await page.evaluate(() => candidateHierarchicalView.model.roots.map((root) => root.data.sourceType));
   assert(["interactive", "upstream", "maintainer"].every((type) => initialRootTypes.includes(type)), "initial tree does not contain all source roots");
 
   const interactiveCandidate = await page.evaluate(() => state.candidates.find((candidate) => candidate.sourceType === "interactive").id);
@@ -43,7 +44,7 @@ async function run({ page, baseUrl, assert, playback }) {
 
   await page.locator("#search-input").fill("");
   await page.waitForFunction(() => !document.querySelector("#candidate-list .candidate-tree-row.search-match"));
-  const clearedRootTypes = await page.locator("#candidate-list > details.candidate-source-root").evaluateAll((roots) => roots.map((root) => root.dataset.sourceType));
+  const clearedRootTypes = await page.evaluate(() => candidateHierarchicalView.model.roots.map((root) => root.data.sourceType));
   assert(["interactive", "upstream", "maintainer"].every((type) => clearedRootTypes.includes(type)), "Clearing search changed the source-root set");
 }
 

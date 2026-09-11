@@ -1,4 +1,4 @@
-const { openWorkbench, getCssTokenColor } = require("../helpers/workbench.cjs");
+const { openWorkbench, getCandidateHierarchy, getCssTokenColor } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-TREE-001",
@@ -8,55 +8,49 @@ const behaviorIds = [
   "WB-UX-TREE-005"
 ];
 
-async function clickStickyFolder(page, owner) {
-  const target = await owner.evaluate((node) => ({
-    depth: node.dataset.treeDepth,
-    label: node.querySelector(":scope > summary strong").textContent.trim()
-  }));
-  const folders = page.locator(`#candidate-sticky-stack > .candidate-sticky-layer.active > details[data-sticky-depth="${target.depth}"]`);
-  for (let index = 0; index < await folders.count(); index += 1) {
-    if ((await folders.nth(index).locator(":scope > summary strong").textContent())?.trim() !== target.label) continue;
-    await folders.nth(index).locator(":scope > summary").click();
-    return;
-  }
-  throw new Error(`sticky folder not found: ${target.label}`);
-}
-
-async function snapshotDecoration(page, key) {
-  return page.evaluate((candidateKey) => {
-    const row = document.querySelector(`[data-candidate-key="${candidateKey}"]`);
-    const category = row.closest("details.candidate-category");
-    const source = row.closest("details.candidate-source-root");
-    const inspectParent = (disclosure) => {
-      const summary = disclosure.querySelector(":scope > summary");
-      const label = summary.querySelector(".candidate-parent-label, .source-summary-label");
-      const icon = summary.querySelector(".candidate-parent-decoration-icon");
-      const count = summary.querySelector(".count-badge");
+async function snapshotDecoration(page, candidateKey) {
+  const hierarchy = await getCandidateHierarchy(page, candidateKey);
+  return page.evaluate(({ key, hierarchy }) => {
+    const row = document.querySelector(`[data-candidate-key="${CSS.escape(key)}"]`);
+    const inspectParent = (id) => {
+      const parent = document.querySelector(`#candidate-list [data-node-id="${CSS.escape(id)}"]`);
+      const label = parent.querySelector(".candidate-parent-label > strong, .source-summary-label > strong");
+      const icon = parent.querySelector(".candidate-parent-decoration-icon");
+      const count = parent.querySelector(".count-badge");
+      const labelOwner = parent.querySelector(".candidate-parent-label, .source-summary-label");
       return {
-        open: disclosure.open,
-        classes: disclosure.className,
-        color: getComputedStyle(summary.querySelector("strong")).color,
-        description: summary.querySelector(".candidate-decoration-description").textContent,
+        expanded: candidateHierarchicalView.model.nodesById.get(id).expanded,
+        classes: parent.className,
+        color: getComputedStyle(label).color,
+        description: parent.querySelector(".candidate-decoration-description").textContent,
         iconHidden: icon.hasAttribute("hidden"),
-        titleEdgeDelta: label.getBoundingClientRect().right - icon.getBoundingClientRect().right,
+        titleEdgeDelta: labelOwner.getBoundingClientRect().right - icon.getBoundingClientRect().right,
         iconToCountGap: count.getBoundingClientRect().left - icon.getBoundingClientRect().right
       };
     };
-    const copy = row.querySelector(".candidate-tree-copy");
-    const icon = row.querySelector(".candidate-decoration-icon");
+    const copy = row?.querySelector(".candidate-tree-copy");
+    const icon = row?.querySelector(".candidate-decoration-icon");
     return {
-      leaf: {
+      leaf: row ? {
         classes: row.className,
         color: getComputedStyle(copy.querySelector("strong")).color,
         description: row.querySelector(".candidate-decoration-description").textContent,
         iconHidden: icon.hasAttribute("hidden"),
         iconHref: icon.querySelector("use").getAttribute("href"),
         trailingDelta: copy.getBoundingClientRect().right - icon.getBoundingClientRect().right
-      },
-      category: inspectParent(category),
-      source: inspectParent(source)
+      } : null,
+      parents: hierarchy.parentIds.map(inspectParent)
     };
-  }, key);
+  }, { key: candidateKey, hierarchy });
+}
+
+async function clickHierarchyNode(page, nodeId) {
+  await page.evaluate((id) => {
+    const sticky = document.querySelector(`#candidate-sticky-stack [data-node-id="${CSS.escape(id)}"]`);
+    const natural = document.querySelector(`#candidate-list [data-node-id="${CSS.escape(id)}"]`);
+    const row = sticky && getComputedStyle(sticky).visibility !== "hidden" ? sticky : natural;
+    row.click();
+  }, nodeId);
 }
 
 async function run({ page, baseUrl, assert, playback }) {
@@ -66,53 +60,62 @@ async function run({ page, baseUrl, assert, playback }) {
   const addedColor = await getCssTokenColor(page, "--added-resource");
   const modifiedColor = await getCssTokenColor(page, "--modified-resource");
 
+  const noOverridesInitially = await page.evaluate(() => !candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
+    && !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]'));
+  assert(noOverridesInitially, "an Overrides hierarchy exists without a provisional override");
+
   const candidate = await page.evaluate(() => {
     const item = getBulkActionCandidates("add").find((candidate) => candidate.sourceType === "interactive");
     return { key: item.key, id: item.id };
   });
   await page.locator("#search-input").fill(candidate.id);
   const row = page.locator(`[data-candidate-key="${candidate.key}"]`);
-  const source = row.locator('xpath=ancestor::details[contains(@class,"candidate-source-root")]');
-  if (!(await source.evaluate((node) => node.open))) await clickStickyFolder(page, source);
-  const category = row.locator('xpath=ancestor::details[contains(@class,"candidate-category")]');
-  if (!(await category.evaluate((node) => node.open))) await clickStickyFolder(page, category);
-  const key = candidate.key;
+  const hierarchy = await getCandidateHierarchy(page, candidate.key);
   const rowHandle = await row.evaluateHandle((node) => node);
 
-  const untouched = await snapshotDecoration(page, key);
+  const untouched = await snapshotDecoration(page, candidate.key);
   assert(untouched.leaf.color === accentColor && untouched.leaf.iconHidden && !untouched.leaf.description, "untouched leaf is not neutral blue");
-  assert(!untouched.category.classes.includes("candidate-aggregate-") && !untouched.source.classes.includes("candidate-aggregate-"), "untouched ancestors are decorated");
+  assert(untouched.parents.every((parent) => !parent.classes.includes("candidate-aggregate-")), "untouched ancestors are decorated");
 
   await row.locator("[data-decision-key]").click();
-  await page.waitForFunction((candidateKey) => document.querySelector(`[data-candidate-key="${candidateKey}"]`)?.classList.contains("candidate-decoration-needs-input"), key);
-  const needsInput = await snapshotDecoration(page, key);
+  await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${CSS.escape(key)}"]`)?.classList.contains("candidate-decoration-needs-input"), candidate.key);
+  const needsInput = await snapshotDecoration(page, candidate.key);
   assert(needsInput.leaf.color === modifiedColor && needsInput.leaf.description === "Selected, needs input before promotion", "needs-input leaf decoration is incorrect");
-  assert(needsInput.category.color === modifiedColor && needsInput.source.color === modifiedColor, "needs-input state did not propagate to ancestors");
-  assert(needsInput.category.description === "1 selected, 1 needs input" && needsInput.source.description === "1 selected, 1 needs input", "singular needs-input descriptions are incorrect");
+  assert(needsInput.parents.every((parent) => parent.color === modifiedColor && parent.description === "1 selected, 1 needs input"), "needs-input state did not propagate to ancestors");
 
   await row.locator(".candidate-tree-copy").click();
   await page.locator('#assessment-panel [data-rule-action="add"]').click();
   await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Playwright journey confirms the selected rule is ready for promotion.");
   await page.locator('[data-candidate-pane="candidates"]').click();
-  await page.waitForFunction((candidateKey) => document.querySelector(`[data-candidate-key="${candidateKey}"]`)?.classList.contains("candidate-decoration-ready"), key);
-  const ready = await snapshotDecoration(page, key);
-  const sameRow = await rowHandle.evaluate((before, candidateKey) => before === document.querySelector(`[data-candidate-key="${candidateKey}"]`), key);
+  await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${CSS.escape(key)}"]`)?.classList.contains("candidate-decoration-ready"), candidate.key);
+  const ready = await snapshotDecoration(page, candidate.key);
+  const sameRow = await rowHandle.evaluate((before, key) => before === document.querySelector(`[data-candidate-key="${CSS.escape(key)}"]`), candidate.key);
   assert(sameRow, "candidate row was replaced during incremental decoration updates");
   assert(ready.leaf.color === addedColor && ready.leaf.description === "Selected, ready for promotion", "ready leaf decoration is incorrect");
-  assert(ready.category.color === addedColor && ready.source.color === addedColor, "ready state did not propagate to ancestors");
+  assert(ready.parents.every((parent) => parent.color === addedColor && parent.description === "1 selected, all ready for promotion"), "ready state did not propagate to ancestors");
   assert(!ready.leaf.iconHidden && ready.leaf.iconHref.endsWith("#codicon-diff-modified"), "ready leaf icon is hidden or incorrect");
-  assert(Math.abs(ready.leaf.trailingDelta) < 0.1 && Math.abs(ready.category.titleEdgeDelta) < 0.1 && Math.abs(ready.source.titleEdgeDelta) < 0.1, "decorations are not at title-cell trailing edges");
-  assert(Math.abs(ready.category.iconToCountGap - 8) < 0.1 && Math.abs(ready.source.iconToCountGap - 8) < 0.1, "parent decoration spacing changed count geometry");
+  assert(Math.abs(ready.leaf.trailingDelta) < 0.1 && ready.parents.every((parent) => Math.abs(parent.titleEdgeDelta) < 0.1), "decorations are not at title-cell trailing edges");
+  assert(ready.parents.every((parent) => Math.abs(parent.iconToCountGap - 8) < 0.1), "parent decoration spacing changed count geometry");
 
-  await clickStickyFolder(page, category);
-  await clickStickyFolder(page, source);
-  const collapsed = await snapshotDecoration(page, key);
-  assert(!collapsed.category.open && !collapsed.source.open && !collapsed.category.iconHidden && !collapsed.source.iconHidden, "collapsed ancestors hide readiness status");
-  assert(collapsed.category.description === "1 selected, all ready for promotion" && collapsed.source.description === "1 selected, all ready for promotion", "collapsed ancestor descriptions are incomplete");
+  await clickHierarchyNode(page, hierarchy.folderId);
+  const folderCollapsed = await snapshotDecoration(page, candidate.key);
+  const collapsedFolder = folderCollapsed.parents.at(-1);
+  assert(folderCollapsed.leaf === null, "collapsed candidate leaf remains painted");
+  assert(!collapsedFolder.expanded && !collapsedFolder.iconHidden && collapsedFolder.description === "1 selected, all ready for promotion", "collapsed folder hides or misdescribes readiness status");
+  await clickHierarchyNode(page, hierarchy.rootId);
+  const rootCollapsed = await page.evaluate((rootId) => {
+    const root = document.querySelector(`#candidate-list [data-node-id="${CSS.escape(rootId)}"]`);
+    return {
+      expanded: candidateHierarchicalView.model.nodesById.get(rootId).expanded,
+      iconHidden: root.querySelector(".candidate-parent-decoration-icon").hasAttribute("hidden"),
+      description: root.querySelector(".candidate-decoration-description").textContent
+    };
+  }, hierarchy.rootId);
+  assert(!rootCollapsed.expanded && !rootCollapsed.iconHidden && rootCollapsed.description === "1 selected, all ready for promotion", "collapsed source hides or misdescribes readiness status");
 
-  const overrides = await page.evaluate(async (candidateKey) => {
+  const overrides = await page.evaluate(() => {
     const sessionSnapshot = structuredClone(state.session);
-    const candidate = state.candidates.find((item) => item.key === candidateKey);
+    const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.candidates[0];
     const assessment = getAssessment(candidate, getDecision(candidate));
     const resolveColor = (token) => {
       const probe = document.createElement("span");
@@ -122,7 +125,6 @@ async function run({ page, baseUrl, assert, playback }) {
       probe.remove();
       return color;
     };
-
     try {
       state.session.applicabilityOverrides[candidate.key] = {
         state: "provisional",
@@ -134,108 +136,39 @@ async function run({ page, baseUrl, assert, playback }) {
         recordedBy: { type: "github-cli", login: "fixture-codeowner" }
       };
       state.session.decisions[candidate.key] = { ...defaultDecision(candidate), ...createPlanMembership("override") };
+      refreshEffectiveCandidates();
       renderCandidateList();
-
-      const root = document.querySelector("#candidate-list > .candidate-overrides-root");
-      const sourceFolder = root.querySelector(":scope > .override-source-folder");
-      const originFolder = sourceFolder.querySelector(":scope > .override-origin-folder");
-      const overrideRow = root.querySelector(`[data-candidate-key="${candidate.key}"]`);
-      const summary = root.querySelector(":scope > summary");
-      const expectedSourceLabel = candidate.sourceType === "interactive" ? "Interactive Toolkit" : candidate.sourceType === "upstream" ? "Contributor Guidance" : "Maintainer Proposals";
-      const expectedOriginLabel = candidate.sourceType === "upstream"
-        ? candidate.sourceTitle
-        : candidate.sourceType === "interactive"
-          ? formatHostedCategory(candidate.assessment.hostedCategory)
-          : candidate.category;
-      const naturalPath = [root, sourceFolder, originFolder].map((node) => node.querySelector(":scope > summary strong").textContent.trim());
-      const countLabels = [root, sourceFolder, originFolder].map((node) => node.querySelector(":scope > summary .count-badge").textContent.trim());
-      const treeDepths = [root, sourceFolder, originFolder, originFolder.querySelector(":scope > .candidate-category-items")].map((node) => node.dataset.treeDepth);
-      const initialStickyLayer = document.querySelector("#candidate-sticky-stack > .candidate-sticky-layer.active");
-      const initialStickyPath = [...initialStickyLayer.querySelectorAll("summary strong")].map((node) => node.textContent.trim());
-      const sortButton = originFolder.querySelector('.candidate-list-header [data-candidate-sort="candidate"]');
-      const scroller = document.querySelector("#candidate-list");
-      const scrollTopBeforeSort = scroller.scrollTop;
-      sortButton.click();
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      const sortedStickyLayer = document.querySelector("#candidate-sticky-stack > .candidate-sticky-layer.active");
-      const sortedStickyPath = [...sortedStickyLayer.querySelectorAll("summary strong")].map((node) => node.textContent.trim());
-      const sortPreserved = Math.abs(scroller.scrollTop - scrollTopBeforeSort) < 0.1;
-      const nextSource = root.nextElementSibling;
-      nextSource.open = true;
-      const nextCategory = [...nextSource.querySelectorAll(":scope > details.candidate-category")].find((node) => node.querySelector("[data-candidate-key]"));
-      if (nextCategory) nextCategory.open = true;
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const stickyStack = document.querySelector("#candidate-sticky-stack");
-      const nextSourceNaturalTop = getCandidateStickyNaturalTop(nextSource.querySelector(":scope > summary"));
-      const scrollProbe = document.createElement("div");
-      scrollProbe.style.height = `${scroller.clientHeight}px`;
-      scroller.appendChild(scrollProbe);
-      const boundaryReachable = scroller.scrollHeight - scroller.clientHeight > nextSourceNaturalTop;
-      scroller.scrollTop = Math.max(1, nextSourceNaturalTop - stickyStack.getBoundingClientRect().height + 20);
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const pushedStickyLayer = stickyStack.querySelector(":scope > .candidate-sticky-layer.active");
-      const pushedStickyPath = [...pushedStickyLayer.querySelectorAll("summary strong")].map((node) => node.textContent.trim());
-      const boundaryValid = pushedStickyPath.join("|") === naturalPath.join("|")
-        && stickyStack.querySelectorAll(":scope > .candidate-sticky-layer").length === 1
-        && getComputedStyle(stickyStack).overflow === "hidden"
-        && getComputedStyle(scroller).scrollSnapType === "none";
-      scroller.scrollTop = nextSourceNaturalTop + 1;
-      await new Promise((resolve) => {
-        let remainingFrames = 60;
-        const waitForTransfer = () => {
-          const layer = stickyStack.querySelector(":scope > .candidate-sticky-layer.active");
-          const sourceLabels = [...layer.querySelectorAll(':scope > details[data-sticky-depth="0"] > summary strong')].map((node) => node.textContent.trim());
-          if (sourceLabels.includes(nextSource.querySelector(":scope > summary strong").textContent.trim()) || remainingFrames-- === 0) {
-            resolve();
-            return;
-          }
-          requestAnimationFrame(waitForTransfer);
-        };
-        waitForTransfer();
-      });
-      const transferredStickyLayer = stickyStack.querySelector(":scope > .candidate-sticky-layer.active");
-      const transferredSources = [...transferredStickyLayer.querySelectorAll(':scope > details[data-sticky-depth="0"] > summary strong')].map((node) => node.textContent.trim());
-      const transferValid = transferredSources.join("|") === ["OVERRIDES", nextSource.querySelector(":scope > summary strong").textContent.trim()].join("|")
-        && stickyStack.querySelectorAll(":scope > .candidate-sticky-layer").length === 1
-        && getComputedStyle(scroller).scrollSnapType === "none";
-      const hierarchyValid = naturalPath.join("|") === ["OVERRIDES", expectedSourceLabel, expectedOriginLabel].join("|")
-        && initialStickyPath.join("|") === naturalPath.join("|")
-        && sortedStickyPath.join("|") === naturalPath.join("|")
-        && countLabels.every((label) => label === "1 Override")
-        && treeDepths.join("|") === "0|1|2|3"
-        && sortedStickyLayer.querySelectorAll(".candidate-list-header").length === 1
-        && sortPreserved;
+      revealCandidateInTree(candidate.key);
+      const root = document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]');
+      const row = document.querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
       const modified = resolveColor("--modified-resource");
-      const needsInputValid = !summary.hasAttribute("data-workbench-tooltip")
-        && summary.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, 1 needs input"
-        && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), overrideRow.querySelector(".candidate-tree-copy strong"), overrideRow.querySelector(".candidate-decoration-icon")]
+      const needsInputValid = root.classList.contains("candidate-aggregate-needs-input")
+        && row.classList.contains("candidate-decoration-needs-input")
+        && root.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, 1 needs input"
+        && [root.querySelector(".candidate-parent-label > strong"), root.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === modified);
-
       state.session.decisions[candidate.key] = {
         ...state.session.decisions[candidate.key],
-        action: assessment.recommendation,
-        rationale: getBulkDecisionRationale(candidate, assessment.recommendation)
+        action: getDefaultPlanAction(candidate, assessment.recommendation),
+        rationale: "Playwright override is ready for promotion."
       };
       syncCandidateTreeRows();
       const added = resolveColor("--added-resource");
-      const readyValid = !summary.hasAttribute("data-workbench-tooltip")
-        && summary.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, all ready for promotion"
-        && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), overrideRow.querySelector(".candidate-tree-copy strong"), overrideRow.querySelector(".candidate-decoration-icon")]
+      const readyValid = root.classList.contains("candidate-aggregate-ready")
+        && row.classList.contains("candidate-decoration-ready")
+        && root.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, all ready for promotion"
+        && [root.querySelector(".candidate-parent-label > strong"), root.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === added);
-      return { boundaryReachable, boundaryValid, hierarchyValid, needsInputValid, readyValid, transferValid };
+      return { needsInputValid, readyValid };
     } finally {
       state.session = sessionSnapshot;
+      refreshEffectiveCandidates();
       renderCandidateList();
     }
-  }, key);
-  assert(overrides.hierarchyValid, "Overrides do not preserve source/category ancestry, override counts, and one sticky sort header after sorting");
-  assert(overrides.boundaryReachable, "Overrides boundary fixture is not scrollable enough to validate sticky ownership transfer");
-  assert(overrides.boundaryValid, "four-level Overrides ancestry does not remain one clipped active layer with native snapping suspended at the next source boundary");
-  assert(overrides.transferValid, "sticky ownership does not transfer cleanly from four-level Overrides to the next three-level source");
-  assert(overrides.needsInputValid, "Overrides root and leaf do not share needs-input color or singular description");
-  assert(overrides.readyValid, "Overrides root and leaf do not share ready color");
-  assert(await page.locator("#candidate-list > .candidate-overrides-root").count() === 0, "Overrides probe did not restore the candidate tree");
+  });
+  assert(overrides.needsInputValid, "Overrides root and leaf do not share needs-input decoration");
+  assert(overrides.readyValid, "Overrides root and leaf do not share ready decoration");
+  assert(await page.locator('#candidate-list [data-node-id="candidate:source:overrides"]').count() === 0, "Overrides probe did not restore the candidate tree");
 }
 
 module.exports = { name: "candidate decorations", behaviorIds, viewport: { width: 768, height: 900 }, run };
