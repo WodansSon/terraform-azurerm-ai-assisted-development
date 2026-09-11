@@ -341,10 +341,16 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── implementation-guide.instructions.md
 │   │   ├── migration-guide.instructions.md
 │   │   ├── performance-optimization.instructions.md
+│   │   ├── pr-description-compliance-contract.instructions.md
+│   │   ├── pr-description-draft.schema.json
 │   │   ├── provider-guidelines.instructions.md
 │   │   ├── review-advocate-compliance-contract.instructions.md
 │   │   ├── review-architect-compliance-contract.instructions.md
+│   │   ├── review-coverage-matrix.schema.json
+│   │   ├── review-linter-compliance-contract.instructions.md
 │   │   ├── review-moderator-compliance-contract.instructions.md
+│   │   ├── review-presentation-compliance-contract.instructions.md
+│   │   ├── review-presentation-input.schema.json
 │   │   ├── review-skeptic-compliance-contract.instructions.md
 │   │   ├── review-workflow-handoff.schema.json
 │   │   ├── schema-patterns.instructions.md
@@ -361,7 +367,8 @@ terraform-azurerm-ai-assisted-development/
 │   ├── prompts/
 │   │   ├── code-review-local-changes.prompt.md
 │   │   ├── code-review-committed-changes.prompt.md
-│   │   └── code-review-docs.prompt.md
+│   │   ├── code-review-docs.prompt.md
+│   │   └── draft-pr-description.prompt.md
 │   │
 │   ├── skills/
 │   │   ├── acceptance-testing/SKILL.md
@@ -369,19 +376,24 @@ terraform-azurerm-ai-assisted-development/
 │   │   ├── changelog-maintenance/SKILL.md
 │   │   ├── custom-poller-migration/SKILL.md
 │   │   ├── docs-writer/SKILL.md
+│   │   ├── pr-description/SKILL.md
 │   │   ├── resource-implementation/SKILL.md
 │   │   ├── review-advocate/SKILL.md
 │   │   ├── review-architect/SKILL.md
+│   │   ├── review-coordinator/SKILL.md
 │   │   ├── review-moderator/SKILL.md
 │   │   ├── review-presentation/SKILL.md
+│   │   ├── review-reviewer/SKILL.md
 │   │   └── review-skeptic/SKILL.md
 │   │
 │   ├── workflows/
+│   │   ├── codeql-analysis.yml
 │   │   ├── contracts-validation.yml
 │   │   ├── docs-validation.yml
 │   │   ├── installer-validation.yml
 │   │   ├── regression-harness-validation.yml
 │   │   ├── release.yml
+│   │   ├── RELEASING.md
 │   │   └── validate.yml
 │   │
 │   └── pull_request_template.md
@@ -410,12 +422,12 @@ terraform-azurerm-ai-assisted-development/
 │
 ├── docs/
 │   ├── AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md
-│   ├── AI_CUSTOMIZATION_MIGRATION_INVENTORY.md
 │   ├── AI_REGRESSION_HARNESS.md
 │   ├── AI_TOOLKIT_ALIGNMENT_CHECKLIST.md
 │   ├── ARCHITECTURE.md
 │   ├── CODE_REVIEW_RULES.md
 │   ├── EXAMPLES.md
+│   ├── HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md
 │   └── TROUBLESHOOTING.md
 │
 ├── tools/
@@ -424,14 +436,18 @@ terraform-azurerm-ai-assisted-development/
 │   ├── Test-ChangedToolkitRouting.ps1
 │   ├── Test-InteractiveRuleCatalog.ps1
 │   ├── Test-PRReady.ps1
+│   ├── Test-ValidationOutput.ps1
 │   ├── toolkit-ownership.json
 │   ├── Validate-ChangedToolkits.ps1
 │   ├── Validate-InteractiveToolkit.ps1
 │   ├── validate-architecture-layout.ps1
 │   ├── validate-ai-toolkit.ps1
+│   ├── validate-changelog-consistency.ps1
 │   ├── validate-changelog-taxonomy.ps1
 │   ├── validate-copied-markdown-links.ps1
 │   ├── validate-contracts.ps1
+│   ├── validate-runtime-line-endings.ps1
+│   ├── ValidationOutput.psm1
 │   ├── verify-bundle-checksum.ps1
 │   ├── config/
 │   ├── interactive-rule-catalog/
@@ -455,10 +471,13 @@ terraform-azurerm-ai-assisted-development/
 │       └── score-regression-case.ps1
 │
 ├── hosted_copilot/
+│   ├── .github/
 │   ├── CHANGELOG.md
+│   ├── copilot-rule-catalog/
+│   ├── docs/
 │   ├── regression/
-│   └── tools/
-│       └── Test-Toolkit.ps1
+│   ├── tools/
+│   └── workbench/
 │
 ├── .vscode/
 │   └── settings.json
@@ -471,7 +490,7 @@ terraform-azurerm-ai-assisted-development/
 
 ### Runtime Payload Vs. Repo-Only Maintenance
 
-The repository contains the shipped Interactive Toolkit runtime, preliminary Hosted Toolkit maintenance scaffolding, and shared repo-only maintainer tooling.
+The repository contains the shipped Interactive Toolkit runtime, the implemented Hosted Toolkit experiment, and shared repo-only maintainer tooling.
 
 - Runtime payload is defined by `installer/file-manifest.config` and installed into target repositories.
 - Runtime payload currently includes `.github/copilot-instructions.md`, `.github/instructions/**`, `.github/prompts/**`, the shipped runtime skills under `.github/skills/`, and `.vscode/settings.json`.
@@ -488,7 +507,7 @@ The current repository architecture includes deterministic validation and benchm
 - `tools/Test-PRReady.ps1`: deterministic offline regression coverage for project-readiness argument handling, help, output, and errors.
 - `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, project-readiness behavior, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
 - `tools/Validate-InteractiveToolkit.ps1`: canonical Interactive Toolkit validation entrypoint that currently delegates to the existing implementation.
-- `hosted_copilot/tools/Test-Toolkit.ps1`: phase-aware Hosted Toolkit validation for design authority, changelog structure, isolation, and runtime prerequisites.
+- `hosted_copilot/tools/Test-Toolkit.ps1`: complete Hosted Toolkit validation for architecture, isolation, runtime, catalogs, Workbench behavior, regression assets, and deployment prerequisites.
 - `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.
 - `tools/toolkit-ownership.json`: ordered ownership map used by the changed-path dispatcher.
 - `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.

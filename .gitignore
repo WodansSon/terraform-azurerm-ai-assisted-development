@@ -12,6 +12,9 @@ Thumbs.db
 *.bak
 *.backup
 
+# Local-only maintainer documentation
+local-only-docs/
+
 # Installer artifacts
 installer/aii.checksum
 
