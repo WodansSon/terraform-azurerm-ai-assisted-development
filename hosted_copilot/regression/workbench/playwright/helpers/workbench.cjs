@@ -8,6 +8,7 @@ async function openWorkbench(page, baseUrl) {
       isCodeOwner: true,
       reason: null
     };
+    autofillApproverName();
     renderBulkActions();
   });
 }
