@@ -52,27 +52,16 @@ let rawPayloadChangeIndex = 0;
 let rawPayloadChangeCount = 0;
 let truncationTooltipFrame;
 let proposedHostedRuleIdValidationTimer;
-let candidateSortRestoreFrame;
+let candidateHierarchicalView;
+let assessmentHierarchicalView;
+const candidateExpansionState = new Map();
+const assessmentExpansionState = new Map();
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
   showTimer: 0,
   suppressedOwner: null
 };
-const candidateDisclosureScroll = {
-  restoreFrame: 0,
-  scrollTop: 0,
-  snapSuspended: false
-};
-const candidateStickyStack = {
-  activeLayer: null,
-  forceUpdate: false,
-  originalRows: [],
-  scrollFrame: 0,
-  slotOwners: [],
-  slotRows: []
-};
-
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
@@ -110,8 +99,8 @@ function captureElements() {
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-results-detail",
-    "return-catalog-button", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
+    "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-diff", "preview-payload-diff", "preview-raw-heading", "raw-payload-empty", "preview-json", "raw-change-tools", "raw-change-count",
     "raw-change-position", "raw-previous-change", "raw-next-change", "copy-preview-button", "approver-name", "approval-requirements",
     "approve-export-button", "toast", "toast-message", "toast-close"
@@ -131,6 +120,7 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
+  elements["plan-bulk-undo"].addEventListener("click", () => undoBulkOperation(getLatestBulkOperation()?.id));
   elements["close-button"].addEventListener("click", closeWorkbench);
   elements["export-button"].addEventListener("click", () => {
     exportDraft();
@@ -165,18 +155,7 @@ function bindEvents() {
       showCandidatePane("details");
     }
   });
-  elements["candidate-list"].addEventListener("click", handleCandidateDisclosureClick, true);
   elements["candidate-list"].addEventListener("change", handleTreeSelection);
-  elements["candidate-list"].addEventListener("scroll", () => updateCandidateStickyStack());
-  elements["candidate-list"].addEventListener("toggle", () => scheduleCandidateStickyStackUpdate(true), true);
-  elements["candidate-sticky-stack"].addEventListener("click", handleCandidateStickyDisclosureClick);
-  elements["candidate-sticky-stack"].addEventListener("wheel", handleCandidateStickyWheel, { passive: false });
-  [elements["candidate-list"], elements["candidate-sticky-stack"]].forEach((container) => {
-    container.addEventListener("wheel", restoreCandidateDisclosureSnap, true);
-    container.addEventListener("touchstart", restoreCandidateDisclosureSnap, true);
-    container.addEventListener("pointerdown", handleCandidateDisclosurePointerDown, true);
-    container.addEventListener("keydown", restoreCandidateDisclosureSnap, true);
-  });
   elements["candidate-list"].addEventListener("keydown", (event) => {
     handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
@@ -190,7 +169,7 @@ function bindEvents() {
     if (overrideToggle) {
       const key = overrideToggle.dataset.assessmentOverrideToggle;
       state.assessmentOverrideExpandedKey = state.assessmentOverrideExpandedKey === key ? null : key;
-      syncAssessmentOverrideDisclosures();
+      assessmentHierarchicalView?.refresh();
       return;
     }
     const overrideRemove = event.target.closest("[data-assessment-override-remove]");
@@ -259,7 +238,10 @@ function bindEvents() {
   });
   window.addEventListener("resize", hideStatusTooltip);
   window.addEventListener("resize", scheduleTruncationTooltips);
-  window.addEventListener("resize", () => scheduleCandidateStickyStackUpdate(true));
+  window.addEventListener("resize", () => {
+    candidateHierarchicalView?.refreshLayout();
+    assessmentHierarchicalView?.refreshLayout();
+  });
 }
 
 function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left + item.getBoundingClientRect().width / 2) {
@@ -1068,6 +1050,23 @@ function navigateCandidateSearch({ scroll = true } = {}) {
   elements["candidate-list"].querySelectorAll(".candidate-tree-row.search-match").forEach((row) => row.classList.remove("search-match"));
   const candidate = getBestCandidateSearchMatch();
   if (!candidate) return;
+  if (candidateHierarchicalView) {
+    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidate.key);
+    if (!node) return;
+    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+      if (!ancestor.children.length) continue;
+      ancestor.expanded = true;
+      candidateExpansionState.set(ancestor.id, true);
+    }
+    candidateHierarchicalView.model.flatten();
+    candidateHierarchicalView.layout.recalculate();
+    candidateHierarchicalView.renderNaturalRows();
+    const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
+    row?.classList.add("search-match");
+    if (scroll) elements["candidate-list"].scrollTop = Math.max(0, node.layoutTop - (elements["candidate-list"].clientHeight - node.rowHeight) / 2);
+    candidateHierarchicalView.stickyController.update();
+    return;
+  }
   const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(candidate.key)}"]`);
   if (!row) return;
   for (let ancestor = row.parentElement; ancestor && ancestor !== elements["candidate-list"]; ancestor = ancestor.parentElement) {
@@ -1257,317 +1256,166 @@ function candidateAggregateClass(decoration) {
   return decoration ? ` candidate-aggregate-${decoration.status}` : "";
 }
 
-function getCandidateStickyNaturalTop(node) {
-  let top = 0;
-  for (let current = node; current && current !== elements["candidate-list"]; current = current.offsetParent) {
-    top += current.offsetTop;
+function getCandidateExpansion(nodeId, expandedByDefault = false) {
+  return candidateExpansionState.has(nodeId) ? candidateExpansionState.get(nodeId) : expandedByDefault;
+}
+
+function buildCandidateLeafNodes(sectionKey, candidates, override = false) {
+  const headerId = `candidate:header:${sectionKey}`;
+  return [{
+    id: headerId,
+    kind: "header",
+    rowHeight: 35,
+    expanded: true,
+    data: { sectionKey, override },
+    children: sortCandidates(candidates, getCandidateSort(sectionKey)).map((candidate) => ({
+      id: `candidate:leaf:${candidate.key}`,
+      kind: "leaf",
+      rowHeight: 59,
+      stickyEligible: false,
+      data: { candidate, override }
+    }))
+  }];
+}
+
+function buildCandidateFolderNode({ id, label, sourceType, candidates, sectionKey, override = false, expandedByDefault = false, extraClass = "" }) {
+  return {
+    id,
+    kind: "folder",
+    rowHeight: 40,
+    expanded: getCandidateExpansion(id, expandedByDefault || Boolean(state.queries["candidate-sources"])),
+    data: { label, sourceType, candidates, decoration: getCandidateAggregateDecoration(candidates), override, extraClass },
+    children: buildCandidateLeafNodes(sectionKey, candidates, override)
+  };
+}
+
+function buildCandidateTreeNodes() {
+  const sources = [
+    ["interactive", "Interactive Toolkit"],
+    ["upstream", "Contributor Guidance"],
+    ["maintainer", "Maintainer Proposals"]
+  ];
+  const overrideCandidates = state.candidates.filter((candidate) => getApplicabilityOverride(candidate));
+  const regularCandidates = state.candidates.filter((candidate) => !getApplicabilityOverride(candidate));
+  const nodes = [];
+  if (overrideCandidates.length) {
+    const overrideRootId = "candidate:source:overrides";
+    nodes.push({
+      id: overrideRootId,
+      kind: "source",
+      rowHeight: 43,
+      expanded: getCandidateExpansion(overrideRootId, true),
+      data: { label: "OVERRIDES", sourceType: "overrides", candidates: overrideCandidates, decoration: getCandidateAggregateDecoration(overrideCandidates), override: true },
+      children: sources.map(([sourceType, label]) => {
+        const sourceCandidates = overrideCandidates.filter((candidate) => candidate.sourceType === sourceType);
+        if (!sourceCandidates.length) return null;
+        const sourceId = `candidate:override-source:${sourceType}`;
+        const origins = sourceType === "upstream"
+          ? Object.entries(groupCandidatesBySource(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([, members]) => [members[0].sourceId, members[0].sourceTitle, members])
+          : Object.entries(groupOverrideCandidatesByCategory(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => [category, category, members]);
+        return {
+          id: sourceId,
+          kind: "folder",
+          rowHeight: 40,
+          expanded: getCandidateExpansion(sourceId, true),
+          data: { label, sourceType, candidates: sourceCandidates, decoration: getCandidateAggregateDecoration(sourceCandidates), override: true, extraClass: "override-source-folder" },
+          children: origins.map(([originKey, originLabel, members]) => buildCandidateFolderNode({
+            id: `candidate:override-origin:${sourceType}:${originKey}`,
+            label: originLabel,
+            sourceType,
+            candidates: members,
+            sectionKey: `overrides:${sourceType}:${originKey}`,
+            override: true,
+            expandedByDefault: true,
+            extraClass: "override-origin-folder"
+          }))
+        };
+      }).filter(Boolean)
+    });
   }
-  return top;
-}
-
-function getCandidateStickyRow(owner) {
-  return owner.matches("details")
-    ? owner.querySelector(":scope > summary")
-    : owner.querySelector(":scope > .candidate-list-header");
-}
-
-function selectCandidateStickyOwner(parent, depth, threshold, useFirstAsFallback = false) {
-  const owners = [...parent.querySelectorAll(`:scope > [data-tree-depth="${depth}"]`)];
-  let selected = useFirstAsFallback ? owners[0] || null : null;
-  owners.forEach((owner) => {
-    const row = getCandidateStickyRow(owner);
-    if (row && getCandidateStickyNaturalTop(row) <= threshold + 1) selected = owner;
-  });
-  return selected;
-}
-
-function resolveCandidateStickyStack() {
-  const scroller = elements["candidate-list"];
-  const sourceRoots = [...scroller.querySelectorAll(':scope > details.candidate-source-root[data-tree-depth="0"]')];
-  const slots = [];
-  let prefixHeight = 0;
-  let owner = null;
-  sourceRoots.forEach((source) => {
-    const row = getCandidateStickyRow(source);
-    if (!row || (slots.length && getCandidateStickyNaturalTop(row) > scroller.scrollTop + prefixHeight + 1)) return;
-    slots.push({ depth: 0, owner: source, row });
-    prefixHeight += row.offsetHeight;
-    owner = source;
-  });
-  if (!owner?.open) return slots;
-  let depth = 1;
-  while (owner.open) {
-    owner = selectCandidateStickyOwner(owner, depth, scroller.scrollTop + prefixHeight);
-    if (!owner) break;
-    const row = getCandidateStickyRow(owner);
-    if (!row) break;
-    slots.push({ depth, owner, row });
-    prefixHeight += row.offsetHeight;
-    if (!owner.matches("details") || !owner.open) break;
-    depth += 1;
-  }
-  return slots;
-}
-
-function createCandidateStickySlot(slot) {
-  if (!slot.owner.matches("details")) {
-    const header = slot.row.cloneNode(true);
-    header.dataset.stickyDepth = String(slot.depth);
-    return header;
-  }
-  const shell = document.createElement("details");
-  shell.className = slot.owner.className;
-  shell.open = slot.owner.open;
-  shell.dataset.stickyDepth = String(slot.depth);
-  if (slot.depth === 0) shell.dataset.stickySource = "";
-  else shell.dataset.stickyCategoryIndex = String([...slot.owner.parentElement.children].indexOf(slot.owner));
-  shell.appendChild(slot.row.cloneNode(true));
-  return shell;
-}
-
-function createCandidateStickyLayer(slots) {
-  const layer = document.createElement("div");
-  layer.className = "candidate-sticky-layer";
-  slots.forEach((slot) => layer.appendChild(createCandidateStickySlot(slot)));
-  return layer;
-}
-
-function restoreCandidateStickyOriginalRows() {
-  candidateStickyStack.originalRows.forEach((row) => row.classList.remove("candidate-sticky-original-hidden"));
-  candidateStickyStack.originalRows = [];
-}
-
-function hideCandidateStickyOriginalRows() {
-  candidateStickyStack.slotRows.forEach((row) => {
-    if (!row?.isConnected) return;
-    row.classList.add("candidate-sticky-original-hidden");
-    candidateStickyStack.originalRows.push(row);
-  });
-}
-
-function handleCandidateStickyDisclosureClick(event) {
-  const summary = event.target.closest(".candidate-sticky-layer.active > details > summary");
-  if (!summary || !elements["candidate-sticky-stack"].contains(summary)) return;
-  event.preventDefault();
-  const slot = summary.parentElement;
-  const slotIndex = [...candidateStickyStack.activeLayer.children].indexOf(slot);
-  const owner = candidateStickyStack.slotOwners[slotIndex];
-  if (!owner?.matches("details")) return;
-  const scrollTop = elements["candidate-list"].scrollTop;
-  suspendCandidateDisclosureSnap();
-  owner.open = !owner.open;
-  updateCandidateStickyStack({ force: true });
-  elements["candidate-list"].scrollTop = scrollTop;
-}
-
-function handleCandidateStickyWheel(event) {
-  if (!event.deltaY) return;
-  const multiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? elements["candidate-list"].clientHeight : 1;
-  elements["candidate-list"].scrollTop += event.deltaY * multiplier;
-  event.preventDefault();
-}
-
-function handleCandidateDisclosureClick(event) {
-  if (!event.target.closest("summary")) return;
-  suspendCandidateDisclosureSnap();
-}
-
-function handleCandidateDisclosurePointerDown(event) {
-  if (event.target.closest("summary")) return;
-  restoreCandidateDisclosureSnap();
-}
-
-function suspendCandidateDisclosureSnap() {
-  const scroller = elements["candidate-list"];
-  if (candidateDisclosureScroll.restoreFrame) cancelAnimationFrame(candidateDisclosureScroll.restoreFrame);
-  candidateDisclosureScroll.scrollTop = scroller.scrollTop;
-  candidateDisclosureScroll.snapSuspended = true;
-  scroller.classList.add("disclosure-changing");
-  candidateDisclosureScroll.restoreFrame = requestAnimationFrame(() => {
-    scroller.scrollTop = candidateDisclosureScroll.scrollTop;
-    candidateDisclosureScroll.restoreFrame = requestAnimationFrame(() => {
-      scroller.scrollTop = candidateDisclosureScroll.scrollTop;
-      candidateDisclosureScroll.restoreFrame = 0;
+  sources.forEach(([sourceType, label]) => {
+    const candidates = regularCandidates.filter((candidate) => candidate.sourceType === sourceType);
+    if (!candidates.length) return;
+    const sourceId = `candidate:source:${sourceType}`;
+    const groups = sourceType === "upstream" ? groupCandidatesBySource(candidates) : groupCandidatesByCategory(candidates);
+    nodes.push({
+      id: sourceId,
+      kind: "source",
+      rowHeight: 43,
+      expanded: getCandidateExpansion(sourceId, Boolean(state.queries["candidate-sources"])),
+      data: { label, sourceType, candidates, decoration: getCandidateAggregateDecoration(candidates), override: false },
+      children: Object.entries(groups).sort(([left], [right]) => left.localeCompare(right)).map(([groupKey, members]) => buildCandidateFolderNode({
+        id: `candidate:folder:${sourceType}:${groupKey}`,
+        label: sourceType === "upstream" ? members[0].sourceTitle : groupKey,
+        sourceType,
+        candidates: members,
+        sectionKey: sourceType === "upstream" ? `upstream:${members[0].sourceId}` : `${sourceType}:${groupKey}`,
+        extraClass: sourceType === "upstream" ? "contributor-document" : ""
+      }))
     });
   });
+  return nodes;
 }
 
-function restoreCandidateDisclosureSnap() {
-  if (!candidateDisclosureScroll.snapSuspended) return;
-  candidateDisclosureScroll.snapSuspended = false;
-  elements["candidate-list"].classList.remove("disclosure-changing");
+function elementFromHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  return template.content.firstElementChild;
 }
 
-function resetCandidateDisclosureScroll() {
-  if (candidateDisclosureScroll.restoreFrame) cancelAnimationFrame(candidateDisclosureScroll.restoreFrame);
-  candidateDisclosureScroll.restoreFrame = 0;
-  candidateDisclosureScroll.snapSuspended = false;
-  elements["candidate-list"].classList.remove("disclosure-changing");
-}
-
-function positionCandidateStickyStack() {
-  const panelRect = elements["candidate-panel"].getBoundingClientRect();
-  const headingRect = elements["candidate-panel"].querySelector(":scope > .panel-heading").getBoundingClientRect();
-  const listRect = elements["candidate-list"].getBoundingClientRect();
-  elements["candidate-sticky-stack"].style.top = `${headingRect.bottom - panelRect.top - 1}px`;
-  elements["candidate-sticky-stack"].style.left = `${listRect.left - panelRect.left}px`;
-  elements["candidate-sticky-stack"].style.right = `${panelRect.right - listRect.right + elements["candidate-list"].offsetWidth - elements["candidate-list"].clientWidth}px`;
-}
-
-function sameCandidateStickySlots(slots) {
-  return slots.length === candidateStickyStack.slotOwners.length
-    && slots.every((slot, index) => candidateStickyStack.slotOwners[index] === slot.owner && candidateStickyStack.slotRows[index] === slot.row);
-}
-
-function syncCandidateStickyStackGeometry() {
-  positionCandidateStickyStack();
-  const stackHeight = [...candidateStickyStack.activeLayer.children]
-    .reduce((height, slot) => height + slot.getBoundingClientRect().height, 0);
-  elements["candidate-sticky-stack"].style.height = `${stackHeight}px`;
-  elements["candidate-list"].style.scrollPaddingTop = `${stackHeight}px`;
-  const rootHeight = [...elements["candidate-list"].querySelectorAll(':scope > details.candidate-source-root[data-tree-depth="0"]')]
-    .reduce((height, root) => height + root.querySelector(":scope > summary").offsetHeight, 0);
-  elements["candidate-list"].style.paddingBottom = `${Math.max(0, elements["candidate-list"].clientHeight - rootHeight)}px`;
-}
-
-function candidateStickySameDepthSiblings(owner) {
-  if (!owner?.parentElement) return [];
-  return [...owner.parentElement.children]
-    .filter((sibling) => sibling.hasAttribute("data-tree-depth") && sibling.dataset.treeDepth === owner.dataset.treeDepth);
-}
-
-function isCandidateStickyTerminalBranch(owner) {
-  for (let current = owner; current && current !== elements["candidate-list"]; current = current.parentElement.closest("[data-tree-depth]")) {
-    if (candidateStickySameDepthSiblings(current).at(-1) !== current) return false;
+function renderCandidateHierarchyRow(node) {
+  if (node.kind === "header") return elementFromHtml(renderCandidateListHeader(node.data.sectionKey, node.depth));
+  if (node.kind === "leaf") {
+    const row = elementFromHtml(renderCandidateTreeRow(node.data.candidate));
+    if (node.data.override) row.classList.add("candidate-override-row");
+    return row;
   }
-  return true;
+  const { candidates, decoration, extraClass = "", label, override, sourceType } = node.data;
+  const source = node.kind === "source";
+  const labelHtml = source && !override
+    ? renderSourceSummaryLabel(sourceType, label, decoration)
+    : `<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>`;
+  const countLabel = override ? "Override" : "Candidate";
+  return elementFromHtml(`
+    <button class="hierarchical-parent-row ${source ? "candidate-source-row" : "candidate-folder-row"} ${extraClass}${candidateAggregateClass(decoration)} clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}"${renderCandidateAggregateAttributes(decoration)}>
+      ${icon(source && override ? "shield" : "folder")}${labelHtml}${renderCandidateCountBadge(candidates.length, countLabel, decoration)}
+    </button>
+  `);
 }
 
-function clampCandidateStickyTerminalRow() {
-  const owner = candidateStickyStack.slotOwners.at(-1);
-  if (!owner?.classList.contains("candidate-category-items")) return false;
-  const folder = owner.parentElement;
-  if (!isCandidateStickyTerminalBranch(folder)) return false;
-  const lastRow = [...owner.querySelectorAll(":scope > .candidate-tree-row")].at(-1);
-  if (!lastRow) return false;
-  const correction = elements["candidate-sticky-stack"].getBoundingClientRect().bottom - lastRow.getBoundingClientRect().top;
-  if (correction <= 0.5) return false;
-  elements["candidate-list"].scrollTop = Math.max(0, elements["candidate-list"].scrollTop - correction);
-  return true;
-}
-
-function updateCandidateStickyStack({ force = false, allowClamp = true } = {}) {
-  restoreCandidateStickyOriginalRows();
-  const slots = resolveCandidateStickyStack();
-  if (!slots.length) {
-    resetCandidateStickyStack();
-    return;
-  }
-  if (force || !candidateStickyStack.activeLayer?.isConnected || !sameCandidateStickySlots(slots)) {
-    const nextLayer = createCandidateStickyLayer(slots);
-    const previousLayer = candidateStickyStack.activeLayer;
-    elements["candidate-sticky-stack"].appendChild(nextLayer);
-    nextLayer.getBoundingClientRect();
-    nextLayer.classList.add("active");
-    previousLayer?.classList.remove("active");
-    candidateStickyStack.activeLayer = nextLayer;
-    candidateStickyStack.slotOwners = slots.map((slot) => slot.owner);
-    candidateStickyStack.slotRows = slots.map((slot) => slot.row);
-    previousLayer?.remove();
-    elements["candidate-sticky-stack"].hidden = false;
-  }
-  syncCandidateStickyStackGeometry();
-  hideCandidateStickyOriginalRows();
-  if (allowClamp && clampCandidateStickyTerminalRow()) updateCandidateStickyStack({ force: true, allowClamp: false });
-}
-
-function scheduleCandidateStickyStackUpdate(force = false) {
-  candidateStickyStack.forceUpdate ||= force;
-  if (candidateStickyStack.scrollFrame) return;
-  candidateStickyStack.scrollFrame = requestAnimationFrame(() => {
-    candidateStickyStack.scrollFrame = 0;
-    const shouldForce = candidateStickyStack.forceUpdate;
-    candidateStickyStack.forceUpdate = false;
-    updateCandidateStickyStack({ force: shouldForce });
+function ensureCandidateHierarchicalView() {
+  if (candidateHierarchicalView) return candidateHierarchicalView;
+  candidateHierarchicalView = new WorkbenchHierarchicalView.HierarchicalView({
+    viewport: elements["candidate-list"],
+    stickyContainer: elements["candidate-sticky-stack"],
+    adapter: {
+      accumulateRoots: true,
+      keepLastRowVisible: true,
+      buildNodes: buildCandidateTreeNodes,
+      getInput: () => state.candidates,
+      shouldCascadeTransition: ({ incomingRoot, stickyNodes }) => incomingRoot.data.override === true || stickyNodes.some((node) => node.depth === 0 && node.data.override === true),
+      renderRow: renderCandidateHierarchyRow,
+      onExpandedChange: (node, expanded) => candidateExpansionState.set(node.id, expanded),
+      handleAction: (_node, event, target) => {
+        if (target !== "sticky") return;
+        const sortButton = event.target.closest("[data-candidate-sort]");
+        if (sortButton) updateCandidateSort(sortButton);
+      }
+    }
   });
-}
-
-function resetCandidateStickyStack() {
-  if (candidateStickyStack.scrollFrame) cancelAnimationFrame(candidateStickyStack.scrollFrame);
-  restoreCandidateStickyOriginalRows();
-  candidateStickyStack.scrollFrame = 0;
-  candidateStickyStack.forceUpdate = false;
-  candidateStickyStack.activeLayer?.remove();
-  candidateStickyStack.activeLayer = null;
-  candidateStickyStack.slotOwners = [];
-  candidateStickyStack.slotRows = [];
-  elements["candidate-sticky-stack"].replaceChildren();
-  elements["candidate-sticky-stack"].style.removeProperty("height");
-  elements["candidate-list"].style.removeProperty("scroll-padding-top");
-  elements["candidate-list"].style.removeProperty("padding-bottom");
-  elements["candidate-sticky-stack"].hidden = true;
+  return candidateHierarchicalView;
 }
 
 function renderCandidateList() {
-  resetCandidateDisclosureScroll();
-  resetCandidateStickyStack();
   renderBulkActions();
   if (!state.candidates.length) {
+    candidateHierarchicalView?.destroy();
+    candidateHierarchicalView = null;
     elements["candidate-list"].innerHTML = `<div class="empty-state compact"><h3>No Candidates Available</h3><p>No AI-evaluated candidates are present in this bundle.</p></div>`;
     return;
   }
-  const overrideCandidates = state.candidates.filter((candidate) => getApplicabilityOverride(candidate));
-  const regularCandidates = state.candidates.filter((candidate) => !getApplicabilityOverride(candidate));
-  const overrideDecoration = getCandidateAggregateDecoration(overrideCandidates);
-  const overrideGroup = overrideCandidates.length ? `
-    <details class="candidate-source-root candidate-overrides-root${candidateAggregateClass(overrideDecoration)}" data-source-type="overrides" data-tree-depth="0" open>
-      <summary class="clickable"${renderCandidateAggregateAttributes(overrideDecoration)}>${icon("shield")}<span class="candidate-parent-label"><strong>OVERRIDES</strong>${renderCandidateAggregateDecoration(overrideDecoration)}</span>${renderCandidateCountBadge(overrideCandidates.length, "Override", overrideDecoration)}</summary>
-      ${renderOverrideSourceGroups(overrideCandidates)}
-    </details>
-  ` : "";
-  const sources = [
-    ["interactive", "Interactive Toolkit"],
-    ["upstream", "Contributor Guidance"],
-    ["maintainer", "Maintainer Proposals"]
-  ];
-  elements["candidate-list"].innerHTML = overrideGroup + sources.map(([sourceType, label]) => {
-    const candidates = regularCandidates.filter((candidate) => candidate.sourceType === sourceType);
-    if (!candidates.length) return "";
-    const children = sourceType === "upstream"
-      ? Object.entries(groupCandidatesBySource(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([, members]) => renderContributorDocument(members)).join("")
-      : Object.entries(groupCandidatesByCategory(candidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderCandidateCategory(sourceType, category, members)).join("");
-    const decoration = getCandidateAggregateDecoration(candidates);
-    return `
-      <details class="candidate-source-root${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-tree-depth="0">
-        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}${renderSourceSummaryLabel(sourceType, label, decoration)}${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}</summary>
-        ${children}
-      </details>
-    `;
-  }).join("");
+  ensureCandidateHierarchicalView().setInput(state.candidates);
   navigateCandidateSearch({ scroll: false });
-  updateCandidateStickyStack({ force: true, immediate: true });
-}
-
-function renderOverrideSourceGroups(candidates) {
-  const sources = [
-    ["interactive", "Interactive Toolkit"],
-    ["upstream", "Contributor Guidance"],
-    ["maintainer", "Maintainer Proposals"]
-  ];
-  return sources.map(([sourceType, label]) => {
-    const sourceCandidates = candidates.filter((candidate) => candidate.sourceType === sourceType);
-    if (!sourceCandidates.length) return "";
-    const decoration = getCandidateAggregateDecoration(sourceCandidates);
-    const origins = sourceType === "upstream"
-      ? Object.entries(groupCandidatesBySource(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([, members]) => renderOverrideOrigin(sourceType, members[0].sourceId, members[0].sourceTitle, members)).join("")
-      : Object.entries(groupOverrideCandidatesByCategory(sourceCandidates)).sort(([left], [right]) => left.localeCompare(right)).map(([category, members]) => renderOverrideOrigin(sourceType, category, category, members)).join("");
-    return `
-      <details class="candidate-category override-source-folder${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-tree-depth="1" open>
-        <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>${renderCandidateCountBadge(sourceCandidates.length, "Override", decoration)}</summary>
-        ${origins}
-      </details>
-    `;
-  }).join("");
 }
 
 function groupOverrideCandidatesByCategory(candidates) {
@@ -1580,37 +1428,11 @@ function groupOverrideCandidatesByCategory(candidates) {
   }, {});
 }
 
-function renderOverrideOrigin(sourceType, originKey, label, candidates) {
-  const decoration = getCandidateAggregateDecoration(candidates);
-  return `
-    <details class="candidate-category override-origin-folder${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-override-origin="${escapeHtml(originKey)}" data-tree-depth="2" open>
-      <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>${renderCandidateCountBadge(candidates.length, "Override", decoration)}</summary>
-      ${renderCandidateItems(`overrides:${sourceType}:${originKey}`, candidates, "override-candidates", 3)}
-    </details>
-  `;
-}
-
 function groupCandidatesBySource(candidates) {
   return candidates.reduce((groups, candidate) => {
     (groups[candidate.sourceId] ||= []).push(candidate);
     return groups;
   }, {});
-}
-
-function renderContributorDocument(candidates) {
-  const source = candidates[0];
-  const sectionKey = `upstream:${source.sourceId}`;
-  const decoration = getCandidateAggregateDecoration(candidates);
-  return `
-    <details class="candidate-category contributor-document${candidateAggregateClass(decoration)}" data-source-type="upstream" data-source-id="${escapeHtml(source.sourceId)}" data-tree-depth="1">
-      <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>
-        ${icon("folder")}
-        <span class="candidate-parent-label"><strong>${escapeHtml(source.sourceTitle)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>
-        ${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}
-      </summary>
-      ${renderCandidateItems(sectionKey, candidates, "contributor-candidates")}
-    </details>
-  `;
 }
 
 function renderSourceSummaryLabel(sourceType, label, decoration) {
@@ -1622,26 +1444,6 @@ function renderSourceSummaryLabel(sourceType, label, decoration) {
     : "";
   const selection = decoration === undefined ? "" : renderCandidateAggregateDecoration(decoration);
   return `<span class="source-summary-label"><strong>${escapeHtml(label)}</strong>${provenance}${selection}</span>`;
-}
-
-function renderCandidateCategory(sourceType, category, candidates) {
-  const sectionKey = `${sourceType}:${category}`;
-  const decoration = getCandidateAggregateDecoration(candidates);
-  return `
-    <details class="candidate-category${candidateAggregateClass(decoration)}" data-source-type="${escapeHtml(sourceType)}" data-category="${escapeHtml(category)}" data-tree-depth="1">
-      <summary class="clickable"${renderCandidateAggregateAttributes(decoration)}>
-        ${icon("folder")}
-        <span class="candidate-parent-label"><strong>${escapeHtml(category)}</strong>${renderCandidateAggregateDecoration(decoration)}</span>
-        ${renderCandidateCountBadge(candidates.length, "Candidate", decoration)}
-      </summary>
-      ${renderCandidateItems(sectionKey, candidates)}
-    </details>
-  `;
-}
-
-function renderCandidateItems(sectionKey, candidates, extraClass = "", treeDepth = 2) {
-  const sortedCandidates = sortCandidates(candidates, getCandidateSort(sectionKey));
-  return `<div class="candidate-category-items ${extraClass}" data-candidate-section="${escapeHtml(sectionKey)}" data-tree-depth="${treeDepth}">${renderCandidateListHeader(sectionKey, treeDepth)}${sortedCandidates.map(renderCandidateTreeRow).join("")}</div>`;
 }
 
 function renderCandidateListHeader(sectionKey, treeDepth = 2) {
@@ -1670,30 +1472,11 @@ function updateCandidateSort(button) {
     field,
     direction: current.field === field && current.direction === "ascending" ? "descending" : "ascending"
   };
-  const group = button.closest(".candidate-category-items");
-  const candidates = Array.from(group.querySelectorAll(":scope > [data-candidate-key]"))
-    .map((row) => state.candidates.find((candidate) => candidate.key === row.dataset.candidateKey))
-    .filter(Boolean);
-  const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-candidate-key]")).map((row) => [row.dataset.candidateKey, row]));
-  const scroller = elements["candidate-list"];
-  const scrollTop = scroller.scrollTop;
-  const fragment = document.createDocumentFragment();
-  if (candidateSortRestoreFrame) cancelAnimationFrame(candidateSortRestoreFrame);
-  scroller.classList.add("sorting");
-  sortCandidates(candidates, state.candidateSorts[sectionKey]).forEach((candidate) => fragment.appendChild(rowsByKey.get(candidate.key)));
-  group.appendChild(fragment);
-  group.querySelector(":scope > .candidate-list-header").outerHTML = renderCandidateListHeader(sectionKey, Number(group.dataset.treeDepth));
-  scroller.scrollTop = scrollTop;
-  refreshPresentation();
-  candidateSortRestoreFrame = requestAnimationFrame(() => {
-    scroller.scrollTop = scrollTop;
-    candidateSortRestoreFrame = requestAnimationFrame(() => {
-      scroller.classList.remove("sorting");
-      scroller.scrollTop = scrollTop;
-      candidateSortRestoreFrame = null;
-    });
-  });
-  scheduleCandidateStickyStackUpdate(true);
+  if (candidateHierarchicalView) {
+    candidateHierarchicalView.refresh();
+    refreshPresentation();
+    return;
+  }
 }
 
 function sortCandidates(candidates, sort) {
@@ -1725,32 +1508,107 @@ function getFilteredAssessmentCandidates() {
   });
 }
 
+function getAssessmentExpansion(nodeId, expandedByDefault = false) {
+  return assessmentExpansionState.has(nodeId) ? assessmentExpansionState.get(nodeId) : expandedByDefault;
+}
+
+function buildAssessmentTreeNodes() {
+  const filtered = getFilteredAssessmentCandidates();
+  const sources = [
+    ["interactive", "Interactive Toolkit"],
+    ["upstream", "Contributor Guidance"],
+    ["maintainer", "Maintainer Proposals"]
+  ];
+  return sources.map(([sourceType, label]) => {
+    const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
+    if (!candidates.length) return null;
+    const sourceId = `assessment:source:${sourceType}`;
+    const sectionKey = `assessment:${sourceType}`;
+    return {
+      id: sourceId,
+      kind: "source",
+      rowHeight: 43,
+      expanded: getAssessmentExpansion(sourceId, Boolean(state.queries["assessment-results"])),
+      data: { label, sourceType, candidates },
+      children: [{
+        id: `assessment:header:${sourceType}`,
+        kind: "header",
+        rowHeight: 35,
+        expanded: true,
+        data: { sectionKey },
+        children: sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey)).map((candidate) => ({
+          id: `assessment:leaf:${candidate.key}`,
+          kind: "leaf",
+          rowHeight: 59,
+          stickyEligible: false,
+          expanded: state.assessmentOverrideExpandedKey === candidate.key,
+          data: { candidate },
+          children: state.assessmentOverrideExpandedKey === candidate.key && getApplicabilityOverride(candidate) ? [{
+            id: `assessment:detail:${candidate.key}`,
+            kind: "detail",
+            rowHeight: 96,
+            dynamicHeight: true,
+            stickyEligible: false,
+            data: { candidate }
+          }] : []
+        }))
+      }]
+    };
+  }).filter(Boolean);
+}
+
+function renderAssessmentHierarchyRow(node) {
+  if (node.kind === "header") return elementFromHtml(renderAssessmentResultsHeader(node.data.sectionKey));
+  if (node.kind === "source") {
+    const { candidates, label, sourceType } = node.data;
+    return elementFromHtml(`
+      <button class="hierarchical-parent-row candidate-source-row clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}">
+        ${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span>
+      </button>
+    `);
+  }
+  const rendered = elementFromHtml(`<div>${renderAssessmentResultRow(node.data.candidate)}</div>`);
+  if (node.kind === "detail") {
+    const detail = rendered.querySelector("[data-assessment-override-for]");
+    detail.hidden = false;
+    return detail;
+  }
+  return rendered.querySelector("[data-assessment-key]");
+}
+
+function ensureAssessmentHierarchicalView() {
+  if (assessmentHierarchicalView) return assessmentHierarchicalView;
+  assessmentHierarchicalView = new WorkbenchHierarchicalView.HierarchicalView({
+    viewport: elements["assessment-results-list"],
+    stickyContainer: elements["assessment-sticky-stack"],
+    adapter: {
+      accumulateRoots: true,
+      buildNodes: buildAssessmentTreeNodes,
+      getInput: () => state.assessedCandidates,
+      renderRow: renderAssessmentHierarchyRow,
+      onExpandedChange: (node, expanded) => assessmentExpansionState.set(node.id, expanded),
+      handleAction: (_node, event, target) => {
+        if (target !== "sticky") return;
+        const sortButton = event.target.closest("[data-assessment-sort]");
+        if (sortButton) updateAssessmentSort(sortButton);
+      }
+    }
+  });
+  return assessmentHierarchicalView;
+}
+
 function renderAssessmentResults() {
   if (!state.assessedCandidates.length) return;
-  const filtered = getFilteredAssessmentCandidates();
-  if (!filtered.length) {
+  if (!getFilteredAssessmentCandidates().length) {
+    assessmentHierarchicalView?.destroy();
+    assessmentHierarchicalView = null;
+    elements["assessment-sticky-stack"].hidden = true;
     elements["assessment-results-list"].innerHTML = `<div class="empty-state compact"><h3>No Assessment Results</h3><p>No candidates match this outcome and search.</p></div>`;
   }
   else {
-    const sources = [
-      ["interactive", "Interactive Toolkit"],
-      ["upstream", "Contributor Guidance"],
-      ["maintainer", "Maintainer Proposals"]
-    ];
-    elements["assessment-results-list"].innerHTML = sources.map(([sourceType, label]) => {
-      const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
-      if (!candidates.length) return "";
-      const sectionKey = `assessment:${sourceType}`;
-      const sortedCandidates = sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey));
-      return `
-        <details class="candidate-source-root" ${state.queries["assessment-results"] ? "open" : ""}>
-          <summary class="clickable">${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span></summary>
-          <div class="candidate-category-items" data-assessment-section="${escapeHtml(sectionKey)}">${renderAssessmentResultsHeader(sectionKey)}${sortedCandidates.map(renderAssessmentResultRow).join("")}</div>
-        </details>
-      `;
-    }).join("");
+    ensureAssessmentHierarchicalView().setInput(state.assessedCandidates);
+    syncAssessmentResultRows();
   }
-  syncAssessmentResultRows();
   renderAssessmentResultDetail();
 }
 
@@ -1779,19 +1637,11 @@ function updateAssessmentSort(button) {
     field,
     direction: current.field === field && current.direction === "ascending" ? "descending" : "ascending"
   };
-  const group = button.closest(".candidate-category-items");
-  const candidates = Array.from(group.querySelectorAll(":scope > [data-assessment-key]"))
-    .map((row) => state.assessedCandidates.find((candidate) => candidate.key === row.dataset.assessmentKey))
-    .filter(Boolean);
-  const rowsByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-key]")).map((row) => [row.dataset.assessmentKey, row]));
-  const overridesByKey = new Map(Array.from(group.querySelectorAll(":scope > [data-assessment-override-for]")).map((panel) => [panel.dataset.assessmentOverrideFor, panel]));
-  sortAssessmentCandidates(candidates, state.assessmentSorts[sectionKey]).forEach((candidate) => {
-    group.appendChild(rowsByKey.get(candidate.key));
-    const panel = overridesByKey.get(candidate.key);
-    if (panel) group.appendChild(panel);
-  });
-  group.querySelector(":scope > .assessment-results-header").outerHTML = renderAssessmentResultsHeader(sectionKey);
-  refreshPresentation();
+  if (assessmentHierarchicalView) {
+    assessmentHierarchicalView.refresh();
+    refreshPresentation();
+    return;
+  }
 }
 
 function sortAssessmentCandidates(candidates, sort) {
@@ -1830,17 +1680,6 @@ function renderAssessmentResultRow(candidate) {
     </div>
     ${overridePanel}
   `;
-}
-
-function syncAssessmentOverrideDisclosures() {
-  elements["assessment-results-list"].querySelectorAll("[data-assessment-override-toggle]").forEach((button) => {
-    const expanded = button.dataset.assessmentOverrideToggle === state.assessmentOverrideExpandedKey;
-    button.setAttribute("aria-expanded", String(expanded));
-    button.querySelector(".assessment-override-chevron").innerHTML = icon(expanded ? "chevron-down" : "chevron-right");
-  });
-  elements["assessment-results-list"].querySelectorAll("[data-assessment-override-for]").forEach((panel) => {
-    panel.hidden = panel.dataset.assessmentOverrideFor !== state.assessmentOverrideExpandedKey;
-  });
 }
 
 function renderAssessmentResultDetail() {
@@ -2279,6 +2118,13 @@ function refreshAssessmentScores(candidate) {
 
 function renderPlan() {
   const planCandidates = sortPlanCandidates(getPlanCandidates(), state.planSort);
+  const latestBulkOperation = getLatestBulkOperation();
+  const bulkUndoLabel = latestBulkOperation
+    ? `Undo bulk ${latestBulkOperation.recommendationScope} of ${formatNumber(latestBulkOperation.candidateKeys.length)} candidates`
+    : "No bulk selection to undo";
+  elements["plan-bulk-undo"].disabled = !latestBulkOperation;
+  elements["plan-bulk-undo"].setAttribute("aria-label", bulkUndoLabel);
+  setWorkbenchTooltip(elements["plan-bulk-undo"], bulkUndoLabel);
   elements["plan-table-head"].innerHTML = renderPlanHeader();
   elements["empty-plan"].hidden = planCandidates.length > 0;
   elements["plan-table-body"].innerHTML = planCandidates.map((candidate) => {
@@ -2297,7 +2143,7 @@ function renderPlan() {
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
         <td>${readiness.ready ? `<span class="status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Complete required fields for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and complete required fields">${icon("edit")}<span>${readiness.label}</span></button>`}</td>
-        <td class="plan-actions"><button class="plan-undo clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo decision and remove from promotion plan" data-workbench-tooltip="Undo decision and remove from promotion plan">${icon("discard")}</button></td>
+        <td class="plan-actions"><span class="plan-action-controls"><button class="titlebar-icon clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo this candidate" data-workbench-tooltip="Undo this candidate">${icon("discard")}</button></span></td>
       </tr>
     `;
   }).join("");
@@ -2874,29 +2720,23 @@ function syncCandidateTreeRows() {
 }
 
 function syncCandidateTreeAggregates() {
-  elements["candidate-list"].querySelectorAll("details.candidate-source-root, details.candidate-category").forEach((disclosure) => {
-    const candidates = [...disclosure.querySelectorAll("[data-candidate-key]")]
-      .map((row) => state.candidates.find((candidate) => candidate.key === row.dataset.candidateKey))
-      .filter(Boolean);
+  if (!candidateHierarchicalView) return;
+  candidateHierarchicalView.model.nodes.filter((node) => node.data?.candidates).forEach((node) => {
+    const candidates = node.data.candidates;
     const decoration = getCandidateAggregateDecoration(candidates);
-    disclosure.classList.toggle("candidate-aggregate-ready", decoration?.status === "ready");
-    disclosure.classList.toggle("candidate-aggregate-needs-input", decoration?.status === "needs-input");
-    const summary = disclosure.querySelector(":scope > summary");
-    if (decoration) {
-      summary.dataset.selectionStatus = decoration.status;
-    } else {
-      delete summary.dataset.selectionStatus;
-    }
-    setWorkbenchTooltip(summary, "");
-    const decorationIcon = summary.querySelector(".candidate-parent-decoration-icon");
-    const countBadge = summary.querySelector(".count-badge");
-    const decorationDescription = summary.querySelector(".candidate-decoration-description");
-    if (decorationIcon) {
-      decorationIcon.toggleAttribute("hidden", !decoration);
-      setWorkbenchTooltip(decorationIcon, "");
-    }
-    if (countBadge) setWorkbenchTooltip(countBadge, decoration?.description || "");
-    if (decorationDescription) decorationDescription.textContent = decoration?.description || "";
+    node.data.decoration = decoration;
+    document.querySelectorAll(`[data-node-id="${CSS.escape(node.id)}"]`).forEach((row) => {
+      row.classList.toggle("candidate-aggregate-ready", decoration?.status === "ready");
+      row.classList.toggle("candidate-aggregate-needs-input", decoration?.status === "needs-input");
+      if (decoration) row.dataset.selectionStatus = decoration.status;
+      else delete row.dataset.selectionStatus;
+      const decorationIcon = row.querySelector(".candidate-parent-decoration-icon");
+      const countBadge = row.querySelector(".count-badge");
+      const decorationDescription = row.querySelector(".candidate-decoration-description");
+      if (decorationIcon) decorationIcon.toggleAttribute("hidden", !decoration);
+      if (countBadge) setWorkbenchTooltip(countBadge, decoration?.description || "");
+      if (decorationDescription) decorationDescription.textContent = decoration?.description || "";
+    });
   });
 }
 
@@ -2919,6 +2759,7 @@ function showCandidatePane(pane) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", String(active));
   });
+  if (!detailsActive) candidateHierarchicalView?.refreshLayout();
 }
 
 function updateFilter(value) {
@@ -2966,6 +2807,7 @@ function showAssessmentPane(pane) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", String(active));
   });
+  if (!detailsActive) assessmentHierarchicalView?.refreshLayout();
 }
 
 function setWorkspaceTab(tab) {
@@ -2985,6 +2827,8 @@ function setWorkspaceTab(tab) {
   elements["search-input"].placeholder = tab === "candidate-sources"
     ? "Search sources, categories, or rules"
     : "Search excluded assessment results";
+  if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
+  else assessmentHierarchicalView?.refreshLayout();
   refreshPresentation();
 }
 

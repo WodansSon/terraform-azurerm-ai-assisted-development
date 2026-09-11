@@ -43,8 +43,14 @@ $iconNames = @(
     'download',
     'edit',
     'ellipsis',
+    'file-symlink-directory',
     'fold-up',
     'folder',
+    'folder-active',
+    'folder-compact',
+    'folder-library',
+    'folder-opened',
+    'folder-opened-compact',
     'git-branch-compact',
     'git-commit',
     'git-pull-request-draft',
@@ -69,7 +75,9 @@ $iconNames = @(
     'shield-compact',
     'sign-out',
     'tasklist',
-    'warning'
+    'warning',
+    'workspace-unknown',
+    'workspace-untrusted'
 )
 
 if (-not (Test-Path -LiteralPath $IconDirectory -PathType Container)) {

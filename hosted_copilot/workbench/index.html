@@ -8,6 +8,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="shutdown-config.js" defer></script>
+  <script src="hierarchical-view.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -108,7 +109,7 @@
                   </div>
                 </details>
               </div>
-              <div class="candidate-sticky-stack" id="candidate-sticky-stack" hidden></div>
+              <div class="hierarchical-view-sticky-stack type-ui" id="candidate-sticky-stack" hidden></div>
               <div class="candidate-list scroll-surface type-ui" id="candidate-list"></div>
             </section>
 
@@ -136,6 +137,7 @@
               <div class="panel-heading">
                 <h2 id="assessment-results-heading">Assessment Results:</h2>
               </div>
+              <div class="hierarchical-view-sticky-stack type-ui" id="assessment-sticky-stack" hidden></div>
               <div class="candidate-list scroll-surface type-ui" id="assessment-results-list"></div>
             </section>
 
@@ -153,10 +155,14 @@
       <section class="view" id="plan-view" data-view-panel="plan">
         <div class="page-heading">
           <h2>Promotion Plan:</h2>
-          <button class="button secondary clickable" id="return-catalog-button" type="button">
-            <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
-            Return to catalog
-          </button>
+          <div class="plan-heading-controls">
+            <button class="titlebar-icon clickable" id="return-catalog-button" type="button" aria-label="Return to catalog" data-workbench-tooltip="Return to catalog">
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
+            </button>
+            <button class="titlebar-icon clickable" id="plan-bulk-undo" type="button" aria-label="No bulk selection to undo" data-workbench-tooltip="No bulk selection to undo" disabled>
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-discard-all"></use></svg>
+            </button>
+          </div>
         </div>
         <div class="plan-layout">
           <section class="plan-table-wrap scroll-surface">

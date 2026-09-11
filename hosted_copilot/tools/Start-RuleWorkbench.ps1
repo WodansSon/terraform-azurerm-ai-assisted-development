@@ -71,7 +71,7 @@ if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
 
-$ownedAssetNames = @('index.html', 'app.js', 'styles.css', 'favicon.svg')
+$ownedAssetNames = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg')
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
