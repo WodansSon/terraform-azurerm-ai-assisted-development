@@ -60,6 +60,16 @@
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
     },
     {
+      "id": "WB-UX-STICKY-007",
+      "title": "Candidate hierarchy rows and terminal scrolling stay on a 40px grid",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-008",
+      "title": "Coarse wheel input preserves speed on a grid-aligned destination",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
       "id": "WB-UX-PROVENANCE-001",
       "title": "Contributor provenance tooltip retains concise complete text",
       "journey": "playwright/journeys/provenance-tooltip.journey.cjs"

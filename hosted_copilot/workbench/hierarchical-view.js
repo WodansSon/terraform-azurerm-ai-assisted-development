@@ -3,6 +3,7 @@
 
   const BOUNDARY_EPSILON = 1;
   const MAX_STICKY_ROW_COUNT = 7;
+  const ROW_HEIGHT_GRID = 40;
 
   function syncAttributes(target, source) {
     Array.from(target.attributes).forEach((attribute) => {
@@ -123,8 +124,9 @@
 
     updateHeight(nodeId, height) {
       const node = this.model.nodesById.get(nodeId);
-      if (!node || height <= 0 || Math.abs(node.rowHeight - height) < BOUNDARY_EPSILON) return false;
-      node.rowHeight = height;
+      const alignedHeight = Math.ceil(height / ROW_HEIGHT_GRID) * ROW_HEIGHT_GRID;
+      if (!node || alignedHeight <= 0 || Math.abs(node.rowHeight - alignedHeight) < BOUNDARY_EPSILON) return false;
+      node.rowHeight = alignedHeight;
       this.recalculate();
       return true;
     }
@@ -206,107 +208,58 @@
       return stickyNodes.slice(0, end).reduce((height, node) => height + node.rowHeight, 0);
     }
 
-    settleCascade(stickyNodes, incoming, minimumSlot, scrollTop) {
-      if (incoming.layoutTop > scrollTop + this.getHeight(stickyNodes) + BOUNDARY_EPSILON) {
-        return { destination: -1, entered: false, settled: false, stickyNodes };
-      }
-      let destination = stickyNodes.length;
-      while (destination > minimumSlot && incoming.layoutTop <= scrollTop + this.getHeight(stickyNodes, destination - 1) + BOUNDARY_EPSILON) {
-        destination -= 1;
-      }
-      const settled = destination === minimumSlot;
-      let nextStickyNodes = destination === stickyNodes.length
-        ? [...stickyNodes, incoming]
-        : [...stickyNodes.slice(0, destination), incoming, ...stickyNodes.slice(destination + 1)];
-      if (settled) nextStickyNodes = nextStickyNodes.slice(0, destination + 1);
-      return { destination, entered: true, settled, stickyNodes: nextStickyNodes };
-    }
-
-    settleSemantic(stickyNodes, incoming, minimumSlot, scrollTop) {
-      if (!stickyNodes.length) {
-        if (incoming.layoutTop > scrollTop + BOUNDARY_EPSILON) {
-          return { destination: -1, entered: false, settled: false, stickyNodes };
-        }
-        return { destination: 0, entered: true, settled: true, stickyNodes: [incoming] };
-      }
-      const bottomIndex = stickyNodes.length - 1;
-      const bottom = stickyNodes[bottomIndex];
-      let destination = incoming.depth > bottom.depth ? stickyNodes.length : bottomIndex;
-      if (incoming.layoutTop > scrollTop + this.getHeight(stickyNodes, destination) + BOUNDARY_EPSILON) {
-        return { destination: -1, entered: false, settled: false, stickyNodes };
-      }
-      while (destination > minimumSlot && incoming.layoutTop <= scrollTop + this.getHeight(stickyNodes, destination - 1) + BOUNDARY_EPSILON) {
-        destination -= 1;
-      }
-      return {
-        destination,
-        entered: true,
-        settled: destination === minimumSlot,
-        stickyNodes: destination === stickyNodes.length ? [...stickyNodes, incoming] : [...stickyNodes.slice(0, destination), incoming]
-      };
-    }
-
-    settleIncoming(stickyNodes, incoming, minimumSlot, scrollTop) {
-      let incomingRoot = incoming;
-      while (incomingRoot.parent) incomingRoot = incomingRoot.parent;
-      const cascade = this.view.adapter.shouldCascadeTransition?.({ incoming, incomingRoot, stickyNodes }) === true;
-      if (incoming.depth === 0 && this.view.adapter.accumulateRoots === true && !cascade) {
-        const roots = stickyNodes.filter((node) => node.depth === 0);
-        const existingIndex = roots.findIndex((node) => node.id === incoming.id);
-        if (existingIndex >= 0) {
-          return { destination: existingIndex, entered: true, settled: true, stickyNodes };
-        }
-        if (incoming.layoutTop > scrollTop + this.getHeight(roots) + BOUNDARY_EPSILON) {
-          return { destination: -1, entered: false, settled: false, stickyNodes };
-        }
-        return { destination: roots.length, entered: true, settled: true, stickyNodes: [...roots, incoming] };
-      }
-      return cascade
-        ? this.settleCascade(stickyNodes, incoming, minimumSlot, scrollTop)
-        : this.settleSemantic(stickyNodes, incoming, minimumSlot, scrollTop);
-    }
-
-    resolveChildren(parent, stickyNodes, parentSlot, scrollTop) {
-      if (!parent.expanded) return { blocked: false, stickyNodes };
-      const minimumSlot = parentSlot + 1;
+    getActiveChild(parent, scrollTop, slotTop) {
+      let active = null;
       for (const child of parent.children.filter((node) => node.stickyEligible)) {
-        const transition = this.settleIncoming(stickyNodes, child, minimumSlot, scrollTop);
-        if (!transition.entered) return { blocked: true, stickyNodes };
-        stickyNodes = transition.stickyNodes;
-        const descendants = this.resolveChildren(child, stickyNodes, transition.destination, scrollTop);
-        stickyNodes = descendants.stickyNodes;
-        if (descendants.blocked) return descendants;
-        if (!transition.settled) return { blocked: true, stickyNodes };
+        if (child.layoutTop - scrollTop > slotTop + BOUNDARY_EPSILON) break;
+        active = child;
       }
-      return { blocked: false, stickyNodes };
+      return active;
     }
 
     calculate(scrollTop) {
       if (scrollTop <= 0) return [];
-      let stickyNodes = [];
-      let accumulatedRoots = 0;
-      for (const root of this.view.model.roots) {
-        const minimumSlot = this.view.adapter.accumulateRoots === true ? accumulatedRoots : 0;
-        const transition = this.settleIncoming(stickyNodes, root, minimumSlot, scrollTop);
-        if (!transition.entered) break;
-        stickyNodes = transition.stickyNodes;
-        const descendants = this.resolveChildren(root, stickyNodes, transition.destination, scrollTop);
-        stickyNodes = descendants.stickyNodes;
-        if (descendants.blocked) break;
-        if (!transition.settled) break;
-        if (this.view.adapter.accumulateRoots === true) accumulatedRoots += 1;
+      const stickyNodes = [];
+      const incomingTops = [];
+      let slotTop = 0;
+      let activeRootIndex = -1;
+      for (let index = 0; index < this.view.model.roots.length; index += 1) {
+        if (stickyNodes.length >= MAX_STICKY_ROW_COUNT) break;
+        const root = this.view.model.roots[index];
+        if (root.layoutTop - scrollTop > slotTop + BOUNDARY_EPSILON) break;
+        if (this.view.adapter.accumulateRoots !== true) stickyNodes.length = 0;
+        stickyNodes.push(root);
+        slotTop = this.view.adapter.accumulateRoots === true ? slotTop + root.rowHeight : root.rowHeight;
+        activeRootIndex = index;
       }
-      return stickyNodes.slice(0, MAX_STICKY_ROW_COUNT).map((node, stickySlot) => ({
+      if (activeRootIndex < 0) return [];
+      const nextRoot = this.view.model.roots[activeRootIndex + 1];
+      if (nextRoot) incomingTops.push(nextRoot.layoutTop - scrollTop);
+      let parent = this.view.model.roots[activeRootIndex];
+      while (parent.expanded && stickyNodes.length < MAX_STICKY_ROW_COUNT) {
+        const active = this.getActiveChild(parent, scrollTop, slotTop);
+        if (!active) break;
+        stickyNodes.push(active);
+        slotTop += active.rowHeight;
+        const siblings = parent.children.filter((node) => node.stickyEligible);
+        const next = siblings[siblings.indexOf(active) + 1];
+        if (next) incomingTops.push(next.layoutTop - scrollTop);
+        parent = active;
+      }
+      const visibleIncomingTops = incomingTops.filter((top) => top >= 0);
+      const rawClipHeight = visibleIncomingTops.length ? Math.max(0, Math.min(slotTop, ...visibleIncomingTops)) : slotTop;
+      const state = stickyNodes.map((node, stickySlot) => ({
         node,
         nodeId: node.id,
         treeDepth: node.depth,
         stickySlot,
         height: node.rowHeight,
-        position: Math.max(
-          stickyNodes.slice(0, stickySlot).reduce((top, stickyNode) => top + stickyNode.rowHeight, 0),
-          node.layoutTop - scrollTop
-        )
+        position: stickyNodes.slice(0, stickySlot).reduce((top, stickyNode) => top + stickyNode.rowHeight, 0)
       }));
+      const boundaries = [0, ...state.map((entry) => entry.position), ...state.map((entry) => entry.position + entry.height)];
+      const nearestBoundary = boundaries.reduce((nearest, boundary) => Math.abs(boundary - rawClipHeight) < Math.abs(nearest - rawClipHeight) ? boundary : nearest, boundaries[0]);
+      const clipHeight = Math.abs(nearestBoundary - rawClipHeight) <= BOUNDARY_EPSILON ? nearestBoundary : rawClipHeight;
+      return state.map((entry) => ({ ...entry, clipHeight }));
     }
 
     getRequiredScrollTop() {
@@ -326,7 +279,7 @@
     update() {
       const nextState = this.calculate(this.view.viewport.scrollTop);
       const unchanged = nextState.length === this.state.length
-        && nextState.every((entry, index) => entry.node === this.state[index].node && entry.nodeId === this.state[index].nodeId && entry.position === this.state[index].position && entry.height === this.state[index].height);
+        && nextState.every((entry, index) => entry.node === this.state[index].node && entry.nodeId === this.state[index].nodeId && entry.position === this.state[index].position && entry.height === this.state[index].height && entry.clipHeight === this.state[index].clipHeight);
       if (unchanged) return;
       this.state = nextState;
       this.view.renderStickyState(nextState);
@@ -345,10 +298,11 @@
       this.handleScroll = () => this.stickyController.update();
       this.handleClick = (event) => this.onClick(event);
       this.handleKeyDown = (event) => this.onKeyDown(event);
-      this.handleWheel = (event) => this.onStickyWheel(event);
+      this.handleWheel = (event) => this.onWheel(event);
       this.viewport.addEventListener("scroll", this.handleScroll, { passive: true });
       this.viewport.addEventListener("click", this.handleClick);
       this.viewport.addEventListener("keydown", this.handleKeyDown);
+      this.viewport.addEventListener("wheel", this.handleWheel, { passive: false });
       this.stickyContainer.addEventListener("click", this.handleClick);
       this.stickyContainer.addEventListener("keydown", this.handleKeyDown);
       this.stickyContainer.addEventListener("wheel", this.handleWheel, { passive: false });
@@ -463,6 +417,7 @@
         requiredScrollTop = Math.max(requiredScrollTop, lastEntry.top - stickyHeight);
       }
       contentHeight = Math.max(contentHeight, this.viewport.clientHeight + Math.max(0, requiredScrollTop));
+      contentHeight = this.viewport.clientHeight + Math.ceil((contentHeight - this.viewport.clientHeight) / ROW_HEIGHT_GRID) * ROW_HEIGHT_GRID;
       this.rowsContainer.style.height = `${contentHeight}px`;
     }
 
@@ -473,6 +428,7 @@
         this.stickyContainer.style.visibility = "hidden";
         this.reconcileStickyRows(this.getPrewarmedStickyState(), []);
         this.stickyContainer.style.height = "0px";
+        this.viewport.style.scrollPaddingTop = "0px";
         this.renderedStickyState = [];
         return;
       }
@@ -480,7 +436,9 @@
       this.stickyContainer.style.visibility = "visible";
       this.reconcileStickyRows(state, state);
       const height = state.reduce((bottom, entry) => Math.max(bottom, entry.position + entry.height), 0);
-      this.stickyContainer.style.height = `${height}px`;
+      const clipHeight = state[0].clipHeight ?? height;
+      this.stickyContainer.style.height = `${clipHeight}px`;
+      this.viewport.style.scrollPaddingTop = `${clipHeight}px`;
       this.renderedStickyState = state;
     }
 
@@ -579,10 +537,20 @@
       }
     }
 
-    onStickyWheel(event) {
+    onWheel(event) {
       if (!event.deltaY) return;
       const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? this.viewport.clientHeight : 1;
-      this.viewport.scrollTop += event.deltaY * multiplier;
+      const delta = event.deltaY * multiplier;
+      if (Math.abs(delta) < ROW_HEIGHT_GRID) {
+        if (this.viewport.contains(event.target)) return;
+        this.viewport.scrollTop += delta;
+        event.preventDefault();
+        return;
+      }
+      const rawTarget = this.viewport.scrollTop + delta;
+      let target = Math.round(rawTarget / ROW_HEIGHT_GRID) * ROW_HEIGHT_GRID;
+      if (Math.abs(target - this.viewport.scrollTop) < BOUNDARY_EPSILON) target += Math.sign(delta) * ROW_HEIGHT_GRID;
+      this.viewport.scrollTop = Math.max(0, Math.min(target, this.viewport.scrollHeight - this.viewport.clientHeight));
       event.preventDefault();
     }
 
@@ -590,6 +558,7 @@
       this.viewport.removeEventListener("scroll", this.handleScroll);
       this.viewport.removeEventListener("click", this.handleClick);
       this.viewport.removeEventListener("keydown", this.handleKeyDown);
+      this.viewport.removeEventListener("wheel", this.handleWheel);
       this.stickyContainer.removeEventListener("click", this.handleClick);
       this.stickyContainer.removeEventListener("keydown", this.handleKeyDown);
       this.stickyContainer.removeEventListener("wheel", this.handleWheel);
@@ -598,6 +567,7 @@
       this.stickyContainer.style.removeProperty("height");
       this.stickyContainer.style.removeProperty("right");
       this.stickyContainer.style.removeProperty("visibility");
+      this.viewport.style.removeProperty("scroll-padding-top");
       this.stickyContainer.hidden = true;
     }
   }

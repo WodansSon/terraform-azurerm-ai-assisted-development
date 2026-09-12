@@ -6,7 +6,9 @@ const behaviorIds = [
   "WB-UX-STICKY-003",
   "WB-UX-STICKY-004",
   "WB-UX-STICKY-005",
-  "WB-UX-STICKY-006"
+  "WB-UX-STICKY-006",
+  "WB-UX-STICKY-007",
+  "WB-UX-STICKY-008"
 ];
 
 async function settle(page) {
@@ -128,6 +130,35 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(sticky.changedOrder, "candidate sort did not reorder the open folder");
   assert(Math.abs(sticky.scrollTopAfter - sticky.scrollTopBefore) < 0.1 && sticky.sourceExpanded && sticky.folderExpanded, "candidate sort changed tree position or disclosure state");
   assert(sticky.naturalHeaderCount === 1, "folder renders duplicate natural column headers");
+
+  const grid = await page.evaluate(async () => {
+    const scroller = document.querySelector("#candidate-list");
+    const moduloGrid = (value) => Math.abs(value % 40) < 1 || Math.abs(value % 40 - 40) < 1;
+    const rowHeightsAligned = candidateHierarchicalView.model.nodes.every((node) => moduloGrid(node.rowHeight));
+    const layoutAligned = candidateHierarchicalView.layout.entries.every((entry) => moduloGrid(entry.top) && moduloGrid(entry.height));
+    const terminalRangeAligned = moduloGrid(scroller.scrollHeight - scroller.clientHeight);
+    const scrollTopBefore = scroller.scrollTop;
+    const delta = 100;
+    const rawTarget = scrollTopBefore + delta;
+    let expectedScrollTop = Math.round(rawTarget / 40) * 40;
+    if (Math.abs(expectedScrollTop - scrollTopBefore) < 1) expectedScrollTop += 40;
+    expectedScrollTop = Math.max(0, Math.min(expectedScrollTop, scroller.scrollHeight - scroller.clientHeight));
+    const allowed = scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: delta }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const scrollTopAfter = scroller.scrollTop;
+    scroller.scrollTop = scrollTopBefore;
+    return {
+      rowHeightsAligned,
+      layoutAligned,
+      terminalRangeAligned,
+      prevented: !allowed,
+      expectedScrollTop,
+      scrollTopAfter,
+      appliedDelta: scrollTopAfter - scrollTopBefore
+    };
+  });
+  assert(grid.rowHeightsAligned && grid.layoutAligned && grid.terminalRangeAligned, "candidate hierarchy does not stay on the 40px scroll grid");
+  assert(grid.prevented && Math.abs(grid.scrollTopAfter - grid.expectedScrollTop) < 1 && Math.abs(grid.appliedDelta) >= 80, "coarse candidate wheel input does not preserve speed on a grid-aligned destination");
 
   await page.locator(`#candidate-sticky-stack [data-node-id="${initial.folderId}"]`).click();
   await settle(page);

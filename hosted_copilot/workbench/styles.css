@@ -1130,7 +1130,7 @@ button.assessment-override-pill {
   overflow-x: hidden;
   overflow-y: auto;
   isolation: isolate;
-  scroll-padding-top: 117px;
+  scroll-padding-top: 0;
   scroll-snap-type: none;
   scrollbar-gutter: stable;
 }

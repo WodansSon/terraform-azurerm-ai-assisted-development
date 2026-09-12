@@ -1276,13 +1276,13 @@ function buildCandidateLeafNodes(sectionKey, candidates, override = false) {
   return [{
     id: headerId,
     kind: "header",
-    rowHeight: 35,
+    rowHeight: 40,
     expanded: true,
     data: { sectionKey, override },
     children: sortCandidates(candidates, getCandidateSort(sectionKey)).map((candidate) => ({
       id: `candidate:leaf:${candidate.key}`,
       kind: "leaf",
-      rowHeight: 59,
+      rowHeight: 80,
       stickyEligible: false,
       data: { candidate, override }
     }))
@@ -1314,7 +1314,7 @@ function buildCandidateTreeNodes() {
     nodes.push({
       id: overrideRootId,
       kind: "source",
-      rowHeight: 43,
+      rowHeight: 40,
       expanded: getCandidateExpansion(overrideRootId, true),
       data: { label: "OVERRIDES", sourceType: "overrides", candidates: overrideCandidates, decoration: getCandidateAggregateDecoration(overrideCandidates), override: true },
       children: sources.map(([sourceType, label]) => {
@@ -1352,7 +1352,7 @@ function buildCandidateTreeNodes() {
     nodes.push({
       id: sourceId,
       kind: "source",
-      rowHeight: 43,
+      rowHeight: 40,
       expanded: getCandidateExpansion(sourceId, Boolean(state.queries["candidate-sources"])),
       data: { label, sourceType, candidates, decoration: getCandidateAggregateDecoration(candidates), override: false },
       children: Object.entries(groups).sort(([left], [right]) => left.localeCompare(right)).map(([groupKey, members]) => buildCandidateFolderNode({
@@ -1538,26 +1538,26 @@ function buildAssessmentTreeNodes() {
     return {
       id: sourceId,
       kind: "source",
-      rowHeight: 43,
+      rowHeight: 40,
       expanded: getAssessmentExpansion(sourceId, Boolean(state.queries["assessment-results"])),
       data: { label, sourceType, candidates },
       children: [{
         id: `assessment:header:${sourceType}`,
         kind: "header",
-        rowHeight: 35,
+        rowHeight: 40,
         expanded: true,
         data: { sectionKey },
         children: sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey)).map((candidate) => ({
           id: `assessment:leaf:${candidate.key}`,
           kind: "leaf",
-          rowHeight: 59,
+          rowHeight: 80,
           stickyEligible: false,
           expanded: state.assessmentOverrideExpandedKey === candidate.key,
           data: { candidate },
           children: state.assessmentOverrideExpandedKey === candidate.key && getApplicabilityOverride(candidate) ? [{
             id: `assessment:detail:${candidate.key}`,
             kind: "detail",
-            rowHeight: 96,
+            rowHeight: 120,
             dynamicHeight: true,
             stickyEligible: false,
             data: { candidate }

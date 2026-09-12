@@ -480,6 +480,8 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-STICKY-004`: Candidate sorting preserves tree position and disclosure state.
 - `WB-UX-STICKY-005`: Static candidate headers mirror folder disclosure state.
 - `WB-UX-STICKY-006`: Sibling folder expansion preserves tree position.
+- `WB-UX-STICKY-007`: Candidate hierarchy rows and terminal scrolling stay on a 40px grid.
+- `WB-UX-STICKY-008`: Coarse wheel input preserves speed on a grid-aligned destination.
 - `WB-UX-PROVENANCE-001`: Contributor provenance tooltip retains concise complete text.
 - `WB-UX-PROVENANCE-002`: Contributor provenance tooltip anchors and clamps inside the viewport.
 - `WB-UX-CONTRIBUTOR-001`: Contributor documents are non-actionable candidate parents.
