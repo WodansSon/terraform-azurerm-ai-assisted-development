@@ -3,7 +3,11 @@ param(
     [string]$Run,
 
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [switch]$FixNpmAudit,
+
+    [switch]$AllowBreakingNpmFix
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +39,13 @@ $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
+$dependencyAuditFindings = New-Object 'System.Collections.Generic.List[object]'
+$dependencyAuditCounts = $null
+$dependencyAuditError = $null
+$failureAlreadyReported = $false
+$npmFixApplied = $false
+$npmFixRequiresBreaking = $false
+$npmFixChanges = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
 $supportedFocusedRuns = @('loopback-host-validation', 'browser-behavior-manifest', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 
@@ -111,12 +122,121 @@ function Test-PngFile {
     return $bytes.Length -ge 1000 -and [BitConverter]::ToString($bytes[0..7]) -eq '89-50-4E-47-0D-0A-1A-0A'
 }
 
+function Invoke-NpmLockAudit {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prefix,
+        [Parameter(Mandatory = $true)][string]$NpmPath
+    )
+
+    $output = @(& $NpmPath audit --prefix $Prefix --package-lock-only --ignore-scripts --audit-level=high --json 2>&1)
+    $exitCode = $LASTEXITCODE
+    $report = try { ($output | Out-String) | ConvertFrom-Json } catch { $null }
+    return [pscustomobject]@{ exitCode = $exitCode; report = $report; output = ($output | Out-String).Trim() }
+}
+
+function Invoke-NpmAuditRemediation {
+    param(
+        [Parameter(Mandatory = $true)][string]$NpmPath,
+        [Parameter(Mandatory = $true)][string]$StagingRoot,
+        [Parameter(Mandatory = $true)][string]$ManifestPath,
+        [Parameter(Mandatory = $true)][string]$LockPath,
+        [switch]$AllowBreaking
+    )
+
+    $remediationRoot = Join-Path $StagingRoot 'npm-audit-fix'
+    New-Item -ItemType Directory -Path $remediationRoot -Force | Out-Null
+    Copy-Item -LiteralPath $ManifestPath, $LockPath -Destination $remediationRoot
+    $stagedManifestPath = Join-Path $remediationRoot 'package.json'
+    $stagedLockPath = Join-Path $remediationRoot 'package-lock.json'
+    $originalManifest = Get-Content -LiteralPath $stagedManifestPath -Raw | ConvertFrom-Json
+
+    $safeFixOutput = @(& $NpmPath audit fix --prefix $remediationRoot --package-lock-only --ignore-scripts --no-fund --json 2>&1)
+    $null = $safeFixOutput
+    $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
+
+    if ($audit.exitCode -ne 0 -and $null -ne $audit.report?.vulnerabilities) {
+        $stagedLock = Get-Content -LiteralPath $stagedLockPath -Raw | ConvertFrom-Json -AsHashtable
+        $overridesAdded = $false
+        foreach ($entry in @($audit.report.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') -and -not $_.Value.isDirect } | Sort-Object Name)) {
+            $packageName = $entry.Name
+            $lockedPackage = $stagedLock.packages["node_modules/$packageName"]
+            if ($null -eq $lockedPackage) { continue }
+            $latestOutput = @(& $NpmPath view $packageName version --json 2>&1)
+            if ($LASTEXITCODE -ne 0) { continue }
+            $latestVersion = try { [string](($latestOutput | Out-String) | ConvertFrom-Json) } catch { '' }
+            $currentVersion = [string]$lockedPackage.version
+            $currentSemanticVersion = try { [System.Management.Automation.SemanticVersion]$currentVersion } catch { $null }
+            $latestSemanticVersion = try { [System.Management.Automation.SemanticVersion]$latestVersion } catch { $null }
+            if ($null -eq $currentSemanticVersion -or $null -eq $latestSemanticVersion -or $latestSemanticVersion.Major -ne $currentSemanticVersion.Major -or $latestSemanticVersion -le $currentSemanticVersion) { continue }
+            $overrideOutput = @(& $NpmPath pkg set "overrides.$packageName=$latestVersion" --prefix $remediationRoot 2>&1)
+            if ($LASTEXITCODE -ne 0) { continue }
+            $null = $overrideOutput
+            $overridesAdded = $true
+        }
+        if ($overridesAdded) {
+            $lockOutput = @(& $NpmPath install --prefix $remediationRoot --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1)
+            if ($LASTEXITCODE -eq 0) {
+                $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
+            }
+            $null = $lockOutput
+        }
+    }
+
+    $requiresBreaking = $false
+    if ($audit.exitCode -ne 0 -and $null -ne $audit.report?.vulnerabilities) {
+        $requiresBreaking = @($audit.report.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') -and $null -ne $_.Value.fixAvailable -and $_.Value.fixAvailable -isnot [bool] -and $_.Value.fixAvailable.isSemVerMajor }).Count -gt 0
+    }
+    if ($audit.exitCode -ne 0 -and $requiresBreaking -and $AllowBreaking) {
+        $breakingFixOutput = @(& $NpmPath audit fix --prefix $remediationRoot --package-lock-only --ignore-scripts --force --no-fund --json 2>&1)
+        $null = $breakingFixOutput
+        $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
+    }
+    if ($audit.exitCode -ne 0) {
+        return [pscustomobject]@{ passed = $false; requiresBreaking = $requiresBreaking; audit = $audit; changes = @() }
+    }
+
+    $updatedManifest = Get-Content -LiteralPath $stagedManifestPath -Raw | ConvertFrom-Json
+    $changes = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($dependency in @($updatedManifest.devDependencies.PSObject.Properties)) {
+        $previous = [string]$originalManifest.devDependencies.($dependency.Name)
+        if ($previous -ne [string]$dependency.Value) {
+            $changes.Add("$($dependency.Name): $previous -> $($dependency.Value)")
+        }
+    }
+    $updatedOverrides = if ($null -ne $updatedManifest.PSObject.Properties['overrides']) { @($updatedManifest.overrides.PSObject.Properties) } else { @() }
+    foreach ($override in $updatedOverrides) {
+        $previous = if ($null -ne $originalManifest.PSObject.Properties['overrides']) { [string]$originalManifest.overrides.($override.Name) } else { '' }
+        if ($previous -ne [string]$override.Value) {
+            $changes.Add("override $($override.Name): $(if ($previous) { $previous } else { '<none>' }) -> $($override.Value)")
+        }
+    }
+
+    $manifestBytes = [IO.File]::ReadAllBytes($ManifestPath)
+    $lockBytes = [IO.File]::ReadAllBytes($LockPath)
+    try {
+        Copy-Item -LiteralPath $stagedManifestPath -Destination $ManifestPath -Force
+        Copy-Item -LiteralPath $stagedLockPath -Destination $LockPath -Force
+    }
+    catch {
+        [IO.File]::WriteAllBytes($ManifestPath, $manifestBytes)
+        [IO.File]::WriteAllBytes($LockPath, $lockBytes)
+        throw
+    }
+    return [pscustomobject]@{ passed = $true; requiresBreaking = $false; audit = $audit; changes = $changes.ToArray() }
+}
+
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted Rule Workbench tests'
 }
 
 try {
-    if (-not [string]::IsNullOrWhiteSpace($Run) -and $Run -notin $supportedFocusedRuns) {
+    if ($AllowBreakingNpmFix -and -not $FixNpmAudit) {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-AllowBreakingNpmFix requires -FixNpmAudit'
+    }
+    elseif ($FixNpmAudit -and -not [string]::IsNullOrWhiteSpace($Run)) {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-FixNpmAudit is available only for the complete Workbench suite'
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($Run) -and $Run -notin $supportedFocusedRuns) {
         $supportedRunList = ($supportedFocusedRuns | ForEach-Object { "      - '$_'" }) -join "`n"
         Add-TestResult -Name 'run-selection' -Passed $false -Detail "Requested Workbench test suite '$Run' is not supported.`n`n    SUPPORTED SUITES:`n`n$supportedRunList"
     }
@@ -137,6 +257,121 @@ try {
     if ([string]::IsNullOrWhiteSpace($Run)) {
         $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
         $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
+        Start-TestResult -Name 'npm audit'
+        $manifestHashesBeforeAudit = @($nodePackageManifestPath, $nodePackageLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $auditOutput = @(& $npmCommand.Source audit --prefix $PSScriptRoot --package-lock-only --ignore-scripts --audit-level=high --json 2>&1)
+        $auditExitCode = $LASTEXITCODE
+        $manifestHashesAfterAudit = @($nodePackageManifestPath, $nodePackageLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $auditDidNotModifyManifests = @(Compare-Object $manifestHashesBeforeAudit $manifestHashesAfterAudit).Count -eq 0
+        $auditResult = try {
+            ($auditOutput | Out-String) | ConvertFrom-Json
+        }
+        catch {
+            $null
+        }
+        $auditHasReport = $null -ne $auditResult -and $null -ne $auditResult.PSObject.Properties['metadata'] -and $null -ne $auditResult.PSObject.Properties['vulnerabilities']
+        if ($auditHasReport) {
+            $dependencyAuditCounts = $auditResult.metadata.vulnerabilities
+            foreach ($entry in @($auditResult.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') } | Sort-Object Name)) {
+                $packageName = $entry.Name
+                $vulnerability = $entry.Value
+                $advisories = @($vulnerability.via | ForEach-Object {
+                    if ($_ -is [string]) {
+                        "Affected through $_"
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace([string]$_.title)) {
+                        $title = [string]$_.title
+                        $prefix = "$packageName`: "
+                        if ($title.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $title.Substring($prefix.Length) } else { $title }
+                    }
+                    else {
+                        "Affected through $([string]$_.name)"
+                    }
+                })
+                $dependencyPath = if ($directDependencies.Name -contains $packageName) {
+                    'Direct development dependency'
+                }
+                elseif (@($vulnerability.effects).Count -gt 0) {
+                    "Required by $(@($vulnerability.effects) -join ', ')"
+                }
+                else {
+                    'Transitive development dependency'
+                }
+                $remediation = if ($vulnerability.fixAvailable -is [bool]) {
+                    if ($vulnerability.fixAvailable) { 'A compatible fix is available' } else { 'No compatible fix is reported' }
+                }
+                else {
+                    "Set $($vulnerability.fixAvailable.name) to $($vulnerability.fixAvailable.version)"
+                }
+                $dependencyAuditFindings.Add([pscustomobject]@{
+                    package = $packageName
+                    severity = ([string]$vulnerability.severity).ToUpperInvariant()
+                    advisory = $advisories -join '; '
+                    affectedRange = [string]$vulnerability.range
+                    dependencyPath = $dependencyPath
+                    remediation = $remediation
+                })
+            }
+        }
+        $auditPassed = $auditExitCode -eq 0 -and $auditDidNotModifyManifests -and $auditHasReport
+        if (-not $auditPassed -and $FixNpmAudit -and $auditDidNotModifyManifests -and $auditHasReport) {
+            Start-TestResult -Name 'npm audit remediation'
+            $manifestRelativePaths = @('hosted_copilot/tools/package.json', 'hosted_copilot/tools/package-lock.json')
+            $manifestStatus = @(& git -C $repositoryRoot status --short -- $manifestRelativePaths 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail 'Unable to verify dependency manifest worktree state'
+            }
+            elseif ($manifestStatus.Count -gt 0) {
+                Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail 'Dependency manifests already contain uncommitted changes; remediation was not applied'
+            }
+            else {
+                $remediation = Invoke-NpmAuditRemediation -NpmPath $npmCommand.Source -StagingRoot $tempRoot -ManifestPath $nodePackageManifestPath -LockPath $nodePackageLockPath -AllowBreaking:$AllowBreakingNpmFix
+                $npmFixRequiresBreaking = $remediation.requiresBreaking
+                if ($remediation.passed) {
+                    foreach ($change in $remediation.changes) { $npmFixChanges.Add($change) }
+                    $npmFixApplied = $true
+                    $auditResult = $remediation.audit.report
+                    $auditExitCode = $remediation.audit.exitCode
+                    $dependencyAuditCounts = $auditResult.metadata.vulnerabilities
+                    $auditHasReport = $true
+                    $auditPassed = $true
+                    $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
+                    $nodeLockConfig = Get-Content -LiteralPath $nodePackageLockPath -Raw | ConvertFrom-Json -AsHashtable
+                    $directDependencies = @($nodePackageConfig.devDependencies.PSObject.Properties)
+                    Add-TestResult -Name 'npm audit remediation' -Passed $true -Detail "Applied $($npmFixChanges.Count) staged dependency changes after a clean re-audit"
+                }
+                else {
+                    $detail = if ($npmFixRequiresBreaking -and -not $AllowBreakingNpmFix) {
+                        'Only a breaking dependency change remains; rerun with -FixNpmAudit -AllowBreakingNpmFix to evaluate it'
+                    }
+                    else {
+                        'No staged dependency change resolved every high or critical vulnerability; repository manifests remain unchanged'
+                    }
+                    Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail $detail
+                }
+            }
+        }
+        $auditDetail = if (-not $auditDidNotModifyManifests) {
+            'npm audit modified package.json or package-lock.json'
+        }
+        elseif (-not $auditHasReport) {
+            $dependencyAuditError = 'npm audit did not return a vulnerability report'
+            $dependencyAuditError
+        }
+        elseif ($auditExitCode -ne 0) {
+            "$($dependencyAuditFindings.Count) high or critical vulnerabilities found; dependency installation blocked"
+        }
+        elseif ($npmFixApplied) {
+            "Remediated the lockfile and passed npm audit at the high threshold"
+        }
+        else {
+            "Lockfile passed npm audit at the high threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
+        }
+        Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
+        if (-not $auditPassed) {
+            $failureAlreadyReported = $true
+            throw 'npm audit failed before dependency installation'
+        }
         Start-TestResult -Name 'locked-browser-dependencies'
         $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --no-audit --no-fund 2>&1)
         $dependencyExitCode = $LASTEXITCODE
@@ -558,14 +793,17 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $assessmentResultsValid = $tabStateValid -and
         $appContent -match 'function buildAssessmentTreeNodes\(' -and
         $appContent -match 'state\.assessedCandidates\.filter\(\(candidate\) => !candidate\.assessment\.hostedApplicable\)' -and
-        $appContent -match 'children: state\.assessmentOverrideExpandedKey === candidate\.key && getApplicabilityOverride\(candidate\)' -and
-        $appContent -match 'kind: "detail"' -and
         $appContent -match 'function renderAssessmentHierarchyRow\(' -and
-        $appContent -match 'data-assessment-override-toggle=' -and
-        $appContent -match 'data-assessment-override-remove=' -and
+        $appContent -match 'data-assessment-override-detail=' -and
+        $appContent -match 'function openAssessmentOverride\(key\)' -and
+        $appContent -match 'data-override-jump=' -and
+        $appContent -match '>Contested</button>' -and
+        $appContent -match '>Maintainer Included</button>' -and
         $appContent -match 'renderApplicabilityOverride\(candidate\)' -and
-        $stylesContent -match '\.assessment-override-inline\s*\{[^}]*border-left:\s*2px solid var\(--gold\)'
-    Add-TestResult -Name 'assessment-results-audit' -Passed $assessmentResultsValid -Detail 'Assessment Results retains every original AI exclusion, exposes persisted contested state inline, and synchronizes rationale and removal with the source-bound Details audit.'
+        $appContent -notmatch 'assessmentOverrideExpandedKey|kind: "detail"|data-assessment-override-toggle=|data-assessment-override-remove=' -and
+        $stylesContent -match '\.status-badge\.excluded\s*\{[^}]*background:\s*#4a252b;[^}]*border-color:\s*#d85d65' -and
+        $stylesContent -match '\.detail-header-actions\s*\{[^}]*width:\s*max-content;[^}]*max-width:\s*50%'
+    Add-TestResult -Name 'assessment-results-audit' -Passed $assessmentResultsValid -Detail 'Assessment Results retains every original AI exclusion, routes contested state to source-bound Details, and distinguishes original outcome, maintainer inclusion, and catalog status.'
 
     $assessmentSortingValid = $appContent -match 'assessmentSorts:\s*\{\}' -and $appContent -match 'event\.target\.closest\("\[data-assessment-sort\]"\)' -and $appContent -match 'function renderAssessmentResultsHeader\(sectionKey\)' -and $appContent -match '\["candidate", "Candidate", "Candidate"' -and $appContent -match '\["state", "State", "Source State"' -and $appContent -notmatch '\["outcome", "Outcome", "Outcome"|sort\.field === "outcome"' -and $appContent -match '\["category", "Category", "Category"' -and $appContent -match '\["recommendation", "Recommendation", "Recommendation"' -and $appContent -match '\["override", "Override", "Override"' -and $appContent -match 'if \(sort\.field === "state"\) return candidate\.state' -and $appContent -match 'return getApplicabilityOverride\(candidate\) \? "contested" : "none"' -and $appContent -match 'candidate-lifecycle \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'renderSortButton\(column, sort, \{ "assessment-sort": column\[0\], "assessment-section": sectionKey \}\)' -and $appContent -match 'function getAssessmentSort\(sectionKey\)' -and $appContent -match 'return state\.assessmentSorts\[sectionKey\] \|\| \{ field: "candidate", direction: "ascending" \}' -and $appContent -match 'function updateAssessmentSort\(button\)' -and $appContent -match 'group\.appendChild\(rowsByKey\.get\(candidate\.key\)\)' -and $appContent -match 'group\.appendChild\(panel\)' -and $appContent -match 'function sortAssessmentCandidates\(candidates, sort\)' -and $stylesContent -match '\.candidate-sort-button\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[^}]*gap:\s*8px' -and $stylesContent -match '\.candidate-sort-button > \.sort-indicator\s*\{[^}]*flex:\s*0 0 16px;[^}]*visibility:\s*hidden' -and $stylesContent -match '\.candidate-sort-button\.active > \.sort-indicator\s*\{[^}]*visibility:\s*visible' -and $stylesContent -match ':is\(\.candidate-list-header, \.assessment-results-header\) > \.candidate-sort-button\s*\{[^}]*justify-content:\s*flex-start'
     $assessmentSortingValid = $appContent -match 'assessmentSorts:\s*\{\}' -and
@@ -931,8 +1169,10 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     }
 }
 catch {
-    $issues.Add($_.Exception.Message)
-    if ($OutputFormat -eq 'Text') {
+    if (-not $failureAlreadyReported) {
+        $issues.Add($_.Exception.Message)
+    }
+    if ($OutputFormat -eq 'Text' -and -not $failureAlreadyReported) {
         Write-Host (Format-ValidationStatusLine -Status 'failed' -Name 'workbench-test-run' -Detail $_.Exception.Message)
     }
 }
@@ -948,10 +1188,20 @@ $result = [ordered]@{
     issueCount = $issues.Count
     tests = $results.ToArray()
     issues = $issues.ToArray()
+    dependencyAudit = [ordered]@{
+        threshold = 'high'
+        counts = $dependencyAuditCounts
+        findings = $dependencyAuditFindings.ToArray()
+        error = $dependencyAuditError
+        remediationApplied = $npmFixApplied
+        remediationChanges = $npmFixChanges.ToArray()
+        requiresBreakingFix = $npmFixRequiresBreaking
+        installationBlocked = -not $npmFixApplied -and ($dependencyAuditFindings.Count -gt 0 -or $null -ne $dependencyAuditError)
+    }
 }
 
 if ($OutputFormat -eq 'Json') {
-    $result | ConvertTo-Json -Depth 6
+    $result | ConvertTo-Json -Depth 8
 }
 else {
     Write-ValidationSectionHeader -Title 'Hosted Rule Workbench test summary'
@@ -961,6 +1211,52 @@ else {
         Passed = $result.passedCount
         Failed = $result.failedCount
     })
+    if ($npmFixApplied) {
+        Write-ValidationSectionHeader -Title 'Dependency remediation'
+        Write-ValidationSummary -Fields ([ordered]@{
+            Status = 'APPLIED'
+            Audit = 'PASSED'
+            Changes = $npmFixChanges.Count
+        })
+        foreach ($change in $npmFixChanges) {
+            Write-Output "  - $change"
+        }
+    }
+    elseif ($dependencyAuditFindings.Count -gt 0) {
+        Write-ValidationSectionHeader -Title 'Dependency security'
+        Write-ValidationSummary -Fields ([ordered]@{
+            Threshold = 'HIGH'
+            Critical = $dependencyAuditCounts.critical
+            High = $dependencyAuditCounts.high
+            Installation = 'BLOCKED'
+        })
+        Write-ValidationSectionHeader -Title 'Vulnerabilities'
+        foreach ($finding in $dependencyAuditFindings) {
+            Write-ValidationSummary -Fields ([ordered]@{
+                Package = $finding.package
+                Severity = $finding.severity
+                Advisory = $finding.advisory
+                Affected = $finding.affectedRange
+                Dependency = $finding.dependencyPath
+                Fix = $finding.remediation
+            })
+            Write-Output ''
+        }
+        Write-ValidationSectionHeader -Title 'Action required'
+        Write-Output '  1. Run: pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbench.ps1 -FixNpmAudit'
+        Write-Output '  2. Review the resulting package.json and package-lock.json diff.'
+        Write-Output '  3. If only a breaking fix remains, review it before adding -AllowBreakingNpmFix.'
+        Write-Output '  4. npm ci and browser tests remain blocked until the staged graph passes audit.'
+    }
+    elseif ($null -ne $dependencyAuditError) {
+        Write-ValidationSectionHeader -Title 'Dependency security'
+        Write-ValidationSummary -Fields ([ordered]@{
+            Threshold = 'HIGH'
+            Audit = 'FAILED'
+            Installation = 'BLOCKED'
+            Error = $dependencyAuditError
+        })
+    }
     if ($issues.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {

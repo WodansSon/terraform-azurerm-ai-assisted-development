@@ -376,28 +376,26 @@
       if (changed) this.renderNaturalRows(false);
     }
 
-    getPrewarmedStickyState() {
-      let longestPath = [];
-      const visit = (node, path) => {
-        if (!node.stickyEligible) return;
-        const nextPath = [...path, node];
-        if (nextPath.length > longestPath.length) longestPath = nextPath;
-        if (node.expanded) node.children.forEach((child) => visit(child, nextPath));
-      };
-      this.model.roots.forEach((root) => visit(root, []));
-      let position = 0;
-      return longestPath.slice(0, MAX_STICKY_ROW_COUNT).map((node, stickySlot) => {
-        const entry = {
-          node,
-          nodeId: node.id,
-          treeDepth: node.depth,
+    getStickyRowPoolSeedState() {
+      let seedState = [];
+      for (let scrollTop = ROW_HEIGHT_GRID; scrollTop <= this.layout.totalHeight; scrollTop += ROW_HEIGHT_GRID) {
+        const state = this.stickyController.calculate(scrollTop);
+        if (state.length > seedState.length) seedState = state;
+        if (seedState.length === MAX_STICKY_ROW_COUNT) break;
+      }
+      if (!seedState.length) return [];
+      const state = seedState.slice(0, MAX_STICKY_ROW_COUNT);
+      const reusableEntry = state[0];
+      while (state.length < MAX_STICKY_ROW_COUNT) {
+        const stickySlot = state.length;
+        state.push({
+          ...reusableEntry,
+          nodeId: `${reusableEntry.nodeId}:pool:${stickySlot}`,
           stickySlot,
-          height: node.rowHeight,
-          position
-        };
-        position += node.rowHeight;
-        return entry;
-      });
+          position: stickySlot * reusableEntry.height
+        });
+      }
+      return state;
     }
 
     syncStickyWidth() {
@@ -426,7 +424,7 @@
       if (!state.length) {
         this.stickyContainer.hidden = false;
         this.stickyContainer.style.visibility = "hidden";
-        this.reconcileStickyRows(this.getPrewarmedStickyState(), []);
+        this.reconcileStickyRows(this.getStickyRowPoolSeedState(), []);
         this.stickyContainer.style.height = "0px";
         this.viewport.style.scrollPaddingTop = "0px";
         this.renderedStickyState = [];
@@ -454,20 +452,41 @@
       const focusedRow = focused?.closest(".hierarchical-view-sticky-row");
       const focusedNodeId = focusedRow?.dataset.nodeId || null;
       const focusedSlot = Number.parseInt(focusedRow?.dataset.stickySlot || "0", 10);
-      const existing = new Map(Array.from(this.stickyContainer.children).map((row) => [row.dataset.nodeId, row]));
-      const desired = state.map((entry) => {
-        let row = existing.get(entry.nodeId);
+      this.stickyRowPool ??= Array.from(this.stickyContainer.children);
+      const availableRows = new Set(this.stickyRowPool);
+      const desired = state.map((entry, index) => {
         const rendered = this.adapter.renderRow(entry.node, "sticky");
+        let row = Array.from(availableRows).find((candidate) => candidate.hierarchicalNode?.id === entry.nodeId && candidate.tagName === rendered.tagName && candidate.namespaceURI === rendered.namespaceURI);
+        const physicalRow = this.stickyRowPool[index];
+        if (!row && physicalRow && availableRows.has(physicalRow) && physicalRow.tagName === rendered.tagName && physicalRow.namespaceURI === rendered.namespaceURI) {
+          row = physicalRow;
+        }
+        if (!row) {
+          row = Array.from(availableRows).find((candidate) => candidate.tagName === rendered.tagName && candidate.namespaceURI === rendered.namespaceURI);
+        }
         if (row && row.tagName === rendered.tagName && row.namespaceURI === rendered.namespaceURI) {
           patchNode(row, rendered);
         } else {
           row = rendered;
+          if (this.stickyRowPool.length < MAX_STICKY_ROW_COUNT) {
+            this.stickyRowPool.push(row);
+          } else {
+            const replacedRow = availableRows.values().next().value;
+            const poolIndex = this.stickyRowPool.indexOf(replacedRow);
+            replacedRow?.replaceWith(row);
+            this.stickyRowPool[poolIndex] = row;
+            availableRows.delete(replacedRow);
+          }
         }
+        availableRows.delete(row);
         row.hierarchicalNode = entry.node;
         row.classList.add("hierarchical-view-sticky-row");
+        row.classList.remove("hierarchical-view-sticky-pool-row");
         row.dataset.nodeId = entry.nodeId;
         row.dataset.treeDepth = String(entry.treeDepth);
         row.dataset.stickySlot = String(entry.stickySlot);
+        row.removeAttribute("aria-hidden");
+        row.inert = !interactiveState.some((interactiveEntry) => interactiveEntry.nodeId === entry.nodeId);
         if (row.style.top !== `${entry.position}px`) row.style.top = `${entry.position}px`;
         if (row.style.height !== `${entry.height}px`) row.style.height = `${entry.height}px`;
         const toggle = row.matches("[data-hierarchical-toggle]") ? row : row.querySelector("[data-hierarchical-toggle]");
@@ -476,13 +495,22 @@
         }
         return row;
       });
-      const desiredRows = new Set(desired);
-      Array.from(this.stickyContainer.children).forEach((row) => {
-        if (!desiredRows.has(row)) row.remove();
-      });
       desired.forEach((row, index) => {
         const current = this.stickyContainer.children[index];
         if (current !== row) this.stickyContainer.insertBefore(row, current || null);
+      });
+      const parkedTop = interactiveState.length
+        ? interactiveState[0].clipHeight ?? interactiveState.reduce((bottom, entry) => Math.max(bottom, entry.position + entry.height), 0)
+        : 0;
+      availableRows.forEach((row) => {
+        row.hierarchicalNode = null;
+        row.classList.add("hierarchical-view-sticky-pool-row");
+        row.removeAttribute("data-node-id");
+        row.removeAttribute("data-sticky-slot");
+        row.setAttribute("aria-hidden", "true");
+        row.inert = true;
+        row.style.top = `${parkedTop}px`;
+        this.stickyContainer.appendChild(row);
       });
       this.syncNaturalFocusOwnership(interactiveState);
       if (!focusedNodeId || interactiveState.some((entry) => entry.nodeId === focusedNodeId)) return;
@@ -568,6 +596,7 @@
       this.stickyContainer.style.removeProperty("right");
       this.stickyContainer.style.removeProperty("visibility");
       this.viewport.style.removeProperty("scroll-padding-top");
+      this.stickyRowPool = null;
       this.stickyContainer.hidden = true;
     }
   }

@@ -29,7 +29,7 @@ const state = {
   excludedCandidateCount: 0,
   activeKey: null,
   assessmentActiveKey: null,
-  assessmentOverrideExpandedKey: null,
+  assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
   rationaleReturnView: null,
@@ -159,26 +159,15 @@ function bindEvents() {
   elements["candidate-list"].addEventListener("keydown", (event) => {
     handleRowKeyboardNavigation(event, elements["candidate-list"], "candidateKey", selectCandidate, () => showCandidatePane("details"));
   });
-  elements["assessment-results-list"].addEventListener("click", async (event) => {
+  elements["assessment-results-list"].addEventListener("click", (event) => {
     const sortButton = event.target.closest("[data-assessment-sort]");
     if (sortButton) {
       updateAssessmentSort(sortButton);
       return;
     }
-    const overrideToggle = event.target.closest("[data-assessment-override-toggle]");
-    if (overrideToggle) {
-      const key = overrideToggle.dataset.assessmentOverrideToggle;
-      state.assessmentOverrideExpandedKey = state.assessmentOverrideExpandedKey === key ? null : key;
-      assessmentHierarchicalView?.refresh();
-      return;
-    }
-    const overrideRemove = event.target.closest("[data-assessment-override-remove]");
-    if (overrideRemove) {
-      const candidate = state.assessedCandidates.find((item) => item.key === overrideRemove.dataset.assessmentOverrideRemove);
-      if (!candidate) return;
-      state.assessmentOverrideExpandedKey = null;
-      await updateOverrideLifecycle(candidate, null, null);
-      showToast("Provisional override removed");
+    const overrideDetail = event.target.closest("[data-assessment-override-detail]");
+    if (overrideDetail) {
+      openAssessmentOverride(overrideDetail.dataset.assessmentOverrideDetail);
       return;
     }
     const row = event.target.closest("[data-assessment-key]");
@@ -188,7 +177,7 @@ function bindEvents() {
     }
   });
   elements["assessment-results-list"].addEventListener("keydown", (event) => {
-    if (event.target.closest("[data-assessment-override-toggle], [data-assessment-override-remove]")) return;
+    if (event.target.closest("button, input, a, label")) return;
     handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
@@ -1282,7 +1271,7 @@ function buildCandidateLeafNodes(sectionKey, candidates, override = false) {
     children: sortCandidates(candidates, getCandidateSort(sectionKey)).map((candidate) => ({
       id: `candidate:leaf:${candidate.key}`,
       kind: "leaf",
-      rowHeight: 80,
+      rowHeight: 40,
       stickyEligible: false,
       data: { candidate, override }
     }))
@@ -1315,7 +1304,7 @@ function buildCandidateTreeNodes() {
       id: overrideRootId,
       kind: "source",
       rowHeight: 40,
-      expanded: getCandidateExpansion(overrideRootId, true),
+      expanded: getCandidateExpansion(overrideRootId),
       data: { label: "OVERRIDES", sourceType: "overrides", candidates: overrideCandidates, decoration: getCandidateAggregateDecoration(overrideCandidates), override: true },
       children: sources.map(([sourceType, label]) => {
         const sourceCandidates = overrideCandidates.filter((candidate) => candidate.sourceType === sourceType);
@@ -1328,7 +1317,7 @@ function buildCandidateTreeNodes() {
           id: sourceId,
           kind: "folder",
           rowHeight: 40,
-          expanded: getCandidateExpansion(sourceId, true),
+          expanded: getCandidateExpansion(sourceId),
           data: { label, sourceType, candidates: sourceCandidates, decoration: getCandidateAggregateDecoration(sourceCandidates), override: true, extraClass: "override-source-folder" },
           children: origins.map(([originKey, originLabel, members]) => buildCandidateFolderNode({
             id: `candidate:override-origin:${sourceType}:${originKey}`,
@@ -1337,7 +1326,6 @@ function buildCandidateTreeNodes() {
             candidates: members,
             sectionKey: `overrides:${sourceType}:${originKey}`,
             override: true,
-            expandedByDefault: true,
             extraClass: "override-origin-folder"
           }))
         };
@@ -1550,18 +1538,10 @@ function buildAssessmentTreeNodes() {
         children: sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey)).map((candidate) => ({
           id: `assessment:leaf:${candidate.key}`,
           kind: "leaf",
-          rowHeight: 80,
+          rowHeight: 40,
           stickyEligible: false,
-          expanded: state.assessmentOverrideExpandedKey === candidate.key,
-          data: { candidate },
-          children: state.assessmentOverrideExpandedKey === candidate.key && getApplicabilityOverride(candidate) ? [{
-            id: `assessment:detail:${candidate.key}`,
-            kind: "detail",
-            rowHeight: 120,
-            dynamicHeight: true,
-            stickyEligible: false,
-            data: { candidate }
-          }] : []
+          expanded: false,
+          data: { candidate }
         }))
       }]
     };
@@ -1578,13 +1558,7 @@ function renderAssessmentHierarchyRow(node) {
       </button>
     `);
   }
-  const rendered = elementFromHtml(`<div>${renderAssessmentResultRow(node.data.candidate)}</div>`);
-  if (node.kind === "detail") {
-    const detail = rendered.querySelector("[data-assessment-override-for]");
-    detail.hidden = false;
-    return detail;
-  }
-  return rendered.querySelector("[data-assessment-key]");
+  return elementFromHtml(`<div>${renderAssessmentResultRow(node.data.candidate)}</div>`).querySelector("[data-assessment-key]");
 }
 
 function ensureAssessmentHierarchicalView() {
@@ -1674,22 +1648,14 @@ function sortAssessmentCandidates(candidates, sort) {
 function renderAssessmentResultRow(candidate) {
   const assessment = candidate.assessment;
   const override = getApplicabilityOverride(candidate);
-  const expanded = override && state.assessmentOverrideExpandedKey === candidate.key;
   const overrideStatus = override
-    ? `<button class="status-badge warning assessment-override-pill clickable" type="button" data-assessment-override-toggle="${escapeHtml(candidate.key)}" aria-expanded="${expanded}" aria-controls="assessment-override-${escapeHtml(candidate.key)}"><span>Contested</span><span class="assessment-override-chevron" aria-hidden="true">${icon(expanded ? "chevron-down" : "chevron-right")}</span></button>`
+    ? `<button class="status-badge warning assessment-override-pill clickable" type="button" data-assessment-override-detail="${escapeHtml(candidate.key)}" aria-label="Open Maintainer Override for ${escapeHtml(getEffectiveHostedRuleId(candidate))}">Contested</button>`
     : `<span class="status-badge neutral assessment-override-pill">None</span>`;
-  const overridePanel = override ? `
-    <div class="assessment-override-inline" id="assessment-override-${escapeHtml(candidate.key)}" data-assessment-override-for="${escapeHtml(candidate.key)}" ${expanded ? "" : "hidden"}>
-      <div class="assessment-override-inline-copy"><strong>Provisional Override</strong><p>${escapeHtml(override.rationale)}</p><small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small></div>
-      <button class="icon-button clickable assessment-override-remove" type="button" data-assessment-override-remove="${escapeHtml(candidate.key)}" aria-label="Remove Override" data-workbench-tooltip="Remove Override">${icon("discard")}</button>
-    </div>
-  ` : "";
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span>${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
+      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="assessment-result-category">${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
-    ${overridePanel}
   `;
 }
 
@@ -1701,6 +1667,8 @@ function renderAssessmentResultDetail() {
   }
   const assessment = candidate.assessment;
   const eligible = assessment.hostedApplicable;
+  const override = getApplicabilityOverride(candidate);
+  const included = Boolean(override && state.candidates.some((item) => item.key === candidate.key));
   const catalogStatus = getCatalogStatus(candidate);
   elements["assessment-results-detail"].innerHTML = `
     <div class="assessment-title">
@@ -1710,7 +1678,9 @@ function renderAssessmentResultDetail() {
         <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
       </div>
       ${renderDetailHeaderActions(`
-        <span class="status-badge ${eligible ? "success" : "warning"}">${eligible ? "Eligible" : "Excluded"}</span>
+        <span class="status-badge ${eligible ? "success" : "excluded"}">${eligible ? "Eligible" : "Excluded"}</span>
+        ${override ? `<button class="status-badge warning clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to Maintainer Override">Contested</button>` : ""}
+        ${included ? `<button class="status-badge success clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to Maintainer Override">Maintainer Included</button>` : ""}
         ${renderCatalogStatusBadge(catalogStatus)}
       `)}
     </div>
@@ -1730,13 +1700,21 @@ function renderApplicabilityOverride(candidate) {
   const override = getApplicabilityOverride(candidate);
   const identity = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity;
   if (override) {
+    const editing = state.assessmentOverrideEditingKey === candidate.key;
+    const fieldId = `saved-override-rationale-${candidate.key}`;
+    const actions = editing
+      ? `<button class="titlebar-icon clickable rationale-save" type="button" data-override-save aria-label="Apply Override Rationale" data-workbench-tooltip="Apply Override Rationale" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-edit-cancel aria-label="Cancel Override Rationale Changes" data-workbench-tooltip="Cancel Override Rationale Changes">${icon("close")}</button>`
+      : `<button class="titlebar-icon clickable" type="button" data-override-edit aria-label="Edit Override Rationale" data-workbench-tooltip="Edit Override Rationale">${icon("edit")}</button><button class="titlebar-icon clickable" type="button" data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove Override">${icon("discard")}</button>`;
     return `
       <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
         <span class="section-label">Maintainer Override:</span>
         <div class="override-record subcontext-container">
-          <div class="override-record-heading"><strong>Provisional Override</strong><span class="override-record-actions"><span class="status-badge warning">Reincluded</span><button class="icon-button clickable" type="button" data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove Override">${icon("discard")}</button></span></div>
-          <label class="override-rationale"><span class="control-subtitle">Override Rationale:</span><textarea class="scroll-surface" readonly>${escapeHtml(override.rationale)}</textarea></label>
-          <small>Recorded by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
+          <div class="override-rationale">
+            <span class="rationale-heading"><label class="control-subtitle" for="${escapeHtml(fieldId)}">Override Rationale:</label><span class="override-record-actions">${actions}</span></span>
+            <textarea id="${escapeHtml(fieldId)}" class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" data-saved-override-rationale ${editing ? "" : "readonly"}>${escapeHtml(override.rationale)}</textarea>
+            ${editing ? `<small class="rationale-limit">${override.rationale.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small>` : ""}
+          </div>
+          <small class="override-record-audit">Last saved by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
         </div>
         <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
       </div>
@@ -1765,11 +1743,25 @@ function renderApplicabilityOverride(candidate) {
 function handleApplicabilityOverrideInput(event) {
   if (!event.target.matches(".override-rationale textarea")) return;
   const form = event.target.closest(".override-form");
-  form.querySelector(".rationale-limit").textContent = `${event.target.value.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters`;
-  form.querySelector("[data-override-apply]").disabled = !event.target.value.trim();
+  if (form) {
+    form.querySelector(".rationale-limit").textContent = `${event.target.value.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters`;
+    form.querySelector("[data-override-apply]").disabled = !event.target.value.trim();
+    return;
+  }
+  const record = event.target.closest(".override-record");
+  const candidate = state.assessedCandidates.find((item) => item.key === record?.closest(".maintainer-override")?.dataset.overrideKey);
+  const override = candidate ? getApplicabilityOverride(candidate) : null;
+  if (!record || !override) return;
+  record.querySelector(".rationale-limit").textContent = `${event.target.value.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters`;
+  record.querySelector("[data-override-save]").disabled = !event.target.value.trim() || event.target.value.trim() === override.rationale;
 }
 
 async function handleApplicabilityOverrideClick(event) {
+  const overrideJump = event.target.closest("[data-override-jump]");
+  if (overrideJump) {
+    elements["assessment-results-detail"].querySelector(`.maintainer-override[data-override-key="${CSS.escape(overrideJump.dataset.overrideJump)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
   const section = event.target.closest(".maintainer-override");
   if (!section) return;
   if (event.target.closest("[data-override-open]")) {
@@ -1785,9 +1777,44 @@ async function handleApplicabilityOverrideClick(event) {
   }
   const candidate = state.assessedCandidates.find((item) => item.key === section.dataset.overrideKey);
   if (!candidate) return;
+  if (event.target.closest("[data-override-edit]")) {
+    state.assessmentOverrideEditingKey = candidate.key;
+    renderAssessmentResultDetail();
+    requestAnimationFrame(() => elements["assessment-results-detail"].querySelector("[data-saved-override-rationale]")?.focus());
+    return;
+  }
+  if (event.target.closest("[data-override-edit-cancel]")) {
+    state.assessmentOverrideEditingKey = null;
+    renderAssessmentResultDetail();
+    return;
+  }
   if (event.target.closest("[data-override-remove]")) {
+    state.assessmentOverrideEditingKey = null;
     await updateOverrideLifecycle(candidate, null, null);
     showToast("Provisional override removed");
+    return;
+  }
+  if (event.target.closest("[data-override-save]")) {
+    const identity = getValidatedCodeOwnerIdentity();
+    const rationale = section.querySelector("[data-saved-override-rationale]").value.trim();
+    const currentOverride = getApplicabilityOverride(candidate);
+    if (!identity) {
+      showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
+      return;
+    }
+    if (!rationale || rationale === currentOverride.rationale) return;
+    const recordedAt = new Date().toISOString();
+    state.session.applicabilityOverrides[candidate.key] = {
+      ...currentOverride,
+      rationale: rationale.slice(0, OVERRIDE_RATIONALE_MAX_LENGTH),
+      recordedAt,
+      recordedBy: { type: "github-cli", login: identity.login }
+    };
+    state.session.updatedAt = recordedAt;
+    state.assessmentOverrideEditingKey = null;
+    await persistSession();
+    renderAssessmentResultDetail();
+    showToast("Override rationale saved");
     return;
   }
   if (!event.target.closest("[data-override-apply]")) return;
@@ -2787,10 +2814,17 @@ function updateFilter(value) {
 }
 
 function selectAssessmentResult(key) {
+  if (state.assessmentActiveKey !== key) state.assessmentOverrideEditingKey = null;
   state.assessmentActiveKey = key;
   syncAssessmentResultRows();
   renderAssessmentResultDetail();
   refreshPresentation();
+}
+
+function openAssessmentOverride(key) {
+  state.assessmentOverrideEditingKey = null;
+  selectAssessmentResult(key);
+  showAssessmentPane("details");
 }
 
 function syncAssessmentResultRows() {
@@ -2805,6 +2839,7 @@ function syncAssessmentResultRows() {
 function showAssessmentPane(pane) {
   const activePane = pane === "details" ? "details" : "assessments";
   if (activePane === "assessments" && state.assessmentPane === "details") {
+    state.assessmentOverrideEditingKey = null;
     state.assessmentActiveKey = null;
     syncAssessmentResultRows();
     renderAssessmentResultDetail();

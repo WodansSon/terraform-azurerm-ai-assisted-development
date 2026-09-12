@@ -30,6 +30,26 @@
       "journey": "playwright/journeys/candidate-decorations.journey.cjs"
     },
     {
+      "id": "WB-UX-TREE-006",
+      "title": "Contested status pills remain centered text while sort headers retain chevrons",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-007",
+      "title": "Assessment categories truncate to one line with delayed full-text tooltips",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-008",
+      "title": "Contested status routes directly to Maintainer Override details",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-009",
+      "title": "Assessment Details distinguishes original override inclusion and catalog states",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
       "id": "WB-UX-STICKY-001",
       "title": "Candidate tree preserves sticky source category and column context",
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
@@ -67,6 +87,21 @@
     {
       "id": "WB-UX-STICKY-008",
       "title": "Coarse wheel input preserves speed on a grid-aligned destination",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-009",
+      "title": "Assessment Results preserves contained 40px leaves through sorting",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-010",
+      "title": "Sticky child handoffs reuse a bounded prewarmed renderer pool",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-011",
+      "title": "Candidate Sources parents start collapsed including Overrides",
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
     },
     {

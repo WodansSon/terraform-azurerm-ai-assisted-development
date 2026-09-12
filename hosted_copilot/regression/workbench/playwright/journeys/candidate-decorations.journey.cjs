@@ -5,7 +5,11 @@ const behaviorIds = [
   "WB-UX-TREE-002",
   "WB-UX-TREE-003",
   "WB-UX-TREE-004",
-  "WB-UX-TREE-005"
+  "WB-UX-TREE-005",
+  "WB-UX-TREE-006",
+  "WB-UX-TREE-007",
+  "WB-UX-TREE-008",
+  "WB-UX-TREE-009"
 ];
 
 async function snapshotDecoration(page, candidateKey) {
@@ -159,7 +163,21 @@ async function run({ page, baseUrl, assert, playback }) {
         && root.querySelector(".count-badge").dataset.workbenchTooltip === "1 selected, all ready for promotion"
         && [root.querySelector(".candidate-parent-label > strong"), root.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === added);
-      return { needsInputValid, readyValid };
+      const fixture = document.createElement("div");
+      fixture.className = "type-ui";
+      fixture.innerHTML = `${renderAssessmentResultsHeader("assessment:override-probe")}${renderAssessmentResultRow(candidate)}`;
+      document.body.appendChild(fixture);
+      const pill = fixture.querySelector(".assessment-override-pill");
+      const pillRect = pill.getBoundingClientRect();
+      const textRange = document.createRange();
+      textRange.selectNodeContents(pill);
+      const textRect = textRange.getBoundingClientRect();
+      const pillPresentationValid = pill.childElementCount === 0
+        && pill.querySelectorAll("svg").length === 0
+        && Math.abs((textRect.left + textRect.width / 2) - (pillRect.left + pillRect.width / 2)) < 0.1;
+      const sortHeaderValid = fixture.querySelector('[data-assessment-sort="override"] .sort-indicator svg use')?.getAttribute("href").includes("codicon-chevron");
+      fixture.remove();
+      return { needsInputValid, readyValid, pillPresentationValid, sortHeaderValid };
     } finally {
       state.session = sessionSnapshot;
       refreshEffectiveCandidates();
@@ -168,7 +186,128 @@ async function run({ page, baseUrl, assert, playback }) {
   });
   assert(overrides.needsInputValid, "Overrides root and leaf do not share needs-input decoration");
   assert(overrides.readyValid, "Overrides root and leaf do not share ready decoration");
+  assert(overrides.pillPresentationValid, "Contested status pill contains non-text content or is not centered");
+  assert(overrides.sortHeaderValid, "Override sort header does not retain its sort chevron");
   assert(await page.locator('#candidate-list [data-node-id="candidate:source:overrides"]').count() === 0, "Overrides probe did not restore the candidate tree");
+
+  const categoryProbe = await page.evaluate(() => {
+    const candidate = state.assessedCandidates[0];
+    const fixture = document.createElement("div");
+    fixture.id = "assessment-category-tooltip-probe";
+    fixture.className = "type-ui";
+    fixture.style.width = "760px";
+    fixture.innerHTML = renderAssessmentResultRow({
+      ...candidate,
+      assessment: { ...candidate.assessment, hostedCategory: "review-classification-and-evidence" }
+    });
+    document.querySelector(".app-shell").appendChild(fixture);
+    syncTruncationTooltips();
+    const category = fixture.querySelector(".assessment-result-category");
+    const style = getComputedStyle(category);
+    return {
+      text: category.textContent.trim(),
+      height: category.getBoundingClientRect().height,
+      lineHeight: parseFloat(style.lineHeight),
+      scrollWidth: category.scrollWidth,
+      clientWidth: category.clientWidth,
+      singleLine: category.getBoundingClientRect().height <= parseFloat(style.lineHeight) + 0.1,
+      truncated: category.scrollWidth > category.clientWidth,
+      ellipsis: style.textOverflow === "ellipsis" && style.whiteSpace === "nowrap",
+      tooltipOwner: category.hasAttribute("data-truncation-tooltip")
+    };
+  });
+  assert(categoryProbe.text === "Review classification & evidence", "Assessment category fixture does not contain the full display value");
+  assert(categoryProbe.singleLine && categoryProbe.truncated && categoryProbe.ellipsis && categoryProbe.tooltipOwner, `Assessment category does not truncate to one line with shared tooltip ownership (${JSON.stringify(categoryProbe)})`);
+  const category = page.locator("#assessment-category-tooltip-probe .assessment-result-category");
+  await category.hover();
+  await page.waitForTimeout(600);
+  const categoryTooltip = await page.locator("#status-surface-tooltip").evaluate((tooltip) => ({
+    visible: tooltip.classList.contains("visible") && tooltip.getAttribute("aria-hidden") === "false",
+    text: tooltip.textContent.trim()
+  }));
+  assert(categoryTooltip.visible && categoryTooltip.text === categoryProbe.text, "Assessment category tooltip does not show its full text after the 500ms delay");
+  await page.evaluate(() => {
+    hideStatusTooltip();
+    document.querySelector("#assessment-category-tooltip-probe")?.remove();
+  });
+
+  const overrideWorkflow = await page.evaluate(() => {
+    const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.assessedCandidates[0];
+    globalThis.__overrideWorkflowSessionSnapshot = structuredClone(state.session);
+    globalThis.__overrideWorkflowHostedApplicable = candidate.assessment.hostedApplicable;
+    candidate.assessment.hostedApplicable = false;
+    state.session.applicabilityOverrides[candidate.key] = {
+      state: "provisional",
+      sourceContentSha256: candidate.hash,
+      originalHostedApplicable: false,
+      effectiveHostedApplicable: true,
+      rationale: "Original saved override rationale.",
+      recordedAt: "2000-01-01T00:00:00.000Z",
+      recordedBy: { type: "github-cli", login: "fixture-codeowner" }
+    };
+    state.session.decisions[candidate.key] = { ...defaultDecision(candidate), ...createPlanMembership("override") };
+    refreshEffectiveCandidates();
+    setWorkspaceTab("assessment-results");
+    const fixture = document.createElement("div");
+    fixture.id = "assessment-override-workflow-probe";
+    fixture.innerHTML = renderAssessmentResultRow(candidate);
+    elements["assessment-results-list"].appendChild(fixture);
+    return { key: candidate.key, originalRecordedAt: state.session.applicabilityOverrides[candidate.key].recordedAt };
+  });
+  await page.locator("#assessment-override-workflow-probe [data-assessment-override-detail]").click();
+  await page.waitForFunction((key) => state.assessmentPane === "details" && state.assessmentActiveKey === key, overrideWorkflow.key);
+  const routedOverride = await page.evaluate((key) => {
+    const detail = document.querySelector("#assessment-results-detail");
+    const section = detail.querySelector(`.maintainer-override[data-override-key="${CSS.escape(key)}"]`);
+    const title = detail.querySelector(".assessment-title");
+    const statuses = title.querySelector(".assessment-title-statuses");
+    const statusItems = [...statuses.querySelectorAll(".status-badge, .catalog-status")];
+    const excluded = statusItems.find((item) => item.textContent.trim() === "Excluded");
+    const recommendation = document.createElement("span");
+    recommendation.className = "recommendation-badge exclude";
+    detail.appendChild(recommendation);
+    const getColors = (element) => {
+      const style = getComputedStyle(element);
+      return [style.color, style.backgroundColor, style.borderColor];
+    };
+    const excludedMatchesRecommendation = getColors(excluded).join("|") === getColors(recommendation).join("|");
+    recommendation.remove();
+    return {
+      pane: state.assessmentPane,
+      activeKey: state.assessmentActiveKey,
+      noInlineOverrideRows: !document.querySelector(".assessment-override-inline"),
+      matchingOverrideDetails: Boolean(section),
+      redundantLabelsAbsent: !section.textContent.includes("Provisional Override") && !section.textContent.includes("Reincluded"),
+      textareaReadOnly: section.querySelector("[data-saved-override-rationale]").readOnly,
+      actions: [...section.querySelectorAll(".override-record-actions button")].map((button) => button.getAttribute("aria-label")),
+      buttonsInsideLabel: section.querySelectorAll("label button").length,
+      statusOrder: statusItems.map((item) => item.textContent.trim()),
+      overrideStatusButtons: [...statuses.querySelectorAll("button[data-override-jump]")].map((button) => button.textContent.trim()),
+      excludedMatchesRecommendation,
+      statusesContained: statuses.getBoundingClientRect().right <= title.getBoundingClientRect().right
+    };
+  }, overrideWorkflow.key);
+  assert(routedOverride.pane === "details" && routedOverride.activeKey === overrideWorkflow.key && routedOverride.noInlineOverrideRows && routedOverride.matchingOverrideDetails, `Contested status does not open the matching Assessment Details view (${JSON.stringify(routedOverride)})`);
+  assert(routedOverride.redundantLabelsAbsent, "Saved override details repeat redundant provisional or reincluded labels");
+  assert(routedOverride.textareaReadOnly && routedOverride.actions.join("|") === "Edit Override Rationale|Remove Override", "Saved override mode does not expose read-only rationale with Edit and Remove commands");
+  assert(routedOverride.buttonsInsideLabel === 0, "Override commands are nested inside the rationale label");
+  assert(routedOverride.statusOrder.join("|") === "Excluded|Contested|Maintainer Included|Not Mapped", "Contested Assessment Details header does not distinguish AI, maintainer inclusion, and catalog states");
+  assert(routedOverride.overrideStatusButtons.join("|") === "Contested|Maintainer Included", "Override-derived header statuses are not navigation buttons");
+  assert(routedOverride.excludedMatchesRecommendation, "Header Excluded status does not match the Recommend Exclude palette");
+  assert(routedOverride.statusesContained, "Assessment Details statuses overflow the fixed header");
+  await page.evaluate(async () => {
+    const candidate = state.assessedCandidates.find((item) => item.key === state.assessmentActiveKey);
+    candidate.assessment.hostedApplicable = globalThis.__overrideWorkflowHostedApplicable;
+    state.session = globalThis.__overrideWorkflowSessionSnapshot;
+    delete globalThis.__overrideWorkflowSessionSnapshot;
+    delete globalThis.__overrideWorkflowHostedApplicable;
+    state.assessmentOverrideEditingKey = null;
+    state.assessmentActiveKey = null;
+    refreshEffectiveCandidates();
+    await persistSession();
+    renderAll();
+    setWorkspaceTab("candidate-sources");
+  });
 }
 
 module.exports = { name: "candidate decorations", behaviorIds, viewport: { width: 768, height: 900 }, run };

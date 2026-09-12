@@ -636,6 +636,13 @@ h3 {
   font-size: 0.64rem;
 }
 
+.assessment-result-category {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .assessment-override-cell {
   display: flex;
   align-items: center;
@@ -651,55 +658,6 @@ h3 {
 button.assessment-override-pill {
   appearance: none;
   cursor: pointer;
-}
-
-.assessment-override-chevron,
-.assessment-override-chevron svg {
-  width: 12px;
-  height: 12px;
-}
-
-.assessment-override-inline {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 12px 10px 44px;
-  background: var(--surface-quiet);
-  border-bottom: 1px solid var(--line);
-  border-left: 2px solid var(--gold);
-}
-
-.assessment-override-inline[hidden] {
-  display: none;
-}
-
-.assessment-override-inline-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.assessment-override-inline-copy strong {
-  color: var(--gold);
-}
-
-.assessment-override-inline-copy p,
-.assessment-override-inline-copy small {
-  margin: 0;
-}
-
-.assessment-override-inline-copy small {
-  color: var(--muted);
-  font-size: var(--font-size-compact);
-  line-height: var(--line-height-compact);
-}
-
-.assessment-override-remove {
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  min-height: 32px !important;
 }
 
 .read-only-boundary {
@@ -818,22 +776,11 @@ button.assessment-override-pill {
   gap: 8px;
 }
 
-.override-record-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .override-record-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.override-record-actions .icon-button {
-  width: 32px;
-  height: 32px;
+  margin-left: auto;
 }
 
 .candidate-panel,
@@ -920,8 +867,9 @@ button.assessment-override-pill {
   background: var(--surface);
 }
 
-.hierarchical-view-row.assessment-override-inline {
-  height: auto;
+.hierarchical-view-sticky-pool-row {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .hierarchical-view-row.assessment-results-header,
@@ -1390,6 +1338,35 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   font-weight: 600;
 }
 
+:is(#candidate-list, #assessment-results-list) :is(.candidate-tree-row, .assessment-result-row) {
+  min-height: 40px;
+  height: 40px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+:is(#candidate-list, #assessment-results-list) .candidate-tree-copy {
+  position: relative;
+  top: -1px;
+  grid-template-rows: 17px 17px;
+  align-content: center;
+  gap: 0;
+  height: 34px;
+  line-height: 17px;
+  overflow: visible;
+}
+
+:is(#candidate-list, #assessment-results-list) .candidate-tree-copy > strong,
+:is(#candidate-list, #assessment-results-list) .candidate-tree-copy > small {
+  min-width: 0;
+  height: 17px;
+  line-height: 17px !important;
+  overflow: clip;
+  overflow-clip-margin: 1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tree-impact {
   color: var(--blue);
 }
@@ -1550,6 +1527,12 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   background: var(--success-soft);
 }
 
+.status-badge.excluded {
+  color: var(--ink);
+  background: #4a252b;
+  border-color: #d85d65;
+}
+
 .status-badge.neutral {
   color: var(--muted);
   background: var(--surface-quiet);
@@ -1681,8 +1664,10 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
 
 .detail-header-actions {
   display: grid;
-  width: 270px;
-  flex: 0 0 270px;
+  width: max-content;
+  max-width: 50%;
+  min-width: 0;
+  flex: 0 1 auto;
   grid-template-rows: auto minmax(0, 1fr);
   align-self: stretch;
   justify-items: end;
@@ -1691,7 +1676,13 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
 
 .detail-header-actions > .assessment-title-statuses {
   width: auto;
+  max-width: 100%;
   flex: none;
+  flex-wrap: wrap;
+}
+
+.assessment-title-statuses button.status-badge {
+  appearance: none;
 }
 
 .detail-back-to-top {
@@ -2514,10 +2505,6 @@ p.subcontext-container {
   outline-offset: -2px;
 }
 
-.plan-table code,
-.mono {
-}
-
 .plan-table .candidate-link {
   padding: 0;
   color: var(--accent-bright);
@@ -2591,9 +2578,6 @@ p.subcontext-container {
   gap: 8px;
   margin-bottom: 5px;
   font-size: 0.74rem;
-}
-
-.capacity-line strong {
 }
 
 .capacity-progress {

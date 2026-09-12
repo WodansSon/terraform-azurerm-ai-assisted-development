@@ -8,7 +8,10 @@ const behaviorIds = [
   "WB-UX-STICKY-005",
   "WB-UX-STICKY-006",
   "WB-UX-STICKY-007",
-  "WB-UX-STICKY-008"
+  "WB-UX-STICKY-008",
+  "WB-UX-STICKY-009",
+  "WB-UX-STICKY-010",
+  "WB-UX-STICKY-011"
 ];
 
 async function settle(page) {
@@ -18,6 +21,40 @@ async function settle(page) {
 async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
   await playback.show(page, "Candidate tree sticky context");
+
+  const initialParentState = await page.evaluate(() => {
+    const sessionSnapshot = structuredClone(state.session);
+    const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.candidates[0];
+    try {
+      state.session.applicabilityOverrides[candidate.key] = {
+        state: "provisional",
+        sourceContentSha256: candidate.hash,
+        originalHostedApplicable: false,
+        effectiveHostedApplicable: true,
+        rationale: "Playwright initial parent-state probe.",
+        recordedAt: new Date().toISOString(),
+        recordedBy: { type: "github-cli", login: "fixture-codeowner" }
+      };
+      refreshEffectiveCandidates();
+      renderCandidateList();
+      const overrideRoot = candidateHierarchicalView.model.nodesById.get("candidate:source:overrides");
+      const parents = [];
+      const visit = (node) => {
+        if (["source", "folder"].includes(node.kind)) parents.push(node);
+        node.children.forEach(visit);
+      };
+      visit(overrideRoot);
+      return {
+        allCollapsed: parents.every((node) => !node.expanded),
+        noVisibleChildren: candidateHierarchicalView.model.visibleNodes.every((node) => node.parentId !== overrideRoot.id)
+      };
+    } finally {
+      state.session = sessionSnapshot;
+      refreshEffectiveCandidates();
+      renderCandidateList();
+    }
+  });
+  assert(initialParentState.allCollapsed && initialParentState.noVisibleChildren, "Candidate Sources parents do not start fully collapsed when Overrides is present");
 
   const initial = await page.evaluate(() => {
     const scroller = document.querySelector("#candidate-list");
@@ -46,8 +83,8 @@ async function run({ page, baseUrl, assert, playback }) {
       targetSources = getTargetSources();
       targetSource = targetSources.find(({ folders }) => folders.length > 1);
     }
-    const folder = [...targetSource.folders].sort((left, right) => right.data.candidates.length - left.data.candidates.length)[0];
-    const sibling = targetSource.folders.find((node) => node.id !== folder.id);
+    const folder = [...targetSource.folders.slice(0, -1)].sort((left, right) => right.data.candidates.length - left.data.candidates.length)[0];
+    const sibling = targetSource.folders[targetSource.folders.indexOf(folder) + 1];
     return {
       allCollapsed: candidateHierarchicalView.model.nodes
         .filter((node) => ["source", "folder"].includes(node.kind))
@@ -130,6 +167,58 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(sticky.changedOrder, "candidate sort did not reorder the open folder");
   assert(Math.abs(sticky.scrollTopAfter - sticky.scrollTopBefore) < 0.1 && sticky.sourceExpanded && sticky.folderExpanded, "candidate sort changed tree position or disclosure state");
   assert(sticky.naturalHeaderCount === 1, "folder renders duplicate natural column headers");
+
+  const handoff = await page.evaluate(async ({ sourceId, folderId, headerId, siblingId }) => {
+    const scroller = document.querySelector("#candidate-list");
+    const stack = document.querySelector("#candidate-sticky-stack");
+    const previousScrollTop = scroller.scrollTop;
+    const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const maximumScrollTop = scroller.scrollHeight - scroller.clientHeight;
+    let transition = null;
+    for (let scrollTop = 0; scrollTop <= maximumScrollTop; scrollTop += 40) {
+      const current = candidateHierarchicalView.stickyController.calculate(scrollTop);
+      let targetScrollTop = Math.round((scrollTop + 100) / 40) * 40;
+      if (Math.abs(targetScrollTop - scrollTop) < 1) targetScrollTop += 40;
+      targetScrollTop = Math.min(targetScrollTop, maximumScrollTop);
+      const next = candidateHierarchicalView.stickyController.calculate(targetScrollTop);
+      const currentIds = current.map((entry) => entry.nodeId);
+      const nextIds = next.map((entry) => entry.nodeId);
+      if (currentIds.includes(folderId) && currentIds.includes(headerId) && nextIds.includes(siblingId) && !nextIds.includes(headerId)) {
+        transition = { scrollTop, targetScrollTop };
+        break;
+      }
+    }
+    if (!transition) return { transitionFound: false };
+    scroller.scrollTop = transition.scrollTop;
+    await settle();
+    const poolRows = [...stack.children];
+    const poolUses = poolRows.flatMap((row) => [...row.querySelectorAll("svg use")]);
+    const outgoingHeader = stack.querySelector(`[data-node-id="${CSS.escape(headerId)}"]`);
+    scroller.scrollTop = transition.targetScrollTop;
+    await settle();
+    const incomingRow = stack.querySelector(`[data-node-id="${CSS.escape(siblingId)}"]`);
+    const nextPoolRows = [...stack.children];
+    const nextPoolUses = nextPoolRows.flatMap((row) => [...row.querySelectorAll("svg use")]);
+    const result = {
+      transitionFound: true,
+      poolSize: nextPoolRows.length,
+      poolRowsStable: poolRows.length === nextPoolRows.length && poolRows.every((row) => nextPoolRows.includes(row)),
+      poolUsesStable: poolUses.length === nextPoolUses.length && poolUses.every((use) => nextPoolUses.includes(use)),
+      incomingVisible: Boolean(incomingRow),
+      outgoingHeaderClass: outgoingHeader?.className || null,
+      outgoingHeaderTop: parseFloat(outgoingHeader?.style.top || "NaN"),
+      stackHeight: stack.getBoundingClientRect().height
+    };
+    scroller.scrollTop = previousScrollTop;
+    await settle();
+    return result;
+  }, initial);
+  assert(handoff.transitionFound, "candidate child-boundary handoff fixture has no one-wheel transition");
+  assert(handoff.poolSize === 7, "candidate sticky renderer pool is not bounded to seven rows");
+  assert(handoff.poolRowsStable, "candidate child-boundary handoff replaces a prewarmed row renderer");
+  assert(handoff.poolUsesStable, "candidate child-boundary handoff replaces a prewarmed SVG renderer");
+  assert(handoff.incomingVisible, "candidate child-boundary handoff does not render the incoming folder");
+  assert(handoff.outgoingHeaderClass?.includes("hierarchical-view-sticky-pool-row") && handoff.outgoingHeaderTop >= handoff.stackHeight - 1, `candidate child-boundary handoff parks its sort header over a visible sticky row (${handoff.outgoingHeaderClass}, top ${handoff.outgoingHeaderTop}, stack ${handoff.stackHeight})`);
 
   const grid = await page.evaluate(async () => {
     const scroller = document.querySelector("#candidate-list");
@@ -216,6 +305,50 @@ async function run({ page, baseUrl, assert, playback }) {
     return { top: rect.top, bottom: rect.bottom, width: rect.width, clientWidth: scroller.clientWidth };
   });
   assert(initial.gutter === "stable" && JSON.stringify(finalGeometry) === JSON.stringify(initial.geometry), "candidate disclosure changes scrollbar viewport geometry");
+
+  await page.locator('[data-workspace-tab="assessment-results"]').click();
+  const assessmentGrid = await page.evaluate(async () => {
+    let probeKey = null;
+    if (!getFilteredAssessmentCandidates().length) {
+      const probe = structuredClone(state.assessedCandidates[0]);
+      probe.key = `${probe.key}:assessment-grid-probe`;
+      probe.assessment.hostedApplicable = false;
+      probe.assessment.recommendation = "exclude";
+      probeKey = probe.key;
+      state.assessedCandidates.push(probe);
+      renderAssessmentResults();
+    }
+    const source = assessmentHierarchicalView.model.roots.find((node) => node.children.length);
+    if (!source.expanded) document.querySelector(`#assessment-results-list [data-node-id="${CSS.escape(source.id)}"]`)?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const header = source.children.find((node) => node.kind === "header");
+    const inspect = () => {
+      const modelAligned = assessmentHierarchicalView.model.nodes
+        .filter((node) => node.kind === "leaf")
+        .every((node) => node.rowHeight === 40);
+      const rows = [...document.querySelectorAll("#assessment-results-list [data-assessment-key]")];
+      const renderedAligned = rows.length > 0 && rows.every((row) => Math.abs(row.getBoundingClientRect().height - 40) < 1);
+      const contentContained = rows.every((row) => {
+        const rowRect = row.getBoundingClientRect();
+        return [...row.children].every((child) => {
+          const childRect = child.getBoundingClientRect();
+          return childRect.top >= rowRect.top - 1 && childRect.bottom <= rowRect.bottom + 1;
+        });
+      });
+      return { modelAligned, renderedAligned, contentContained };
+    };
+    const before = inspect();
+    document.querySelector(`#assessment-results-list [data-node-id="${CSS.escape(header.id)}"] [data-assessment-sort="candidate"]`)?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const after = inspect();
+    if (probeKey) {
+      state.assessedCandidates = state.assessedCandidates.filter((candidate) => candidate.key !== probeKey);
+      renderAssessmentResults();
+    }
+    return { before, after };
+  });
+  assert(assessmentGrid.before.modelAligned && assessmentGrid.before.renderedAligned && assessmentGrid.before.contentContained, "Assessment Results does not use contained 40px leaf rows");
+  assert(assessmentGrid.after.modelAligned && assessmentGrid.after.renderedAligned && assessmentGrid.after.contentContained, "Assessment Results sorting does not preserve contained 40px leaf rows");
 }
 
 module.exports = { name: "candidate sticky context", behaviorIds, viewport: { width: 1440, height: 900 }, run };
