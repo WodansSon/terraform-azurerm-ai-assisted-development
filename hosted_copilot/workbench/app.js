@@ -11,6 +11,8 @@ const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
 const PROPOSED_HOSTED_RULE_ID_MAX_LENGTH = 32;
 const PROPOSED_HOSTED_RULE_ID_PATTERN = /^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$/;
 const WORKBENCH_TOOLTIP_DELAY_MS = 500;
+const PREVIEW_CONTEXT_LINE_COUNT = 2;
+const PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10;
 const FACTORS = [
   ["severity", "Severity", "Harm caused when this defect is missed", "value"],
   ["frequency", "Frequency", "How often this defect appears in provider changes", "value"],
@@ -32,6 +34,7 @@ const state = {
   assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
+  previewReviewScope: "proposed",
   rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
@@ -48,12 +51,11 @@ const elements = {};
 let databasePromise;
 let persistencePromise = Promise.resolve();
 let toastTimer;
-let rawPayloadChangeIndex = 0;
-let rawPayloadChangeCount = 0;
 let truncationTooltipFrame;
 let proposedHostedRuleIdValidationTimer;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
+let previewFilesByScope = { proposed: [], payload: [], raw: [] };
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const workbenchTooltip = {
@@ -65,6 +67,11 @@ const workbenchTooltip = {
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
+}
+
+function octicon(name) {
+  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
+  return `<svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-${name}-16"></use></svg>`;
 }
 
 function renderPreviewEmptyState(iconName, title, message, className = "") {
@@ -101,8 +108,8 @@ function captureElements() {
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
     "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
     "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
-    "preview-summary", "preview-diff", "preview-payload-diff", "preview-raw-heading", "raw-payload-empty", "preview-json", "raw-change-tools", "raw-change-count",
-    "raw-change-position", "raw-previous-change", "raw-next-change", "copy-preview-button", "approver-name", "approval-requirements",
+    "preview-summary", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code", "preview-review-scope",
+    "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
     "approve-export-button", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
@@ -215,15 +222,17 @@ function bindEvents() {
     const sortButton = event.target.closest("[data-plan-sort]");
     if (sortButton) updatePlanSort(sortButton);
   });
-  elements["raw-previous-change"].addEventListener("click", () => navigateRawPayloadDirection(-1));
-  elements["raw-next-change"].addEventListener("click", () => navigateRawPayloadDirection(1));
-  elements["preview-json"].addEventListener("scroll", updateRawPayloadChangeNavigation);
-  elements["copy-preview-button"].addEventListener("click", copyPreview);
+  elements["preview-review-scope"].addEventListener("change", (event) => showPreviewReviewScope(event.target.value));
+  elements["preview-summary"].addEventListener("input", handlePreviewFileFilter);
+  elements["preview-summary"].addEventListener("click", handlePreviewFileNavigation);
+  elements["preview-code"].addEventListener("click", handlePreviewReviewClick);
+  elements["preview-code"].addEventListener("change", handlePreviewReviewChange);
   elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
   elements["toast-close"].addEventListener("click", dismissNotification);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && elements.toast.classList.contains("visible")) dismissNotification();
+    if (event.key === "Escape") elements["preview-review-popover"].hidden = true;
   });
   window.addEventListener("resize", hideStatusTooltip);
   window.addEventListener("resize", scheduleTruncationTooltips);
@@ -2373,185 +2382,30 @@ function renderPreview() {
   elements["approval-badge"].className = `status-badge ${ready ? "success" : "warning"}`;
   elements["approval-badge"].textContent = ready ? "Ready to export" : "Not ready";
   elements["preview-status"].textContent = ready ? "Ready" : "Draft";
-  elements["preview-summary"].innerHTML = `
-    <p class="eyebrow">Review state</p>
-    <h3>Draft summary</h3>
-    <dl class="summary-list">
-      <div><dt>Snapshot</dt><dd>${escapeHtml(state.bundle.snapshots.upstream.currentCommit.slice(0, 8))}</dd></div>
-      <div><dt>Mapped</dt><dd>${state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length}</dd></div>
-      <div><dt>Not mapped</dt><dd>${state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length}</dd></div>
-      <div><dt>Plan items</dt><dd>${planCandidates.length}</dd></div>
-      <div><dt>Approval</dt><dd>${escapeHtml(readiness.status)}</dd></div>
-    </dl>
-  `;
   if (elements["approver-name"].value !== state.session.approverName) {
     elements["approver-name"].value = state.session.approverName || "";
   }
   renderApprovalRequirements(readiness);
   elements["approve-export-button"].disabled = !ready;
-  elements["preview-diff"].innerHTML = renderPreviewChanges(planCandidates);
-  elements["preview-payload-diff"].innerHTML = renderPayloadChanges(planCandidates);
-  renderRawPayload(buildApprovalPayload());
+  previewFilesByScope = buildPreviewFiles(planCandidates);
+  elements["preview-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.proposed, "No Proposed Changes", "Add an available rule action to review its line-level diff.");
+  elements["preview-payload-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.payload, "No Payload Changes", "Add or update a Promotion Plan item to review its selection payload changes.");
+  elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "No Raw Payload Changes", "Add or update a Promotion Plan item to review its generated selection payload.");
+  elements["raw-payload-empty"].hidden = true;
+  elements["preview-review-popover"].hidden = true;
+  showPreviewReviewScope(state.previewReviewScope);
 }
 
-function renderRawPayload(payload) {
-  const rawPayload = JSON.stringify(payload, null, 2);
-  const lines = rawPayload.split("\n");
-  const changes = getRawPayloadChanges(lines, payload.decisions);
-  const hasChanges = changes.length > 0;
-
-  rawPayloadChangeIndex = 0;
-  rawPayloadChangeCount = changes.length;
-  elements["preview-raw-heading"].hidden = !hasChanges;
-  elements["raw-payload-empty"].hidden = hasChanges;
-  elements["preview-json"].hidden = !hasChanges;
-  elements["raw-change-tools"].hidden = !hasChanges;
-  elements["raw-change-count"].textContent = `${rawPayloadChangeCount} added or updated record${rawPayloadChangeCount === 1 ? "" : "s"}`;
-
-  if (!hasChanges) {
-    elements["raw-payload-empty"].innerHTML = renderPreviewEmptyState(
-      "json",
-      "No Raw Payload Changes",
-      "Add or update a Promotion Plan item to review its generated selection payload."
-    );
-    elements["preview-json"].scrollTop = 0;
-    updateRawPayloadChangeNavigation();
-    return;
-  }
-
-  const changedLines = new Map();
-  changes.forEach((change, changeIndex) => {
-    for (let lineIndex = change.start; lineIndex <= change.end; lineIndex += 1) changedLines.set(lineIndex, changeIndex);
-  });
-  const renderedLines = lines.map((line, lineIndex) => {
-    const changeIndex = changedLines.get(lineIndex);
-    const changed = changeIndex !== undefined;
-    const changeAttribute = changed ? ` data-raw-change-index="${changeIndex}"` : "";
-    return `<span class="raw-json-line${changed ? " raw-json-added" : ""}"${changeAttribute}><span class="raw-json-line-number" data-line-number="${lineIndex + 1}" aria-hidden="true"></span><span class="raw-json-line-marker" aria-hidden="true"></span><code>${escapeHtml(line)}</code></span>`;
-  }).join("\n");
-  elements["preview-json"].innerHTML = `<span class="highlight-width-track">${renderedLines}</span>`;
-  if (elements["preview-json"].textContent !== rawPayload) throw new Error("raw payload rendering changed JSON content");
-  navigateRawPayloadChange(0, "auto");
-}
-
-function getRawPayloadChanges(lines, decisions) {
-  const changes = [];
-  let inDecisions = false;
-  let decisionIndex = 0;
-  let start = null;
-  lines.forEach((line, lineIndex) => {
-    if (line === '  "decisions": [') {
-      inDecisions = true;
-      return;
-    }
-    if (!inDecisions) return;
-    if (start === null && line === "    {") {
-      start = lineIndex;
-      return;
-    }
-    if (start !== null && /^    }[,]?$/.test(line)) {
-      const decision = decisions[decisionIndex];
-      if (decision?.inPlan && (["add", "update"].includes(decision.action) || decision.applicabilityOverride)) {
-        changes.push({ start, end: lineIndex });
-      }
-      decisionIndex += 1;
-      start = null;
-      return;
-    }
-    if (start === null && /^  ][,]?$/.test(line)) inDecisions = false;
-  });
-  return changes;
-}
-
-function navigateRawPayloadChange(index, behavior = "smooth") {
-  if (!rawPayloadChangeCount) return;
-  rawPayloadChangeIndex = Math.max(0, Math.min(index, rawPayloadChangeCount - 1));
-  const target = elements["preview-json"].querySelector(`[data-raw-change-index="${rawPayloadChangeIndex}"]`);
-  const scrollTop = target.getBoundingClientRect().top - elements["preview-json"].getBoundingClientRect().top + elements["preview-json"].scrollTop;
-  elements["preview-json"].scrollTo({
-    top: Math.max(0, scrollTop),
-    behavior
-  });
-  updateRawPayloadChangeNavigation();
-}
-
-function getRawPayloadChangeViewportPosition() {
-  if (!rawPayloadChangeCount) return "none";
-  const changeLines = elements["preview-json"].querySelectorAll(`[data-raw-change-index="${rawPayloadChangeIndex}"]`);
-  if (!changeLines.length) return "none";
-  const viewport = elements["preview-json"].getBoundingClientRect();
-  const firstLine = changeLines[0].getBoundingClientRect();
-  const lastLine = changeLines[changeLines.length - 1].getBoundingClientRect();
-  if (lastLine.bottom < viewport.top) return "above";
-  if (firstLine.top > viewport.bottom) return "below";
-  return "visible";
-}
-
-function navigateRawPayloadDirection(direction) {
-  const position = getRawPayloadChangeViewportPosition();
-  const snapToCurrent = (direction < 0 && position === "above") || (direction > 0 && position === "below");
-  navigateRawPayloadChange(rawPayloadChangeIndex + (snapToCurrent ? 0 : direction));
-}
-
-function updateRawPayloadChangeNavigation() {
-  const position = getRawPayloadChangeViewportPosition();
-  elements["raw-change-position"].textContent = rawPayloadChangeCount ? `${rawPayloadChangeIndex + 1} of ${rawPayloadChangeCount}` : "";
-  elements["raw-previous-change"].disabled = !rawPayloadChangeCount || (rawPayloadChangeIndex === 0 && position !== "above");
-  elements["raw-next-change"].disabled = !rawPayloadChangeCount || (rawPayloadChangeIndex === rawPayloadChangeCount - 1 && position !== "below");
-}
-
-function renderPreviewChanges(candidates) {
-  if (!candidates.length) {
-    return renderPreviewEmptyState(
-      "git-pull-request-draft",
-      "No Proposed Changes",
-      "Add an available rule action to the promotion plan to review its line-level diff."
-    );
-  }
-  const unresolved = candidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action));
-  const resolved = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action));
-  const warning = unresolved.length ? `<div class="empty-state compact warning-state">${icon("warning")}<h3>${unresolved.length} Action${unresolved.length === 1 ? "" : "s"} Required</h3><p>Complete Rule Actions from the Promotion Plan before reviewing proposed changes.</p></div>` : "";
-  return warning + resolved.map((candidate) => {
+function buildPreviewFiles(candidates) {
+  const proposed = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action)).map((candidate) => {
     const decision = getDecision(candidate);
     const currentText = getCurrentHostedText(candidate);
-    const lines = decision.action === "add"
-      ? splitDiffLines(decision.proposedText).map((text) => ({ type: "add", text }))
-      : decision.action === "retire"
-        ? splitDiffLines(currentText).map((text) => ({ type: "delete", text }))
-        : diffTextLines(currentText, decision.proposedText);
-    return renderRuleDiff(candidate, decision.action, lines);
-  }).join("");
-}
-
-function renderRuleDiff(candidate, action, lines) {
-  let oldLine = 0;
-  let newLine = 0;
-  let additions = 0;
-  let deletions = 0;
-  const renderedLines = lines.map((line) => {
-    if (line.type !== "add") oldLine += 1;
-    if (line.type !== "delete") newLine += 1;
-    if (line.type === "add") additions += 1;
-    if (line.type === "delete") deletions += 1;
-    const oldNumber = line.type === "add" ? "" : oldLine;
-    const newNumber = line.type === "delete" ? "" : newLine;
-    const marker = line.type === "add" ? "+" : line.type === "delete" ? "-" : " ";
-    const description = line.type === "add" ? `Added line ${newLine}` : line.type === "delete" ? `Removed line ${oldLine}` : `Unchanged line ${newLine}`;
-    return `<div class="diff-line ${line.type}" aria-label="${description}"><span class="diff-line-number">${oldNumber}</span><span class="diff-line-number">${newNumber}</span><span class="diff-marker" aria-hidden="true">${marker}</span><code>${escapeHtml(line.text || " ")}</code></div>`;
-  }).join("");
-  const mappedRuleIds = action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || "New Hosted rule";
-  const sourceId = candidate.sourceType === "upstream" ? candidate.sourceId.toUpperCase() : candidate.id;
-  return `
-    <section class="preview-change" aria-label="${escapeHtml(candidate.id)} proposed ${escapeHtml(action)}">
-      <div class="preview-change-heading"><div><strong>${escapeHtml(sourceId)}</strong><span>${escapeHtml(candidate.title)}</span></div><span class="recommendation-badge ${escapeHtml(action)}">${escapeHtml(formatRecommendation(action))}</span></div>
-      <div class="diff-file-heading"><span>${escapeHtml(mappedRuleIds)}</span><span class="diff-stats"><span>+${additions}</span><span>-${deletions}</span></span></div>
-      <div class="diff-lines scroll-surface"><div class="highlight-width-track">${renderedLines}</div></div>
-    </section>
-  `;
-}
-
-function renderPayloadChanges(candidates) {
-  const changes = candidates.map((candidate) => {
+    const before = decision.action === "add" ? [] : splitDiffLines(currentText);
+    const after = decision.action === "retire" ? [] : splitDiffLines(decision.proposedText);
+    const hostedRuleId = decision.action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || getEffectiveHostedRuleId(candidate);
+    return createPreviewFile(`rules/${hostedRuleId}.md`, candidate.title, before, after, false, candidate.sourceId);
+  });
+  const payload = candidates.map((candidate) => {
     const current = getDecision(candidate);
     const baseline = defaultDecision(candidate);
     const before = {
@@ -2574,42 +2428,264 @@ function renderPayloadChanges(candidates) {
     };
     const changedKeys = Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
     if (!changedKeys.length) return null;
-    return {
-      candidate,
-      before: Object.fromEntries(changedKeys.map((key) => [key, before[key]])),
-      after: Object.fromEntries(changedKeys.map((key) => [key, after[key]]))
-    };
+    if (!changedKeys.length) return null;
+    const changedBefore = Object.fromEntries(changedKeys.map((key) => [key, before[key]]));
+    const changedAfter = Object.fromEntries(changedKeys.map((key) => [key, after[key]]));
+    return createPreviewFile(`selection/${getEffectiveHostedRuleId(candidate)}.json`, candidate.title, JSON.stringify(changedBefore, null, 2).split("\n"), JSON.stringify(changedAfter, null, 2).split("\n"));
   }).filter(Boolean);
-  if (!changes.length) {
-    return renderPreviewEmptyState(
-      "diff",
-      "No Payload Changes",
-      "Add or update a Promotion Plan item to review its selection payload changes."
-    );
-  }
-  return changes.map(({ candidate, before, after }) => {
-    const beforeLines = JSON.stringify(before, null, 2).split("\n");
-    const afterLines = JSON.stringify(after, null, 2).split("\n");
-    return `
-      <section class="payload-change" aria-label="${escapeHtml(candidate.id)} selection payload changes">
-        <div class="payload-change-heading"><div><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><span>${escapeHtml(candidate.title)}</span></div></div>
-        <div class="payload-columns">
-          ${renderPayloadColumn("Default", beforeLines, "delete")}
-          ${renderPayloadColumn("Current", afterLines, "add")}
-        </div>
-      </section>
-    `;
-  }).join("");
+  const proposedPayload = buildApprovalPayload();
+  const currentPayload = {
+    ...structuredClone(proposedPayload),
+    bulkOperations: [],
+    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, defaultDecision(candidate), null))
+  };
+  const raw = candidates.length
+    ? [createPreviewFile("selection/promotion-selection.json", "Complete promotion selection payload", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true)]
+    : [];
+  return { proposed, payload, raw };
 }
 
-function renderPayloadColumn(label, lines, type) {
-  const marker = type === "add" ? "+" : "-";
+function buildApprovalDecision(candidate, decision, override = getApplicabilityOverride(candidate)) {
+  const assessment = getAssessment(candidate, decision);
+  return {
+    sourceType: candidate.sourceType,
+    sourceId: candidate.sourceId,
+    candidateId: candidate.assessment.assessmentId,
+    sourcePath: candidate.sourcePath,
+    sourceRationale: candidate.sourceRationale || null,
+    provenance: candidate.provenance,
+    sourceContentSha256: candidate.hash,
+    catalogStatus: getCatalogStatus(candidate).key,
+    hostedRuleId: candidate.assessment.targetHostedRuleId,
+    proposedHostedRuleId: decision.proposedHostedRuleId.trim(),
+    action: decision.action,
+    inPlan: decision.inPlan,
+    planMembership: { source: decision.planMembershipSource, bulkOperationId: decision.bulkOperationId },
+    rationale: decision.rationale.trim(),
+    proposedText: decision.proposedText,
+    recommendation: assessment.recommendation,
+    hostedCategory: assessment.hostedCategory,
+    applicabilityOverride: override
+  };
+}
+
+function createPreviewFile(path, title, beforeLines, afterLines, contextual = false, sourceId = "") {
+  const rows = alignPreviewLines(beforeLines, afterLines);
+  return {
+    path,
+    title,
+    sourceId,
+    rows,
+    contextual,
+    additions: rows.filter((row) => row.changed && row.newText !== undefined).length,
+    deletions: rows.filter((row) => row.changed && row.oldText !== undefined).length
+  };
+}
+
+function alignPreviewLines(beforeLines, afterLines) {
+  const rows = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+  let beforeLine = 1;
+  let afterLine = 1;
+  const lookahead = 300;
+  const appendChanges = (before, after) => {
+    const count = Math.max(before.length, after.length);
+    for (let index = 0; index < count; index += 1) {
+      rows.push({ changed: true, oldText: before[index], oldLine: before[index] === undefined ? undefined : beforeLine++, newText: after[index], newLine: after[index] === undefined ? undefined : afterLine++ });
+    }
+  };
+  while (beforeIndex < beforeLines.length || afterIndex < afterLines.length) {
+    if (beforeIndex < beforeLines.length && afterIndex < afterLines.length && beforeLines[beforeIndex] === afterLines[afterIndex]) {
+      rows.push({ changed: false, oldText: beforeLines[beforeIndex], oldLine: beforeLine++, newText: afterLines[afterIndex], newLine: afterLine++ });
+      beforeIndex += 1;
+      afterIndex += 1;
+      continue;
+    }
+    let match = null;
+    const beforeLimit = Math.min(lookahead, beforeLines.length - beforeIndex);
+    const afterLimit = Math.min(lookahead, afterLines.length - afterIndex);
+    for (let distance = 1; distance <= beforeLimit + afterLimit && !match; distance += 1) {
+      for (let beforeOffset = 0; beforeOffset <= Math.min(distance, beforeLimit); beforeOffset += 1) {
+        const afterOffset = distance - beforeOffset;
+        if (afterOffset > afterLimit || beforeLines[beforeIndex + beforeOffset] !== afterLines[afterIndex + afterOffset]) continue;
+        const nextMatches = beforeLines[beforeIndex + beforeOffset + 1] === afterLines[afterIndex + afterOffset + 1]
+          || beforeIndex + beforeOffset + 1 >= beforeLines.length
+          || afterIndex + afterOffset + 1 >= afterLines.length;
+        if (nextMatches) {
+          match = { beforeOffset, afterOffset };
+          break;
+        }
+      }
+    }
+    if (!match) {
+      appendChanges(beforeLines.slice(beforeIndex), afterLines.slice(afterIndex));
+      break;
+    }
+    appendChanges(beforeLines.slice(beforeIndex, beforeIndex + match.beforeOffset), afterLines.slice(afterIndex, afterIndex + match.afterOffset));
+    beforeIndex += match.beforeOffset;
+    afterIndex += match.afterOffset;
+  }
+  return rows;
+}
+
+function renderPreviewFiles(files, emptyTitle, emptyMessage) {
+  if (!files.length) return renderPreviewEmptyState("diff", emptyTitle, emptyMessage);
+  return files.map(renderPreviewFile).join("");
+}
+
+function renderPreviewFile(file) {
+  const rows = file.contextual ? createContextualPreviewRows(file.rows) : file.rows.map((row) => ({ type: "line", row }));
+  const changeCount = file.additions + file.deletions;
   return `
-    <div class="payload-column ${type}">
-      <div class="payload-column-heading">${label}</div>
-      <div class="payload-code scroll-surface"><div class="highlight-width-track">${lines.map((line, index) => `<div class="payload-line"><span class="payload-line-number">${index + 1}</span><span class="payload-line-marker" aria-hidden="true">${marker}</span><code>${escapeHtml(line)}</code></div>`).join("")}</div></div>
-    </div>
+    <section class="preview-review-file" data-preview-file-path="${escapeHtml(file.path)}" ${file.sourceId ? `data-preview-source-id="${escapeHtml(file.sourceId)}"` : ""}>
+      <div class="preview-file-heading">
+        <button class="preview-icon-button clickable" type="button" data-preview-file-collapse aria-label="Collapse ${escapeHtml(file.path)}">${icon("chevron-down")}</button>
+        <span class="preview-change-count">${changeCount}</span>
+        ${renderPreviewDiffStat(file.additions, file.deletions)}
+        <code class="preview-file-path">${escapeHtml(file.path)}</code>
+        <button class="preview-icon-button clickable" type="button" data-preview-copy-path="${escapeHtml(file.path)}" aria-label="Copy ${escapeHtml(file.path)} path" data-workbench-tooltip="Copy path">${octicon("copy")}</button>
+        <span class="preview-file-title" data-truncation-tooltip>${escapeHtml(file.title)}</span>
+        <label class="preview-viewed clickable"><input type="checkbox" data-preview-viewed><span>Viewed</span></label>
+      </div>
+      <div class="preview-file-body"><div class="preview-split-labels"><span>Current file</span><span>Changes</span></div><div class="preview-contextual-diff">${rows.map(renderPreviewDiffRow).join("")}</div></div>
+    </section>
   `;
+}
+
+function renderPreviewDiffStat(additions, deletions) {
+  const total = Math.max(1, additions + deletions);
+  const addBlocks = Math.round(5 * additions / total);
+  return `<span class="preview-diff-stat" aria-label="${additions} additions and ${deletions} deletions">${Array.from({ length: 5 }, (_, index) => `<i class="${index < addBlocks ? "add" : "delete"}"></i>`).join("")}</span>`;
+}
+
+function createContextualPreviewRows(rows) {
+  const visible = new Set();
+  rows.forEach((row, index) => {
+    if (!row.changed) return;
+    for (let offset = -PREVIEW_CONTEXT_LINE_COUNT; offset <= PREVIEW_CONTEXT_LINE_COUNT; offset += 1) {
+      if (index + offset >= 0 && index + offset < rows.length) visible.add(index + offset);
+    }
+  });
+  const rendered = [];
+  let index = 0;
+  while (index < rows.length) {
+    if (rows[index].changed || visible.has(index)) {
+      rendered.push({ type: "line", row: rows[index] });
+      index += 1;
+      continue;
+    }
+    const start = index;
+    while (index < rows.length && !rows[index].changed && !visible.has(index)) index += 1;
+    rendered.push({ type: "gap", direction: start === 0 ? "up" : index === rows.length ? "down" : "all", rows: rows.slice(start, index) });
+  }
+  return rendered;
+}
+
+function renderPreviewDiffRow(item) {
+  if (item.type === "gap") return renderPreviewContextGap(item);
+  const row = item.row;
+  return `<div class="preview-split-row ${row.changed ? "changed" : "context"}">${renderPreviewDiffCell(row.oldText, row.oldLine, row.changed ? "delete" : "context")}${renderPreviewDiffCell(row.newText, row.newLine, row.changed ? "add" : "context")}</div>`;
+}
+
+function renderPreviewDiffCell(text, line, type) {
+  if (text === undefined) return '<div class="preview-diff-cell empty"></div>';
+  const marker = type === "add" ? "+" : type === "delete" ? "-" : "";
+  return `<div class="preview-diff-cell ${type}"><span class="preview-line-number">${line}</span><span class="preview-line-marker" aria-hidden="true">${marker}</span><code>${escapeHtml(text)}</code></div>`;
+}
+
+function renderPreviewContextGap(gap) {
+  const iconName = gap.direction === "up" ? "fold-up" : gap.direction === "down" ? "fold-down" : "unfold";
+  const label = gap.direction === "up" ? "Expand Up" : gap.direction === "down" ? "Expand Down" : "Expand All";
+  return `<div class="preview-context-gap" data-preview-context-gap><button class="preview-context-expand clickable" type="button" data-preview-context-direction="${gap.direction}" aria-label="${label}" data-workbench-tooltip="${label} (${gap.rows.length} hidden lines)">${octicon(iconName)}</button><code>@@ -${gap.rows[0]?.oldLine || 0},${gap.rows.length} +${gap.rows[0]?.newLine || 0},${gap.rows.length} @@</code><template>${gap.rows.map((row) => renderPreviewDiffRow({ type: "line", row })).join("")}</template></div>`;
+}
+
+function showPreviewReviewScope(scope) {
+  if (!Object.hasOwn(previewFilesByScope, scope)) scope = "proposed";
+  state.previewReviewScope = scope;
+  elements["preview-review-scope"].value = scope;
+  document.querySelector(".preview-proposed-review").hidden = scope !== "proposed";
+  document.querySelector(".payload-review").hidden = scope !== "payload";
+  document.querySelector(".preview-raw-payload").hidden = scope !== "raw";
+  const files = previewFilesByScope[scope];
+  const additions = files.reduce((sum, file) => sum + file.additions, 0);
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
+  elements["preview-review-context"].innerHTML = `<strong>${files.length} file${files.length === 1 ? "" : "s"} changed</strong><span>+${additions} -${deletions}</span>`;
+  renderPreviewFileTree(files);
+  elements["preview-code"].scrollTop = 0;
+}
+
+function renderPreviewFileTree(files) {
+  elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter changed files" aria-label="Filter changed files"></label><nav class="preview-file-tree" aria-label="Changed files">${files.map((file) => `<button class="preview-file-tree-item clickable" type="button" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}">${icon(file.path.endsWith(".json") ? "json" : "markdown")}<span>${escapeHtml(file.path)}</span><i></i></button>`).join("")}</nav>`;
+}
+
+function handlePreviewFileFilter(event) {
+  if (!event.target.matches('input[type="search"]')) return;
+  const query = event.target.value.trim().toLowerCase();
+  elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((button) => {
+    button.hidden = !button.textContent.toLowerCase().includes(query);
+  });
+}
+
+function handlePreviewFileNavigation(event) {
+  const button = event.target.closest("[data-preview-file-jump]");
+  if (!button) return;
+  elements["preview-code"].querySelector(`[data-preview-file-path="${CSS.escape(button.dataset.previewFileJump)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((item) => item.classList.toggle("active", item === button));
+}
+
+async function handlePreviewReviewClick(event) {
+  if (event.target.closest("#preview-review-toggle")) {
+    elements["preview-review-popover"].hidden = !elements["preview-review-popover"].hidden;
+    return;
+  }
+  if (event.target.closest("#preview-review-close")) {
+    elements["preview-review-popover"].hidden = true;
+    return;
+  }
+  const collapse = event.target.closest("[data-preview-file-collapse]");
+  if (collapse) {
+    const body = collapse.closest("[data-preview-file-path]").querySelector(".preview-file-body");
+    body.hidden = !body.hidden;
+    collapse.setAttribute("aria-expanded", String(!body.hidden));
+    collapse.innerHTML = icon(`chevron-${body.hidden ? "right" : "down"}`);
+    return;
+  }
+  const copyPath = event.target.closest("[data-preview-copy-path]");
+  if (copyPath) {
+    await navigator.clipboard.writeText(copyPath.dataset.previewCopyPath);
+    showToast("File path copied");
+    return;
+  }
+  const expand = event.target.closest("[data-preview-context-direction]");
+  if (!expand) return;
+  const gap = expand.closest("[data-preview-context-gap]");
+  const rows = [...gap.querySelector("template").content.children];
+  const direction = expand.dataset.previewContextDirection;
+  const selectedRows = direction === "all" ? rows : direction === "up" ? rows.slice(-PREVIEW_DIRECTIONAL_EXPAND_COUNT) : rows.slice(0, PREVIEW_DIRECTIONAL_EXPAND_COUNT);
+  const fragment = document.createDocumentFragment();
+  selectedRows.forEach((row) => fragment.appendChild(row));
+  if (direction === "up") gap.after(fragment);
+  else gap.before(fragment);
+  updatePreviewContextGap(gap);
+}
+
+function updatePreviewContextGap(gap) {
+  const rows = [...gap.querySelector("template").content.children];
+  if (!rows.length) {
+    gap.remove();
+    return;
+  }
+  const firstOld = rows[0].querySelector(".preview-diff-cell:first-child .preview-line-number")?.textContent || "0";
+  const firstNew = rows[0].querySelector(".preview-diff-cell:last-child .preview-line-number")?.textContent || "0";
+  gap.querySelector(":scope > code").textContent = `@@ -${firstOld},${rows.length} +${firstNew},${rows.length} @@`;
+  const button = gap.querySelector("[data-preview-context-direction]");
+  button.dataset.workbenchTooltip = `${button.getAttribute("aria-label")} (${rows.length} hidden lines)`;
+}
+
+function handlePreviewReviewChange(event) {
+  const viewed = event.target.closest("[data-preview-viewed]");
+  if (viewed) viewed.closest("[data-preview-file-path]").classList.toggle("viewed", viewed.checked);
 }
 
 function splitDiffLines(text) {
@@ -2926,33 +3002,7 @@ function buildApprovalPayload() {
     snapshots: state.session.snapshots,
     inapplicableCandidateCount: state.excludedCandidateCount,
     bulkOperations: state.session.bulkOperations,
-    decisions: state.candidates.map((candidate) => {
-      const decision = getDecision(candidate);
-      const assessment = getAssessment(candidate, decision);
-      return {
-        sourceType: candidate.sourceType,
-        sourceId: candidate.sourceId,
-        candidateId: candidate.assessment.assessmentId,
-        sourcePath: candidate.sourcePath,
-        sourceRationale: candidate.sourceRationale || null,
-        provenance: candidate.provenance,
-        sourceContentSha256: candidate.hash,
-        catalogStatus: getCatalogStatus(candidate).key,
-        hostedRuleId: candidate.assessment.targetHostedRuleId,
-        proposedHostedRuleId: decision.proposedHostedRuleId.trim(),
-        action: decision.action,
-        inPlan: decision.inPlan,
-        planMembership: {
-          source: decision.planMembershipSource,
-          bulkOperationId: decision.bulkOperationId
-        },
-        rationale: decision.rationale.trim(),
-        proposedText: decision.proposedText,
-        recommendation: assessment.recommendation,
-        hostedCategory: assessment.hostedCategory,
-        applicabilityOverride: getApplicabilityOverride(candidate)
-      };
-    })
+    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, getDecision(candidate)))
   };
 }
 
@@ -3070,15 +3120,6 @@ async function importDraft(event) {
     showToast("Draft imported");
   } catch (error) {
     showToast(error.message, true);
-  }
-}
-
-async function copyPreview() {
-  try {
-    await navigator.clipboard.writeText(elements["preview-json"].textContent);
-    showToast("Draft payload copied");
-  } catch {
-    showToast("Clipboard access was unavailable", true);
   }
 }
 

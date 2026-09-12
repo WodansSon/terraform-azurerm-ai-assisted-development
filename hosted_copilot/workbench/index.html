@@ -198,77 +198,54 @@
         <div class="preview-layout">
           <section class="preview-summary scroll-surface type-ui">
             <div class="preview-sidebar-title">
-              <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
-              <span>Approval</span>
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-files"></use></svg>
+              <span>Changed files</span>
             </div>
             <div id="preview-summary"></div>
-            <div class="approval-controls">
-              <label for="approver-name">Approver Name</label>
-              <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
-              <section class="approval-requirements" id="approval-requirements" aria-label="Approval requirements"></section>
-              <button class="button primary clickable" id="approve-export-button" type="button" disabled>
-                <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
-                Approve &amp; Export
-              </button>
-              <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
-            </div>
           </section>
-          <section class="preview-code scroll-surface type-editor">
-            <details class="preview-proposed-review preview-review-disclosure" open>
-              <summary class="panel-heading clickable">
-                <div>
-                  <p class="eyebrow">Change review</p>
-                  <h3>Proposed Changes</h3>
-                </div>
-                <span class="preview-section-chevron" aria-hidden="true">
-                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
-                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
-                </span>
-              </summary>
-              <div class="preview-diff" id="preview-diff"></div>
-            </details>
-            <details class="payload-review preview-review-disclosure" aria-labelledby="payload-review-heading" open>
-              <summary class="payload-review-heading clickable">
-                <div>
-                  <p class="eyebrow">Selection review</p>
-                  <h3 id="payload-review-heading">Payload Changes</h3>
-                </div>
-                <span class="preview-section-chevron" aria-hidden="true">
-                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
-                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
-                </span>
-              </summary>
-              <div id="preview-payload-diff"></div>
-            </details>
-            <details class="preview-raw-payload preview-review-disclosure" open>
-              <summary class="clickable">
-                <span>Raw Selection Payload</span>
-                <span class="preview-section-chevron" aria-hidden="true">
-                  <svg class="octicon disclosure-chevron disclosure-chevron-closed"><use href="icons/octicons/sprite.svg#octicon-chevron-right-12"></use></svg>
-                  <svg class="octicon disclosure-chevron disclosure-chevron-open"><use href="icons/octicons/sprite.svg#octicon-chevron-down-12"></use></svg>
-                </span>
-              </summary>
-              <div class="preview-raw-heading" id="preview-raw-heading">
-                <span>JSON</span>
-                <div class="raw-change-tools" id="raw-change-tools" hidden>
-                  <span class="raw-change-legend" id="raw-change-count"></span>
-                  <div class="raw-change-navigation" aria-label="Raw payload change navigation">
-                    <button class="icon-button clickable" id="raw-previous-change" type="button" data-workbench-tooltip="Previous added or updated record" aria-label="Previous added or updated record">
-                      <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-up"></use></svg>
-                    </button>
-                    <span class="raw-change-position" id="raw-change-position" aria-live="polite"></span>
-                    <button class="icon-button clickable" id="raw-next-change" type="button" data-workbench-tooltip="Next added or updated record" aria-label="Next added or updated record">
-                      <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-down"></use></svg>
-                    </button>
-                  </div>
-                </div>
-                <button class="icon-button clickable" id="copy-preview-button" type="button" data-workbench-tooltip="Copy selection payload" aria-label="Copy selection payload">
-                  <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-copy-16"></use></svg>
+          <section class="preview-code scroll-surface type-editor" id="preview-code">
+            <div class="preview-review-toolbar">
+              <div class="preview-review-context" id="preview-review-context"></div>
+              <div class="preview-review-actions">
+                <label class="preview-review-scope-label" for="preview-review-scope">
+                  <span>Review</span>
+                  <select id="preview-review-scope">
+                    <option value="proposed">Proposed changes</option>
+                    <option value="payload">Payload changes</option>
+                    <option value="raw">Raw selection payload</option>
+                  </select>
+                </label>
+                <button class="preview-review-button clickable" id="preview-review-toggle" type="button">Review changes</button>
+              </div>
+            </div>
+            <div class="preview-review-popover" id="preview-review-popover" hidden>
+              <div class="preview-review-popover-heading">
+                <strong>Review changes</strong>
+                <button class="preview-icon-button clickable" id="preview-review-close" type="button" aria-label="Close review changes" data-workbench-tooltip="Close review changes">
+                  <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg>
                 </button>
               </div>
+              <div class="approval-controls">
+                <label for="approver-name">Approver Name</label>
+                <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
+                <section class="approval-requirements" id="approval-requirements" aria-label="Approval requirements"></section>
+                <button class="button primary clickable" id="approve-export-button" type="button" disabled>
+                  <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
+                  Approve &amp; Export
+                </button>
+                <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
+              </div>
+            </div>
+            <section class="preview-proposed-review">
+              <div class="preview-diff" id="preview-diff"></div>
+            </section>
+            <section class="payload-review" hidden>
+              <div id="preview-payload-diff"></div>
+            </section>
+            <section class="preview-raw-payload" hidden>
               <div id="raw-payload-empty" hidden></div>
-              <pre class="scroll-surface" id="preview-json"></pre>
-            </details>
+              <div id="preview-json"></div>
+            </section>
           </section>
         </div>
       </section>

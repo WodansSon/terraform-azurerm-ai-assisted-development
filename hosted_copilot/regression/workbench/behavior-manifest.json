@@ -50,6 +50,31 @@
       "journey": "playwright/journeys/candidate-decorations.journey.cjs"
     },
     {
+      "id": "WB-UX-PREVIEW-001",
+      "title": "Promotion Preview uses synchronized changed-file navigation across review scopes",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-002",
+      "title": "Proposed and payload changes use contained split-file review surfaces",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-003",
+      "title": "Raw selection payload remains one contextual full-file diff",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-004",
+      "title": "Raw context controls use local directional Octicons and ten-line expansion",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-005",
+      "title": "Review approval remains accessible in responsive changed-file review",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
       "id": "WB-UX-STICKY-001",
       "title": "Candidate tree preserves sticky source category and column context",
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"

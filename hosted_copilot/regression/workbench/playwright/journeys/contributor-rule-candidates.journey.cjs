@@ -163,19 +163,19 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(!boundary.overlap && !boundary.metadataOverflow && !boundary.inputOverflow, "32-character proposed Hosted rule ID overlaps or overflows at 768px");
   assert(boundary.stylesMatch, "proposed Hosted rule ID field does not match Decision Rationale control colors and geometry");
 
-  const propagated = await page.evaluate((candidateKey) => {
+  const propagated = await page.evaluate(({ candidateKey, fullLengthId }) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
     const treeId = document.querySelector(`[data-candidate-key="${CSS.escape(candidateKey)}"] .candidate-tree-copy strong`)?.textContent;
     const detailId = document.querySelector("#assessment-panel > .assessment-title .detail-identity span:last-child")?.textContent;
     switchView("plan");
     const planId = document.querySelector(`[data-plan-row="${CSS.escape(candidateKey)}"] .candidate-link`)?.textContent;
     switchView("preview");
-    const previewId = [...document.querySelectorAll(".preview-change")]
-      .find((item) => item.getAttribute("aria-label")?.includes(candidate.assessment.assessmentId))
-      ?.querySelector(".diff-file-heading > span")?.textContent;
+    const previewId = [...document.querySelectorAll(".preview-proposed-review [data-preview-file-path]")]
+      .find((item) => item.dataset.previewFilePath === `rules/${fullLengthId}.md`)
+      ?.dataset.previewFilePath.replace(/^rules\//, "").replace(/\.md$/, "");
     const payloadDecision = buildApprovalPayload().decisions.find((item) => item.candidateId === candidate.assessment.assessmentId);
     return { treeId, detailId, planId, previewId, payloadDecision, readiness: getPreviewReadiness() };
-  }, structure.addCandidate);
+  }, { candidateKey: structure.addCandidate, fullLengthId });
   assert([propagated.treeId, propagated.detailId, propagated.planId, propagated.previewId].every((value) => value === fullLengthId), "accepted proposed Hosted rule ID does not propagate across Workbench views");
   assert(propagated.payloadDecision.proposedHostedRuleId === fullLengthId && propagated.payloadDecision.hostedRuleId === null, "approval payload does not separate proposed and existing Hosted rule identities");
   assert(propagated.readiness.ready, "valid proposed Hosted rule ID does not restore approval readiness");
@@ -296,14 +296,14 @@ async function run({ page, baseUrl, assert, playback }) {
       rationale: "The source adds PUT preference while preserving the existing PATCH clearing safeguard."
     });
     switchView("preview");
-    const card = [...document.querySelectorAll(".preview-change")].find((item) => item.getAttribute("aria-label")?.includes("IMPL-PATCH-001"));
+    const card = document.querySelector('[data-preview-file-path="rules/IMPL-PATCH-001.md"]');
     const payload = buildApprovalPayload();
     const decision = payload.decisions.find((item) => item.candidateId === "IMPL-PATCH-001");
     return {
-      heading: card?.querySelector(".preview-change-heading strong")?.textContent,
-      target: card?.querySelector(".diff-file-heading > span")?.textContent,
-      deleted: [...(card?.querySelectorAll(".diff-line.delete code") || [])].map((line) => line.textContent),
-      added: [...(card?.querySelectorAll(".diff-line.add code") || [])].map((line) => line.textContent),
+      heading: card?.dataset.previewSourceId?.toUpperCase(),
+      target: card?.dataset.previewFilePath?.replace(/^rules\//, "").replace(/\.md$/, ""),
+      deleted: [...(card?.querySelectorAll(".preview-diff-cell.delete code") || [])].map((line) => line.textContent),
+      added: [...(card?.querySelectorAll(".preview-diff-cell.add code") || [])].map((line) => line.textContent),
       decision,
       hasMappedHostedRuleIds: Object.hasOwn(decision, "mappedHostedRuleIds")
     };

@@ -112,16 +112,16 @@ async function run({ page, baseUrl, assert, playback }) {
 
     await page.locator('[data-view="preview"]').click();
     const preview = await page.evaluate(() => ({
-      proposedChangeCount: document.querySelectorAll("#preview-diff .preview-change").length,
-      payloadChangeCount: document.querySelectorAll("#preview-payload-diff .payload-change").length,
-      rawPayloadVisible: !document.querySelector("#preview-json").hidden,
+      proposedChangeCount: document.querySelectorAll("#preview-diff .preview-review-file").length,
+      payloadChangeCount: document.querySelectorAll("#preview-payload-diff .preview-review-file").length,
+      rawChangeCount: document.querySelectorAll("#preview-json .preview-review-file").length,
       proposedEmptyTitle: document.querySelector("#preview-diff .preview-empty-state h3")?.textContent,
       payloadEmptyTitle: document.querySelector("#preview-payload-diff .preview-empty-state h3")?.textContent,
-      rawEmptyTitle: document.querySelector("#raw-payload-empty .preview-empty-state h3")?.textContent
+      rawEmptyTitle: document.querySelector("#preview-json .preview-empty-state h3")?.textContent
     }));
     assert(preview.proposedChangeCount === 0 && preview.proposedEmptyTitle === "No Proposed Changes", "Unselected decision remained in Proposed Changes");
     assert(preview.payloadChangeCount === 0 && preview.payloadEmptyTitle === "No Payload Changes", "Unselected decision remained in Payload Changes");
-    assert(!preview.rawPayloadVisible && preview.rawEmptyTitle === "No Raw Payload Changes", "Unselected decision remained in Raw Selection Payload");
+    assert(preview.rawChangeCount === 0 && preview.rawEmptyTitle === "No Raw Payload Changes", "Unselected decision remained in Raw Selection Payload");
   } finally {
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;
