@@ -17,13 +17,13 @@ Migration patterns and upgrade procedures for the Terraform AzureRM provider inc
 
 | Scenario | Action | Approach |
 | -------- | ------ | -------- |
-| New source | Always use Typed Resource Implementation | Start with typed from day one |
-| Bug Fix (< 5 lines) | Maintain Untyped Implementation | Quick fix in existing pattern |
-| Feature Addition (< 50 lines) | Consider migration if touching >30% of resource | Evaluate cost/benefit |
-| Major Refactor (> 50 lines) | Migrate to Typed Implementation | Plan migration with comprehensive testing |
-| EOL/Deprecation Planning | Plan Typed Migration | Include in deprecation timeline |
+| New ordinary managed resource or data source | Use the current typed implementation standard | Start with `internal/sdk` |
+| New list resource, ephemeral resource, or provider-defined function | Use the framework-native model for that surface | Follow the nearest framework-specific pattern |
+| Maintenance of an existing legacy untyped implementation | Preserve the legacy model | Do not turn maintenance into incidental migration |
+| Maintenance of an existing typed implementation | Preserve the typed model | Use receiver-based `internal/sdk` patterns |
+| Explicit migration | Use the destination model named by the approved task or migration plan | Preserve behavior with comprehensive validation |
 
-### Service Registration During Migration
+### Service Registration During Typed Migration
 
 **Dual Registration Pattern:**
 Services often need to be registered in both lists temporarily during migration:

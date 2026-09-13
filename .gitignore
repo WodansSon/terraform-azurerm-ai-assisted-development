@@ -12,6 +12,9 @@ Thumbs.db
 *.bak
 *.backup
 
+# Local-only maintainer documentation
+local-only-docs/
+
 # Installer artifacts
 installer/aii.checksum
 
@@ -19,3 +22,8 @@ installer/aii.checksum
 tools/regression/runs/
 tools/regression/results/latest/
 tools/regression/results/history/
+
+# Hosted Toolkit generated review artifacts
+hosted_copilot/regression/raw/
+hosted_copilot/regression/results/
+hosted_copilot/tools/node_modules/

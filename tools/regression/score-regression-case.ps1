@@ -15,6 +15,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 if ($AsJson) {
     $Output = "json"
 }
@@ -174,14 +177,17 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression score summary"
-Write-Output "  Case             : $($summary.caseId)"
-Write-Output "  Task             : $($summary.task)"
-Write-Output "  Pass             : $($summary.pass)"
-Write-Output "  Overall Score    : $($summary.overallScore)"
-Write-Output "  Must-catch Recall: $($summary.scores.mustCatchRecall)"
-Write-Output "  False Positives  : $($summary.scores.falsePositiveControl)"
-Write-Output "  Severity         : $($summary.scores.severityCorrectness)"
-Write-Output "  Scope/Tool       : $($summary.scores.scopeAndToolCorrectness)"
-Write-Output "  Output           : $($summary.scores.outputCompliance)"
-Write-Output "  Determinism      : $($summary.scores.determinism)"
+Write-ValidationSectionHeader -Title 'Regression score summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    Case = $summary.caseId
+    Task = $summary.task
+    Pass = $summary.pass
+    'Overall Score' = $summary.overallScore
+    'Must-catch Recall' = $summary.scores.mustCatchRecall
+    'False Positives' = $summary.scores.falsePositiveControl
+    Severity = $summary.scores.severityCorrectness
+    'Scope/Tool' = $summary.scores.scopeAndToolCorrectness
+    Output = $summary.scores.outputCompliance
+    Determinism = $summary.scores.determinism
+})
+Complete-ValidationTextOutput

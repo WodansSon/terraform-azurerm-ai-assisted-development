@@ -81,7 +81,9 @@ Rules:
 
 ## Default approach
 
-- Prefer the **typed resource** implementation style (internal SDK framework) for new resources.
+- Classify the target as legacy untyped Plugin SDK, typed `internal/sdk`, or framework-native before choosing implementation patterns.
+- Prefer the **typed resource** implementation style for new ordinary managed resources and data sources under the current contributor standard.
+- Preserve the existing model for maintenance work unless the task explicitly includes migration; do not infer migration from newer sibling code.
 - For new resources, treat Resource Identity as mandatory and treat the corresponding list resource as mandatory unless the documented maintainer exception path is explicitly used.
 - For ephemeral resources, use the service-local `*_ephemeral.go` pattern with `sdk.EphemeralResource`, `Open(...)`, and registration through `EphemeralResources()`.
 - For provider-defined functions, use the `internal/provider/function/` pattern with `Metadata`, `Definition`, and `Run`.

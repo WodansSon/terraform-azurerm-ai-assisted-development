@@ -13,10 +13,6 @@ Purpose:
 
 This is a repo-only maintainer document. It is not runtime payload and must not be added to `installer/file-manifest.config`.
 
-Actionable follow-up inventory:
-
-- `docs/AI_CUSTOMIZATION_MIGRATION_INVENTORY.md`
-
 ## First-Party Basis
 
 This standard is based on the current first-party guidance from:
@@ -316,7 +312,6 @@ Current direction for runtime skills:
 
 - `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md`
 - `docs/AI_CUSTOMIZATION_ARCHITECTURE_STANDARD.md`
-- `docs/AI_CUSTOMIZATION_MIGRATION_INVENTORY.md`
 - `docs/AI_REGRESSION_HARNESS.md`
 - `docs/CODE_REVIEW_RULES.md`
 - `docs/ARCHITECTURE.md`

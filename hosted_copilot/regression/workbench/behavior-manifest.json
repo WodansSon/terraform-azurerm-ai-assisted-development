@@ -1,0 +1,318 @@
+{
+  "$schema": "behavior-manifest.schema.json",
+  "schemaVersion": 1,
+  "authority": "hosted_copilot/docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md",
+  "targetHarness": "playwright",
+  "behaviors": [
+    {
+      "id": "WB-UX-TREE-001",
+      "title": "Untouched candidate identities remain neutral",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-002",
+      "title": "Selected needs-input state propagates to ancestors",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-003",
+      "title": "Completed selection propagates ready state",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-004",
+      "title": "Trailing decorations preserve capped tree geometry and collapsed status",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-005",
+      "title": "Overrides root and leaf share aggregate readiness decoration",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-006",
+      "title": "Contested status pills remain centered text while sort headers retain chevrons",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-007",
+      "title": "Assessment categories truncate to one line with delayed full-text tooltips",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-008",
+      "title": "Contested status routes directly to Maintainer Override details",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-TREE-009",
+      "title": "Assessment Details distinguishes original override inclusion and catalog states",
+      "journey": "playwright/journeys/candidate-decorations.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-001",
+      "title": "Promotion Preview renders all review artifacts in one continuous changed-file document",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-002",
+      "title": "Review artifact folders disclose independently while file selection alone navigates the diff",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-003",
+      "title": "Split files use authenticated headers, status-aware tree icons, independent Viewed state, and uniform spacing",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-004",
+      "title": "Raw selection payload remains one contextual full-file diff with exact expansion controls",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-005",
+      "title": "Review approval remains accessible across responsive continuous-file layouts",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-006",
+      "title": "Review toolbar, tree, and diff scroller retain independent layer ownership",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-007",
+      "title": "Each file card owns a sticky header wrapper and sibling diff body",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-008",
+      "title": "Changed-file tree exposes an accessible draggable splitter",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-009",
+      "title": "File headers expose virtual artifact paths without changing navigation identity",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-010",
+      "title": "Changed-file summary pairs colored totals with a five-cell diffstat",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-011",
+      "title": "File-level line expansion remains reversible after any inline context expansion",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-012",
+      "title": "Changed-file tree navigation preserves chevron-owned file-card disclosure state",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-001",
+      "title": "Candidate tree preserves sticky source category and column context",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-002",
+      "title": "Collapsed candidate branches do not paint stale sticky content",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-003",
+      "title": "Candidate rows settle below stable sticky ancestry",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-004",
+      "title": "Candidate sorting preserves tree position and disclosure state",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-005",
+      "title": "Static candidate headers mirror folder disclosure state",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-006",
+      "title": "Sibling folder expansion preserves tree position",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-007",
+      "title": "Candidate hierarchy rows and terminal scrolling stay on a 40px grid",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-008",
+      "title": "Coarse wheel input preserves speed on a grid-aligned destination",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-009",
+      "title": "Assessment Results preserves contained 40px leaves through sorting",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-010",
+      "title": "Sticky child handoffs reuse a bounded prewarmed renderer pool",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-STICKY-011",
+      "title": "Candidate Sources parents start collapsed including Overrides",
+      "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PROVENANCE-001",
+      "title": "Contributor provenance tooltip retains concise complete text",
+      "journey": "playwright/journeys/provenance-tooltip.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PROVENANCE-002",
+      "title": "Contributor provenance tooltip anchors and clamps inside the viewport",
+      "journey": "playwright/journeys/provenance-tooltip.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CONTRIBUTOR-001",
+      "title": "Contributor documents are non-actionable candidate parents",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CONTRIBUTOR-002",
+      "title": "Contributor document requirements are independent rule candidates",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CONTRIBUTOR-003",
+      "title": "Update preview and payload use one semantic Hosted target",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-001",
+      "title": "Add candidates retain one proposed Hosted rule identity across views and exports",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-002",
+      "title": "Proposed Hosted rule identity validation blocks colliding Add decisions",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-003",
+      "title": "Proposed Hosted rule identity feedback remains stable at the supported viewport boundary",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-IDENTITY-004",
+      "title": "Mapped candidates expose and export their resulting Hosted identity",
+      "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SEARCH-001",
+      "title": "Candidate search preserves the tree and navigates to the best match",
+      "journey": "playwright/journeys/candidate-search-navigation.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-001",
+      "title": "Scrollbars hide while idle and reveal on interaction",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-002",
+      "title": "Scrollbar reveal and hide use asymmetric timing",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SCROLLBAR-003",
+      "title": "Scrollbars retain flat arrowless stable geometry",
+      "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-001",
+      "title": "Bulk Add creates a bulk-owned ready green hierarchy",
+      "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-002",
+      "title": "Manual edits remove bulk ownership and propagate incomplete amber state",
+      "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-003",
+      "title": "Completed manual decisions propagate ready green state",
+      "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-004",
+      "title": "Unselecting manual decisions removes preview projections and restores neutral hierarchy without losing edits",
+      "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-ZOOM-001",
+      "title": "Browser zoom enlarges content while preserving the physical window",
+      "journey": "playwright/journeys/browser-zoom.journey.cjs"
+    },
+    {
+      "id": "WB-UX-ZOOM-002",
+      "title": "Browser zoom reduces the CSS viewport proportionally",
+      "journey": "playwright/journeys/browser-zoom.journey.cjs"
+    },
+    {
+      "id": "WB-UX-ZOOM-003",
+      "title": "Browser zoom preserves usable Workbench layout through 200 percent",
+      "journey": "playwright/journeys/browser-zoom.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-001",
+      "title": "Mobile rejection and contained viewport scrolling work at every boundary",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-002",
+      "title": "Rule Action changes preserve Details context",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-003",
+      "title": "Promotion Plan toggles preserve Details context",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-004",
+      "title": "Plan membership synchronizes across Candidate panes",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-005",
+      "title": "Decision Rationale save layout remains accessible and contained",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-006",
+      "title": "Overrides decorations remain consistent at every supported viewport",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-007",
+      "title": "Bulk Actions preserve ownership, disclosures, and tree identity",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-008",
+      "title": "Status tooltip geometry remains contained at every supported viewport",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-009",
+      "title": "Provenance tooltip geometry remains contained at every supported viewport",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-VIEWPORT-010",
+      "title": "Candidate, Assessment, Plan, and Preview panes retain fixed controls",
+      "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    }
+  ]
+}

@@ -7,6 +7,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 
@@ -232,22 +235,24 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
-    Write-Output 'Changelog taxonomy validation summary'
-    Write-Output ("  Status            : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Changelog Path    : {0}" -f $result.changelogPath)
-    Write-Output ("  Section           : {0}" -f $result.section)
-    Write-Output ("  Bullets Checked   : {0}" -f $result.bulletsChecked)
-    Write-Output ("  Issue Count       : {0}" -f $result.issueCount)
-    Write-Output ("  Approved Taxonomy : {0}" -f (($approvedTaxonomy | ForEach-Object { "[{0}]" -f $_ }) -join ', '))
-    Write-Output ("  Group Order       : {0}" -f (($groupOrder | ForEach-Object { "[{0}]" -f $_ }) -join ' -> '))
+    Write-ValidationSectionHeader -Title 'Changelog taxonomy validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        'Changelog Path' = $result.changelogPath
+        Section = $result.section
+        'Bullets Checked' = $result.bulletsChecked
+        'Issue Count' = $result.issueCount
+        'Approved Taxonomy' = (($approvedTaxonomy | ForEach-Object { "[{0}]" -f $_ }) -join ', ')
+        'Group Order' = (($groupOrder | ForEach-Object { "[{0}]" -f $_ }) -join ' -> ')
+    })
 
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Issues'
+        Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {
             Write-Output ("  - {0}" -f $issue)
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

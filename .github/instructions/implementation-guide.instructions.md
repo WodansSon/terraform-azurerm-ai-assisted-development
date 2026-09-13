@@ -42,20 +42,26 @@ Workflow note:
 
 ### Implementation Approach Overview
 
-This provider supports two implementation approaches:
+This provider contains three concurrent implementation models. Classify the target before choosing a pattern, and preserve its current model unless the task explicitly includes migration.
 
-#### **Typed Resource Implementation (Preferred)**
+#### **Legacy Untyped Plugin SDK (Maintenance)**
+- Uses traditional Plugin SDK patterns with function-based CRUD
+- Employs direct schema manipulation and `d.Set()`/`d.Get()` patterns
+- Represents most existing managed resources and data sources
+- **Maintain for existing files, but do not use for new implementation without an explicit evidence-backed exception**
+
+#### **Typed `internal/sdk` Implementation (Current Ordinary Default)**
 - Uses the `internal/sdk` framework with type-safe models
 - Employs receiver methods on resource/data source structs
 - Features structured state management with `tfschema` tags
 - Provides enhanced error handling and logging through metadata
-- **Recommended for all new resources and data sources**
+- **Use for new ordinary managed resources and data sources under current published contributor guidance**
 
-#### **Untyped Resource Implementation (Maintenance)**
-- Uses traditional Plugin SDK patterns with function-based CRUD
-- Employs direct schema manipulation and `d.Set()`/`d.Get()` patterns
-- Features traditional error handling and state management
-- **Maintained for existing resources but not recommended for new development**
+#### **Framework-Native Implementation (Newest Direction)**
+- Uses Terraform Plugin Framework APIs or provider framework wrappers for framework-native behavior
+- Currently owns specialized surfaces such as list resources, ephemeral resources, and provider-defined functions
+- May become the destination for additional explicitly planned migrations as provider support evolves
+- **Do not apply framework-native lifecycle patterns to legacy or typed files unless the task explicitly authorizes migration**
 
 ### Implementation Model Identification
 

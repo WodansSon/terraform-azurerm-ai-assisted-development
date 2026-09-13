@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en" class="theme-hosted-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Hosted Copilot Rule Manager</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="shutdown-config.js" defer></script>
+  <script src="hierarchical-view.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="unsupported-device" aria-labelledby="unsupported-device-heading">
+    <div class="unsupported-brand-lockup">
+      <svg class="unsupported-brand-icon codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-json"></use></svg>
+      <p class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>
+    </div>
+    <h1 id="unsupported-device-heading">Mobile devices are not supported</h1>
+    <p>Open this Workbench on a laptop or desktop computer.</p>
+  </main>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block" data-workbench-tooltip="Hosted Copilot Rule Manager">
+        <svg class="brand-icon codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-json"></use></svg>
+        <h1>HOSTED COPILOT RULE MANAGER</h1>
+      </div>
+      <div class="topbar-actions scroll-surface">
+        <details class="title-draft-menu" id="draft-menu">
+          <summary class="titlebar-icon clickable" data-workbench-tooltip="Draft options" aria-label="Draft options">
+            <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-ellipsis"></use></svg>
+          </summary>
+          <div class="title-draft-popover">
+            <button class="button clickable" id="export-button" type="button">
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-download"></use></svg>
+              <span class="button-label">Export draft</span>
+            </button>
+            <label class="button clickable" for="import-input">
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-cloud-upload"></use></svg>
+              <span class="button-label">Import draft</span>
+            </label>
+            <input id="import-input" type="file" accept="application/json" hidden>
+          </div>
+        </details>
+        <button class="titlebar-icon clickable" id="close-button" type="button" data-workbench-tooltip="Close Workbench" aria-label="Close Workbench">
+          <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-sign-out"></use></svg>
+          <span class="sr-only">Close Workbench</span>
+        </button>
+      </div>
+    </header>
+
+    <aside class="stage-nav" aria-label="Workbench stages">
+      <button class="stage-link active clickable" type="button" data-view="catalog" data-workbench-tooltip="Eligible Candidates" aria-label="Eligible Candidates">
+        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg>
+        <span class="sr-only">Eligible Candidates</span>
+      </button>
+      <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" data-workbench-tooltip="Promotion Plan (0)" aria-label="Promotion Plan (0)">
+        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
+        <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
+        <span class="sr-only">Promotion Plan</span>
+      </button>
+      <button class="stage-link clickable" type="button" data-view="preview" data-workbench-tooltip="Promotion Preview" aria-label="Promotion Preview">
+        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-open-preview"></use></svg>
+        <span class="sr-only">Promotion Preview</span>
+      </button>
+    </aside>
+
+    <main class="workspace">
+      <section class="view active" id="catalog-view" data-view-panel="catalog">
+        <div class="catalog-toolbar">
+          <label class="search-field">
+            <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-search"></use></svg>
+            <span class="sr-only">Search evaluated candidates</span>
+            <input id="search-input" type="search" placeholder="Search sources, categories, or rules">
+          </label>
+        </div>
+
+        <div class="workspace-tabs" role="tablist" aria-label="Candidate workspace views">
+          <button class="workspace-tab active clickable" id="candidate-sources-tab" type="button" role="tab" aria-selected="true" aria-controls="candidate-sources-panel" data-workspace-tab="candidate-sources">Candidate Sources</button>
+          <button class="workspace-tab clickable" id="assessment-results-tab" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-panel" data-workspace-tab="assessment-results">Assessment Results</button>
+        </div>
+
+        <div class="workspace-tab-panel active" id="candidate-sources-panel" role="tabpanel" aria-labelledby="candidate-sources-tab">
+          <div class="candidate-pane-switch" role="tablist" aria-label="Candidate workspace">
+            <button class="candidate-pane-tab active clickable" id="candidate-pane-candidates" type="button" role="tab" aria-selected="true" aria-controls="candidate-panel" data-candidate-pane="candidates">
+              <span>Candidates</span>
+            </button>
+            <button class="candidate-pane-tab clickable" id="candidate-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-panel" data-candidate-pane="details">
+              <span>Details</span>
+            </button>
+          </div>
+          <div class="catalog-layout">
+            <section class="candidate-panel" id="candidate-panel" role="tabpanel" aria-labelledby="candidate-pane-candidates candidate-heading">
+              <div class="panel-heading">
+                <h2 id="candidate-heading">Candidate Sources:</h2>
+                <details class="bulk-actions" id="bulk-actions">
+                  <summary class="bulk-actions-trigger clickable" data-workbench-tooltip="Bulk Actions" aria-label="Bulk Actions">
+                    <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-list-selection"></use></svg>
+                  </summary>
+                  <div class="bulk-actions-menu">
+                    <div class="bulk-actions-scope"><strong>Current Results</strong><span id="bulk-scope-count">0 Candidates</span></div>
+                    <button class="clickable" type="button" data-bulk-scope="add"><span>Add Recommended Adds</span><span class="status-badge neutral count-badge type-compact" id="bulk-add-count">0 Candidates</span></button>
+                    <button class="clickable" type="button" data-bulk-scope="update"><span>Add Recommended Updates</span><span class="status-badge neutral count-badge type-compact" id="bulk-update-count">0 Candidates</span></button>
+                    <button class="clickable" type="button" data-bulk-scope="actionable"><span>Add All Actionable Recommendations</span><span class="status-badge neutral count-badge type-compact" id="bulk-actionable-count">0 Candidates</span></button>
+                    <button class="bulk-undo clickable" id="bulk-undo" type="button" data-bulk-undo disabled><span>Undo Last Bulk Selection</span><span class="status-badge neutral type-compact" id="bulk-undo-count">None</span></button>
+                    <p id="bulk-actions-note">Bulk actions require a validated Hosted CODEOWNER.</p>
+                  </div>
+                </details>
+              </div>
+              <div class="hierarchical-view-sticky-stack type-ui" id="candidate-sticky-stack" hidden></div>
+              <div class="candidate-list scroll-surface type-ui" id="candidate-list"></div>
+            </section>
+
+            <section class="assessment-panel scroll-surface" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" aria-live="polite" hidden>
+              <div class="empty-state">
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-tasklist"></use></svg>
+                <h2>Select a Candidate</h2>
+                <p>The full source rule, AI evaluation, impact details, Hosted coverage, and maintainer actions will appear here.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="workspace-tab-panel" id="assessment-results-panel" role="tabpanel" aria-labelledby="assessment-results-tab" hidden>
+          <div class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace">
+            <button class="candidate-pane-tab active clickable" id="assessment-pane-assessments" type="button" role="tab" aria-selected="true" aria-controls="assessment-results-list-panel" data-assessment-pane="assessments">
+              <span>Assessments</span>
+            </button>
+            <button class="candidate-pane-tab clickable" id="assessment-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-detail" data-assessment-pane="details">
+              <span>Details</span>
+            </button>
+          </div>
+          <div class="catalog-layout">
+            <section class="candidate-panel" id="assessment-results-list-panel" role="tabpanel" aria-labelledby="assessment-pane-assessments assessment-results-heading">
+              <div class="panel-heading">
+                <h2 id="assessment-results-heading">Assessment Results:</h2>
+              </div>
+              <div class="hierarchical-view-sticky-stack type-ui" id="assessment-sticky-stack" hidden></div>
+              <div class="candidate-list scroll-surface type-ui" id="assessment-results-list"></div>
+            </section>
+
+            <section class="assessment-panel scroll-surface" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" aria-live="polite" hidden>
+              <div class="empty-state">
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist"></use></svg>
+                <h2>Select an Assessment Result</h2>
+                <p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="plan-view" data-view-panel="plan">
+        <div class="page-heading">
+          <h2>Promotion Plan:</h2>
+          <div class="plan-heading-controls">
+            <button class="titlebar-icon clickable" id="return-catalog-button" type="button" aria-label="Return to catalog" data-workbench-tooltip="Return to catalog">
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
+            </button>
+            <button class="titlebar-icon clickable" id="plan-bulk-undo" type="button" aria-label="No bulk selection to undo" data-workbench-tooltip="No bulk selection to undo" disabled>
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-discard-all"></use></svg>
+            </button>
+          </div>
+        </div>
+        <div class="plan-layout">
+          <section class="plan-table-wrap scroll-surface">
+            <table class="plan-table type-ui">
+              <colgroup>
+                <col class="plan-column-candidate">
+                <col class="plan-column-source">
+                <col class="plan-column-type">
+                <col class="plan-column-action">
+                <col class="plan-column-impact">
+                <col class="plan-column-cost">
+                <col class="plan-column-readiness">
+                <col class="plan-column-actions">
+              </colgroup>
+              <thead id="plan-table-head"></thead>
+              <tbody id="plan-table-body"></tbody>
+            </table>
+            <div class="empty-state compact" id="empty-plan">
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-inbox"></use></svg>
+              <h3>No Proposed Changes</h3>
+              <p>Choose an add, update, or retire action to add it to this plan.</p>
+            </div>
+          </section>
+          <aside class="capacity-panel scroll-surface type-compact" id="capacity-panel"></aside>
+        </div>
+      </section>
+
+      <section class="view" id="preview-view" data-view-panel="preview">
+        <div class="page-heading">
+          <h2>Promotion Preview:</h2>
+          <span class="status-badge warning preview-approval-badge" id="approval-badge">Not staged</span>
+        </div>
+        <div class="preview-review-toolbar" id="preview-review-toolbar">
+          <div class="preview-review-context" id="preview-review-context"></div>
+          <div class="preview-review-actions">
+            <button class="preview-review-button clickable" id="preview-review-toggle" type="button">Review changes</button>
+          </div>
+          <div class="preview-review-popover" id="preview-review-popover" hidden>
+            <div class="preview-review-popover-heading">
+              <strong>Review changes</strong>
+              <button class="preview-icon-button clickable" id="preview-review-close" type="button" aria-label="Close review changes" data-workbench-tooltip="Close review changes">
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg>
+              </button>
+            </div>
+            <div class="approval-controls">
+              <label for="approver-name">Approver Name</label>
+              <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
+              <section class="approval-requirements" id="approval-requirements" aria-label="Approval requirements"></section>
+              <button class="button primary clickable" id="approve-export-button" type="button" disabled>
+                <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
+                Approve &amp; Export
+              </button>
+              <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
+            </div>
+          </div>
+        </div>
+        <div class="preview-layout">
+          <section class="preview-summary scroll-surface type-ui">
+            <div id="preview-summary"></div>
+          </section>
+          <div class="preview-tree-resizer" id="preview-tree-resizer" role="slider" aria-label="Draggable pane splitter" aria-orientation="vertical" aria-valuemin="296" aria-valuemax="520" aria-valuenow="380" aria-valuetext="Pane width 380 pixels" tabindex="0"></div>
+          <section class="preview-code scroll-surface type-editor" id="preview-code">
+            <section class="preview-proposed-review">
+              <div class="preview-diff" id="preview-diff"></div>
+            </section>
+            <section class="payload-review">
+              <div id="preview-payload-diff"></div>
+            </section>
+            <section class="preview-raw-payload">
+              <div id="raw-payload-empty" hidden></div>
+              <div id="preview-json"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ide-statusbar type-compact" aria-label="Workbench status">
+      <div class="status-cluster status-left">
+        <span class="status-item target-chip" id="target-chip" data-workbench-tooltip="Promotion target" data-truncation-owner>
+          <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-compact"></use></svg>
+          <span id="status-target">Resolving target</span>
+        </span>
+        <span class="status-item save-indicator" data-workbench-tooltip="Draft autosave state">
+          <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-check-compact"></use></svg>
+          <span id="save-indicator">Draft not loaded</span>
+        </span>
+      </div>
+      <div class="status-cluster status-right">
+        <span class="status-item" data-workbench-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Test guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
+        <span class="status-item" data-workbench-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
+      </div>
+    </footer>
+    <div class="status-surface-tooltip type-compact" id="status-surface-tooltip" role="tooltip" aria-hidden="true"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="toast-message" id="toast-message"></span>
+    <button class="toast-close clickable" id="toast-close" type="button" aria-label="Dismiss Notification" data-workbench-tooltip="Dismiss Notification"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg></button>
+  </div>
+</body>
+</html>

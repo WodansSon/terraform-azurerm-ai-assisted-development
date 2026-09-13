@@ -1,11 +1,23 @@
 param(
     [string] $ManifestPath = "tools/config/upstream-contributor.json",
+    [string] $RuleCatalogPath = "tools/interactive-rule-catalog/rule-catalog.json",
     [ValidateSet("Text", "Json")]
     [string] $OutputFormat = "Text",
     [switch] $FailOnDrift
 )
 
 $ErrorActionPreference = "Stop"
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
+$driftStageNames = @(
+    'discover-upstream-topics',
+    'scan-local-guidance',
+    'evaluate-catalog-and-rules',
+    'fetch-and-map-tracked-sources'
+)
+$driftStageNameWidth = Get-ValidationNameWidth -Names $driftStageNames
+
 $comparisonMode = "deterministic-source-drift-and-explicit-reference-discovery"
 $resolvedManifestPath = if ([System.IO.Path]::IsPathRooted($ManifestPath)) {
     $ManifestPath
@@ -13,12 +25,22 @@ $resolvedManifestPath = if ([System.IO.Path]::IsPathRooted($ManifestPath)) {
 else {
     Join-Path (Get-Location).Path $ManifestPath
 }
+$resolvedRuleCatalogPath = if ([System.IO.Path]::IsPathRooted($RuleCatalogPath)) {
+    $RuleCatalogPath
+}
+else {
+    Join-Path (Get-Location).Path $RuleCatalogPath
+}
 
 if (-not (Test-Path -LiteralPath $resolvedManifestPath)) {
     throw "manifest file not found: $ManifestPath"
 }
+if (-not (Test-Path -LiteralPath $resolvedRuleCatalogPath)) {
+    throw "Interactive rule catalog file not found: $RuleCatalogPath"
+}
 
 $manifest = Get-Content -LiteralPath $resolvedManifestPath -Raw | ConvertFrom-Json
+$ruleCatalog = Get-Content -LiteralPath $resolvedRuleCatalogPath -Raw | ConvertFrom-Json
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $workingDirectoryRoot = (Get-Location).Path
@@ -39,31 +61,18 @@ if (-not $manifest.catalog.topicContentsApiUrl) {
     throw "manifest catalog does not contain topicContentsApiUrl"
 }
 
-function Format-DriftStatusLine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string] $Status,
-
-        [Parameter(Mandatory = $true)]
-        [string] $Name,
-
-        [Parameter(Mandatory = $true)]
-        [string] $Detail
-    )
-
-    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
-
-    return ("{0,-11}{1,-52}: {2}" -f $statusLabel, $Name, $Detail)
-}
-
 function Start-DriftStage {
     param(
         [Parameter(Mandatory = $true)]
         [string] $Name
     )
 
+    if ($Name -notin $driftStageNames) {
+        throw "upstream drift stage is not registered for presentation: $Name"
+    }
+
     if ($OutputFormat -eq "Text") {
-        Write-Host (Format-DriftStatusLine -Status "running" -Name ("upstream-drift/{0}" -f $Name) -Detail "IN PROGRESS")
+        Write-Host (Format-ValidationStatusLine -Status "running" -Name $Name -Detail "IN PROGRESS" -NameWidth $driftStageNameWidth)
     }
 
     return (Get-Date)
@@ -80,7 +89,7 @@ function Complete-DriftStage {
 
     if ($OutputFormat -eq "Text") {
         $durationSeconds = [Math]::Round(((Get-Date) - $Started).TotalSeconds, 2)
-        Write-Host (Format-DriftStatusLine -Status "passed" -Name ("upstream-drift/{0}" -f $Name) -Detail ("{0}s" -f $durationSeconds))
+        Write-Host (Format-ValidationStatusLine -Status "passed" -Name $Name -Detail ("{0}s" -f $durationSeconds) -NameWidth $driftStageNameWidth)
     }
 }
 
@@ -259,81 +268,6 @@ function Get-LocalTopicFileReferences {
     }
 }
 
-function Get-RuleInventory {
-    Get-CandidateMarkdownFiles | ForEach-Object {
-        $file = $_
-        $lines = Get-Content -LiteralPath $file.FullName
-        $repoRelativePath = Convert-ToRepoRelativePath -FullPath $file.FullName
-        $startIndexes = @()
-
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^###\s+([A-Z]+-[A-Z]+-\d+):') {
-                $startIndexes += [pscustomobject]@{
-                    lineIndex = $i
-                    ruleId = $matches[1]
-                }
-            }
-        }
-
-        foreach ($start in $startIndexes) {
-            $endIndex = $lines.Count
-            foreach ($candidate in $startIndexes) {
-                if ($candidate.lineIndex -gt $start.lineIndex) {
-                    $endIndex = $candidate.lineIndex
-                    break
-                }
-            }
-
-            $section = @($lines[$start.lineIndex..($endIndex - 1)])
-            $provenance = $null
-            $evidenceLines = @()
-            $evidenceIndex = -1
-
-            foreach ($line in $section) {
-                if ($line -match '^- \*\*Provenance\*\*:\s*(.+?)\.?\s*$') {
-                    $provenance = $matches[1].Trim()
-                    break
-                }
-            }
-
-            for ($i = 0; $i -lt $section.Count; $i++) {
-                if ($section[$i] -match '^- \*\*Evidence\*\*:') {
-                    $evidenceIndex = $i
-                    break
-                }
-            }
-
-            if ($evidenceIndex -ge 0) {
-                for ($i = $evidenceIndex + 1; $i -lt $section.Count; $i++) {
-                    $line = $section[$i]
-
-                    if ($line -match '^\s+-\s+') {
-                        $evidenceLines += $line.Trim()
-                        continue
-                    }
-
-                    if ($line.Trim() -eq '') {
-                        continue
-                    }
-
-                    break
-                }
-            }
-
-            $evidenceTopicPaths = @($evidenceLines | ForEach-Object { Get-TopicMatchesFromText -Text $_ } | Sort-Object -Unique)
-
-            [pscustomobject]@{
-                file = $repoRelativePath
-                ruleId = $start.ruleId
-                startLine = $start.lineIndex + 1
-                provenance = $provenance
-                evidenceLines = @($evidenceLines)
-                evidenceTopicPaths = @($evidenceTopicPaths)
-            }
-        }
-    }
-}
-
 function Get-SourceDriftResults {
     param(
         [Parameter(Mandatory = $true)]
@@ -377,6 +311,10 @@ function Get-SourceDriftResults {
     }
 
     $results
+}
+
+if ($OutputFormat -eq "Text") {
+    Write-ValidationSectionHeader -Title 'Upstream contributor drift'
 }
 
 $stageStarted = Start-DriftStage -Name "discover-upstream-topics"
@@ -429,76 +367,24 @@ elseif ($markdownFilePaths.Count -gt 0) {
         }
     })
 }
-$ruleInventory = @($markdownFiles | ForEach-Object {
-    $file = $_
-    $lines = Get-Content -LiteralPath $file.FullName
-    $repoRelativePath = Convert-ToRepoRelativePath -FullPath $file.FullName
-    $startIndexes = @()
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match '^###\s+([A-Z]+-[A-Z]+-\d+):') {
-            $startIndexes += [pscustomobject]@{
-                lineIndex = $i
-                ruleId = $matches[1]
-            }
+$trackedTopicPathsBySourceId = @{}
+foreach ($trackedTopic in $trackedTopicMetadata) {
+    $trackedTopicPathsBySourceId[[string]$trackedTopic.id] = [string]$trackedTopic.path
+}
+$ruleInventory = @($ruleCatalog.rules | Where-Object status -ne 'retired' | ForEach-Object {
+    $catalogRule = $_
+    $evidenceTopicPaths = @($catalogRule.sourceIds | ForEach-Object {
+        if ($trackedTopicPathsBySourceId.ContainsKey([string]$_)) {
+            $trackedTopicPathsBySourceId[[string]$_]
         }
-    }
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 
-    foreach ($start in $startIndexes) {
-        $endIndex = $lines.Count
-        foreach ($candidate in $startIndexes) {
-            if ($candidate.lineIndex -gt $start.lineIndex) {
-                $endIndex = $candidate.lineIndex
-                break
-            }
-        }
-
-        $section = @($lines[$start.lineIndex..($endIndex - 1)])
-        $provenance = $null
-        $evidenceLines = @()
-        $evidenceIndex = -1
-
-        foreach ($line in $section) {
-            if ($line -match '^- \*\*Provenance\*\*:\s*(.+?)\.?\s*$') {
-                $provenance = $matches[1].Trim()
-                break
-            }
-        }
-
-        for ($i = 0; $i -lt $section.Count; $i++) {
-            if ($section[$i] -match '^- \*\*Evidence\*\*:') {
-                $evidenceIndex = $i
-                break
-            }
-        }
-
-        if ($evidenceIndex -ge 0) {
-            for ($i = $evidenceIndex + 1; $i -lt $section.Count; $i++) {
-                $line = $section[$i]
-
-                if ($line -match '^\s+-\s+') {
-                    $evidenceLines += $line.Trim()
-                    continue
-                }
-
-                if ($line.Trim() -eq '') {
-                    continue
-                }
-
-                break
-            }
-        }
-
-        $evidenceTopicPaths = @($evidenceLines | ForEach-Object { Get-TopicMatchesFromText -Text $_ } | Sort-Object -Unique)
-
-        [pscustomobject]@{
-            file = $repoRelativePath
-            ruleId = $start.ruleId
-            startLine = $start.lineIndex + 1
-            provenance = $provenance
-            evidenceLines = @($evidenceLines)
-            evidenceTopicPaths = @($evidenceTopicPaths)
-        }
+    [pscustomobject]@{
+        file = [string]$catalogRule.contractPath
+        ruleId = [string]$catalogRule.id
+        provenance = [string]$catalogRule.provenance
+        evidenceLines = @($catalogRule.evidence)
+        evidenceTopicPaths = $evidenceTopicPaths
     }
 })
 $dynamicRuleTopicReferences = @($ruleInventory | Where-Object { $_.evidenceTopicPaths.Count -gt 0 })
@@ -518,7 +404,6 @@ $ruleReferencesByTopicPath = @($dynamicRuleTopicReferences | ForEach-Object {
             topicPath = $topicPath
             file = $_.file
             ruleId = $_.ruleId
-            startLine = $_.startLine
         }
     }
 } | Group-Object topicPath | Sort-Object Name | ForEach-Object {
@@ -542,14 +427,14 @@ $ruleIssues = @($ruleInventory | ForEach-Object {
     $status = "ok"
     $recommendedAction = $null
 
-    if ($_.provenance -eq "Published upstream standard") {
+    if ($_.provenance -eq "published-upstream-standard") {
         if ($_.evidenceTopicPaths.Count -eq 0) {
             $status = "missing-upstream-topic-reference"
-            $recommendedAction = 'add at least one exact upstream `https://github.com/hashicorp/terraform-provider-azurerm/tree/main/contributing/topics/*.md` reference, or another supported canonicalizable upstream topic reference, in the rule evidence block; otherwise downgrade the provenance label if the rule is not directly upstream-backed'
+            $recommendedAction = 'add at least one valid upstream source ID to the rule catalog record; otherwise downgrade the provenance label if the rule is not directly upstream-backed'
         }
         elseif (@($_.evidenceTopicPaths | Where-Object { $upstreamTopicPaths -notcontains $_ }).Count -gt 0) {
             $status = "stale-upstream-topic-reference"
-            $recommendedAction = 'update the evidence block to point to a current upstream contributor topic before keeping this rule as `Published upstream standard`'
+            $recommendedAction = 'update the rule catalog source IDs before keeping this rule as `published-upstream-standard`'
         }
     }
 
@@ -557,7 +442,6 @@ $ruleIssues = @($ruleInventory | ForEach-Object {
         [pscustomobject]@{
             file = $_.file
             ruleId = $_.ruleId
-            startLine = $_.startLine
             provenance = $_.provenance
             evidenceTopicPaths = @($_.evidenceTopicPaths)
             status = $status
@@ -621,7 +505,6 @@ $sourceResults = Get-SourceDriftResults -Sources @($manifest.sources) | ForEach-
             [pscustomobject]@{
                 file = $_.file
                 ruleId = $_.ruleId
-                startLine = $_.startLine
             }
         } | Sort-Object file, ruleId)
 
@@ -669,7 +552,7 @@ if ($OutputFormat -eq "Json") {
         performsSemanticComparison = $false
         usesHeuristics = $false
         semanticReviewRequired = $semanticReviewRequired
-        semanticReviewGuidance = 'This script uses pure logic only: upstream topic discovery, tracked-source hash comparison, explicit local reference discovery, and rule evidence validation. It canonicalizes contributor-topic references against the remote contributor-doc root and maps non-catalog sources through exact manifest-declared reference URLs. It does not use heuristics or AI to infer semantic mappings inside the detector. Exact-reference aggregation only proves links that are already explicitly present in repo content. If `changedCount`, `sourceReferenceIssueCount`, `catalogIssueCount`, `ruleIssueCount`, `trackedTopicPathsWithoutExplicitLocalReferences`, or `dynamicallyMappedUntrackedTopicPaths` is non-zero, follow up with an AI-assisted semantic maintainer review to decide whether uncovered or changed upstream sources should change local guidance, whether new tracked sources are needed, and whether provenance or evidence updates are required.'
+        semanticReviewGuidance = 'This script uses pure logic only: upstream topic discovery, tracked-source hash comparison, exact local file-reference discovery, and catalog source-ID validation for rules. It canonicalizes contributor-topic references against the remote contributor-doc root and maps non-catalog sources through exact manifest-declared reference URLs. It does not use heuristics or AI to infer semantic mappings inside the detector. Exact-reference aggregation only proves file links already present in repo content, while explicit catalog source IDs prove rule mappings. If `changedCount`, `sourceReferenceIssueCount`, `catalogIssueCount`, `ruleIssueCount`, `trackedTopicPathsWithoutExplicitLocalReferences`, or `dynamicallyMappedUntrackedTopicPaths` is non-zero, follow up with an AI-assisted semantic maintainer review to decide whether uncovered or changed upstream sources should change local guidance, whether new tracked sources are needed, and whether catalog provenance or evidence updates are required.'
         diagnostics = [pscustomobject]@{
             markdownFileCount = $markdownFiles.Count
             markdownFilePathCount = $markdownFilePaths.Count
@@ -709,31 +592,34 @@ if ($OutputFormat -eq "Json") {
     } | ConvertTo-Json -Depth 7
 }
 else {
-    Write-Host "Upstream Contributor Drift Report"
-    Write-Host "Manifest: $ManifestPath"
-    Write-Host "Comparison Mode: $comparisonMode"
-    Write-Host "Performs Semantic Comparison: false"
-    Write-Host "Uses Heuristics: false"
-    Write-Host "Sources Checked: $($sourceResults.Count)"
-    Write-Host "Changed: $($changed.Count)"
-    Write-Host "Fetch Failed: $($failed.Count)"
-    Write-Host "Rule Issues: $($ruleIssues.Count)"
-    Write-Host "Source Reference Issues: $sourceReferenceIssueCount"
-    Write-Host "Catalog Issues: $catalogIssueCount"
-    Write-Host "Semantic Review Required: $semanticReviewRequired"
-    Write-Host ("Diagnostics: markdown files={0}, markdown paths={1}, local topic refs={2}, local topic groups={3}, rule inventory={4}, dynamic rule refs={5}, rule topic groups={6}" -f $markdownFiles.Count, $markdownFilePaths.Count, $localTopicFileReferences.Count, $localTopicFileReferencesByPath.Count, $ruleInventory.Count, $dynamicRuleTopicReferences.Count, $ruleReferencesByTopicPath.Count)
-    Write-Host ("Canonical Contributor Root: {0}" -f $contributorTreeUrl)
-    Write-Host "Note: This script uses pure logic only. It compares tracked source hashes, discovers current upstream topics, canonicalizes contributor-topic references, and maps non-catalog sources through exact manifest-declared reference URLs. Exact-reference aggregation proves existing explicit links only; AI semantic review is still required for uncovered, changed, merged, renamed, or structurally revised upstream sources."
-    Write-Host ""
+    Write-ValidationSectionHeader -Title 'Upstream contributor drift report'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Manifest = $ManifestPath
+        'Comparison Mode' = $comparisonMode
+        'Performs Semantic Comparison' = 'false'
+        'Uses Heuristics' = 'false'
+        'Sources Checked' = $sourceResults.Count
+        Changed = $changed.Count
+        'Fetch Failed' = $failed.Count
+        'Rule Issues' = $ruleIssues.Count
+        'Source Reference Issues' = $sourceReferenceIssueCount
+        'Catalog Issues' = $catalogIssueCount
+        'Semantic Review Required' = $semanticReviewRequired
+        Diagnostics = ("markdown files={0}, markdown paths={1}, local topic refs={2}, local topic groups={3}, rule inventory={4}, dynamic rule refs={5}, rule topic groups={6}" -f $markdownFiles.Count, $markdownFilePaths.Count, $localTopicFileReferences.Count, $localTopicFileReferencesByPath.Count, $ruleInventory.Count, $dynamicRuleTopicReferences.Count, $ruleReferencesByTopicPath.Count)
+        'Canonical Contributor Root' = $contributorTreeUrl
+        Note = 'This script uses pure logic only. It compares tracked source hashes, discovers current upstream topics, canonicalizes contributor-topic references, and maps non-catalog sources through exact manifest-declared reference URLs. Exact-reference aggregation proves existing explicit links only; AI semantic review is still required for uncovered, changed, merged, renamed, or structurally revised upstream sources.'
+    })
 
-    Write-Host "Catalog Coverage Summary"
-    Write-Host ("  upstream topics                         : {0}" -f $upstreamTopicPaths.Count)
-    Write-Host ("  tracked upstream topics                 : {0}" -f $trackedTopicPaths.Count)
-    Write-Host ("  dynamically referenced tracked topics   : {0}" -f $dynamicallyReferencedTrackedTopicPaths.Count)
-    Write-Host ("  dynamically mapped untracked topics     : {0}" -f $dynamicallyMappedUntrackedTopicPaths.Count)
-    Write-Host ("  uncovered upstream topics               : {0}" -f $uncoveredUpstreamTopicPaths.Count)
-    Write-Host ("  stale tracked topics                    : {0}" -f $staleTrackedTopicPaths.Count)
-    Write-Host ("  stale local topic references            : {0}" -f $staleLocalTopicReferencePaths.Count)
+    Write-ValidationSectionHeader -Title 'Catalog coverage summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        'Upstream Topics' = $upstreamTopicPaths.Count
+        'Tracked Upstream Topics' = $trackedTopicPaths.Count
+        'Dynamically Referenced Tracked Topics' = $dynamicallyReferencedTrackedTopicPaths.Count
+        'Dynamically Mapped Untracked Topics' = $dynamicallyMappedUntrackedTopicPaths.Count
+        'Uncovered Upstream Topics' = $uncoveredUpstreamTopicPaths.Count
+        'Stale Tracked Topics' = $staleTrackedTopicPaths.Count
+        'Stale Local Topic References' = $staleLocalTopicReferencePaths.Count
+    })
 
     foreach ($path in $trackedTopicPathsWithoutExplicitLocalReferences) {
         Write-Host ("  tracked-without-explicit-local-reference: {0}" -f $path)
@@ -759,12 +645,10 @@ else {
         Write-Host ("  unmapped-source-reference               : {0} ({1})" -f $source.id, $source.referenceUrl)
     }
 
-    Write-Host ""
-
+    Write-ValidationSectionHeader -Title 'Tracked sources'
     foreach ($result in $sourceResults) {
-        Write-Host ("[{0}] {1}" -f $result.status.ToUpperInvariant(), $result.title)
+        Write-Host (Format-ValidationStatusLine -Status $result.status -Name $result.title -Detail $result.rawUrl -NameWidth 40)
         Write-Host ("  domain: {0}" -f $result.domain)
-        Write-Host ("  source: {0}" -f $result.rawUrl)
 
         if ($result.referenceUrl) {
             Write-Host ("  reference: {0}" -f $result.referenceUrl)
@@ -792,36 +676,35 @@ else {
         }
 
         foreach ($rule in @($result.dynamicReferencedRules)) {
-            Write-Host ("  local-rule: {0} ({1}:{2})" -f $rule.ruleId, $rule.file, $rule.startLine)
+            Write-Host ("  local-rule: {0} ({1})" -f $rule.ruleId, $rule.file)
         }
 
         Write-Host ""
     }
 
     if ($ruleIssuesByFile.Count -gt 0) {
-        Write-Host "Rule Issue Summary"
+        Write-ValidationSectionHeader -Title 'Rule issue summary'
         foreach ($fileGroup in $ruleIssuesByFile) {
             Write-Host ("  {0}: {1} issue(s)" -f $fileGroup.file, $fileGroup.issueCount)
             foreach ($rule in @($fileGroup.rules)) {
                 Write-Host ("    {0} ({1})" -f $rule.ruleId, $rule.status)
             }
         }
-        Write-Host ""
     }
 
     if ($rulesByFile.Count -gt 0) {
-        Write-Host "Local Rule File Summary"
+        Write-ValidationSectionHeader -Title 'Local rule file summary'
         foreach ($fileGroup in $rulesByFile) {
             Write-Host ("  {0}: {1} rule(s), {2} issue(s)" -f $fileGroup.file, $fileGroup.ruleCount, $fileGroup.issueCount)
         }
-        Write-Host ""
     }
 
     if ($semanticReviewRequired) {
-        Write-Host "Recommended Next Step"
+        Write-ValidationSectionHeader -Title 'Recommended next step'
         Write-Host "  Run an AI-assisted semantic maintainer review to decide whether changed tracked sources, non-catalog sources without exact local references, newly uncovered upstream topics, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, or stale local references require updates to local guidance, evidence, or tracked-source baselines."
-        Write-Host ""
     }
+
+    Complete-ValidationTextOutput
 }
 
 if ($failed.Count -gt 0) {
