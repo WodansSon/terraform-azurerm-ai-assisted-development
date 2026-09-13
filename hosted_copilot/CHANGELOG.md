@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Standardized Hosted validation and test reporting with the Interactive Toolkit execution-state presentation and adopted a guarded four-characters-per-token capacity estimate with 25% safety headroom.
 - Added CODEOWNER-only current-results Bulk Actions that accept evaluated Add and Update recommendations as complete decisions with deterministic rationale, actor and source-hash provenance, operation-scoped Undo, and preservation of existing or subsequently reviewed manual decisions.
 - Centralized current Workbench browser behavior under schema-backed Playwright journeys, added headed viewport and fixed-window 100%-through-200% browser-zoom playback with owned-server cleanup and aggregate failure reporting, covered bulk-to-manual tree ownership and color transitions, and retained Puppeteer temporarily as a second consumer of the same viewport suite.
-- Reworked Promotion Preview into a GitHub-style file review with synchronized changed-file navigation, Proposed, Payload, and Raw scopes, split diffs, Viewed and collapse controls, a Review changes approval popover, and one contextual full-file raw payload diff with exact local Octicon expansion controls.
+- Reworked Promotion Preview into a continuous authenticated GitHub-style file review with independently disclosed Proposed, Payload, and Raw artifact trees, persistent file navigation, sticky split-diff headers, muted file and filled folder icons, CODEOWNERS headers, uniform spacing, independent Viewed and collapse controls, a Review changes approval popover, and one contextual full-file raw payload diff.
 
 ### Fixed
 

@@ -13,6 +13,15 @@ const PROPOSED_HOSTED_RULE_ID_PATTERN = /^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$/
 const WORKBENCH_TOOLTIP_DELAY_MS = 500;
 const PREVIEW_CONTEXT_LINE_COUNT = 2;
 const PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10;
+const PREVIEW_TREE_DEFAULT_WIDTH = 380;
+const PREVIEW_TREE_MIN_WIDTH = 296;
+const PREVIEW_TREE_MAX_WIDTH = 520;
+const PREVIEW_TREE_KEYBOARD_STEP = 16;
+const PREVIEW_SCOPE_LABELS = {
+  proposed: "Proposed changes",
+  payload: "Payload changes",
+  raw: "Raw selection payload"
+};
 const FACTORS = [
   ["severity", "Severity", "Harm caused when this defect is missed", "value"],
   ["frequency", "Frequency", "How often this defect appears in provider changes", "value"],
@@ -34,7 +43,6 @@ const state = {
   assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
-  previewReviewScope: "proposed",
   rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
@@ -56,6 +64,9 @@ let proposedHostedRuleIdValidationTimer;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [] };
+const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS));
+let previewSelectedFilePath = "";
+let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const workbenchTooltip = {
@@ -108,7 +119,8 @@ function captureElements() {
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
     "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
     "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
-    "preview-summary", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code", "preview-review-scope",
+    "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code",
+    "preview-review-toolbar",
     "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
     "approve-export-button", "toast", "toast-message", "toast-close"
   ]) {
@@ -222,9 +234,15 @@ function bindEvents() {
     const sortButton = event.target.closest("[data-plan-sort]");
     if (sortButton) updatePlanSort(sortButton);
   });
-  elements["preview-review-scope"].addEventListener("change", (event) => showPreviewReviewScope(event.target.value));
   elements["preview-summary"].addEventListener("input", handlePreviewFileFilter);
   elements["preview-summary"].addEventListener("click", handlePreviewFileNavigation);
+  elements["preview-tree-resizer"].addEventListener("pointerdown", handlePreviewTreeResizeStart);
+  elements["preview-tree-resizer"].addEventListener("pointermove", handlePreviewTreeResizeMove);
+  elements["preview-tree-resizer"].addEventListener("pointerup", handlePreviewTreeResizeEnd);
+  elements["preview-tree-resizer"].addEventListener("pointercancel", handlePreviewTreeResizeEnd);
+  elements["preview-tree-resizer"].addEventListener("keydown", handlePreviewTreeResizeKeyboard);
+  setPreviewTreeWidth(PREVIEW_TREE_DEFAULT_WIDTH);
+  elements["preview-review-toolbar"].addEventListener("click", handlePreviewReviewClick);
   elements["preview-code"].addEventListener("click", handlePreviewReviewClick);
   elements["preview-code"].addEventListener("change", handlePreviewReviewChange);
   elements["approver-name"].addEventListener("input", handleApproverInput);
@@ -239,6 +257,7 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     candidateHierarchicalView?.refreshLayout();
     assessmentHierarchicalView?.refreshLayout();
+    setPreviewTreeWidth(Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow")));
   });
 }
 
@@ -2393,7 +2412,7 @@ function renderPreview() {
   elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "No Raw Payload Changes", "Add or update a Promotion Plan item to review its generated selection payload.");
   elements["raw-payload-empty"].hidden = true;
   elements["preview-review-popover"].hidden = true;
-  showPreviewReviewScope(state.previewReviewScope);
+  renderPreviewReview();
 }
 
 function buildPreviewFiles(candidates) {
@@ -2403,7 +2422,7 @@ function buildPreviewFiles(candidates) {
     const before = decision.action === "add" ? [] : splitDiffLines(currentText);
     const after = decision.action === "retire" ? [] : splitDiffLines(decision.proposedText);
     const hostedRuleId = decision.action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || getEffectiveHostedRuleId(candidate);
-    return createPreviewFile(`rules/${hostedRuleId}.md`, candidate.title, before, after, false, candidate.sourceId);
+    return createPreviewFile(`rules/${hostedRuleId}.md`, candidate.title, before, after, false, candidate.sourceId, "proposed");
   });
   const payload = candidates.map((candidate) => {
     const current = getDecision(candidate);
@@ -2428,10 +2447,9 @@ function buildPreviewFiles(candidates) {
     };
     const changedKeys = Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
     if (!changedKeys.length) return null;
-    if (!changedKeys.length) return null;
     const changedBefore = Object.fromEntries(changedKeys.map((key) => [key, before[key]]));
     const changedAfter = Object.fromEntries(changedKeys.map((key) => [key, after[key]]));
-    return createPreviewFile(`selection/${getEffectiveHostedRuleId(candidate)}.json`, candidate.title, JSON.stringify(changedBefore, null, 2).split("\n"), JSON.stringify(changedAfter, null, 2).split("\n"));
+    return createPreviewFile(`selection/${getEffectiveHostedRuleId(candidate)}.json`, candidate.title, JSON.stringify(changedBefore, null, 2).split("\n"), JSON.stringify(changedAfter, null, 2).split("\n"), false, "", "payload");
   }).filter(Boolean);
   const proposedPayload = buildApprovalPayload();
   const currentPayload = {
@@ -2440,7 +2458,7 @@ function buildPreviewFiles(candidates) {
     decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, defaultDecision(candidate), null))
   };
   const raw = candidates.length
-    ? [createPreviewFile("selection/promotion-selection.json", "Complete promotion selection payload", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true)]
+    ? [createPreviewFile("selection/promotion-selection.json", "Complete promotion selection payload", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true, "", "raw")]
     : [];
   return { proposed, payload, raw };
 }
@@ -2469,14 +2487,17 @@ function buildApprovalDecision(candidate, decision, override = getApplicabilityO
   };
 }
 
-function createPreviewFile(path, title, beforeLines, afterLines, contextual = false, sourceId = "") {
+function createPreviewFile(path, title, beforeLines, afterLines, contextual = false, sourceId = "", scope = "") {
   const rows = alignPreviewLines(beforeLines, afterLines);
   return {
     path,
+    displayPath: scope ? `${PREVIEW_SCOPE_LABELS[scope].toUpperCase()}/${path.split("/").at(-1)}` : path,
     title,
     sourceId,
     rows,
     contextual,
+    beforeLineCount: beforeLines.length,
+    afterLineCount: afterLines.length,
     additions: rows.filter((row) => row.changed && row.newText !== undefined).length,
     deletions: rows.filter((row) => row.changed && row.oldText !== undefined).length
   };
@@ -2536,27 +2557,45 @@ function renderPreviewFiles(files, emptyTitle, emptyMessage) {
 
 function renderPreviewFile(file) {
   const rows = file.contextual ? createContextualPreviewRows(file.rows) : file.rows.map((row) => ({ type: "line", row }));
-  const changeCount = file.additions + file.deletions;
+  const topHunk = file.contextual ? "" : renderPreviewTopHunk(file);
+  const hasContextGaps = rows.some((row) => row.type === "gap");
   return `
-    <section class="preview-review-file" data-preview-file-path="${escapeHtml(file.path)}" ${file.sourceId ? `data-preview-source-id="${escapeHtml(file.sourceId)}"` : ""}>
-      <div class="preview-file-heading">
-        <button class="preview-icon-button clickable" type="button" data-preview-file-collapse aria-label="Collapse ${escapeHtml(file.path)}">${icon("chevron-down")}</button>
-        <span class="preview-change-count">${changeCount}</span>
-        ${renderPreviewDiffStat(file.additions, file.deletions)}
-        <code class="preview-file-path">${escapeHtml(file.path)}</code>
-        <button class="preview-icon-button clickable" type="button" data-preview-copy-path="${escapeHtml(file.path)}" aria-label="Copy ${escapeHtml(file.path)} path" data-workbench-tooltip="Copy path">${octicon("copy")}</button>
-        <span class="preview-file-title" data-truncation-tooltip>${escapeHtml(file.title)}</span>
-        <label class="preview-viewed clickable"><input type="checkbox" data-preview-viewed><span>Viewed</span></label>
+    <section class="preview-review-file${file.path === previewSelectedFilePath ? " selected" : ""}" data-preview-file-path="${escapeHtml(file.path)}" data-preview-file-display-path="${escapeHtml(file.displayPath)}" ${file.sourceId ? `data-preview-source-id="${escapeHtml(file.sourceId)}"` : ""}>
+      <div class="preview-file-heading-wrapper">
+        <div class="preview-file-heading">
+          <button class="preview-icon-button clickable" type="button" data-preview-file-collapse aria-label="Collapse ${escapeHtml(file.displayPath)}" aria-expanded="true">${octicon("chevron-down")}</button>
+          <svg class="octicon preview-review-status-icon" aria-label="Owned by CODEOWNERS"><use href="icons/octicons/sprite.svg#octicon-shield-lock-16"></use></svg>
+          <code class="preview-file-path">${escapeHtml(file.displayPath)}</code>
+          <button class="preview-icon-button clickable" type="button" data-preview-copy-path="${escapeHtml(file.displayPath)}" aria-label="Copy ${escapeHtml(file.displayPath)} path" data-workbench-tooltip="Copy path">${octicon("copy")}</button>
+          ${hasContextGaps ? `<button class="preview-icon-button clickable" type="button" data-preview-lines-toggle aria-label="Expand all lines: ${escapeHtml(file.displayPath)}" aria-pressed="false" data-workbench-tooltip="Expand all lines">${octicon("unfold")}</button>` : ""}
+          <div class="preview-file-actions">
+            <span class="preview-change-summary"><b>+${file.additions}</b><i>-${file.deletions}</i></span>
+            ${renderPreviewDiffStat(file.additions, file.deletions)}
+            <label class="preview-viewed clickable" aria-label="Not Viewed" aria-pressed="false">
+              <input type="checkbox" data-preview-viewed>
+              ${octicon("square")}
+              ${octicon("checkbox-fill")}
+              <span>Viewed</span>
+            </label>
+          </div>
+        </div>
       </div>
-      <div class="preview-file-body"><div class="preview-split-labels"><span>Current file</span><span>Changes</span></div><div class="preview-contextual-diff">${rows.map(renderPreviewDiffRow).join("")}</div></div>
+      <div class="preview-file-body"><div class="preview-contextual-diff">${topHunk}${rows.map(renderPreviewDiffRow).join("")}</div></div>
     </section>
   `;
 }
 
+function renderPreviewTopHunk(file) {
+  const beforeRange = file.beforeLineCount ? `1,${file.beforeLineCount}` : "0,0";
+  const afterRange = file.afterLineCount ? `1,${file.afterLineCount}` : "0,0";
+  return `<div class="preview-hunk-header"><span>${octicon("kebab-horizontal")}</span><code>@@ -${beforeRange} +${afterRange} @@</code></div>`;
+}
+
 function renderPreviewDiffStat(additions, deletions) {
   const total = Math.max(1, additions + deletions);
-  const addBlocks = Math.round(5 * additions / total);
-  return `<span class="preview-diff-stat" aria-label="${additions} additions and ${deletions} deletions">${Array.from({ length: 5 }, (_, index) => `<i class="${index < addBlocks ? "add" : "delete"}"></i>`).join("")}</span>`;
+  const additionBlocks = Math.floor(5 * additions / total);
+  const deletionBlocks = Math.floor(5 * deletions / total);
+  return `<span class="preview-diff-stat" aria-label="${additions} additions and ${deletions} deletions">${Array.from({ length: 5 }, (_, index) => `<i class="${index < additionBlocks ? "add" : index < additionBlocks + deletionBlocks ? "delete" : "neutral"}"></i>`).join("")}</span>`;
 }
 
 function createContextualPreviewRows(rows) {
@@ -2600,38 +2639,159 @@ function renderPreviewContextGap(gap) {
   return `<div class="preview-context-gap" data-preview-context-gap><button class="preview-context-expand clickable" type="button" data-preview-context-direction="${gap.direction}" aria-label="${label}" data-workbench-tooltip="${label} (${gap.rows.length} hidden lines)">${octicon(iconName)}</button><code>@@ -${gap.rows[0]?.oldLine || 0},${gap.rows.length} +${gap.rows[0]?.newLine || 0},${gap.rows.length} @@</code><template>${gap.rows.map((row) => renderPreviewDiffRow({ type: "line", row })).join("")}</template></div>`;
 }
 
-function showPreviewReviewScope(scope) {
-  if (!Object.hasOwn(previewFilesByScope, scope)) scope = "proposed";
-  state.previewReviewScope = scope;
-  elements["preview-review-scope"].value = scope;
-  document.querySelector(".preview-proposed-review").hidden = scope !== "proposed";
-  document.querySelector(".payload-review").hidden = scope !== "payload";
-  document.querySelector(".preview-raw-payload").hidden = scope !== "raw";
-  const files = previewFilesByScope[scope];
+function renderPreviewReview() {
+  const files = Object.values(previewFilesByScope).flat();
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
-  elements["preview-review-context"].innerHTML = `<strong>${files.length} file${files.length === 1 ? "" : "s"} changed</strong><span>+${additions} -${deletions}</span>`;
-  renderPreviewFileTree(files);
-  elements["preview-code"].scrollTop = 0;
+  elements["preview-review-context"].innerHTML = `<strong>${files.length} file${files.length === 1 ? "" : "s"} changed</strong><span class="preview-change-summary"><b>+${additions}</b><i>-${deletions}</i></span>${renderPreviewDiffStat(additions, deletions)}`;
+  document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload").forEach((section) => {
+    section.hidden = false;
+  });
+  if (!files.some((file) => file.path === previewSelectedFilePath)) previewSelectedFilePath = files[0]?.path || "";
+  renderPreviewFileTree();
+  updatePreviewSelectedFile();
 }
 
-function renderPreviewFileTree(files) {
-  elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter changed files" aria-label="Filter changed files"></label><nav class="preview-file-tree" aria-label="Changed files">${files.map((file) => `<button class="preview-file-tree-item clickable" type="button" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}">${icon(file.path.endsWith(".json") ? "json" : "markdown")}<span>${escapeHtml(file.path)}</span><i></i></button>`).join("")}</nav>`;
+function renderPreviewFileTree() {
+  elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter changed files" aria-label="Filter changed files"></label><nav class="preview-artifact-tree" aria-label="Review artifacts">${Object.entries(previewFilesByScope).map(([scope, files]) => renderPreviewArtifactGroup(scope, files)).join("")}</nav>`;
+}
+
+function renderPreviewArtifactGroup(scope, files) {
+  const expanded = previewExpandedScopes.has(scope);
+  const children = files.map((file) => renderPreviewTreeFile(scope, { ...file, name: file.path.split("/").at(-1) })).join("");
+  return `
+    <section class="preview-artifact-group" data-preview-artifact-group="${escapeHtml(scope)}">
+      <button class="preview-artifact-parent clickable" type="button" data-preview-artifact-scope="${escapeHtml(scope)}" aria-expanded="${expanded}">${octicon(`chevron-${expanded ? "down" : "right"}`)}${octicon(`file-directory-${expanded ? "open-" : ""}fill`)}<span>${escapeHtml(PREVIEW_SCOPE_LABELS[scope])}</span></button>
+      <div class="preview-artifact-children" ${expanded ? "" : "hidden"}>${children}</div>
+    </section>
+  `;
+}
+
+function renderPreviewTreeFile(scope, file) {
+  const status = file.additions > 0 && file.deletions === 0 ? "added" : file.deletions > 0 && file.additions === 0 ? "removed" : "modified";
+  const iconName = status === "modified" ? "file-diff" : `file-${status}`;
+  const label = status[0].toUpperCase() + status.slice(1);
+  return `<button class="preview-file-tree-item clickable ${file.path === previewSelectedFilePath ? "active" : ""}" type="button" data-preview-artifact-file-scope="${escapeHtml(scope)}" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}"><svg class="octicon preview-tree-file-icon ${status}" aria-label="${label}"><use href="icons/octicons/sprite.svg#octicon-${iconName}-16"></use></svg><span>${escapeHtml(file.name)}</span></button>`;
+}
+
+function updatePreviewSelectedFile() {
+  elements["preview-code"].querySelectorAll("[data-preview-file-path]").forEach((file) => {
+    file.classList.toggle("selected", file.dataset.previewFilePath === previewSelectedFilePath);
+  });
 }
 
 function handlePreviewFileFilter(event) {
   if (!event.target.matches('input[type="search"]')) return;
   const query = event.target.value.trim().toLowerCase();
   elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((button) => {
-    button.hidden = !button.textContent.toLowerCase().includes(query);
+    button.hidden = !button.dataset.previewFileJump.toLowerCase().includes(query);
+  });
+  elements["preview-summary"].querySelectorAll(".preview-artifact-group").forEach((group) => {
+    const hasMatches = [...group.querySelectorAll("[data-preview-file-jump]")].some((button) => !button.hidden);
+    group.hidden = Boolean(query) && !hasMatches;
+    group.querySelector(".preview-artifact-children").hidden = !hasMatches || (!query && !previewExpandedScopes.has(group.dataset.previewArtifactGroup));
   });
 }
 
 function handlePreviewFileNavigation(event) {
+  const parent = event.target.closest("[data-preview-artifact-scope]");
+  if (parent) {
+    const scope = parent.dataset.previewArtifactScope;
+    if (previewExpandedScopes.has(scope)) previewExpandedScopes.delete(scope);
+    else previewExpandedScopes.add(scope);
+    renderPreviewFileTree();
+    return;
+  }
   const button = event.target.closest("[data-preview-file-jump]");
   if (!button) return;
-  elements["preview-code"].querySelector(`[data-preview-file-path="${CSS.escape(button.dataset.previewFileJump)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  const path = button.dataset.previewFileJump;
+  const file = elements["preview-code"].querySelector(`[data-preview-file-path="${CSS.escape(path)}"]`);
+  if (!file) return;
+  previewSelectedFilePath = path;
+  updatePreviewSelectedFile();
+  file.scrollIntoView({ block: "start", behavior: "auto" });
   elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((item) => item.classList.toggle("active", item === button));
+}
+
+function setPreviewTreeWidth(value) {
+  const layout = elements["preview-tree-resizer"].parentElement;
+  const availableMaximum = layout.clientWidth > 0 ? layout.clientWidth - 640 - 16 : PREVIEW_TREE_MAX_WIDTH;
+  const maximum = Math.max(PREVIEW_TREE_MIN_WIDTH, Math.min(PREVIEW_TREE_MAX_WIDTH, availableMaximum));
+  const width = Math.round(Math.max(PREVIEW_TREE_MIN_WIDTH, Math.min(maximum, value || PREVIEW_TREE_DEFAULT_WIDTH)));
+  layout.style.setProperty("--preview-tree-width", `${width}px`);
+  elements["preview-tree-resizer"].setAttribute("aria-valuemax", String(maximum));
+  elements["preview-tree-resizer"].setAttribute("aria-valuenow", String(width));
+  elements["preview-tree-resizer"].setAttribute("aria-valuetext", `Pane width ${width} pixels`);
+}
+
+function handlePreviewTreeResizeStart(event) {
+  previewTreeResizePointerId = event.pointerId;
+  elements["preview-tree-resizer"].setPointerCapture(event.pointerId);
+  elements["preview-tree-resizer"].parentElement.classList.add("preview-tree-resizing");
+  event.preventDefault();
+}
+
+function handlePreviewTreeResizeMove(event) {
+  if (event.pointerId !== previewTreeResizePointerId) return;
+  const layout = elements["preview-tree-resizer"].parentElement;
+  setPreviewTreeWidth(event.clientX - layout.getBoundingClientRect().left);
+}
+
+function handlePreviewTreeResizeEnd(event) {
+  if (event.pointerId !== previewTreeResizePointerId) return;
+  if (elements["preview-tree-resizer"].hasPointerCapture(event.pointerId)) elements["preview-tree-resizer"].releasePointerCapture(event.pointerId);
+  previewTreeResizePointerId = null;
+  elements["preview-tree-resizer"].parentElement.classList.remove("preview-tree-resizing");
+}
+
+function handlePreviewTreeResizeKeyboard(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const current = Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow"));
+  const value = event.key === "Home"
+    ? PREVIEW_TREE_MIN_WIDTH
+    : event.key === "End"
+      ? PREVIEW_TREE_MAX_WIDTH
+      : current + (event.key === "ArrowLeft" ? -PREVIEW_TREE_KEYBOARD_STEP : PREVIEW_TREE_KEYBOARD_STEP);
+  setPreviewTreeWidth(value);
+}
+
+function setPreviewFileCollapsed(file, collapsed) {
+  const body = file.querySelector(".preview-file-body");
+  const toggle = file.querySelector("[data-preview-file-collapse]");
+  body.hidden = collapsed;
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} ${file.dataset.previewFileDisplayPath}`);
+  toggle.innerHTML = octicon(`chevron-${collapsed ? "right" : "down"}`);
+}
+
+function setPreviewLinesExpanded(file, expanded) {
+  const toggle = file.querySelector("[data-preview-lines-toggle]");
+  if (!toggle) return;
+  const action = expanded ? "Collapse all lines" : "Expand all lines";
+  toggle.dataset.previewLinesExpanded = String(expanded);
+  toggle.setAttribute("aria-label", `${action}: ${file.dataset.previewFileDisplayPath}`);
+  toggle.setAttribute("aria-pressed", String(expanded));
+  setWorkbenchTooltip(toggle, action);
+  toggle.innerHTML = octicon(expanded ? "fold" : "unfold");
+}
+
+function expandAllPreviewLines(file) {
+  file.querySelectorAll("[data-preview-context-gap]").forEach((gap) => {
+    const fragment = document.createDocumentFragment();
+    [...gap.querySelector("template").content.children].forEach((row) => fragment.appendChild(row));
+    gap.before(fragment);
+    gap.remove();
+  });
+  setPreviewLinesExpanded(file, true);
+}
+
+function collapseAllPreviewLines(file) {
+  const previewFile = Object.values(previewFilesByScope).flat().find((item) => item.path === file.dataset.previewFilePath);
+  if (!previewFile) return;
+  const rows = createContextualPreviewRows(previewFile.rows);
+  file.querySelector(".preview-contextual-diff").innerHTML = rows.map(renderPreviewDiffRow).join("");
+  setPreviewLinesExpanded(file, false);
 }
 
 async function handlePreviewReviewClick(event) {
@@ -2645,10 +2805,8 @@ async function handlePreviewReviewClick(event) {
   }
   const collapse = event.target.closest("[data-preview-file-collapse]");
   if (collapse) {
-    const body = collapse.closest("[data-preview-file-path]").querySelector(".preview-file-body");
-    body.hidden = !body.hidden;
-    collapse.setAttribute("aria-expanded", String(!body.hidden));
-    collapse.innerHTML = icon(`chevron-${body.hidden ? "right" : "down"}`);
+    const file = collapse.closest("[data-preview-file-path]");
+    setPreviewFileCollapsed(file, !file.querySelector(".preview-file-body").hidden);
     return;
   }
   const copyPath = event.target.closest("[data-preview-copy-path]");
@@ -2657,9 +2815,17 @@ async function handlePreviewReviewClick(event) {
     showToast("File path copied");
     return;
   }
+  const linesToggle = event.target.closest("[data-preview-lines-toggle]");
+  if (linesToggle) {
+    const file = linesToggle.closest("[data-preview-file-path]");
+    if (linesToggle.dataset.previewLinesExpanded === "true") collapseAllPreviewLines(file);
+    else expandAllPreviewLines(file);
+    return;
+  }
   const expand = event.target.closest("[data-preview-context-direction]");
   if (!expand) return;
   const gap = expand.closest("[data-preview-context-gap]");
+  const file = gap.closest("[data-preview-file-path]");
   const rows = [...gap.querySelector("template").content.children];
   const direction = expand.dataset.previewContextDirection;
   const selectedRows = direction === "all" ? rows : direction === "up" ? rows.slice(-PREVIEW_DIRECTIONAL_EXPAND_COUNT) : rows.slice(0, PREVIEW_DIRECTIONAL_EXPAND_COUNT);
@@ -2668,6 +2834,7 @@ async function handlePreviewReviewClick(event) {
   if (direction === "up") gap.after(fragment);
   else gap.before(fragment);
   updatePreviewContextGap(gap);
+  setPreviewLinesExpanded(file, true);
 }
 
 function updatePreviewContextGap(gap) {
@@ -2685,7 +2852,13 @@ function updatePreviewContextGap(gap) {
 
 function handlePreviewReviewChange(event) {
   const viewed = event.target.closest("[data-preview-viewed]");
-  if (viewed) viewed.closest("[data-preview-file-path]").classList.toggle("viewed", viewed.checked);
+  if (!viewed) return;
+  const file = viewed.closest("[data-preview-file-path]");
+  const control = viewed.closest(".preview-viewed");
+  file.classList.toggle("viewed", viewed.checked);
+  control.setAttribute("aria-label", viewed.checked ? "Viewed" : "Not Viewed");
+  control.setAttribute("aria-pressed", String(viewed.checked));
+  if (viewed.checked && !file.querySelector(".preview-file-body").hidden) setPreviewFileCollapsed(file, true);
 }
 
 function splitDiffLines(text) {

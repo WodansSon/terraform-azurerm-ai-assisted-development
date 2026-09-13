@@ -51,27 +51,62 @@
     },
     {
       "id": "WB-UX-PREVIEW-001",
-      "title": "Promotion Preview uses synchronized changed-file navigation across review scopes",
+      "title": "Promotion Preview renders all review artifacts in one continuous changed-file document",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
       "id": "WB-UX-PREVIEW-002",
-      "title": "Proposed and payload changes use contained split-file review surfaces",
+      "title": "Review artifact folders disclose independently while file selection alone navigates the diff",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
       "id": "WB-UX-PREVIEW-003",
-      "title": "Raw selection payload remains one contextual full-file diff",
+      "title": "Split files use authenticated headers, status-aware tree icons, independent Viewed state, and uniform spacing",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
       "id": "WB-UX-PREVIEW-004",
-      "title": "Raw context controls use local directional Octicons and ten-line expansion",
+      "title": "Raw selection payload remains one contextual full-file diff with exact expansion controls",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
       "id": "WB-UX-PREVIEW-005",
-      "title": "Review approval remains accessible in responsive changed-file review",
+      "title": "Review approval remains accessible across responsive continuous-file layouts",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-006",
+      "title": "Review toolbar, tree, and diff scroller retain independent layer ownership",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-007",
+      "title": "Each file card owns a sticky header wrapper and sibling diff body",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-008",
+      "title": "Changed-file tree exposes an accessible draggable splitter",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-009",
+      "title": "File headers expose virtual artifact paths without changing navigation identity",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-010",
+      "title": "Changed-file summary pairs colored totals with a five-cell diffstat",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-011",
+      "title": "File-level line expansion remains reversible after any inline context expansion",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-012",
+      "title": "Changed-file tree navigation preserves chevron-owned file-card disclosure state",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
