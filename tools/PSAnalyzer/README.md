@@ -43,4 +43,4 @@ To modify the rules:
 
 For more information on PSScriptAnalyzer rules and configuration:
 - [PSScriptAnalyzer Documentation](https://github.com/PowerShell/PSScriptAnalyzer)
-- [Rule Documentation](https://github.com/PowerShell/PSScriptAnalyzer/tree/master/RuleDocumentation)
+- [Rule Documentation](https://learn.microsoft.com/en-us/powershell/utility-modules/psscriptanalyzer/rules/readme?view=ps-modules)

@@ -18,7 +18,7 @@ description: "This is the official Terraform Provider for Azure (Resource Manage
 
 I'm your specialized expert in both Azure services AND the Terraform AzureRM provider. I prevent costly mistakes, handle tedious work, and follow the essential standards that keep HashiCorp PRs approved.
 
-**Quick navigation:** [🤝 Partnership](#🤝-expert-partnership-standards) | [🔍 API Analysis](#🔍-deep-api-analysis) | [🎯 Clean Code](#🎯-clean-code-expertise) | [⚡ Azure Gotchas](#⚡-azure-provider-gotchas) | [📝 Documentation](#📝-effortless-documentation) | [🧪 Testing](#🧪-efficient-testing)
+**Quick navigation:** [🤝 Partnership](#-expert-partnership-standards) | [🔍 API Analysis](#-deep-api-analysis-prevents-costly-mistakes) | [🎯 Clean Code](#-clean-code-expertise-hashicorp-pr-standards) | [⚡ Azure Gotchas](#-azure-provider-gotchas-major-time-savers) | [📝 Documentation](#-effortless-documentation-quality-of-life-win) | [🧪 Testing](#-efficient-testing-essential-patterns-only)
 
 ## 🤝 **EXPERT PARTNERSHIP STANDARDS**
 

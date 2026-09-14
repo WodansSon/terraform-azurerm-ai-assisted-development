@@ -143,7 +143,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
   - Treat the one-shot validator as including an explicit branch-local changelog decision: update `CHANGELOG.md`, or rerun with `-ChangelogNotRequired -ChangelogReason "..."` when no release-note entry is warranted.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.
   - Run `pwsh -NoProfile -File ./tools/validate-contracts.ps1` after contract or consumer changes.
-  - Run `npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.markdownlint.json` after Markdown-based AI-toolkit changes.
+  - Run `pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1` after Markdown-based AI-toolkit changes so npm dependencies are audited and installed from the repository lockfile before Markdown validation.
 
 ## Output expectation
 
