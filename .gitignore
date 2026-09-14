@@ -18,6 +18,9 @@ local-only-docs/
 # Installer artifacts
 installer/aii.checksum
 
+# Dependencies
+node_modules/
+
 # Regression harness generated run artifacts
 tools/regression/runs/
 tools/regression/results/latest/
@@ -26,4 +29,3 @@ tools/regression/results/history/
 # Hosted Toolkit generated review artifacts
 hosted_copilot/regression/raw/
 hosted_copilot/regression/results/
-hosted_copilot/tools/node_modules/

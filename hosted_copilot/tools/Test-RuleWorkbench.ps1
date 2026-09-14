@@ -35,6 +35,8 @@ $headedPlaybackPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
 $implementationContractPath = Join-Path $PSScriptRoot '../docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md'
 $nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
 $nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
+$nodePackageLockRelativePath = 'hosted_copilot/tools/package-lock.json'
+$npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -122,109 +124,6 @@ function Test-PngFile {
     return $bytes.Length -ge 1000 -and [BitConverter]::ToString($bytes[0..7]) -eq '89-50-4E-47-0D-0A-1A-0A'
 }
 
-function Invoke-NpmLockAudit {
-    param(
-        [Parameter(Mandatory = $true)][string]$Prefix,
-        [Parameter(Mandatory = $true)][string]$NpmPath
-    )
-
-    $output = @(& $NpmPath audit --prefix $Prefix --package-lock-only --ignore-scripts --audit-level=high --json 2>&1)
-    $exitCode = $LASTEXITCODE
-    $report = try { ($output | Out-String) | ConvertFrom-Json } catch { $null }
-    return [pscustomobject]@{ exitCode = $exitCode; report = $report; output = ($output | Out-String).Trim() }
-}
-
-function Invoke-NpmAuditRemediation {
-    param(
-        [Parameter(Mandatory = $true)][string]$NpmPath,
-        [Parameter(Mandatory = $true)][string]$StagingRoot,
-        [Parameter(Mandatory = $true)][string]$ManifestPath,
-        [Parameter(Mandatory = $true)][string]$LockPath,
-        [switch]$AllowBreaking
-    )
-
-    $remediationRoot = Join-Path $StagingRoot 'npm-audit-fix'
-    New-Item -ItemType Directory -Path $remediationRoot -Force | Out-Null
-    Copy-Item -LiteralPath $ManifestPath, $LockPath -Destination $remediationRoot
-    $stagedManifestPath = Join-Path $remediationRoot 'package.json'
-    $stagedLockPath = Join-Path $remediationRoot 'package-lock.json'
-    $originalManifest = Get-Content -LiteralPath $stagedManifestPath -Raw | ConvertFrom-Json
-
-    $safeFixOutput = @(& $NpmPath audit fix --prefix $remediationRoot --package-lock-only --ignore-scripts --no-fund --json 2>&1)
-    $null = $safeFixOutput
-    $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
-
-    if ($audit.exitCode -ne 0 -and $null -ne $audit.report?.vulnerabilities) {
-        $stagedLock = Get-Content -LiteralPath $stagedLockPath -Raw | ConvertFrom-Json -AsHashtable
-        $overridesAdded = $false
-        foreach ($entry in @($audit.report.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') -and -not $_.Value.isDirect } | Sort-Object Name)) {
-            $packageName = $entry.Name
-            $lockedPackage = $stagedLock.packages["node_modules/$packageName"]
-            if ($null -eq $lockedPackage) { continue }
-            $latestOutput = @(& $NpmPath view $packageName version --json 2>&1)
-            if ($LASTEXITCODE -ne 0) { continue }
-            $latestVersion = try { [string](($latestOutput | Out-String) | ConvertFrom-Json) } catch { '' }
-            $currentVersion = [string]$lockedPackage.version
-            $currentSemanticVersion = try { [System.Management.Automation.SemanticVersion]$currentVersion } catch { $null }
-            $latestSemanticVersion = try { [System.Management.Automation.SemanticVersion]$latestVersion } catch { $null }
-            if ($null -eq $currentSemanticVersion -or $null -eq $latestSemanticVersion -or $latestSemanticVersion.Major -ne $currentSemanticVersion.Major -or $latestSemanticVersion -le $currentSemanticVersion) { continue }
-            $overrideOutput = @(& $NpmPath pkg set "overrides.$packageName=$latestVersion" --prefix $remediationRoot 2>&1)
-            if ($LASTEXITCODE -ne 0) { continue }
-            $null = $overrideOutput
-            $overridesAdded = $true
-        }
-        if ($overridesAdded) {
-            $lockOutput = @(& $NpmPath install --prefix $remediationRoot --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1)
-            if ($LASTEXITCODE -eq 0) {
-                $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
-            }
-            $null = $lockOutput
-        }
-    }
-
-    $requiresBreaking = $false
-    if ($audit.exitCode -ne 0 -and $null -ne $audit.report?.vulnerabilities) {
-        $requiresBreaking = @($audit.report.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') -and $null -ne $_.Value.fixAvailable -and $_.Value.fixAvailable -isnot [bool] -and $_.Value.fixAvailable.isSemVerMajor }).Count -gt 0
-    }
-    if ($audit.exitCode -ne 0 -and $requiresBreaking -and $AllowBreaking) {
-        $breakingFixOutput = @(& $NpmPath audit fix --prefix $remediationRoot --package-lock-only --ignore-scripts --force --no-fund --json 2>&1)
-        $null = $breakingFixOutput
-        $audit = Invoke-NpmLockAudit -Prefix $remediationRoot -NpmPath $NpmPath
-    }
-    if ($audit.exitCode -ne 0) {
-        return [pscustomobject]@{ passed = $false; requiresBreaking = $requiresBreaking; audit = $audit; changes = @() }
-    }
-
-    $updatedManifest = Get-Content -LiteralPath $stagedManifestPath -Raw | ConvertFrom-Json
-    $changes = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($dependency in @($updatedManifest.devDependencies.PSObject.Properties)) {
-        $previous = [string]$originalManifest.devDependencies.($dependency.Name)
-        if ($previous -ne [string]$dependency.Value) {
-            $changes.Add("$($dependency.Name): $previous -> $($dependency.Value)")
-        }
-    }
-    $updatedOverrides = if ($null -ne $updatedManifest.PSObject.Properties['overrides']) { @($updatedManifest.overrides.PSObject.Properties) } else { @() }
-    foreach ($override in $updatedOverrides) {
-        $previous = if ($null -ne $originalManifest.PSObject.Properties['overrides']) { [string]$originalManifest.overrides.($override.Name) } else { '' }
-        if ($previous -ne [string]$override.Value) {
-            $changes.Add("override $($override.Name): $(if ($previous) { $previous } else { '<none>' }) -> $($override.Value)")
-        }
-    }
-
-    $manifestBytes = [IO.File]::ReadAllBytes($ManifestPath)
-    $lockBytes = [IO.File]::ReadAllBytes($LockPath)
-    try {
-        Copy-Item -LiteralPath $stagedManifestPath -Destination $ManifestPath -Force
-        Copy-Item -LiteralPath $stagedLockPath -Destination $LockPath -Force
-    }
-    catch {
-        [IO.File]::WriteAllBytes($ManifestPath, $manifestBytes)
-        [IO.File]::WriteAllBytes($LockPath, $lockBytes)
-        throw
-    }
-    return [pscustomobject]@{ passed = $true; requiresBreaking = $false; audit = $audit; changes = $changes.ToArray() }
-}
-
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted Rule Workbench tests'
 }
@@ -243,129 +142,36 @@ try {
     else {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
-    $nodeLockConfig = Get-Content -LiteralPath $nodePackageLockPath -Raw | ConvertFrom-Json -AsHashtable
-    $directDependencies = @($nodePackageConfig.devDependencies.PSObject.Properties)
-    $lockIntegrityValid = $nodeLockConfig['lockfileVersion'] -eq 3 -and $directDependencies.Count -gt 0
-    foreach ($dependency in $directDependencies) {
-        $lockedVersion = [string]$nodeLockConfig['packages']['']['devDependencies'][$dependency.Name]
-        $lockedPackage = $nodeLockConfig['packages']["node_modules/$($dependency.Name)"]
-        $lockIntegrityValid = $lockIntegrityValid -and $lockedVersion -eq [string]$dependency.Value -and -not [string]::IsNullOrWhiteSpace([string]$lockedPackage['integrity'])
-    }
-    if (-not $lockIntegrityValid) {
-        throw 'Node validation dependencies are not fully covered by the versioned integrity lock'
-    }
     if ([string]::IsNullOrWhiteSpace($Run)) {
         $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
         $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
         Start-TestResult -Name 'npm audit'
-        $manifestHashesBeforeAudit = @($nodePackageManifestPath, $nodePackageLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
-        $auditOutput = @(& $npmCommand.Source audit --prefix $PSScriptRoot --package-lock-only --ignore-scripts --audit-level=high --json 2>&1)
+        $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-OutputFormat', 'Json')
+        if ($FixNpmAudit) { $npmSecurityArguments += '-Fix' }
+        if ($AllowBreakingNpmFix) { $npmSecurityArguments += '-AllowBreakingFix' }
+        $auditOutput = @(& pwsh @npmSecurityArguments 2>&1)
         $auditExitCode = $LASTEXITCODE
-        $manifestHashesAfterAudit = @($nodePackageManifestPath, $nodePackageLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
-        $auditDidNotModifyManifests = @(Compare-Object $manifestHashesBeforeAudit $manifestHashesAfterAudit).Count -eq 0
-        $auditResult = try {
-            ($auditOutput | Out-String) | ConvertFrom-Json
+        $auditResult = try { ($auditOutput | Out-String) | ConvertFrom-Json } catch { $null }
+        $hostedAuditReport = if ($null -ne $auditResult) { @($auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath })[0] } else { $null }
+        $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
+        if ($null -ne $hostedAuditReport) {
+            $dependencyAuditCounts = $hostedAuditReport.counts
+            foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
+            foreach ($change in @($hostedAuditReport.remediationChanges)) { $npmFixChanges.Add($change) }
+            $npmFixApplied = [bool]$hostedAuditReport.remediationApplied
+            $npmFixRequiresBreaking = [bool]$hostedAuditReport.requiresBreakingFix
         }
-        catch {
-            $null
+        if (-not $auditPassed) {
+            $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
         }
-        $auditHasReport = $null -ne $auditResult -and $null -ne $auditResult.PSObject.Properties['metadata'] -and $null -ne $auditResult.PSObject.Properties['vulnerabilities']
-        if ($auditHasReport) {
-            $dependencyAuditCounts = $auditResult.metadata.vulnerabilities
-            foreach ($entry in @($auditResult.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('high', 'critical') } | Sort-Object Name)) {
-                $packageName = $entry.Name
-                $vulnerability = $entry.Value
-                $advisories = @($vulnerability.via | ForEach-Object {
-                    if ($_ -is [string]) {
-                        "Affected through $_"
-                    }
-                    elseif (-not [string]::IsNullOrWhiteSpace([string]$_.title)) {
-                        $title = [string]$_.title
-                        $prefix = "$packageName`: "
-                        if ($title.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $title.Substring($prefix.Length) } else { $title }
-                    }
-                    else {
-                        "Affected through $([string]$_.name)"
-                    }
-                })
-                $dependencyPath = if ($directDependencies.Name -contains $packageName) {
-                    'Direct development dependency'
-                }
-                elseif (@($vulnerability.effects).Count -gt 0) {
-                    "Required by $(@($vulnerability.effects) -join ', ')"
-                }
-                else {
-                    'Transitive development dependency'
-                }
-                $remediation = if ($vulnerability.fixAvailable -is [bool]) {
-                    if ($vulnerability.fixAvailable) { 'A compatible fix is available' } else { 'No compatible fix is reported' }
-                }
-                else {
-                    "Set $($vulnerability.fixAvailable.name) to $($vulnerability.fixAvailable.version)"
-                }
-                $dependencyAuditFindings.Add([pscustomobject]@{
-                    package = $packageName
-                    severity = ([string]$vulnerability.severity).ToUpperInvariant()
-                    advisory = $advisories -join '; '
-                    affectedRange = [string]$vulnerability.range
-                    dependencyPath = $dependencyPath
-                    remediation = $remediation
-                })
-            }
-        }
-        $auditPassed = $auditExitCode -eq 0 -and $auditDidNotModifyManifests -and $auditHasReport
-        if (-not $auditPassed -and $FixNpmAudit -and $auditDidNotModifyManifests -and $auditHasReport) {
-            Start-TestResult -Name 'npm audit remediation'
-            $manifestRelativePaths = @('hosted_copilot/tools/package.json', 'hosted_copilot/tools/package-lock.json')
-            $manifestStatus = @(& git -C $repositoryRoot status --short -- $manifestRelativePaths 2>&1)
-            if ($LASTEXITCODE -ne 0) {
-                Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail 'Unable to verify dependency manifest worktree state'
-            }
-            elseif ($manifestStatus.Count -gt 0) {
-                Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail 'Dependency manifests already contain uncommitted changes; remediation was not applied'
-            }
-            else {
-                $remediation = Invoke-NpmAuditRemediation -NpmPath $npmCommand.Source -StagingRoot $tempRoot -ManifestPath $nodePackageManifestPath -LockPath $nodePackageLockPath -AllowBreaking:$AllowBreakingNpmFix
-                $npmFixRequiresBreaking = $remediation.requiresBreaking
-                if ($remediation.passed) {
-                    foreach ($change in $remediation.changes) { $npmFixChanges.Add($change) }
-                    $npmFixApplied = $true
-                    $auditResult = $remediation.audit.report
-                    $auditExitCode = $remediation.audit.exitCode
-                    $dependencyAuditCounts = $auditResult.metadata.vulnerabilities
-                    $auditHasReport = $true
-                    $auditPassed = $true
-                    $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
-                    $nodeLockConfig = Get-Content -LiteralPath $nodePackageLockPath -Raw | ConvertFrom-Json -AsHashtable
-                    $directDependencies = @($nodePackageConfig.devDependencies.PSObject.Properties)
-                    Add-TestResult -Name 'npm audit remediation' -Passed $true -Detail "Applied $($npmFixChanges.Count) staged dependency changes after a clean re-audit"
-                }
-                else {
-                    $detail = if ($npmFixRequiresBreaking -and -not $AllowBreakingNpmFix) {
-                        'Only a breaking dependency change remains; rerun with -FixNpmAudit -AllowBreakingNpmFix to evaluate it'
-                    }
-                    else {
-                        'No staged dependency change resolved every high or critical vulnerability; repository manifests remain unchanged'
-                    }
-                    Add-TestResult -Name 'npm audit remediation' -Passed $false -Detail $detail
-                }
-            }
-        }
-        $auditDetail = if (-not $auditDidNotModifyManifests) {
-            'npm audit modified package.json or package-lock.json'
-        }
-        elseif (-not $auditHasReport) {
-            $dependencyAuditError = 'npm audit did not return a vulnerability report'
-            $dependencyAuditError
-        }
-        elseif ($auditExitCode -ne 0) {
-            "$($dependencyAuditFindings.Count) high or critical vulnerabilities found; dependency installation blocked"
+        $auditDetail = if (-not $auditPassed) {
+            "$dependencyAuditError; dependency installation blocked"
         }
         elseif ($npmFixApplied) {
-            "Remediated the lockfile and passed npm audit at the high threshold"
+            'Remediated the lockfile and passed the shared npm audit at the low threshold'
         }
         else {
-            "Lockfile passed npm audit at the high threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
+            "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
         }
         Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
         if (-not $auditPassed) {
@@ -373,7 +179,7 @@ try {
             throw 'npm audit failed before dependency installation'
         }
         Start-TestResult -Name 'locked-browser-dependencies'
-        $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --no-audit --no-fund 2>&1)
+        $dependencyOutput = @(& $npmCommand.Source ci --prefix $PSScriptRoot --ignore-scripts --no-audit --no-fund 2>&1)
         $dependencyExitCode = $LASTEXITCODE
         $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-Path -LiteralPath $nodePackageLockPath -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
         Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed integrity-locked Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graphs." } else { ($dependencyOutput | Out-String).Trim() })
@@ -1239,7 +1045,7 @@ $result = [ordered]@{
     tests = $results.ToArray()
     issues = $issues.ToArray()
     dependencyAudit = [ordered]@{
-        threshold = 'high'
+        threshold = 'low'
         counts = $dependencyAuditCounts
         findings = $dependencyAuditFindings.ToArray()
         error = $dependencyAuditError
@@ -1275,7 +1081,7 @@ else {
     elseif ($dependencyAuditFindings.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Dependency security'
         Write-ValidationSummary -Fields ([ordered]@{
-            Threshold = 'HIGH'
+            Threshold = 'LOW'
             Critical = $dependencyAuditCounts.critical
             High = $dependencyAuditCounts.high
             Installation = 'BLOCKED'
@@ -1301,7 +1107,7 @@ else {
     elseif ($null -ne $dependencyAuditError) {
         Write-ValidationSectionHeader -Title 'Dependency security'
         Write-ValidationSummary -Fields ([ordered]@{
-            Threshold = 'HIGH'
+            Threshold = 'LOW'
             Audit = 'FAILED'
             Installation = 'BLOCKED'
             Error = $dependencyAuditError

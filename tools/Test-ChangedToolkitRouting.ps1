@@ -106,6 +106,12 @@ $cases = @(
         repositoryChecks = $true
     },
     [pscustomobject]@{
+        name = 'shared-npm-security'
+        paths = @('tools/Test-NpmSecurity.ps1', 'tools/npm-validation/package-lock.json')
+        validators = @('Interactive Toolkit', 'Hosted Toolkit')
+        repositoryChecks = $true
+    },
+    [pscustomobject]@{
         name = 'repository-maintenance'
         paths = @('AGENTS.md')
         validators = @()

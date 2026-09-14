@@ -18,7 +18,11 @@ param(
 
     [switch]$AllowCatalogIssues,
 
-    [switch]$AllowDrift
+    [switch]$AllowDrift,
+
+    [switch]$FixNpmAudit,
+
+    [switch]$AllowBreakingNpmFix
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +33,7 @@ $arguments = @{
     ChangedRegressionScope = $ChangedRegressionScope
 }
 
-foreach ($switchName in @('SkipChangelog', 'ChangelogNotRequired', 'SkipRegressionHarness', 'SkipUpstreamDrift', 'AllowCatalogIssues', 'AllowDrift')) {
+foreach ($switchName in @('SkipChangelog', 'ChangelogNotRequired', 'SkipRegressionHarness', 'SkipUpstreamDrift', 'AllowCatalogIssues', 'AllowDrift', 'FixNpmAudit', 'AllowBreakingNpmFix')) {
     if ($PSBoundParameters.ContainsKey($switchName)) {
         $arguments[$switchName] = $true
     }

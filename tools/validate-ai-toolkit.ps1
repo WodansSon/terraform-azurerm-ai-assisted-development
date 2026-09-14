@@ -18,7 +18,11 @@ param(
 
     [switch]$AllowCatalogIssues,
 
-    [switch]$AllowDrift
+    [switch]$AllowDrift,
+
+    [switch]$FixNpmAudit,
+
+    [switch]$AllowBreakingNpmFix
 )
 
 Set-StrictMode -Version Latest
@@ -36,16 +40,17 @@ $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $interactiveRuleCatalogScriptPath = Join-Path $PSScriptRoot 'Test-InteractiveRuleCatalog.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
+$npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
 $runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
 $projectReadyTestScriptPath = Join-Path $PSScriptRoot 'Test-PRReady.ps1'
 $validationOutputTestScriptPath = Join-Path $PSScriptRoot 'Test-ValidationOutput.ps1'
 
-$npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
-if ($null -eq $npxCommand) {
-    $npxCommand = Get-Command 'npx' -ErrorAction SilentlyContinue
-}
+$npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
+$npmCommand = Get-Command $npmCommandName -ErrorAction SilentlyContinue
+$markdownlintRelativePath = if ($IsWindows) { 'npm-validation/node_modules/.bin/markdownlint-cli2.cmd' } else { 'npm-validation/node_modules/.bin/markdownlint-cli2' }
+$markdownlintCommandPath = Join-Path $PSScriptRoot $markdownlintRelativePath
 
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
 
@@ -406,6 +411,33 @@ try {
 
     $steps = @()
 
+    $npmSecurityArguments = @(
+        '-NoProfile',
+        '-File',
+        $npmSecurityScriptPath,
+        '-AdditionalLockPath',
+        'tools/npm-validation/package-lock.json'
+    )
+    if ($FixNpmAudit) {
+        $npmSecurityArguments += '-Fix'
+    }
+    if ($AllowBreakingNpmFix) {
+        $npmSecurityArguments += '-AllowBreakingFix'
+    }
+
+    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit every tracked npm integrity lock and reject vulnerabilities of any severity before dependency installation.' -Command {
+        & pwsh @npmSecurityArguments
+    }
+    $steps += $npmSecurityStep
+
+    $npmInstallStep = Invoke-ValidationStep -Name 'npm-install' -Detail 'Install only the audited, integrity-locked npm validation graph without lifecycle scripts.' -Skipped:(-not $npmSecurityStep.success) -Command {
+        if ($null -eq $npmCommand) {
+            throw 'npm was not found on PATH'
+        }
+        & $npmCommand.Source ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund
+    }
+    $steps += $npmInstallStep
+
     $steps += Invoke-ValidationStep -Name 'changelog' -Detail 'Confirm the current branch has an explicit changelog decision: either CHANGELOG.md is updated or a maintainer explicitly marks the branch as changelog-not-required.' -Skipped:$SkipChangelog -Command {
         if ($null -eq $gitCommand) {
             Write-Output 'git not found on PATH; changelog alignment could not be evaluated'
@@ -498,12 +530,12 @@ try {
         }
     }
 
-    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the repo markdownlint configuration.' -Command {
-        if ($null -eq $npxCommand) {
-            throw 'npx was not found on PATH'
+    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmInstallStep.success) -Command {
+        if (-not (Test-Path -LiteralPath $markdownlintCommandPath -PathType Leaf)) {
+            throw "markdownlint was not installed from the repository lockfile: $markdownlintCommandPath"
         }
 
-        & $npxCommand.Source -y markdownlint-cli2 '.github/**/*.md' 'docs/**/*.md' 'CHANGELOG.md' --config '.github/.markdownlint.json'
+        & $markdownlintCommandPath '.github/**/*.md' 'docs/**/*.md' 'CHANGELOG.md' --config '.github/.markdownlint.json'
     }
 
     $steps += Invoke-ValidationStep -Name 'architecture-layout' -Detail 'Validate the System Architecture diagram row width, right edge, and border padding.' -Command {

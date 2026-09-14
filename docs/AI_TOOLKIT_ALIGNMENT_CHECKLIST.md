@@ -235,6 +235,7 @@ The Interactive Toolkit command runs its complete maintainer validation flow in 
 - Interactive rule catalog schema, lifecycle, contract-hash, and installer-exclusion validation
 - Deterministic argument, help, output, and error regression tests for `Get-PRReady.ps1`
 - Branch-local regression case runnability validation for changed cases and fixtures
+- Integrity-lock validation and npm vulnerability auditing at every severity
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - System Architecture diagram width, right-edge, and border-padding validation
 - Release dry-run output boundary validation for the source repository and persistent user-profile installer
@@ -273,6 +274,20 @@ pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssue
 ```
 
 The lower-level commands remain available for debugging and targeted re-runs.
+
+Run the repository-wide npm security audit directly with:
+
+```powershell
+pwsh -NoProfile -File ./tools/Test-NpmSecurity.ps1
+```
+
+Normal validation is read-only and fails when any tracked npm lockfile reports a low, moderate, high, or critical vulnerability. To stage npm's safe fixes and same-major transitive dependency overrides, then apply them only after a clean re-audit, run:
+
+```powershell
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -FixNpmAudit
+```
+
+Remediation refuses to modify dirty manifests. A semver-major fix remains blocked unless the maintainer explicitly adds `-AllowBreakingNpmFix`; the full validation flow then verifies the resulting dependency graph and repository behavior.
 
 Run:
 
@@ -350,7 +365,7 @@ Standard authoring pattern for AI-toolkit files:
 - Let heading order and bullet indentation convey sequence instead of explicit numbering
 - Treat this as the default pattern for `.github/skills/`, `.github/prompts/`, and `.github/instructions/`
 
-This is a practical safeguard. The CI/CD pipeline validates Markdown with `DavidAnson/markdownlint-cli2-action@v18`, and we have previously hit `MD029` failures in AI-toolkit files.
+This is a practical safeguard. The CI/CD pipeline validates Markdown with the immutable commit selected for `DavidAnson/markdownlint-cli2-action` v18, and we have previously hit `MD029` failures in AI-toolkit files.
 
 Known failure pattern:
 
@@ -374,7 +389,7 @@ If one of those files uses ordered lists only for presentation, flatten it to bu
 Local pre-check equivalent:
 
 ```powershell
-npx -y markdownlint-cli2 ".github/**/*.md" "docs/**/*.md" --config .github/.markdownlint.json
+pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
 ```
 
 ## Quick “Is Everything Up To Date?” Answer Flow

@@ -34,6 +34,14 @@
       "ownership": "shared"
     },
     {
+      "pattern": "tools/Test-NpmSecurity.ps1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/npm-validation/**",
+      "ownership": "shared"
+    },
+    {
       "pattern": "tools/toolkit-ownership.json",
       "ownership": "shared"
     },

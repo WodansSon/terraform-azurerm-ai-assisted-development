@@ -35,6 +35,12 @@ Import-Module -Name $validationOutputModulePath -Force
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
 $hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-Toolkit.ps1'
+$npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
+$npmValidationRoot = Join-Path $PSScriptRoot 'npm-validation'
+$npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
+$npmCommand = Get-Command $npmCommandName -ErrorAction SilentlyContinue
+$markdownCommandRelativePath = if ($IsWindows) { 'node_modules/.bin/markdownlint-cli2.cmd' } else { 'node_modules/.bin/markdownlint-cli2' }
+$markdownCommand = Join-Path $npmValidationRoot $markdownCommandRelativePath
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
 $explicitPathsProvided = $PSBoundParameters.ContainsKey('ChangedPaths')
 
@@ -243,27 +249,30 @@ function Invoke-RepositoryCheck {
     })
 
     if ($existingMarkdownPaths.Count -gt 0) {
-        $npxCommand = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
-        if ($null -eq $npxCommand) {
-            $npxCommand = Get-Command 'npx' -ErrorAction SilentlyContinue
-        }
-
-        if ($null -eq $npxCommand) {
-            $checkIssues.Add('npx was not found on PATH')
+        if ($null -eq $npmCommand) {
+            $checkIssues.Add('npm was not found on PATH')
         }
         else {
-            Push-Location $repoRoot
-            try {
+            $auditOutput = @(& pwsh -NoProfile -File $npmSecurityScriptPath 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                $checkIssues.Add(("npm security validation failed: {0}" -f (($auditOutput | Out-String).Trim())))
+            }
+            else {
                 $global:LASTEXITCODE = 0
-                $markdownOutput = @(& $npxCommand.Source -y --prefer-offline markdownlint-cli2 @existingMarkdownPaths --config '.github/.markdownlint.json' 2>&1)
-                $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-            }
-            finally {
-                Pop-Location
-            }
+                $installOutput = @(& $npmCommand.Source ci --prefix $npmValidationRoot --ignore-scripts --no-audit --no-fund 2>&1)
+                $installExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+                if ($installExitCode -ne 0) {
+                    $checkIssues.Add(("Locked npm validation dependency installation failed: {0}" -f (($installOutput | Out-String).Trim())))
+                }
+                else {
+                    $global:LASTEXITCODE = 0
+                    $markdownOutput = @(& $markdownCommand @existingMarkdownPaths --config '.github/.markdownlint.json' 2>&1)
+                    $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
 
-            if ($markdownExitCode -ne 0) {
-                $checkIssues.Add(("Markdown validation failed: {0}" -f (($markdownOutput | Out-String).Trim())))
+                    if ($markdownExitCode -ne 0) {
+                        $checkIssues.Add(("Markdown validation failed: {0}" -f (($markdownOutput | Out-String).Trim())))
+                    }
+                }
             }
         }
     }
