@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Added the repo-only `Get-PRReady.ps1` utility for reporting the current GitHub Project readiness value, contributor, and timestamps for one or more AzureRM pull requests, with ordered, deduplicated sequential lookups and deterministic offline regression coverage.
-  - **[Internal]** - Repository validation now pins every GitHub Action to an immutable commit, limits validation checkout credentials to read-only use, and audits integrity-locked npm dependency graphs before script-free installation, failing on vulnerabilities at any severity while reserving staged dependency and transitive override remediation for explicit maintainer runs.
+  - **[Internal]** - Repository validation now pins every GitHub Action to an immutable commit, limits validation checkout credentials to read-only use, audits integrity-locked npm dependency graphs before script-free installation, and checks links across tracked Markdown on every main pull request and push, failing on vulnerabilities or broken links while reserving staged dependency and transitive override remediation for explicit maintainer runs.
 
 ### Changed
 

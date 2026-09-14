@@ -3,20 +3,8 @@ name: Validate Documentation
 on:
   push:
     branches: [ main ]
-    paths:
-      - '**.md'
-      - 'instructions/**'
-      - 'tools/Test-NpmSecurity.ps1'
-      - 'tools/npm-validation/**'
-      - '.github/workflows/docs-validation.yml'
   pull_request:
     branches: [ main ]
-    paths:
-      - '**.md'
-      - 'instructions/**'
-      - 'tools/Test-NpmSecurity.ps1'
-      - 'tools/npm-validation/**'
-      - '.github/workflows/docs-validation.yml'
 
 jobs:
   markdown-lint:
@@ -59,10 +47,10 @@ jobs:
 
       - name: Check links in tracked markdown files
         run: |
+          set -o pipefail
           git ls-files -z -- '*.md' | \
-            xargs -0 ./tools/npm-validation/node_modules/.bin/markdown-link-check \
-            --config .github/markdown-link-check.json || true
-        continue-on-error: true
+            xargs -0 -r -n 25 ./tools/npm-validation/node_modules/.bin/markdown-link-check \
+            --config .github/markdown-link-check.json
 
   validate-instructions:
     name: Validate Instruction Files
