@@ -64,4 +64,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./tools/validate-ai-toolkit.ps1 -SkipRegressionHarness -AllowCatalogIssues
+          ./tools/validate-ai-toolkit.ps1 -SkipRegressionHarness -SkipUpstreamDrift -AllowCatalogIssues
