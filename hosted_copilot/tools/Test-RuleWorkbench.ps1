@@ -37,6 +37,8 @@ $nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
 $nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
 $nodePackageLockRelativePath = 'hosted_copilot/tools/package-lock.json'
 $npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
+$puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
+$puppeteerCliPath = Join-Path $PSScriptRoot $puppeteerCliRelativePath
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -185,6 +187,21 @@ try {
         Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed integrity-locked Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graphs." } else { ($dependencyOutput | Out-String).Trim() })
         if (-not $lockedDependencyValid) {
             throw 'locked browser validation dependencies could not be installed'
+        }
+        Start-TestResult -Name 'locked-browser-runtime'
+        $browserInstallOutput = New-Object 'System.Collections.Generic.List[string]'
+        $browserInstallPassed = Test-Path -LiteralPath $puppeteerCliPath -PathType Leaf
+        foreach ($browserName in @('chrome', 'chrome-headless-shell')) {
+            if (-not $browserInstallPassed) {
+                break
+            }
+            $output = @(& $puppeteerCliPath browsers install $browserName 2>&1)
+            foreach ($line in $output) { $browserInstallOutput.Add([string]$line) }
+            $browserInstallPassed = $LASTEXITCODE -eq 0
+        }
+        Add-TestResult -Name 'locked-browser-runtime' -Passed $browserInstallPassed -Detail $(if ($browserInstallPassed) { 'Installed the Puppeteer-pinned Chrome and Chrome Headless Shell runtimes through the locked local CLI.' } else { ($browserInstallOutput | Out-String).Trim() })
+        if (-not $browserInstallPassed) {
+            throw 'locked browser runtimes could not be installed'
         }
     }
     else {

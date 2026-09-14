@@ -252,8 +252,8 @@ async function run() {
           // The response can race with the owned server closing its listener.
         }
         shutdownVerified = true;
-      } catch (error) {
-        if (!playbackError) playbackError = error;
+      } catch (shutdownError) {
+        playbackError = new AggregateError([playbackError, shutdownError], "Playback failed and fallback shutdown also failed");
       }
     } else if (shutdownAtEnd && !shutdownVerified) {
       const context = await (await getBrowser()).newContext({ viewport: { width: 768, height: 900 } });
