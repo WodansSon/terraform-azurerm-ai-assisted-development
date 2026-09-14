@@ -15,6 +15,16 @@ Thumbs.db
 # Installer artifacts
 installer/aii.checksum
 
+# Dependencies
+node_modules/
+
+# Local-only maintainer documentation
+local-only-docs/
+
+# Hosted Toolkit generated review artifacts
+hosted_copilot/regression/raw/
+hosted_copilot/regression/results/
+
 # Regression harness generated run artifacts
 tools/regression/runs/
 tools/regression/results/latest/

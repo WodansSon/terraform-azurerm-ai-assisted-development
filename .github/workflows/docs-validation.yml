@@ -6,12 +6,16 @@ on:
     paths:
       - '**.md'
       - 'instructions/**'
+      - 'tools/Test-NpmSecurity.ps1'
+      - 'tools/npm-validation/**'
       - '.github/workflows/docs-validation.yml'
   pull_request:
     branches: [ main ]
     paths:
       - '**.md'
       - 'instructions/**'
+      - 'tools/Test-NpmSecurity.ps1'
+      - 'tools/npm-validation/**'
       - '.github/workflows/docs-validation.yml'
 
 jobs:
@@ -21,10 +25,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v18
+        uses: DavidAnson/markdownlint-cli2-action@eb5ca3ab411449c66620fe7f1b3c9e10547144b0 # v18
         with:
           config: '.github/.markdownlint.json'
           globs: |
@@ -39,19 +43,23 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
+      - name: Audit npm dependencies
+        shell: pwsh
+        run: ./tools/Test-NpmSecurity.ps1 -AdditionalLockPath tools/npm-validation/package-lock.json
+
       - name: Install markdown-link-check
-        run: npm install -g markdown-link-check
+        run: npm ci --prefix tools/npm-validation --ignore-scripts --no-audit --no-fund
 
       - name: Check links in README
         run: |
-          markdown-link-check README.md \
+          ./tools/npm-validation/node_modules/.bin/markdown-link-check README.md \
             --config .github/markdown-link-check.json || true
         continue-on-error: true
 
@@ -59,7 +67,7 @@ jobs:
         run: |
           find . -name "*.md" \
             -not -path "./node_modules/*" \
-            -exec markdown-link-check {} \
+            -exec ./tools/npm-validation/node_modules/.bin/markdown-link-check {} \
             --config .github/markdown-link-check.json \; || true
         continue-on-error: true
 
@@ -69,7 +77,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Check instruction file structure
         run: |
@@ -111,7 +119,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Check copilot-instructions.md
         run: |
@@ -155,10 +163,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run codespell
-        uses: codespell-project/actions-codespell@v2
+        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2
         with:
           ignore_words_list: 'aks,terraform,azurerm,hashicorp,copilot,hashi,vibe'
           skip: '*.json,*.lock,*.sum'
