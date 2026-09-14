@@ -57,18 +57,11 @@ jobs:
       - name: Install markdown-link-check
         run: npm ci --prefix tools/npm-validation --ignore-scripts --no-audit --no-fund
 
-      - name: Check links in README
+      - name: Check links in tracked markdown files
         run: |
-          ./tools/npm-validation/node_modules/.bin/markdown-link-check README.md \
+          git ls-files -z -- '*.md' | \
+            xargs -0 ./tools/npm-validation/node_modules/.bin/markdown-link-check \
             --config .github/markdown-link-check.json || true
-        continue-on-error: true
-
-      - name: Check links in all markdown files
-        run: |
-          find . -name "*.md" \
-            -not -path "./node_modules/*" \
-            -exec ./tools/npm-validation/node_modules/.bin/markdown-link-check {} \
-            --config .github/markdown-link-check.json \; || true
         continue-on-error: true
 
   validate-instructions:
