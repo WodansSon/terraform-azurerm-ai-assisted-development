@@ -64,6 +64,48 @@ function Get-NpmFindings {
     return @($Audit.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('low', 'moderate', 'high', 'critical') } | Sort-Object Name)
 }
 
+function ConvertTo-NpmFindingReport {
+    param([Parameter(Mandatory = $true)][object]$Finding)
+
+    $packageName = [string]$Finding.Name
+    $vulnerability = $Finding.Value
+    $advisories = @($vulnerability.via | ForEach-Object {
+        if ($_ -is [string]) {
+            "Affected through $_"
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$_.title)) {
+            [string]$_.title
+        }
+        else {
+            "Affected through $([string]$_.name)"
+        }
+    })
+    $dependencyPath = if ($vulnerability.isDirect) {
+        'Direct dependency'
+    }
+    elseif (@($vulnerability.effects).Count -gt 0) {
+        "Required by $(@($vulnerability.effects) -join ', ')"
+    }
+    else {
+        'Transitive dependency'
+    }
+    $remediation = if ($vulnerability.fixAvailable -is [bool]) {
+        if ($vulnerability.fixAvailable) { 'A compatible fix is available' } else { 'No compatible fix is reported' }
+    }
+    else {
+        "Set $($vulnerability.fixAvailable.name) to $($vulnerability.fixAvailable.version)"
+    }
+
+    return [ordered]@{
+        package = $packageName
+        severity = ([string]$vulnerability.severity).ToUpperInvariant()
+        advisory = $advisories -join '; '
+        affectedRange = [string]$vulnerability.range
+        dependencyPath = $dependencyPath
+        remediation = $remediation
+    }
+}
+
 function Invoke-NpmRemediation {
     param(
         [Parameter(Mandatory = $true)][string]$ManifestPath,
@@ -249,13 +291,7 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
         $audit = $auditResult.report
         $findingProperties = @(Get-NpmFindings -Audit $audit)
 
-        $findings = @($findingProperties | ForEach-Object {
-            [ordered]@{
-                package = $_.Name
-                severity = ([string]$_.Value.severity).ToUpperInvariant()
-                affectedRange = [string]$_.Value.range
-            }
-        })
+        $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
         $passed = $auditExitCode -eq 0 -and $findings.Count -eq 0
         $remediation = $null
         if (-not $passed -and $Fix) {
@@ -264,13 +300,7 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
                 $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
                 $audit = $auditResult.report
                 $findingProperties = @(Get-NpmFindings -Audit $audit)
-                $findings = @($findingProperties | ForEach-Object {
-                    [ordered]@{
-                        package = $_.Name
-                        severity = ([string]$_.Value.severity).ToUpperInvariant()
-                        affectedRange = [string]$_.Value.range
-                    }
-                })
+                $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
                 $passed = $auditResult.exitCode -eq 0 -and $findings.Count -eq 0
             }
         }

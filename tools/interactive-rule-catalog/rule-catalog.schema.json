@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "catalogedOn",
+    "description",
+    "rules"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "rule-catalog.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "catalogedOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "contractPath",
+          "status",
+          "contentSha256",
+          "provenance",
+          "evidence",
+          "sourceIds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contractPath": {
+            "type": "string",
+            "pattern": "^\\.github/instructions/[a-z0-9-]+-compliance-contract\\.instructions\\.md$"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "retired"
+            ]
+          },
+          "contentSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "provenance": {
+            "enum": [
+              "published-upstream-standard",
+              "inferred-maintainer-convention",
+              "local-safeguard",
+              "unclassified"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "sourceIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "replacementIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+            }
+          },
+          "deprecatedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "retiredOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "lifecycleReason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "provenance": {
+                  "const": "unclassified"
+                }
+              },
+              "required": [
+                "provenance"
+              ]
+            },
+            "then": {
+              "properties": {
+                "evidence": {
+                  "maxItems": 0
+                },
+                "sourceIds": {
+                  "maxItems": 0
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "evidence": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "deprecated"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "deprecatedOn",
+                "lifecycleReason"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "retired"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "retiredOn",
+                "lifecycleReason"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

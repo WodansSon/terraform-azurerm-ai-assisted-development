@@ -1,0 +1,11 @@
+{
+  "$schema": "interactive-intake-ledger.schema.json",
+  "schemaVersion": 1,
+  "sourceSnapshot": {
+    "catalogPath": "tools/interactive-rule-catalog/rule-catalog.json",
+    "catalogSha256": "16e0c792b9f001bd858bb1774965a4bca45b24b46fac4b52d5661bf3d04eee5f",
+    "capturedOn": "2026-09-02",
+    "ruleCount": 349
+  },
+  "decisions": []
+}

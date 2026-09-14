@@ -9,11 +9,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$allowedProvenanceLabels = @(
-    'Published upstream standard',
-    'Inferred maintainer convention',
-    'Local safeguard'
-)
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
 
 $requiredContractHeadings = @(
     '## Canonical sources of truth (precedence)',
@@ -404,86 +401,6 @@ function Get-ContractReport {
 
     $companionInstructionPaths = @(Get-CompanionInstructionPaths -RelativeContractPath $relativePath -CanonicalSourceSection $canonicalSourceSection -DetailedCompanionSection $detailedCompanionSection)
 
-    $provenanceRuleCount = 0
-    $rulesWithEvidenceCount = 0
-
-    foreach ($ruleIndex in $ruleHeadingIndexes) {
-        $ruleHeading = $lines[$ruleIndex]
-        $ruleId = $ruleHeading -replace '^###\s+', ''
-        $ruleLines = @()
-
-        for ($i = $ruleIndex + 1; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^###\s+' -or $lines[$i] -match '^##\s+') {
-                break
-            }
-
-            $ruleLines += $lines[$i]
-        }
-
-        $provenanceLineIndex = -1
-        $evidenceLineIndex = -1
-        $provenanceValue = $null
-
-        for ($i = 0; $i -lt $ruleLines.Count; $i++) {
-            if ($ruleLines[$i] -match '^- \*\*Provenance\*\*:\s*(.+)$') {
-                $provenanceLineIndex = $i
-                $provenanceValue = $Matches[1].Trim().TrimEnd('.')
-            }
-
-            if ($ruleLines[$i] -match '^- \*\*Evidence\*\*:\s*$') {
-                $evidenceLineIndex = $i
-            }
-        }
-
-        if ($evidenceLineIndex -ge 0 -and $provenanceLineIndex -lt 0) {
-            $errors.Add("$ruleId has evidence but no provenance label")
-        }
-
-        if ($provenanceLineIndex -ge 0) {
-            $provenanceRuleCount++
-
-            if ($allowedProvenanceLabels -notcontains $provenanceValue) {
-                $errors.Add("$ruleId uses unsupported provenance label: $provenanceValue")
-            }
-
-            if ($evidenceLineIndex -lt 0) {
-                $errors.Add("$ruleId has provenance but no evidence block")
-            }
-            elseif ($evidenceLineIndex -lt $provenanceLineIndex) {
-                $errors.Add("$ruleId places evidence before provenance")
-            }
-            else {
-                $rulesWithEvidenceCount++
-
-                $hasEvidenceItems = $false
-                for ($i = $evidenceLineIndex + 1; $i -lt $ruleLines.Count; $i++) {
-                    $trimmedLine = $ruleLines[$i].TrimEnd()
-
-                    if ($trimmedLine -eq '') {
-                        continue
-                    }
-
-                    if ($trimmedLine -match '^- \*\*') {
-                        break
-                    }
-
-                    if ($trimmedLine -match '^  -\s+' -or $trimmedLine -match '^\s{2,}-\s+') {
-                        $hasEvidenceItems = $true
-                        break
-                    }
-
-                    if ($trimmedLine -match '^###\s+' -or $trimmedLine -match '^##\s+') {
-                        break
-                    }
-                }
-
-                if (-not $hasEvidenceItems) {
-                    $errors.Add("$ruleId has an evidence heading but no evidence bullet items")
-                }
-            }
-        }
-    }
-
     $consumers = Get-ContractConsumers -RepoRoot $RepoRoot -RelativeContractPath $relativePath
 
     $declaredConsumerPaths = @($declaredConsumers | ForEach-Object { $_.path })
@@ -560,8 +477,6 @@ function Get-ContractReport {
         consumers = @($consumers)
         eofMarker = $lastNonEmptyLine
         ruleCount = $ruleHeadingIndexes.Count
-        provenanceRuleCount = $provenanceRuleCount
-        rulesWithEvidenceCount = $rulesWithEvidenceCount
         errors = @($errors)
         warnings = @($warnings)
     }
@@ -576,62 +491,69 @@ function Write-TextReport {
         [object[]]$Reports
     )
 
-    Write-Host 'Contract Validation Report'
-    Write-Host "Repository: $RepoRoot"
-    Write-Host "Contracts Found: $($Reports.Count)"
-    Write-Host ''
+    $failureCount = @($Reports | Where-Object { $_.errors.Count -gt 0 }).Count
+    Write-ValidationSectionHeader -Title 'Contract validation report'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $(if ($failureCount -eq 0) { 'PASSED' } else { 'FAILED' })
+        Repository = $RepoRoot
+        'Contracts Found' = $Reports.Count
+        'Contracts Failed' = $failureCount
+    })
+    Write-ValidationSectionHeader -Title 'Contract results'
 
     foreach ($report in $Reports) {
-        $status = if ($report.errors.Count -eq 0) { 'PASS' } else { 'FAIL' }
-        Write-Host "[$status] $($report.path)"
-        Write-Host "  Title: $($report.title)"
-        Write-Host "  Rules: $($report.ruleCount)"
-        Write-Host "  Provenance Rules: $($report.provenanceRuleCount)"
-        Write-Host "  Companion Instructions: $($report.companionInstructionCount)"
-        Write-Host "  Declared Consumers: $($report.declaredConsumerCount)"
-        Write-Host "  EOF-Load Consumers: $($report.eofLoadConsumerCount)"
-        Write-Host "  Consumers: $($report.consumerCount)"
-        Write-Host "  Canonical Sources: $($report.canonicalSources.Count)"
-        Write-Host "  EOF Marker: $($report.eofMarker)"
+        $status = if ($report.errors.Count -eq 0) { 'passed' } else { 'failed' }
+        Write-Output (Format-ValidationStatusLine -Status $status -Name $report.path -Detail $report.title -NameWidth 80)
+        Write-ValidationSummary -Fields ([ordered]@{
+            Rules = $report.ruleCount
+            'Companion Instructions' = $report.companionInstructionCount
+            'Declared Consumers' = $report.declaredConsumerCount
+            'EOF-Load Consumers' = $report.eofLoadConsumerCount
+            Consumers = $report.consumerCount
+            'Canonical Sources' = $report.canonicalSources.Count
+            'EOF Marker' = $report.eofMarker
+        })
 
         if ($report.companionInstructions.Count -gt 0) {
             foreach ($companionInstruction in $report.companionInstructions) {
-                Write-Host "    companion instruction: $companionInstruction"
+                Write-Output "    companion instruction: $companionInstruction"
             }
         }
 
         if ($report.declaredConsumers.Count -gt 0) {
             foreach ($declaredConsumer in $report.declaredConsumers) {
-                Write-Host "    declared consumer: $declaredConsumer"
+                Write-Output "    declared consumer: $declaredConsumer"
             }
         }
 
         if ($report.canonicalSources.Count -gt 0) {
             foreach ($source in $report.canonicalSources) {
-                Write-Host "    - $source"
+                Write-Output "    - $source"
             }
         }
 
         if ($report.consumers.Count -gt 0) {
             foreach ($consumer in $report.consumers) {
-                Write-Host "    consumer: $consumer"
+                Write-Output "    consumer: $consumer"
             }
         }
 
         if ($report.warnings.Count -gt 0) {
             foreach ($warning in $report.warnings) {
-                Write-Host "  warning: $warning"
+                Write-Output "  warning: $warning"
             }
         }
 
         if ($report.errors.Count -gt 0) {
             foreach ($error in $report.errors) {
-                Write-Host "  error: $error"
+                Write-Output "  error: $error"
             }
         }
 
-        Write-Host ''
+        Write-Output ''
     }
+
+    Complete-ValidationTextOutput
 }
 
 $resolvedRootPath = [System.IO.Path]::GetFullPath($RootPath)
