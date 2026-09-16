@@ -11,6 +11,6 @@
     "rule-catalog.json"
   ],
   "exclude": [],
-  "parser": "interactive-toolkit-v1",
+  "parser": "interactive-toolkit-v2",
   "assessmentBatchSize": 20
 }

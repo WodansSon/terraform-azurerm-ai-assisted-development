@@ -11,22 +11,24 @@ $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOut
 Import-Module -Name $validationOutputModulePath -Force
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
+Import-Module -Name $sourceEvidenceModulePath -Force
 $catalogRoot = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog'
 $definitionPath = Join-Path $catalogRoot 'source-definitions/maintainer-proposals.json'
 $interactiveDefinitionPath = Join-Path $catalogRoot 'source-definitions/interactive-toolkit.json'
 $contributorDefinitionPath = Join-Path $catalogRoot 'source-definitions/contributor-guidance.json'
 $definitionSchemaPath = Join-Path $catalogRoot 'source-definitions/source-definition.schema.json'
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
-$contractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v1.json'
-$interactiveContractPath = Join-Path $catalogRoot 'parser-contracts/interactive-toolkit-v1.json'
-$contributorContractPath = Join-Path $catalogRoot 'parser-contracts/contributor-guidance-v1.json'
+$contractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v2.json'
+$interactiveContractPath = Join-Path $catalogRoot 'parser-contracts/interactive-toolkit-v2.json'
+$contributorContractPath = Join-Path $catalogRoot 'parser-contracts/contributor-guidance-v2.json'
 $contractSchemaPath = Join-Path $catalogRoot 'parser-contracts/parser-contract.schema.json'
 $collectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
 $acceptanceExporterPath = Join-Path $PSScriptRoot 'New-AcceptedSourceInventory.ps1'
 $acceptanceApplyPath = Join-Path $PSScriptRoot 'Apply-AcceptedSourceInventory.ps1'
-$parserModulePath = Join-Path $PSScriptRoot 'source-parsers/MaintainerProposalsV1.psm1'
-$interactiveParserModulePath = Join-Path $PSScriptRoot 'source-parsers/InteractiveToolkitV1.psm1'
-$contributorParserModulePath = Join-Path $PSScriptRoot 'source-parsers/ContributorGuidanceV1.psm1'
+$parserModulePath = Join-Path $PSScriptRoot 'source-parsers/MaintainerProposalsV2.psm1'
+$interactiveParserModulePath = Join-Path $PSScriptRoot 'source-parsers/InteractiveToolkitV2.psm1'
+$contributorParserModulePath = Join-Path $PSScriptRoot 'source-parsers/ContributorGuidanceV2.psm1'
 $interactiveCatalogPath = Join-Path $repoRoot 'tools/interactive-rule-catalog/rule-catalog.json'
 $maintainerRoot = Join-Path $catalogRoot 'maintainer-rules'
 $results = [Collections.Generic.List[object]]::new()
@@ -108,6 +110,18 @@ function Test-ThrowsLike {
     }
 }
 
+function Test-DoesNotThrow {
+    param([Parameter(Mandatory = $true)][scriptblock]$Action)
+
+    try {
+        & $Action
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 function Write-ProposalFixture {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -151,6 +165,8 @@ try {
     Add-TestResult -Name 'real-inventory-generated' -Passed ($firstRun.ExitCode -eq 0 -and $secondRun.ExitCode -eq 0) -Detail 'The collector generates staged inventories for the real Maintainer Proposal corpus.'
     Add-TestResult -Name 'real-inventory-schema' -Passed ($null -ne $firstInventory -and (Test-JsonInstance -Json (Get-Content -LiteralPath $firstOutputPath -Raw) -SchemaPath $inventorySchemaPath)) -Detail 'The staged inventory satisfies the strict inventory schema.'
     Add-TestResult -Name 'real-inventory-count' -Passed ($null -ne $firstInventory -and @($firstInventory.records).Count -eq 38 -and @($firstInventory.records.sourceId | Sort-Object -Unique).Count -eq 38) -Detail 'The initial migration corpus contains exactly 38 unique live proposal IDs.'
+    $currentMaintainerEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repoRoot -SourceDefinitionId 'maintainer-proposals'
+    Add-TestResult -Name 'generated-parser-hash-binding' -Passed ($null -ne $firstInventory -and [string]$firstInventory.parserContractSha256 -ceq [string]$currentMaintainerEvidence.ParserContractSha256) -Detail 'Generated inventory stores the automatically calculated hash of its exact parser behavior contract.'
     Add-TestResult -Name 'inventory-deterministic' -Passed ($null -ne $firstInventory -and $null -ne $secondInventory -and $firstInventory.collection.inventorySha256 -ceq $secondInventory.collection.inventorySha256 -and $firstInventory.inventoryConfigurationSha256 -ceq $secondInventory.inventoryConfigurationSha256) -Detail 'Repeated collection produces identical factual and configuration hashes.'
     Add-TestResult -Name 'inventory-source-only' -Passed ($null -ne $firstInventory -and @($firstInventory.records | Where-Object { $_.PSObject.Properties['state'] -or $_.PSObject.Properties['requiresReview'] -or $_.PSObject.Properties['relatedHostedRules'] }).Count -eq 0) -Detail 'Inventory records contain source facts without candidate or Hosted decision state.'
     Add-TestResult -Name 'interactive-inventory-generated' -Passed ($interactiveFirstRun.ExitCode -eq 0 -and $interactiveSecondRun.ExitCode -eq 0) -Detail 'The collector generates staged inventories for the real Interactive Toolkit catalog.'
@@ -184,7 +200,7 @@ try {
         root = [ordered]@{ kind = 'repository'; path = 'hosted_copilot/copilot-rule-catalog/maintainer-rules' }
         files = @('**/*.rules.md')
         exclude = @('implementation.rules.md')
-        parser = 'maintainer-proposals-v1'
+        parser = 'maintainer-proposals-v2'
         assessmentBatchSize = 20
     })
     $filteredOutputPath = Join-Path $fixtureRoot 'maintainer-filtered.json'
@@ -201,7 +217,7 @@ try {
         root = [ordered]@{ kind = 'repository'; path = '../' }
         files = @('**/*.rules.md')
         exclude = @()
-        parser = 'maintainer-proposals-v1'
+        parser = 'maintainer-proposals-v2'
         assessmentBatchSize = 20
     })
     $escapingRun = Invoke-Collector -OutputPath (Join-Path $fixtureRoot 'escaping-output.json') -DefinitionPath $escapingDefinitionPath
@@ -239,6 +255,19 @@ try {
     $initialAcceptanceResult = if ($initialAcceptanceExitCode -eq 0) { ($initialAcceptanceOutput | Out-String) | ConvertFrom-Json } else { $null }
     $acceptedOne = if ($initialAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedOnePath -Raw | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'initial-acceptance-export' -Passed ($initialAcceptanceExitCode -eq 0 -and $initialAcceptanceResult.transitionCounts.added -eq 38 -and @($acceptedOne.acceptedRevisions).Count -eq 0 -and $acceptedOne.acceptance.previousAcceptedInventorySha256 -eq $null) -Detail 'Initial acceptance exports all staged records with acceptance metadata and no invented prior history.'
+
+    $currentEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repoRoot -SourceDefinitionId 'maintainer-proposals'
+    $displayOnlyEvidence = $currentEvidence | Select-Object *
+    $displayOnlyEvidence.SourceDefinitionSha256 = 'e' * 64
+    Add-TestResult -Name 'display-only-definition-change' -Passed (Test-DoesNotThrow -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $displayOnlyEvidence }) -Detail 'A changed audit-only source-definition hash does not invalidate an accepted inventory when its factual configuration is unchanged.'
+
+    $staleConfigurationEvidence = $currentEvidence | Select-Object *
+    $staleConfigurationEvidence.InventoryConfigurationSha256 = 'e' * 64
+    Add-TestResult -Name 'inventory-configuration-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $staleConfigurationEvidence } -Pattern '*configuration hash is stale*') -Detail 'A changed inventory-affecting configuration still invalidates accepted evidence.'
+
+    $staleParserEvidence = $currentEvidence | Select-Object *
+    $staleParserEvidence.ParserContractSha256 = 'e' * 64
+    Add-TestResult -Name 'parser-contract-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $staleParserEvidence } -Pattern '*parser contract hash is stale*') -Detail 'Accepted inventory is rejected when current parser behavior no longer matches its automatically recorded contract hash.'
 
     $repositoryAcceptancePath = Join-Path $repoRoot '.accepted-inventory-boundary-test.json'
     $repositoryAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $firstOutputPath -OutputPath $repositoryAcceptancePath -AcceptedBy 'test-maintainer' -OutputFormat Json 2>&1)

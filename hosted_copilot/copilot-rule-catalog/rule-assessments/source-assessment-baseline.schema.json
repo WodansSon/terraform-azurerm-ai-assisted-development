@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline.schema.json",
+  "title": "Hosted Source Assessment Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "hostedCatalogSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
+  "properties": {
+    "$schema": {
+      "const": "source-assessment-baseline.schema.json"
+    },
+    "schemaVersion": {
+      "const": 4
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "inventoryHashes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      }
+    },
+    "hostedCatalogSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "assessmentContractSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "assessmentRunConfigurationSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "runConfiguration": {
+      "$ref": "#/$defs/evaluatedRunConfiguration"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDefinitionId", "sourceId", "contentSha256"],
+      "properties": {
+        "sourceDefinitionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "evaluatedRunConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "model", "reasoningEffort", "evaluator", "sourceDefinitions"],
+      "properties": {
+        "mode": {
+          "const": "evaluated"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasoningEffort": {
+          "enum": ["low", "medium", "high", "xhigh"]
+        },
+        "evaluator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceDefinitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sourceDefinitionId", "sourceDefinitionSha256", "parserContractSha256", "inventoryConfigurationSha256", "assessmentBatchSize", "assessmentCardinality"],
+            "properties": {
+              "sourceDefinitionId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "sourceDefinitionSha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "parserContractSha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "inventoryConfigurationSha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "assessmentBatchSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "assessmentCardinality": {
+                "enum": ["zero-to-many", "exactly-one"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"],
+      "properties": {
+        "severity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "frequency": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "breadth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "hostedDetectability": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "evidenceStrength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "falsePositiveRisk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "redundancy": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "coverageScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "rationale"],
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "assessmentConfidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "rationale", "uncertainties"],
+      "properties": {
+        "level": {
+          "enum": ["low", "medium", "high"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertainties": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "level": {
+                "enum": ["low", "medium"]
+              }
+            },
+            "required": ["level"]
+          },
+          "then": {
+            "properties": {
+              "uncertainties": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "relatedHostedCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedRuleId", "relationship", "rationale"],
+      "properties": {
+        "hostedRuleId": {
+          "type": "string",
+          "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+        },
+        "relationship": {
+          "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "semanticReassessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "priorContentSha256", "rationale", "evidence"],
+      "properties": {
+        "classification": {
+          "enum": ["meaning-unchanged", "compatible-coverage", "provenance-conflict", "behavioral-conflict"]
+        },
+        "priorContentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "assessmentEvaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identity", "model"],
+      "properties": {
+        "kind": {
+          "const": "llm"
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "assessmentProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["originSchemaVersion", "status", "assessedAt", "assessmentEvaluator"],
+      "properties": {
+        "originSchemaVersion": {
+          "const": 4
+        },
+        "status": {
+          "const": "evaluated"
+        },
+        "assessedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "assessmentEvaluator": {
+          "$ref": "#/$defs/assessmentEvaluator"
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentId", "title", "sourceMeaning", "impactDescription", "assessmentProvenance", "hostedApplicable", "applicabilityRationale", "assessmentConfidence", "selectionFactors", "selectionRationale", "affectedSurfaces", "sourceLocalProposedText", "mappedHostedRuleIds", "relatedHostedCoverage", "existingCoverage", "semanticReassessment"],
+      "properties": {
+        "assessmentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceMeaning": {
+          "type": "string",
+          "minLength": 1
+        },
+        "impactDescription": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessmentProvenance": {
+          "$ref": "#/$defs/assessmentProvenance"
+        },
+        "hostedApplicable": {
+          "type": "boolean"
+        },
+        "applicabilityRationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessmentConfidence": {
+          "$ref": "#/$defs/assessmentConfidence"
+        },
+        "selectionFactors": {
+          "$ref": "#/$defs/selectionFactors"
+        },
+        "selectionRationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affectedSurfaces": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["repository", "implementation", "testing", "documentation", "review-skill"]
+          }
+        },
+        "sourceLocalProposedText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mappedHostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+          }
+        },
+        "relatedHostedCoverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relatedHostedCoverage"
+          }
+        },
+        "existingCoverage": {
+          "$ref": "#/$defs/coverageScore"
+        },
+        "semanticReassessment": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/semanticReassessment"
+            }
+          ]
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRef", "assessments"],
+      "properties": {
+        "sourceRef": {
+          "$ref": "#/$defs/sourceRef"
+        },
+        "assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assessment"
+          }
+        }
+      }
+    }
+  }
+}

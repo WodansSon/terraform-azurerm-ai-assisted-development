@@ -18,6 +18,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
+Import-Module -Name $sourceEvidenceModulePath -Force
+
 function Get-ContentSha256 {
     param(
         [Parameter(Mandatory = $true)]
@@ -219,29 +222,6 @@ function Get-InventoryRevisionFiles {
         return [StringComparer]::Ordinal.Compare([string]$left.RelativePath, [string]$right.RelativePath)
     })
     return $files.ToArray()
-}
-
-function Get-ParserContractSha256 {
-    param(
-        [Parameter(Mandatory = $true)][object]$Contract,
-        [Parameter(Mandatory = $true)][string]$RepositoryRoot
-    )
-
-    [string[]]$behaviorFiles = @($Contract.behaviorFiles)
-    [string[]]$sortedFiles = @($behaviorFiles)
-    [Array]::Sort($sortedFiles, [StringComparer]::Ordinal)
-    if (@(Compare-Object $behaviorFiles $sortedFiles -SyncWindow 0).Count -ne 0) {
-        throw "Parser contract behaviorFiles must use ordinal sort order: $($Contract.parserId)"
-    }
-
-    $builder = [Text.StringBuilder]::new()
-    $null = $builder.Append([string]$Contract.parserId).Append([char]0)
-    foreach ($relativePath in $sortedFiles) {
-        Assert-RelativeSourcePath -Value $relativePath -Name 'Parser contract behavior file'
-        $fullPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $relativePath))
-        $null = $builder.Append($relativePath).Append([char]0).Append((Get-FileSha256 -Path $fullPath)).Append([char]0)
-    }
-    return Get-ContentSha256 -Content $builder.ToString()
 }
 
 function Invoke-GitHubCliJson {
@@ -518,10 +498,7 @@ $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
 if ([string]$contract.parserId -cne [string]$definition.parser) {
     throw "Parser contract ID does not match the source definition: $($definition.parser)"
 }
-$parserContractSha256 = Get-ParserContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
-if ($parserContractSha256 -cne [string]$contract.aggregateSha256) {
-    throw "Parser contract hash mismatch for $($definition.parser): expected $($contract.aggregateSha256), got $parserContractSha256"
-}
+$parserContractSha256 = Get-SourceEvidenceParserContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
 
 $matchedFiles = @()
 $remoteDocuments = @()
@@ -554,7 +531,7 @@ switch ([string]$definition.root.kind) {
 }
 
 $records = switch ([string]$definition.parser) {
-    'maintainer-proposals-v1' {
+    'maintainer-proposals-v2' {
         $catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
         foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
             if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -563,25 +540,25 @@ $records = switch ([string]$definition.parser) {
         }
         Test-JsonFile -Path $resolvedCatalogPath -SchemaPath $catalogSchemaPath
         $catalog = Get-Content -LiteralPath $resolvedCatalogPath -Raw | ConvertFrom-Json
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/MaintainerProposalsV1.psm1'
+        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/MaintainerProposalsV2.psm1'
         Import-Module $modulePath -Force
         @(Get-MaintainerProposalInventoryRecords -SourcePaths @($matchedFiles.FullName) -RepositoryRoot $resolvedRepositoryRoot -KnownHostedRuleIds @($catalog.rules.id))
         break
     }
-    'interactive-toolkit-v1' {
+    'interactive-toolkit-v2' {
         if ($matchedFiles.Count -ne 1 -or [string]$matchedFiles[0].RelativePath -cne 'rule-catalog.json') {
             throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json'
         }
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/InteractiveToolkitV1.psm1'
+        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/InteractiveToolkitV2.psm1'
         Import-Module $modulePath -Force
         @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$matchedFiles[0].FullName) -RepositoryRoot $resolvedRepositoryRoot)
         break
     }
-    'contributor-guidance-v1' {
+    'contributor-guidance-v2' {
         if ([string]$definition.root.kind -cne 'github') {
             throw 'Contributor Guidance parser requires a GitHub source root'
         }
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/ContributorGuidanceV1.psm1'
+        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/ContributorGuidanceV2.psm1'
         Import-Module $modulePath -Force
         @(Get-ContributorGuidanceInventoryRecords -Documents $remoteDocuments -Repository ([string]$definition.root.repository) -ResolvedCommit ([string]$sourceRevision.resolvedCommit) -RootPath ([string]$definition.root.path))
         break
@@ -632,6 +609,7 @@ $inventory = [ordered]@{
     '$schema' = 'source-inventory.schema.json'
     schemaVersion = 1
     sourceDefinitionId = [string]$definition.id
+    sourceDefinitionSha256 = Get-FileSha256 -Path $resolvedDefinitionPath
     inventoryConfigurationSha256 = $inventoryConfigurationSha256
     collectorVersion = 1
     parserId = [string]$definition.parser

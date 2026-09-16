@@ -2,20 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "parserId", "assessmentCardinality", "behaviorFiles"],
+  "required": ["$schema", "schemaVersion", "contractId", "behaviorFiles"],
   "properties": {
     "$schema": {
-      "const": "parser-contract.schema.json"
+      "const": "assessment-contract.schema.json"
     },
     "schemaVersion": {
       "const": 1
     },
-    "parserId": {
+    "contractId": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
-    },
-    "assessmentCardinality": {
-      "enum": ["zero-to-many", "exactly-one"]
     },
     "behaviorFiles": {
       "type": "array",

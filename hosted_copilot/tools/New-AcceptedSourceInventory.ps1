@@ -207,6 +207,7 @@ if ($null -ne $current) {
         '$schema' = [string]$current.'$schema'
         schemaVersion = [int]$current.schemaVersion
         sourceDefinitionId = [string]$current.sourceDefinitionId
+        sourceDefinitionSha256 = [string]$current.sourceDefinitionSha256
         inventoryConfigurationSha256 = [string]$current.inventoryConfigurationSha256
         collectorVersion = [int]$current.collectorVersion
         parserId = [string]$current.parserId
@@ -232,6 +233,7 @@ $accepted = [ordered]@{
     '$schema' = [string]$staged.'$schema'
     schemaVersion = [int]$staged.schemaVersion
     sourceDefinitionId = [string]$staged.sourceDefinitionId
+    sourceDefinitionSha256 = [string]$staged.sourceDefinitionSha256
     inventoryConfigurationSha256 = [string]$staged.inventoryConfigurationSha256
     collectorVersion = [int]$staged.collectorVersion
     parserId = [string]$staged.parserId

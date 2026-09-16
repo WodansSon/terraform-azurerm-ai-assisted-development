@@ -62,6 +62,7 @@ $sourceInventoryTestPath = Join-Path $PSScriptRoot 'Test-SourceInventory.ps1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
 $ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
 $ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessment.ps1'
+$sourceAssessmentTestPath = Join-Path $PSScriptRoot 'Test-SourceAssessment.ps1'
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
@@ -674,6 +675,22 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'rule-intake-assessment' -Issue "Hosted rule intake assessment validation failed: $($_.Exception.Message)"
     }
 
+    Start-ValidationCheck -Name 'source-assessment'
+    try {
+        $sourceAssessmentTestOutput = @(& pwsh -NoProfile -File $sourceAssessmentTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($sourceAssessmentTestOutput | Out-String).Trim())
+        }
+        $sourceAssessmentTestResult = ($sourceAssessmentTestOutput | Out-String) | ConvertFrom-Json
+        if ($sourceAssessmentTestResult.status -ne 'passed') {
+            throw 'source assessment regression suite reported failures'
+        }
+        Add-CheckResult -Name 'source-assessment' -Passed $true -Detail "Passed $($sourceAssessmentTestResult.testCount) version 4 contract, confidence, accepted-inventory binding, exhaustive coverage, Hosted-reference, and external-output tests without model calls."
+    }
+    catch {
+        Add-ValidationIssue -Name 'source-assessment' -Issue "Hosted source assessment validation failed: $($_.Exception.Message)"
+    }
+
     if ($SkipRuleWorkbench) {
         Add-SkippedCheck -Name 'rule-workbench' -Detail 'Hosted Rule Workbench validation was explicitly skipped.'
     }
@@ -1102,7 +1119,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

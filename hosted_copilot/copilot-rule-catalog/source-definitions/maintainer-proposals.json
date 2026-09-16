@@ -11,6 +11,6 @@
     "**/*.rules.md"
   ],
   "exclude": [],
-  "parser": "maintainer-proposals-v1",
+  "parser": "maintainer-proposals-v2",
   "assessmentBatchSize": 20
 }
