@@ -1,0 +1,19 @@
+{
+  "$schema": "source-definition.schema.json",
+  "schemaVersion": 1,
+  "id": "contributor-guidance",
+  "displayName": "Contributor Guidance",
+  "root": {
+    "kind": "github",
+    "repository": "hashicorp/terraform-provider-azurerm",
+    "ref": "main",
+    "path": "contributing"
+  },
+  "files": [
+    "README.md",
+    "topics/**/*.md"
+  ],
+  "exclude": [],
+  "parser": "contributor-guidance-v1",
+  "assessmentBatchSize": 5
+}

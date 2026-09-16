@@ -1,0 +1,10 @@
+{
+  "$schema": "parser-contract.schema.json",
+  "schemaVersion": 1,
+  "parserId": "maintainer-proposals-v1",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
+    "hosted_copilot/tools/source-parsers/MaintainerProposalsV1.psm1"
+  ],
+  "aggregateSha256": "c6826ca6cb76f5c4150063e574d19607b3a49b810fecff551d40b32b6fca7638"
+}

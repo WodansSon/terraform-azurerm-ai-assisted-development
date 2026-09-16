@@ -3,7 +3,9 @@ param(
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
 
-    [switch]$SkipUpstreamDrift
+    [switch]$SkipUpstreamDrift,
+
+    [switch]$SkipRuleWorkbench
 )
 
 Set-StrictMode -Version Latest
@@ -55,6 +57,9 @@ $instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGenera
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'Get-GuidanceCapacity.ps1'
 $ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
 $ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
+$sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
+$sourceInventoryTestPath = Join-Path $PSScriptRoot 'Test-SourceInventory.ps1'
+$contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
 $ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
 $ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessment.ps1'
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
@@ -587,6 +592,14 @@ if ($runtimeStarted) {
         if ($intakeTestResult.status -ne 'passed') {
             throw 'rule intake regression suite reported failures'
         }
+        $sourceInventoryTestOutput = @(& pwsh -NoProfile -File $sourceInventoryTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($sourceInventoryTestOutput | Out-String).Trim())
+        }
+        $sourceInventoryTestResult = ($sourceInventoryTestOutput | Out-String) | ConvertFrom-Json
+        if ($sourceInventoryTestResult.status -ne 'passed') {
+            throw 'source inventory regression suite reported failures'
+        }
         $missingMaintainerRulePaths = @($maintainerRulePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
         if ($missingMaintainerRulePaths.Count -gt 0) {
             throw "Maintainer rule sources are missing: $($missingMaintainerRulePaths -join ', ')"
@@ -618,7 +631,7 @@ if ($runtimeStarted) {
             throw "Promotion audit contains duplicate plan hashes: $(@($duplicateReceiptHashes.Name) -join ', ')"
         }
 
-        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, three source-only Maintainer Proposal files, $($intakeTestResult.testCount) contract tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
+        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, three source-only Maintainer Proposal files, $($intakeTestResult.testCount) contract tests, $($sourceInventoryTestResult.testCount) source inventory tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
     }
     catch {
         Add-ValidationIssue -Name 'rule-intake-contracts' -Issue "Hosted rule intake contracts are invalid: $($_.Exception.Message)"
@@ -661,20 +674,25 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'rule-intake-assessment' -Issue "Hosted rule intake assessment validation failed: $($_.Exception.Message)"
     }
 
-    Start-ValidationCheck -Name 'rule-workbench'
-    try {
-        $workbenchTestOutput = @(& pwsh -NoProfile -File $ruleWorkbenchTestPath -OutputFormat Json 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw (($workbenchTestOutput | Out-String).Trim())
-        }
-        $workbenchTestResult = ($workbenchTestOutput | Out-String) | ConvertFrom-Json
-        if ($workbenchTestResult.status -ne 'passed') {
-            throw 'rule Workbench regression suite reported failures'
-        }
-        Add-CheckResult -Name 'rule-workbench' -Passed $true -Detail "Passed $($workbenchTestResult.testCount) static Workbench, browser-state, breakpoint-boundary geometry, external-staging, and loopback read-only server tests."
+    if ($SkipRuleWorkbench) {
+        Add-SkippedCheck -Name 'rule-workbench' -Detail 'Hosted Rule Workbench validation was explicitly skipped.'
     }
-    catch {
-        Add-ValidationIssue -Name 'rule-workbench' -Issue "Hosted Rule Workbench validation failed: $($_.Exception.Message)"
+    else {
+        Start-ValidationCheck -Name 'rule-workbench'
+        try {
+            $workbenchTestOutput = @(& pwsh -NoProfile -File $ruleWorkbenchTestPath -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw (($workbenchTestOutput | Out-String).Trim())
+            }
+            $workbenchTestResult = ($workbenchTestOutput | Out-String) | ConvertFrom-Json
+            if ($workbenchTestResult.status -ne 'passed') {
+                throw 'rule Workbench regression suite reported failures'
+            }
+            Add-CheckResult -Name 'rule-workbench' -Passed $true -Detail "Passed $($workbenchTestResult.testCount) static Workbench, browser-state, breakpoint-boundary geometry, external-staging, and loopback read-only server tests."
+        }
+        catch {
+            Add-ValidationIssue -Name 'rule-workbench' -Issue "Hosted Rule Workbench validation failed: $($_.Exception.Message)"
+        }
     }
 
     if ($SkipUpstreamDrift) {
@@ -684,13 +702,13 @@ if ($runtimeStarted) {
         Start-ValidationCheck -Name 'upstream-sources'
         try {
             $catalogHashBeforeDriftCheck = Get-Sha256Hash -Path $instructionCatalogPath
-            $upstreamOutput = @(& pwsh -NoProfile -File $upstreamSourceValidatorPath -FailOnDrift -OutputFormat Json 2>&1)
+            $upstreamOutput = @(& pwsh -NoProfile -File $upstreamSourceValidatorPath -OutputFormat Json 2>&1)
             $catalogHashAfterDriftCheck = Get-Sha256Hash -Path $instructionCatalogPath
             if ($LASTEXITCODE -ne 0) {
                 throw (($upstreamOutput | Out-String).Trim())
             }
             $upstreamResult = ($upstreamOutput | Out-String) | ConvertFrom-Json
-            if (-not $upstreamResult.success -or $upstreamResult.updatesCatalog -or $catalogHashBeforeDriftCheck -ne $catalogHashAfterDriftCheck) {
+            if ($upstreamResult.updatesCatalog -or $catalogHashBeforeDriftCheck -ne $catalogHashAfterDriftCheck) {
                 throw 'upstream source validator did not preserve its read-only success contract'
             }
             $catalogSourceIds = @((Get-Content -LiteralPath $instructionCatalogPath -Raw | ConvertFrom-Json).sources | ForEach-Object { [string]$_.id } | Sort-Object)
@@ -698,7 +716,36 @@ if ($runtimeStarted) {
             if (@(Compare-Object -ReferenceObject $catalogSourceIds -DifferenceObject $checkedSourceIds).Count -gt 0) {
                 throw 'upstream source validator did not check every Hosted catalog source'
             }
-            Add-CheckResult -Name 'upstream-sources' -Passed $true -Detail "Validated all $($upstreamResult.sourceCount) Hosted-owned contributor sources and $($upstreamResult.discoveredTopicCount) discovered topics with zero drift and no catalog mutation."
+            $contributorInventoryPath = Join-Path ([IO.Path]::GetTempPath()) ('hosted-contributor-inventory-' + [guid]::NewGuid().ToString('N') + '.json')
+            $pinnedContributorInventoryPath = Join-Path ([IO.Path]::GetTempPath()) ('hosted-contributor-inventory-pinned-' + [guid]::NewGuid().ToString('N') + '.json')
+            try {
+                $contributorInventoryOutput = @(& pwsh -NoProfile -File $sourceInventoryCollectorPath -RepositoryRoot $repoRoot -SourceDefinitionPath $contributorSourceDefinitionPath -OutputPath $contributorInventoryPath -OutputFormat Json 2>&1)
+                if ($LASTEXITCODE -ne 0) {
+                    throw (($contributorInventoryOutput | Out-String).Trim())
+                }
+                $contributorInventoryResult = ($contributorInventoryOutput | Out-String) | ConvertFrom-Json
+                if ($contributorInventoryResult.status -ne 'passed' -or $contributorInventoryResult.recordCount -lt 1) {
+                    throw 'Contributor Guidance inventory collection did not produce records'
+                }
+                $contributorInventory = Get-Content -LiteralPath $contributorInventoryPath -Raw | ConvertFrom-Json
+                $resolvedContributorCommit = [string]$contributorInventory.collection.sourceRevision.resolvedCommit
+                $pinnedContributorOutput = @(& pwsh -NoProfile -File $sourceInventoryCollectorPath -RepositoryRoot $repoRoot -SourceDefinitionPath $contributorSourceDefinitionPath -UpstreamCurrentCommit $resolvedContributorCommit -OutputPath $pinnedContributorInventoryPath -OutputFormat Json 2>&1)
+                if ($LASTEXITCODE -ne 0) {
+                    throw (($pinnedContributorOutput | Out-String).Trim())
+                }
+                $pinnedContributorInventory = Get-Content -LiteralPath $pinnedContributorInventoryPath -Raw | ConvertFrom-Json
+                if (-not [bool]$pinnedContributorInventory.collection.sourceRevision.overrideUsed -or $pinnedContributorInventory.collection.sourceRevision.resolvedCommit -cne $resolvedContributorCommit -or $pinnedContributorInventory.collection.inventorySha256 -cne $contributorInventory.collection.inventorySha256) {
+                    throw 'Contributor Guidance exact-commit override did not reproduce the unpinned inventory'
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $contributorInventoryPath -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $pinnedContributorInventoryPath -Force -ErrorAction SilentlyContinue
+            }
+            if (-not $upstreamResult.success) {
+                throw "Hosted upstream source drift requires semantic maintainer review: changed=$($upstreamResult.changedCount), failed=$($upstreamResult.failedCount), untracked=$($upstreamResult.untrackedTopicPaths.Count), stale=$($upstreamResult.staleTopicPaths.Count)"
+            }
+            Add-CheckResult -Name 'upstream-sources' -Passed $true -Detail "Validated all $($upstreamResult.sourceCount) Hosted-owned contributor sources, $($upstreamResult.discoveredTopicCount) discovered topics, and $($contributorInventoryResult.recordCount) immutable-commit inventory records with zero drift and no catalog mutation."
         }
         catch {
             Add-ValidationIssue -Name 'upstream-sources' -Issue "Hosted upstream source validation failed: $($_.Exception.Message)"

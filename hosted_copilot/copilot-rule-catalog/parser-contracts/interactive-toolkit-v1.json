@@ -1,0 +1,11 @@
+{
+  "$schema": "parser-contract.schema.json",
+  "schemaVersion": 1,
+  "parserId": "interactive-toolkit-v1",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
+    "hosted_copilot/tools/source-parsers/InteractiveToolkitV1.psm1",
+    "tools/interactive-rule-catalog/rule-catalog.schema.json"
+  ],
+  "aggregateSha256": "1cf00848d58b8b55dd5791fecd81bf0f323214435925f00236da6fd269e01a40"
+}

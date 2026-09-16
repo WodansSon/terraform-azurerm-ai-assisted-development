@@ -1,0 +1,10 @@
+{
+  "$schema": "parser-contract.schema.json",
+  "schemaVersion": 1,
+  "parserId": "contributor-guidance-v1",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
+    "hosted_copilot/tools/source-parsers/ContributorGuidanceV1.psm1"
+  ],
+  "aggregateSha256": "35fe59ee69daf3f1aaadc0e3ca95dbdd186be6fc917ae277d33b6129fe9ad025"
+}

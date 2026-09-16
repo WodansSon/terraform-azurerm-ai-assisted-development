@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Introduced the source-deployed Hosted review experiment with compact path-specific guidance for documentation, Go implementation, and acceptance tests, plus controlled paired-review workflows for comparing Hosted and control results.
 - Added a normalized Hosted rule catalog and read-only intake workflow that evaluates upstream contributor guidance, Interactive rules, and Maintainer Proposals with reusable semantic assessments, guidance-capacity reporting, portable drafts, and auditable promotion contracts.
+- Added versioned source definitions, parser contracts, deterministic staged inventories for Contributor Guidance, Interactive Toolkit rules, and Maintainer Proposals, plus external acceptance export, tombstone history, and hash-guarded canonical apply workflows.
 - Added the Hosted Rule Workbench as a laptop-and-desktop Hosted-rules IDE with searchable candidate and assessment views, persistent decisions, promotion-plan review, guarded capacity projections, source-backed diffs, hash-bound approval export, and repository-read-only loopback serving.
 - Expanded the pinned, locally hosted Codicon inventory with folder-state, directory-link, and workspace-trust symbols for current and future Workbench surfaces.
 
