@@ -199,7 +199,7 @@ function Get-CanonicalFileSetSha256 {
 function Get-InventoryRevisionFiles {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-        [Parameter(Mandatory = $true)][object[]]$MatchedFiles,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$MatchedFiles,
         [Parameter(Mandatory = $true)][object[]]$Records
     )
 
@@ -228,6 +228,44 @@ function Get-InventoryRevisionFiles {
         return [StringComparer]::Ordinal.Compare([string]$left.RelativePath, [string]$right.RelativePath)
     })
     return $files.ToArray()
+}
+
+function Invoke-SourceInventoryParser {
+    param(
+        [Parameter(Mandatory = $true)][object]$Definition,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$MatchedFiles,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$RemoteDocuments,
+        [AllowNull()][object]$SourceRevision,
+        [AllowNull()][object]$HostedCatalog
+    )
+
+    switch ([string]$Definition.parser) {
+        'maintainer-proposals-v2' {
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/source-parsers/MaintainerProposalsV2.psm1'
+            Import-Module $modulePath -Force
+            return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
+        }
+        'interactive-toolkit-v2' {
+            if ($MatchedFiles.Count -ne 1 -or [string]$MatchedFiles[0].RelativePath -cne 'rule-catalog.json') {
+                throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json'
+            }
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/source-parsers/InteractiveToolkitV2.psm1'
+            Import-Module $modulePath -Force
+            return @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$MatchedFiles[0].FullName) -RepositoryRoot $RepositoryRoot)
+        }
+        'contributor-guidance-v2' {
+            if ([string]$Definition.root.kind -cne 'github') {
+                throw 'Contributor Guidance parser requires a GitHub source root'
+            }
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/source-parsers/ContributorGuidanceV2.psm1'
+            Import-Module $modulePath -Force
+            return @(Get-ContributorGuidanceInventoryRecords -Documents $RemoteDocuments -Repository ([string]$Definition.root.repository) -ResolvedCommit ([string]$SourceRevision.resolvedCommit) -RootPath ([string]$Definition.root.path))
+        }
+        default {
+            throw "Unsupported parser '$($Definition.parser)'"
+        }
+    }
 }
 
 function Invoke-GitHubCliJson {
@@ -272,6 +310,10 @@ function Invoke-GitHubCliJson {
 function Test-GitHubTransientFailure {
     param([Parameter(Mandatory = $true)][object]$Failure)
 
+    $graphQlErrorTypes = @($Failure.Exception.Data['GitHubGraphQLErrorTypes'])
+    if (@($graphQlErrorTypes | Where-Object { [string]$_ -ceq 'RATE_LIMITED' }).Count -gt 0) {
+        return $true
+    }
     try {
         $statusCode = [int]$Failure.Exception.Response.StatusCode
         if ($statusCode -in @(408, 429, 500, 502, 503, 504)) {
@@ -371,7 +413,15 @@ function Invoke-GitHubGraphQLRequest {
         param($failure)
         return Get-GitHubRetryAfterMilliseconds -Failure $failure
     } -Action {
-        return Invoke-GitHubGraphQLRequestOnce -Request $Request
+        $response = Invoke-GitHubGraphQLRequestOnce -Request $Request
+        if ($response.PSObject.Properties['errors'] -and @($response.errors).Count -gt 0) {
+            $message = @($response.errors | ForEach-Object { [string]$_.message }) -join '; '
+            $errorTypes = @($response.errors | ForEach-Object { [string]$_.type } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+            $exception = [InvalidOperationException]::new("GitHub GraphQL returned errors: $message")
+            $exception.Data['GitHubGraphQLErrorTypes'] = $errorTypes
+            throw $exception
+        }
+        return $response
     }
 }
 
@@ -598,43 +648,18 @@ switch ([string]$definition.root.kind) {
     }
 }
 
-$records = switch ([string]$definition.parser) {
-    'maintainer-proposals-v2' {
-        $catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
-        foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
-            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-                throw "Required Maintainer Proposal parser input was not found: $requiredPath"
-            }
+$catalog = $null
+if ([string]$definition.parser -ceq 'maintainer-proposals-v2') {
+    $catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
+    foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "Required Maintainer Proposal parser input was not found: $requiredPath"
         }
-        Test-JsonFile -Path $resolvedCatalogPath -SchemaPath $catalogSchemaPath
-        $catalog = Get-Content -LiteralPath $resolvedCatalogPath -Raw | ConvertFrom-Json
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/MaintainerProposalsV2.psm1'
-        Import-Module $modulePath -Force
-        @(Get-MaintainerProposalInventoryRecords -SourcePaths @($matchedFiles.FullName) -RepositoryRoot $resolvedRepositoryRoot -KnownHostedRuleIds @($catalog.rules.id))
-        break
     }
-    'interactive-toolkit-v2' {
-        if ($matchedFiles.Count -ne 1 -or [string]$matchedFiles[0].RelativePath -cne 'rule-catalog.json') {
-            throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json'
-        }
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/InteractiveToolkitV2.psm1'
-        Import-Module $modulePath -Force
-        @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$matchedFiles[0].FullName) -RepositoryRoot $resolvedRepositoryRoot)
-        break
-    }
-    'contributor-guidance-v2' {
-        if ([string]$definition.root.kind -cne 'github') {
-            throw 'Contributor Guidance parser requires a GitHub source root'
-        }
-        $modulePath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/source-parsers/ContributorGuidanceV2.psm1'
-        Import-Module $modulePath -Force
-        @(Get-ContributorGuidanceInventoryRecords -Documents $remoteDocuments -Repository ([string]$definition.root.repository) -ResolvedCommit ([string]$sourceRevision.resolvedCommit) -RootPath ([string]$definition.root.path))
-        break
-    }
-    default {
-        throw "Unsupported parser '$($definition.parser)'"
-    }
+    Test-JsonFile -Path $resolvedCatalogPath -SchemaPath $catalogSchemaPath
+    $catalog = Get-Content -LiteralPath $resolvedCatalogPath -Raw | ConvertFrom-Json
 }
+$records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -RemoteDocuments $remoteDocuments -SourceRevision $sourceRevision -HostedCatalog $catalog)
 
 $configuration = [ordered]@{
     sourceDefinitionId = [string]$definition.id
@@ -650,7 +675,40 @@ $inventorySha256 = Get-ContentSha256 -Content ($sortedRecords | ConvertTo-Json -
 
 if ([string]$definition.root.kind -ceq 'repository') {
     $revisionFiles = @(Get-InventoryRevisionFiles -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -Records $sortedRecords)
-    $worktreeSha256 = Get-CanonicalFileSetSha256 -Files $revisionFiles
+    $snapshotRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-inventory-snapshot-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $snapshotRevisionFiles = [Collections.Generic.List[object]]::new()
+        foreach ($revisionFile in $revisionFiles) {
+            $snapshot = Get-SourceEvidenceFileSnapshot -Path ([string]$revisionFile.FullName)
+            $snapshotPath = Join-Path $snapshotRoot ([string]$revisionFile.RelativePath)
+            $snapshotDirectory = Split-Path -Parent $snapshotPath
+            if (-not (Test-Path -LiteralPath $snapshotDirectory -PathType Container)) {
+                $null = New-Item -ItemType Directory -Path $snapshotDirectory -Force
+            }
+            [IO.File]::WriteAllBytes($snapshotPath, $snapshot.Bytes)
+            $snapshotRevisionFiles.Add([pscustomobject]@{ RelativePath = [string]$revisionFile.RelativePath; FullName = $snapshotPath })
+        }
+        foreach ($behaviorFile in @($contract.behaviorFiles)) {
+            $behaviorSourcePath = Join-Path $resolvedRepositoryRoot ([string]$behaviorFile)
+            $behaviorSnapshotPath = Join-Path $snapshotRoot ([string]$behaviorFile)
+            $behaviorSnapshotDirectory = Split-Path -Parent $behaviorSnapshotPath
+            if (-not (Test-Path -LiteralPath $behaviorSnapshotDirectory -PathType Container)) {
+                $null = New-Item -ItemType Directory -Path $behaviorSnapshotDirectory -Force
+            }
+            [IO.File]::WriteAllBytes($behaviorSnapshotPath, (Get-SourceEvidenceFileSnapshot -Path $behaviorSourcePath).Bytes)
+        }
+        $snapshotMatchedFiles = @($matchedFiles | ForEach-Object {
+            $relativePath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, [string]$_.FullName).Replace('\', '/')
+            [pscustomobject]@{ RelativePath = [string]$_.RelativePath; FullName = Join-Path $snapshotRoot $relativePath }
+        })
+        $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $snapshotRoot -MatchedFiles $snapshotMatchedFiles -RemoteDocuments @() -SourceRevision $null -HostedCatalog $catalog)
+        $sortedRecords = @(Get-OrdinallySortedRecords -Records $records)
+        $inventorySha256 = Get-ContentSha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+        $worktreeSha256 = Get-CanonicalFileSetSha256 -Files $snapshotRevisionFiles.ToArray()
+    }
+    finally {
+        Remove-Item -LiteralPath $snapshotRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
     $resolvedCommit = $null
     $worktreeDirty = $true
     $git = Get-Command git -ErrorAction SilentlyContinue

@@ -132,7 +132,7 @@ function Invoke-Runner {
         [Parameter(Mandatory = $true)][string]$OutputPath,
         [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
         [int]$MaxRetries = 1,
-        [int]$EvaluatorInputBudgetBytes = 393216
+        [int]$EvaluatorPayloadBudgetBytes = 393216
     )
 
     $parameters = @{
@@ -142,7 +142,7 @@ function Invoke-Runner {
         EvaluatorScriptPath = $EvaluatorScriptPath
         MaxRetries = $MaxRetries
         RetryDelayMilliseconds = 0
-        EvaluatorInputBudgetBytes = $EvaluatorInputBudgetBytes
+        EvaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
         GeneratedAt = '2026-09-15T09:00:00-05:00'
         OutputFormat = 'Json'
     }
@@ -516,6 +516,9 @@ param(
 
 $batch = Get-Content -LiteralPath $BatchPath -Raw | ConvertFrom-Json
 Add-Content -LiteralPath $env:SOURCE_ASSESSMENT_CALL_LOG -Value "$($batch.batchId):$($batch.sourceCount)"
+if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH)) {
+    [IO.File]::WriteAllText($env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH, "{`"mutated`":true}`n", [Text.UTF8Encoding]::new($false))
+}
 if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH) -and -not (Test-Path -LiteralPath $env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH)) {
     New-Item -ItemType File -Path $env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH | Out-Null
     [IO.File]::WriteAllText($OutputPath, "{`n", [Text.UTF8Encoding]::new($false))
@@ -680,6 +683,20 @@ $response = [ordered]@{
     Add-TestResult -Name 'runner-timestamps-canonical' -Passed ($null -ne $runnerBaseline -and [string]$runnerBaseline.generatedAt -ceq $expectedRunnerGeneratedAt -and @($runnerBaseline.entries | ForEach-Object { @($_.assessments) } | Where-Object { [string]$_.assessmentProvenance.assessedAt -cne $expectedRunnerGeneratedAt }).Count -eq 0) -Detail 'Raw assessment timestamps persist as the same invariant UTC representation on the baseline and every assessment provenance record.'
 
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH -ErrorAction SilentlyContinue
+    $runnerInventoryBytes = [IO.File]::ReadAllBytes($runnerInventoryPath)
+    $runnerInventorySha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($runnerInventoryBytes)).ToLowerInvariant()
+    $snapshotMutationOutputPath = Join-Path $tempRoot 'snapshot-mutation-baseline.json'
+    $env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH = $runnerInventoryPath
+    try {
+        $snapshotMutationRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath $snapshotMutationOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    }
+    finally {
+        Remove-Item Env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH -ErrorAction SilentlyContinue
+        [IO.File]::WriteAllBytes($runnerInventoryPath, $runnerInventoryBytes)
+    }
+    $snapshotMutationBaseline = if ($snapshotMutationRun.ExitCode -eq 0) { Get-Content -LiteralPath $snapshotMutationOutputPath -Raw | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'runner-inventory-snapshot-consistency' -Passed ($snapshotMutationRun.ExitCode -eq 0 -and [string]$snapshotMutationBaseline.inventoryHashes.'maintainer-proposals' -ceq $runnerInventorySha256) -Detail 'Evaluator-time mutation of the original accepted inventory cannot change baseline construction after the runner snapshots its inputs.'
+
     $retryInvariantRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'retry-invariant-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 3
     $retryInvariantBaseline = if ($retryInvariantRun.ExitCode -eq 0) { Get-Content -LiteralPath (Join-Path $tempRoot 'retry-invariant-baseline.json') -Raw | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'retry-limit-identity-invariant' -Passed ($retryInvariantRun.ExitCode -eq 0 -and [string]$retryInvariantBaseline.assessmentRunConfigurationSha256 -ceq [string]$runnerBaseline.assessmentRunConfigurationSha256) -Detail 'Changing transport retry limits does not change model-visible input or assessment run identity.'
@@ -708,9 +725,9 @@ $response = [ordered]@{
     Add-TestResult -Name 'tampered-prior-revision-rejected' -Passed ($tamperedHistoryRun.ExitCode -ne 0 -and @($tamperedHistoryCalls).Count -eq 0 -and $tamperedHistoryRun.Output -like '*revision record hash mismatch*') -Detail 'A historical revision whose records no longer match its accepted inventory hash fails before evaluator invocation.'
 
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
-    $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorInputBudgetBytes 60000
+    $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
     $budgetedResult = if ($budgetedRun.ExitCode -eq 0) { $budgetedRun.Output | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'evaluator-byte-budget-batching' -Passed ($budgetedRun.ExitCode -eq 0 -and $budgetedResult.batchCount -gt 4) -Detail 'A constrained evaluator byte budget deterministically closes batches before the source record-count maximum.'
+    Add-TestResult -Name 'evaluator-payload-budget-batching' -Passed ($budgetedRun.ExitCode -eq 0 -and $budgetedResult.batchCount -gt 4) -Detail 'A constrained evaluator payload budget deterministically closes batches before the source record-count maximum.'
 
     $oversizedInventory = Copy-JsonObject -Value (Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json)
     $oversizedInventory.records[0].content = 'x' * 12000
@@ -720,7 +737,7 @@ $response = [ordered]@{
     Write-JsonFixture -Path $oversizedInventoryPath -Value $oversizedInventory
     [string[]]$oversizedInventoryPaths = @($runnerContributorInventoryPath, $interactiveInventoryPath, $oversizedInventoryPath)
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
-    $oversizedRun = Invoke-Runner -AcceptedInventoryPaths $oversizedInventoryPaths -OutputPath (Join-Path $tempRoot 'oversized-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorInputBudgetBytes 60000
+    $oversizedRun = Invoke-Runner -AcceptedInventoryPaths $oversizedInventoryPaths -OutputPath (Join-Path $tempRoot 'oversized-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
     $oversizedCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
     $oversizedDiagnostic = $oversizedRun.Output -like '*source stream maintainer-proposals*' -and $oversizedRun.Output -like '*source record IMPL-RUNNER-001*' -and $oversizedRun.Output -like '*measured * bytes, budget 60000 bytes*' -and $oversizedRun.Output -like '*reduce or split the parser-owned source record*'
     Add-TestResult -Name 'oversized-source-record-rejected' -Passed ($oversizedRun.ExitCode -ne 0 -and @($oversizedCalls).Count -eq 0 -and $oversizedDiagnostic) -Detail 'One oversized parser record fails before evaluator invocation with stream, record, measured size, budget, and corrective action.'
@@ -753,6 +770,7 @@ finally {
     Remove-Item Env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_MALFORMED_NESTED -ErrorAction SilentlyContinue
+    Remove-Item Env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_UNKNOWN_MAPPING -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

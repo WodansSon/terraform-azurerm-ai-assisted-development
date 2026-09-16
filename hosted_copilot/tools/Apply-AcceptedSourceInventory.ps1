@@ -98,7 +98,6 @@ if (-not $fileNames.ContainsKey($candidateSourceDefinitionId)) {
 $destinationPath = Join-Path $inventoryDirectory $fileNames[$candidateSourceDefinitionId]
 $lockPath = "$destinationPath.lock"
 $lockStream = $null
-$lockAcquired = $false
 $temporaryPath = $null
 $destinationExisted = $false
 $lockedDestinationSha256 = $null
@@ -107,8 +106,7 @@ try {
         $null = New-Item -ItemType Directory -Path $inventoryDirectory -Force
     }
     try {
-        $lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-        $lockAcquired = $true
+        $lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
     }
     catch {
         throw "Accepted inventory is already being applied: $destinationPath"
@@ -170,9 +168,6 @@ finally {
     }
     if ($null -ne $temporaryPath) {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
-    }
-    if ($lockAcquired) {
-        Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
     }
 }
 

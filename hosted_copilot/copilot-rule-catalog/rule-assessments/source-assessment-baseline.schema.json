@@ -350,7 +350,7 @@
     "evaluatedRunConfiguration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "model", "reasoningEffort", "evaluator", "evaluatorInputBudgetBytes", "sourceDefinitions"],
+      "required": ["mode", "model", "reasoningEffort", "evaluator", "evaluatorPayloadBudgetBytes", "sourceDefinitions"],
       "properties": {
         "mode": {
           "const": "evaluated"
@@ -366,7 +366,7 @@
           "type": "string",
           "minLength": 1
         },
-        "evaluatorInputBudgetBytes": {
+        "evaluatorPayloadBudgetBytes": {
           "type": "integer",
           "minimum": 1024,
           "maximum": 10485760

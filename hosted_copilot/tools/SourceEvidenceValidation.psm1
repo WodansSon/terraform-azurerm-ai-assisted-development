@@ -373,7 +373,7 @@ function Get-SourceAssessmentRunConfigurationSha256 {
         model = [string]$RunConfiguration.model
         reasoningEffort = [string]$RunConfiguration.reasoningEffort
         evaluator = [string]$RunConfiguration.evaluator
-        evaluatorInputBudgetBytes = [int]$RunConfiguration.evaluatorInputBudgetBytes
+        evaluatorPayloadBudgetBytes = [int]$RunConfiguration.evaluatorPayloadBudgetBytes
         sourceDefinitions = $sourceDefinitions.ToArray()
     }
     return Get-SourceEvidenceContentSha256 -Content ($identity | ConvertTo-Json -Depth 10 -Compress)

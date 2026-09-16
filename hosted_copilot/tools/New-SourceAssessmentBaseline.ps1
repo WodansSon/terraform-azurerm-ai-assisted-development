@@ -21,7 +21,7 @@ param(
     [string]$ReasoningEffort = 'high',
 
     [ValidateRange(1024, 10485760)]
-    [int]$EvaluatorInputBudgetBytes = 393216,
+    [int]$EvaluatorPayloadBudgetBytes = 393216,
 
     [string]$Evaluator = 'copilot',
 
@@ -198,7 +198,7 @@ $runConfiguration = [ordered]@{
     model = $Model
     reasoningEffort = $ReasoningEffort
     evaluator = $Evaluator
-    evaluatorInputBudgetBytes = $EvaluatorInputBudgetBytes
+    evaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
     sourceDefinitions = $sortedRunDefinitions
 }
 $assessmentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $runConfiguration

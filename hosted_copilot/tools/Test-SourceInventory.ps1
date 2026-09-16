@@ -94,10 +94,11 @@ function Copy-JsonObject {
 function Invoke-Collector {
     param(
         [Parameter(Mandatory = $true)][string]$OutputPath,
-        [string]$DefinitionPath = $definitionPath
+        [string]$DefinitionPath = $definitionPath,
+        [string]$RepositoryRoot = $repoRoot
     )
 
-    $output = @(& pwsh -NoProfile -File $collectorPath -RepositoryRoot $repoRoot -SourceDefinitionPath $DefinitionPath -OutputPath $OutputPath -OutputFormat Json 2>&1)
+    $output = @(& pwsh -NoProfile -File $collectorPath -RepositoryRoot $RepositoryRoot -SourceDefinitionPath $DefinitionPath -OutputPath $OutputPath -OutputFormat Json 2>&1)
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output | Out-String).Trim() }
 }
 
@@ -169,6 +170,45 @@ try {
     } -Pattern '*transient*'
     Add-TestResult -Name 'bounded-retry-exhausts' -Passed ($retryExhausted -and $exhaustedAttemptCount -eq 2) -Detail 'The shared retry executor stops after the configured maximum attempts.'
 
+    $collectorTokens = $null
+    $collectorParseErrors = $null
+    $collectorAst = [Management.Automation.Language.Parser]::ParseFile($collectorPath, [ref]$collectorTokens, [ref]$collectorParseErrors)
+    if (@($collectorParseErrors).Count -ne 0) {
+        throw 'Source inventory collector could not be parsed for focused GraphQL retry validation'
+    }
+    $graphQlFunctionNames = @('Test-GitHubTransientFailure', 'Get-GitHubRetryAfterMilliseconds', 'Invoke-GitHubGraphQLRequest')
+    $graphQlFunctionDefinitions = @($graphQlFunctionNames | ForEach-Object {
+        $functionName = $_
+        $functionAst = $collectorAst.Find({
+                param($node)
+                $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName
+            }, $true)
+        if ($null -eq $functionAst) {
+            throw "Source inventory collector function was not found: $functionName"
+        }
+        $functionAst.Extent.Text
+    })
+    $graphQlRetryAttemptCount = & {
+        param([string[]]$FunctionDefinitions)
+
+        foreach ($functionDefinition in $FunctionDefinitions) {
+            . ([scriptblock]::Create($functionDefinition))
+        }
+        $script:graphQlRetryAttempts = 0
+        $MaximumRequestAttempts = 2
+        $RetryDelayMilliseconds = 0
+        function Invoke-GitHubGraphQLRequestOnce {
+            $script:graphQlRetryAttempts++
+            if ($script:graphQlRetryAttempts -eq 1) {
+                return [pscustomobject]@{ errors = @([pscustomobject]@{ type = 'RATE_LIMITED'; message = 'Please retry this request' }) }
+            }
+            return [pscustomobject]@{ data = [pscustomobject]@{ repository = [pscustomobject]@{} } }
+        }
+        $null = Invoke-GitHubGraphQLRequest -Request ([ordered]@{ query = 'query { viewer { login } }' })
+        return $script:graphQlRetryAttempts
+    } $graphQlFunctionDefinitions
+    Add-TestResult -Name 'graphql-body-error-retried' -Passed ($graphQlRetryAttemptCount -eq 2) -Detail 'A structured transient GraphQL error in an HTTP-success response remains inside the bounded retry boundary.'
+
     $initialAcceptedAt = '2026-09-15T14:00:00+02:00'
     $secondAcceptedAt = '2026-09-15T08:00:00-05:00'
     $thirdAcceptedAt = '2026-09-15T14:00:00Z'
@@ -218,6 +258,72 @@ try {
     $contributorRecords = @(Get-ContributorGuidanceInventoryRecords -Documents $contributorDocuments -Repository 'hashicorp/terraform-provider-azurerm' -ResolvedCommit ('a' * 40) -RootPath 'contributing')
     Add-TestResult -Name 'contributor-parser-records' -Passed ($contributorRecords.Count -eq 2 -and [string]$contributorRecords[0].sourceId -ceq 'contributing-readme' -and [string]$contributorRecords[1].sourceId -ceq 'guide-new-resource') -Detail 'Contributor documents retain legacy-compatible deterministic source IDs.'
     Add-TestResult -Name 'contributor-parser-pinned-evidence' -Passed (@($contributorRecords | Where-Object { $_.resolvedCommit -cne ('a' * 40) -or $_.referenceUrl -notlike "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('a' * 40)/*" }).Count -eq 0) -Detail 'Contributor records bind content and references to one immutable commit.'
+
+    $snapshotRepositoryRoot = Join-Path $fixtureRoot 'snapshot-repository'
+    $snapshotCatalogRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
+    $snapshotDefinitionRoot = Join-Path $snapshotCatalogRoot 'source-definitions'
+    $snapshotInventoryRoot = Join-Path $snapshotCatalogRoot 'source-inventories'
+    $snapshotContractRoot = Join-Path $snapshotCatalogRoot 'parser-contracts'
+    $snapshotToolsRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/tools'
+    $snapshotParserRoot = Join-Path $snapshotToolsRoot 'source-parsers'
+    $snapshotSourceRoot = Join-Path $snapshotRepositoryRoot 'fixtures/rules'
+    $null = New-Item -ItemType Directory -Path $snapshotDefinitionRoot, $snapshotInventoryRoot, $snapshotContractRoot, $snapshotParserRoot, $snapshotSourceRoot -Force
+    Copy-Item -LiteralPath $definitionSchemaPath -Destination $snapshotDefinitionRoot
+    Copy-Item -LiteralPath $inventorySchemaPath -Destination $snapshotInventoryRoot
+    Copy-Item -LiteralPath $contractSchemaPath -Destination $snapshotContractRoot
+    Copy-Item -LiteralPath $contractPath -Destination $snapshotContractRoot
+    Copy-Item -LiteralPath $collectorPath -Destination $snapshotToolsRoot
+    Copy-Item -LiteralPath $sourceEvidenceModulePath -Destination $snapshotToolsRoot
+    Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.json') -Destination $snapshotCatalogRoot
+    Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $snapshotCatalogRoot
+    $snapshotDefinitionPath = Join-Path $snapshotDefinitionRoot 'maintainer-proposals.json'
+    Write-JsonFixture -Path $snapshotDefinitionPath -Value ([ordered]@{
+        '$schema' = 'source-definition.schema.json'
+        schemaVersion = 1
+        id = 'maintainer-proposals'
+        displayName = 'Maintainer Proposals'
+        root = [ordered]@{ kind = 'repository'; path = 'fixtures/rules' }
+        files = @('*.rules.md')
+        exclude = @()
+        parser = 'maintainer-proposals-v2'
+        assessmentBatchSize = 20
+    })
+    $snapshotSourcePath = Join-Path $snapshotSourceRoot 'implementation.rules.md'
+    $snapshotSourceContent = "---`ndescription: `"Snapshot fixture.`"`nsurface: implementation`n---`n`n# Snapshot fixture`n`n### IMPL-SNAPSHOT-900: Snapshot rule`n`n- Rule: Preserve original source bytes.`n- Provenance: local-safeguard`n- Rationale: Parsing and hashing must use one source version.`n"
+    $mutatedSourceContent = $snapshotSourceContent.Replace('Preserve original source bytes.', 'Use mutated source bytes.')
+    [IO.File]::WriteAllText($snapshotSourcePath, $snapshotSourceContent, [Text.UTF8Encoding]::new($false))
+    $snapshotMutationMarkerPath = Join-Path $fixtureRoot 'snapshot-mutation.marker'
+    $snapshotParserContent = Get-Content -LiteralPath $parserModulePath -Raw
+    $snapshotParserContent = $snapshotParserContent.Replace(
+        '        $content = [IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n").Replace("`r", "`n")',
+        @'
+        if ($RepositoryRoot -like '*hosted-source-inventory-snapshot-*' -and -not (Test-Path -LiteralPath $env:SOURCE_INVENTORY_MUTATION_MARKER)) {
+            [IO.File]::WriteAllText($env:SOURCE_INVENTORY_MUTATE_PATH, $env:SOURCE_INVENTORY_MUTATED_CONTENT, [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText($env:SOURCE_INVENTORY_MUTATION_MARKER, 'mutated', [Text.UTF8Encoding]::new($false))
+        }
+        $content = [IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n").Replace("`r", "`n")
+'@.TrimEnd())
+    [IO.File]::WriteAllText((Join-Path $snapshotParserRoot 'MaintainerProposalsV2.psm1'), $snapshotParserContent, [Text.UTF8Encoding]::new($false))
+    $snapshotSourceSha256 = (Get-FileHash -LiteralPath $snapshotSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $snapshotRevisionIdentity = 'fixtures/rules/implementation.rules.md' + [char]0 + $snapshotSourceSha256 + [char]0
+    $expectedSnapshotWorktreeSha256 = Get-StringSha256 -Value $snapshotRevisionIdentity
+    $snapshotOutputPath = Join-Path $fixtureRoot 'snapshot-inventory.json'
+    $env:SOURCE_INVENTORY_MUTATE_PATH = $snapshotSourcePath
+    $env:SOURCE_INVENTORY_MUTATED_CONTENT = $mutatedSourceContent
+    $env:SOURCE_INVENTORY_MUTATION_MARKER = $snapshotMutationMarkerPath
+    try {
+        $snapshotRun = Invoke-Collector -RepositoryRoot $snapshotRepositoryRoot -DefinitionPath $snapshotDefinitionPath -OutputPath $snapshotOutputPath
+    }
+    finally {
+        Remove-Item Env:SOURCE_INVENTORY_MUTATE_PATH -ErrorAction SilentlyContinue
+        Remove-Item Env:SOURCE_INVENTORY_MUTATED_CONTENT -ErrorAction SilentlyContinue
+        Remove-Item Env:SOURCE_INVENTORY_MUTATION_MARKER -ErrorAction SilentlyContinue
+    }
+    $snapshotInventory = if ($snapshotRun.ExitCode -eq 0) { Get-Content -LiteralPath $snapshotOutputPath -Raw | ConvertFrom-Json } else { $null }
+    $snapshotMutationObserved = (Test-Path -LiteralPath $snapshotMutationMarkerPath -PathType Leaf) -and [IO.File]::ReadAllText($snapshotSourcePath).Contains('Use mutated source bytes.')
+    $snapshotEvidenceConsistent = $null -ne $snapshotInventory -and [string]$snapshotInventory.records[0].ruleText -ceq 'Preserve original source bytes.' -and [string]$snapshotInventory.collection.sourceRevision.worktreeSha256 -ceq $expectedSnapshotWorktreeSha256
+    Add-TestResult -Name 'local-parser-snapshot-consistency' -Passed ($snapshotRun.ExitCode -eq 0 -and $snapshotMutationObserved -and $snapshotEvidenceConsistent) -Detail 'Parser-time mutation of the original local source cannot split inventory records from their mirrored worktree hash.'
+
     Add-TestResult -Name 'inventory-read-only' -Passed (@(Compare-Object $hashesBefore $hashesAfter).Count -eq 0) -Detail 'Both local collectors leave source definitions, parser contracts, schemas, catalogs, contracts, and Maintainer Proposals unchanged.'
 
     $insideRepositoryOutput = Join-Path $repoRoot '.source-inventory-boundary-test.json'
@@ -348,12 +454,16 @@ try {
     Add-TestResult -Name 'accepted-candidate-bytes-preserved' -Passed ($firstApplyExitCode -eq 0 -and $canonicalAcceptedSha256 -ceq [string]$initialAcceptanceResult.candidateSha256) -Detail 'Apply writes the exact reviewed candidate bytes without JSON re-encoding or byte-order changes.'
 
     $canonicalLockPath = "$canonicalAcceptedPath.lock"
-    [IO.File]::WriteAllText($canonicalLockPath, 'owned-by-another-apply', [Text.UTF8Encoding]::new($false))
-    $contendedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $contendedApplyExitCode = $LASTEXITCODE
+    $lockOwnerStream = [IO.File]::Open($canonicalLockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $contendedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
+        $contendedApplyExitCode = $LASTEXITCODE
+    }
+    finally {
+        $lockOwnerStream.Dispose()
+    }
     $contendedLockPreserved = Test-Path -LiteralPath $canonicalLockPath -PathType Leaf
-    Remove-Item -LiteralPath $canonicalLockPath -Force
-    Add-TestResult -Name 'contended-lock-ownership-preserved' -Passed ($contendedApplyExitCode -ne 0 -and $contendedLockPreserved -and ($contendedApplyOutput | Out-String) -like '*already being applied*') -Detail "A writer that cannot acquire the sidecar lock leaves the current lock owner's file intact."
+    Add-TestResult -Name 'contended-lock-ownership-preserved' -Passed ($contendedApplyExitCode -ne 0 -and $contendedLockPreserved -and ($contendedApplyOutput | Out-String) -like '*already being applied*') -Detail "A writer that cannot acquire the sidecar lock leaves the current lock owner's reusable file intact."
 
     $stagedTwo = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json
     $stagedTwo.records[0].content = [string]$stagedTwo.records[0].content + "`nChanged."

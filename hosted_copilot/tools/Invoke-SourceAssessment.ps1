@@ -30,7 +30,7 @@ param(
     [int]$RetryDelayMilliseconds = 1000,
 
     [ValidateRange(1024, 10485760)]
-    [int]$EvaluatorInputBudgetBytes = 393216,
+    [int]$EvaluatorPayloadBudgetBytes = 393216,
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
@@ -62,6 +62,34 @@ function Write-JsonAtomically {
     finally {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Copy-RunInputFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    $snapshot = Get-SourceEvidenceFileSnapshot -Path $SourcePath
+    $destinationDirectory = Split-Path -Parent $DestinationPath
+    if (-not (Test-Path -LiteralPath $destinationDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $destinationDirectory -Force
+    }
+    [IO.File]::WriteAllBytes($DestinationPath, $snapshot.Bytes)
+    return $DestinationPath
+}
+
+function Copy-RepositoryRunInput {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$SourceRoot,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot
+    )
+
+    $sourcePath = [IO.Path]::GetFullPath((Join-Path $SourceRoot $RelativePath))
+    $destinationPath = [IO.Path]::GetFullPath((Join-Path $DestinationRoot $RelativePath))
+    $null = Copy-RunInputFile -SourcePath $sourcePath -DestinationPath $destinationPath
+    return $destinationPath
 }
 
 function Get-EvaluatorJson {
@@ -122,7 +150,7 @@ This batch contains exactly $SourceCount source records. Write only the requeste
 "@
 }
 
-function Get-AssessmentBatchInputSizeBytes {
+function Get-AssessmentBatchPayloadSizeBytes {
     param(
         [Parameter(Mandatory = $true)][object]$Packet,
         [Parameter(Mandatory = $true)][int]$StaticInputBytes
@@ -227,15 +255,56 @@ $resolvedContractPath = [IO.Path]::GetFullPath($AssessmentContractPath)
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
-$catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
 $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md'
 $ledgerPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.json'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
+$runRepositoryRoot = Join-Path $runDirectory 'repository'
 foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required source assessment input was not found: $requiredPath"
     }
 }
+$canonicalBuilderPath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/New-SourceAssessmentBaseline.ps1'))
+if ($resolvedBuilderPath -cne $canonicalBuilderPath) {
+    throw 'BaselineBuilderPath must identify the canonical contract-owned baseline builder'
+}
+$null = New-Item -ItemType Directory -Path $runRepositoryRoot -Force
+$assessmentContract = Get-Content -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json
+$assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v2.json'
+$null = Copy-RunInputFile -SourcePath $resolvedContractPath -DestinationPath $assessmentContractSnapshotPath
+$repositoryInputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($relativePath in @(
+    'hosted_copilot/copilot-rule-catalog/rule-assessments/assessment-contract.schema.json',
+    'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
+    'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
+    'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
+    'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+) + @($assessmentContract.behaviorFiles)) {
+    $null = $repositoryInputs.Add([string]$relativePath)
+}
+$expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
+foreach ($sourceDefinitionId in $expectedSourceDefinitionIds) {
+    $definitionRelativePath = "hosted_copilot/copilot-rule-catalog/source-definitions/$sourceDefinitionId.json"
+    $null = $repositoryInputs.Add($definitionRelativePath)
+    $definition = Get-Content -LiteralPath (Join-Path $resolvedRepositoryRoot $definitionRelativePath) -Raw | ConvertFrom-Json
+    $contractRelativePath = "hosted_copilot/copilot-rule-catalog/parser-contracts/$($definition.parser).json"
+    $null = $repositoryInputs.Add($contractRelativePath)
+    $parserContract = Get-Content -LiteralPath (Join-Path $resolvedRepositoryRoot $contractRelativePath) -Raw | ConvertFrom-Json
+    foreach ($behaviorFile in @($parserContract.behaviorFiles)) {
+        $null = $repositoryInputs.Add([string]$behaviorFile)
+    }
+}
+foreach ($relativePath in $repositoryInputs) {
+    $null = Copy-RepositoryRunInput -RelativePath $relativePath -SourceRoot $resolvedRepositoryRoot -DestinationRoot $runRepositoryRoot
+}
+$resolvedBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/New-SourceAssessmentBaseline.ps1'
+$resolvedCatalogPath = Copy-RunInputFile -SourcePath $resolvedCatalogPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json')
+$resolvedContractPath = $assessmentContractSnapshotPath
+$inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+$definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
+$draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
+$catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md'
 $resolvedEvaluatorScriptPath = $null
 $evaluatorIdentity = $EvaluatorCommand
 if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
@@ -243,7 +312,10 @@ if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
     if (-not (Test-Path -LiteralPath $resolvedEvaluatorScriptPath -PathType Leaf)) {
         throw "Evaluator script was not found: $resolvedEvaluatorScriptPath"
     }
-    $evaluatorIdentity = 'script:' + (Get-FileHash -LiteralPath $resolvedEvaluatorScriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $evaluatorSnapshot = Get-SourceEvidenceFileSnapshot -Path $resolvedEvaluatorScriptPath
+    $resolvedEvaluatorScriptPath = Join-Path $runDirectory 'evaluator.ps1'
+    [IO.File]::WriteAllBytes($resolvedEvaluatorScriptPath, $evaluatorSnapshot.Bytes)
+    $evaluatorIdentity = 'script:' + $evaluatorSnapshot.Sha256
 }
 
 $catalogJson = Get-Content -LiteralPath $resolvedCatalogPath -Raw
@@ -261,10 +333,11 @@ foreach ($rule in @($catalog.rules)) {
     }
 }
 $lanes = [Collections.Generic.List[object]]::new()
-$expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
+$snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
-    $inventoryJson = Get-Content -LiteralPath $resolvedInventoryPath -Raw
+    $inventorySnapshot = Get-SourceEvidenceFileSnapshot -Path $resolvedInventoryPath
+    $inventoryJson = $inventorySnapshot.Content
     if (-not (Test-Json -Json $inventoryJson -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
         throw "Source inventory does not satisfy its schema: $resolvedInventoryPath"
     }
@@ -276,13 +349,20 @@ foreach ($inventoryPath in $InventoryPaths) {
     if (@($lanes | Where-Object sourceDefinitionId -eq $sourceDefinitionId).Count -gt 0) {
         throw "Source assessment received duplicate inventory sourceDefinitionId: $sourceDefinitionId"
     }
-    $definitionPath = Join-Path $resolvedRepositoryRoot "hosted_copilot/copilot-rule-catalog/source-definitions/$sourceDefinitionId.json"
+    $snapshotInventoryPath = Join-Path $runDirectory "inventories/$sourceDefinitionId.json"
+    $snapshotInventoryDirectory = Split-Path -Parent $snapshotInventoryPath
+    if (-not (Test-Path -LiteralPath $snapshotInventoryDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $snapshotInventoryDirectory -Force
+    }
+    [IO.File]::WriteAllBytes($snapshotInventoryPath, $inventorySnapshot.Bytes)
+    $snapshotInventoryPaths.Add($snapshotInventoryPath)
+    $definitionPath = Join-Path $runRepositoryRoot "hosted_copilot/copilot-rule-catalog/source-definitions/$sourceDefinitionId.json"
     $definitionJson = Get-Content -LiteralPath $definitionPath -Raw
     if (-not (Test-Json -Json $definitionJson -SchemaFile $definitionSchemaPath -ErrorAction Stop)) {
         throw "Source definition does not satisfy its schema: $definitionPath"
     }
     $definition = $definitionJson | ConvertFrom-Json
-    $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $resolvedRepositoryRoot -SourceDefinitionId $sourceDefinitionId
+    $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $runRepositoryRoot -SourceDefinitionId $sourceDefinitionId
     Assert-CurrentAcceptedSourceInventory -Inventory $inventory -Evidence $sourceEvidence
 
     $packetRecords = @($inventory.records | ForEach-Object {
@@ -332,7 +412,7 @@ foreach ($lane in $orderedLanes) {
         if ($currentRecords.Count -eq [int]$lane.assessmentBatchSize) {
             $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
             $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
-            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
+            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; payloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
             $nextBatchNumber++
             $currentRecords.Clear()
         }
@@ -340,22 +420,22 @@ foreach ($lane in $orderedLanes) {
         $candidateRecords = @($currentRecords.ToArray()) + @($record)
         $candidateBatchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
         $candidatePacket = New-AssessmentBatchPacket -BatchId $candidateBatchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $candidateRecords
-        $candidateInputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
-        if ($candidateInputSizeBytes -gt $EvaluatorInputBudgetBytes) {
+        $candidatePayloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
+        if ($candidatePayloadSizeBytes -gt $EvaluatorPayloadBudgetBytes) {
             if ($currentRecords.Count -eq 0) {
-                throw "Source assessment record exceeds evaluator input budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidateInputSizeBytes bytes, budget $EvaluatorInputBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
+            throw "Source assessment record exceeds evaluator payload budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidatePayloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
             }
             $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
             $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
-            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
+            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; payloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
             $nextBatchNumber++
             $currentRecords.Clear()
 
             $candidateBatchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
             $candidatePacket = New-AssessmentBatchPacket -BatchId $candidateBatchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records @($record)
-            $candidateInputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
-            if ($candidateInputSizeBytes -gt $EvaluatorInputBudgetBytes) {
-                throw "Source assessment record exceeds evaluator input budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidateInputSizeBytes bytes, budget $EvaluatorInputBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
+            $candidatePayloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
+            if ($candidatePayloadSizeBytes -gt $EvaluatorPayloadBudgetBytes) {
+                throw "Source assessment record exceeds evaluator payload budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidatePayloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
             }
         }
         $currentRecords.Add($record)
@@ -366,7 +446,7 @@ foreach ($lane in $orderedLanes) {
         $batches.Add([ordered]@{
             batchId = $batchId
             packet = $packet
-            inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes
+            payloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes
         })
         $nextBatchNumber++
     }
@@ -392,7 +472,7 @@ try {
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
 
         if ($OutputFormat -eq 'Text') {
-            Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources, {2} bytes" -f $batchId, @($batchPacket.records).Count, $batch.inputSizeBytes)
+            Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
         }
         $response = $null
         $lastError = $null
@@ -474,7 +554,7 @@ try {
             $draftEntries.Add($entry)
         }
         if ($OutputFormat -eq 'Text') {
-            Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources, {2} bytes" -f $batchId, @($batchPacket.records).Count, $batch.inputSizeBytes)
+            Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
         }
     }
 
@@ -485,15 +565,15 @@ try {
         entries = @(Get-SortedObjects -Values $draftEntries.ToArray() -Key { param($entry) "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)" })
     })
     $builderParameters = @{
-        RepositoryRoot = $resolvedRepositoryRoot
-        InventoryPaths = $InventoryPaths
+        RepositoryRoot = $runRepositoryRoot
+        InventoryPaths = $snapshotInventoryPaths.ToArray()
         AssessmentDraftPath = $draftPath
         HostedCatalogPath = $resolvedCatalogPath
         AssessmentContractPath = $resolvedContractPath
         OutputPath = $resolvedOutputPath
         Model = $Model
         ReasoningEffort = $ReasoningEffort
-        EvaluatorInputBudgetBytes = $EvaluatorInputBudgetBytes
+        EvaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
         Evaluator = $evaluatorIdentity
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
