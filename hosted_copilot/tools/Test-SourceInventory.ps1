@@ -85,6 +85,12 @@ function Write-JsonFixture {
     [IO.File]::WriteAllText($Path, (($Value | ConvertTo-Json -Depth 20) + "`n"), [Text.UTF8Encoding]::new($false))
 }
 
+function Copy-JsonObject {
+    param([Parameter(Mandatory = $true)][object]$Value)
+
+    return ($Value | ConvertTo-Json -Depth 40 -Compress) | ConvertFrom-Json -DateKind String
+}
+
 function Invoke-Collector {
     param(
         [Parameter(Mandatory = $true)][string]$OutputPath,
@@ -140,6 +146,36 @@ try {
     $secondOutputPath = Join-Path $fixtureRoot 'maintainer-second.json'
     $interactiveFirstOutputPath = Join-Path $fixtureRoot 'interactive-first.json'
     $interactiveSecondOutputPath = Join-Path $fixtureRoot 'interactive-second.json'
+
+    $canonicalUtcTimestamp = ConvertTo-SourceEvidenceUtcTimestamp -Value '2026-09-15T14:30:00+02:00'
+    $expectedCanonicalUtcTimestamp = [datetime]::new(2026, 9, 15, 12, 30, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    Add-TestResult -Name 'canonical-utc-timestamp' -Passed ($canonicalUtcTimestamp -ceq $expectedCanonicalUtcTimestamp) -Detail 'Source evidence timestamps use one invariant UTC round-trip representation regardless of input offset.'
+    Add-TestResult -Name 'invalid-source-timestamp-rejected' -Passed (Test-ThrowsLike -Action { ConvertTo-SourceEvidenceUtcTimestamp -Value 'not-a-timestamp' } -Pattern '*Invalid source evidence timestamp*') -Detail 'Invalid source evidence timestamps fail through the shared parser rather than locale-dependent coercion.'
+    $retryAttemptCount = 0
+    $retryResult = Invoke-SourceEvidenceWithRetry -Operation 'test transient operation' -MaximumAttempts 3 -BaseDelayMilliseconds 0 -Action {
+        $script:retryAttemptCount++
+        if ($script:retryAttemptCount -lt 3) {
+            throw [TimeoutException]::new('transient')
+        }
+        return 'completed'
+    }
+    Add-TestResult -Name 'bounded-retry-recovers' -Passed ($retryResult -ceq 'completed' -and $retryAttemptCount -eq 3) -Detail 'The shared retry executor recovers within its exact attempt bound without changing operation input.'
+    $exhaustedAttemptCount = 0
+    $retryExhausted = Test-ThrowsLike -Action {
+        Invoke-SourceEvidenceWithRetry -Operation 'test exhausted operation' -MaximumAttempts 2 -BaseDelayMilliseconds 0 -Action {
+            $script:exhaustedAttemptCount++
+            throw [TimeoutException]::new('transient')
+        }
+    } -Pattern '*transient*'
+    Add-TestResult -Name 'bounded-retry-exhausts' -Passed ($retryExhausted -and $exhaustedAttemptCount -eq 2) -Detail 'The shared retry executor stops after the configured maximum attempts.'
+
+    $initialAcceptedAt = '2026-09-15T14:00:00+02:00'
+    $secondAcceptedAt = '2026-09-15T08:00:00-05:00'
+    $thirdAcceptedAt = '2026-09-15T14:00:00Z'
+    $nonIncreasingAcceptedAt = '2026-09-15T15:00:00+02:00'
+    $expectedInitialAcceptedAt = [datetime]::new(2026, 9, 15, 12, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    $expectedSecondAcceptedAt = [datetime]::new(2026, 9, 15, 13, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    $expectedThirdAcceptedAt = [datetime]::new(2026, 9, 15, 14, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
 
     Add-TestResult -Name 'source-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $definitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Maintainer Proposals uses the strict shared source-definition schema.'
     Add-TestResult -Name 'parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Maintainer Proposals parser contract has a strict versioned shape.'
@@ -243,18 +279,33 @@ try {
 
     $acceptedFixtureRoot = Join-Path $fixtureRoot 'accepted-lifecycle'
     $isolatedRepositoryRoot = Join-Path $acceptedFixtureRoot 'repository'
-    $isolatedInventoryRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories'
-    $null = New-Item -ItemType Directory -Path $isolatedInventoryRoot -Force
+    $isolatedCatalogRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
+    $isolatedInventoryRoot = Join-Path $isolatedCatalogRoot 'source-inventories'
+    $isolatedDefinitionRoot = Join-Path $isolatedCatalogRoot 'source-definitions'
+    $isolatedContractRoot = Join-Path $isolatedCatalogRoot 'parser-contracts'
+    $isolatedToolsRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/tools'
+    $isolatedParserRoot = Join-Path $isolatedToolsRoot 'source-parsers'
+    $null = New-Item -ItemType Directory -Path $isolatedInventoryRoot, $isolatedDefinitionRoot, $isolatedContractRoot, $isolatedParserRoot -Force
     Copy-Item -LiteralPath $inventorySchemaPath -Destination $isolatedInventoryRoot
+    Copy-Item -LiteralPath $definitionSchemaPath -Destination $isolatedDefinitionRoot
+    Copy-Item -LiteralPath $definitionPath -Destination $isolatedDefinitionRoot
+    Copy-Item -LiteralPath $contributorDefinitionPath -Destination $isolatedDefinitionRoot
+    Copy-Item -LiteralPath (Join-Path $catalogRoot 'source-definitions/source-definition-set.schema.json') -Destination $isolatedDefinitionRoot
+    Copy-Item -LiteralPath $contractSchemaPath -Destination $isolatedContractRoot
+    Copy-Item -LiteralPath $contractPath -Destination $isolatedContractRoot
+    Copy-Item -LiteralPath $collectorPath -Destination $isolatedToolsRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1') -Destination $isolatedToolsRoot
+    Copy-Item -LiteralPath $parserModulePath -Destination $isolatedParserRoot
     $acceptedOnePath = Join-Path $acceptedFixtureRoot 'accepted-one.json'
     $acceptedTwoPath = Join-Path $acceptedFixtureRoot 'accepted-two.json'
+    $acceptedThreePath = Join-Path $acceptedFixtureRoot 'accepted-three.json'
     $stagedTwoPath = Join-Path $acceptedFixtureRoot 'staged-two.json'
 
-    $initialAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $firstOutputPath -OutputPath $acceptedOnePath -AcceptedBy 'test-maintainer' -AcceptedAt '2026-09-15T12:00:00Z' -OutputFormat Json 2>&1)
+    $initialAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $firstOutputPath -OutputPath $acceptedOnePath -AcceptedBy 'test-maintainer' -AcceptedAt $initialAcceptedAt -OutputFormat Json 2>&1)
     $initialAcceptanceExitCode = $LASTEXITCODE
     $initialAcceptanceResult = if ($initialAcceptanceExitCode -eq 0) { ($initialAcceptanceOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $acceptedOne = if ($initialAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedOnePath -Raw | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'initial-acceptance-export' -Passed ($initialAcceptanceExitCode -eq 0 -and $initialAcceptanceResult.transitionCounts.added -eq 38 -and @($acceptedOne.acceptedRevisions).Count -eq 0 -and $acceptedOne.acceptance.previousAcceptedInventorySha256 -eq $null) -Detail 'Initial acceptance exports all staged records with acceptance metadata and no invented prior history.'
+    $acceptedOne = if ($initialAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedOnePath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    Add-TestResult -Name 'initial-acceptance-export' -Passed ($initialAcceptanceExitCode -eq 0 -and $initialAcceptanceResult.transitionCounts.added -eq 38 -and @($acceptedOne.acceptedRevisions).Count -eq 0 -and $acceptedOne.acceptance.previousAcceptedInventorySha256 -eq $null -and [string]$acceptedOne.acceptance.acceptedAt -ceq $expectedInitialAcceptedAt) -Detail 'Initial acceptance exports all staged records with canonical UTC acceptance metadata and no invented prior history.'
 
     $currentEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repoRoot -SourceDefinitionId 'maintainer-proposals'
     $displayOnlyEvidence = $currentEvidence | Select-Object *
@@ -274,10 +325,35 @@ try {
     $repositoryAcceptanceExitCode = $LASTEXITCODE
     Add-TestResult -Name 'acceptance-export-boundary' -Passed ($repositoryAcceptanceExitCode -ne 0 -and -not (Test-Path -LiteralPath $repositoryAcceptancePath)) -Detail 'Accepted inventory export cannot write inside the repository.'
 
-    $firstApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -OutputFormat Json 2>&1)
+    $isolatedDefinitionSetPath = Join-Path $isolatedDefinitionRoot 'source-definition-set.json'
+    Write-JsonFixture -Path $isolatedDefinitionSetPath -Value ([ordered]@{
+        '$schema' = 'source-definition-set.schema.json'
+        schemaVersion = 1
+        sourceDefinitionIds = @('contributor-guidance')
+    })
+    $unapprovedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
+    $unapprovedApplyExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'unapproved-source-apply-rejected' -Passed ($unapprovedApplyExitCode -ne 0 -and ($unapprovedApplyOutput | Out-String) -like '*source is not approved*') -Detail 'Apply consumes the explicit approved source-definition set rather than its destination filename map as participation authority.'
+    Write-JsonFixture -Path $isolatedDefinitionSetPath -Value ([ordered]@{
+        '$schema' = 'source-definition-set.schema.json'
+        schemaVersion = 1
+        sourceDefinitionIds = @('maintainer-proposals')
+    })
+
+    $firstApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
     $firstApplyExitCode = $LASTEXITCODE
     $canonicalAcceptedPath = Join-Path $isolatedInventoryRoot 'maintainer.json'
     Add-TestResult -Name 'initial-acceptance-apply' -Passed ($firstApplyExitCode -eq 0 -and (Test-Path -LiteralPath $canonicalAcceptedPath -PathType Leaf)) -Detail 'The explicit apply command writes only the canonical source-specific inventory path.'
+    $canonicalAcceptedSha256 = if (Test-Path -LiteralPath $canonicalAcceptedPath -PathType Leaf) { (Get-FileHash -LiteralPath $canonicalAcceptedPath -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
+    Add-TestResult -Name 'accepted-candidate-bytes-preserved' -Passed ($firstApplyExitCode -eq 0 -and $canonicalAcceptedSha256 -ceq [string]$initialAcceptanceResult.candidateSha256) -Detail 'Apply writes the exact reviewed candidate bytes without JSON re-encoding or byte-order changes.'
+
+    $canonicalLockPath = "$canonicalAcceptedPath.lock"
+    [IO.File]::WriteAllText($canonicalLockPath, 'owned-by-another-apply', [Text.UTF8Encoding]::new($false))
+    $contendedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
+    $contendedApplyExitCode = $LASTEXITCODE
+    $contendedLockPreserved = Test-Path -LiteralPath $canonicalLockPath -PathType Leaf
+    Remove-Item -LiteralPath $canonicalLockPath -Force
+    Add-TestResult -Name 'contended-lock-ownership-preserved' -Passed ($contendedApplyExitCode -ne 0 -and $contendedLockPreserved -and ($contendedApplyOutput | Out-String) -like '*already being applied*') -Detail "A writer that cannot acquire the sidecar lock leaves the current lock owner's file intact."
 
     $stagedTwo = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json
     $stagedTwo.records[0].content = [string]$stagedTwo.records[0].content + "`nChanged."
@@ -286,18 +362,75 @@ try {
     $stagedTwo.collection.inventorySha256 = Get-StringSha256 -Value ($stagedTwo.records | ConvertTo-Json -Depth 30 -Compress)
     Write-JsonFixture -Path $stagedTwoPath -Value $stagedTwo
 
-    $secondAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath $acceptedTwoPath -AcceptedBy 'test-maintainer' -AcceptedAt '2026-09-15T13:00:00Z' -OutputFormat Json 2>&1)
+    $secondAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath $acceptedTwoPath -AcceptedBy 'test-maintainer' -AcceptedAt $secondAcceptedAt -OutputFormat Json 2>&1)
     $secondAcceptanceExitCode = $LASTEXITCODE
     $secondAcceptanceResult = if ($secondAcceptanceExitCode -eq 0) { ($secondAcceptanceOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $acceptedTwo = if ($secondAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json } else { $null }
+    $acceptedTwo = if ($secondAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     Add-TestResult -Name 'acceptance-transition-classification' -Passed ($secondAcceptanceExitCode -eq 0 -and $secondAcceptanceResult.transitionCounts.'content-changed' -eq 1 -and $secondAcceptanceResult.transitionCounts.removed -eq 1) -Detail 'Acceptance classifies changed content and complete-collection removals explicitly.'
-    Add-TestResult -Name 'acceptance-tombstone-history' -Passed ($null -ne $acceptedTwo -and @($acceptedTwo.records | Where-Object presence -eq 'removed').Count -eq 1 -and @($acceptedTwo.acceptedRevisions).Count -eq 1 -and $null -ne $acceptedTwo.acceptedRevisions[0].acceptance) -Detail 'Removal preserves last-known evidence and one complete prior accepted projection inline.'
+    Add-TestResult -Name 'acceptance-tombstone-history' -Passed ($null -ne $acceptedTwo -and @($acceptedTwo.records | Where-Object presence -eq 'removed').Count -eq 1 -and @($acceptedTwo.acceptedRevisions).Count -eq 1 -and [string]$acceptedTwo.acceptance.acceptedAt -ceq $expectedSecondAcceptedAt -and [string]$acceptedTwo.acceptedRevisions[0].acceptance.acceptedAt -ceq $expectedInitialAcceptedAt) -Detail 'Removal preserves last-known evidence and one complete prior accepted projection with canonical UTC timestamps.'
 
-    $secondApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedTwoPath -OutputFormat Json 2>&1)
+    $byteTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-byte-tampered.json'
+    Copy-Item -LiteralPath $acceptedTwoPath -Destination $byteTamperedPath
+    [IO.File]::AppendAllText($byteTamperedPath, " `n", [Text.UTF8Encoding]::new($false))
+    $byteTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $byteTamperedPath -ExpectedCandidateSha256 $secondAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
+    $byteTamperedExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'candidate-byte-tampering-rejected' -Passed ($byteTamperedExitCode -ne 0 -and ($byteTamperedOutput | Out-String) -like '*candidate hash mismatch*') -Detail 'Apply rejects candidate bytes that differ from the explicitly reviewed export hash.'
+
+    $recordTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-record-tampered.json'
+    $recordTampered = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json
+    $recordTampered.records[0].content = [string]$recordTampered.records[0].content + ' Tampered.'
+    Write-JsonFixture -Path $recordTamperedPath -Value $recordTampered
+    $recordTamperedSha256 = (Get-FileHash -LiteralPath $recordTamperedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $recordTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $recordTamperedPath -ExpectedCandidateSha256 $recordTamperedSha256 -OutputFormat Json 2>&1)
+    $recordTamperedExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'candidate-record-tampering-rejected' -Passed ($recordTamperedExitCode -ne 0 -and ($recordTamperedOutput | Out-String) -like '*record hash does not match*') -Detail 'Apply independently recalculates accepted record hashes even when candidate bytes were explicitly supplied.'
+
+    $duplicateCurrentPath = Join-Path $acceptedFixtureRoot 'accepted-two-duplicate-current.json'
+    $duplicateCurrent = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json -DateKind String
+    $duplicateCurrent.records = @($duplicateCurrent.records) + @($duplicateCurrent.records[0])
+    $duplicateCurrent.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($duplicateCurrent.records)
+    Write-JsonFixture -Path $duplicateCurrentPath -Value $duplicateCurrent
+    $duplicateCurrentSha256 = (Get-FileHash -LiteralPath $duplicateCurrentPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $duplicateCurrentOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $duplicateCurrentPath -ExpectedCandidateSha256 $duplicateCurrentSha256 -OutputFormat Json 2>&1)
+    $duplicateCurrentExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'duplicate-current-source-id-rejected' -Passed ($duplicateCurrentExitCode -ne 0 -and ($duplicateCurrentOutput | Out-String) -like '*duplicate source IDs*') -Detail 'Apply rejects duplicate IDs in the current projection even when the candidate record hash is internally consistent.'
+
+    $historyTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-history-tampered.json'
+    $historyTampered = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json
+    $historyTampered.acceptedRevisions[0].acceptance.acceptedBy = 'rewritten-maintainer'
+    Write-JsonFixture -Path $historyTamperedPath -Value $historyTampered
+    $historyTamperedSha256 = (Get-FileHash -LiteralPath $historyTamperedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $historyTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $historyTamperedPath -ExpectedCandidateSha256 $historyTamperedSha256 -OutputFormat Json 2>&1)
+    $historyTamperedExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'candidate-history-rewrite-rejected' -Passed ($historyTamperedExitCode -ne 0 -and ($historyTamperedOutput | Out-String) -like '*revision chain hash mismatch*') -Detail "Apply rejects a candidate whose appended revision rewrites authenticated history. Output: $(($historyTamperedOutput | Out-String).Trim())"
+
+    $secondApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedTwoPath -ExpectedCandidateSha256 $secondAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
     $secondApplyExitCode = $LASTEXITCODE
-    $staleApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -OutputFormat Json 2>&1)
+
+    $nonIncreasingOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath (Join-Path $acceptedFixtureRoot 'non-increasing.json') -AcceptedBy 'test-maintainer' -AcceptedAt $nonIncreasingAcceptedAt -OutputFormat Json 2>&1)
+    $nonIncreasingExitCode = $LASTEXITCODE
+    Add-TestResult -Name 'non-increasing-acceptance-rejected' -Passed ($secondApplyExitCode -eq 0 -and $nonIncreasingExitCode -ne 0 -and ($nonIncreasingOutput | Out-String) -like '*AcceptedAt must be later*') -Detail 'Acceptance events must advance monotonically and cannot reuse or move behind the current timestamp.'
+
+    $thirdAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath $acceptedThreePath -AcceptedBy 'test-maintainer' -AcceptedAt $thirdAcceptedAt -OutputFormat Json 2>&1)
+    $thirdAcceptanceExitCode = $LASTEXITCODE
+    $acceptedThree = if ($thirdAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedThreePath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $allAcceptanceTimestampsCanonical = $null -ne $acceptedThree -and [string]$acceptedThree.acceptance.acceptedAt -ceq $expectedThirdAcceptedAt -and [string]$acceptedThree.acceptedRevisions[0].acceptance.acceptedAt -ceq $expectedInitialAcceptedAt -and [string]$acceptedThree.acceptedRevisions[1].acceptance.acceptedAt -ceq $expectedSecondAcceptedAt
+    Add-TestResult -Name 'accepted-history-timestamps-canonical' -Passed ($thirdAcceptanceExitCode -eq 0 -and $allAcceptanceTimestampsCanonical) -Detail 'Raw timestamps with `Z`, positive offsets, and negative offsets persist as one invariant UTC representation across current and historical acceptance records.'
+    $reorderedHistory = if ($null -ne $acceptedThree) { Copy-JsonObject -Value $acceptedThree } else { $null }
+    if ($null -ne $reorderedHistory) {
+        $reorderedHistory.acceptedRevisions = @($reorderedHistory.acceptedRevisions[1], $reorderedHistory.acceptedRevisions[0])
+    }
+    Add-TestResult -Name 'reordered-acceptance-history-rejected' -Passed ($thirdAcceptanceExitCode -eq 0 -and (Test-ThrowsLike -Action { Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $reorderedHistory } -Pattern '*revision*')) -Detail 'Reordering individually valid accepted revisions cannot change which evidence is treated as the immediate predecessor.'
+
+    $duplicatedHistory = if ($null -ne $acceptedThree) { Copy-JsonObject -Value $acceptedThree } else { $null }
+    if ($null -ne $duplicatedHistory) {
+        $duplicatedHistory.acceptedRevisions = @($duplicatedHistory.acceptedRevisions[0], $duplicatedHistory.acceptedRevisions[0])
+    }
+    Add-TestResult -Name 'duplicated-acceptance-history-rejected' -Passed ($thirdAcceptanceExitCode -eq 0 -and (Test-ThrowsLike -Action { Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $duplicatedHistory } -Pattern '*revision*')) -Detail 'Duplicating an otherwise valid accepted revision breaks the authenticated append chain.'
+
+    $staleApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
     $staleApplyExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'acceptance-compare-and-swap' -Passed ($secondApplyExitCode -eq 0 -and $staleApplyExitCode -ne 0 -and ($staleApplyOutput | Out-String) -like '*precondition failed*') -Detail 'Apply accepts the matching prior hash and rejects stale candidates without writing.'
+    Add-TestResult -Name 'acceptance-compare-and-swap' -Passed ($secondApplyExitCode -eq 0 -and $staleApplyExitCode -ne 0 -and ($staleApplyOutput | Out-String) -like '*precondition failed*') -Detail "Apply accepts the matching prior hash and rejects stale candidates without writing. Second apply: $(($secondApplyOutput | Out-String).Trim()); stale apply: $(($staleApplyOutput | Out-String).Trim())"
 }
 catch {
     $issues.Add($_.Exception.Message)

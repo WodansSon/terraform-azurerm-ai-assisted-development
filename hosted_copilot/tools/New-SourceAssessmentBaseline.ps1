@@ -20,9 +20,12 @@ param(
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
     [string]$ReasoningEffort = 'high',
 
+    [ValidateRange(1024, 10485760)]
+    [int]$EvaluatorInputBudgetBytes = 393216,
+
     [string]$Evaluator = 'copilot',
 
-    [datetime]$GeneratedAt = [DateTime]::UtcNow,
+    [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
@@ -57,10 +60,16 @@ function Test-JsonFile {
         throw "Required assessment input was not found: $Path"
     }
     $json = Get-Content -LiteralPath $Path -Raw
-    if (-not (Test-Json -Json $json -SchemaFile $SchemaPath -ErrorAction Stop)) {
+    try {
+        $valid = Test-Json -Json $json -SchemaFile $SchemaPath -ErrorAction Stop
+    }
+    catch {
         throw "Assessment input does not satisfy its schema: $Path"
     }
-    return $json | ConvertFrom-Json
+    if (-not $valid) {
+        throw "Assessment input does not satisfy its schema: $Path"
+    }
+    return $json | ConvertFrom-Json -DateKind String
 }
 
 function Get-SortedObjects {
@@ -128,13 +137,21 @@ $contract = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentContractPath)
 $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
 $hostedCatalog = Test-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath $catalogSchemaPath
 $knownHostedRuleIds = @{}
+$hostedRulesByContributorSourceId = @{}
 foreach ($rule in @($hostedCatalog.rules)) {
     $knownHostedRuleIds[[string]$rule.id] = $true
+    foreach ($sourceId in @($rule.sourceIds)) {
+        if (-not $hostedRulesByContributorSourceId.ContainsKey([string]$sourceId)) {
+            $hostedRulesByContributorSourceId[[string]$sourceId] = [Collections.Generic.List[string]]::new()
+        }
+        $hostedRulesByContributorSourceId[[string]$sourceId].Add([string]$rule.id)
+    }
 }
 $draft = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentDraftPath)) -SchemaPath $draftSchemaPath
 
 $inventoryHashes = [ordered]@{}
 $inventoryRecords = @{}
+$priorSourceEvidenceByKey = @{}
 $assessmentCardinalityBySourceDefinition = @{}
 $runSourceDefinitions = [Collections.Generic.List[object]]::new()
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
@@ -163,6 +180,7 @@ foreach ($inventoryPath in $InventoryPaths) {
 
     foreach ($record in @($inventory.records)) {
         $key = "$sourceDefinitionId`:$($record.sourceId)"
+        $priorSourceEvidenceByKey[$key] = Get-PriorAcceptedSourceEvidence -Inventory $inventory -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
         if ($inventoryRecords.ContainsKey($key)) {
             throw "Accepted inventories contain duplicate source reference: $key"
         }
@@ -180,6 +198,7 @@ $runConfiguration = [ordered]@{
     model = $Model
     reasoningEffort = $ReasoningEffort
     evaluator = $Evaluator
+    evaluatorInputBudgetBytes = $EvaluatorInputBudgetBytes
     sourceDefinitions = $sortedRunDefinitions
 }
 $assessmentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $runConfiguration
@@ -202,6 +221,10 @@ foreach ($entry in $draftEntries) {
     if ($assessmentCardinalityBySourceDefinition[$sourceDefinitionId] -ceq 'exactly-one' -and @($entry.assessments).Count -ne 1) {
         throw "Assessment draft must contain exactly one assessment for $key"
     }
+    [string[]]$mappedHostedRuleIds = @()
+    if ($sourceDefinitionId -ceq 'contributor-guidance' -and $hostedRulesByContributorSourceId.ContainsKey($sourceId)) {
+        $mappedHostedRuleIds = @($hostedRulesByContributorSourceId[$sourceId] | Sort-Object -Unique)
+    }
 
     $assessmentIds = @{}
     foreach ($assessment in @($entry.assessments)) {
@@ -219,9 +242,18 @@ foreach ($entry in $draftEntries) {
         if ($null -eq $assessment.existingCoverage.score) {
             throw "Source assessment draft must score existing coverage for $key`: $assessmentId"
         }
-        foreach ($hostedRuleId in @($assessment.mappedHostedRuleIds)) {
-            if (-not $knownHostedRuleIds.ContainsKey([string]$hostedRuleId)) {
-                throw "Assessment draft references an unknown mapped Hosted rule: $hostedRuleId"
+        $priorSourceEvidence = $priorSourceEvidenceByKey[$key]
+        if ($null -eq $priorSourceEvidence) {
+            if ($null -ne $assessment.semanticReassessment) {
+                throw "Assessment draft contains semantic reassessment without prior source evidence: $key`: $assessmentId"
+            }
+        }
+        else {
+            if ($null -eq $assessment.semanticReassessment) {
+                throw "Assessment draft must classify changed source evidence: $key`: $assessmentId"
+            }
+            if ([string]$assessment.semanticReassessment.priorContentSha256 -cne [string]$priorSourceEvidence.sourceRef.contentSha256) {
+                throw "Assessment draft prior source hash mismatch: $key`: $assessmentId"
             }
         }
         $relatedHostedRuleIds = @{}
@@ -235,10 +267,11 @@ foreach ($entry in $draftEntries) {
             }
             $relatedHostedRuleIds[$hostedRuleId] = $true
         }
+        $assessment | Add-Member -NotePropertyName mappedHostedRuleIds -NotePropertyValue $mappedHostedRuleIds
         $assessment | Add-Member -NotePropertyName assessmentProvenance -NotePropertyValue ([pscustomobject][ordered]@{
             originSchemaVersion = 4
             status = 'evaluated'
-            assessedAt = $GeneratedAt.ToUniversalTime().ToString('o')
+            assessedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
             assessmentEvaluator = [ordered]@{
                 kind = 'llm'
                 identity = $Evaluator
@@ -246,6 +279,7 @@ foreach ($entry in $draftEntries) {
             }
         })
     }
+    $entry | Add-Member -NotePropertyName priorSourceEvidence -NotePropertyValue $priorSourceEvidenceByKey[$key]
     $draftBySourceRef[$key] = $entry
 }
 
@@ -258,7 +292,7 @@ if ($missingSourceRefs.Count -gt 0) {
 $baseline = [ordered]@{
     '$schema' = 'source-assessment-baseline.schema.json'
     schemaVersion = 4
-    generatedAt = $GeneratedAt.ToUniversalTime().ToString('o')
+    generatedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
     inventoryHashes = $inventoryHashes
     hostedCatalogSha256 = Get-FileSha256 -Path ([IO.Path]::GetFullPath($HostedCatalogPath))
     assessmentContractSha256 = $assessmentContractSha256

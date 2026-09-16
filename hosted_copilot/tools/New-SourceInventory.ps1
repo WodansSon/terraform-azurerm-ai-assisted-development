@@ -8,6 +8,12 @@ param(
 
     [string]$UpstreamCurrentCommit,
 
+    [ValidateRange(1, 5)]
+    [int]$MaximumRequestAttempts = 3,
+
+    [ValidateRange(0, 60000)]
+    [int]$RetryDelayMilliseconds = 1000,
+
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
@@ -263,7 +269,41 @@ function Invoke-GitHubCliJson {
     return $standardOutput | ConvertFrom-Json -ErrorAction Stop
 }
 
-function Invoke-GitHubRestRequest {
+function Test-GitHubTransientFailure {
+    param([Parameter(Mandatory = $true)][object]$Failure)
+
+    try {
+        $statusCode = [int]$Failure.Exception.Response.StatusCode
+        if ($statusCode -in @(408, 429, 500, 502, 503, 504)) {
+            return $true
+        }
+    }
+    catch {
+    }
+    return [string]$Failure.Exception.Message -match '(?i)(timeout|timed out|rate limit|secondary rate|connection reset|connection closed|temporar|\b408\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b)'
+}
+
+function Get-GitHubRetryAfterMilliseconds {
+    param([Parameter(Mandatory = $true)][object]$Failure)
+
+    try {
+        $retryAfter = $Failure.Exception.Response.Headers.RetryAfter
+        if ($null -ne $retryAfter.Delta) {
+            return [int][Math]::Ceiling($retryAfter.Delta.TotalMilliseconds)
+        }
+        if ($null -ne $retryAfter.Date) {
+            return [int][Math]::Max(0, [Math]::Ceiling(($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalMilliseconds))
+        }
+    }
+    catch {
+    }
+    if ([string]$Failure.Exception.Message -match '(?i)retry-after\D+(?<seconds>[0-9]+)') {
+        return [int]$Matches.seconds * 1000
+    }
+    return 0
+}
+
+function Invoke-GitHubRestRequestOnce {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     $token = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { $env:GITHUB_TOKEN } else { $env:GH_TOKEN }
@@ -288,7 +328,21 @@ function Invoke-GitHubRestRequest {
     }
 }
 
-function Invoke-GitHubGraphQLRequest {
+function Invoke-GitHubRestRequest {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return Invoke-SourceEvidenceWithRetry -Operation "GitHub REST request $Path" -MaximumAttempts $MaximumRequestAttempts -BaseDelayMilliseconds $RetryDelayMilliseconds -ShouldRetry {
+        param($failure)
+        return Test-GitHubTransientFailure -Failure $failure
+    } -GetRetryAfterMilliseconds {
+        param($failure)
+        return Get-GitHubRetryAfterMilliseconds -Failure $failure
+    } -Action {
+        return Invoke-GitHubRestRequestOnce -Path $Path
+    }
+}
+
+function Invoke-GitHubGraphQLRequestOnce {
     param([Parameter(Mandatory = $true)][object]$Request)
 
     $requestJson = $Request | ConvertTo-Json -Depth 20 -Compress
@@ -305,6 +359,20 @@ function Invoke-GitHubGraphQLRequest {
         throw 'Contributor Guidance collection requires GITHUB_TOKEN, GH_TOKEN, or an authenticated GitHub CLI'
     }
     return Invoke-GitHubCliJson -Arguments @('api', 'graphql', '--input', '-') -InputJson $requestJson
+}
+
+function Invoke-GitHubGraphQLRequest {
+    param([Parameter(Mandatory = $true)][object]$Request)
+
+    return Invoke-SourceEvidenceWithRetry -Operation 'GitHub GraphQL request' -MaximumAttempts $MaximumRequestAttempts -BaseDelayMilliseconds $RetryDelayMilliseconds -ShouldRetry {
+        param($failure)
+        return Test-GitHubTransientFailure -Failure $failure
+    } -GetRetryAfterMilliseconds {
+        param($failure)
+        return Get-GitHubRetryAfterMilliseconds -Failure $failure
+    } -Action {
+        return Invoke-GitHubGraphQLRequestOnce -Request $Request
+    }
 }
 
 function Get-GitHubSourceDocuments {
@@ -614,7 +682,7 @@ $inventory = [ordered]@{
     collectorVersion = 1
     parserId = [string]$definition.parser
     parserContractSha256 = $parserContractSha256
-    collectedAt = [DateTime]::UtcNow.ToString('o')
+    collectedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value ([DateTime]::UtcNow)
     collection = [ordered]@{
         complete = $true
         sourceRevision = $sourceRevision

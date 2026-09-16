@@ -26,7 +26,13 @@ param(
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
 
-    [datetime]$GeneratedAt = [DateTime]::UtcNow,
+    [ValidateRange(0, 60000)]
+    [int]$RetryDelayMilliseconds = 1000,
+
+    [ValidateRange(1024, 10485760)]
+    [int]$EvaluatorInputBudgetBytes = 393216,
+
+    [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
@@ -74,6 +80,56 @@ function Get-EvaluatorJson {
         throw 'Evaluator response does not contain a JSON object'
     }
     return $trimmed.Substring($objectStart, $objectEnd - $objectStart + 1)
+}
+
+function Get-JsonUtf8ByteCount {
+    param([Parameter(Mandatory = $true)][object]$Value)
+
+    $json = ($Value | ConvertTo-Json -Depth 40) + "`n"
+    return [Text.Encoding]::UTF8.GetByteCount($json)
+}
+
+function New-AssessmentBatchPacket {
+    param(
+        [Parameter(Mandatory = $true)][string]$BatchId,
+        [Parameter(Mandatory = $true)][string]$SourceDefinitionId,
+        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
+        [Parameter(Mandatory = $true)][object[]]$Records
+    )
+
+    return [ordered]@{
+        schemaVersion = 1
+        batchId = $BatchId
+        sourceDefinitionId = $SourceDefinitionId
+        assessmentCardinality = $AssessmentCardinality
+        sourceCount = $Records.Count
+        records = $Records
+    }
+}
+
+function New-EvaluatorAttemptPrompt {
+    param([Parameter(Mandatory = $true)][int]$SourceCount)
+
+    return @"
+Read the source assessment contract, source record batch, Hosted instruction catalog, and output schema from the current batch directory before evaluating the batch.
+
+Source assessment contract: SourceAssessmentV2.md
+Source record batch: source-records.json
+Hosted instruction catalog: hosted-instruction-catalog.json
+Output schema: source-assessment-draft.schema.json
+
+This batch contains exactly $SourceCount source records. Write only the requested JSON object in your final response.
+"@
+}
+
+function Get-AssessmentBatchInputSizeBytes {
+    param(
+        [Parameter(Mandatory = $true)][object]$Packet,
+        [Parameter(Mandatory = $true)][int]$StaticInputBytes
+    )
+
+    $attemptPrompt = New-EvaluatorAttemptPrompt -SourceCount @($Packet.records).Count
+    return $StaticInputBytes + (Get-JsonUtf8ByteCount -Value $Packet) + [Text.Encoding]::UTF8.GetByteCount($attemptPrompt)
 }
 
 function Get-SortedObjects {
@@ -138,13 +194,21 @@ function Assert-BatchResponse {
         if ($AssessmentCardinality -ceq 'exactly-one' -and @($entry.assessments).Count -ne 1) {
             throw "Evaluator must return exactly one assessment for $key in $BatchId"
         }
+        $priorSourceEvidence = $expectedByKey[$key].priorSourceEvidence
         foreach ($assessment in @($entry.assessments)) {
-            [string[]]$expectedMappedHostedRuleIds = @($expectedByKey[$key].mappedHostedRuleIds | Sort-Object -Unique)
-            [string[]]$actualMappedHostedRuleIds = @($assessment.mappedHostedRuleIds | Sort-Object -Unique)
-            if (@(Compare-Object $expectedMappedHostedRuleIds $actualMappedHostedRuleIds -SyncWindow 0).Count -ne 0) {
-                throw "Evaluator changed the accepted Hosted mapping set in $BatchId`: $key"
+            if ($null -eq $priorSourceEvidence) {
+                if ($null -ne $assessment.semanticReassessment) {
+                    throw "Evaluator returned semantic reassessment without prior source evidence in $BatchId`: $key"
+                }
             }
-            $assessment.mappedHostedRuleIds = $expectedMappedHostedRuleIds
+            else {
+                if ($null -eq $assessment.semanticReassessment) {
+                    throw "Evaluator omitted semantic reassessment for changed source evidence in $BatchId`: $key"
+                }
+                if ([string]$assessment.semanticReassessment.priorContentSha256 -cne [string]$priorSourceEvidence.sourceRef.contentSha256) {
+                    throw "Evaluator changed the prior source hash in $BatchId`: $key"
+                }
+            }
         }
         $seen[$key] = $true
     }
@@ -204,7 +268,7 @@ foreach ($inventoryPath in $InventoryPaths) {
     if (-not (Test-Json -Json $inventoryJson -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
         throw "Source inventory does not satisfy its schema: $resolvedInventoryPath"
     }
-    $inventory = $inventoryJson | ConvertFrom-Json
+    $inventory = $inventoryJson | ConvertFrom-Json -DateKind String
     if ($null -eq $inventory.acceptance) {
         throw "Source assessment requires an accepted inventory: $resolvedInventoryPath"
     }
@@ -230,6 +294,7 @@ foreach ($inventoryPath in $InventoryPaths) {
             }
         }
         [string[]]$uniqueMappedIds = @($mappedHostedRuleIds | Sort-Object -Unique)
+        $priorSourceEvidence = Get-PriorAcceptedSourceEvidence -Inventory $inventory -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
         [ordered]@{
             sourceRef = [ordered]@{
                 sourceDefinitionId = $sourceDefinitionId
@@ -237,6 +302,7 @@ foreach ($inventoryPath in $InventoryPaths) {
                 contentSha256 = [string]$record.contentSha256
             }
             sourceRecord = $record
+            priorSourceEvidence = $priorSourceEvidence
             mappedHostedRuleIds = $uniqueMappedIds
         }
     })
@@ -254,16 +320,55 @@ if (@(Compare-Object $expectedSourceDefinitionIds $actualSourceDefinitionIds -Sy
     throw "Source assessment requires exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
 }
 
+$staticEvaluatorInputBytes = 0
+foreach ($path in @($resolvedCatalogPath, $draftSchemaPath, $promptPath)) {
+    $staticEvaluatorInputBytes += [IO.File]::ReadAllBytes($path).Length
+}
 $batches = [Collections.Generic.List[object]]::new()
+$nextBatchNumber = 1
 foreach ($lane in $orderedLanes) {
-    $records = @($lane.records)
-    for ($offset = 0; $offset -lt $records.Count; $offset += $lane.assessmentBatchSize) {
-        $lastIndex = [Math]::Min($offset + $lane.assessmentBatchSize - 1, $records.Count - 1)
+    $currentRecords = [Collections.Generic.List[object]]::new()
+    foreach ($record in @($lane.records)) {
+        if ($currentRecords.Count -eq [int]$lane.assessmentBatchSize) {
+            $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
+            $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
+            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
+            $nextBatchNumber++
+            $currentRecords.Clear()
+        }
+
+        $candidateRecords = @($currentRecords.ToArray()) + @($record)
+        $candidateBatchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
+        $candidatePacket = New-AssessmentBatchPacket -BatchId $candidateBatchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $candidateRecords
+        $candidateInputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
+        if ($candidateInputSizeBytes -gt $EvaluatorInputBudgetBytes) {
+            if ($currentRecords.Count -eq 0) {
+                throw "Source assessment record exceeds evaluator input budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidateInputSizeBytes bytes, budget $EvaluatorInputBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
+            }
+            $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
+            $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
+            $batches.Add([ordered]@{ batchId = $batchId; packet = $packet; inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes })
+            $nextBatchNumber++
+            $currentRecords.Clear()
+
+            $candidateBatchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
+            $candidatePacket = New-AssessmentBatchPacket -BatchId $candidateBatchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records @($record)
+            $candidateInputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
+            if ($candidateInputSizeBytes -gt $EvaluatorInputBudgetBytes) {
+                throw "Source assessment record exceeds evaluator input budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidateInputSizeBytes bytes, budget $EvaluatorInputBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
+            }
+        }
+        $currentRecords.Add($record)
+    }
+    if ($currentRecords.Count -gt 0) {
+        $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
+        $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
         $batches.Add([ordered]@{
-            sourceDefinitionId = [string]$lane.sourceDefinitionId
-            assessmentCardinality = [string]$lane.assessmentCardinality
-            records = @($records[$offset..$lastIndex])
+            batchId = $batchId
+            packet = $packet
+            inputSizeBytes = Get-AssessmentBatchInputSizeBytes -Packet $packet -StaticInputBytes $staticEvaluatorInputBytes
         })
+        $nextBatchNumber++
     }
 }
 
@@ -271,10 +376,9 @@ $draftEntries = [Collections.Generic.List[object]]::new()
 $succeeded = $false
 try {
     $null = New-Item -ItemType Directory -Path $runDirectory -Force
-    $batchNumber = 0
     foreach ($batch in $batches) {
-        $batchNumber++
-        $batchId = '{0}-{1:D3}' -f $batch.sourceDefinitionId, $batchNumber
+        $batchId = [string]$batch.batchId
+        $batchPacket = $batch.packet
         $batchDirectory = Join-Path $runDirectory $batchId
         $null = New-Item -ItemType Directory -Path $batchDirectory -Force
         $batchPath = Join-Path $batchDirectory 'source-records.json'
@@ -285,17 +389,10 @@ try {
         Copy-Item -LiteralPath $resolvedCatalogPath -Destination $catalogPath
         Copy-Item -LiteralPath $draftSchemaPath -Destination $schemaPath
         Copy-Item -LiteralPath $promptPath -Destination $batchPromptPath
-        Write-JsonAtomically -Path $batchPath -Value ([ordered]@{
-            schemaVersion = 1
-            batchId = $batchId
-            sourceDefinitionId = [string]$batch.sourceDefinitionId
-            assessmentCardinality = [string]$batch.assessmentCardinality
-            sourceCount = @($batch.records).Count
-            records = @($batch.records)
-        })
+        Write-JsonAtomically -Path $batchPath -Value $batchPacket
 
         if ($OutputFormat -eq 'Text') {
-            Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources" -f $batchId, @($batch.records).Count)
+            Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources, {2} bytes" -f $batchId, @($batchPacket.records).Count, $batch.inputSizeBytes)
         }
         $response = $null
         $lastError = $null
@@ -312,16 +409,7 @@ try {
                     if ($null -eq $command) {
                         throw "Evaluator command was not found: $EvaluatorCommand"
                     }
-                    $attemptPrompt = @"
-Read the source assessment contract, source record batch, Hosted instruction catalog, and output schema at the exact paths below before evaluating the batch.
-
-Source assessment contract: $batchPromptPath
-Source record batch: $batchPath
-Hosted instruction catalog: $catalogPath
-Output schema: $schemaPath
-
-This batch contains exactly $(@($batch.records).Count) source records. This is attempt $attempt of $($MaxRetries + 1). Write only the requested JSON object in your final response.
-"@
+                    $attemptPrompt = New-EvaluatorAttemptPrompt -SourceCount @($batchPacket.records).Count
                     $evaluatorOutput = @(& $command.Source -C $batchDirectory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $Model --effort $ReasoningEffort --available-tools=view --output-format json 2>&1)
                     if ($LASTEXITCODE -ne 0) {
                         throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
@@ -354,17 +442,29 @@ This batch contains exactly $(@($batch.records).Count) source records. This is a
                 }
 
                 $responseJson = Get-Content -LiteralPath $responsePath -Raw
-                if (-not (Test-Json -Json $responseJson -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
-                    throw "Evaluator response does not satisfy the source assessment draft envelope: $batchId"
+                try {
+                    $validResponse = Test-Json -Json $responseJson -SchemaFile $draftSchemaPath -ErrorAction Stop
+                }
+                catch {
+                    throw "Evaluator response does not satisfy the source assessment draft: $batchId"
+                }
+                if (-not $validResponse) {
+                    throw "Evaluator response does not satisfy the source assessment draft: $batchId"
                 }
                 $response = $responseJson | ConvertFrom-Json
-                Assert-BatchResponse -Response $response -ExpectedRecords @($batch.records) -BatchId $batchId -AssessmentCardinality $batch.assessmentCardinality
+                Assert-BatchResponse -Response $response -ExpectedRecords @($batchPacket.records) -BatchId $batchId -AssessmentCardinality ([string]$batchPacket.assessmentCardinality)
                 $lastError = $null
                 break
             }
             catch {
                 $lastError = $_
                 Remove-Item -LiteralPath $responsePath -Force -ErrorAction SilentlyContinue
+                if ($attempt -le $MaxRetries) {
+                    $delayMilliseconds = Get-SourceEvidenceRetryDelayMilliseconds -Attempt $attempt -BaseDelayMilliseconds $RetryDelayMilliseconds
+                    if ($delayMilliseconds -gt 0) {
+                        Start-Sleep -Milliseconds $delayMilliseconds
+                    }
+                }
             }
         }
         if ($null -ne $lastError) {
@@ -374,7 +474,7 @@ This batch contains exactly $(@($batch.records).Count) source records. This is a
             $draftEntries.Add($entry)
         }
         if ($OutputFormat -eq 'Text') {
-            Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources" -f $batchId, @($batch.records).Count)
+            Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources, {2} bytes" -f $batchId, @($batchPacket.records).Count, $batch.inputSizeBytes)
         }
     }
 
@@ -393,6 +493,7 @@ This batch contains exactly $(@($batch.records).Count) source records. This is a
         OutputPath = $resolvedOutputPath
         Model = $Model
         ReasoningEffort = $ReasoningEffort
+        EvaluatorInputBudgetBytes = $EvaluatorInputBudgetBytes
         Evaluator = $evaluatorIdentity
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'

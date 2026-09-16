@@ -13,7 +13,7 @@ param(
 
     [string]$Rationale,
 
-    [datetime]$AcceptedAt = [DateTime]::UtcNow,
+    [object]$AcceptedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
@@ -21,6 +21,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
+Import-Module -Name $sourceEvidenceModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $repositoryPrefix = $repositoryRoot + [IO.Path]::DirectorySeparatorChar
@@ -34,36 +37,20 @@ if ([string]::IsNullOrWhiteSpace($AcceptedBy)) {
     throw 'AcceptedBy cannot be empty'
 }
 
-function Get-FileSha256 {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-}
-
-function Get-ContentSha256 {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
-
 function Test-InventoryFile {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Source inventory was not found: $Path"
     }
-    $json = Get-Content -LiteralPath $Path -Raw
-    if (-not (Test-Json -Json $json -SchemaFile $schemaPath -ErrorAction Stop)) {
+    $snapshot = Get-SourceEvidenceFileSnapshot -Path $Path
+    if (-not (Test-Json -Json $snapshot.Content -SchemaFile $schemaPath -ErrorAction Stop)) {
         throw "Source inventory does not satisfy its schema: $Path"
     }
-    return $json | ConvertFrom-Json
-}
-
-function Get-RecordsSha256 {
-    param([Parameter(Mandatory = $true)][object[]]$Records)
-
-    return Get-ContentSha256 -Content ($Records | ConvertTo-Json -Depth 30 -Compress)
+    return [pscustomobject]@{
+        Inventory = $snapshot.Content | ConvertFrom-Json -DateKind String
+        Sha256 = $snapshot.Sha256
+    }
 }
 
 function Get-SortedRecords {
@@ -83,7 +70,7 @@ function Get-SortedRecords {
 function Copy-JsonObject {
     param([Parameter(Mandatory = $true)][object]$Value)
 
-    return ($Value | ConvertTo-Json -Depth 40 -Compress) | ConvertFrom-Json
+    return ($Value | ConvertTo-Json -Depth 40 -Compress) | ConvertFrom-Json -DateKind String
 }
 
 function Write-JsonAtomically {
@@ -106,12 +93,13 @@ function Write-JsonAtomically {
     }
 }
 
-$staged = Test-InventoryFile -Path $resolvedStagedPath
+$stagedFile = Test-InventoryFile -Path $resolvedStagedPath
+$staged = $stagedFile.Inventory
 if ($null -ne $staged.acceptance -or @($staged.acceptedRevisions).Count -ne 0) {
     throw 'Staged inventory must not contain acceptance metadata or accepted revision history'
 }
 $stagedRecords = @(Get-SortedRecords -Records @($staged.records))
-if ((Get-RecordsSha256 -Records $stagedRecords) -cne [string]$staged.collection.inventorySha256) {
+if ((Get-SourceEvidenceRecordsSha256 -Records $stagedRecords) -cne [string]$staged.collection.inventorySha256) {
     throw 'Staged inventory record hash does not match collection.inventorySha256'
 }
 
@@ -119,7 +107,8 @@ $current = $null
 $previousAcceptedInventorySha256 = $null
 if (-not [string]::IsNullOrWhiteSpace($CurrentAcceptedInventoryPath)) {
     $resolvedCurrentPath = [IO.Path]::GetFullPath($CurrentAcceptedInventoryPath)
-    $current = Test-InventoryFile -Path $resolvedCurrentPath
+    $currentFile = Test-InventoryFile -Path $resolvedCurrentPath
+    $current = $currentFile.Inventory
     if ($null -eq $current.acceptance) {
         throw 'Current accepted inventory does not contain acceptance metadata'
     }
@@ -127,10 +116,14 @@ if (-not [string]::IsNullOrWhiteSpace($CurrentAcceptedInventoryPath)) {
         throw 'Staged and accepted inventories have different sourceDefinitionId values'
     }
     $currentRecords = @(Get-SortedRecords -Records @($current.records))
-    if ((Get-RecordsSha256 -Records $currentRecords) -cne [string]$current.collection.inventorySha256) {
+    if ((Get-SourceEvidenceRecordsSha256 -Records $currentRecords) -cne [string]$current.collection.inventorySha256) {
         throw 'Current accepted inventory record hash does not match collection.inventorySha256'
     }
-    $previousAcceptedInventorySha256 = Get-FileSha256 -Path $resolvedCurrentPath
+    Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $current
+    if ((ConvertTo-SourceEvidenceUtcDateTime -Value $AcceptedAt) -le (ConvertTo-SourceEvidenceUtcDateTime -Value $current.acceptance.acceptedAt)) {
+        throw 'AcceptedAt must be later than the current accepted inventory timestamp'
+    }
+    $previousAcceptedInventorySha256 = $currentFile.Sha256
 }
 
 $stagedById = @{}
@@ -154,7 +147,7 @@ if ($null -ne $current) {
 [Array]::Sort($allSourceIds, [StringComparer]::Ordinal)
 $acceptedRecords = [Collections.Generic.List[object]]::new()
 $comparison = [Collections.Generic.List[object]]::new()
-$acceptedAtText = $AcceptedAt.ToUniversalTime().ToString('o')
+$acceptedAtText = ConvertTo-SourceEvidenceUtcTimestamp -Value $AcceptedAt
 foreach ($sourceId in $allSourceIds) {
     $hasStaged = $stagedById.ContainsKey($sourceId)
     $hasCurrent = $currentById.ContainsKey($sourceId)
@@ -222,7 +215,7 @@ if ($null -ne $current) {
 $acceptance = [ordered]@{
     acceptedAt = $acceptedAtText
     acceptedBy = $AcceptedBy
-    stagedInventorySha256 = Get-FileSha256 -Path $resolvedStagedPath
+    stagedInventorySha256 = $stagedFile.Sha256
     previousAcceptedInventorySha256 = $previousAcceptedInventorySha256
 }
 if (-not [string]::IsNullOrWhiteSpace($Rationale)) {
@@ -242,7 +235,7 @@ $accepted = [ordered]@{
     collection = [ordered]@{
         complete = $true
         sourceRevision = $staged.collection.sourceRevision
-        inventorySha256 = Get-RecordsSha256 -Records $acceptedRecords
+        inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $acceptedRecords
     }
     acceptance = $acceptance
     acceptedRevisions = @($acceptedRevisions.ToArray())
@@ -262,6 +255,7 @@ $result = [ordered]@{
     status = 'passed'
     sourceDefinitionId = [string]$accepted.sourceDefinitionId
     outputPath = $resolvedOutputPath
+    candidateSha256 = Get-SourceEvidenceFileSha256 -Path $resolvedOutputPath
     recordCount = $acceptedRecords.Count
     transitionCounts = $transitionCounts
     comparison = $comparison.ToArray()
