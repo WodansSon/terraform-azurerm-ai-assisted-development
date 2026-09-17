@@ -11,6 +11,7 @@
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
     "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/Invoke-SourceAssessment.ps1",

@@ -100,7 +100,8 @@ function Invoke-Builder {
     param(
         [Parameter(Mandatory = $true)][string]$DraftPath,
         [Parameter(Mandatory = $true)][string]$OutputPath,
-        [string[]]$AcceptedInventoryPaths = $inventoryPaths
+        [string[]]$AcceptedInventoryPaths = $inventoryPaths,
+        [string]$PriorSourceGenerationPath
     )
 
     $parameters = @{
@@ -111,6 +112,9 @@ function Invoke-Builder {
         # A fixed timestamp keeps generated baseline and provenance assertions deterministic.
         GeneratedAt = '2026-09-15T15:00:00+02:00'
         OutputFormat = 'Json'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
+        $parameters.PriorSourceGenerationPath = $PriorSourceGenerationPath
     }
     try {
         $output = @(& $builderPath @parameters 2>&1)
@@ -131,6 +135,7 @@ function Invoke-Runner {
         [Parameter(Mandatory = $true)][string[]]$AcceptedInventoryPaths,
         [Parameter(Mandatory = $true)][string]$OutputPath,
         [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
+        [string]$PriorSourceGenerationPath,
         [int]$MaxRetries = 1,
         [int]$EvaluatorPayloadBudgetBytes = 393216
     )
@@ -145,6 +150,9 @@ function Invoke-Runner {
         EvaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
         GeneratedAt = '2026-09-15T09:00:00-05:00'
         OutputFormat = 'Json'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
+        $parameters.PriorSourceGenerationPath = $PriorSourceGenerationPath
     }
     try {
         $output = @(& $runnerPath @parameters 2>&1)
@@ -206,7 +214,7 @@ function New-Assessment {
     }
 }
 
-function New-AcceptedInventoryFixture {
+function New-InventoryFixture {
     param(
         [Parameter(Mandatory = $true)][string]$SourceDefinitionId,
         [Parameter(Mandatory = $true)][object[]]$Records,
@@ -245,13 +253,6 @@ function New-AcceptedInventoryFixture {
             sourceRevision = $sourceRevision
             inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $Records
         }
-        acceptance = [ordered]@{
-            acceptedAt = '2026-09-15T12:00:00Z'
-            acceptedBy = 'test-maintainer'
-            stagedInventorySha256 = 'd' * 64
-            previousAcceptedInventorySha256 = $null
-        }
-        acceptedRevisions = @()
         records = $Records
     }
     Write-JsonFixture -Path $Path -Value $inventory
@@ -367,9 +368,9 @@ try {
     $inventoryPath = Join-Path $tempRoot 'maintainer-accepted-inventory.json'
     $interactiveInventoryPath = Join-Path $tempRoot 'interactive-accepted-inventory.json'
     $contributorInventoryPath = Join-Path $tempRoot 'contributor-accepted-inventory.json'
-    $inventory = New-AcceptedInventoryFixture -SourceDefinitionId 'maintainer-proposals' -Records $records -Path $inventoryPath
-    $null = New-AcceptedInventoryFixture -SourceDefinitionId 'interactive-toolkit' -Records $interactiveRecords -Path $interactiveInventoryPath
-    $null = New-AcceptedInventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $contributorRecords -Path $contributorInventoryPath
+    $inventory = New-InventoryFixture -SourceDefinitionId 'maintainer-proposals' -Records $records -Path $inventoryPath
+    $null = New-InventoryFixture -SourceDefinitionId 'interactive-toolkit' -Records $interactiveRecords -Path $interactiveInventoryPath
+    $null = New-InventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $contributorRecords -Path $contributorInventoryPath
     [string[]]$inventoryPaths = @($contributorInventoryPath, $interactiveInventoryPath, $inventoryPath)
 
     $draftPath = Join-Path $tempRoot 'draft.json'
@@ -421,7 +422,7 @@ try {
     [Array]::Reverse($reversedInventoryPaths)
     $reorderedBaselinePath = Join-Path $tempRoot 'reordered-baseline.json'
     $reorderedBuild = Invoke-Builder -DraftPath $draftPath -OutputPath $reorderedBaselinePath -AcceptedInventoryPaths $reversedInventoryPaths
-    Add-TestResult -Name 'inventory-lane-order-independent' -Passed ($reorderedBuild.ExitCode -eq 0 -and (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $reorderedBaselinePath -Algorithm SHA256).Hash) -Detail 'Equivalent accepted inventory lanes produce byte-identical baselines regardless of caller order.'
+    Add-TestResult -Name 'inventory-lane-order-independent' -Passed ($reorderedBuild.ExitCode -eq 0 -and (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $reorderedBaselinePath -Algorithm SHA256).Hash) -Detail 'Equivalent staged inventory lanes produce byte-identical baselines regardless of caller order.'
     $baselineHashBeforeOverwrite = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash
     $overwriteBuild = Invoke-Builder -DraftPath $draftPath -OutputPath $baselinePath
     Add-TestResult -Name 'baseline-output-immutable' -Passed ($overwriteBuild.ExitCode -ne 0 -and $overwriteBuild.Output -like '*snapshot output already exists*' -and (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash -ceq $baselineHashBeforeOverwrite) -Detail 'A baseline producer cannot replace an existing snapshot or report identity for different bytes.'
@@ -502,7 +503,7 @@ try {
     $missingCoveragePath = Join-Path $tempRoot 'missing-coverage-draft.json'
     Write-JsonFixture -Path $missingCoveragePath -Value $missingCoverageDraft
     $missingCoverageBuild = Invoke-Builder -DraftPath $missingCoveragePath -OutputPath (Join-Path $tempRoot 'missing-coverage-baseline.json') -AcceptedInventoryPaths $expandedInventoryPaths
-    Add-TestResult -Name 'exhaustive-source-coverage' -Passed ($missingCoverageBuild.ExitCode -ne 0 -and $missingCoverageBuild.Output -like '*does not cover every accepted inventory record*') -Detail 'A second Maintainer source record omitted from an otherwise complete three-lane draft is rejected.'
+    Add-TestResult -Name 'exhaustive-source-coverage' -Passed ($missingCoverageBuild.ExitCode -ne 0 -and $missingCoverageBuild.Output -like '*does not cover every staged inventory record*') -Detail 'A second Maintainer source record omitted from an otherwise complete three-lane draft is rejected.'
 
     $unknownHostedRuleDraft = Copy-JsonObject -Value $validDraft
     $unknownHostedRuleDraft.entries[0].assessments[0].relatedHostedCoverage[0].hostedRuleId = 'IMPL-UNKNOWN-999'
@@ -632,7 +633,7 @@ $response = [ordered]@{
         }
     )
     $runnerInventoryPath = Join-Path $tempRoot 'runner-accepted-inventory.json'
-    $null = New-AcceptedInventoryFixture -SourceDefinitionId 'maintainer-proposals' -Records $runnerRecords -Path $runnerInventoryPath
+    $null = New-InventoryFixture -SourceDefinitionId 'maintainer-proposals' -Records $runnerRecords -Path $runnerInventoryPath
     $priorContributorContent = 'Prior contributor resource guidance.'
     $priorContributorRecords = @([ordered]@{
         sourceId = 'guide-new-resource'
@@ -647,45 +648,42 @@ $response = [ordered]@{
         referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('b' * 40)/contributing/topics/guide-new-resource.md"
     })
     $runnerContributorInventoryPath = Join-Path $tempRoot 'runner-contributor-accepted-inventory.json'
-    $runnerContributorInventory = New-AcceptedInventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $contributorRecords -Path $runnerContributorInventoryPath
-    $runnerContributorInventory.acceptedRevisions = @([ordered]@{
-        '$schema' = 'source-inventory.schema.json'
+    $runnerContributorInventory = New-InventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $contributorRecords -Path $runnerContributorInventoryPath
+    $priorContributorInventoryPath = Join-Path $tempRoot 'prior-contributor-inventory.json'
+    $priorContributorInventory = New-InventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $priorContributorRecords -Path $priorContributorInventoryPath
+    $priorSourceGenerationPath = Join-Path $tempRoot 'prior-source-generation.json'
+    $priorSourceGeneration = [ordered]@{
+        '$schema' = 'source-generation.schema.json'
         schemaVersion = 1
-        sourceDefinitionId = 'contributor-guidance'
-        sourceDefinitionSha256 = [string]$runnerContributorInventory.sourceDefinitionSha256
-        inventoryConfigurationSha256 = [string]$runnerContributorInventory.inventoryConfigurationSha256
-        collectorVersion = 1
-        parserId = [string]$runnerContributorInventory.parserId
-        parserContractSha256 = [string]$runnerContributorInventory.parserContractSha256
-        collectedAt = '2026-09-14T11:00:00Z'
-        collection = [ordered]@{
-            complete = $true
-            sourceRevision = [ordered]@{
-                kind = 'github-commit'
-                configuredRef = 'main'
-                overrideUsed = $false
-                resolvedCommit = 'b' * 40
-            }
-            inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $priorContributorRecords
-        }
+        publishedAt = '2026-09-14T12:00:00Z'
+        previousSourceGenerationSha256 = $null
+        workbenchBundleSha256 = 'd' * 64
+        publicationRequestSha256 = 'e' * 64
+        hostedCatalogSha256 = (Get-FileHash -LiteralPath $hostedCatalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
         acceptance = [ordered]@{
             acceptedAt = '2026-09-14T12:00:00Z'
-            acceptedBy = 'test-maintainer'
-            stagedInventorySha256 = 'e' * 64
-            previousAcceptedInventorySha256 = $null
+            acceptedBy = [ordered]@{
+                type = 'manual'
+                id = 'test-maintainer'
+                displayName = 'Test Maintainer'
+            }
+            rationale = 'Accept the prior source generation fixture.'
         }
-        records = $priorContributorRecords
-    })
-    $runnerContributorInventory = Copy-JsonObject -Value $runnerContributorInventory
-    $runnerContributorInventory.acceptance.previousAcceptedInventorySha256 = Get-SourceEvidenceAcceptedInventorySha256 -Revision $runnerContributorInventory.acceptedRevisions[0] -PriorRevisions @()
-    Write-JsonFixture -Path $runnerContributorInventoryPath -Value $runnerContributorInventory
+        inventories = [ordered]@{
+            'contributor-guidance' = $priorContributorInventory
+            'interactive-toolkit' = Get-Content -LiteralPath $interactiveInventoryPath -Raw | ConvertFrom-Json -DateKind String
+            'maintainer-proposals' = Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json -DateKind String
+        }
+        assessmentBaseline = $baseline
+    }
+    Write-JsonFixture -Path $priorSourceGenerationPath -Value $priorSourceGeneration
     [string[]]$runnerInventoryPaths = @($runnerContributorInventoryPath, $interactiveInventoryPath, $runnerInventoryPath)
     $runnerOutputPath = Join-Path $tempRoot 'runner-baseline.json'
     $callLogPath = Join-Path $tempRoot 'runner-calls.log'
     $failOncePath = Join-Path $tempRoot 'runner-fail-once.marker'
     $env:SOURCE_ASSESSMENT_CALL_LOG = $callLogPath
     $env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH = $failOncePath
-    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
+    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorSourceGenerationPath $priorSourceGenerationPath -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
     $runnerExitCode = $runnerRun.ExitCode
     $runnerResult = if ($runnerExitCode -eq 0) { $runnerRun.Output | ConvertFrom-Json } else { $null }
     if ($runnerExitCode -ne 0) {
@@ -713,7 +711,7 @@ $response = [ordered]@{
         [IO.File]::WriteAllBytes($runnerInventoryPath, $runnerInventoryBytes)
     }
     $snapshotMutationBaseline = if ($snapshotMutationRun.ExitCode -eq 0) { Get-Content -LiteralPath $snapshotMutationOutputPath -Raw | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'runner-inventory-snapshot-consistency' -Passed ($snapshotMutationRun.ExitCode -eq 0 -and [string]$snapshotMutationBaseline.inventoryHashes.'maintainer-proposals' -ceq $runnerInventorySha256) -Detail 'Evaluator-time mutation of the original accepted inventory cannot change baseline construction after the runner snapshots its inputs.'
+    Add-TestResult -Name 'runner-inventory-snapshot-consistency' -Passed ($snapshotMutationRun.ExitCode -eq 0 -and [string]$snapshotMutationBaseline.inventoryHashes.'maintainer-proposals' -ceq $runnerInventorySha256) -Detail 'Evaluator-time mutation of the original staged inventory cannot change baseline construction after the runner snapshots its inputs.'
 
     $retryInvariantRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'retry-invariant-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 3
     $retryInvariantBaseline = if ($retryInvariantRun.ExitCode -eq 0) { Get-Content -LiteralPath (Join-Path $tempRoot 'retry-invariant-baseline.json') -Raw | ConvertFrom-Json } else { $null }
@@ -725,7 +723,7 @@ $response = [ordered]@{
     $contributorAssessment = $contributorEntry.assessments[0]
     Add-TestResult -Name 'trusted-mapping-injection' -Passed ($expectedContributorMappings.Count -gt 0 -and @(Compare-Object $expectedContributorMappings @($contributorAssessment.mappedHostedRuleIds) -SyncWindow 0).Count -eq 0) -Detail 'The trusted builder injects the exact canonical Contributor mappings after evaluator validation.'
     $expectedPriorAcceptedAt = [datetime]::new(2026, 9, 14, 12, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-    $priorEvidenceRetained = [string]$contributorEntry.priorSourceEvidence.sourceRef.contentSha256 -ceq [string]$priorContributorRecords[0].contentSha256 -and [string]$contributorEntry.priorSourceEvidence.sourceRecord.content -ceq $priorContributorContent -and [string]$contributorEntry.priorSourceEvidence.acceptedAt -ceq $expectedPriorAcceptedAt -and [string]$contributorEntry.priorSourceEvidence.inventorySha256 -ceq [string]$runnerContributorInventory.acceptedRevisions[0].collection.inventorySha256
+    $priorEvidenceRetained = [string]$contributorEntry.priorSourceEvidence.sourceRef.contentSha256 -ceq [string]$priorContributorRecords[0].contentSha256 -and [string]$contributorEntry.priorSourceEvidence.sourceRecord.content -ceq $priorContributorContent -and [string]$contributorEntry.priorSourceEvidence.acceptedAt -ceq $expectedPriorAcceptedAt -and [string]$contributorEntry.priorSourceEvidence.inventorySha256 -ceq [string]$priorContributorInventory.collection.inventorySha256
     Add-TestResult -Name 'prior-source-reassessment-binding' -Passed ($priorEvidenceRetained -and $contributorAssessment.semanticReassessment.classification -ceq 'meaning-unchanged' -and [string]$contributorAssessment.semanticReassessment.priorContentSha256 -ceq [string]$priorContributorRecords[0].contentSha256) -Detail "Changed Contributor evidence retains the exact prior accepted record and metadata and binds semantic reassessment to that prior source hash. Observed acceptedAt=$($contributorEntry.priorSourceEvidence.acceptedAt), inventorySha256=$($contributorEntry.priorSourceEvidence.inventorySha256), content=$($contributorEntry.priorSourceEvidence.sourceRecord.content)."
     $unknownPriorRecordBaseline = Copy-JsonObject -Value $runnerBaseline
     $unknownPriorRecordEntry = @($unknownPriorRecordBaseline.entries | Where-Object { $_.sourceRef.sourceDefinitionId -ceq 'contributor-guidance' })[0]
@@ -733,14 +731,13 @@ $response = [ordered]@{
     Add-TestResult -Name 'strict-prior-source-record' -Passed (-not (Test-JsonInstance -Json ($unknownPriorRecordBaseline | ConvertTo-Json -Depth 40) -SchemaPath $baselineSchemaPath)) -Detail 'Retained prior evidence must satisfy the exact source-record union and rejects unknown fields.'
 
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
-    $tamperedHistoryInventory = Copy-JsonObject -Value $runnerContributorInventory
-    $tamperedHistoryInventory.acceptedRevisions[0].records[0].content = 'Tampered prior contributor guidance.'
-    $tamperedHistoryInventoryPath = Join-Path $tempRoot 'tampered-history-contributor-inventory.json'
-    Write-JsonFixture -Path $tamperedHistoryInventoryPath -Value $tamperedHistoryInventory
-    [string[]]$tamperedHistoryInventoryPaths = @($tamperedHistoryInventoryPath, $interactiveInventoryPath, $runnerInventoryPath)
-    $tamperedHistoryRun = Invoke-Runner -AcceptedInventoryPaths $tamperedHistoryInventoryPaths -OutputPath (Join-Path $tempRoot 'tampered-history-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
-    $tamperedHistoryCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
-    Add-TestResult -Name 'tampered-prior-revision-rejected' -Passed ($tamperedHistoryRun.ExitCode -ne 0 -and @($tamperedHistoryCalls).Count -eq 0 -and $tamperedHistoryRun.Output -like '*revision record hash mismatch*') -Detail 'A historical revision whose records no longer match its accepted inventory hash fails before evaluator invocation.'
+    $tamperedPriorGeneration = Copy-JsonObject -Value $priorSourceGeneration
+    $tamperedPriorGeneration.inventories.'contributor-guidance'.records[0].content = 'Tampered prior contributor guidance.'
+    $tamperedPriorGenerationPath = Join-Path $tempRoot 'tampered-prior-source-generation.json'
+    Write-JsonFixture -Path $tamperedPriorGenerationPath -Value $tamperedPriorGeneration
+    $tamperedPriorRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorSourceGenerationPath $tamperedPriorGenerationPath -OutputPath (Join-Path $tempRoot 'tampered-prior-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    $tamperedPriorCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
+    Add-TestResult -Name 'tampered-prior-generation-rejected' -Passed ($tamperedPriorRun.ExitCode -ne 0 -and @($tamperedPriorCalls).Count -eq 0 -and $tamperedPriorRun.Output -like '*record hash does not match*') -Detail 'A prior source-generation inventory whose records no longer match its collection hash fails before evaluator invocation.'
 
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
     $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
@@ -771,7 +768,7 @@ $response = [ordered]@{
 
     Remove-Item Env:SOURCE_ASSESSMENT_MALFORMED_NESTED -ErrorAction SilentlyContinue
     $env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT = 'true'
-    $missingReassessmentRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'missing-reassessment-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    $missingReassessmentRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorSourceGenerationPath $priorSourceGenerationPath -OutputPath (Join-Path $tempRoot 'missing-reassessment-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
     Add-TestResult -Name 'runner-reassessment-required' -Passed ($missingReassessmentRun.ExitCode -ne 0 -and $missingReassessmentRun.Output -like '*omitted semantic reassessment for changed source evidence*') -Detail 'The runner rejects changed source evidence when the evaluator omits its semantic reassessment.'
 
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue

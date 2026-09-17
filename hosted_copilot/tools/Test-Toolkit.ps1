@@ -59,6 +59,10 @@ $ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
 $ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
 $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'Test-SourceInventory.ps1'
+$sourceGenerationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/source-generations'
+$publicationRequestSchemaPath = Join-Path $sourceGenerationRoot 'publication-request.schema.json'
+$sourceGenerationSchemaPath = Join-Path $sourceGenerationRoot 'source-generation.schema.json'
+$sourceGenerationPublisherPath = Join-Path $PSScriptRoot 'Publish-SourceGeneration.ps1'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
 $assessmentReconciliationValidationPath = Join-Path $PSScriptRoot 'AssessmentReconciliationValidation.psm1'
@@ -327,6 +331,9 @@ if ($runtimeStarted) {
         $assessmentReconciliationValidationPath,
         $sourceInventoryCollectorPath,
         $sourceInventoryTestPath,
+        $publicationRequestSchemaPath,
+        $sourceGenerationSchemaPath,
+        $sourceGenerationPublisherPath,
         $sourceAssessmentTestPath,
         $assessmentReconciliationContractSchemaPath,
         $assessmentReconciliationDraftSchemaPath,
@@ -719,7 +726,7 @@ if ($runtimeStarted) {
         if ($sourceAssessmentTestResult.status -ne 'passed') {
             throw 'source assessment regression suite reported failures'
         }
-        Add-CheckResult -Name 'source-assessment' -Passed $true -Detail "Passed $($sourceAssessmentTestResult.testCount) version 4 contract, confidence, accepted-inventory binding, exhaustive coverage, Hosted-reference, and external-output tests without model calls."
+        Add-CheckResult -Name 'source-assessment' -Passed $true -Detail "Passed $($sourceAssessmentTestResult.testCount) version 4 contract, confidence, staged-inventory and prior-generation binding, exhaustive coverage, Hosted-reference, and external-output tests without model calls."
     }
     catch {
         Add-ValidationIssue -Name 'source-assessment' -Issue "Hosted source assessment validation failed: $($_.Exception.Message)"

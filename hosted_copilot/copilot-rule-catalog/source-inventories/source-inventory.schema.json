@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "sourceDefinitionId", "sourceDefinitionSha256", "inventoryConfigurationSha256", "collectorVersion", "parserId", "parserContractSha256", "collectedAt", "collection", "acceptance", "acceptedRevisions", "records"],
+  "required": ["$schema", "schemaVersion", "sourceDefinitionId", "sourceDefinitionSha256", "inventoryConfigurationSha256", "collectorVersion", "parserId", "parserContractSha256", "collectedAt", "collection", "records"],
   "properties": {
     "$schema": {
       "const": "source-inventory.schema.json"
@@ -48,22 +48,6 @@
         "inventorySha256": {
           "$ref": "#/$defs/sha256"
         }
-      }
-    },
-    "acceptance": {
-      "oneOf": [
-        {
-          "type": "null"
-        },
-        {
-          "$ref": "#/$defs/acceptance"
-        }
-      ]
-    },
-    "acceptedRevisions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/acceptedRevision"
       }
     },
     "records": {
@@ -133,100 +117,6 @@
         "resolvedCommit": {
           "type": "string",
           "pattern": "^[0-9a-f]{40}$"
-        }
-      }
-    },
-    "acceptance": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["acceptedAt", "acceptedBy", "stagedInventorySha256", "previousAcceptedInventorySha256"],
-      "properties": {
-        "acceptedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "acceptedBy": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rationale": {
-          "type": "string",
-          "minLength": 1
-        },
-        "stagedInventorySha256": {
-          "$ref": "#/$defs/sha256"
-        },
-        "previousAcceptedInventorySha256": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/sha256"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      }
-    },
-    "acceptedRevision": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["$schema", "schemaVersion", "sourceDefinitionId", "sourceDefinitionSha256", "inventoryConfigurationSha256", "collectorVersion", "parserId", "parserContractSha256", "collectedAt", "collection", "acceptance", "records"],
-      "properties": {
-        "$schema": {
-          "const": "source-inventory.schema.json"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "sourceDefinitionId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$"
-        },
-        "sourceDefinitionSha256": {
-          "$ref": "#/$defs/sha256"
-        },
-        "inventoryConfigurationSha256": {
-          "$ref": "#/$defs/sha256"
-        },
-        "collectorVersion": {
-          "const": 1
-        },
-        "parserId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
-        },
-        "parserContractSha256": {
-          "$ref": "#/$defs/sha256"
-        },
-        "collectedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "collection": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["complete", "sourceRevision", "inventorySha256"],
-          "properties": {
-            "complete": {
-              "const": true
-            },
-            "sourceRevision": {
-              "$ref": "#/$defs/sourceRevision"
-            },
-            "inventorySha256": {
-              "$ref": "#/$defs/sha256"
-            }
-          }
-        },
-        "acceptance": {
-          "$ref": "#/$defs/acceptance"
-        },
-        "records": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/sourceRecord"
-          }
         }
       }
     },

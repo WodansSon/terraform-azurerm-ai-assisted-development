@@ -24,8 +24,6 @@ $interactiveContractPath = Join-Path $catalogRoot 'parser-contracts/interactive-
 $contributorContractPath = Join-Path $catalogRoot 'parser-contracts/contributor-guidance-v2.json'
 $contractSchemaPath = Join-Path $catalogRoot 'parser-contracts/parser-contract.schema.json'
 $collectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
-$acceptanceExporterPath = Join-Path $PSScriptRoot 'New-AcceptedSourceInventory.ps1'
-$acceptanceApplyPath = Join-Path $PSScriptRoot 'Apply-AcceptedSourceInventory.ps1'
 $parserModulePath = Join-Path $PSScriptRoot 'source-parsers/MaintainerProposalsV2.psm1'
 $interactiveParserModulePath = Join-Path $PSScriptRoot 'source-parsers/InteractiveToolkitV2.psm1'
 $contributorParserModulePath = Join-Path $PSScriptRoot 'source-parsers/ContributorGuidanceV2.psm1'
@@ -209,13 +207,6 @@ try {
     } $graphQlFunctionDefinitions
     Add-TestResult -Name 'graphql-body-error-retried' -Passed ($graphQlRetryAttemptCount -eq 2) -Detail 'A structured transient GraphQL error in an HTTP-success response remains inside the bounded retry boundary.'
 
-    $initialAcceptedAt = '2026-09-15T14:00:00+02:00'
-    $secondAcceptedAt = '2026-09-15T08:00:00-05:00'
-    $thirdAcceptedAt = '2026-09-15T14:00:00Z'
-    $nonIncreasingAcceptedAt = '2026-09-15T15:00:00+02:00'
-    $expectedInitialAcceptedAt = [datetime]::new(2026, 9, 15, 12, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-    $expectedSecondAcceptedAt = [datetime]::new(2026, 9, 15, 13, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-    $expectedThirdAcceptedAt = [datetime]::new(2026, 9, 15, 14, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
 
     Add-TestResult -Name 'source-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $definitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Maintainer Proposals uses the strict shared source-definition schema.'
     Add-TestResult -Name 'parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Maintainer Proposals parser contract has a strict versioned shape.'
@@ -393,166 +384,31 @@ try {
     Write-ProposalFixture -Path $retiredPath -Surface 'implementation' -Body "### IMPL-MAINT-902: Retired proposal`n`n- Rule: Reject an unbound retired proposal.`n- Provenance: local-safeguard`n- Rationale: Retirement requires an existing Hosted rule.`n- Status: retired"
     Add-TestResult -Name 'retired-mapping-required' -Passed (Test-ThrowsLike -Action { Get-MaintainerProposalInventoryRecords -SourcePaths @($retiredPath) -RepositoryRoot $fixtureRoot } -Pattern '*does not map to a Hosted rule*') -Detail 'Retired Maintainer Proposals must resolve to an existing Hosted rule.'
 
-    $acceptedFixtureRoot = Join-Path $fixtureRoot 'accepted-lifecycle'
-    $isolatedRepositoryRoot = Join-Path $acceptedFixtureRoot 'repository'
-    $isolatedCatalogRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
-    $isolatedInventoryRoot = Join-Path $isolatedCatalogRoot 'source-inventories'
-    $isolatedDefinitionRoot = Join-Path $isolatedCatalogRoot 'source-definitions'
-    $isolatedContractRoot = Join-Path $isolatedCatalogRoot 'parser-contracts'
-    $isolatedToolsRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/tools'
-    $isolatedParserRoot = Join-Path $isolatedToolsRoot 'source-parsers'
-    $null = New-Item -ItemType Directory -Path $isolatedInventoryRoot, $isolatedDefinitionRoot, $isolatedContractRoot, $isolatedParserRoot -Force
-    Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $isolatedCatalogRoot
-    Copy-Item -LiteralPath $inventorySchemaPath -Destination $isolatedInventoryRoot
-    Copy-Item -LiteralPath $definitionSchemaPath -Destination $isolatedDefinitionRoot
-    Copy-Item -LiteralPath $definitionPath -Destination $isolatedDefinitionRoot
-    Copy-Item -LiteralPath $contributorDefinitionPath -Destination $isolatedDefinitionRoot
-    Copy-Item -LiteralPath (Join-Path $catalogRoot 'source-definitions/source-definition-set.schema.json') -Destination $isolatedDefinitionRoot
-    Copy-Item -LiteralPath $contractSchemaPath -Destination $isolatedContractRoot
-    Copy-Item -LiteralPath $contractPath -Destination $isolatedContractRoot
-    Copy-Item -LiteralPath $collectorPath -Destination $isolatedToolsRoot
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1') -Destination $isolatedToolsRoot
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1') -Destination $isolatedToolsRoot
-    Copy-Item -LiteralPath $parserModulePath -Destination $isolatedParserRoot
-    $acceptedOnePath = Join-Path $acceptedFixtureRoot 'accepted-one.json'
-    $acceptedTwoPath = Join-Path $acceptedFixtureRoot 'accepted-two.json'
-    $acceptedThreePath = Join-Path $acceptedFixtureRoot 'accepted-three.json'
-    $stagedTwoPath = Join-Path $acceptedFixtureRoot 'staged-two.json'
+    $inventory = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json -DateKind String
+    Add-TestResult -Name 'inventory-collection-only' -Passed ($null -eq $inventory.PSObject.Properties['acceptance'] -and $null -eq $inventory.PSObject.Properties['acceptedRevisions']) -Detail 'Staged inventory contains collection facts and records without per-lane acceptance or revision state.'
 
-    $initialAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $firstOutputPath -OutputPath $acceptedOnePath -AcceptedBy 'test-maintainer' -AcceptedAt $initialAcceptedAt -OutputFormat Json 2>&1)
-    $initialAcceptanceExitCode = $LASTEXITCODE
-    $initialAcceptanceResult = if ($initialAcceptanceExitCode -eq 0) { ($initialAcceptanceOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $acceptedOne = if ($initialAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedOnePath -Raw | ConvertFrom-Json -DateKind String } else { $null }
-    Add-TestResult -Name 'initial-acceptance-export' -Passed ($initialAcceptanceExitCode -eq 0 -and $initialAcceptanceResult.transitionCounts.added -eq 38 -and @($acceptedOne.acceptedRevisions).Count -eq 0 -and $acceptedOne.acceptance.previousAcceptedInventorySha256 -eq $null -and [string]$acceptedOne.acceptance.acceptedAt -ceq $expectedInitialAcceptedAt) -Detail 'Initial acceptance exports all staged records with canonical UTC acceptance metadata and no invented prior history.'
+    $inventoryWithAcceptance = Copy-JsonObject -Value $inventory
+    $inventoryWithAcceptance | Add-Member -NotePropertyName acceptance -NotePropertyValue $null
+    $inventoryWithAcceptanceValid = Test-JsonInstance -Json ($inventoryWithAcceptance | ConvertTo-Json -Depth 30) -SchemaPath $inventorySchemaPath
+    Add-TestResult -Name 'inventory-acceptance-fields-rejected' -Passed (-not $inventoryWithAcceptanceValid) -Detail 'The collection-only inventory schema rejects legacy per-lane acceptance fields.'
 
     $currentEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repoRoot -SourceDefinitionId 'maintainer-proposals'
     $displayOnlyEvidence = $currentEvidence | Select-Object *
     $displayOnlyEvidence.SourceDefinitionSha256 = 'e' * 64
-    Add-TestResult -Name 'display-only-definition-change' -Passed (Test-DoesNotThrow -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $displayOnlyEvidence }) -Detail 'A changed audit-only source-definition hash does not invalidate an accepted inventory when its factual configuration is unchanged.'
+    Add-TestResult -Name 'display-only-definition-change' -Passed (Test-DoesNotThrow -Action { Assert-CurrentSourceInventory -Inventory $inventory -Evidence $displayOnlyEvidence }) -Detail 'A changed audit-only source-definition hash does not invalidate collection facts when factual configuration is unchanged.'
 
     $staleConfigurationEvidence = $currentEvidence | Select-Object *
     $staleConfigurationEvidence.InventoryConfigurationSha256 = 'e' * 64
-    Add-TestResult -Name 'inventory-configuration-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $staleConfigurationEvidence } -Pattern '*configuration hash is stale*') -Detail 'A changed inventory-affecting configuration still invalidates accepted evidence.'
+    Add-TestResult -Name 'inventory-configuration-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentSourceInventory -Inventory $inventory -Evidence $staleConfigurationEvidence } -Pattern '*configuration hash is stale*') -Detail 'A changed inventory-affecting configuration invalidates the staged inventory.'
 
     $staleParserEvidence = $currentEvidence | Select-Object *
     $staleParserEvidence.ParserContractSha256 = 'e' * 64
-    Add-TestResult -Name 'parser-contract-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentAcceptedSourceInventory -Inventory $acceptedOne -Evidence $staleParserEvidence } -Pattern '*parser contract hash is stale*') -Detail 'Accepted inventory is rejected when current parser behavior no longer matches its automatically recorded contract hash.'
+    Add-TestResult -Name 'parser-contract-drift-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentSourceInventory -Inventory $inventory -Evidence $staleParserEvidence } -Pattern '*parser contract hash is stale*') -Detail 'A changed parser behavior contract invalidates the staged inventory.'
 
-    $repositoryAcceptancePath = Join-Path $repoRoot '.accepted-inventory-boundary-test.json'
-    $repositoryAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $firstOutputPath -OutputPath $repositoryAcceptancePath -AcceptedBy 'test-maintainer' -OutputFormat Json 2>&1)
-    $repositoryAcceptanceExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'acceptance-export-boundary' -Passed ($repositoryAcceptanceExitCode -ne 0 -and -not (Test-Path -LiteralPath $repositoryAcceptancePath)) -Detail 'Accepted inventory export cannot write inside the repository.'
-
-    $isolatedDefinitionSetPath = Join-Path $isolatedDefinitionRoot 'source-definition-set.json'
-    Write-JsonFixture -Path $isolatedDefinitionSetPath -Value ([ordered]@{
-        '$schema' = 'source-definition-set.schema.json'
-        schemaVersion = 1
-        sourceDefinitionIds = @('contributor-guidance')
-    })
-    $unapprovedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $unapprovedApplyExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'unapproved-source-apply-rejected' -Passed ($unapprovedApplyExitCode -ne 0 -and ($unapprovedApplyOutput | Out-String) -like '*source is not approved*') -Detail 'Apply consumes the explicit approved source-definition set rather than its destination filename map as participation authority.'
-    Write-JsonFixture -Path $isolatedDefinitionSetPath -Value ([ordered]@{
-        '$schema' = 'source-definition-set.schema.json'
-        schemaVersion = 1
-        sourceDefinitionIds = @('maintainer-proposals')
-    })
-
-    $firstApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $firstApplyExitCode = $LASTEXITCODE
-    $canonicalAcceptedPath = Join-Path $isolatedInventoryRoot 'maintainer.json'
-    Add-TestResult -Name 'initial-acceptance-apply' -Passed ($firstApplyExitCode -eq 0 -and (Test-Path -LiteralPath $canonicalAcceptedPath -PathType Leaf)) -Detail 'The explicit apply command writes only the canonical source-specific inventory path.'
-    $canonicalAcceptedSha256 = if (Test-Path -LiteralPath $canonicalAcceptedPath -PathType Leaf) { (Get-FileHash -LiteralPath $canonicalAcceptedPath -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
-    Add-TestResult -Name 'accepted-candidate-bytes-preserved' -Passed ($firstApplyExitCode -eq 0 -and $canonicalAcceptedSha256 -ceq [string]$initialAcceptanceResult.candidateSha256) -Detail 'Apply writes the exact reviewed candidate bytes without JSON re-encoding or byte-order changes.'
-
-    $canonicalLockPath = "$canonicalAcceptedPath.lock"
-    $lockOwnerStream = [IO.File]::Open($canonicalLockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    try {
-        $contendedApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-        $contendedApplyExitCode = $LASTEXITCODE
-    }
-    finally {
-        $lockOwnerStream.Dispose()
-    }
-    $contendedLockPreserved = Test-Path -LiteralPath $canonicalLockPath -PathType Leaf
-    Add-TestResult -Name 'contended-lock-ownership-preserved' -Passed ($contendedApplyExitCode -ne 0 -and $contendedLockPreserved -and ($contendedApplyOutput | Out-String) -like '*already being applied*') -Detail "A writer that cannot acquire the sidecar lock leaves the current lock owner's reusable file intact."
-
-    $stagedTwo = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json
-    $stagedTwo.records[0].content = [string]$stagedTwo.records[0].content + "`nChanged."
-    $stagedTwo.records[0].contentSha256 = Get-StringSha256 -Value ([string]$stagedTwo.records[0].content)
-    $stagedTwo.records = @($stagedTwo.records | Select-Object -SkipLast 1)
-    $stagedTwo.collection.inventorySha256 = Get-StringSha256 -Value ($stagedTwo.records | ConvertTo-Json -Depth 30 -Compress)
-    Write-JsonFixture -Path $stagedTwoPath -Value $stagedTwo
-
-    $secondAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath $acceptedTwoPath -AcceptedBy 'test-maintainer' -AcceptedAt $secondAcceptedAt -OutputFormat Json 2>&1)
-    $secondAcceptanceExitCode = $LASTEXITCODE
-    $secondAcceptanceResult = if ($secondAcceptanceExitCode -eq 0) { ($secondAcceptanceOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $acceptedTwo = if ($secondAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
-    Add-TestResult -Name 'acceptance-transition-classification' -Passed ($secondAcceptanceExitCode -eq 0 -and $secondAcceptanceResult.transitionCounts.'content-changed' -eq 1 -and $secondAcceptanceResult.transitionCounts.removed -eq 1) -Detail 'Acceptance classifies changed content and complete-collection removals explicitly.'
-    Add-TestResult -Name 'acceptance-tombstone-history' -Passed ($null -ne $acceptedTwo -and @($acceptedTwo.records | Where-Object presence -eq 'removed').Count -eq 1 -and @($acceptedTwo.acceptedRevisions).Count -eq 1 -and [string]$acceptedTwo.acceptance.acceptedAt -ceq $expectedSecondAcceptedAt -and [string]$acceptedTwo.acceptedRevisions[0].acceptance.acceptedAt -ceq $expectedInitialAcceptedAt) -Detail 'Removal preserves last-known evidence and one complete prior accepted projection with canonical UTC timestamps.'
-
-    $byteTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-byte-tampered.json'
-    Copy-Item -LiteralPath $acceptedTwoPath -Destination $byteTamperedPath
-    [IO.File]::AppendAllText($byteTamperedPath, " `n", [Text.UTF8Encoding]::new($false))
-    $byteTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $byteTamperedPath -ExpectedCandidateSha256 $secondAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $byteTamperedExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'candidate-byte-tampering-rejected' -Passed ($byteTamperedExitCode -ne 0 -and ($byteTamperedOutput | Out-String) -like '*candidate hash mismatch*') -Detail 'Apply rejects candidate bytes that differ from the explicitly reviewed export hash.'
-
-    $recordTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-record-tampered.json'
-    $recordTampered = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json
+    $recordTampered = Copy-JsonObject -Value $inventory
     $recordTampered.records[0].content = [string]$recordTampered.records[0].content + ' Tampered.'
-    Write-JsonFixture -Path $recordTamperedPath -Value $recordTampered
-    $recordTamperedSha256 = (Get-FileHash -LiteralPath $recordTamperedPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $recordTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $recordTamperedPath -ExpectedCandidateSha256 $recordTamperedSha256 -OutputFormat Json 2>&1)
-    $recordTamperedExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'candidate-record-tampering-rejected' -Passed ($recordTamperedExitCode -ne 0 -and ($recordTamperedOutput | Out-String) -like '*record hash does not match*') -Detail 'Apply independently recalculates accepted record hashes even when candidate bytes were explicitly supplied.'
+    Add-TestResult -Name 'inventory-record-tampering-rejected' -Passed (Test-ThrowsLike -Action { Assert-CurrentSourceInventory -Inventory $recordTampered -Evidence $currentEvidence } -Pattern '*record hash does not match*') -Detail 'Inventory validation independently rejects record content that no longer matches the collection hash.'
 
-    $duplicateCurrentPath = Join-Path $acceptedFixtureRoot 'accepted-two-duplicate-current.json'
-    $duplicateCurrent = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json -DateKind String
-    $duplicateCurrent.records = @($duplicateCurrent.records) + @($duplicateCurrent.records[0])
-    $duplicateCurrent.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($duplicateCurrent.records)
-    Write-JsonFixture -Path $duplicateCurrentPath -Value $duplicateCurrent
-    $duplicateCurrentSha256 = (Get-FileHash -LiteralPath $duplicateCurrentPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $duplicateCurrentOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $duplicateCurrentPath -ExpectedCandidateSha256 $duplicateCurrentSha256 -OutputFormat Json 2>&1)
-    $duplicateCurrentExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'duplicate-current-source-id-rejected' -Passed ($duplicateCurrentExitCode -ne 0 -and ($duplicateCurrentOutput | Out-String) -like '*duplicate source IDs*') -Detail 'Apply rejects duplicate IDs in the current projection even when the candidate record hash is internally consistent.'
-
-    $historyTamperedPath = Join-Path $acceptedFixtureRoot 'accepted-two-history-tampered.json'
-    $historyTampered = Get-Content -LiteralPath $acceptedTwoPath -Raw | ConvertFrom-Json
-    $historyTampered.acceptedRevisions[0].acceptance.acceptedBy = 'rewritten-maintainer'
-    Write-JsonFixture -Path $historyTamperedPath -Value $historyTampered
-    $historyTamperedSha256 = (Get-FileHash -LiteralPath $historyTamperedPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $historyTamperedOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $historyTamperedPath -ExpectedCandidateSha256 $historyTamperedSha256 -OutputFormat Json 2>&1)
-    $historyTamperedExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'candidate-history-rewrite-rejected' -Passed ($historyTamperedExitCode -ne 0 -and ($historyTamperedOutput | Out-String) -like '*revision chain hash mismatch*') -Detail "Apply rejects a candidate whose appended revision rewrites authenticated history. Output: $(($historyTamperedOutput | Out-String).Trim())"
-
-    $secondApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedTwoPath -ExpectedCandidateSha256 $secondAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $secondApplyExitCode = $LASTEXITCODE
-
-    $nonIncreasingOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath (Join-Path $acceptedFixtureRoot 'non-increasing.json') -AcceptedBy 'test-maintainer' -AcceptedAt $nonIncreasingAcceptedAt -OutputFormat Json 2>&1)
-    $nonIncreasingExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'non-increasing-acceptance-rejected' -Passed ($secondApplyExitCode -eq 0 -and $nonIncreasingExitCode -ne 0 -and ($nonIncreasingOutput | Out-String) -like '*AcceptedAt must be later*') -Detail 'Acceptance events must advance monotonically and cannot reuse or move behind the current timestamp.'
-
-    $thirdAcceptanceOutput = @(& pwsh -NoProfile -File $acceptanceExporterPath -StagedInventoryPath $stagedTwoPath -CurrentAcceptedInventoryPath $canonicalAcceptedPath -OutputPath $acceptedThreePath -AcceptedBy 'test-maintainer' -AcceptedAt $thirdAcceptedAt -OutputFormat Json 2>&1)
-    $thirdAcceptanceExitCode = $LASTEXITCODE
-    $acceptedThree = if ($thirdAcceptanceExitCode -eq 0) { Get-Content -LiteralPath $acceptedThreePath -Raw | ConvertFrom-Json -DateKind String } else { $null }
-    $allAcceptanceTimestampsCanonical = $null -ne $acceptedThree -and [string]$acceptedThree.acceptance.acceptedAt -ceq $expectedThirdAcceptedAt -and [string]$acceptedThree.acceptedRevisions[0].acceptance.acceptedAt -ceq $expectedInitialAcceptedAt -and [string]$acceptedThree.acceptedRevisions[1].acceptance.acceptedAt -ceq $expectedSecondAcceptedAt
-    Add-TestResult -Name 'accepted-history-timestamps-canonical' -Passed ($thirdAcceptanceExitCode -eq 0 -and $allAcceptanceTimestampsCanonical) -Detail 'Raw timestamps with `Z`, positive offsets, and negative offsets persist as one invariant UTC representation across current and historical acceptance records.'
-    $reorderedHistory = if ($null -ne $acceptedThree) { Copy-JsonObject -Value $acceptedThree } else { $null }
-    if ($null -ne $reorderedHistory) {
-        $reorderedHistory.acceptedRevisions = @($reorderedHistory.acceptedRevisions[1], $reorderedHistory.acceptedRevisions[0])
-    }
-    Add-TestResult -Name 'reordered-acceptance-history-rejected' -Passed ($thirdAcceptanceExitCode -eq 0 -and (Test-ThrowsLike -Action { Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $reorderedHistory } -Pattern '*revision*')) -Detail 'Reordering individually valid accepted revisions cannot change which evidence is treated as the immediate predecessor.'
-
-    $duplicatedHistory = if ($null -ne $acceptedThree) { Copy-JsonObject -Value $acceptedThree } else { $null }
-    if ($null -ne $duplicatedHistory) {
-        $duplicatedHistory.acceptedRevisions = @($duplicatedHistory.acceptedRevisions[0], $duplicatedHistory.acceptedRevisions[0])
-    }
-    Add-TestResult -Name 'duplicated-acceptance-history-rejected' -Passed ($thirdAcceptanceExitCode -eq 0 -and (Test-ThrowsLike -Action { Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $duplicatedHistory } -Pattern '*revision*')) -Detail 'Duplicating an otherwise valid accepted revision breaks the authenticated append chain.'
-
-    $staleApplyOutput = @(& pwsh -NoProfile -File $acceptanceApplyPath -RepositoryRoot $isolatedRepositoryRoot -CandidatePath $acceptedOnePath -ExpectedCandidateSha256 $initialAcceptanceResult.candidateSha256 -OutputFormat Json 2>&1)
-    $staleApplyExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'acceptance-compare-and-swap' -Passed ($secondApplyExitCode -eq 0 -and $staleApplyExitCode -ne 0 -and ($staleApplyOutput | Out-String) -like '*precondition failed*') -Detail "Apply accepts the matching prior hash and rejects stale candidates without writing. Second apply: $(($secondApplyOutput | Out-String).Trim()); stale apply: $(($staleApplyOutput | Out-String).Trim())"
 }
 catch {
     $issues.Add($_.Exception.Message)

@@ -754,8 +754,6 @@ $inventory = [ordered]@{
         sourceRevision = $sourceRevision
         inventorySha256 = $inventorySha256
     }
-    acceptance = $null
-    acceptedRevisions = @()
     records = $sortedRecords
 }
 

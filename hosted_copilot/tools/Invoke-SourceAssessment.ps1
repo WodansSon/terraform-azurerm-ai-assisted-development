@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InventoryPaths,
 
+    [string]$PriorSourceGenerationPath,
+
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
@@ -253,6 +255,7 @@ $resolvedBuilderPath = [IO.Path]::GetFullPath($BaselineBuilderPath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($AssessmentContractPath)
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+$sourceGenerationSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md'
@@ -278,6 +281,7 @@ foreach ($relativePath in @(
     'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
+    'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json',
     'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
 ) + @($assessmentContract.behaviorFiles)) {
     $null = $repositoryInputs.Add([string]$relativePath)
@@ -301,6 +305,7 @@ $resolvedBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/New-So
 $resolvedCatalogPath = Copy-RunInputFile -SourcePath $resolvedCatalogPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json')
 $resolvedContractPath = $assessmentContractSnapshotPath
 $inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+$sourceGenerationSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
@@ -334,6 +339,29 @@ foreach ($rule in @($catalog.rules)) {
 }
 $lanes = [Collections.Generic.List[object]]::new()
 $snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
+$snapshotPriorSourceGenerationPath = $null
+$priorSourceGeneration = $null
+if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
+    $priorSnapshot = Get-SourceEvidenceFileSnapshot -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath))
+    if (-not (Test-Json -Json $priorSnapshot.Content -SchemaFile $sourceGenerationSchemaPath -ErrorAction Stop)) {
+        throw 'Prior source generation does not satisfy its schema'
+    }
+    $priorSourceGeneration = $priorSnapshot.Content | ConvertFrom-Json -DateKind String
+    [string[]]$priorSourceDefinitionIds = @($priorSourceGeneration.inventories.PSObject.Properties.Name)
+    [Array]::Sort($priorSourceDefinitionIds, [StringComparer]::Ordinal)
+    if (@(Compare-Object $expectedSourceDefinitionIds $priorSourceDefinitionIds -SyncWindow 0).Count -ne 0) {
+        throw "Prior source generation must contain exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
+    }
+    foreach ($sourceDefinitionId in $priorSourceDefinitionIds) {
+        $priorInventory = $priorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId].Value
+        if (-not (($priorInventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
+            throw "Prior source generation inventory does not satisfy its schema: $sourceDefinitionId"
+        }
+        Assert-SourceInventoryIntegrity -Inventory $priorInventory
+    }
+    $snapshotPriorSourceGenerationPath = Join-Path $runDirectory 'prior-source-generation.json'
+    [IO.File]::WriteAllBytes($snapshotPriorSourceGenerationPath, $priorSnapshot.Bytes)
+}
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
     $inventorySnapshot = Get-SourceEvidenceFileSnapshot -Path $resolvedInventoryPath
@@ -342,9 +370,6 @@ foreach ($inventoryPath in $InventoryPaths) {
         throw "Source inventory does not satisfy its schema: $resolvedInventoryPath"
     }
     $inventory = $inventoryJson | ConvertFrom-Json -DateKind String
-    if ($null -eq $inventory.acceptance) {
-        throw "Source assessment requires an accepted inventory: $resolvedInventoryPath"
-    }
     $sourceDefinitionId = [string]$inventory.sourceDefinitionId
     if (@($lanes | Where-Object sourceDefinitionId -eq $sourceDefinitionId).Count -gt 0) {
         throw "Source assessment received duplicate inventory sourceDefinitionId: $sourceDefinitionId"
@@ -363,7 +388,7 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     $definition = $definitionJson | ConvertFrom-Json
     $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $runRepositoryRoot -SourceDefinitionId $sourceDefinitionId
-    Assert-CurrentAcceptedSourceInventory -Inventory $inventory -Evidence $sourceEvidence
+    Assert-CurrentSourceInventory -Inventory $inventory -Evidence $sourceEvidence
 
     $packetRecords = @($inventory.records | ForEach-Object {
         $record = $_
@@ -374,7 +399,12 @@ foreach ($inventoryPath in $InventoryPaths) {
             }
         }
         [string[]]$uniqueMappedIds = @($mappedHostedRuleIds | Sort-Object -Unique)
-        $priorSourceEvidence = Get-PriorAcceptedSourceEvidence -Inventory $inventory -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+        $priorSourceEvidence = if ($null -eq $priorSourceGeneration) {
+            $null
+        }
+        else {
+            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+        }
         [ordered]@{
             sourceRef = [ordered]@{
                 sourceDefinitionId = $sourceDefinitionId
@@ -577,6 +607,9 @@ try {
         Evaluator = $evaluatorIdentity
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
+    }
+    if ($null -ne $snapshotPriorSourceGenerationPath) {
+        $builderParameters.PriorSourceGenerationPath = $snapshotPriorSourceGenerationPath
     }
     try {
         $builderOutput = @(& $resolvedBuilderPath @builderParameters 2>&1)

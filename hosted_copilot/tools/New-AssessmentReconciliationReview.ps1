@@ -3,9 +3,9 @@ param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '../..'),
 
     [Parameter(Mandatory = $true)]
-    [string[]]$AcceptedInventoryPaths,
+    [string[]]$InventoryPaths,
 
-    [string[]]$StagedInventoryPaths = @(),
+    [string]$PriorSourceGenerationPath,
 
     [Parameter(Mandatory = $true)]
     [string]$AssessmentBaselinePath,
@@ -116,6 +116,10 @@ $baselineInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentBaseline
 $recommendationInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($RecommendationSnapshotPath)) -SchemaPath (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -Name 'Hosted rule change recommendations'
 $catalogInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Name 'Hosted instruction catalog'
 $reviewContractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReviewContractPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-contract.schema.json') -Name 'Assessment reconciliation review contract'
+$priorSourceGenerationInput = $null
+if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
+    $priorSourceGenerationInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath (Join-Path $catalogRoot 'source-generations/source-generation.schema.json') -Name 'Prior source generation'
+}
 $baseline = $baselineInput.Value
 $recommendationSnapshot = $recommendationInput.Value
 $reviewContractSha256 = Get-AssessmentReconciliationReviewContractSha256 -Contract $reviewContractInput.Value -RepositoryRoot $resolvedRepositoryRoot
@@ -134,62 +138,35 @@ if ($baselineInventoryJson -cne $recommendationInventoryJson) {
     throw 'Hosted rule change recommendations do not bind the assessment baseline inventories'
 }
 
-$acceptedRecords = @{}
-$acceptedInventoryHashes = [ordered]@{}
-foreach ($inventoryPath in $AcceptedInventoryPaths) {
-    $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Accepted source inventory'
+$inventoryRecords = @{}
+$inventoryHashes = [ordered]@{}
+$inventories = [ordered]@{}
+foreach ($inventoryPath in $InventoryPaths) {
+    $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Source inventory'
     $inventory = $inventoryInput.Value
-    if ($null -eq $inventory.acceptance) {
-        throw "Assessment reconciliation review requires an accepted inventory: $inventoryPath"
-    }
-    Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $inventory
+    Assert-SourceInventoryIntegrity -Inventory $inventory
     $sourceDefinitionId = [string]$inventory.sourceDefinitionId
-    if ($acceptedInventoryHashes.Contains($sourceDefinitionId)) {
-        throw "Assessment reconciliation review received duplicate accepted inventory lane: $sourceDefinitionId"
+    if ($inventoryHashes.Contains($sourceDefinitionId)) {
+        throw "Assessment reconciliation review received duplicate inventory lane: $sourceDefinitionId"
     }
     if (-not $baseline.inventoryHashes.PSObject.Properties[$sourceDefinitionId] -or [string]$baseline.inventoryHashes.$sourceDefinitionId -cne $inventoryInput.Snapshot.Sha256) {
-        throw "Accepted inventory does not match the assessment baseline: $sourceDefinitionId"
+        throw "Source inventory does not match the assessment baseline: $sourceDefinitionId"
     }
-    $acceptedInventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
+    $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
+    $inventories[$sourceDefinitionId] = $inventory
     foreach ($record in @($inventory.records)) {
         $key = Get-SourceKey -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId)
-        if ($acceptedRecords.ContainsKey($key)) {
-            throw "Accepted inventories contain duplicate source identity: $sourceDefinitionId/$($record.sourceId)"
+        if ($inventoryRecords.ContainsKey($key)) {
+            throw "Source inventories contain duplicate source identity: $sourceDefinitionId/$($record.sourceId)"
         }
-        $acceptedRecords[$key] = $record
+        $inventoryRecords[$key] = $record
     }
 }
-$acceptedInventoryHashes = ConvertTo-OrdinalMap -Value $acceptedInventoryHashes
-if (($acceptedInventoryHashes | ConvertTo-Json -Compress) -cne $baselineInventoryJson) {
+$inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
+$inventories = ConvertTo-OrdinalMap -Value $inventories
+if (($inventoryHashes | ConvertTo-Json -Compress) -cne $baselineInventoryJson) {
     throw 'Assessment reconciliation review requires every baseline inventory lane exactly once'
 }
-
-$stagedRecords = @{}
-$stagedInventoryHashes = [ordered]@{}
-$stagedLaneIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-foreach ($inventoryPath in $StagedInventoryPaths) {
-    $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Staged source inventory'
-    $inventory = $inventoryInput.Value
-    if ($null -ne $inventory.acceptance -or @($inventory.acceptedRevisions).Count -ne 0) {
-        throw "Staged inventory cannot contain accepted state: $inventoryPath"
-    }
-    $sourceDefinitionId = [string]$inventory.sourceDefinitionId
-    if (-not $stagedLaneIds.Add($sourceDefinitionId)) {
-        throw "Assessment reconciliation review received duplicate staged inventory lane: $sourceDefinitionId"
-    }
-    if (-not $acceptedInventoryHashes.Contains($sourceDefinitionId)) {
-        throw "Staged inventory has no accepted baseline lane: $sourceDefinitionId"
-    }
-    $stagedInventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
-    foreach ($record in @($inventory.records)) {
-        $key = Get-SourceKey -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId)
-        if ($stagedRecords.ContainsKey($key)) {
-            throw "Staged inventories contain duplicate source identity: $sourceDefinitionId/$($record.sourceId)"
-        }
-        $stagedRecords[$key] = $record
-    }
-}
-$stagedInventoryHashes = ConvertTo-OrdinalMap -Value $stagedInventoryHashes
 
 $recommendationsById = @{}
 foreach ($recommendation in @($recommendationSnapshot.recommendations)) {
@@ -212,12 +189,10 @@ $presentations = [Collections.Generic.List[object]]::new()
 $reviewStateCounts = [ordered]@{ recommended = 0; deferred = 0; excluded = 0 }
 foreach ($entry in @($baseline.entries)) {
     $sourceKey = Get-SourceKey -SourceDefinitionId ([string]$entry.sourceRef.sourceDefinitionId) -SourceId ([string]$entry.sourceRef.sourceId)
-    if (-not $acceptedRecords.ContainsKey($sourceKey) -or [string]$acceptedRecords[$sourceKey].contentSha256 -cne [string]$entry.sourceRef.contentSha256) {
-        throw "Assessment baseline source does not resolve to accepted inventory evidence: $($entry.sourceRef.sourceDefinitionId)/$($entry.sourceRef.sourceId)"
+    if (-not $inventoryRecords.ContainsKey($sourceKey) -or [string]$inventoryRecords[$sourceKey].contentSha256 -cne [string]$entry.sourceRef.contentSha256) {
+        throw "Assessment baseline source does not resolve to inventory evidence: $($entry.sourceRef.sourceDefinitionId)/$($entry.sourceRef.sourceId)"
     }
-    $hasStagedLane = $stagedLaneIds.Contains([string]$entry.sourceRef.sourceDefinitionId)
-    $stagedRecord = if ($stagedRecords.ContainsKey($sourceKey)) { $stagedRecords[$sourceKey] } else { $null }
-    $sourceTransition = Get-SourceTransition -AcceptedRecord $acceptedRecords[$sourceKey] -StagedRecord $stagedRecord -HasStagedLane $hasStagedLane
+    $sourceTransition = 'current'
     foreach ($assessment in @($entry.assessments)) {
         $assessmentRef = [ordered]@{
             assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
@@ -269,21 +244,23 @@ $review = [ordered]@{
     readOnly = $true
     refreshMode = 'regenerate-read-only-review'
     snapshots = [ordered]@{
-        inventoryHashes = $acceptedInventoryHashes
-        stagedInventoryHashes = $stagedInventoryHashes
+        stagedInventoryHashes = $inventoryHashes
+        acceptedSourceGenerationSha256 = if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Snapshot.Sha256 }
         assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
-        recommendationSnapshotSha256 = $recommendationInput.Snapshot.Sha256
         hostedCatalogSha256 = $catalogInput.Snapshot.Sha256
         reconciliationContractSha256 = [string]$recommendationSnapshot.reconciliationContractSha256
         reviewContractSha256 = $reviewContractSha256
     }
+    acceptedSourceGeneration = if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Value }
+    stagedInventories = $inventories
+    assessmentBaseline = $baseline
+    recommendationOutput = $recommendationSnapshot
     summary = [ordered]@{
         sourceCount = @($baseline.entries).Count
         assessmentCount = $presentations.Count
         recommendationCount = @($recommendationSnapshot.recommendations).Count
         reviewStateCounts = $reviewStateCounts
     }
-    recommendations = @($recommendationSnapshot.recommendations)
     assessmentPresentations = @($presentations | Sort-Object -Property @{ Expression = { Get-AssessmentKey -Reference $_.assessmentRef } })
 }
 $reviewJson = $review | ConvertTo-Json -Depth 40

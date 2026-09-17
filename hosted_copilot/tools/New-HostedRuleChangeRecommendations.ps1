@@ -114,10 +114,10 @@ $reconciliationContractSha256 = Get-HostedRuleChangeRecommendationsContractSha25
 
 $catalogRules = @{}
 $catalogLocations = @{}
-$reservedHostedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$occupiedHostedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($rule in @($catalog.rules)) {
     $catalogRules[[string]$rule.id] = $rule
-    $null = $reservedHostedIds.Add([string]$rule.id)
+    $null = $occupiedHostedIds.Add([string]$rule.id)
 }
 foreach ($surface in @($catalog.surfaces)) {
     foreach ($section in @($surface.sections)) {
@@ -138,7 +138,7 @@ if (-not [string]::IsNullOrWhiteSpace($PromotionPlanPath)) {
             throw "Promotion Plan contains duplicate Hosted ID ownership: $hostedId"
         }
         $pendingRules[$hostedId] = $change
-        $null = $reservedHostedIds.Add($hostedId)
+        $null = $occupiedHostedIds.Add($hostedId)
     }
 }
 
@@ -276,12 +276,12 @@ foreach ($recommendation in $orderedDraftRecommendations) {
         do {
             $hostedId = '{0}-{1}' -f $family, $nextNumber.ToString("D$([int]$contract.idAllocation.numericWidth)")
             $nextNumber++
-        } while ($reservedHostedIds.Contains($hostedId) -and $nextNumber -le 1000)
-        if ($reservedHostedIds.Contains($hostedId)) {
+        } while ($occupiedHostedIds.Contains($hostedId) -and $nextNumber -le 1000)
+        if ($occupiedHostedIds.Contains($hostedId)) {
             throw "No Hosted IDs remain available in family $family"
         }
     }
-    if (-not $reservedHostedIds.Add($hostedId) -and $null -eq $recommendation.targetHostedId) {
+    if (-not $occupiedHostedIds.Add($hostedId) -and $null -eq $recommendation.targetHostedId) {
         throw "Hosted ID allocation produced a duplicate ID: $hostedId"
     }
     if ($hostedIdByDraftKey.Values -contains $hostedId) {
@@ -304,7 +304,7 @@ foreach ($recommendation in $orderedDraftRecommendations) {
         if ($pendingRules[$hostedId].PSObject.Properties['targetRule']) {
             $currentText = [string]$pendingRules[$hostedId].targetRule.text
         }
-        $idState = 'durable'
+        $idState = 'tentative'
     }
     $recommendedText = [string]$recommendation.recommendedRuleText
     if ([string]$recommendation.recommendedAction -ceq 'no-change' -and $recommendedText -cne $currentText) {
@@ -357,8 +357,7 @@ $snapshot = [ordered]@{
     assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
     hostedCatalogSha256 = $catalogInput.Snapshot.Sha256
     reconciliationContractSha256 = $reconciliationContractSha256
-    promotionPlanSha256 = $promotionPlanSha256
-    parentRecommendationSnapshotSha256 = $null
+    inputPromotionPlanFileSha256 = $promotionPlanSha256
     recommendations = @($recommendations | Sort-Object -Property hostedId)
     assessmentCoverage = $assessmentCoverage
 }

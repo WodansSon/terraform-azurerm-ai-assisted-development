@@ -22,6 +22,7 @@ $reconciliationRoot = Join-Path $catalogRoot 'assessment-reconciliation'
 $builderPath = Join-Path $PSScriptRoot 'New-HostedRuleChangeRecommendations.ps1'
 $runnerPath = Join-Path $PSScriptRoot 'Invoke-AssessmentReconciliation.ps1'
 $reviewBuilderPath = Join-Path $PSScriptRoot 'New-AssessmentReconciliationReview.ps1'
+$publisherPath = Join-Path $PSScriptRoot 'Publish-SourceGeneration.ps1'
 $promptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
 $catalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
 $catalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
@@ -189,8 +190,6 @@ try {
             parserContractSha256 = $hash
             collectedAt = $generatedAt
             collection = [ordered]@{ complete = $true; sourceRevision = $sourceRevision; inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($record) }
-            acceptance = [ordered]@{ acceptedAt = $generatedAt; acceptedBy = 'fixture-maintainer'; stagedInventorySha256 = $hash; previousAcceptedInventorySha256 = $null }
-            acceptedRevisions = @()
             records = @($record)
         }
         $inventoryPath = Join-Path $tempRoot "$sourceDefinitionId-accepted.json"
@@ -356,7 +355,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
 
     $reviewOutputPath = Join-Path $tempRoot 'assessment-reconciliation-review.json'
     try {
-        $reviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -AcceptedInventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reviewExitCode = $LASTEXITCODE
     }
     catch {
@@ -367,24 +366,24 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     $review = if ($reviewExitCode -eq 0) { Get-Content -LiteralPath $reviewOutputPath -Raw | ConvertFrom-Json } else { $null }
     $reviewContract = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-v1.json') -Raw | ConvertFrom-Json
     $expectedReviewContractSha256 = Get-AssessmentReconciliationReviewContractSha256 -Contract $reviewContract -RepositoryRoot $repositoryRoot
-    $reviewPassed = $reviewExitCode -eq 0 -and $review.readOnly -eq $true -and $review.schemaVersion -eq 4 -and @($review.assessmentPresentations).Count -eq 3 -and @($review.recommendations).Count -eq 1 -and [string]$review.snapshots.reviewContractSha256 -ceq $expectedReviewContractSha256
-    Add-TestResult -Name 'read-only-v4-review' -Passed $reviewPassed -Detail $(if ($reviewPassed) { 'The shadow v4 review projects every assessment and recommendation without changing the active v3 bundle.' } else { ($reviewOutput | Out-String).Trim() })
+    $reviewPassed = $reviewExitCode -eq 0 -and $review.readOnly -eq $true -and $review.schemaVersion -eq 4 -and @($review.assessmentPresentations).Count -eq 3 -and @($review.recommendationOutput.recommendations).Count -eq 1 -and @($review.recommendationOutput.assessmentCoverage).Count -eq 3 -and @($review.stagedInventories.PSObject.Properties).Count -eq 3 -and $null -ne $review.assessmentBaseline -and [string]$review.snapshots.reviewContractSha256 -ceq $expectedReviewContractSha256
+    Add-TestResult -Name 'self-contained-v4-bundle' -Passed $reviewPassed -Detail $(if ($reviewPassed) { 'The Workbench bundle embeds every staged inventory, the baseline, complete recommendation output, and one presentation per assessment.' } else { ($reviewOutput | Out-String).Trim() })
     Add-TestResult -Name 'review-reported-hash' -Passed ($null -ne $reviewResult -and [string]$reviewResult.reviewSha256 -ceq (Get-Sha256 -Path $reviewOutputPath)) -Detail 'The review result reports the hash of the exact bytes written to its immutable destination.'
     [string[]]$reversedAcceptedInventoryPaths = @($acceptedInventoryPaths.ToArray())
     [Array]::Reverse($reversedAcceptedInventoryPaths)
     $reorderedReviewPath = Join-Path $tempRoot 'assessment-reconciliation-reordered-review.json'
     try {
-        $reorderedReviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -AcceptedInventoryPaths $reversedAcceptedInventoryPaths -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reorderedReviewPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reorderedReviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $reversedAcceptedInventoryPaths -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reorderedReviewPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reorderedReviewExitCode = $LASTEXITCODE
     }
     catch {
         $reorderedReviewOutput = @($_)
         $reorderedReviewExitCode = 1
     }
-    Add-TestResult -Name 'review-lane-order-independent' -Passed ($reorderedReviewExitCode -eq 0 -and (Get-Sha256 -Path $reviewOutputPath) -ceq (Get-Sha256 -Path $reorderedReviewPath)) -Detail 'Equivalent accepted inventory lanes produce byte-identical review projections regardless of caller order.'
+    Add-TestResult -Name 'review-lane-order-independent' -Passed ($reorderedReviewExitCode -eq 0 -and (Get-Sha256 -Path $reviewOutputPath) -ceq (Get-Sha256 -Path $reorderedReviewPath)) -Detail 'Equivalent staged inventory lanes produce byte-identical Workbench bundles regardless of caller order.'
     $reviewHashBeforeOverwrite = Get-Sha256 -Path $reviewOutputPath
     try {
-        $reviewOverwriteOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -AcceptedInventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reviewOverwriteOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reviewOverwriteExitCode = $LASTEXITCODE
     }
     catch {
@@ -393,26 +392,73 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     }
     Add-TestResult -Name 'review-output-immutable' -Passed ($reviewOverwriteExitCode -ne 0 -and ($reviewOverwriteOutput | Out-String) -like '*snapshot output already exists*' -and (Get-Sha256 -Path $reviewOutputPath) -ceq $reviewHashBeforeOverwrite) -Detail 'A review producer cannot replace an existing immutable snapshot.'
 
-    $stagedInventory = Get-Content -LiteralPath $acceptedInventoryPaths[1] -Raw | ConvertFrom-Json -DateKind String
-    $stagedInventory.acceptance = $null
-    $stagedInventory.records[0].contentSha256 = 'b' * 64
-    $stagedInventory.records[0].content = 'Changed Interactive source content.'
-    $stagedInventory.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($stagedInventory.records)
-    $stagedInventoryPath = Join-Path $tempRoot 'interactive-toolkit-staged.json'
-    Write-JsonFixture -Path $stagedInventoryPath -Value $stagedInventory
-    $stagedReviewPath = Join-Path $tempRoot 'assessment-reconciliation-staged-review.json'
+    $publicationRequestPath = Join-Path $tempRoot 'publication-request.json'
+    Write-JsonFixture -Path $publicationRequestPath -Value ([ordered]@{
+        '$schema' = 'publication-request.schema.json'
+        schemaVersion = 1
+        kind = 'hosted-source-generation-publication-request'
+        workbenchBundleSha256 = Get-Sha256 -Path $reviewOutputPath
+        acceptance = [ordered]@{
+            acceptedAt = $generatedAt
+            acceptedBy = [ordered]@{ type = 'manual'; id = 'fixture-maintainer'; displayName = 'Fixture Maintainer' }
+            rationale = 'Accept the complete reconciliation fixture generation.'
+        }
+    })
+    $publicationRequestSha256 = Get-Sha256 -Path $publicationRequestPath
+    $previewOutput = @(& $publisherPath -RepositoryRoot $repositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -OutputFormat Json 2>&1)
+    $previewExitCode = $LASTEXITCODE
+    $preview = if ($previewExitCode -eq 0) { ($previewOutput | Out-String) | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'source-generation-preview' -Passed ($previewExitCode -eq 0 -and [string]$preview.mode -ceq 'preview' -and [string]$preview.publicationRequestSha256 -ceq $publicationRequestSha256 -and -not (Test-Path -LiteralPath (Join-Path $catalogRoot 'source-generations/current.json'))) -Detail 'Publication preview reports exact input hashes and does not write canonical state.'
+
     try {
-        $stagedReviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -AcceptedInventoryPaths $acceptedInventoryPaths.ToArray() -StagedInventoryPaths @($stagedInventoryPath) -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $stagedReviewPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
-        $stagedReviewExitCode = $LASTEXITCODE
+        $requestMismatchOutput = @(& $publisherPath -RepositoryRoot $repositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 ('f' * 64) -Publish -OutputFormat Json 2>&1)
+        $requestMismatchExitCode = $LASTEXITCODE
     }
     catch {
-        $stagedReviewOutput = @($_)
-        $stagedReviewExitCode = 1
+        $requestMismatchOutput = @($_)
+        $requestMismatchExitCode = 1
     }
-    $stagedReview = if ($stagedReviewExitCode -eq 0) { Get-Content -LiteralPath $stagedReviewPath -Raw | ConvertFrom-Json } else { $null }
-    $interactivePresentation = if ($null -ne $stagedReview) { @($stagedReview.assessmentPresentations | Where-Object { $_.assessmentRef.sourceDefinitionId -ceq 'interactive-toolkit' }) } else { @() }
-    $transitionPassed = $stagedReviewExitCode -eq 0 -and $interactivePresentation.Count -eq 1 -and [string]$interactivePresentation[0].sourceTransition -ceq 'changed' -and [string]$interactivePresentation[0].reviewState -ceq 'recommended' -and [string]$interactivePresentation[0].hostedId -ceq $allocatedId
-    Add-TestResult -Name 'staged-transition-is-presentation-only' -Passed $transitionPassed -Detail $(if ($transitionPassed) { 'A staged source change updates presentation state without changing recommendation ownership or Hosted identity.' } else { ($stagedReviewOutput | Out-String).Trim() })
+    Add-TestResult -Name 'publication-request-hash-required' -Passed ($requestMismatchExitCode -ne 0 -and ($requestMismatchOutput | Out-String) -like '*Publication request hash mismatch*') -Detail 'Publication rejects request bytes that do not match the separately supplied preview hash.'
+
+    $isolatedRepositoryRoot = Join-Path $tempRoot 'publication-repository'
+    $isolatedCatalogRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
+    $null = New-Item -ItemType Directory -Path (Split-Path -Parent $isolatedCatalogRoot) -Force
+    Copy-Item -LiteralPath $catalogRoot -Destination $isolatedCatalogRoot -Recurse
+    $publishOutput = @(& $publisherPath -RepositoryRoot $isolatedRepositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 $publicationRequestSha256 -Publish -OutputFormat Json 2>&1)
+    $publishExitCode = $LASTEXITCODE
+    $published = if ($publishExitCode -eq 0) { ($publishOutput | Out-String) | ConvertFrom-Json } else { $null }
+    $currentGenerationPath = Join-Path $isolatedCatalogRoot 'source-generations/current.json'
+    $historyGenerationPath = if ($null -eq $published) { '' } else { Join-Path $isolatedCatalogRoot "source-generations/history/$($published.sourceGenerationSha256).json" }
+    $publishedGeneration = if (Test-Path -LiteralPath $currentGenerationPath) { Get-Content -LiteralPath $currentGenerationPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $publishedStateValid = $publishExitCode -eq 0 -and (Test-Path -LiteralPath $historyGenerationPath) -and (Get-Sha256 -Path $currentGenerationPath) -ceq [string]$published.sourceGenerationSha256 -and (Get-Sha256 -Path $historyGenerationPath) -ceq [string]$published.sourceGenerationSha256 -and [string]$publishedGeneration.publicationRequestSha256 -ceq $publicationRequestSha256 -and $null -eq $publishedGeneration.PSObject.Properties['recommendationOutput']
+    Add-TestResult -Name 'atomic-source-generation-publication' -Passed $publishedStateValid -Detail $(if ($publishedStateValid) { 'One publication writes byte-identical current and content-addressed history files containing accepted inventories and baseline, but no recommendations.' } else { ($publishOutput | Out-String).Trim() })
+
+    $lockPath = Join-Path $isolatedCatalogRoot 'source-generations/current.json.lock'
+    $lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        try {
+            $contendedOutput = @(& $publisherPath -RepositoryRoot $isolatedRepositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 $publicationRequestSha256 -Publish -OutputFormat Json 2>&1)
+            $contendedExitCode = $LASTEXITCODE
+        }
+        catch {
+            $contendedOutput = @($_)
+            $contendedExitCode = 1
+        }
+    }
+    finally {
+        $lockStream.Dispose()
+    }
+    Add-TestResult -Name 'source-generation-lock-contention' -Passed ($contendedExitCode -ne 0 -and ($contendedOutput | Out-String) -like '*already being published*') -Detail 'A concurrent source-generation publisher fails without replacing current state.'
+
+    try {
+        $staleOutput = @(& $publisherPath -RepositoryRoot $isolatedRepositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 $publicationRequestSha256 -Publish -OutputFormat Json 2>&1)
+        $staleExitCode = $LASTEXITCODE
+    }
+    catch {
+        $staleOutput = @($_)
+        $staleExitCode = 1
+    }
+    Add-TestResult -Name 'source-generation-compare-and-swap' -Passed ($staleExitCode -ne 0 -and ($staleOutput | Out-String) -like '*precondition failed*' -and (Get-Sha256 -Path $currentGenerationPath) -ceq [string]$published.sourceGenerationSha256) -Detail 'A bundle based on no prior generation cannot overwrite newly published current state.'
 
     $staleBaseline = Copy-JsonObject -Value $baseline
     $staleBaseline.hostedCatalogSha256 = 'b' * 64

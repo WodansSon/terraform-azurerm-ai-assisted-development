@@ -121,67 +121,6 @@ function ConvertTo-SourceEvidenceCanonicalRecord {
     return $canonical
 }
 
-function ConvertTo-SourceEvidenceCanonicalAcceptance {
-    param([Parameter(Mandatory = $true)][object]$Acceptance)
-
-    $canonical = [ordered]@{
-        acceptedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $Acceptance.acceptedAt
-        acceptedBy = [string]$Acceptance.acceptedBy
-        stagedInventorySha256 = [string]$Acceptance.stagedInventorySha256
-        previousAcceptedInventorySha256 = $Acceptance.previousAcceptedInventorySha256
-    }
-    if ($Acceptance.PSObject.Properties['rationale']) {
-        $canonical.rationale = [string]$Acceptance.rationale
-    }
-    return $canonical
-}
-
-function ConvertTo-SourceEvidenceCanonicalRevision {
-    param([Parameter(Mandatory = $true)][object]$Revision)
-
-    return [ordered]@{
-        '$schema' = [string]$Revision.'$schema'
-        schemaVersion = [int]$Revision.schemaVersion
-        sourceDefinitionId = [string]$Revision.sourceDefinitionId
-        sourceDefinitionSha256 = [string]$Revision.sourceDefinitionSha256
-        inventoryConfigurationSha256 = [string]$Revision.inventoryConfigurationSha256
-        collectorVersion = [int]$Revision.collectorVersion
-        parserId = [string]$Revision.parserId
-        parserContractSha256 = [string]$Revision.parserContractSha256
-        collectedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $Revision.collectedAt
-        collection = $Revision.collection
-        acceptance = ConvertTo-SourceEvidenceCanonicalAcceptance -Acceptance $Revision.acceptance
-        records = @($Revision.records | ForEach-Object { ConvertTo-SourceEvidenceCanonicalRecord -Record $_ })
-    }
-}
-
-function Get-SourceEvidenceAcceptedInventorySha256 {
-    param(
-        [Parameter(Mandatory = $true)][object]$Revision,
-        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$PriorRevisions
-    )
-
-    $canonicalRevision = ConvertTo-SourceEvidenceCanonicalRevision -Revision $Revision
-    $canonicalPriorRevisions = @($PriorRevisions | ForEach-Object { ConvertTo-SourceEvidenceCanonicalRevision -Revision $_ })
-
-    $inventory = [ordered]@{
-        '$schema' = $canonicalRevision.'$schema'
-        schemaVersion = $canonicalRevision.schemaVersion
-        sourceDefinitionId = $canonicalRevision.sourceDefinitionId
-        sourceDefinitionSha256 = $canonicalRevision.sourceDefinitionSha256
-        inventoryConfigurationSha256 = $canonicalRevision.inventoryConfigurationSha256
-        collectorVersion = $canonicalRevision.collectorVersion
-        parserId = $canonicalRevision.parserId
-        parserContractSha256 = $canonicalRevision.parserContractSha256
-        collectedAt = $canonicalRevision.collectedAt
-        collection = $canonicalRevision.collection
-        acceptance = $canonicalRevision.acceptance
-        acceptedRevisions = $canonicalPriorRevisions
-        records = $canonicalRevision.records
-    }
-    return Get-SourceEvidenceContentSha256 -Content (($inventory | ConvertTo-Json -Depth 40) + "`n")
-}
-
 function Assert-SourceEvidenceRelativePath {
     param([Parameter(Mandatory = $true)][string]$Value)
 
@@ -328,121 +267,76 @@ function Get-SourceAssessmentRunConfigurationSha256 {
     return Get-SourceEvidenceContentSha256 -Content ($identity | ConvertTo-Json -Depth 10 -Compress)
 }
 
-function Get-PriorAcceptedSourceEvidence {
+function Get-PriorSourceGenerationEvidence {
     param(
-        [Parameter(Mandatory = $true)][object]$Inventory,
+        [Parameter(Mandatory = $true)][object]$SourceGeneration,
+        [Parameter(Mandatory = $true)][string]$SourceDefinitionId,
         [Parameter(Mandatory = $true)][string]$SourceId,
         [Parameter(Mandatory = $true)][string]$CurrentContentSha256
     )
 
-    $revisions = @($Inventory.acceptedRevisions)
-    for ($index = $revisions.Count - 1; $index -ge 0; $index--) {
-        $revision = $revisions[$index]
-        $priorRecords = @($revision.records | Where-Object { [string]$_.sourceId -ceq $SourceId })
-        if ($priorRecords.Count -eq 0) {
-            continue
-        }
-        if ($priorRecords.Count -ne 1) {
-            throw "Accepted inventory revision contains duplicate source IDs: $SourceId"
-        }
-        $priorRecord = $priorRecords[0]
-        if ([string]$priorRecord.contentSha256 -ceq $CurrentContentSha256) {
-            return $null
-        }
-        return [ordered]@{
-            sourceRef = [ordered]@{
-                sourceDefinitionId = [string]$Inventory.sourceDefinitionId
-                sourceId = $SourceId
-                contentSha256 = [string]$priorRecord.contentSha256
-            }
-            sourceRecord = $priorRecord
-            acceptedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $revision.acceptance.acceptedAt
-            inventorySha256 = [string]$revision.collection.inventorySha256
-        }
+    $inventoryProperty = $SourceGeneration.inventories.PSObject.Properties[$SourceDefinitionId]
+    if ($null -eq $inventoryProperty) {
+        return $null
     }
-    return $null
+    $priorRecords = @($inventoryProperty.Value.records | Where-Object { [string]$_.sourceId -ceq $SourceId })
+    if ($priorRecords.Count -eq 0 -or [string]$priorRecords[0].contentSha256 -ceq $CurrentContentSha256) {
+        return $null
+    }
+    if ($priorRecords.Count -ne 1) {
+        throw "Prior source generation contains duplicate source IDs: $SourceDefinitionId`:$SourceId"
+    }
+    $priorRecord = $priorRecords[0]
+    return [ordered]@{
+        sourceRef = [ordered]@{
+            sourceDefinitionId = $SourceDefinitionId
+            sourceId = $SourceId
+            contentSha256 = [string]$priorRecord.contentSha256
+        }
+        sourceRecord = $priorRecord
+        acceptedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $SourceGeneration.acceptance.acceptedAt
+        inventorySha256 = [string]$inventoryProperty.Value.collection.inventorySha256
+    }
 }
 
-function Assert-SourceEvidenceAcceptedInventoryHistory {
+function Assert-SourceInventoryIntegrity {
     param([Parameter(Mandatory = $true)][object]$Inventory)
 
     $sourceDefinitionId = [string]$Inventory.sourceDefinitionId
-    $priorRevisions = [Collections.Generic.List[object]]::new()
-    $previousAcceptedAt = $null
-    $previousRevisionSha256 = $null
-    foreach ($revision in @($Inventory.acceptedRevisions)) {
-        if ([string]$revision.sourceDefinitionId -cne $sourceDefinitionId) {
-            throw "Accepted inventory revision contains a different source definition: $sourceDefinitionId"
+    $currentSourceIds = @{}
+    foreach ($record in @($Inventory.records)) {
+        $currentSourceId = [string]$record.sourceId
+        if ($currentSourceIds.ContainsKey($currentSourceId)) {
+            throw "Source inventory contains duplicate source IDs: $currentSourceId"
         }
-        $revisionSourceIds = @{}
-        foreach ($record in @($revision.records)) {
-            $revisionSourceId = [string]$record.sourceId
-            if ($revisionSourceIds.ContainsKey($revisionSourceId)) {
-                throw "Accepted inventory revision contains duplicate source IDs: $revisionSourceId"
-            }
-            $revisionSourceIds[$revisionSourceId] = $true
-        }
-        $revisionRecordsSha256 = Get-SourceEvidenceRecordsSha256 -Records @($revision.records)
-        if ($revisionRecordsSha256 -cne [string]$revision.collection.inventorySha256) {
-            throw "Accepted inventory revision record hash mismatch: $($revision.acceptance.acceptedAt)"
-        }
-        $acceptedAt = ConvertTo-SourceEvidenceUtcDateTime -Value $revision.acceptance.acceptedAt
-        if ($null -ne $previousAcceptedAt -and $acceptedAt -le $previousAcceptedAt) {
-            throw "Accepted inventory revision times are not strictly increasing: $sourceDefinitionId"
-        }
-        $expectedPreviousSha256 = $revision.acceptance.previousAcceptedInventorySha256
-        if (($null -eq $previousRevisionSha256 -and $null -ne $expectedPreviousSha256) -or ($null -ne $previousRevisionSha256 -and [string]$expectedPreviousSha256 -cne $previousRevisionSha256)) {
-            throw "Accepted inventory revision chain hash mismatch: $($revision.acceptance.acceptedAt)"
-        }
-        $previousRevisionSha256 = Get-SourceEvidenceAcceptedInventorySha256 -Revision $revision -PriorRevisions $priorRevisions.ToArray()
-        $priorRevisions.Add($revision)
-        $previousAcceptedAt = $acceptedAt
+        $currentSourceIds[$currentSourceId] = $true
     }
-    $currentAcceptedAt = ConvertTo-SourceEvidenceUtcDateTime -Value $Inventory.acceptance.acceptedAt
-    if ($null -ne $previousAcceptedAt -and $currentAcceptedAt -le $previousAcceptedAt) {
-        throw "Accepted inventory revision times are not strictly increasing: $sourceDefinitionId"
-    }
-    $currentExpectedPreviousSha256 = $Inventory.acceptance.previousAcceptedInventorySha256
-    if (($null -eq $previousRevisionSha256 -and $null -ne $currentExpectedPreviousSha256) -or ($null -ne $previousRevisionSha256 -and [string]$currentExpectedPreviousSha256 -cne $previousRevisionSha256)) {
-        throw "Accepted inventory revision chain hash mismatch: $($Inventory.acceptance.acceptedAt), expected $currentExpectedPreviousSha256, reconstructed $previousRevisionSha256"
+    $recordsSha256 = Get-SourceEvidenceRecordsSha256 -Records @($Inventory.records)
+    if ($recordsSha256 -cne [string]$Inventory.collection.inventorySha256) {
+        throw "Source inventory record hash does not match collection.inventorySha256: $sourceDefinitionId"
     }
 }
 
-function Assert-CurrentAcceptedSourceInventory {
+function Assert-CurrentSourceInventory {
     param(
         [Parameter(Mandatory = $true)][object]$Inventory,
         [Parameter(Mandatory = $true)][object]$Evidence
     )
 
     $sourceDefinitionId = [string]$Inventory.sourceDefinitionId
-    if ($null -eq $Inventory.acceptance) {
-        throw "Source inventory is not accepted: $sourceDefinitionId"
-    }
     if ($sourceDefinitionId -cne [string]$Evidence.SourceDefinitionId) {
         throw "Source inventory definition ID mismatch: $sourceDefinitionId"
     }
     if ([string]$Inventory.parserId -cne [string]$Evidence.ParserId) {
-        throw "Accepted inventory parser does not match its source definition: $sourceDefinitionId"
+        throw "Source inventory parser does not match its source definition: $sourceDefinitionId"
     }
     if ([string]$Inventory.parserContractSha256 -cne [string]$Evidence.ParserContractSha256) {
-        throw "Accepted inventory parser contract hash is stale: $sourceDefinitionId"
+        throw "Source inventory parser contract hash is stale: $sourceDefinitionId"
     }
     if ([string]$Inventory.inventoryConfigurationSha256 -cne [string]$Evidence.InventoryConfigurationSha256) {
-        throw "Accepted inventory configuration hash is stale: $sourceDefinitionId"
+        throw "Source inventory configuration hash is stale: $sourceDefinitionId"
     }
-    $currentSourceIds = @{}
-    foreach ($record in @($Inventory.records)) {
-        $currentSourceId = [string]$record.sourceId
-        if ($currentSourceIds.ContainsKey($currentSourceId)) {
-            throw "Accepted inventory contains duplicate source IDs: $currentSourceId"
-        }
-        $currentSourceIds[$currentSourceId] = $true
-    }
-    $recordsSha256 = Get-SourceEvidenceRecordsSha256 -Records @($Inventory.records)
-    if ($recordsSha256 -cne [string]$Inventory.collection.inventorySha256) {
-        throw "Accepted inventory record hash does not match collection.inventorySha256: $sourceDefinitionId"
-    }
-    Assert-SourceEvidenceAcceptedInventoryHistory -Inventory $Inventory
+    Assert-SourceInventoryIntegrity -Inventory $Inventory
 }
 
-Export-ModuleMember -Function ConvertTo-SourceEvidenceUtcDateTime, ConvertTo-SourceEvidenceUtcTimestamp, Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceAcceptedInventorySha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorAcceptedSourceEvidence, Assert-SourceEvidenceAcceptedInventoryHistory, Assert-CurrentAcceptedSourceInventory
+Export-ModuleMember -Function ConvertTo-SourceEvidenceUtcDateTime, ConvertTo-SourceEvidenceUtcTimestamp, Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceGenerationEvidence, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory

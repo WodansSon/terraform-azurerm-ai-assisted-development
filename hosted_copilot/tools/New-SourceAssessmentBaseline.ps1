@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InventoryPaths,
 
+    [string]$PriorSourceGenerationPath,
+
     [Parameter(Mandatory = $true)]
     [string]$AssessmentDraftPath,
 
@@ -93,6 +95,7 @@ if ([string]::IsNullOrWhiteSpace($Model) -or [string]::IsNullOrWhiteSpace($Evalu
 
 $assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+$sourceGenerationSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline.schema.json'
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
@@ -123,19 +126,33 @@ $priorSourceEvidenceByKey = @{}
 $assessmentCardinalityBySourceDefinition = @{}
 $runSourceDefinitions = [Collections.Generic.List[object]]::new()
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
+$priorSourceGeneration = $null
+if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
+    $priorInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath $sourceGenerationSchemaPath
+    $priorSourceGeneration = $priorInput.Value
+    [string[]]$priorSourceDefinitionIds = @($priorSourceGeneration.inventories.PSObject.Properties.Name)
+    [Array]::Sort($priorSourceDefinitionIds, [StringComparer]::Ordinal)
+    if (@(Compare-Object $expectedSourceDefinitionIds $priorSourceDefinitionIds -SyncWindow 0).Count -ne 0) {
+        throw "Prior source generation must contain exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
+    }
+    foreach ($sourceDefinitionId in $priorSourceDefinitionIds) {
+        $priorInventory = $priorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId].Value
+        if (-not (($priorInventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
+            throw "Prior source generation inventory does not satisfy its schema: $sourceDefinitionId"
+        }
+        Assert-SourceInventoryIntegrity -Inventory $priorInventory
+    }
+}
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
     $inventoryInput = Test-JsonFile -Path $resolvedInventoryPath -SchemaPath $inventorySchemaPath
     $inventory = $inventoryInput.Value
-    if ($null -eq $inventory.acceptance) {
-        throw "Assessment requires an accepted inventory: $resolvedInventoryPath"
-    }
     $sourceDefinitionId = [string]$inventory.sourceDefinitionId
     if ($inventoryHashes.Contains($sourceDefinitionId)) {
         throw "Assessment received duplicate inventory sourceDefinitionId: $sourceDefinitionId"
     }
     $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $resolvedRepositoryRoot -SourceDefinitionId $sourceDefinitionId
-    Assert-CurrentAcceptedSourceInventory -Inventory $inventory -Evidence $sourceEvidence
+    Assert-CurrentSourceInventory -Inventory $inventory -Evidence $sourceEvidence
     $assessmentCardinalityBySourceDefinition[$sourceDefinitionId] = [string]$sourceEvidence.AssessmentCardinality
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
     $runSourceDefinitions.Add([ordered]@{
@@ -149,9 +166,14 @@ foreach ($inventoryPath in $InventoryPaths) {
 
     foreach ($record in @($inventory.records)) {
         $key = "$sourceDefinitionId`:$($record.sourceId)"
-        $priorSourceEvidenceByKey[$key] = Get-PriorAcceptedSourceEvidence -Inventory $inventory -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+        $priorSourceEvidenceByKey[$key] = if ($null -eq $priorSourceGeneration) {
+            $null
+        }
+        else {
+            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+        }
         if ($inventoryRecords.ContainsKey($key)) {
-            throw "Accepted inventories contain duplicate source reference: $key"
+            throw "Source inventories contain duplicate source reference: $key"
         }
         $inventoryRecords[$key] = $record
     }
@@ -182,10 +204,10 @@ foreach ($entry in $draftEntries) {
         throw "Assessment draft contains duplicate source reference: $key"
     }
     if (-not $inventoryRecords.ContainsKey($key)) {
-        throw "Assessment draft references a source absent from accepted inventories: $key"
+        throw "Assessment draft references a source absent from staged inventories: $key"
     }
     if ([string]$entry.sourceRef.contentSha256 -cne [string]$inventoryRecords[$key].contentSha256) {
-        throw "Assessment draft source hash does not match accepted inventory: $key"
+        throw "Assessment draft source hash does not match staged inventory: $key"
     }
     if ($assessmentCardinalityBySourceDefinition[$sourceDefinitionId] -ceq 'exactly-one' -and @($entry.assessments).Count -ne 1) {
         throw "Assessment draft must contain exactly one assessment for $key"
@@ -255,7 +277,7 @@ foreach ($entry in $draftEntries) {
 $missingSourceRefs = @($inventoryRecords.Keys | Where-Object { -not $draftBySourceRef.ContainsKey($_) })
 if ($missingSourceRefs.Count -gt 0) {
     [Array]::Sort($missingSourceRefs, [StringComparer]::Ordinal)
-    throw "Assessment draft does not cover every accepted inventory record: $($missingSourceRefs -join ', ')"
+    throw "Assessment draft does not cover every staged inventory record: $($missingSourceRefs -join ', ')"
 }
 $inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
 

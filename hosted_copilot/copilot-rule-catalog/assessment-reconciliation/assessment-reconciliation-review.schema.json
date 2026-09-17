@@ -4,7 +4,7 @@
   "title": "Hosted Assessment Reconciliation Review",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "recommendations", "assessmentPresentations"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "acceptedSourceGeneration", "stagedInventories", "assessmentBaseline", "recommendationOutput", "summary", "assessmentPresentations"],
   "properties": {
     "$schema": {
       "const": "assessment-reconciliation-review.schema.json"
@@ -25,14 +25,34 @@
     "snapshots": {
       "$ref": "#/$defs/snapshots"
     },
+    "acceptedSourceGeneration": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stagedInventories": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "assessmentBaseline": {
+      "type": "object"
+    },
+    "recommendationOutput": {
+      "type": "object"
+    },
     "summary": {
       "$ref": "#/$defs/summary"
-    },
-    "recommendations": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/recommendation"
-      }
     },
     "assessmentPresentations": {
       "type": "array",
@@ -64,18 +84,22 @@
     "snapshots": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["inventoryHashes", "stagedInventoryHashes", "assessmentBaselineSha256", "recommendationSnapshotSha256", "hostedCatalogSha256", "reconciliationContractSha256", "reviewContractSha256"],
+      "required": ["stagedInventoryHashes", "acceptedSourceGenerationSha256", "assessmentBaselineSha256", "hostedCatalogSha256", "reconciliationContractSha256", "reviewContractSha256"],
       "properties": {
-        "inventoryHashes": {
-          "$ref": "#/$defs/hashMap"
-        },
         "stagedInventoryHashes": {
           "$ref": "#/$defs/hashMap"
         },
-        "assessmentBaselineSha256": {
-          "$ref": "#/$defs/sha256"
+        "acceptedSourceGenerationSha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "recommendationSnapshotSha256": {
+        "assessmentBaselineSha256": {
           "$ref": "#/$defs/sha256"
         },
         "hostedCatalogSha256": {
@@ -185,7 +209,7 @@
           "$ref": "#/$defs/hostedId"
         },
         "idState": {
-          "enum": ["existing", "durable", "tentative"]
+          "enum": ["existing", "tentative"]
         },
         "recommendedAction": {
           "enum": ["add", "update", "no-change", "defer"]
