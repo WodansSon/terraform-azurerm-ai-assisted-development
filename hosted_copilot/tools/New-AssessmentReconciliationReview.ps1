@@ -174,21 +174,68 @@ if (($inventoryHashes | ConvertTo-Json -Compress) -cne $baselineInventoryJson) {
     throw 'Assessment reconciliation review requires every baseline inventory lane exactly once'
 }
 
+$knownAssessmentKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($entry in @($baseline.entries)) {
+    foreach ($assessment in @($entry.assessments)) {
+        $assessmentKey = Get-AssessmentKey -Reference ([ordered]@{
+            sourceDefinitionId = [string]$entry.sourceRef.sourceDefinitionId
+            sourceId = [string]$entry.sourceRef.sourceId
+            contentSha256 = [string]$entry.sourceRef.contentSha256
+            assessmentId = [string]$assessment.assessmentId
+        })
+        if (-not $knownAssessmentKeys.Add($assessmentKey)) {
+            throw 'Assessment baseline contains duplicate assessment identity'
+        }
+    }
+}
 $recommendationsById = @{}
+$membershipByAssessment = @{}
 foreach ($recommendation in @($recommendationSnapshot.recommendations)) {
     $hostedId = [string]$recommendation.hostedId
     if ($recommendationsById.ContainsKey($hostedId)) {
         throw "Recommendation snapshot contains duplicate Hosted ID: $hostedId"
     }
     $recommendationsById[$hostedId] = $recommendation
+    $memberKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($reference in @($recommendation.memberAssessmentRefs)) {
+        if ([string]$reference.assessmentBaselineSha256 -cne $baselineInput.Snapshot.Sha256) {
+            throw "Recommendation snapshot member does not bind the supplied assessment baseline: $hostedId"
+        }
+        $assessmentKey = Get-AssessmentKey -Reference $reference
+        if (-not $knownAssessmentKeys.Contains($assessmentKey)) {
+            throw "Recommendation snapshot references an unknown assessment: $hostedId"
+        }
+        if (-not $memberKeys.Add($assessmentKey)) {
+            throw "Recommendation snapshot repeats an assessment: $hostedId"
+        }
+        if ($membershipByAssessment.ContainsKey($assessmentKey)) {
+            throw "Assessment belongs to more than one recommendation: $hostedId"
+        }
+        $membershipByAssessment[$assessmentKey] = $hostedId
+    }
 }
 $coverageByAssessment = @{}
 foreach ($coverage in @($recommendationSnapshot.assessmentCoverage)) {
+    if ([string]$coverage.assessmentRef.assessmentBaselineSha256 -cne $baselineInput.Snapshot.Sha256) {
+        throw 'Recommendation snapshot coverage does not bind the supplied assessment baseline'
+    }
     $key = Get-AssessmentKey -Reference $coverage.assessmentRef
     if ($coverageByAssessment.ContainsKey($key)) {
         throw 'Recommendation snapshot contains duplicate assessment coverage'
     }
     $coverageByAssessment[$key] = $coverage
+    $hostedIds = @($coverage.hostedIds)
+    if ([string]$coverage.disposition -ceq 'recommended') {
+        if ($hostedIds.Count -ne 1 -or -not $recommendationsById.ContainsKey([string]$hostedIds[0])) {
+            throw 'Recommended assessment coverage must reference one known recommendation'
+        }
+        if (-not $membershipByAssessment.ContainsKey($key) -or [string]$membershipByAssessment[$key] -cne [string]$hostedIds[0]) {
+            throw 'Assessment coverage and recommendation membership do not match'
+        }
+    }
+    elseif ($membershipByAssessment.ContainsKey($key)) {
+        throw 'Deferred or excluded assessment coverage cannot belong to a recommendation'
+    }
 }
 
 $presentations = [Collections.Generic.List[object]]::new()

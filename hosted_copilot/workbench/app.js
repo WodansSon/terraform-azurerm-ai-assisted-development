@@ -3195,10 +3195,10 @@ function buildApprovalPayload() {
     schemaVersion: APPROVAL_PAYLOAD_SCHEMA_VERSION,
     kind: "hosted-rule-promotion-selection",
     sessionId: state.session.id,
-    snapshots: state.session.snapshots,
+    snapshots: session.snapshots,
     inapplicableCandidateCount: state.excludedCandidateCount,
     bulkOperations: session.bulkOperations,
-    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, getDecision(candidate)))
+    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, getDecision(candidate), session.applicabilityOverrides[candidate.key] || null))
   };
 }
 

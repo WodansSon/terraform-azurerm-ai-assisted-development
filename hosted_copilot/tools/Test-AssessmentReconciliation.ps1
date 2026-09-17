@@ -396,6 +396,21 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     $reviewPassed = $reviewExitCode -eq 0 -and $review.readOnly -eq $true -and $review.schemaVersion -eq 4 -and @($review.assessmentPresentations).Count -eq 3 -and @($review.recommendationOutput.recommendations).Count -eq 1 -and @($review.recommendationOutput.assessmentCoverage).Count -eq 3 -and @($review.stagedInventories.PSObject.Properties).Count -eq 3 -and $null -ne $review.assessmentBaseline -and [string]$review.snapshots.reviewContractSha256 -ceq $expectedReviewContractSha256
     Add-TestResult -Name 'self-contained-v4-bundle' -Passed $reviewPassed -Detail $(if ($reviewPassed) { 'The Workbench bundle embeds every staged inventory, the baseline, complete recommendation output, and one presentation per assessment.' } else { ($reviewOutput | Out-String).Trim() })
     Add-TestResult -Name 'review-reported-hash' -Passed ($null -ne $reviewResult -and [string]$reviewResult.reviewSha256 -ceq (Get-Sha256 -Path $reviewOutputPath)) -Detail 'The review result reports the hash of the exact bytes written to its immutable destination.'
+    $duplicateOwnershipSnapshot = Copy-JsonObject -Value $firstSnapshot
+    $duplicateOwnershipRecommendation = Copy-JsonObject -Value $duplicateOwnershipSnapshot.recommendations[0]
+    $duplicateOwnershipRecommendation.hostedId = 'IMPL-SCHEMA-998'
+    $duplicateOwnershipSnapshot.recommendations = @($duplicateOwnershipSnapshot.recommendations[0], $duplicateOwnershipRecommendation)
+    $duplicateOwnershipSnapshotPath = Join-Path $tempRoot 'duplicate-ownership-recommendations.json'
+    Write-JsonFixture -Path $duplicateOwnershipSnapshotPath -Value $duplicateOwnershipSnapshot
+    try {
+        $duplicateOwnershipOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $duplicateOwnershipSnapshotPath -OutputPath (Join-Path $tempRoot 'duplicate-ownership-review.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $duplicateOwnershipExitCode = $LASTEXITCODE
+    }
+    catch {
+        $duplicateOwnershipOutput = @($_)
+        $duplicateOwnershipExitCode = 1
+    }
+    Add-TestResult -Name 'bundle-revalidates-recommendation-ownership' -Passed ($duplicateOwnershipExitCode -ne 0 -and ($duplicateOwnershipOutput | Out-String) -like '*more than one recommendation*') -Detail 'Bundle construction independently rejects one assessment assigned to multiple generated recommendations.'
     [string[]]$reversedAcceptedInventoryPaths = @($acceptedInventoryPaths.ToArray())
     [Array]::Reverse($reversedAcceptedInventoryPaths)
     $reorderedReviewPath = Join-Path $tempRoot 'assessment-reconciliation-reordered-review.json'
@@ -438,6 +453,58 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     $previewExitCode = $LASTEXITCODE
     $preview = if ($previewExitCode -eq 0) { ($previewOutput | Out-String) | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'source-generation-preview' -Passed ($previewExitCode -eq 0 -and [string]$preview.mode -ceq 'preview' -and [string]$preview.publicationRequestSha256 -ceq $publicationRequestSha256 -and -not (Test-Path -LiteralPath (Join-Path $catalogRoot 'source-generations/current.json'))) -Detail 'Publication preview reports exact input hashes and does not write canonical state.'
+
+    $substitutedInventoryBundle = Copy-JsonObject -Value $review
+    $substitutedInventoryBundle.stagedInventories.'contributor-guidance'.collectedAt = '2026-09-16T13:00:00Z'
+    $substitutedInventoryBundlePath = Join-Path $tempRoot 'substituted-inventory-bundle.json'
+    Write-JsonFixture -Path $substitutedInventoryBundlePath -Value $substitutedInventoryBundle
+    $substitutedInventoryRequestPath = Join-Path $tempRoot 'substituted-inventory-request.json'
+    Write-JsonFixture -Path $substitutedInventoryRequestPath -Value ([ordered]@{
+        '$schema' = 'publication-request.schema.json'
+        schemaVersion = 1
+        kind = 'hosted-source-generation-publication-request'
+        workbenchBundleSha256 = Get-Sha256 -Path $substitutedInventoryBundlePath
+        acceptance = [ordered]@{
+            acceptedAt = $publicationAcceptedAt
+            acceptedBy = [ordered]@{ type = 'manual'; id = 'fixture-maintainer'; displayName = 'Fixture Maintainer' }
+            rationale = 'Attempt publication with substituted inventory evidence.'
+        }
+    })
+    try {
+        $substitutedInventoryOutput = @(& $publisherPath -RepositoryRoot $repositoryRoot -WorkbenchBundlePath $substitutedInventoryBundlePath -PublicationRequestPath $substitutedInventoryRequestPath -OutputFormat Json 2>&1)
+        $substitutedInventoryExitCode = $LASTEXITCODE
+    }
+    catch {
+        $substitutedInventoryOutput = @($_)
+        $substitutedInventoryExitCode = 1
+    }
+    Add-TestResult -Name 'embedded-inventory-substitution-rejected' -Passed ($substitutedInventoryExitCode -ne 0 -and ($substitutedInventoryOutput | Out-String) -like '*embedded inventory does not match its snapshot hash*') -Detail 'Publication recomputes embedded inventory snapshot bytes and rejects schema-valid substitution even when the request binds the altered outer bundle.'
+
+    $substitutedBaselineBundle = Copy-JsonObject -Value $review
+    $substitutedBaselineBundle.assessmentBaseline.generatedAt = '2026-09-16T13:00:00Z'
+    $substitutedBaselineBundlePath = Join-Path $tempRoot 'substituted-baseline-bundle.json'
+    Write-JsonFixture -Path $substitutedBaselineBundlePath -Value $substitutedBaselineBundle
+    $substitutedBaselineRequestPath = Join-Path $tempRoot 'substituted-baseline-request.json'
+    Write-JsonFixture -Path $substitutedBaselineRequestPath -Value ([ordered]@{
+        '$schema' = 'publication-request.schema.json'
+        schemaVersion = 1
+        kind = 'hosted-source-generation-publication-request'
+        workbenchBundleSha256 = Get-Sha256 -Path $substitutedBaselineBundlePath
+        acceptance = [ordered]@{
+            acceptedAt = $publicationAcceptedAt
+            acceptedBy = [ordered]@{ type = 'manual'; id = 'fixture-maintainer'; displayName = 'Fixture Maintainer' }
+            rationale = 'Attempt publication with substituted assessment evidence.'
+        }
+    })
+    try {
+        $substitutedBaselineOutput = @(& $publisherPath -RepositoryRoot $repositoryRoot -WorkbenchBundlePath $substitutedBaselineBundlePath -PublicationRequestPath $substitutedBaselineRequestPath -OutputFormat Json 2>&1)
+        $substitutedBaselineExitCode = $LASTEXITCODE
+    }
+    catch {
+        $substitutedBaselineOutput = @($_)
+        $substitutedBaselineExitCode = 1
+    }
+    Add-TestResult -Name 'embedded-baseline-substitution-rejected' -Passed ($substitutedBaselineExitCode -ne 0 -and ($substitutedBaselineOutput | Out-String) -like '*embedded assessment baseline does not match its snapshot hash*') -Detail 'Publication recomputes embedded baseline snapshot bytes and rejects schema-valid substitution even when the request binds the altered outer bundle.'
 
     try {
         $requestMismatchOutput = @(& $publisherPath -RepositoryRoot $repositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 ('f' * 64) -Publish -OutputFormat Json 2>&1)

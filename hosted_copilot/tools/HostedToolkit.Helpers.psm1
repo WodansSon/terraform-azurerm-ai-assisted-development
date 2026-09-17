@@ -100,6 +100,25 @@ function ConvertTo-OrdinalMap {
     return $result
 }
 
+function ConvertTo-JsonSnapshotBytes {
+    param(
+        [Parameter(Mandatory = $true)][object]$Value,
+        [ValidateRange(1, 100)][int]$Depth = 40
+    )
+
+    return [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth $Depth) + "`n")
+}
+
+function Get-JsonSnapshotSha256 {
+    param(
+        [Parameter(Mandatory = $true)][object]$Value,
+        [ValidateRange(1, 100)][int]$Depth = 40
+    )
+
+    [byte[]]$bytes = ConvertTo-JsonSnapshotBytes -Value $Value -Depth $Depth
+    return Get-Sha256 -Bytes $bytes
+}
+
 function Write-JsonSnapshot {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -111,7 +130,7 @@ function Write-JsonSnapshot {
     if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
         $null = New-Item -ItemType Directory -Path $directory -Force
     }
-    [byte[]]$bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth $Depth) + "`n")
+    [byte[]]$bytes = ConvertTo-JsonSnapshotBytes -Value $Value -Depth $Depth
     $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
     try {
         [IO.File]::WriteAllBytes($temporaryPath, $bytes)
@@ -168,4 +187,4 @@ function Get-BehaviorManifestSha256 {
     return Get-Sha256 -Content $builder.ToString()
 }
 
-Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Write-JsonSnapshot, Get-BehaviorManifestSha256
+Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Get-BehaviorManifestSha256

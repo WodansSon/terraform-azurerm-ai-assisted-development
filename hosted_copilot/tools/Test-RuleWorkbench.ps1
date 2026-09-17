@@ -564,6 +564,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $appContent -match 'return date\.toISOString\(\)\.replace\(/Z\$/, "0000Z"\)' -and
         $appContent -match 'function normalizeSessionTimestamps\(session\)' -and
         $appContent -match 'const snapshot = normalizeSessionTimestamps\(state\.session\)' -and
+        $appContent -match 'buildApprovalDecision\(candidate, getDecision\(candidate\), session\.applicabilityOverrides\[candidate\.key\] \|\| null\)' -and
         $appContent -notmatch 'new Date\(\)\.toISOString\(\)'
     Add-TestResult -Name 'browser-timestamp-normalization' -Passed $timestampNormalizationValid -Detail 'Workbench persistence and exports use one browser canonicalizer that matches the PowerShell seven-digit UTC wire format.'
 

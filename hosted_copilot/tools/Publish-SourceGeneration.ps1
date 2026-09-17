@@ -138,7 +138,11 @@ foreach ($sourceDefinitionId in $actualSourceDefinitionIds) {
     if ($null -eq $snapshotProperty) {
         throw "Workbench bundle is missing staged inventory hash: $sourceDefinitionId"
     }
-    $inventoryHashes[$sourceDefinitionId] = [string]$snapshotProperty.Value
+    $embeddedInventorySha256 = Get-JsonSnapshotSha256 -Value $inventory
+    if ($embeddedInventorySha256 -cne [string]$snapshotProperty.Value) {
+        throw "Workbench bundle embedded inventory does not match its snapshot hash: $sourceDefinitionId"
+    }
+    $inventoryHashes[$sourceDefinitionId] = $embeddedInventorySha256
 }
 if (@($bundle.snapshots.stagedInventoryHashes.PSObject.Properties).Count -ne $actualSourceDefinitionIds.Count) {
     throw 'Workbench bundle staged inventory hashes do not match its inventory lane set'
@@ -147,6 +151,10 @@ if (@($bundle.snapshots.stagedInventoryHashes.PSObject.Properties).Count -ne $ac
 $baselineJson = $bundle.assessmentBaseline | ConvertTo-Json -Depth 40
 if (-not ($baselineJson | Test-Json -SchemaFile $baselineSchemaPath -ErrorAction Stop)) {
     throw 'Workbench bundle assessment baseline does not satisfy its schema'
+}
+$embeddedBaselineSha256 = Get-JsonSnapshotSha256 -Value $bundle.assessmentBaseline
+if ($embeddedBaselineSha256 -cne [string]$bundle.snapshots.assessmentBaselineSha256) {
+    throw 'Workbench bundle embedded assessment baseline does not match its snapshot hash'
 }
 $recommendationJson = $bundle.recommendationOutput | ConvertTo-Json -Depth 40
 if (-not ($recommendationJson | Test-Json -SchemaFile $recommendationSchemaPath -ErrorAction Stop)) {
