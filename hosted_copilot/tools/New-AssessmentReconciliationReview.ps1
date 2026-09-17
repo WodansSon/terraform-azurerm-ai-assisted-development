@@ -102,26 +102,6 @@ function Get-SourceTransition {
     return 'current'
 }
 
-function Write-JsonAtomically {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][object]$Value
-    )
-
-    $directory = Split-Path -Parent $Path
-    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-        $null = New-Item -ItemType Directory -Path $directory -Force
-    }
-    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
-    try {
-        [IO.File]::WriteAllText($temporaryPath, (($Value | ConvertTo-Json -Depth 40) + "`n"), [Text.UTF8Encoding]::new($false))
-        [IO.File]::Move($temporaryPath, $Path, $true)
-    }
-    finally {
-        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $repositoryPrefix = $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar
 $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
@@ -146,8 +126,10 @@ if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256 -or
 if ([string]$recommendationSnapshot.assessmentBaselineSha256 -cne $baselineInput.Snapshot.Sha256) {
     throw 'Hosted rule change recommendations do not bind the supplied assessment baseline'
 }
-$baselineInventoryJson = $baseline.inventoryHashes | ConvertTo-Json -Compress
-$recommendationInventoryJson = $recommendationSnapshot.inventoryHashes | ConvertTo-Json -Compress
+$baselineInventoryHashes = ConvertTo-OrdinalMap -Value $baseline.inventoryHashes
+$recommendationInventoryHashes = ConvertTo-OrdinalMap -Value $recommendationSnapshot.inventoryHashes
+$baselineInventoryJson = $baselineInventoryHashes | ConvertTo-Json -Compress
+$recommendationInventoryJson = $recommendationInventoryHashes | ConvertTo-Json -Compress
 if ($baselineInventoryJson -cne $recommendationInventoryJson) {
     throw 'Hosted rule change recommendations do not bind the assessment baseline inventories'
 }
@@ -177,6 +159,7 @@ foreach ($inventoryPath in $AcceptedInventoryPaths) {
         $acceptedRecords[$key] = $record
     }
 }
+$acceptedInventoryHashes = ConvertTo-OrdinalMap -Value $acceptedInventoryHashes
 if (($acceptedInventoryHashes | ConvertTo-Json -Compress) -cne $baselineInventoryJson) {
     throw 'Assessment reconciliation review requires every baseline inventory lane exactly once'
 }
@@ -206,6 +189,7 @@ foreach ($inventoryPath in $StagedInventoryPaths) {
         $stagedRecords[$key] = $record
     }
 }
+$stagedInventoryHashes = ConvertTo-OrdinalMap -Value $stagedInventoryHashes
 
 $recommendationsById = @{}
 foreach ($recommendation in @($recommendationSnapshot.recommendations)) {
@@ -306,7 +290,7 @@ $reviewJson = $review | ConvertTo-Json -Depth 40
 if (-not ($reviewJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'assessment-reconciliation-review.schema.json') -ErrorAction Stop)) {
     throw 'Assessment reconciliation review does not satisfy its schema'
 }
-Write-JsonAtomically -Path $resolvedOutputPath -Value $review
+$outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $review
 
 $result = [ordered]@{
     status = 'passed'
@@ -314,7 +298,7 @@ $result = [ordered]@{
     sourceCount = $review.summary.sourceCount
     assessmentCount = $review.summary.assessmentCount
     recommendationCount = $review.summary.recommendationCount
-    reviewSha256 = Get-Sha256 -Path $resolvedOutputPath
+    reviewSha256 = $outputSnapshot.Sha256
 }
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5

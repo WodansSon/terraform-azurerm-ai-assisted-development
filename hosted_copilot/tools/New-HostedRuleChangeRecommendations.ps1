@@ -92,26 +92,6 @@ function Get-GuardedTokens {
     return [int][Math]::Ceiling((Get-EstimatedTokens -Text $Text) * 1.25)
 }
 
-function Write-JsonAtomically {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][object]$Value
-    )
-
-    $directory = Split-Path -Parent $Path
-    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-        $null = New-Item -ItemType Directory -Path $directory -Force
-    }
-    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
-    try {
-        [IO.File]::WriteAllText($temporaryPath, (($Value | ConvertTo-Json -Depth 40) + "`n"), [Text.UTF8Encoding]::new($false))
-        [IO.File]::Move($temporaryPath, $Path, $true)
-    }
-    finally {
-        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $repositoryPrefix = $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar
 $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
@@ -373,7 +353,7 @@ $snapshot = [ordered]@{
     '$schema' = 'hosted-rule-change-recommendations.schema.json'
     schemaVersion = 1
     generatedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
-    inventoryHashes = $baseline.inventoryHashes
+    inventoryHashes = ConvertTo-OrdinalMap -Value $baseline.inventoryHashes
     assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
     hostedCatalogSha256 = $catalogInput.Snapshot.Sha256
     reconciliationContractSha256 = $reconciliationContractSha256
@@ -386,14 +366,14 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 40
 if (-not ($snapshotJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop)) {
     throw 'Hosted rule change recommendations do not satisfy their schema'
 }
-Write-JsonAtomically -Path $resolvedOutputPath -Value $snapshot
+$outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $snapshot
 
 $result = [ordered]@{
     status = 'passed'
     outputPath = $resolvedOutputPath
     recommendationCount = $snapshot.recommendations.Count
     assessmentCount = $snapshot.assessmentCoverage.Count
-    recommendationSnapshotSha256 = Get-Sha256 -Path $resolvedOutputPath
+    recommendationSnapshotSha256 = $outputSnapshot.Sha256
     reconciliationContractSha256 = $reconciliationContractSha256
 }
 if ($OutputFormat -eq 'Json') {

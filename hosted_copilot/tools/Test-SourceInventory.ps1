@@ -223,6 +223,15 @@ try {
     Add-TestResult -Name 'interactive-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $interactiveContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Interactive Toolkit parser contract has a strict versioned shape.'
     Add-TestResult -Name 'contributor-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contributorDefinitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Contributor Guidance uses the strict shared source-definition schema.'
     Add-TestResult -Name 'contributor-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contributorContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Contributor Guidance parser contract has a strict versioned shape.'
+    $requiredParserValidationFiles = @(
+        'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
+        'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
+        'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+    )
+    $parserContracts = @($contractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
+    $missingParserValidationFiles = @($parserContracts | ForEach-Object { $contract = $_; $requiredParserValidationFiles | Where-Object { $_ -notin @($contract.behaviorFiles) } })
+    $maintainerCatalogSchemaPath = 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+    Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, and parser-specific validation schemas.'
 
     $interactiveCatalog = Get-Content -LiteralPath $interactiveCatalogPath -Raw | ConvertFrom-Json
     $interactiveContractSourcePaths = @($interactiveCatalog.rules.contractPath | Sort-Object -Unique | ForEach-Object { Join-Path $repoRoot $_ })
@@ -393,6 +402,7 @@ try {
     $isolatedToolsRoot = Join-Path $isolatedRepositoryRoot 'hosted_copilot/tools'
     $isolatedParserRoot = Join-Path $isolatedToolsRoot 'source-parsers'
     $null = New-Item -ItemType Directory -Path $isolatedInventoryRoot, $isolatedDefinitionRoot, $isolatedContractRoot, $isolatedParserRoot -Force
+    Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $isolatedCatalogRoot
     Copy-Item -LiteralPath $inventorySchemaPath -Destination $isolatedInventoryRoot
     Copy-Item -LiteralPath $definitionSchemaPath -Destination $isolatedDefinitionRoot
     Copy-Item -LiteralPath $definitionPath -Destination $isolatedDefinitionRoot

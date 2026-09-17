@@ -52,6 +52,64 @@ function Get-FileSnapshot {
     }
 }
 
+function ConvertTo-OrdinalMap {
+    param([Parameter(Mandatory = $true)][object]$Value)
+
+    $valuesByName = @{}
+    if ($Value -is [Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            $valuesByName[[string]$key] = $Value[$key]
+        }
+    }
+    else {
+        foreach ($property in $Value.PSObject.Properties) {
+            $valuesByName[[string]$property.Name] = $property.Value
+        }
+    }
+
+    [string[]]$names = @($valuesByName.Keys)
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    $result = [ordered]@{}
+    foreach ($name in $names) {
+        $result[$name] = $valuesByName[$name]
+    }
+    return $result
+}
+
+function Write-JsonSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Value,
+        [ValidateRange(1, 100)][int]$Depth = 40
+    )
+
+    $directory = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $directory -Force
+    }
+    [byte[]]$bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth $Depth) + "`n")
+    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [IO.File]::WriteAllBytes($temporaryPath, $bytes)
+        [IO.File]::Move($temporaryPath, $Path, $false)
+    }
+    catch [IO.IOException] {
+        if (Test-Path -LiteralPath $Path) {
+            throw "JSON snapshot output already exists: $Path"
+        }
+        throw
+    }
+    finally {
+        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{
+        Path = $Path
+        Sha256 = Get-Sha256 -Bytes $bytes
+        ByteCount = $bytes.Length
+    }
+}
+
 function Get-BehaviorManifestSha256 {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$IdentityValues,
@@ -86,4 +144,4 @@ function Get-BehaviorManifestSha256 {
     return Get-Sha256 -Content $builder.ToString()
 }
 
-Export-ModuleMember -Function Get-Sha256, Get-FileSnapshot, Get-BehaviorManifestSha256
+Export-ModuleMember -Function Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Write-JsonSnapshot, Get-BehaviorManifestSha256

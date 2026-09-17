@@ -192,6 +192,41 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": {
+                "const": "defer"
+              }
+            },
+            "required": ["recommendedAction"]
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "targetHostedId": {
+                    "$ref": "#/$defs/hostedId"
+                  },
+                  "idFamily": {
+                    "type": "null"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "targetHostedId": {
+                    "type": "null"
+                  },
+                  "idFamily": {
+                    "type": "string",
+                    "pattern": "^(?:IMPL|TEST|DOCS)-[A-Z0-9]+$"
+                  }
+                }
+              }
+            ]
+          }
         }
       ]
     },

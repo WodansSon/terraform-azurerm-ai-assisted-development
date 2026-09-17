@@ -4,6 +4,8 @@
   "parserId": "interactive-toolkit-v2",
   "assessmentCardinality": "exactly-one",
   "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
     "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/New-SourceInventory.ps1",

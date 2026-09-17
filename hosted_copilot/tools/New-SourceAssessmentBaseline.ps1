@@ -81,26 +81,6 @@ function Get-SortedObjects {
     return $sorted.ToArray()
 }
 
-function Write-JsonAtomically {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][object]$Value
-    )
-
-    $directory = Split-Path -Parent $Path
-    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-        $null = New-Item -ItemType Directory -Path $directory -Force
-    }
-    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
-    try {
-        [IO.File]::WriteAllText($temporaryPath, (($Value | ConvertTo-Json -Depth 40) + "`n"), [Text.UTF8Encoding]::new($false))
-        [IO.File]::Move($temporaryPath, $Path, $true)
-    }
-    finally {
-        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
-    }
-}
-
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $repositoryPrefix = $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar
 $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
@@ -277,6 +257,7 @@ if ($missingSourceRefs.Count -gt 0) {
     [Array]::Sort($missingSourceRefs, [StringComparer]::Ordinal)
     throw "Assessment draft does not cover every accepted inventory record: $($missingSourceRefs -join ', ')"
 }
+$inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
 
 $baseline = [ordered]@{
     '$schema' = 'source-assessment-baseline.schema.json'
@@ -293,14 +274,14 @@ $baselineJson = $baseline | ConvertTo-Json -Depth 40
 if (-not (Test-Json -Json $baselineJson -SchemaFile $baselineSchemaPath -ErrorAction Stop)) {
     throw 'Source assessment baseline does not satisfy its schema'
 }
-Write-JsonAtomically -Path $resolvedOutputPath -Value $baseline
+$outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $baseline
 
 $result = [ordered]@{
     status = 'passed'
     outputPath = $resolvedOutputPath
     sourceCount = $baseline.entries.Count
     assessmentCount = [int](@($baseline.entries | ForEach-Object { @($_.assessments).Count } | Measure-Object -Sum)[0].Sum)
-    baselineSha256 = Get-Sha256 -Path $resolvedOutputPath
+    baselineSha256 = $outputSnapshot.Sha256
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256
 }
