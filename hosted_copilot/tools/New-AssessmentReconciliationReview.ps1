@@ -233,8 +233,13 @@ foreach ($coverage in @($recommendationSnapshot.assessmentCoverage)) {
             throw 'Assessment coverage and recommendation membership do not match'
         }
     }
-    elseif ($membershipByAssessment.ContainsKey($key)) {
-        throw 'Deferred or excluded assessment coverage cannot belong to a recommendation'
+    else {
+        if ($hostedIds.Count -ne 0) {
+            throw 'Deferred or excluded assessment coverage cannot reference Hosted IDs'
+        }
+        if ($membershipByAssessment.ContainsKey($key)) {
+            throw 'Deferred or excluded assessment coverage cannot belong to a recommendation'
+        }
     }
 }
 

@@ -309,6 +309,19 @@ try {
     Add-TestResult -Name 'recommendation-reported-hash' -Passed ($null -ne $firstResult -and [string]$firstResult.recommendationSnapshotSha256 -ceq (Get-Sha256 -Path $firstRun.OutputPath)) -Detail 'The recommendation result reports the hash of the exact bytes written to its immutable destination.'
     $outputSchemaValid = $null -ne $firstSnapshot -and ((Get-Content -LiteralPath $firstRun.OutputPath -Raw) | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop)
     Add-TestResult -Name 'recommendation-schema' -Passed $outputSchemaValid -Detail 'Generated Hosted rule change recommendations satisfy their durable schema.'
+    $strayHostedIdSnapshot = Copy-JsonObject -Value $firstSnapshot
+    $nonRecommendedCoverage = @($strayHostedIdSnapshot.assessmentCoverage | Where-Object { [string]$_.disposition -in @('deferred', 'excluded') })[0]
+    $nonRecommendedCoverage.hostedIds = @([string]$strayHostedIdSnapshot.recommendations[0].hostedId)
+    $strayHostedIdSchemaValid = $false
+    try {
+        $strayHostedIdSchemaValid = ($strayHostedIdSnapshot | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop
+    }
+    catch {
+    }
+    Add-TestResult -Name 'nonrecommended-hosted-ids-schema-rejected' -Passed (-not $strayHostedIdSchemaValid) -Detail 'Deferred and excluded durable coverage cannot retain contradictory Hosted IDs.'
+    $reviewBuilderContent = Get-Content -LiteralPath $reviewBuilderPath -Raw
+    $consumerRejectsStrayHostedIds = $reviewBuilderContent -match 'if \(\$hostedIds\.Count -ne 0\)\s*\{\s*throw ''Deferred or excluded assessment coverage cannot reference Hosted IDs'''
+    Add-TestResult -Name 'bundle-rejects-nonrecommended-hosted-ids' -Passed $consumerRejectsStrayHostedIds -Detail 'Bundle construction independently rejects non-recommended coverage that references Hosted IDs after schema validation.'
     $allocatedId = if ($null -ne $firstSnapshot) { [string]$firstSnapshot.recommendations[0].hostedId } else { '' }
     $sourceIds = @($entries.sourceRef.sourceId)
     Add-TestResult -Name 'source-identity-independent' -Passed ($allocatedId -match '^IMPL-SCHEMA-[0-9]{3}$' -and $allocatedId -notin $sourceIds -and @($catalog.rules.id) -notcontains $allocatedId) -Detail 'Imported source IDs do not become Hosted identity; allocation occurs only after reconciliation.'
