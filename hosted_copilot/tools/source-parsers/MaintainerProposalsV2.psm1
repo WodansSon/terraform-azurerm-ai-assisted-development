@@ -1,16 +1,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-ContentSha256 {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyString()]
-        [string]$Content
-    )
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
+$helpersPath = Join-Path $PSScriptRoot '../HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath
 
 function Get-NormalizedRuleBlock {
     param(
@@ -156,7 +148,7 @@ function Get-MaintainerProposalInventoryRecords {
                 presence = 'present'
                 sourceLifecycle = $sourceStatus
                 location = $relativeSourcePath
-                contentSha256 = Get-ContentSha256 -Content $normalizedBlock
+                contentSha256 = Get-Sha256 -Content $normalizedBlock
                 content = $normalizedBlock
                 title = $title
                 surface = $surface

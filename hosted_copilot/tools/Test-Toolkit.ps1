@@ -59,10 +59,26 @@ $ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
 $ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
 $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'Test-SourceInventory.ps1'
+$hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
+$assessmentReconciliationValidationPath = Join-Path $PSScriptRoot 'AssessmentReconciliationValidation.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
 $ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
 $ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessment.ps1'
 $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'Test-SourceAssessment.ps1'
+$assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
+$assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
+$assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
+$assessmentReconciliationReviewContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-contract.schema.json'
+$assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v1.json'
+$assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review.schema.json'
+$assessmentReconciliationRecommendationsSchemaPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations.schema.json'
+$assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations-v1.json'
+$assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'Invoke-AssessmentReconciliation.ps1'
+$assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'New-HostedRuleChangeRecommendations.ps1'
+$assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'New-AssessmentReconciliationReview.ps1'
+$assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'Test-AssessmentReconciliation.ps1'
+$assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
@@ -306,6 +322,24 @@ if ($runtimeStarted) {
         $ruleIntakeTestPath,
         $ruleIntakeAssessmentPath,
         $ruleIntakeAssessmentTestPath,
+        $hostedToolkitHelpersPath,
+        $sourceEvidenceModulePath,
+        $assessmentReconciliationValidationPath,
+        $sourceInventoryCollectorPath,
+        $sourceInventoryTestPath,
+        $sourceAssessmentTestPath,
+        $assessmentReconciliationContractSchemaPath,
+        $assessmentReconciliationDraftSchemaPath,
+        $assessmentReconciliationReviewContractSchemaPath,
+        $assessmentReconciliationReviewContractPath,
+        $assessmentReconciliationReviewSchemaPath,
+        $assessmentReconciliationRecommendationsSchemaPath,
+        $assessmentReconciliationContractPath,
+        $assessmentReconciliationRunnerPath,
+        $assessmentReconciliationBuilderPath,
+        $assessmentReconciliationReviewBuilderPath,
+        $assessmentReconciliationTestPath,
+        $assessmentReconciliationPromptPath,
         $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
@@ -689,6 +723,22 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'source-assessment' -Issue "Hosted source assessment validation failed: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'assessment-reconciliation'
+    try {
+        $assessmentReconciliationTestOutput = @(& pwsh -NoProfile -File $assessmentReconciliationTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($assessmentReconciliationTestOutput | Out-String).Trim())
+        }
+        $assessmentReconciliationTestResult = ($assessmentReconciliationTestOutput | Out-String) | ConvertFrom-Json
+        if ($assessmentReconciliationTestResult.status -ne 'passed') {
+            throw 'assessment reconciliation regression suite reported failures'
+        }
+        Add-CheckResult -Name 'assessment-reconciliation' -Passed $true -Detail "Passed $($assessmentReconciliationTestResult.testCount) complete-corpus reconciliation, deterministic Hosted identity, exhaustive coverage, immutable snapshot, source-transition, and read-only v4 review tests without model calls."
+    }
+    catch {
+        Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"
     }
 
     if ($SkipRuleWorkbench) {
@@ -1119,7 +1169,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

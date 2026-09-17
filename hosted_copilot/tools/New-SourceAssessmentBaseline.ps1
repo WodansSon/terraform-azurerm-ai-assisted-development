@@ -36,19 +36,8 @@ $ErrorActionPreference = 'Stop'
 
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
-
-function Get-ContentSha256 {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
-
-function Get-FileSha256 {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-}
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 
 function Test-JsonFile {
     param(
@@ -59,9 +48,9 @@ function Test-JsonFile {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Required assessment input was not found: $Path"
     }
-    $json = Get-Content -LiteralPath $Path -Raw
+    $snapshot = Get-FileSnapshot -Path $Path
     try {
-        $valid = Test-Json -Json $json -SchemaFile $SchemaPath -ErrorAction Stop
+        $valid = Test-Json -Json $snapshot.Content -SchemaFile $SchemaPath -ErrorAction Stop
     }
     catch {
         throw "Assessment input does not satisfy its schema: $Path"
@@ -69,7 +58,10 @@ function Test-JsonFile {
     if (-not $valid) {
         throw "Assessment input does not satisfy its schema: $Path"
     }
-    return $json | ConvertFrom-Json -DateKind String
+    return [pscustomobject]@{
+        Value = $snapshot.Content | ConvertFrom-Json -DateKind String
+        Snapshot = $snapshot
+    }
 }
 
 function Get-SortedObjects {
@@ -87,13 +79,6 @@ function Get-SortedObjects {
         return [StringComparer]::Ordinal.Compare([string](& $Key $left), [string](& $Key $right))
     })
     return $sorted.ToArray()
-}
-
-function Get-RecordsSha256 {
-    param([Parameter(Mandatory = $true)][object[]]$Records)
-
-    $sorted = @(Get-SortedObjects -Values $Records -Key { param($record) $record.sourceId })
-    return Get-ContentSha256 -Content ($sorted | ConvertTo-Json -Depth 30 -Compress)
 }
 
 function Write-JsonAtomically {
@@ -133,9 +118,11 @@ $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline.sche
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'
 $catalogSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($HostedCatalogPath))) 'instruction-catalog.schema.json'
-$contract = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentContractPath)) -SchemaPath $contractSchemaPath
+$contractInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentContractPath)) -SchemaPath $contractSchemaPath
+$contract = $contractInput.Value
 $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
-$hostedCatalog = Test-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath $catalogSchemaPath
+$hostedCatalogInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath $catalogSchemaPath
+$hostedCatalog = $hostedCatalogInput.Value
 $knownHostedRuleIds = @{}
 $hostedRulesByContributorSourceId = @{}
 foreach ($rule in @($hostedCatalog.rules)) {
@@ -147,7 +134,8 @@ foreach ($rule in @($hostedCatalog.rules)) {
         $hostedRulesByContributorSourceId[[string]$sourceId].Add([string]$rule.id)
     }
 }
-$draft = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentDraftPath)) -SchemaPath $draftSchemaPath
+$draftInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentDraftPath)) -SchemaPath $draftSchemaPath
+$draft = $draftInput.Value
 
 $inventoryHashes = [ordered]@{}
 $inventoryRecords = @{}
@@ -157,7 +145,8 @@ $runSourceDefinitions = [Collections.Generic.List[object]]::new()
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
-    $inventory = Test-JsonFile -Path $resolvedInventoryPath -SchemaPath $inventorySchemaPath
+    $inventoryInput = Test-JsonFile -Path $resolvedInventoryPath -SchemaPath $inventorySchemaPath
+    $inventory = $inventoryInput.Value
     if ($null -eq $inventory.acceptance) {
         throw "Assessment requires an accepted inventory: $resolvedInventoryPath"
     }
@@ -168,7 +157,7 @@ foreach ($inventoryPath in $InventoryPaths) {
     $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $resolvedRepositoryRoot -SourceDefinitionId $sourceDefinitionId
     Assert-CurrentAcceptedSourceInventory -Inventory $inventory -Evidence $sourceEvidence
     $assessmentCardinalityBySourceDefinition[$sourceDefinitionId] = [string]$sourceEvidence.AssessmentCardinality
-    $inventoryHashes[$sourceDefinitionId] = Get-FileSha256 -Path $resolvedInventoryPath
+    $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
     $runSourceDefinitions.Add([ordered]@{
         sourceDefinitionId = $sourceDefinitionId
         sourceDefinitionSha256 = [string]$sourceEvidence.SourceDefinitionSha256
@@ -294,7 +283,7 @@ $baseline = [ordered]@{
     schemaVersion = 4
     generatedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
     inventoryHashes = $inventoryHashes
-    hostedCatalogSha256 = Get-FileSha256 -Path ([IO.Path]::GetFullPath($HostedCatalogPath))
+    hostedCatalogSha256 = $hostedCatalogInput.Snapshot.Sha256
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256
     runConfiguration = $runConfiguration
@@ -311,7 +300,7 @@ $result = [ordered]@{
     outputPath = $resolvedOutputPath
     sourceCount = $baseline.entries.Count
     assessmentCount = [int](@($baseline.entries | ForEach-Object { @($_.assessments).Count } | Measure-Object -Sum)[0].Sum)
-    baselineSha256 = Get-FileSha256 -Path $resolvedOutputPath
+    baselineSha256 = Get-Sha256 -Path $resolvedOutputPath
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256
 }

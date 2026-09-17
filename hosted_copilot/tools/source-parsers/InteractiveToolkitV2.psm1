@@ -1,16 +1,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-ContentSha256 {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyString()]
-        [string]$Content
-    )
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
+$helpersPath = Join-Path $PSScriptRoot '../HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath
 
 function Get-NormalizedRuleText {
     param(
@@ -131,7 +123,7 @@ function Get-InteractiveToolkitInventoryRecords {
         if ([string]$block.Title -cne [string]$rule.title) {
             throw "Interactive rule title does not match its catalog entry: $ruleId"
         }
-        $contentSha256 = Get-ContentSha256 -Content ([string]$block.Content)
+        $contentSha256 = Get-Sha256 -Content ([string]$block.Content)
         if ($contentSha256 -cne [string]$rule.contentSha256) {
             throw "Interactive rule text does not match its catalog hash: $ruleId"
         }

@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-review.schema.json",
+  "title": "Hosted Assessment Reconciliation Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "generatedAt", "readOnly", "refreshMode", "snapshots", "summary", "recommendations", "assessmentPresentations"],
+  "properties": {
+    "$schema": {
+      "const": "assessment-reconciliation-review.schema.json"
+    },
+    "schemaVersion": {
+      "const": 4
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "readOnly": {
+      "const": true
+    },
+    "refreshMode": {
+      "const": "regenerate-read-only-review"
+    },
+    "snapshots": {
+      "$ref": "#/$defs/snapshots"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recommendation"
+      }
+    },
+    "assessmentPresentations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/assessmentPresentation"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hostedId": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+    },
+    "hashMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventoryHashes", "stagedInventoryHashes", "assessmentBaselineSha256", "recommendationSnapshotSha256", "hostedCatalogSha256", "reconciliationContractSha256", "reviewContractSha256"],
+      "properties": {
+        "inventoryHashes": {
+          "$ref": "#/$defs/hashMap"
+        },
+        "stagedInventoryHashes": {
+          "$ref": "#/$defs/hashMap"
+        },
+        "assessmentBaselineSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "recommendationSnapshotSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "hostedCatalogSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reconciliationContractSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reviewContractSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceCount", "assessmentCount", "recommendationCount", "reviewStateCounts"],
+      "properties": {
+        "sourceCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assessmentCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recommendationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewStateCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["recommended", "deferred", "excluded"],
+          "properties": {
+            "recommended": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deferred": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "excluded": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "assessmentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentBaselineSha256", "sourceDefinitionId", "sourceId", "contentSha256", "assessmentId"],
+      "properties": {
+        "assessmentBaselineSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "sourceDefinitionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "assessmentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+        }
+      }
+    },
+    "relatedHostedCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedRuleId", "relationship", "rationale", "assessmentRefs"],
+      "properties": {
+        "hostedRuleId": {
+          "$ref": "#/$defs/hostedId"
+        },
+        "relationship": {
+          "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessmentRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/assessmentRef"
+          }
+        }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedId", "idState", "recommendedAction", "title", "recommendedRuleText", "category", "placement", "rationale", "needsReview", "memberAssessmentRefs", "relatedHostedCoverage", "tokenProjection"],
+      "properties": {
+        "hostedId": {
+          "$ref": "#/$defs/hostedId"
+        },
+        "idState": {
+          "enum": ["existing", "durable", "tentative"]
+        },
+        "recommendedAction": {
+          "enum": ["add", "update", "no-change", "defer"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedRuleText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": ["implementation", "testing", "documentation"]
+        },
+        "placement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needsReview": {
+          "type": "boolean"
+        },
+        "memberAssessmentRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/assessmentRef"
+          }
+        },
+        "relatedHostedCoverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relatedHostedCoverage"
+          }
+        },
+        "tokenProjection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["estimatedTokenDelta", "guardedTokenDelta"],
+          "properties": {
+            "estimatedTokenDelta": {
+              "type": "integer"
+            },
+            "guardedTokenDelta": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "assessmentPresentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentRef", "sourceTransition", "reviewState", "hostedCategory", "hostedId", "guardedTokenDelta", "recommendation"],
+      "properties": {
+        "assessmentRef": {
+          "$ref": "#/$defs/assessmentRef"
+        },
+        "sourceTransition": {
+          "enum": ["current", "added", "changed", "moved", "source-lifecycle-changed", "removed", "reappeared"]
+        },
+        "reviewState": {
+          "enum": ["recommended", "deferred", "excluded"]
+        },
+        "hostedCategory": {
+          "enum": ["unassigned", "implementation", "testing", "documentation"]
+        },
+        "hostedId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hostedId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guardedTokenDelta": {
+          "type": "integer"
+        },
+        "recommendation": {
+          "enum": ["add", "update", "no-change", "defer", "exclude"]
+        }
+      }
+    }
+  }
+}

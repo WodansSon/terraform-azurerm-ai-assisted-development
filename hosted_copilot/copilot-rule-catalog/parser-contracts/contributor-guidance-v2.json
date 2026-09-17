@@ -5,6 +5,7 @@
   "assessmentCardinality": "zero-to-many",
   "behaviorFiles": [
     "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
+    "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/New-SourceInventory.ps1",
     "hosted_copilot/tools/SourceEvidenceValidation.psm1",
     "hosted_copilot/tools/source-parsers/ContributorGuidanceV2.psm1"

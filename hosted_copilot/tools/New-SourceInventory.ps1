@@ -26,23 +26,8 @@ $ErrorActionPreference = 'Stop'
 
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
-
-function Get-ContentSha256 {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyString()]
-        [string]$Content
-    )
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
-
-function Get-FileSha256 {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-}
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 
 function Test-JsonFile {
     param(
@@ -191,9 +176,9 @@ function Get-CanonicalFileSetSha256 {
 
     $builder = [Text.StringBuilder]::new()
     foreach ($file in $Files) {
-        $null = $builder.Append([string]$file.RelativePath).Append([char]0).Append((Get-FileSha256 -Path ([string]$file.FullName))).Append([char]0)
+        $null = $builder.Append([string]$file.RelativePath).Append([char]0).Append((Get-Sha256 -Path ([string]$file.FullName))).Append([char]0)
     }
-    return Get-ContentSha256 -Content $builder.ToString()
+    return Get-Sha256 -Content $builder.ToString()
 }
 
 function Get-InventoryRevisionFiles {
@@ -616,7 +601,7 @@ $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
 if ([string]$contract.parserId -cne [string]$definition.parser) {
     throw "Parser contract ID does not match the source definition: $($definition.parser)"
 }
-$parserContractSha256 = Get-SourceEvidenceParserContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
+$parserContractSha256 = $null
 
 $matchedFiles = @()
 $remoteDocuments = @()
@@ -661,17 +646,8 @@ if ([string]$definition.parser -ceq 'maintainer-proposals-v2') {
 }
 $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -RemoteDocuments $remoteDocuments -SourceRevision $sourceRevision -HostedCatalog $catalog)
 
-$configuration = [ordered]@{
-    sourceDefinitionId = [string]$definition.id
-    root = $definition.root
-    files = @($definition.files)
-    exclude = @($definition.exclude)
-    parserId = [string]$definition.parser
-    parserContractSha256 = $parserContractSha256
-}
-$inventoryConfigurationSha256 = Get-ContentSha256 -Content ($configuration | ConvertTo-Json -Depth 10 -Compress)
 $sortedRecords = @(Get-OrdinallySortedRecords -Records @($records))
-$inventorySha256 = Get-ContentSha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+$inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
 
 if ([string]$definition.root.kind -ceq 'repository') {
     $revisionFiles = @(Get-InventoryRevisionFiles -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -Records $sortedRecords)
@@ -697,13 +673,14 @@ if ([string]$definition.root.kind -ceq 'repository') {
             }
             [IO.File]::WriteAllBytes($behaviorSnapshotPath, (Get-SourceEvidenceFileSnapshot -Path $behaviorSourcePath).Bytes)
         }
+        $parserContractSha256 = Get-SourceEvidenceParserContractSha256 -Contract $contract -RepositoryRoot $snapshotRoot
         $snapshotMatchedFiles = @($matchedFiles | ForEach-Object {
             $relativePath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, [string]$_.FullName).Replace('\', '/')
             [pscustomobject]@{ RelativePath = [string]$_.RelativePath; FullName = Join-Path $snapshotRoot $relativePath }
         })
         $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $snapshotRoot -MatchedFiles $snapshotMatchedFiles -RemoteDocuments @() -SourceRevision $null -HostedCatalog $catalog)
         $sortedRecords = @(Get-OrdinallySortedRecords -Records $records)
-        $inventorySha256 = Get-ContentSha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+        $inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
         $worktreeSha256 = Get-CanonicalFileSetSha256 -Files $snapshotRevisionFiles.ToArray()
     }
     finally {
@@ -730,12 +707,43 @@ if ([string]$definition.root.kind -ceq 'repository') {
         worktreeSha256 = $worktreeSha256
     }
 }
+else {
+    $snapshotRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-inventory-behavior-' + [guid]::NewGuid().ToString('N'))
+    try {
+        foreach ($behaviorFile in @($contract.behaviorFiles)) {
+            $behaviorSourcePath = Join-Path $resolvedRepositoryRoot ([string]$behaviorFile)
+            $behaviorSnapshotPath = Join-Path $snapshotRoot ([string]$behaviorFile)
+            $behaviorSnapshotDirectory = Split-Path -Parent $behaviorSnapshotPath
+            if (-not (Test-Path -LiteralPath $behaviorSnapshotDirectory -PathType Container)) {
+                $null = New-Item -ItemType Directory -Path $behaviorSnapshotDirectory -Force
+            }
+            [IO.File]::WriteAllBytes($behaviorSnapshotPath, (Get-SourceEvidenceFileSnapshot -Path $behaviorSourcePath).Bytes)
+        }
+        $parserContractSha256 = Get-SourceEvidenceParserContractSha256 -Contract $contract -RepositoryRoot $snapshotRoot
+        $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $snapshotRoot -MatchedFiles @() -RemoteDocuments $remoteDocuments -SourceRevision $sourceRevision -HostedCatalog $catalog)
+        $sortedRecords = @(Get-OrdinallySortedRecords -Records $records)
+        $inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+    }
+    finally {
+        Remove-Item -LiteralPath $snapshotRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$configuration = [ordered]@{
+    sourceDefinitionId = [string]$definition.id
+    root = $definition.root
+    files = @($definition.files)
+    exclude = @($definition.exclude)
+    parserId = [string]$definition.parser
+    parserContractSha256 = $parserContractSha256
+}
+$inventoryConfigurationSha256 = Get-Sha256 -Content ($configuration | ConvertTo-Json -Depth 10 -Compress)
 
 $inventory = [ordered]@{
     '$schema' = 'source-inventory.schema.json'
     schemaVersion = 1
     sourceDefinitionId = [string]$definition.id
-    sourceDefinitionSha256 = Get-FileSha256 -Path $resolvedDefinitionPath
+    sourceDefinitionSha256 = Get-Sha256 -Path $resolvedDefinitionPath
     inventoryConfigurationSha256 = $inventoryConfigurationSha256
     collectorVersion = 1
     parserId = [string]$definition.parser

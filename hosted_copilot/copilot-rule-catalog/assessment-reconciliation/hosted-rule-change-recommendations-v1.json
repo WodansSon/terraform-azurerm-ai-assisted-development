@@ -1,0 +1,141 @@
+{
+  "$schema": "assessment-reconciliation-contract.schema.json",
+  "schemaVersion": 1,
+  "contractId": "hosted-rule-change-recommendations-v1",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hosted-rule-change-recommendations.schema.json",
+    "hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json",
+    "hosted_copilot/copilot-rule-catalog/promotion-plan.schema.json",
+    "hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
+    "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
+    "hosted_copilot/tools/AssessmentReconciliationValidation.psm1",
+    "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/Invoke-AssessmentReconciliation.ps1",
+    "hosted_copilot/tools/New-HostedRuleChangeRecommendations.ps1",
+    "hosted_copilot/tools/SourceEvidenceValidation.psm1",
+    "hosted_copilot/tools/assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md"
+  ],
+  "idAllocation": {
+    "numericWidth": 3,
+    "families": [
+      {
+        "category": "documentation",
+        "placement": "Argument Accuracy",
+        "idFamily": "DOCS-ARG"
+      },
+      {
+        "category": "documentation",
+        "placement": "Argument Accuracy",
+        "idFamily": "DOCS-FMT"
+      },
+      {
+        "category": "documentation",
+        "placement": "Argument Accuracy",
+        "idFamily": "DOCS-NOTE"
+      },
+      {
+        "category": "documentation",
+        "placement": "Evidence And Coverage",
+        "idFamily": "DOCS-ARG"
+      },
+      {
+        "category": "documentation",
+        "placement": "Evidence And Coverage",
+        "idFamily": "DOCS-ATTR"
+      },
+      {
+        "category": "documentation",
+        "placement": "Evidence And Coverage",
+        "idFamily": "DOCS-EVID"
+      },
+      {
+        "category": "documentation",
+        "placement": "Examples And Imports",
+        "idFamily": "DOCS-EX"
+      },
+      {
+        "category": "documentation",
+        "placement": "Examples And Imports",
+        "idFamily": "DOCS-IMP"
+      },
+      {
+        "category": "documentation",
+        "placement": "Frontmatter And Structure",
+        "idFamily": "DOCS-FM"
+      },
+      {
+        "category": "documentation",
+        "placement": "Frontmatter And Structure",
+        "idFamily": "DOCS-FMT"
+      },
+      {
+        "category": "documentation",
+        "placement": "Frontmatter And Structure",
+        "idFamily": "DOCS-STRUCT"
+      },
+      {
+        "category": "documentation",
+        "placement": "Wording",
+        "idFamily": "DOCS-WORD"
+      },
+      {
+        "category": "implementation",
+        "placement": "Azure Update Semantics",
+        "idFamily": "IMPL-PATCH"
+      },
+      {
+        "category": "implementation",
+        "placement": "Create And Import Behavior",
+        "idFamily": "IMPL-WF"
+      },
+      {
+        "category": "implementation",
+        "placement": "Errors",
+        "idFamily": "IMPL-ERR"
+      },
+      {
+        "category": "implementation",
+        "placement": "Evidence And Implementation Model",
+        "idFamily": "IMPL-EVID"
+      },
+      {
+        "category": "implementation",
+        "placement": "Evidence And Implementation Model",
+        "idFamily": "IMPL-WF"
+      },
+      {
+        "category": "implementation",
+        "placement": "Schema And State",
+        "idFamily": "IMPL-SCHEMA"
+      },
+      {
+        "category": "testing",
+        "placement": "Assertions And Validation",
+        "idFamily": "TEST-PATTERN"
+      },
+      {
+        "category": "testing",
+        "placement": "Evidence And Lifecycle",
+        "idFamily": "TEST-EVID"
+      },
+      {
+        "category": "testing",
+        "placement": "Evidence And Lifecycle",
+        "idFamily": "TEST-WF"
+      },
+      {
+        "category": "testing",
+        "placement": "Feature Branches And Azure Setup",
+        "idFamily": "TEST-PATTERN"
+      },
+      {
+        "category": "testing",
+        "placement": "Generated And Embedded Content",
+        "idFamily": "TEST-PATTERN"
+      }
+    ]
+  }
+}

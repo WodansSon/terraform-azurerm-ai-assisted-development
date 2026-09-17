@@ -1,6 +1,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $hostedToolkitHelpersPath -Force
+
 function ConvertTo-SourceEvidenceUtcDateTime {
     param([Parameter(Mandatory = $true)][object]$Value)
 
@@ -31,39 +34,19 @@ function ConvertTo-SourceEvidenceUtcTimestamp {
 function Get-SourceEvidenceContentSha256 {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
 
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Content))).ToLowerInvariant()
+    return Get-Sha256 -Content $Content
 }
 
 function Get-SourceEvidenceFileSha256 {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    return Get-Sha256 -Path $Path
 }
 
 function Get-SourceEvidenceFileSnapshot {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
-    try {
-        $buffer = [IO.MemoryStream]::new()
-        try {
-            $stream.CopyTo($buffer)
-            [byte[]]$bytes = $buffer.ToArray()
-        }
-        finally {
-            $buffer.Dispose()
-        }
-    }
-    finally {
-        $stream.Dispose()
-    }
-
-    $offset = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
-    return [pscustomobject]@{
-        Bytes = $bytes
-        Content = [Text.UTF8Encoding]::new($false, $true).GetString($bytes, $offset, $bytes.Length - $offset)
-        Sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-    }
+    return Get-FileSnapshot -Path $Path
 }
 
 function Get-SourceEvidenceRetryDelayMilliseconds {
@@ -213,24 +196,7 @@ function Get-SourceEvidenceParserContractSha256 {
         [Parameter(Mandatory = $true)][string]$RepositoryRoot
     )
 
-    [string[]]$behaviorFiles = @($Contract.behaviorFiles)
-    [string[]]$sortedFiles = @($behaviorFiles)
-    [Array]::Sort($sortedFiles, [StringComparer]::Ordinal)
-    if (@(Compare-Object $behaviorFiles $sortedFiles -SyncWindow 0).Count -ne 0) {
-        throw "Parser contract behaviorFiles must use ordinal sort order: $($Contract.parserId)"
-    }
-
-    $builder = [Text.StringBuilder]::new()
-    $null = $builder.Append([string]$Contract.parserId).Append([char]0).Append([string]$Contract.assessmentCardinality).Append([char]0)
-    foreach ($relativePath in $sortedFiles) {
-        Assert-SourceEvidenceRelativePath -Value $relativePath
-        $fullPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $relativePath))
-        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-            throw "Parser contract behavior file was not found: $relativePath"
-        }
-        $null = $builder.Append($relativePath).Append([char]0).Append((Get-SourceEvidenceFileSha256 -Path $fullPath)).Append([char]0)
-    }
-    return Get-SourceEvidenceContentSha256 -Content $builder.ToString()
+    return Get-BehaviorManifestSha256 -IdentityValues @([string]$Contract.parserId, [string]$Contract.assessmentCardinality) -BehaviorFiles @($Contract.behaviorFiles) -RepositoryRoot $RepositoryRoot -ManifestName "Parser contract $($Contract.parserId)"
 }
 
 function Get-SourceAssessmentContractSha256 {
@@ -239,24 +205,7 @@ function Get-SourceAssessmentContractSha256 {
         [Parameter(Mandatory = $true)][string]$RepositoryRoot
     )
 
-    [string[]]$behaviorFiles = @($Contract.behaviorFiles)
-    [string[]]$sortedFiles = @($behaviorFiles)
-    [Array]::Sort($sortedFiles, [StringComparer]::Ordinal)
-    if (@(Compare-Object $behaviorFiles $sortedFiles -SyncWindow 0).Count -ne 0) {
-        throw "Assessment contract behaviorFiles must use ordinal sort order: $($Contract.contractId)"
-    }
-
-    $builder = [Text.StringBuilder]::new()
-    $null = $builder.Append([string]$Contract.contractId).Append([char]0)
-    foreach ($relativePath in $sortedFiles) {
-        Assert-SourceEvidenceRelativePath -Value $relativePath
-        $fullPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $relativePath))
-        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-            throw "Assessment contract behavior file was not found: $relativePath"
-        }
-        $null = $builder.Append($relativePath).Append([char]0).Append((Get-SourceEvidenceFileSha256 -Path $fullPath)).Append([char]0)
-    }
-    return Get-SourceEvidenceContentSha256 -Content $builder.ToString()
+    return Get-BehaviorManifestSha256 -IdentityValues @([string]$Contract.contractId) -BehaviorFiles @($Contract.behaviorFiles) -RepositoryRoot $RepositoryRoot -ManifestName "Assessment contract $($Contract.contractId)"
 }
 
 function Get-CurrentSourceDefinitionEvidence {

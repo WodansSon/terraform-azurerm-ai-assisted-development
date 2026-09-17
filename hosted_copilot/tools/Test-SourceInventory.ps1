@@ -273,6 +273,7 @@ try {
     Copy-Item -LiteralPath $contractSchemaPath -Destination $snapshotContractRoot
     Copy-Item -LiteralPath $contractPath -Destination $snapshotContractRoot
     Copy-Item -LiteralPath $collectorPath -Destination $snapshotToolsRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1') -Destination $snapshotToolsRoot
     Copy-Item -LiteralPath $sourceEvidenceModulePath -Destination $snapshotToolsRoot
     Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.json') -Destination $snapshotCatalogRoot
     Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $snapshotCatalogRoot
@@ -400,6 +401,7 @@ try {
     Copy-Item -LiteralPath $contractSchemaPath -Destination $isolatedContractRoot
     Copy-Item -LiteralPath $contractPath -Destination $isolatedContractRoot
     Copy-Item -LiteralPath $collectorPath -Destination $isolatedToolsRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1') -Destination $isolatedToolsRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1') -Destination $isolatedToolsRoot
     Copy-Item -LiteralPath $parserModulePath -Destination $isolatedParserRoot
     $acceptedOnePath = Join-Path $acceptedFixtureRoot 'accepted-one.json'

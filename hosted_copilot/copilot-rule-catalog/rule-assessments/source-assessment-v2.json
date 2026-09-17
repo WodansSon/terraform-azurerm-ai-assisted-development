@@ -7,6 +7,7 @@
     "hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
+    "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/Invoke-SourceAssessment.ps1",
     "hosted_copilot/tools/New-SourceAssessmentBaseline.ps1",
     "hosted_copilot/tools/SourceEvidenceValidation.psm1",

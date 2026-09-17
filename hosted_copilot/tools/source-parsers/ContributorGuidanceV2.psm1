@@ -1,16 +1,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-ContentSha256 {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyString()]
-        [string]$Content
-    )
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Content)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
-}
+$helpersPath = Join-Path $PSScriptRoot '../HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath
 
 function Get-ContributorSourceId {
     param([Parameter(Mandatory = $true)][string]$RelativePath)
@@ -75,7 +67,7 @@ function Get-ContributorGuidanceInventoryRecords {
             presence = 'present'
             sourceLifecycle = 'active'
             location = $location
-            contentSha256 = Get-ContentSha256 -Content $content
+            contentSha256 = Get-Sha256 -Content $content
             content = $content
             title = $titleMatch.Groups['title'].Value.Trim()
             repository = $Repository
