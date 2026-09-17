@@ -635,22 +635,59 @@ $response = [ordered]@{
     $runnerInventoryPath = Join-Path $tempRoot 'runner-accepted-inventory.json'
     $null = New-InventoryFixture -SourceDefinitionId 'maintainer-proposals' -Records $runnerRecords -Path $runnerInventoryPath
     $priorContributorContent = 'Prior contributor resource guidance.'
-    $priorContributorRecords = @([ordered]@{
-        sourceId = 'guide-new-resource'
-        presence = 'present'
-        sourceLifecycle = 'active'
-        location = 'contributing/topics/guide-new-resource.md'
-        contentSha256 = Get-StringSha256 -Value $priorContributorContent
-        content = $priorContributorContent
-        title = 'Guide: New Resource'
-        repository = 'hashicorp/terraform-provider-azurerm'
-        resolvedCommit = 'b' * 40
-        referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('b' * 40)/contributing/topics/guide-new-resource.md"
-    })
+    $priorRemovedContributorContent = 'Prior contributor guidance that was removed.'
+    $priorContributorRecords = @(
+        [ordered]@{
+            sourceId = 'guide-new-resource'
+            presence = 'present'
+            sourceLifecycle = 'active'
+            location = 'contributing/topics/guide-new-resource.md'
+            contentSha256 = Get-StringSha256 -Value $priorContributorContent
+            content = $priorContributorContent
+            title = 'Guide: New Resource'
+            repository = 'hashicorp/terraform-provider-azurerm'
+            resolvedCommit = 'b' * 40
+            referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('b' * 40)/contributing/topics/guide-new-resource.md"
+        },
+        [ordered]@{
+            sourceId = 'guide-removed-resource'
+            presence = 'present'
+            sourceLifecycle = 'active'
+            location = 'contributing/topics/guide-removed-resource.md'
+            contentSha256 = Get-StringSha256 -Value $priorRemovedContributorContent
+            content = $priorRemovedContributorContent
+            title = 'Guide: Removed Resource'
+            repository = 'hashicorp/terraform-provider-azurerm'
+            resolvedCommit = 'b' * 40
+            referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('b' * 40)/contributing/topics/guide-removed-resource.md"
+        }
+    )
     $runnerContributorInventoryPath = Join-Path $tempRoot 'runner-contributor-accepted-inventory.json'
     $runnerContributorInventory = New-InventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $contributorRecords -Path $runnerContributorInventoryPath
     $priorContributorInventoryPath = Join-Path $tempRoot 'prior-contributor-inventory.json'
     $priorContributorInventory = New-InventoryFixture -SourceDefinitionId 'contributor-guidance' -Records $priorContributorRecords -Path $priorContributorInventoryPath
+    $priorInteractiveInventory = Get-Content -LiteralPath $interactiveInventoryPath -Raw | ConvertFrom-Json -DateKind String
+    $priorMaintainerInventory = Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json -DateKind String
+    $priorGenerationInventories = [ordered]@{
+        'contributor-guidance' = $priorContributorInventory
+        'interactive-toolkit' = $priorInteractiveInventory
+        'maintainer-proposals' = $priorMaintainerInventory
+    }
+    $priorBaseline = Copy-JsonObject -Value $baseline
+    $priorBaseline.entries = @(@('contributor-guidance', 'interactive-toolkit', 'maintainer-proposals') | ForEach-Object {
+        $sourceDefinitionId = [string]$_
+        @($priorGenerationInventories[$sourceDefinitionId].records) | ForEach-Object {
+            [ordered]@{
+                sourceRef = [ordered]@{
+                    sourceDefinitionId = $sourceDefinitionId
+                    sourceId = [string]$_.sourceId
+                    contentSha256 = [string]$_.contentSha256
+                }
+                priorSourceEvidence = $null
+                assessments = @()
+            }
+        }
+    })
     $priorSourceGenerationPath = Join-Path $tempRoot 'prior-source-generation.json'
     $priorSourceGeneration = [ordered]@{
         '$schema' = 'source-generation.schema.json'
@@ -669,14 +706,15 @@ $response = [ordered]@{
             }
             rationale = 'Accept the prior source generation fixture.'
         }
-        inventories = [ordered]@{
-            'contributor-guidance' = $priorContributorInventory
-            'interactive-toolkit' = Get-Content -LiteralPath $interactiveInventoryPath -Raw | ConvertFrom-Json -DateKind String
-            'maintainer-proposals' = Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json -DateKind String
-        }
-        assessmentBaseline = $baseline
+        inventories = $priorGenerationInventories
+        assessmentBaseline = $priorBaseline
     }
     Write-JsonFixture -Path $priorSourceGenerationPath -Value $priorSourceGeneration
+    $decodedPriorSourceGeneration = Get-Content -LiteralPath $priorSourceGenerationPath -Raw | ConvertFrom-Json -DateKind String
+    $projectedContributorRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $runnerContributorInventory -PriorSourceGeneration $decodedPriorSourceGeneration -RemovedAt '2026-09-15T09:00:00-05:00')
+    $projectedRemovedContributor = @($projectedContributorRecords | Where-Object { [string]$_.sourceId -ceq 'guide-removed-resource' })[0]
+    $removedContributorTombstoneValid = $null -ne $projectedRemovedContributor -and [string]$projectedRemovedContributor.presence -ceq 'removed' -and [string]$projectedRemovedContributor.removedAt -ceq $expectedRunnerGeneratedAt -and [string]$projectedRemovedContributor.content -ceq $priorRemovedContributorContent
+    Add-TestResult -Name 'prior-only-source-tombstone' -Passed $removedContributorTombstoneValid -Detail 'A source absent from a complete staged collection projects as a canonical tombstone carrying its last-known evidence.'
     [string[]]$runnerInventoryPaths = @($runnerContributorInventoryPath, $interactiveInventoryPath, $runnerInventoryPath)
     $runnerOutputPath = Join-Path $tempRoot 'runner-baseline.json'
     $callLogPath = Join-Path $tempRoot 'runner-calls.log'
@@ -690,13 +728,15 @@ $response = [ordered]@{
         throw "Complete-lane source assessment failed: $($runnerRun.Output)"
     }
     $runnerCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
-    Add-TestResult -Name 'source-defined-batching' -Passed ($runnerExitCode -eq 0 -and $runnerResult.sourceCount -eq 23 -and $runnerResult.batchCount -eq 4 -and $runnerCalls.Count -eq 5 -and $runnerCalls[0] -like '*:1' -and $runnerCalls[1] -like '*:1' -and $runnerCalls[2] -like '*:1' -and $runnerCalls[3] -like '*:20' -and $runnerCalls[4] -like '*:1') -Detail 'The complete three-lane runner uses each source definition batch size, retries one malformed response, and preserves deterministic packet order.'
+    Add-TestResult -Name 'source-defined-batching' -Passed ($runnerExitCode -eq 0 -and $runnerResult.sourceCount -eq 24 -and $runnerResult.batchCount -eq 4 -and $runnerCalls.Count -eq 5 -and $runnerCalls[0] -like '*:2' -and $runnerCalls[1] -like '*:2' -and $runnerCalls[2] -like '*:1' -and $runnerCalls[3] -like '*:20' -and $runnerCalls[4] -like '*:1') -Detail 'The complete three-lane runner uses each source definition batch size, retries one malformed response, and preserves deterministic packet order including prior-only tombstones.'
     $runnerBaselineJson = if ($runnerExitCode -eq 0) { Get-Content -LiteralPath $runnerOutputPath -Raw } else { '' }
-    Add-TestResult -Name 'runner-baseline-output' -Passed ($runnerExitCode -eq 0 -and $runnerResult.assessmentCount -eq 23 -and (Test-JsonInstance -Json $runnerBaselineJson -SchemaPath $baselineSchemaPath)) -Detail 'The runner delegates exhaustive three-lane draft assembly to the trusted baseline builder and emits a schema-valid version 4 snapshot.'
+    Add-TestResult -Name 'runner-baseline-output' -Passed ($runnerExitCode -eq 0 -and $runnerResult.assessmentCount -eq 24 -and (Test-JsonInstance -Json $runnerBaselineJson -SchemaPath $baselineSchemaPath)) -Detail 'The runner delegates exhaustive three-lane draft assembly to the trusted baseline builder and emits a schema-valid version 4 snapshot.'
     $runnerBaseline = if ($runnerExitCode -eq 0) { $runnerBaselineJson | ConvertFrom-Json -DateKind String } else { $null }
+    $priorSourceGenerationSha256 = (Get-FileHash -LiteralPath $priorSourceGenerationPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $expectedEvaluatorIdentity = 'script:' + (Get-FileHash -LiteralPath $fakeEvaluatorPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Add-TestResult -Name 'runner-evaluator-identity' -Passed ($null -ne $runnerBaseline -and [string]$runnerBaseline.runConfiguration.evaluator -ceq $expectedEvaluatorIdentity) -Detail 'Injected evaluator bytes contribute to assessment run identity without persisting an absolute script path.'
     Add-TestResult -Name 'runner-timestamps-canonical' -Passed ($null -ne $runnerBaseline -and [string]$runnerBaseline.generatedAt -ceq $expectedRunnerGeneratedAt -and @($runnerBaseline.entries | ForEach-Object { @($_.assessments) } | Where-Object { [string]$_.assessmentProvenance.assessedAt -cne $expectedRunnerGeneratedAt }).Count -eq 0) -Detail 'Raw assessment timestamps persist as the same invariant UTC representation on the baseline and every assessment provenance record.'
+    Add-TestResult -Name 'prior-generation-lineage-binding' -Passed ([string]$runnerBaseline.priorSourceGenerationSha256 -ceq $priorSourceGenerationSha256) -Detail 'The assessment baseline binds the exact prior source-generation bytes used for comparison and tombstone projection.'
 
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH -ErrorAction SilentlyContinue
     $runnerInventoryBytes = [IO.File]::ReadAllBytes($runnerInventoryPath)
@@ -725,6 +765,10 @@ $response = [ordered]@{
     $expectedPriorAcceptedAt = [datetime]::new(2026, 9, 14, 12, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     $priorEvidenceRetained = [string]$contributorEntry.priorSourceEvidence.sourceRef.contentSha256 -ceq [string]$priorContributorRecords[0].contentSha256 -and [string]$contributorEntry.priorSourceEvidence.sourceRecord.content -ceq $priorContributorContent -and [string]$contributorEntry.priorSourceEvidence.acceptedAt -ceq $expectedPriorAcceptedAt -and [string]$contributorEntry.priorSourceEvidence.inventorySha256 -ceq [string]$priorContributorInventory.collection.inventorySha256
     Add-TestResult -Name 'prior-source-reassessment-binding' -Passed ($priorEvidenceRetained -and $contributorAssessment.semanticReassessment.classification -ceq 'meaning-unchanged' -and [string]$contributorAssessment.semanticReassessment.priorContentSha256 -ceq [string]$priorContributorRecords[0].contentSha256) -Detail "Changed Contributor evidence retains the exact prior accepted record and metadata and binds semantic reassessment to that prior source hash. Observed acceptedAt=$($contributorEntry.priorSourceEvidence.acceptedAt), inventorySha256=$($contributorEntry.priorSourceEvidence.inventorySha256), content=$($contributorEntry.priorSourceEvidence.sourceRecord.content)."
+    $removedContributorEntry = @($runnerBaseline.entries | Where-Object { [string]$_.sourceRef.sourceDefinitionId -ceq 'contributor-guidance' -and [string]$_.sourceRef.sourceId -ceq 'guide-removed-resource' })[0]
+    $removedContributorAssessment = $removedContributorEntry.assessments[0]
+    $removedContributorAssessed = $null -ne $removedContributorEntry -and [string]$removedContributorEntry.sourceRef.contentSha256 -ceq [string]$priorContributorRecords[1].contentSha256 -and [string]$removedContributorEntry.priorSourceEvidence.sourceRecord.presence -ceq 'present' -and [string]$removedContributorAssessment.semanticReassessment.priorContentSha256 -ceq [string]$priorContributorRecords[1].contentSha256
+    Add-TestResult -Name 'prior-only-source-assessed' -Passed $removedContributorAssessed -Detail 'The projected tombstone receives exhaustive assessment coverage and semantic reassessment bound to its prior accepted source evidence.'
     $unknownPriorRecordBaseline = Copy-JsonObject -Value $runnerBaseline
     $unknownPriorRecordEntry = @($unknownPriorRecordBaseline.entries | Where-Object { $_.sourceRef.sourceDefinitionId -ceq 'contributor-guidance' })[0]
     $unknownPriorRecordEntry.priorSourceEvidence.sourceRecord | Add-Member -NotePropertyName unexpectedEvidence -NotePropertyValue 'not allowed'
@@ -738,6 +782,15 @@ $response = [ordered]@{
     $tamperedPriorRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorSourceGenerationPath $tamperedPriorGenerationPath -OutputPath (Join-Path $tempRoot 'tampered-prior-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
     $tamperedPriorCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
     Add-TestResult -Name 'tampered-prior-generation-rejected' -Passed ($tamperedPriorRun.ExitCode -ne 0 -and @($tamperedPriorCalls).Count -eq 0 -and $tamperedPriorRun.Output -like '*record hash does not match*') -Detail 'A prior source-generation inventory whose records no longer match its collection hash fails before evaluator invocation.'
+
+    Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
+    $invalidEmbeddedBaselineGeneration = Copy-JsonObject -Value $priorSourceGeneration
+    $invalidEmbeddedBaselineGeneration.assessmentBaseline | Add-Member -NotePropertyName unexpectedEvidence -NotePropertyValue 'not allowed'
+    $invalidEmbeddedBaselineGenerationPath = Join-Path $tempRoot 'invalid-embedded-baseline-generation.json'
+    Write-JsonFixture -Path $invalidEmbeddedBaselineGenerationPath -Value $invalidEmbeddedBaselineGeneration
+    $invalidEmbeddedBaselineRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorSourceGenerationPath $invalidEmbeddedBaselineGenerationPath -OutputPath (Join-Path $tempRoot 'invalid-embedded-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    $invalidEmbeddedBaselineCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
+    Add-TestResult -Name 'strict-embedded-generation-baseline' -Passed ($invalidEmbeddedBaselineRun.ExitCode -ne 0 -and @($invalidEmbeddedBaselineCalls).Count -eq 0 -and $invalidEmbeddedBaselineRun.Output -like '*schema*') -Detail 'Shared generation validation applies the strict owning baseline schema to embedded evidence and rejects unknown nested fields before evaluator invocation.'
 
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
     $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000

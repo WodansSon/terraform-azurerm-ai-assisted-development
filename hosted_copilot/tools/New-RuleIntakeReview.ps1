@@ -27,6 +27,8 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $resolvedHostedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
@@ -531,7 +533,7 @@ $currentInteractiveCatalogHash = Get-FileSha256 -Path $resolvedInteractiveCatalo
 $result = [ordered]@{
     '$schema' = 'rule-intake-review.schema.json'
     schemaVersion = 3
-    generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    generatedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
     readOnly = $true
     refreshMode = 'regenerate-read-only-bundle'
     snapshots = [ordered]@{

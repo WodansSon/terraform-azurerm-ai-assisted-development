@@ -4,33 +4,6 @@ $ErrorActionPreference = 'Stop'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
 Import-Module -Name $hostedToolkitHelpersPath -Force
 
-function ConvertTo-SourceEvidenceUtcDateTime {
-    param([Parameter(Mandatory = $true)][object]$Value)
-
-    try {
-        if ($Value -is [datetimeoffset]) {
-            return ([datetimeoffset]$Value).UtcDateTime
-        }
-        if ($Value -is [datetime]) {
-            return ([datetime]$Value).ToUniversalTime()
-        }
-        return [datetimeoffset]::Parse(
-            [string]$Value,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::AllowWhiteSpaces
-        ).UtcDateTime
-    }
-    catch {
-        throw "Invalid source evidence timestamp: $Value"
-    }
-}
-
-function ConvertTo-SourceEvidenceUtcTimestamp {
-    param([Parameter(Mandatory = $true)][object]$Value)
-
-    return (ConvertTo-SourceEvidenceUtcDateTime -Value $Value).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-}
-
 function Get-SourceEvidenceContentSha256 {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
 
@@ -92,7 +65,7 @@ function Invoke-SourceEvidenceWithRetry {
 }
 
 function Get-SourceEvidenceRecordsSha256 {
-    param([Parameter(Mandatory = $true)][object[]]$Records)
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Records)
 
     $sorted = [Collections.Generic.List[object]]::new()
     foreach ($record in $Records) {
@@ -103,7 +76,8 @@ function Get-SourceEvidenceRecordsSha256 {
         param($left, $right)
         return [StringComparer]::Ordinal.Compare([string]$left.sourceId, [string]$right.sourceId)
     })
-    return Get-SourceEvidenceContentSha256 -Content ($sorted.ToArray() | ConvertTo-Json -Depth 30 -Compress)
+    $canonicalJson = if ($sorted.Count -eq 0) { '[]' } else { $sorted.ToArray() | ConvertTo-Json -Depth 30 -Compress }
+    return Get-SourceEvidenceContentSha256 -Content $canonicalJson
 }
 
 function ConvertTo-SourceEvidenceCanonicalRecord {
@@ -112,7 +86,7 @@ function ConvertTo-SourceEvidenceCanonicalRecord {
     $canonical = [ordered]@{}
     foreach ($property in $Record.PSObject.Properties) {
         if ($property.Name -ceq 'removedAt') {
-            $canonical[$property.Name] = ConvertTo-SourceEvidenceUtcTimestamp -Value $property.Value
+            $canonical[$property.Name] = ConvertTo-UtcTimestamp -Value $property.Value
         }
         else {
             $canonical[$property.Name] = $property.Value
@@ -272,7 +246,7 @@ function Get-PriorSourceGenerationEvidence {
         [Parameter(Mandatory = $true)][object]$SourceGeneration,
         [Parameter(Mandatory = $true)][string]$SourceDefinitionId,
         [Parameter(Mandatory = $true)][string]$SourceId,
-        [Parameter(Mandatory = $true)][string]$CurrentContentSha256
+        [Parameter(Mandatory = $true)][object]$CurrentRecord
     )
 
     $inventoryProperty = $SourceGeneration.inventories.PSObject.Properties[$SourceDefinitionId]
@@ -280,13 +254,20 @@ function Get-PriorSourceGenerationEvidence {
         return $null
     }
     $priorRecords = @($inventoryProperty.Value.records | Where-Object { [string]$_.sourceId -ceq $SourceId })
-    if ($priorRecords.Count -eq 0 -or [string]$priorRecords[0].contentSha256 -ceq $CurrentContentSha256) {
+    if ($priorRecords.Count -eq 0) {
         return $null
     }
     if ($priorRecords.Count -ne 1) {
         throw "Prior source generation contains duplicate source IDs: $SourceDefinitionId`:$SourceId"
     }
     $priorRecord = $priorRecords[0]
+    $sourceChanged = [string]$priorRecord.contentSha256 -cne [string]$CurrentRecord.contentSha256 -or
+        [string]$priorRecord.presence -cne [string]$CurrentRecord.presence -or
+        [string]$priorRecord.sourceLifecycle -cne [string]$CurrentRecord.sourceLifecycle -or
+        [string]$priorRecord.location -cne [string]$CurrentRecord.location
+    if (-not $sourceChanged) {
+        return $null
+    }
     return [ordered]@{
         sourceRef = [ordered]@{
             sourceDefinitionId = $SourceDefinitionId
@@ -294,9 +275,47 @@ function Get-PriorSourceGenerationEvidence {
             contentSha256 = [string]$priorRecord.contentSha256
         }
         sourceRecord = $priorRecord
-        acceptedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $SourceGeneration.acceptance.acceptedAt
+        acceptedAt = ConvertTo-UtcTimestamp -Value $SourceGeneration.acceptance.acceptedAt
         inventorySha256 = [string]$inventoryProperty.Value.collection.inventorySha256
     }
+}
+
+function Get-SourceInventoryProjectionRecords {
+    param(
+        [Parameter(Mandatory = $true)][object]$CurrentInventory,
+        [object]$PriorSourceGeneration,
+        [Parameter(Mandatory = $true)][object]$RemovedAt
+    )
+
+    $sourceDefinitionId = [string]$CurrentInventory.sourceDefinitionId
+    $recordsById = @{}
+    foreach ($record in @($CurrentInventory.records)) {
+        $sourceId = [string]$record.sourceId
+        if ($recordsById.ContainsKey($sourceId)) {
+            throw "Source inventory contains duplicate source IDs: $sourceDefinitionId`:$sourceId"
+        }
+        $recordsById[$sourceId] = $record
+    }
+    if ($null -ne $PriorSourceGeneration) {
+        $priorInventoryProperty = $PriorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId]
+        if ($null -ne $priorInventoryProperty) {
+            foreach ($priorRecord in @($priorInventoryProperty.Value.records)) {
+                $sourceId = [string]$priorRecord.sourceId
+                if ($recordsById.ContainsKey($sourceId)) {
+                    continue
+                }
+                $tombstone = ($priorRecord | ConvertTo-Json -Depth 30 -Compress) | ConvertFrom-Json -DateKind String
+                if ([string]$tombstone.presence -cne 'removed') {
+                    $tombstone.presence = 'removed'
+                    $tombstone | Add-Member -NotePropertyName removedAt -NotePropertyValue (ConvertTo-UtcTimestamp -Value $RemovedAt)
+                }
+                $recordsById[$sourceId] = $tombstone
+            }
+        }
+    }
+    [string[]]$sourceIds = @($recordsById.Keys)
+    [Array]::Sort($sourceIds, [StringComparer]::Ordinal)
+    return @($sourceIds | ForEach-Object { $recordsById[$_] })
 }
 
 function Assert-SourceInventoryIntegrity {
@@ -339,4 +358,62 @@ function Assert-CurrentSourceInventory {
     Assert-SourceInventoryIntegrity -Inventory $Inventory
 }
 
-Export-ModuleMember -Function ConvertTo-SourceEvidenceUtcDateTime, ConvertTo-SourceEvidenceUtcTimestamp, Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceGenerationEvidence, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory
+function Assert-SourceGenerationIntegrity {
+    param(
+        [Parameter(Mandatory = $true)][object]$SourceGeneration,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [string]$ExpectedSha256
+    )
+
+    $canonicalContent = ($SourceGeneration | ConvertTo-Json -Depth 60) + "`n"
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedSha256) -and (Get-SourceEvidenceContentSha256 -Content $canonicalContent) -cne $ExpectedSha256) {
+        throw "Source generation canonical hash mismatch: expected $ExpectedSha256"
+    }
+    $catalogRoot = Join-Path ([IO.Path]::GetFullPath($RepositoryRoot)) 'hosted_copilot/copilot-rule-catalog'
+    $generationSchemaPath = Join-Path $catalogRoot 'source-generations/source-generation.schema.json'
+    $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
+    $baselineSchemaPath = Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline.schema.json'
+    if (-not ($canonicalContent | Test-Json -SchemaFile $generationSchemaPath -ErrorAction Stop)) {
+        throw 'Source generation does not satisfy its schema'
+    }
+    [string[]]$expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $RepositoryRoot)
+    [string[]]$actualSourceDefinitionIds = @($SourceGeneration.inventories.PSObject.Properties.Name)
+    [Array]::Sort($actualSourceDefinitionIds, [StringComparer]::Ordinal)
+    if (@(Compare-Object $expectedSourceDefinitionIds $actualSourceDefinitionIds -SyncWindow 0).Count -ne 0) {
+        throw "Source generation must contain exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
+    }
+    $inventorySourceKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($sourceDefinitionId in $actualSourceDefinitionIds) {
+        $inventory = $SourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId].Value
+        if (-not (($inventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
+            throw "Source generation inventory does not satisfy its schema: $sourceDefinitionId"
+        }
+        if ([string]$inventory.sourceDefinitionId -cne $sourceDefinitionId) {
+            throw "Source generation inventory key does not match sourceDefinitionId: $sourceDefinitionId"
+        }
+        Assert-SourceInventoryIntegrity -Inventory $inventory
+        foreach ($record in @($inventory.records)) {
+            $null = $inventorySourceKeys.Add("$sourceDefinitionId`:$([string]$record.sourceId):$([string]$record.contentSha256)")
+        }
+    }
+    $baseline = $SourceGeneration.assessmentBaseline
+    if (-not (($baseline | ConvertTo-Json -Depth 50) | Test-Json -SchemaFile $baselineSchemaPath -ErrorAction Stop)) {
+        throw 'Source generation assessment baseline does not satisfy its schema'
+    }
+    if ([string]$baseline.hostedCatalogSha256 -cne [string]$SourceGeneration.hostedCatalogSha256) {
+        throw 'Source generation assessment baseline does not bind its Hosted catalog'
+    }
+    if (($null -eq $baseline.priorSourceGenerationSha256 -and $null -ne $SourceGeneration.previousSourceGenerationSha256) -or
+        ($null -ne $baseline.priorSourceGenerationSha256 -and [string]$baseline.priorSourceGenerationSha256 -cne [string]$SourceGeneration.previousSourceGenerationSha256)) {
+        throw 'Source generation assessment baseline does not bind its previous source generation'
+    }
+    $baselineSourceKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in @($baseline.entries)) {
+        $null = $baselineSourceKeys.Add("$([string]$entry.sourceRef.sourceDefinitionId):$([string]$entry.sourceRef.sourceId):$([string]$entry.sourceRef.contentSha256)")
+    }
+    if ($inventorySourceKeys.Count -ne $baselineSourceKeys.Count -or @($inventorySourceKeys | Where-Object { -not $baselineSourceKeys.Contains($_) }).Count -ne 0) {
+        throw 'Source generation assessment baseline does not cover its accepted inventory projection'
+    }
+}
+
+Export-ModuleMember -Function Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceGenerationEvidence, Get-SourceInventoryProjectionRecords, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory, Assert-SourceGenerationIntegrity

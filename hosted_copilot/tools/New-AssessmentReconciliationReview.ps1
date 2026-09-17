@@ -76,28 +76,27 @@ function Get-SourceKey {
 
 function Get-SourceTransition {
     param(
-        [Parameter(Mandatory = $true)][object]$AcceptedRecord,
-        [object]$StagedRecord,
-        [Parameter(Mandatory = $true)][bool]$HasStagedLane
+        [Parameter(Mandatory = $true)][object]$CurrentRecord,
+        [object]$PriorRecord
     )
 
-    if (-not $HasStagedLane) {
-        return 'current'
+    if ($null -eq $PriorRecord) {
+        return 'added'
     }
-    if ($null -eq $StagedRecord -or [string]$StagedRecord.presence -ceq 'removed') {
-        return 'removed'
+    if ([string]$CurrentRecord.presence -ceq 'removed') {
+        return $(if ([string]$PriorRecord.presence -ceq 'removed') { 'current' } else { 'removed' })
     }
-    if ([string]$AcceptedRecord.presence -ceq 'removed') {
+    if ([string]$PriorRecord.presence -ceq 'removed') {
         return 'reappeared'
     }
-    if ([string]$AcceptedRecord.sourceLifecycle -cne [string]$StagedRecord.sourceLifecycle) {
-        return 'source-lifecycle-changed'
-    }
-    if ([string]$AcceptedRecord.contentSha256 -cne [string]$StagedRecord.contentSha256) {
+    if ([string]$CurrentRecord.contentSha256 -cne [string]$PriorRecord.contentSha256) {
         return 'changed'
     }
-    if ([string]$AcceptedRecord.location -cne [string]$StagedRecord.location) {
+    if ([string]$CurrentRecord.location -cne [string]$PriorRecord.location) {
         return 'moved'
+    }
+    if ([string]$CurrentRecord.sourceLifecycle -cne [string]$PriorRecord.sourceLifecycle) {
+        return 'source-lifecycle-changed'
     }
     return 'current'
 }
@@ -119,6 +118,7 @@ $reviewContractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReviewContra
 $priorSourceGenerationInput = $null
 if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
     $priorSourceGenerationInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath (Join-Path $catalogRoot 'source-generations/source-generation.schema.json') -Name 'Prior source generation'
+    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGenerationInput.Value -RepositoryRoot $resolvedRepositoryRoot -ExpectedSha256 $priorSourceGenerationInput.Snapshot.Sha256
 }
 $baseline = $baselineInput.Value
 $recommendationSnapshot = $recommendationInput.Value
@@ -129,6 +129,11 @@ if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256 -or
 }
 if ([string]$recommendationSnapshot.assessmentBaselineSha256 -cne $baselineInput.Snapshot.Sha256) {
     throw 'Hosted rule change recommendations do not bind the supplied assessment baseline'
+}
+$expectedPriorSourceGenerationSha256 = if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Snapshot.Sha256 }
+if (($null -eq $baseline.priorSourceGenerationSha256 -and $null -ne $expectedPriorSourceGenerationSha256) -or
+    ($null -ne $baseline.priorSourceGenerationSha256 -and [string]$baseline.priorSourceGenerationSha256 -cne [string]$expectedPriorSourceGenerationSha256)) {
+    throw 'Source assessment baseline does not bind the supplied prior source generation'
 }
 $baselineInventoryHashes = ConvertTo-OrdinalMap -Value $baseline.inventoryHashes
 $recommendationInventoryHashes = ConvertTo-OrdinalMap -Value $recommendationSnapshot.inventoryHashes
@@ -154,7 +159,8 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
     $inventories[$sourceDefinitionId] = $inventory
-    foreach ($record in @($inventory.records)) {
+    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $(if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Value }) -RemovedAt $GeneratedAt)
+    foreach ($record in $projectionRecords) {
         $key = Get-SourceKey -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId)
         if ($inventoryRecords.ContainsKey($key)) {
             throw "Source inventories contain duplicate source identity: $sourceDefinitionId/$($record.sourceId)"
@@ -192,7 +198,15 @@ foreach ($entry in @($baseline.entries)) {
     if (-not $inventoryRecords.ContainsKey($sourceKey) -or [string]$inventoryRecords[$sourceKey].contentSha256 -cne [string]$entry.sourceRef.contentSha256) {
         throw "Assessment baseline source does not resolve to inventory evidence: $($entry.sourceRef.sourceDefinitionId)/$($entry.sourceRef.sourceId)"
     }
-    $sourceTransition = 'current'
+    $currentRecord = $inventoryRecords[$sourceKey]
+    $priorRecord = $null
+    if ($null -ne $priorSourceGenerationInput) {
+        $priorInventoryProperty = $priorSourceGenerationInput.Value.inventories.PSObject.Properties[[string]$entry.sourceRef.sourceDefinitionId]
+        if ($null -ne $priorInventoryProperty) {
+            $priorRecord = @($priorInventoryProperty.Value.records | Where-Object { [string]$_.sourceId -ceq [string]$entry.sourceRef.sourceId }) | Select-Object -First 1
+        }
+    }
+    $sourceTransition = Get-SourceTransition -CurrentRecord $currentRecord -PriorRecord $priorRecord
     foreach ($assessment in @($entry.assessments)) {
         $assessmentRef = [ordered]@{
             assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
@@ -240,12 +254,12 @@ if ($presentations.Count -ne $coverageByAssessment.Count) {
 $review = [ordered]@{
     '$schema' = 'assessment-reconciliation-review.schema.json'
     schemaVersion = 4
-    generatedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
+    generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     readOnly = $true
     refreshMode = 'regenerate-read-only-review'
     snapshots = [ordered]@{
         stagedInventoryHashes = $inventoryHashes
-        acceptedSourceGenerationSha256 = if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Snapshot.Sha256 }
+        acceptedSourceGenerationSha256 = $expectedPriorSourceGenerationSha256
         assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
         hostedCatalogSha256 = $catalogInput.Snapshot.Sha256
         reconciliationContractSha256 = [string]$recommendationSnapshot.reconciliationContractSha256

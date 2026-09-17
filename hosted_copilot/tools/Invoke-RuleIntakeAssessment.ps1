@@ -45,6 +45,8 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $collectorPath = [IO.Path]::GetFullPath($CollectorScriptPath)
@@ -613,7 +615,7 @@ if (Test-Path -LiteralPath $resolvedCachePath -PathType Leaf) {
         $cacheReset = $true
         Write-JsonAtomically -Path $resolvedCachePath -Value ([ordered]@{
             schemaVersion = 2
-            updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+            updatedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
             entries = @()
         })
     }
@@ -743,7 +745,7 @@ if ($seededCount -gt 0) {
     }
     Write-JsonAtomically -Path $resolvedCachePath -Value ([ordered]@{
         schemaVersion = 2
-        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        updatedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
         entries = $cacheEntries.ToArray()
     })
 }
@@ -953,7 +955,7 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
             }
         }
 
-        $assessedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        $assessedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
         $recordsById = @{}
         foreach ($semanticRecord in $semanticRecords) {
             $recordsById[[string]$semanticRecord.id] = $semanticRecord
@@ -1035,7 +1037,7 @@ This batch contains exactly $($batchRecords.Count) candidates. Read all three fi
         }
         Write-JsonAtomically -Path $resolvedCachePath -Value ([ordered]@{
             schemaVersion = 2
-            updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+            updatedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
             entries = $cacheEntries.ToArray()
         })
         if ($OutputFormat -eq 'Text') {

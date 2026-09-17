@@ -13,6 +13,8 @@ Import-Module -Name $validationOutputModulePath -Force
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 $catalogRoot = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog'
 $definitionPath = Join-Path $catalogRoot 'source-definitions/maintainer-proposals.json'
 $interactiveDefinitionPath = Join-Path $catalogRoot 'source-definitions/interactive-toolkit.json'
@@ -146,10 +148,10 @@ try {
     $interactiveFirstOutputPath = Join-Path $fixtureRoot 'interactive-first.json'
     $interactiveSecondOutputPath = Join-Path $fixtureRoot 'interactive-second.json'
 
-    $canonicalUtcTimestamp = ConvertTo-SourceEvidenceUtcTimestamp -Value '2026-09-15T14:30:00+02:00'
+    $canonicalUtcTimestamp = ConvertTo-UtcTimestamp -Value '2026-09-15T14:30:00+02:00'
     $expectedCanonicalUtcTimestamp = [datetime]::new(2026, 9, 15, 12, 30, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     Add-TestResult -Name 'canonical-utc-timestamp' -Passed ($canonicalUtcTimestamp -ceq $expectedCanonicalUtcTimestamp) -Detail 'Source evidence timestamps use one invariant UTC round-trip representation regardless of input offset.'
-    Add-TestResult -Name 'invalid-source-timestamp-rejected' -Passed (Test-ThrowsLike -Action { ConvertTo-SourceEvidenceUtcTimestamp -Value 'not-a-timestamp' } -Pattern '*Invalid source evidence timestamp*') -Detail 'Invalid source evidence timestamps fail through the shared parser rather than locale-dependent coercion.'
+    Add-TestResult -Name 'invalid-timestamp-rejected' -Passed (Test-ThrowsLike -Action { ConvertTo-UtcTimestamp -Value 'not-a-timestamp' } -Pattern '*Invalid timestamp*') -Detail 'Invalid timestamps fail through the toolkit-wide helper rather than locale-dependent coercion.'
     $retryAttemptCount = 0
     $retryResult = Invoke-SourceEvidenceWithRetry -Operation 'test transient operation' -MaximumAttempts 3 -BaseDelayMilliseconds 0 -Action {
         $script:retryAttemptCount++

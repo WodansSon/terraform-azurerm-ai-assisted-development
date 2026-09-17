@@ -347,18 +347,7 @@ if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
         throw 'Prior source generation does not satisfy its schema'
     }
     $priorSourceGeneration = $priorSnapshot.Content | ConvertFrom-Json -DateKind String
-    [string[]]$priorSourceDefinitionIds = @($priorSourceGeneration.inventories.PSObject.Properties.Name)
-    [Array]::Sort($priorSourceDefinitionIds, [StringComparer]::Ordinal)
-    if (@(Compare-Object $expectedSourceDefinitionIds $priorSourceDefinitionIds -SyncWindow 0).Count -ne 0) {
-        throw "Prior source generation must contain exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
-    }
-    foreach ($sourceDefinitionId in $priorSourceDefinitionIds) {
-        $priorInventory = $priorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId].Value
-        if (-not (($priorInventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
-            throw "Prior source generation inventory does not satisfy its schema: $sourceDefinitionId"
-        }
-        Assert-SourceInventoryIntegrity -Inventory $priorInventory
-    }
+    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGeneration -RepositoryRoot $runRepositoryRoot -ExpectedSha256 $priorSnapshot.Sha256
     $snapshotPriorSourceGenerationPath = Join-Path $runDirectory 'prior-source-generation.json'
     [IO.File]::WriteAllBytes($snapshotPriorSourceGenerationPath, $priorSnapshot.Bytes)
 }
@@ -390,7 +379,8 @@ foreach ($inventoryPath in $InventoryPaths) {
     $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $runRepositoryRoot -SourceDefinitionId $sourceDefinitionId
     Assert-CurrentSourceInventory -Inventory $inventory -Evidence $sourceEvidence
 
-    $packetRecords = @($inventory.records | ForEach-Object {
+    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $priorSourceGeneration -RemovedAt $GeneratedAt)
+    $packetRecords = @($projectionRecords | ForEach-Object {
         $record = $_
         $mappedHostedRuleIds = [Collections.Generic.List[string]]::new()
         if ($sourceDefinitionId -ceq 'contributor-guidance' -and $hostedRulesBySourceId.ContainsKey([string]$record.sourceId)) {
@@ -403,7 +393,7 @@ foreach ($inventoryPath in $InventoryPaths) {
             $null
         }
         else {
-            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentRecord $record
         }
         [ordered]@{
             sourceRef = [ordered]@{

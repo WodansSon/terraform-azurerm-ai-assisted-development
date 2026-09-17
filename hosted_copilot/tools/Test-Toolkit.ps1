@@ -507,6 +507,16 @@ if ($runtimeStarted) {
             $lifecycleIssues.Add('lifecycle module must enforce canonical provider lineage and export an explicit public surface')
         }
     }
+    $timestampFormattingBypasses = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File | Where-Object {
+            $_.Extension -in @('.ps1', '.psm1') -and
+            $_.Name -notlike 'Test-*' -and
+            $_.FullName -ne $hostedToolkitHelpersPath
+        } | Where-Object {
+            (Get-Content -LiteralPath $_.FullName -Raw) -match '\.ToString\(\s*[''"]o[''"]'
+        })
+    if ($timestampFormattingBypasses.Count -gt 0) {
+        $lifecycleIssues.Add("production PowerShell timestamp writes must use ConvertTo-UtcTimestamp: $($timestampFormattingBypasses.Name -join ', ')")
+    }
     if ($lifecycleIssues.Count -eq 0) {
         Add-CheckResult -Name 'lifecycle-tools' -Passed $true -Detail 'Hosted experiment lifecycle commands parse and preserve explicit mutation and cleanup gates.'
     }

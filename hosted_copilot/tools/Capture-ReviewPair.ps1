@@ -38,6 +38,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
+
 if ($PSCmdlet.ParameterSetName -eq 'PairRecord') {
     $resolvedPairPath = [IO.Path]::GetFullPath($PairPath)
     if (-not (Test-Path -LiteralPath $resolvedPairPath -PathType Leaf)) {
@@ -451,8 +454,8 @@ function Get-PullRequestEvidence {
             id = [int64]$review.id
             state = [string]$review.state
             body = [string]$review.body
-            requestedAt = $requestedAt.ToUniversalTime().ToString('o')
-            reviewedAt = $reviewedAt.ToUniversalTime().ToString('o')
+            requestedAt = ConvertTo-UtcTimestamp -Value $requestedAt
+            reviewedAt = ConvertTo-UtcTimestamp -Value $reviewedAt
             commitId = [string]$review.commit_id
             reviewer = [string]$review.user.login
             reviewEffort = $ReviewEffort
@@ -613,7 +616,7 @@ if ($control.diffHash -ne $hosted.diffHash) {
     throw 'Control and Hosted pull requests do not have identical file patches'
 }
 
-$capturedAt = [DateTimeOffset]::UtcNow.ToString('o')
+$capturedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
 $rawRelativePath = "raw/$FixtureId/$RunId.json"
 $blindRelativePath = "raw/$FixtureId/$RunId.blind.json"
 $summaryRelativePath = "raw/$FixtureId/$RunId.summary.md"

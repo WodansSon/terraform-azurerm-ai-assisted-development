@@ -32,6 +32,26 @@ const FACTORS = [
   ["redundancy", "Existing coverage", "How completely current Hosted rules already cover it", "penalty"]
 ];
 
+function toUtcTimestamp(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid timestamp: ${value}`);
+  return date.toISOString().replace(/Z$/, "0000Z");
+}
+
+function normalizeTimestampProperty(target, property) {
+  if (typeof target?.[property] === "string") target[property] = toUtcTimestamp(target[property]);
+}
+
+function normalizeSessionTimestamps(session) {
+  const normalized = structuredClone(session);
+  normalizeTimestampProperty(normalized, "createdAt");
+  normalizeTimestampProperty(normalized, "updatedAt");
+  Object.values(normalized.decisions || {}).forEach((decision) => normalizeTimestampProperty(decision, "updatedAt"));
+  Object.values(normalized.applicabilityOverrides || {}).forEach((override) => normalizeTimestampProperty(override, "recordedAt"));
+  (normalized.bulkOperations || []).forEach((operation) => normalizeTimestampProperty(operation, "createdAt"));
+  return normalized;
+}
+
 const state = {
   bundle: null,
   session: null,
@@ -550,11 +570,12 @@ function getSessionId(bundle) {
 }
 
 function createSession(id, bundle) {
+  const timestamp = toUtcTimestamp();
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     id,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
     snapshots: bundle.snapshots,
     approverName: "",
     decisions: {},
@@ -659,7 +680,7 @@ function repairOverridePlanMembership() {
       ...maintainerDecision,
       ...createPlanMembership("override"),
       sourceHash: candidate.hash,
-      updatedAt: new Date().toISOString()
+      updatedAt: toUtcTimestamp()
     };
   });
 }
@@ -678,7 +699,7 @@ function defaultDecision(candidate) {
     proposedText: assessment?.proposedText || (candidate.sourceType === "upstream" ? "" : extractRuleBody(candidate.text)),
     proposedHostedRuleId: String(assessment?.proposedHostedRuleId || ""),
     assessment,
-    updatedAt: new Date().toISOString()
+    updatedAt: toUtcTimestamp()
   };
 }
 
@@ -887,12 +908,12 @@ function saveDecision(candidate, decision) {
     state.session.decisions[candidate.key] = {
       ...maintainerDecision,
       sourceHash: candidate.hash,
-      updatedAt: new Date().toISOString()
+      updatedAt: toUtcTimestamp()
     };
   } else {
     delete state.session.decisions[candidate.key];
   }
-  state.session.updatedAt = new Date().toISOString();
+  state.session.updatedAt = toUtcTimestamp();
   persistSession();
   syncCandidateTreeRows();
   renderBulkActions();
@@ -920,13 +941,13 @@ async function updateOverrideLifecycle(candidate, override, decision) {
     state.session.decisions[candidate.key] = {
       ...maintainerDecision,
       sourceHash: candidate.hash,
-      updatedAt: new Date().toISOString()
+      updatedAt: toUtcTimestamp()
     };
   } else {
     delete state.session.decisions[candidate.key];
   }
   clearCandidateSelection(candidate);
-  state.session.updatedAt = new Date().toISOString();
+  state.session.updatedAt = toUtcTimestamp();
   refreshEffectiveCandidates();
   await persistSession();
   renderAll();
@@ -1191,7 +1212,7 @@ function applyBulkSelection(recommendationScope) {
   if (!candidates.length) return;
   const operation = {
     id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+    createdAt: toUtcTimestamp(),
     scope: "current-results",
     recommendationScope,
     query: state.queries["candidate-sources"],
@@ -1233,7 +1254,7 @@ function undoBulkOperation(operationId) {
     removed += 1;
   });
   state.session.bulkOperations = state.session.bulkOperations.filter((item) => item.id !== operation.id);
-  state.session.updatedAt = new Date().toISOString();
+  state.session.updatedAt = toUtcTimestamp();
   persistSession();
   renderBulkSelectionOutputs();
   showToast(`${formatCountLabel(removed, "Candidate")} removed by bulk Undo.`);
@@ -1831,7 +1852,7 @@ async function handleApplicabilityOverrideClick(event) {
       return;
     }
     if (!rationale || rationale === currentOverride.rationale) return;
-    const recordedAt = new Date().toISOString();
+    const recordedAt = toUtcTimestamp();
     state.session.applicabilityOverrides[candidate.key] = {
       ...currentOverride,
       rationale: rationale.slice(0, OVERRIDE_RATIONALE_MAX_LENGTH),
@@ -1859,7 +1880,7 @@ async function handleApplicabilityOverrideClick(event) {
     originalHostedApplicable: false,
     effectiveHostedApplicable: true,
     rationale: rationale.slice(0, OVERRIDE_RATIONALE_MAX_LENGTH),
-    recordedAt: new Date().toISOString(),
+    recordedAt: toUtcTimestamp(),
     recordedBy: { type: "github-cli", login: identity.login }
   };
   await updateOverrideLifecycle(candidate, override, { ...defaultDecision(candidate), ...createPlanMembership("override") });
@@ -3154,40 +3175,42 @@ function switchView(view) {
 }
 
 function buildDraftExport() {
+  const session = normalizeSessionTimestamps(state.session);
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     kind: "hosted-rule-workbench-draft",
     sessionId: state.session.id,
-    exportedAt: new Date().toISOString(),
-    snapshots: state.session.snapshots,
-    approverName: state.session.approverName || "",
-    decisions: state.session.decisions,
-    applicabilityOverrides: state.session.applicabilityOverrides,
-    bulkOperations: state.session.bulkOperations
+    exportedAt: toUtcTimestamp(),
+    snapshots: session.snapshots,
+    approverName: session.approverName || "",
+    decisions: session.decisions,
+    applicabilityOverrides: session.applicabilityOverrides,
+    bulkOperations: session.bulkOperations
   };
 }
 
 function buildApprovalPayload() {
+  const session = normalizeSessionTimestamps(state.session);
   return {
     schemaVersion: APPROVAL_PAYLOAD_SCHEMA_VERSION,
     kind: "hosted-rule-promotion-selection",
     sessionId: state.session.id,
     snapshots: state.session.snapshots,
     inapplicableCandidateCount: state.excludedCandidateCount,
-    bulkOperations: state.session.bulkOperations,
+    bulkOperations: session.bulkOperations,
     decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, getDecision(candidate)))
   };
 }
 
 function exportDraft() {
   const payload = JSON.stringify(buildDraftExport(), null, 2) + "\n";
-  downloadJson(payload, `hosted-rule-draft-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  downloadJson(payload, `hosted-rule-draft-${toUtcTimestamp().replace(/[:.]/g, "-")}.json`);
   showToast("Draft exported");
 }
 
 function handleApproverInput(event) {
   state.session.approverName = event.target.value.slice(0, 120);
-  state.session.updatedAt = new Date().toISOString();
+  state.session.updatedAt = toUtcTimestamp();
   persistSession();
   renderPreview();
   setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
@@ -3202,7 +3225,7 @@ async function approveAndExport() {
   }
   elements["approve-export-button"].disabled = true;
   try {
-    const approvedAt = new Date().toISOString();
+    const approvedAt = toUtcTimestamp();
     const payload = buildApprovalPayload();
     const payloadBytes = JSON.stringify(payload, null, 2) + "\n";
     const approvedPayloadSha256 = await sha256Hex(payloadBytes);
@@ -3287,7 +3310,7 @@ async function importDraft(event) {
     state.session.applicabilityOverrides = draft.applicabilityOverrides || {};
     state.session.bulkOperations = draft.bulkOperations;
     refreshEffectiveCandidates();
-    state.session.updatedAt = new Date().toISOString();
+    state.session.updatedAt = toUtcTimestamp();
     await persistSession();
     renderAll();
     showToast("Draft imported");
@@ -3331,7 +3354,7 @@ async function readSession(id) {
 
 async function persistSession() {
   if (!state.session) return;
-  const snapshot = structuredClone(state.session);
+  const snapshot = normalizeSessionTimestamps(state.session);
   persistencePromise = persistencePromise.then(async () => {
     const database = await openDatabase();
     await new Promise((resolve, reject) => {

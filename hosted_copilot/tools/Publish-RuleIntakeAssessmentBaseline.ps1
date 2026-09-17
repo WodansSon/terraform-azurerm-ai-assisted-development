@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+$helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersPath -Force
 
 $bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
 $baselineSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
@@ -77,7 +79,7 @@ foreach ($source in @(
 $baseline = [ordered]@{
     '$schema' = 'assessment-baseline.schema.json'
     schemaVersion = 3
-    generatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    generatedAt = ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow)
     hostedCatalogSha256 = [string]$bundle.snapshots.hostedCatalogSha256
     sourceBundleSha256 = Get-ContentSha256 -Content $bundleContent
     entries = $entries.ToArray()

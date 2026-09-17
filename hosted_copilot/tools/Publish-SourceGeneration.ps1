@@ -21,7 +21,9 @@ $ErrorActionPreference = 'Stop'
 
 $helpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
 $sourceEvidencePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
+$reconciliationValidationPath = Join-Path $PSScriptRoot 'AssessmentReconciliationValidation.psm1'
 Import-Module -Name $sourceEvidencePath -Force
+Import-Module -Name $reconciliationValidationPath -Force
 Import-Module -Name $helpersPath -Force
 
 function Read-JsonSnapshot {
@@ -63,10 +65,38 @@ $generationRoot = Join-Path $catalogRoot 'source-generations'
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
 $baselineSchemaPath = Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline.schema.json'
 $recommendationSchemaPath = Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json'
+$hostedCatalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
+$assessmentContractPath = Join-Path $catalogRoot 'rule-assessments/source-assessment-v2.json'
+$reconciliationContractPath = Join-Path $reconciliationRoot 'hosted-rule-change-recommendations-v1.json'
+$reviewContractPath = Join-Path $reconciliationRoot 'assessment-reconciliation-review-v1.json'
 $bundleInput = Read-JsonSnapshot -Path ([IO.Path]::GetFullPath($WorkbenchBundlePath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review.schema.json') -Name 'Workbench bundle'
 $requestInput = Read-JsonSnapshot -Path ([IO.Path]::GetFullPath($PublicationRequestPath)) -SchemaPath (Join-Path $generationRoot 'publication-request.schema.json') -Name 'Publication request'
 $bundle = $bundleInput.Value
 $request = $requestInput.Value
+
+$hostedCatalogSnapshot = Get-FileSnapshot -Path $hostedCatalogPath
+if ([string]$bundle.snapshots.hostedCatalogSha256 -cne $hostedCatalogSnapshot.Sha256) {
+    throw 'Workbench bundle Hosted catalog identity is stale'
+}
+$assessmentContract = (Get-FileSnapshot -Path $assessmentContractPath).Content | ConvertFrom-Json
+$currentAssessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $assessmentContract -RepositoryRoot $resolvedRepositoryRoot
+if ([string]$bundle.assessmentBaseline.assessmentContractSha256 -cne $currentAssessmentContractSha256) {
+    throw 'Workbench bundle source assessment contract identity is stale'
+}
+$currentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $bundle.assessmentBaseline.runConfiguration
+if ([string]$bundle.assessmentBaseline.assessmentRunConfigurationSha256 -cne $currentRunConfigurationSha256) {
+    throw 'Workbench bundle source assessment run configuration identity is inconsistent'
+}
+$reconciliationContract = (Get-FileSnapshot -Path $reconciliationContractPath).Content | ConvertFrom-Json
+$currentReconciliationContractSha256 = Get-HostedRuleChangeRecommendationsContractSha256 -Contract $reconciliationContract -RepositoryRoot $resolvedRepositoryRoot
+if ([string]$bundle.snapshots.reconciliationContractSha256 -cne $currentReconciliationContractSha256 -or [string]$bundle.recommendationOutput.reconciliationContractSha256 -cne $currentReconciliationContractSha256) {
+    throw 'Workbench bundle reconciliation contract identity is stale'
+}
+$reviewContract = (Get-FileSnapshot -Path $reviewContractPath).Content | ConvertFrom-Json
+$currentReviewContractSha256 = Get-AssessmentReconciliationReviewContractSha256 -Contract $reviewContract -RepositoryRoot $resolvedRepositoryRoot
+if ([string]$bundle.snapshots.reviewContractSha256 -cne $currentReviewContractSha256) {
+    throw 'Workbench bundle review contract identity is stale'
+}
 
 if ([string]$request.workbenchBundleSha256 -cne $bundleInput.Snapshot.Sha256) {
     throw 'Publication request does not bind the exact Workbench bundle bytes'
@@ -90,7 +120,17 @@ foreach ($sourceDefinitionId in $actualSourceDefinitionIds) {
     if (-not (($inventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
         throw "Workbench bundle inventory does not satisfy its schema: $sourceDefinitionId"
     }
-    Assert-SourceInventoryIntegrity -Inventory $inventory
+    $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $resolvedRepositoryRoot -SourceDefinitionId $sourceDefinitionId
+    Assert-CurrentSourceInventory -Inventory $inventory -Evidence $sourceEvidence
+    $runDefinition = @($bundle.assessmentBaseline.runConfiguration.sourceDefinitions | Where-Object { [string]$_.sourceDefinitionId -ceq $sourceDefinitionId })
+    if ($runDefinition.Count -ne 1 -or
+        [string]$runDefinition[0].sourceDefinitionSha256 -cne [string]$sourceEvidence.SourceDefinitionSha256 -or
+        [string]$runDefinition[0].parserContractSha256 -cne [string]$sourceEvidence.ParserContractSha256 -or
+        [string]$runDefinition[0].inventoryConfigurationSha256 -cne [string]$sourceEvidence.InventoryConfigurationSha256 -or
+        [int]$runDefinition[0].assessmentBatchSize -ne [int]$sourceEvidence.AssessmentBatchSize -or
+        [string]$runDefinition[0].assessmentCardinality -cne [string]$sourceEvidence.AssessmentCardinality) {
+        throw "Workbench bundle assessment run configuration is stale: $sourceDefinitionId"
+    }
     if ([string]$inventory.sourceDefinitionId -cne $sourceDefinitionId) {
         throw "Workbench bundle inventory key does not match sourceDefinitionId: $sourceDefinitionId"
     }
@@ -117,6 +157,10 @@ if ([string]$bundle.recommendationOutput.assessmentBaselineSha256 -cne [string]$
 }
 if ([string]$bundle.recommendationOutput.hostedCatalogSha256 -cne [string]$bundle.snapshots.hostedCatalogSha256) {
     throw 'Workbench bundle recommendation output does not bind its Hosted catalog'
+}
+if (($null -eq $bundle.assessmentBaseline.priorSourceGenerationSha256 -and $null -ne $bundle.snapshots.acceptedSourceGenerationSha256) -or
+    ($null -ne $bundle.assessmentBaseline.priorSourceGenerationSha256 -and [string]$bundle.assessmentBaseline.priorSourceGenerationSha256 -cne [string]$bundle.snapshots.acceptedSourceGenerationSha256)) {
+    throw 'Workbench bundle assessment baseline does not bind its accepted source generation'
 }
 $baselineInventoryHashes = (ConvertTo-OrdinalMap -Value $bundle.assessmentBaseline.inventoryHashes) | ConvertTo-Json -Compress
 $recommendationInventoryHashes = (ConvertTo-OrdinalMap -Value $bundle.recommendationOutput.inventoryHashes) | ConvertTo-Json -Compress
@@ -152,24 +196,60 @@ if ($expectedAssessmentKeys.Count -ne $coveredAssessmentKeys.Count -or @($expect
 $currentPath = Join-Path $generationRoot 'current.json'
 $historyRoot = Join-Path $generationRoot 'history'
 $expectedCurrentSha256 = if ($null -eq $bundle.snapshots.acceptedSourceGenerationSha256) { $null } else { [string]$bundle.snapshots.acceptedSourceGenerationSha256 }
+$priorSourceGeneration = $bundle.acceptedSourceGeneration
+if (($null -eq $priorSourceGeneration -and $null -ne $expectedCurrentSha256) -or ($null -ne $priorSourceGeneration -and $null -eq $expectedCurrentSha256)) {
+    throw 'Workbench bundle accepted source generation does not match its snapshot identity'
+}
+if ($null -ne $priorSourceGeneration) {
+    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGeneration -RepositoryRoot $resolvedRepositoryRoot -ExpectedSha256 $expectedCurrentSha256
+}
+$acceptedAt = ConvertTo-UtcTimestamp -Value $request.acceptance.acceptedAt
+$acceptedInventories = [ordered]@{}
+foreach ($sourceDefinitionId in $actualSourceDefinitionIds) {
+    $stagedInventory = $bundle.stagedInventories.PSObject.Properties[$sourceDefinitionId].Value
+    $acceptedInventory = ($stagedInventory | ConvertTo-Json -Depth 40 -Compress) | ConvertFrom-Json -DateKind String
+    $acceptedInventory.records = @(Get-SourceInventoryProjectionRecords -CurrentInventory $stagedInventory -PriorSourceGeneration $priorSourceGeneration -RemovedAt $acceptedAt)
+    $acceptedInventory.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($acceptedInventory.records)
+    Assert-SourceInventoryIntegrity -Inventory $acceptedInventory
+    $acceptedInventories[$sourceDefinitionId] = $acceptedInventory
+}
+$acceptedInventories = ConvertTo-OrdinalMap -Value $acceptedInventories
+$baselineSourceKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($entry in @($bundle.assessmentBaseline.entries)) {
+    $null = $baselineSourceKeys.Add("$([string]$entry.sourceRef.sourceDefinitionId):$([string]$entry.sourceRef.sourceId):$([string]$entry.sourceRef.contentSha256)")
+}
+foreach ($sourceDefinitionId in $actualSourceDefinitionIds) {
+    foreach ($record in @($acceptedInventories[$sourceDefinitionId].records)) {
+        $sourceKey = "$sourceDefinitionId`:$([string]$record.sourceId):$([string]$record.contentSha256)"
+        if (-not $baselineSourceKeys.Remove($sourceKey)) {
+            throw "Accepted source generation record does not have exact assessment baseline coverage: $sourceDefinitionId/$($record.sourceId)"
+        }
+    }
+}
+if ($baselineSourceKeys.Count -ne 0) {
+    throw 'Assessment baseline contains source references outside the accepted inventory projection'
+}
 $generation = [ordered]@{
     '$schema' = 'source-generation.schema.json'
     schemaVersion = 1
-    publishedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $request.acceptance.acceptedAt
+    publishedAt = $acceptedAt
     previousSourceGenerationSha256 = $expectedCurrentSha256
     workbenchBundleSha256 = $bundleInput.Snapshot.Sha256
     publicationRequestSha256 = $requestInput.Snapshot.Sha256
     hostedCatalogSha256 = [string]$bundle.snapshots.hostedCatalogSha256
-    acceptance = $request.acceptance
-    inventories = ConvertTo-OrdinalMap -Value $bundle.stagedInventories
+    acceptance = [ordered]@{
+        acceptedAt = $acceptedAt
+        acceptedBy = $request.acceptance.acceptedBy
+        rationale = [string]$request.acceptance.rationale
+    }
+    inventories = $acceptedInventories
     assessmentBaseline = $bundle.assessmentBaseline
 }
 $generationBytes = [Text.UTF8Encoding]::new($false).GetBytes(($generation | ConvertTo-Json -Depth 60) + "`n")
 $generationSha256 = Get-Sha256 -Bytes $generationBytes
 $generationJson = [Text.UTF8Encoding]::new($false, $true).GetString($generationBytes)
-if (-not ($generationJson | Test-Json -SchemaFile (Join-Path $generationRoot 'source-generation.schema.json') -ErrorAction Stop)) {
-    throw 'Generated source generation does not satisfy its schema'
-}
+$generatedSourceGeneration = $generationJson | ConvertFrom-Json -DateKind String
+Assert-SourceGenerationIntegrity -SourceGeneration $generatedSourceGeneration -RepositoryRoot $resolvedRepositoryRoot -ExpectedSha256 $generationSha256
 
 if ($Publish) {
     if (-not (Test-Path -LiteralPath $generationRoot -PathType Container)) {
@@ -198,11 +278,32 @@ if ($Publish) {
             if (-not (Test-Path -LiteralPath $historyRoot -PathType Container)) {
                 $null = New-Item -ItemType Directory -Path $historyRoot -Force
             }
-            [IO.File]::WriteAllBytes($historyPath, $generationBytes)
+            $historyTemporaryPath = Join-Path $historyRoot ('.history.' + [guid]::NewGuid().ToString('N') + '.tmp')
+            try {
+                [IO.File]::WriteAllBytes($historyTemporaryPath, $generationBytes)
+                if ((Get-Sha256 -Path $historyTemporaryPath) -cne $generationSha256) {
+                    throw 'Temporary source generation history hash does not match generated bytes'
+                }
+                try {
+                    [IO.File]::Move($historyTemporaryPath, $historyPath, $false)
+                }
+                catch [IO.IOException] {
+                    if (-not (Test-Path -LiteralPath $historyPath -PathType Leaf) -or (Get-Sha256 -Path $historyPath) -cne $generationSha256) {
+                        throw "Source generation history collision: $historyPath"
+                    }
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $historyTemporaryPath -Force -ErrorAction SilentlyContinue
+            }
         }
         $temporaryPath = Join-Path $generationRoot ('.current.' + [guid]::NewGuid().ToString('N') + '.tmp')
         try {
             [IO.File]::WriteAllBytes($temporaryPath, $generationBytes)
+            $replacementCurrentSha256 = if (Test-Path -LiteralPath $currentPath -PathType Leaf) { Get-Sha256 -Path $currentPath } else { $null }
+            if (($null -eq $expectedCurrentSha256 -and $null -ne $replacementCurrentSha256) -or ($null -ne $expectedCurrentSha256 -and $replacementCurrentSha256 -cne $expectedCurrentSha256)) {
+                throw "Source generation precondition failed before replacement: expected $expectedCurrentSha256, actual $replacementCurrentSha256"
+            }
             [IO.File]::Move($temporaryPath, $currentPath, $true)
         }
         finally {

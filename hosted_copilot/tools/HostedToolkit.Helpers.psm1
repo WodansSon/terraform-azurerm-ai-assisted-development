@@ -1,6 +1,30 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-UtcTimestamp {
+    param([Parameter(Mandatory = $true)][object]$Value)
+
+    try {
+        if ($Value -is [datetimeoffset]) {
+            $utcDateTime = ([datetimeoffset]$Value).UtcDateTime
+        }
+        elseif ($Value -is [datetime]) {
+            $utcDateTime = ([datetime]$Value).ToUniversalTime()
+        }
+        else {
+            $utcDateTime = [datetimeoffset]::Parse(
+                [string]$Value,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AllowWhiteSpaces
+            ).UtcDateTime
+        }
+        return $utcDateTime.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        throw "Invalid timestamp: $Value"
+    }
+}
+
 function Get-Sha256 {
     [CmdletBinding(DefaultParameterSetName = 'Content')]
     param(
@@ -144,4 +168,4 @@ function Get-BehaviorManifestSha256 {
     return Get-Sha256 -Content $builder.ToString()
 }
 
-Export-ModuleMember -Function Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Write-JsonSnapshot, Get-BehaviorManifestSha256
+Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Write-JsonSnapshot, Get-BehaviorManifestSha256

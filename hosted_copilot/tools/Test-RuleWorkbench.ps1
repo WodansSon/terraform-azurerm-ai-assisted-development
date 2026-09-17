@@ -560,6 +560,13 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $browserContractValid = $browserContractValid -and $shutdownPresentationValid
     Add-TestResult -Name 'browser-state-contract' -Passed $browserContractValid -Detail 'The IDE shell keeps draft portability in a compact title-bar menu, places shutdown at the far right, and renders the validated fork promotion target plus operational state directly into the status bar.'
 
+    $timestampNormalizationValid = $appContent -match 'function toUtcTimestamp\(value = new Date\(\)\)' -and
+        $appContent -match 'return date\.toISOString\(\)\.replace\(/Z\$/, "0000Z"\)' -and
+        $appContent -match 'function normalizeSessionTimestamps\(session\)' -and
+        $appContent -match 'const snapshot = normalizeSessionTimestamps\(state\.session\)' -and
+        $appContent -notmatch 'new Date\(\)\.toISOString\(\)'
+    Add-TestResult -Name 'browser-timestamp-normalization' -Passed $timestampNormalizationValid -Detail 'Workbench persistence and exports use one browser canonicalizer that matches the PowerShell seven-digit UTC wire format.'
+
     $headedPlaybackValid = $playwrightRunnerContent -match 'args\.includes\("--shutdown-at-end"\)' -and $playwrightRunnerContent -match 'locator\("#close-button"\)\.click\(\)' -and $playwrightRunnerContent -match 'locator\("\.shutdown-state h1"\)' -and $headedPlaybackContent -match '\$ownedServer = -not \$Url' -and $headedPlaybackContent -match 'Port \$Port is already in use; choose an available port' -and $headedPlaybackContent -match '\$runnerArguments \+= ''--shutdown-at-end''' -and $headedPlaybackContent -match 'Wait-Job -Job \$serverJob -Timeout 10' -and $headedPlaybackContent -match 'Remove-Item -LiteralPath \$siteDirectory -Recurse -Force'
     Add-TestResult -Name 'headed-playback-lifecycle' -Passed $headedPlaybackValid -Detail 'Visible Playwright playback owns its default server, fails closed on occupied ports, clicks Close Workbench, verifies shutdown, and cleans temporary staging while explicit URL attachment remains non-destructive.'
 

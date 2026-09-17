@@ -127,21 +127,12 @@ $assessmentCardinalityBySourceDefinition = @{}
 $runSourceDefinitions = [Collections.Generic.List[object]]::new()
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
 $priorSourceGeneration = $null
+$priorSourceGenerationSha256 = $null
 if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
     $priorInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath $sourceGenerationSchemaPath
     $priorSourceGeneration = $priorInput.Value
-    [string[]]$priorSourceDefinitionIds = @($priorSourceGeneration.inventories.PSObject.Properties.Name)
-    [Array]::Sort($priorSourceDefinitionIds, [StringComparer]::Ordinal)
-    if (@(Compare-Object $expectedSourceDefinitionIds $priorSourceDefinitionIds -SyncWindow 0).Count -ne 0) {
-        throw "Prior source generation must contain exactly the approved source lanes: $($expectedSourceDefinitionIds -join ', ')"
-    }
-    foreach ($sourceDefinitionId in $priorSourceDefinitionIds) {
-        $priorInventory = $priorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId].Value
-        if (-not (($priorInventory | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
-            throw "Prior source generation inventory does not satisfy its schema: $sourceDefinitionId"
-        }
-        Assert-SourceInventoryIntegrity -Inventory $priorInventory
-    }
+    $priorSourceGenerationSha256 = $priorInput.Snapshot.Sha256
+    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGeneration -RepositoryRoot $resolvedRepositoryRoot -ExpectedSha256 $priorInput.Snapshot.Sha256
 }
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
@@ -164,13 +155,14 @@ foreach ($inventoryPath in $InventoryPaths) {
         assessmentCardinality = [string]$sourceEvidence.AssessmentCardinality
     })
 
-    foreach ($record in @($inventory.records)) {
+    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $priorSourceGeneration -RemovedAt $GeneratedAt)
+    foreach ($record in $projectionRecords) {
         $key = "$sourceDefinitionId`:$($record.sourceId)"
         $priorSourceEvidenceByKey[$key] = if ($null -eq $priorSourceGeneration) {
             $null
         }
         else {
-            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentContentSha256 ([string]$record.contentSha256)
+            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentRecord $record
         }
         if ($inventoryRecords.ContainsKey($key)) {
             throw "Source inventories contain duplicate source reference: $key"
@@ -262,7 +254,7 @@ foreach ($entry in $draftEntries) {
         $assessment | Add-Member -NotePropertyName assessmentProvenance -NotePropertyValue ([pscustomobject][ordered]@{
             originSchemaVersion = 4
             status = 'evaluated'
-            assessedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
+            assessedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
             assessmentEvaluator = [ordered]@{
                 kind = 'llm'
                 identity = $Evaluator
@@ -284,8 +276,9 @@ $inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
 $baseline = [ordered]@{
     '$schema' = 'source-assessment-baseline.schema.json'
     schemaVersion = 4
-    generatedAt = ConvertTo-SourceEvidenceUtcTimestamp -Value $GeneratedAt
+    generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     inventoryHashes = $inventoryHashes
+    priorSourceGenerationSha256 = $priorSourceGenerationSha256
     hostedCatalogSha256 = $hostedCatalogInput.Snapshot.Sha256
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256
