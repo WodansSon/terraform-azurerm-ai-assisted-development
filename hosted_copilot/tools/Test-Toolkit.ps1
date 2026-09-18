@@ -83,6 +83,11 @@ $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'New-HostedRuleCh
 $assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'New-AssessmentReconciliationReview.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'Test-AssessmentReconciliation.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
+$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'Test-V4MigrationReadiness.ps1'
+$v3FieldCompatibilitySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.schema.json'
+$v3FieldCompatibilityPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.json'
+$v3RetirementInventorySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.schema.json'
+$v3RetirementInventoryPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.json'
 $assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
@@ -347,6 +352,11 @@ if ($runtimeStarted) {
         $assessmentReconciliationReviewBuilderPath,
         $assessmentReconciliationTestPath,
         $assessmentReconciliationPromptPath,
+        $v4MigrationReadinessTestPath,
+        $v3FieldCompatibilitySchemaPath,
+        $v3FieldCompatibilityPath,
+        $v3RetirementInventorySchemaPath,
+        $v3RetirementInventoryPath,
         $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
@@ -756,6 +766,22 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'v4-migration-readiness'
+    try {
+        $migrationReadinessOutput = @(& pwsh -NoProfile -File $v4MigrationReadinessTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($migrationReadinessOutput | Out-String).Trim())
+        }
+        $migrationReadinessResult = ($migrationReadinessOutput | Out-String) | ConvertFrom-Json
+        if ($migrationReadinessResult.status -ne 'passed') {
+            throw 'version 4 migration readiness validation reported failures'
+        }
+        Add-CheckResult -Name 'v4-migration-readiness' -Passed $true -Detail "Passed $($migrationReadinessResult.testCount) preservation and inventory tests across $($migrationReadinessResult.compatibilityEntryCount) compatibility entries, $($migrationReadinessResult.retirementEntryCount) retirement entries, $($migrationReadinessResult.ruleCount) rules, and $($migrationReadinessResult.legacyTupleCount) legacy tuples."
+    }
+    catch {
+        Add-ValidationIssue -Name 'v4-migration-readiness' -Issue "Hosted version 4 migration readiness validation failed: $($_.Exception.Message)"
     }
 
     if ($SkipRuleWorkbench) {
@@ -1186,7 +1212,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'v4-migration-readiness', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

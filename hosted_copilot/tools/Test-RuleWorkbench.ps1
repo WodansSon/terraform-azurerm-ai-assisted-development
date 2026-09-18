@@ -2,6 +2,9 @@
 param(
     [string]$Run,
 
+    [ValidatePattern('^(all|[a-z0-9-]+)$')]
+    [string]$Journey = 'all',
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
 
@@ -52,6 +55,10 @@ $npmFixRequiresBreaking = $false
 $npmFixChanges = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
 $supportedFocusedRuns = @('loopback-host-validation', 'browser-behavior-manifest', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
+
+if ($Journey -ne 'all' -and $Run -ne 'browser-playwright-journeys') {
+    throw '-Journey requires -Run browser-playwright-journeys'
+}
 
 function Test-ShouldRun {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -418,6 +425,44 @@ try {
     $maintainerAssessment.hostedCategory = 'documentation'
     $maintainerAssessment.proposedHostedRuleId = 'DOCS-CAND-001'
     $maintainerAssessment.proposedText = 'Flag documentation that omits a required maintainer convention.'
+    $excludedAssessmentAlpha = $bundle.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedAssessmentAlpha.assessmentId = 'REVIEW-EXCL-001'
+    $excludedAssessmentAlpha.title = 'Excluded assessment alpha'
+    $excludedAssessmentAlpha.hostedApplicable = $false
+    $excludedAssessmentAlpha.applicabilityRationale = 'The source behavior is outside the current Hosted review boundary.'
+    $excludedAssessmentAlpha.recommendation = 'exclude'
+    $excludedAssessmentAlpha.proposedHostedRuleId = 'REVIEW-EXCL-001'
+    $excludedAssessmentAlpha.sourceContentSha256 = '3' * 64
+    $excludedAssessmentAlpha.summary = 'Excluded behavior remains available for maintainer audit.'
+    $excludedAssessmentAlpha.impactDescription = 'The assessment is preserved without entering Candidate Sources.'
+    $excludedAssessmentAlpha.currentHostedCoverage = 'No Hosted rule is required for this excluded behavior.'
+    $excludedAssessmentAlpha.affectedSurfaces = @('testing')
+    $excludedAssessmentAlpha.guardedTokenDelta = 0
+    $excludedAssessmentAlpha.proposedText = 'Review the excluded behavior only when a maintainer explicitly contests the applicability decision.'
+    $excludedAssessmentAlpha.selectionRationale = 'The evidence is complete, but the behavior is outside the current Hosted review boundary.'
+    $excludedAssessmentBravo = $excludedAssessmentAlpha | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedAssessmentBravo.assessmentId = 'REVIEW-EXCL-002'
+    $excludedAssessmentBravo.title = 'Excluded assessment bravo'
+    $excludedAssessmentBravo.proposedHostedRuleId = 'REVIEW-EXCL-002'
+    $excludedAssessmentBravo.sourceContentSha256 = '4' * 64
+    $excludedAssessmentBravo.applicabilityRationale = 'This second excluded result provides deterministic sorting evidence.'
+    $excludedAssessmentBravo.proposedText = 'Keep the second excluded assessment available for deterministic audit ordering.'
+    $excludedInteractiveAlpha = $bundle.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedInteractiveAlpha.id = 'REVIEW-EXCL-001'
+    $excludedInteractiveAlpha.title = 'Excluded assessment alpha'
+    $excludedInteractiveAlpha.contentSha256 = '3' * 64
+    $excludedInteractiveAlpha.ruleText = 'Review excluded behavior after a maintainer records an explicit override rationale.'
+    $excludedInteractiveAlpha.assessments = @($excludedAssessmentAlpha)
+    $excludedInteractiveBravo = $bundle.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedInteractiveBravo.id = 'REVIEW-EXCL-002'
+    $excludedInteractiveBravo.title = 'Excluded assessment bravo'
+    $excludedInteractiveBravo.contentSha256 = '4' * 64
+    $excludedInteractiveBravo.ruleText = 'Keep a second excluded behavior available for deterministic assessment sorting.'
+    $excludedInteractiveBravo.assessments = @($excludedAssessmentBravo)
+    $bundle.interactiveCandidates += @($excludedInteractiveAlpha, $excludedInteractiveBravo)
+    $bundle.summary.interactiveRuleCount = 3
+    $bundle.summary.interactiveReviewCount = 3
+    $bundle.summary.interactiveStateCounts.new = 3
     $bundle.maintainerCandidates = @([ordered]@{
         id = 'DOCS-MAINT-001'
         title = 'Maintainer proposal'
@@ -454,7 +499,7 @@ try {
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
     $bundleHashAfter = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
     $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 3 -and $stageResult.evaluatedCandidateCount -eq 3 -and $stageResult.ruleCandidateCount -eq 5 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports source records and rule-level AI candidates separately.' } else { ($stageOutput | Out-String).Trim() })
+    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 5 -and $stageResult.evaluatedCandidateCount -eq 5 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports source records and rule-level AI candidates separately.' } else { ($stageOutput | Out-String).Trim() })
     Add-TestResult -Name 'source-bundle-read-only' -Passed ($bundleHashBefore -eq $bundleHashAfter) -Detail 'Workbench staging does not modify its source bundle.'
 
     $fakeAssessmentPath = Join-Path $tempRoot 'fake-assessment.ps1'
@@ -477,14 +522,14 @@ param(
     [string]`$OutputFormat
 )
 Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
-[ordered]@{ status = 'passed'; candidateCount = 3; ruleCandidateCount = 5; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 5; inapplicableCount = 0; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
+[ordered]@{ status = 'passed'; candidateCount = 5; ruleCandidateCount = 7; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 5; inapplicableCount = 2; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
 "@, [Text.UTF8Encoding]::new($false))
     $jsonAssessmentSiteDirectory = Join-Path $tempRoot 'json-assessment-site'
     Start-TestResult -Name 'json-assessment-launch'
     $jsonAssessmentOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $jsonAssessmentSiteDirectory -AssessmentScriptPath $fakeAssessmentPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $jsonAssessmentExitCode = $LASTEXITCODE
     $jsonAssessmentResult = if ($jsonAssessmentExitCode -eq 0) { ($jsonAssessmentOutput | Out-String) | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 3 -and $jsonAssessmentResult.ruleCandidateCount -eq 5 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
+    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 5 -and $jsonAssessmentResult.ruleCandidateCount -eq 7 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -967,7 +1012,8 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
             catch { }
         }
         if (-not $serverReady) {
-            throw 'loopback test server did not become ready'
+            $serverOutput = (Receive-Job -Job $serverJob -Keep | Out-String).Trim()
+            throw "loopback test server did not become ready$(if ($serverOutput) { ": $serverOutput" })"
         }
         if (Test-ShouldRun -Name 'loopback-host-validation') {
             Start-TestResult -Name 'loopback-host-validation'
@@ -989,30 +1035,6 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         if (-not $behaviorManifestValid -and ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage'))) {
             throw 'Workbench browser behavior manifest is invalid'
         }
-        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage')) {
-            if (Test-ShouldRun -Name 'browser-playwright-journeys') { Start-TestResult -Name 'browser-playwright-journeys' }
-            $playwrightOutput = @(& $nodeExecutable $playwrightRunnerPath $shutdownUrl 2>&1)
-            $playwrightExitCode = $LASTEXITCODE
-            $playwrightResult = if ($playwrightExitCode -eq 0) { ($playwrightOutput | Out-String) | ConvertFrom-Json } else { $null }
-            $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $journeyPaths.Count -and $playwrightResult.behaviorCount -eq $behaviorIds.Count -and $playwrightResult.assertionCount -gt 0 -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9
-            if (Test-ShouldRun -Name 'browser-playwright-journeys') {
-                Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) behavior IDs." } else { ($playwrightOutput | Out-String).Trim() })
-            }
-        }
-        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-viewport-layout', 'browser-framework-coverage')) {
-            if (Test-ShouldRun -Name 'browser-viewport-layout') { Start-TestResult -Name 'browser-viewport-layout' }
-            $layoutTestOutput = @(& $nodeExecutable $layoutTestPath $shutdownUrl 2>&1)
-            $layoutTestExitCode = $LASTEXITCODE
-            $layoutTestResult = if ($layoutTestExitCode -eq 0) { ($layoutTestOutput | Out-String) | ConvertFrom-Json } else { $null }
-            $layoutValid = $layoutTestExitCode -eq 0 -and $layoutTestResult.status -eq 'passed' -and $layoutTestResult.viewportCount -eq 9 -and $layoutTestResult.assertionCount -gt 0
-            if (Test-ShouldRun -Name 'browser-viewport-layout') {
-                Add-TestResult -Name 'browser-viewport-layout' -Passed $layoutValid -Detail $(if ($layoutTestExitCode -eq 0) { 'Browser geometry preserves mobile rejection and contained Candidate Details, Assessment Details, Plan, and Preview scrolling across every breakpoint boundary.' } else { ($layoutTestOutput | Out-String).Trim() })
-            }
-        }
-        if (Test-ShouldRun -Name 'browser-framework-coverage') {
-            $browserCoverageValid = $playwrightValid -and $layoutValid -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
-            Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
-        }
         $shutdownConfigContent = Get-Content -LiteralPath (Join-Path $shutdownSiteDirectory 'shutdown-config.js') -Raw
         if ($shutdownConfigContent -notmatch '"shutdownToken":"(?<token>[0-9a-f]{64})"') {
             throw 'staged shutdown token was not found'
@@ -1023,13 +1045,69 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
             $unauthorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -SkipHttpErrorCheck
             $unrelatedPost = Invoke-WebRequest -Uri "$shutdownUrl/" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
         }
-        $authorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
-        $completedJob = Wait-Job -Job $serverJob -Timeout 10
+        $playwrightResult = $null
+        $layoutTestResult = $null
+        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-viewport-layout', 'browser-framework-coverage')) {
+            if (Test-ShouldRun -Name 'browser-viewport-layout') { Start-TestResult -Name 'browser-viewport-layout' }
+            $layoutTestOutput = @(& $nodeExecutable $layoutTestPath $shutdownUrl 2>&1)
+            $layoutTestExitCode = $LASTEXITCODE
+            $layoutTestResult = if ($layoutTestExitCode -eq 0) { ($layoutTestOutput | Out-String) | ConvertFrom-Json } else { $null }
+            $layoutValid = $layoutTestExitCode -eq 0 -and $layoutTestResult.status -eq 'passed' -and $layoutTestResult.viewportCount -eq 9 -and $layoutTestResult.assertionCount -gt 0
+            if (Test-ShouldRun -Name 'browser-viewport-layout') {
+                Add-TestResult -Name 'browser-viewport-layout' -Passed $layoutValid -Detail $(if ($layoutTestExitCode -eq 0) { 'Browser geometry preserves mobile rejection and contained Candidate Details, Assessment Details, Plan, and Preview scrolling across every breakpoint boundary.' } else { ($layoutTestOutput | Out-String).Trim() })
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage')) {
+            if (Test-ShouldRun -Name 'browser-playwright-journeys') { Start-TestResult -Name 'browser-playwright-journeys' }
+            $playwrightArguments = @($playwrightRunnerPath, $shutdownUrl)
+            if ($Journey -ne 'all') {
+                $playwrightArguments += @('--journey', $Journey)
+            }
+            $selectedBehaviors = if ($Journey -eq 'all') {
+                @($behaviorManifest.behaviors)
+            }
+            else {
+                @($behaviorManifest.behaviors | Where-Object { [IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetFileNameWithoutExtension([string]$_.journey)) -eq $Journey })
+            }
+            $selectedJourneyCount = @($selectedBehaviors | ForEach-Object { [string]$_.journey } | Sort-Object -Unique).Count
+            $playwrightOutput = @(& $nodeExecutable @playwrightArguments 2>&1)
+            $playwrightExitCode = $LASTEXITCODE
+            $playwrightResult = if ($playwrightExitCode -eq 0) { ($playwrightOutput | Out-String) | ConvertFrom-Json } else { $null }
+            $selectedBehaviorIds = @($selectedBehaviors | ForEach-Object { [string]$_.id } | Sort-Object)
+            $executedBehaviorIds = if ($null -ne $playwrightResult) {
+                @($playwrightResult.executedBehaviorIds | ForEach-Object { [string]$_ } | Sort-Object)
+            }
+            else {
+                @()
+            }
+            $behaviorExecutionValid = @(Compare-Object -ReferenceObject $selectedBehaviorIds -DifferenceObject $executedBehaviorIds).Count -eq 0
+            $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $selectedJourneyCount -and $playwrightResult.behaviorCount -eq $selectedBehaviors.Count -and $behaviorExecutionValid -and $playwrightResult.assertionCount -gt 0
+            if ($Journey -eq 'all') {
+                $playwrightValid = $playwrightValid -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9 -and $playwrightResult.shutdownVerified
+            }
+            if (Test-ShouldRun -Name 'browser-playwright-journeys') {
+                Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) executed behavior IDs." } else { ($playwrightOutput | Out-String).Trim() })
+            }
+        }
+        if (Test-ShouldRun -Name 'browser-framework-coverage') {
+            $browserCoverageValid = $playwrightValid -and $layoutValid -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
+            Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
+        }
+        $uiShutdownVerified = $null -ne $playwrightResult -and $playwrightResult.shutdownVerified
+        if ($uiShutdownVerified) {
+            $completedJob = Wait-Job -Job $serverJob -Timeout 10
+            $shutdownComplete = $null -ne $completedJob -and $serverJob.State -eq 'Completed'
+        }
+        else {
+            $authorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = $shutdownToken } -SkipHttpErrorCheck
+            $completedJob = Wait-Job -Job $serverJob -Timeout 10
+            $shutdownComplete = $authorizedShutdown.StatusCode -eq 200 -and $null -ne $completedJob -and $serverJob.State -eq 'Completed'
+        }
         if (Test-ShouldRun -Name 'authenticated-server-shutdown') {
-            $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unrelatedPost.StatusCode -eq 405 -and $authorizedShutdown.StatusCode -eq 200 -and $null -ne $completedJob -and $serverJob.State -eq 'Completed'
+            $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unrelatedPost.StatusCode -eq 405 -and $shutdownComplete
             Add-TestResult -Name 'authenticated-server-shutdown' -Passed $shutdownLifecycleValid -Detail 'Only the per-launch token can stop the loopback server; unauthorized shutdown and unrelated POST requests remain rejected.'
         }
-        elseif ($authorizedShutdown.StatusCode -ne 200 -or $null -eq $completedJob -or $serverJob.State -ne 'Completed') {
+        elseif (-not $shutdownComplete) {
             throw 'Focused Workbench validation could not stop its owned server cleanly'
         }
     }

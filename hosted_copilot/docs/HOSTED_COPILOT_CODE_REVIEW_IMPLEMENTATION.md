@@ -515,6 +515,16 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-IDENTITY-003`: Proposed Hosted rule identity feedback remains stable at the supported viewport boundary.
 - `WB-UX-IDENTITY-004`: Mapped candidates expose and export their resulting Hosted identity.
 - `WB-UX-SEARCH-001`: Candidate search preserves the tree and navigates to the best match.
+- `WB-UX-ASSESSMENT-001`: Assessment Results supports search, sorting, evidence selection, and return navigation.
+- `WB-UX-OVERRIDE-001`: Applicability overrides apply, edit, persist, and remove through real controls.
+- `WB-UX-DECISION-001`: Decision controls persist action, proposed identity, rationale, and plan membership.
+- `WB-UX-CAPACITY-001`: Plan decisions project exact guarded tokens and headroom from fixture baselines.
+- `WB-UX-SYNC-001`: Candidate edits synchronize Candidate Sources, Assessment Results, and Promotion Plan.
+- `WB-UX-BACKTOTOP-001`: Details back-to-top follows real scroll state and returns to its disabled state.
+- `WB-UX-DRAFT-001`: Draft download bytes restore UI decisions through the file input.
+- `WB-UX-DRAFT-002`: Invalid and mismatched Draft imports leave browser and IndexedDB state unchanged.
+- `WB-UX-SESSION-001`: Version 6 Draft migration persists version 7 decisions across reload.
+- `WB-UX-APPROVAL-001`: Approval download preserves exact payload bytes, attribution, timestamps, and decisions.
 - `WB-UX-SCROLLBAR-001`: Scrollbars hide while idle and reveal on interaction.
 - `WB-UX-SCROLLBAR-002`: Scrollbar reveal and hide use asymmetric timing.
 - `WB-UX-SCROLLBAR-003`: Scrollbars retain flat arrowless stable geometry.
@@ -535,6 +545,7 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-VIEWPORT-008`: Status tooltip geometry remains contained at every supported viewport.
 - `WB-UX-VIEWPORT-009`: Provenance tooltip geometry remains contained at every supported viewport.
 - `WB-UX-VIEWPORT-010`: Candidate, Assessment, Plan, and Preview panes retain fixed controls.
+- `WB-UX-SHUTDOWN-001`: Close Workbench triggers authenticated server shutdown and renders the closed state.
 
 `regression/workbench/behavior-manifest.json` maps each behavior ID to exactly one target Playwright journey. When Workbench behavior changes, update this authoritative contract and the mapped journey in the same change. Add a new behavior ID for a separately testable user-visible invariant; do not rely on assertion totals as the coverage contract. Playwright journeys run in isolated browser contexts and must restore any temporary application state they create. `Test-RuleWorkbench.ps1` executes the manifest and journeys, and `Test-Toolkit.ps1` consumes that result in the complete Hosted profile.
 

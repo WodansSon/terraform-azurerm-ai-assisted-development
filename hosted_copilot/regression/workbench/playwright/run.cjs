@@ -61,11 +61,13 @@ async function run() {
     return browser;
   };
   let assertionCount = 0;
-  let behaviorCount = 0;
   let viewportAssertionCount = 0;
   let viewportCount = 0;
   let shutdownVerified = false;
+  let shutdownRequested = shutdownAtEnd;
   let playbackError = null;
+  const executedBehaviorIds = new Set();
+  const pendingShutdownBehaviorIds = new Set();
   const windowMetrics = new WeakMap();
   const playback = {
     headed,
@@ -204,7 +206,6 @@ async function run() {
       if (JSON.stringify(declaredBehaviorIds) !== JSON.stringify(expectedBehaviorIds)) {
         throw new Error(`${path.basename(journeyPath)} behavior declarations do not match behavior-manifest.json`);
       }
-      behaviorCount += manifestBehaviorIds.length;
 
       const context = journey.isolatedBrowser
         ? null
@@ -224,6 +225,12 @@ async function run() {
       try {
         const journeyResult = await journey.run({ page, baseUrl, assert, check, playback });
         if (journeyResult?.shutdownVerified) shutdownVerified = true;
+        if (journeyResult?.requestRunnerShutdown) {
+          shutdownRequested = true;
+          manifestBehaviorIds.forEach((behaviorId) => pendingShutdownBehaviorIds.add(behaviorId));
+        } else {
+          manifestBehaviorIds.forEach((behaviorId) => executedBehaviorIds.add(behaviorId));
+        }
         if (journeyResult?.viewportAssertionCount) {
           viewportAssertionCount += journeyResult.viewportAssertionCount;
           viewportCount = journeyResult.viewportCount;
@@ -237,7 +244,7 @@ async function run() {
   } catch (error) {
     playbackError = error;
   } finally {
-    if (shutdownAtEnd && playbackError && selectedJourneys.size === 1 && [...selectedJourneys.keys()].some((journeyPath) => require(journeyPath).isolatedBrowser)) {
+    if (shutdownRequested && playbackError && selectedJourneys.size === 1 && [...selectedJourneys.keys()].some((journeyPath) => require(journeyPath).isolatedBrowser)) {
       try {
         const configResponse = await fetch(new URL("shutdown-config.js", baseUrl));
         const config = await configResponse.text();
@@ -255,7 +262,7 @@ async function run() {
       } catch (shutdownError) {
         playbackError = new AggregateError([playbackError, shutdownError], "Playback failed and fallback shutdown also failed");
       }
-    } else if (shutdownAtEnd && !shutdownVerified) {
+    } else if (shutdownRequested && !shutdownVerified) {
       const context = await (await getBrowser()).newContext({ viewport: { width: 768, height: 900 } });
       const page = await context.newPage();
       try {
@@ -286,6 +293,7 @@ async function run() {
           if (!passed) throw new Error(`headed playback: ${message}`);
         }
         shutdownVerified = true;
+        pendingShutdownBehaviorIds.forEach((behaviorId) => executedBehaviorIds.add(behaviorId));
         if (headed) await page.waitForTimeout(transitionDelay);
       } catch (error) {
         if (!playbackError) playbackError = error;
@@ -305,7 +313,8 @@ async function run() {
     transitionDelay,
     shutdownVerified,
     journeyCount: selectedJourneys.size,
-    behaviorCount,
+    behaviorCount: executedBehaviorIds.size,
+    executedBehaviorIds: [...executedBehaviorIds].sort(),
     assertionCount,
     viewportAssertionCount,
     viewportCount

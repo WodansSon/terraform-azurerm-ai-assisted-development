@@ -215,6 +215,56 @@
       "journey": "playwright/journeys/candidate-search-navigation.journey.cjs"
     },
     {
+      "id": "WB-UX-ASSESSMENT-001",
+      "title": "Assessment Results supports search, sorting, evidence selection, and return navigation",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OVERRIDE-001",
+      "title": "Applicability overrides apply, edit, persist, and remove through real controls",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-DECISION-001",
+      "title": "Decision controls persist action, proposed identity, rationale, and plan membership",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-CAPACITY-001",
+      "title": "Plan decisions project exact guarded tokens and headroom from fixture baselines",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SYNC-001",
+      "title": "Candidate edits synchronize Candidate Sources, Assessment Results, and Promotion Plan",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-BACKTOTOP-001",
+      "title": "Details back-to-top follows real scroll state and returns to its disabled state",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-DRAFT-001",
+      "title": "Draft download bytes restore UI decisions through the file input",
+      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+    },
+    {
+      "id": "WB-UX-DRAFT-002",
+      "title": "Invalid and mismatched Draft imports leave browser and IndexedDB state unchanged",
+      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SESSION-001",
+      "title": "Version 6 Draft migration persists version 7 decisions across reload",
+      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+    },
+    {
+      "id": "WB-UX-APPROVAL-001",
+      "title": "Approval download preserves exact payload bytes, attribution, timestamps, and decisions",
+      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+    },
+    {
       "id": "WB-UX-SCROLLBAR-001",
       "title": "Scrollbars hide while idle and reveal on interaction",
       "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"
@@ -313,6 +363,11 @@
       "id": "WB-UX-VIEWPORT-010",
       "title": "Candidate, Assessment, Plan, and Preview panes retain fixed controls",
       "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
+    },
+    {
+      "id": "WB-UX-SHUTDOWN-001",
+      "title": "Close Workbench triggers authenticated server shutdown and renders the closed state",
+      "journey": "playwright/journeys/ui-triggered-shutdown.journey.cjs"
     }
   ]
 }
