@@ -309,20 +309,34 @@ try {
     Add-TestResult -Name 'recommendation-reported-hash' -Passed ($null -ne $firstResult -and [string]$firstResult.recommendationSnapshotSha256 -ceq (Get-Sha256 -Path $firstRun.OutputPath)) -Detail 'The recommendation result reports the hash of the exact bytes written to its immutable destination.'
     $outputSchemaValid = $null -ne $firstSnapshot -and ((Get-Content -LiteralPath $firstRun.OutputPath -Raw) | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop)
     Add-TestResult -Name 'recommendation-schema' -Passed $outputSchemaValid -Detail 'Generated Hosted rule change recommendations satisfy their durable schema.'
-    $strayHostedIdSnapshot = Copy-JsonObject -Value $firstSnapshot
-    $nonRecommendedCoverage = @($strayHostedIdSnapshot.assessmentCoverage | Where-Object { [string]$_.disposition -in @('deferred', 'excluded') })[0]
-    $nonRecommendedCoverage.hostedIds = @([string]$strayHostedIdSnapshot.recommendations[0].hostedId)
-    $strayHostedIdSchemaValid = $false
-    try {
-        $strayHostedIdSchemaValid = ($strayHostedIdSnapshot | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop
-    }
-    catch {
-    }
-    Add-TestResult -Name 'nonrecommended-hosted-ids-schema-rejected' -Passed (-not $strayHostedIdSchemaValid) -Detail 'Deferred and excluded durable coverage cannot retain contradictory Hosted IDs.'
-    $reviewBuilderContent = Get-Content -LiteralPath $reviewBuilderPath -Raw
-    $consumerRejectsStrayHostedIds = $reviewBuilderContent -match 'if \(\$hostedIds\.Count -ne 0\)\s*\{\s*throw ''Deferred or excluded assessment coverage cannot reference Hosted IDs'''
-    Add-TestResult -Name 'bundle-rejects-nonrecommended-hosted-ids' -Passed $consumerRejectsStrayHostedIds -Detail 'Bundle construction independently rejects non-recommended coverage that references Hosted IDs after schema validation.'
     $allocatedId = if ($null -ne $firstSnapshot) { [string]$firstSnapshot.recommendations[0].hostedId } else { '' }
+    $nonRecommendedSchemaCases = @(
+        [pscustomobject]@{ Name = 'excluded-empty'; Disposition = 'excluded'; HostedIds = @(); ExpectedValid = $true },
+        [pscustomobject]@{ Name = 'deferred-empty'; Disposition = 'deferred'; HostedIds = @(); ExpectedValid = $true },
+        [pscustomobject]@{ Name = 'excluded-known-id'; Disposition = 'excluded'; HostedIds = @($allocatedId); ExpectedValid = $false },
+        [pscustomobject]@{ Name = 'deferred-unknown-id'; Disposition = 'deferred'; HostedIds = @('IMPL-SCHEMA-999'); ExpectedValid = $false },
+        [pscustomobject]@{ Name = 'excluded-duplicate-ids'; Disposition = 'excluded'; HostedIds = @($allocatedId, $allocatedId); ExpectedValid = $false },
+        [pscustomobject]@{ Name = 'deferred-null'; Disposition = 'deferred'; HostedIds = $null; ExpectedValid = $false },
+        [pscustomobject]@{ Name = 'excluded-scalar'; Disposition = 'excluded'; HostedIds = $allocatedId; ExpectedValid = $false }
+    )
+    $nonRecommendedSchemaFailures = [Collections.Generic.List[string]]::new()
+    foreach ($case in $nonRecommendedSchemaCases) {
+        $caseSnapshot = Copy-JsonObject -Value $firstSnapshot
+        $caseCoverage = @($caseSnapshot.assessmentCoverage | Where-Object { [string]$_.disposition -in @('deferred', 'excluded') })[0]
+        $caseCoverage.disposition = [string]$case.Disposition
+        $caseCoverage.rationale = 'Non-recommended fixture rationale.'
+        $caseCoverage.hostedIds = $case.HostedIds
+        try {
+            $caseValid = [bool](($caseSnapshot | ConvertTo-Json -Depth 40) | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -ErrorAction Stop)
+        }
+        catch {
+            $caseValid = $false
+        }
+        if ($caseValid -ne [bool]$case.ExpectedValid) {
+            $nonRecommendedSchemaFailures.Add([string]$case.Name)
+        }
+    }
+    Add-TestResult -Name 'nonrecommended-hosted-ids-schema-matrix' -Passed ($nonRecommendedSchemaFailures.Count -eq 0) -Detail $(if ($nonRecommendedSchemaFailures.Count -eq 0) { 'The durable schema accepts empty deferred/excluded Hosted ID sets and rejects known, unknown, duplicate, null, and scalar variants.' } else { "Unexpected schema results: $($nonRecommendedSchemaFailures -join ', ')" })
     $sourceIds = @($entries.sourceRef.sourceId)
     Add-TestResult -Name 'source-identity-independent' -Passed ($allocatedId -match '^IMPL-SCHEMA-[0-9]{3}$' -and $allocatedId -notin $sourceIds -and @($catalog.rules.id) -notcontains $allocatedId) -Detail 'Imported source IDs do not become Hosted identity; allocation occurs only after reconciliation.'
     $secondRun = Invoke-Builder -Draft $draft -Name 'valid-two'
@@ -554,6 +568,31 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
         }
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
     }
+    $isolatedRecommendationSchemaPath = Join-Path $isolatedCatalogRoot 'assessment-reconciliation/hosted-rule-change-recommendations.schema.json'
+    [byte[]]$isolatedRecommendationSchemaBytes = [IO.File]::ReadAllBytes($isolatedRecommendationSchemaPath)
+    try {
+        $permissiveRecommendationSchema = [Text.UTF8Encoding]::new($false, $true).GetString($isolatedRecommendationSchemaBytes) | ConvertFrom-Json
+        $permissiveRecommendationSchema.'$defs'.assessmentCoverage.allOf[0].else.properties.PSObject.Properties.Remove('hostedIds')
+        Write-JsonFixture -Path $isolatedRecommendationSchemaPath -Value $permissiveRecommendationSchema
+        $consumerStrayIdSnapshot = Copy-JsonObject -Value $firstSnapshot
+        $consumerStrayIdCoverage = @($consumerStrayIdSnapshot.assessmentCoverage | Where-Object { [string]$_.disposition -in @('deferred', 'excluded') })[0]
+        $consumerStrayIdCoverage.hostedIds = @($allocatedId)
+        $consumerStrayIdSnapshotPath = Join-Path $tempRoot 'consumer-stray-id-recommendations.json'
+        Write-JsonFixture -Path $consumerStrayIdSnapshotPath -Value $consumerStrayIdSnapshot
+        $permissiveSchemaAllowsStrayId = (Get-Content -LiteralPath $consumerStrayIdSnapshotPath -Raw) | Test-Json -SchemaFile $isolatedRecommendationSchemaPath -ErrorAction Stop
+        try {
+            $consumerStrayIdOutput = @(& $reviewBuilderPath -RepositoryRoot $isolatedRepositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $consumerStrayIdSnapshotPath -OutputPath (Join-Path $tempRoot 'consumer-stray-id-review.json') -HostedCatalogPath (Join-Path $isolatedCatalogRoot 'instruction-catalog.json') -ReviewContractPath (Join-Path $isolatedCatalogRoot 'assessment-reconciliation/assessment-reconciliation-review-v1.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+            $consumerStrayIdExitCode = $LASTEXITCODE
+        }
+        catch {
+            $consumerStrayIdOutput = @($_)
+            $consumerStrayIdExitCode = 1
+        }
+    }
+    finally {
+        [IO.File]::WriteAllBytes($isolatedRecommendationSchemaPath, $isolatedRecommendationSchemaBytes)
+    }
+    Add-TestResult -Name 'bundle-behavior-rejects-nonrecommended-hosted-ids' -Passed ($permissiveSchemaAllowsStrayId -and $consumerStrayIdExitCode -ne 0 -and ($consumerStrayIdOutput | Out-String) -like '*cannot reference Hosted IDs*') -Detail 'With schema rejection deliberately bypassed in an isolated catalog, the real bundle consumer independently rejects non-recommended Hosted IDs.'
     $publishOutput = @(& $publisherPath -RepositoryRoot $isolatedRepositoryRoot -WorkbenchBundlePath $reviewOutputPath -PublicationRequestPath $publicationRequestPath -ExpectedPublicationRequestSha256 $publicationRequestSha256 -Publish -OutputFormat Json 2>&1)
     $publishExitCode = $LASTEXITCODE
     $published = if ($publishExitCode -eq 0) { ($publishOutput | Out-String) | ConvertFrom-Json } else { $null }
