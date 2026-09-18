@@ -8,7 +8,7 @@ This repository uses compact, path-specific instructions for GitHub Copilot code
 - `.github/instructions/azurerm-go.instructions.md` defines Go implementation review rules for `internal/**/*.go`.
 - `.github/instructions/azurerm-tests.instructions.md` supplements the Go rules with acceptance-test review requirements for `internal/**/*_test.go`.
 - `.github/instructions/azurerm-docs.instructions.md` defines documentation review rules for `website/docs/**/*.html.markdown`.
-- `.github/skills/code-review/SKILL.md` defines the compact review procedure GitHub may load when relevant.
+- `.github/skills/code-review/SKILL.md` defines the cross-surface workflow GitHub may load to review related implementation, acceptance-test, and documentation changes as one provider behavior.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` provides this operating reference.
 - `.github/hosted-copilot-installed-state.json` records package ownership, source commit, and installed hashes after deployment.
 

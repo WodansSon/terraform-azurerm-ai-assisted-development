@@ -360,13 +360,12 @@ It must not contain detailed implementation, testing, or documentation rules.
 
 `.github/skills/code-review/SKILL.md` should define the small hosted review procedure:
 
-- Classify changed files by review surface
-- Inspect the diff and the nearest evidence required to validate a concern
-- Use configured GitHub context to inspect existing review feedback when available
-- Suppress materially equivalent comments
-- Emit only actionable, line-addressable findings
-- Keep each comment concise and identify the applicable rule ID
-- Avoid broad summaries, role handoffs, moderation records, or presentation schemas
+- Group related implementation, acceptance-test, and documentation files into one Terraform behavior change.
+- Use registration, clients, helpers, typed resource IDs, API paths, and generated SDK types to connect ambiguous file relationships.
+- Trace configured values through validation, Azure requests, state, lifecycle operations, and import where applicable.
+- Compare the implementation contract with its acceptance coverage and user-facing documentation.
+- Report only proven cross-surface mismatches on changed lines and include the applicable rule ID.
+- Suppress materially equivalent existing review comments.
 
 Mandatory compliance rules must remain in path-specific instructions because hosted skill selection is relevance-based and should not be the sole enforcement dependency.
 

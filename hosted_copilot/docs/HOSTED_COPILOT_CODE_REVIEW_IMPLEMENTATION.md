@@ -596,15 +596,11 @@ The receipt must include source snapshot hashes, candidate decisions, selection 
 
 `hosted_copilot/.github/skills/code-review/SKILL.md` defines one compact review procedure:
 
-- Classify the changed file surface.
-- Read the diff and nearest evidence needed to prove or disprove a concern.
-- Apply the repository-wide and matching path-specific rules.
-- Inspect existing review feedback when GitHub context makes it available.
-- Suppress materially equivalent comments.
-- Emit only actionable, line-addressable findings.
-- Keep each comment concise and include the applicable stable rule ID.
-
-The skill must not reproduce Interactive Toolkit roles, handoff schemas, frozen audits, moderation, presentation passes, or pending-review staging.
+- Group related implementation, acceptance-test, and documentation files into one Terraform behavior change.
+- Resolve ambiguous relationships through registration, shared clients and helpers, typed resource IDs, API paths, and generated SDK types.
+- Trace the provider contract across validation, Azure requests, state, lifecycle operations, and import where applicable.
+- Compare changed implementation behavior with its acceptance coverage and user-facing documentation.
+- Report proven cross-surface mismatches on changed lines, include applicable stable rule IDs, and suppress materially equivalent existing comments.
 
 Mandatory requirements remain in path-specific instructions. Skill relevance is not a sufficient enforcement boundary.
 

@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Reworked the review skill to correlate implementation, acceptance-test, and documentation changes and trace their shared provider contract across Azure requests, Terraform state, lifecycle behavior, and import.
 - Made the normalized catalog authoritative for generated path-specific guidance, applicability, provenance, and active-rule rendering, with direct source deployment and exact installed-file tracking.
 - Made every assessment produce a complete, collision-free Hosted rule proposal independently from Add, Update, Defer, Exclude, or No Change, with smart field-level repair for prior baselines and clear existing-versus-resulting identity throughout Workbench review and export.
 - Standardized Hosted validation and test reporting with the Interactive Toolkit execution-state presentation and adopted a guarded four-characters-per-token capacity estimate with 25% safety headroom.
