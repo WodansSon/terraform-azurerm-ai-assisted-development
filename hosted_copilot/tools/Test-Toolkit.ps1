@@ -30,17 +30,20 @@ $testInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-tests
 $documentationInstructionsPath = Join-Path $hostedRuntimePath 'instructions/azurerm-docs.instructions.md'
 $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
-$experimentRunbookPath = Join-Path $hostedRoot 'docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md'
+$hostedReviewDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_REVIEW.md'
 $regressionCasesPath = Join-Path $hostedRoot 'regression/cases'
 $reviewResultSchemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
 $reviewCommonModulePath = Join-Path $PSScriptRoot 'modules/review/Review.Common.psm1'
-$reviewBaseInitializerPath = Join-Path $PSScriptRoot 'commands/review/Initialize-ReviewBases.ps1'
-$reviewPairCreatorPath = Join-Path $PSScriptRoot 'commands/review/New-ReviewPair.ps1'
-$reviewPullRequestImporterPath = Join-Path $PSScriptRoot 'commands/review/Import-PullRequest.ps1'
-$reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'commands/review/Publish-TestCase.ps1'
-$reviewCapturePath = Join-Path $PSScriptRoot 'commands/review/Capture-ReviewPair.ps1'
-$reviewPairCloserPath = Join-Path $PSScriptRoot 'commands/review/Close-ReviewPair.ps1'
+$hostedReviewCommandPath = Join-Path $PSScriptRoot 'Invoke-HostedReview.ps1'
+$hostedReviewWorkflowModulePath = Join-Path $PSScriptRoot 'modules/review/HostedReview.Workflow.psm1'
+$reviewBaseInitializerPath = Join-Path $PSScriptRoot 'internal/review/Initialize-ReviewBases.ps1'
+$reviewPairCreatorPath = Join-Path $PSScriptRoot 'internal/review/New-ReviewPair.ps1'
+$reviewPullRequestImporterPath = Join-Path $PSScriptRoot 'internal/review/Import-PullRequest.ps1'
+$reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'internal/review/Publish-TestCase.ps1'
+$reviewCapturePath = Join-Path $PSScriptRoot 'internal/review/Capture-ReviewPair.ps1'
+$reviewPairCloserPath = Join-Path $PSScriptRoot 'internal/review/Close-ReviewPair.ps1'
 $reviewResultValidatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.ps1'
+$hostedReviewWorkflowTestPath = Join-Path $PSScriptRoot 'tests/Test-HostedReviewWorkflow.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
 $intakeLedgerPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.json'
@@ -202,7 +205,7 @@ function Get-Sha256Hash {
 
 $runtimeStarted = (Test-Path -LiteralPath $hostedRuntimePath) -or (Test-Path -LiteralPath $packageManifestPath)
 $phase = if ($runtimeStarted) { 'runtime' } else { 'design' }
-$purpose = 'experiment-support'
+$purpose = 'pre-adoption-validation'
 $deploymentModel = 'source-checkout'
 
 if ($OutputFormat -eq 'Text') {
@@ -305,10 +308,12 @@ if ($runtimeStarted) {
         $documentationInstructionsPath,
         $reviewSkillPath,
         $userDocumentationPath,
-        $experimentRunbookPath,
+        $hostedReviewDocumentationPath,
         $installerPath,
         $reviewResultSchemaPath,
         $reviewCommonModulePath,
+        $hostedReviewCommandPath,
+        $hostedReviewWorkflowModulePath,
         $reviewBaseInitializerPath,
         $reviewPairCreatorPath,
         $reviewPullRequestImporterPath,
@@ -316,6 +321,7 @@ if ($runtimeStarted) {
         $reviewCapturePath,
         $reviewPairCloserPath,
         $reviewResultValidatorPath,
+        $hostedReviewWorkflowTestPath,
         $instructionCatalogPath,
         $instructionCatalogSchemaPath,
         $intakeLedgerPath,
@@ -375,28 +381,33 @@ if ($runtimeStarted) {
         $upstreamSourceValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
-    $expectedRootPowerShellFiles = @('Install-Toolkit.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
+    $expectedRootPowerShellFiles = @('Install-Toolkit.ps1', 'Invoke-HostedReview.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
     $actualRootPowerShellFiles = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in @('.ps1', '.psm1') } | Select-Object -ExpandProperty Name | Sort-Object)
     $rootPowerShellDifference = @(Compare-Object -ReferenceObject $expectedRootPowerShellFiles -DifferenceObject $actualRootPowerShellFiles)
+    $obsoleteReviewCommandPath = Join-Path $PSScriptRoot 'commands/review'
+    $obsoleteReviewCommands = @(if (Test-Path -LiteralPath $obsoleteReviewCommandPath -PathType Container) {
+            Get-ChildItem -LiteralPath $obsoleteReviewCommandPath -File
+        })
     $modulesRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'modules'))
     $misplacedModules = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.psm1' | Where-Object {
         $_.FullName -notlike "*$([IO.Path]::DirectorySeparatorChar)node_modules$([IO.Path]::DirectorySeparatorChar)*" -and
         -not $_.FullName.StartsWith($modulesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
     })
-    if ($missingRuntimePaths.Count -eq 0 -and $rootPowerShellDifference.Count -eq 0 -and $misplacedModules.Count -eq 0) {
-        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime paths exist, exactly three supported commands occupy the tools root, and every PowerShell module is beneath tools/modules.'
+    if ($missingRuntimePaths.Count -eq 0 -and $rootPowerShellDifference.Count -eq 0 -and $misplacedModules.Count -eq 0 -and $obsoleteReviewCommands.Count -eq 0) {
+        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime paths exist, exactly four supported commands occupy the tools root, and every PowerShell module is beneath tools/modules.'
     }
     else {
         $layoutIssues = New-Object 'System.Collections.Generic.List[string]'
         if ($missingRuntimePaths.Count -gt 0) { $layoutIssues.Add("required paths are missing: $($missingRuntimePaths -join ', ')") }
         if ($rootPowerShellDifference.Count -gt 0) { $layoutIssues.Add("tools root must contain only: $($expectedRootPowerShellFiles -join ', ')") }
         if ($misplacedModules.Count -gt 0) { $layoutIssues.Add("PowerShell modules must be beneath tools/modules: $($misplacedModules.FullName -join ', ')") }
+        if ($obsoleteReviewCommands.Count -gt 0) { $layoutIssues.Add("review lifecycle stages must be internal: $($obsoleteReviewCommands.FullName -join ', ')") }
         Add-ValidationIssue -Name 'runtime-layout' -Issue ("Hosted runtime layout is invalid: {0}" -f ($layoutIssues -join '; '))
     }
 
     Start-ValidationCheck -Name 'lifecycle-tools'
     $lifecycleIssues = New-Object 'System.Collections.Generic.List[string]'
-    $lifecyclePaths = @($reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath, $ruleIntakeAssessmentPath, $assessmentBaselinePublisherPath)
+    $lifecyclePaths = @($hostedReviewCommandPath, $hostedReviewWorkflowModulePath, $reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath, $ruleIntakeAssessmentPath, $assessmentBaselinePublisherPath)
     foreach ($lifecyclePath in $lifecyclePaths) {
         if (-not (Test-Path -LiteralPath $lifecyclePath -PathType Leaf)) {
             $lifecycleIssues.Add("lifecycle command is missing: $lifecyclePath")
@@ -421,6 +432,17 @@ if ($runtimeStarted) {
         }
         catch {
             $lifecycleIssues.Add("$(Split-Path -Leaf $reviewEffortCommandPath) must accept exactly the Lite and Balanced review effort levels: $($_.Exception.Message)")
+        }
+    }
+    if (Test-Path -LiteralPath $hostedReviewCommandPath -PathType Leaf) {
+        $hostedReviewContent = Get-Content -LiteralPath $hostedReviewCommandPath -Raw
+        if ($hostedReviewContent -notmatch 'internal/review/Initialize-ReviewBases\.ps1' -or
+            $hostedReviewContent -notmatch 'internal/review/Publish-TestCase\.ps1' -or
+            $hostedReviewContent -notmatch 'internal/review/Capture-ReviewPair\.ps1' -or
+            $hostedReviewContent -notmatch 'internal/review/Close-ReviewPair\.ps1' -or
+            $hostedReviewContent -notmatch 'Read-Adjudications' -or
+            $hostedReviewContent -notmatch '\[switch\]\$Cleanup') {
+            $lifecycleIssues.Add('the root Hosted review command must own create, resume, local adjudication, validation, and explicit cleanup')
         }
     }
     if (Test-Path -LiteralPath $reviewBaseInitializerPath -PathType Leaf) {
@@ -1215,6 +1237,10 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'review-results'
     try {
+        $workflowTestOutput = @(& pwsh -NoProfile -File $hostedReviewWorkflowTestPath 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($workflowTestOutput | Out-String).Trim())
+        }
         $reviewResultSchema = Get-Content -LiteralPath $reviewResultSchemaPath -Raw | ConvertFrom-Json
         $schemaReviewEffortValues = @($reviewResultSchema.'$defs'.profileResult.properties.reviewEffort.enum | Sort-Object -Unique)
         if (($schemaReviewEffortValues -join ',') -ne 'Balanced,Lite') {
@@ -1227,7 +1253,7 @@ if ($runtimeStarted) {
             throw (($reviewResultOutput | Out-String).Trim())
         }
         $reviewResult = ($reviewResultOutput -join [Environment]::NewLine) | ConvertFrom-Json
-        Add-CheckResult -Name 'review-results' -Passed $true -Detail "Validated $($reviewResult.resultCount) local paired review result records."
+        Add-CheckResult -Name 'review-results' -Passed $true -Detail "The local Hosted review workflow passed and $($reviewResult.resultCount) result records were validated."
     }
     catch {
         Add-ValidationIssue -Name 'review-results' -Issue "Local paired review results are invalid: $($_.Exception.Message)"

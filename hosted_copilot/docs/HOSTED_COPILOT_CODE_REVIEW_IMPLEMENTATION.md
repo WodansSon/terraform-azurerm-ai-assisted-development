@@ -2,7 +2,7 @@
 
 This guide defines how to implement the Hosted Toolkit described in [`docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md`](../../docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md).
 
-The architecture document remains authoritative for product boundaries, rationale, trust, budgets, and adoption criteria. This guide owns the implementation sequence and the concrete first-party GitHub repository shape used during the Experiment MVP.
+The architecture document remains authoritative for product boundaries, rationale, trust, budgets, and adoption criteria. This guide owns the implementation sequence and the concrete first-party GitHub repository shape used during pre-adoption validation.
 
 ## Implementation Boundary:
 
@@ -41,7 +41,7 @@ hosted_copilot/
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
     HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
-    HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md
+    HOSTED_REVIEW.md
   regression/
     README.md
     cases/
@@ -70,11 +70,11 @@ hosted_copilot/
 
 The relative path below `hosted_copilot/` is the destination path in the target repository. The implementation must not introduce a generated package directory, path-rewriting layer, Hosted release bundle, or Hosted version file.
 
-## Experiment MVP Scope:
+## Pre-Adoption Scope:
 
-The Experiment MVP implements only the assets required to test whether compact Hosted guidance improves Copilot code review without reproducing the Interactive Toolkit.
+Pre-adoption validation implements only the assets required to test whether compact Hosted guidance improves Copilot code review without reproducing the Interactive Toolkit.
 
-**Implement During The Experiment:**
+**Implement Before Adoption:**
 
 - Compact repository-wide review guidance
 - Compact Go, acceptance-test, and documentation instructions
@@ -759,14 +759,9 @@ Before requesting either review:
 
 #### Phase Four Automation:
 
-Use `HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md` and the lifecycle commands instead of creating branches and pull requests manually:
+Use `Invoke-HostedReview.ps1` and `HOSTED_REVIEW.md` instead of creating branches, pull requests, captures, or result records manually. The command starts or resumes one controlled case, exits while GitHub reviews are pending, guides blinded local maintainer adjudication, validates the result, reports the comparison, and cleans up only with explicit `-Cleanup` approval.
 
-- `Initialize-ReviewBases.ps1` creates or verifies the three persistent bases.
-- `Publish-TestCase.ps1` creates or updates a synthetic source PR against `test-content` and delegates mirror creation.
-- `Import-PullRequest.ps1` creates or updates an imported source PR against `test-content` and delegates mirror creation.
-- `New-ReviewPair.ps1` mirrors one source PR into Control and Hosted heads, proves patch equality, opens or synchronizes both pull requests, and writes the pair record.
-- `Capture-ReviewPair.ps1` consumes the pair record and writes raw, blinded, and readable evidence.
-- `Close-ReviewPair.ps1` requires captured evidence by default, closes both pull requests, and removes only disposable heads.
+The scripts beneath `tools/internal/review/` implement guarded lifecycle stages. They are not supported maintainer commands and must not require direct invocation during a normal review.
 
 The commands enforce the following contract:
 
@@ -791,7 +786,7 @@ Reusable result infrastructure is checked in beneath `hosted_copilot/`: controll
 
 The architecture's **Historical Provenance** section owns the immutable Vieran pull request pairs and the commits that generalized them into the current Phase Four harness.
 
-**Known implementation gap:** The original Phase Four workflow used an AI assistant interactively after `Capture-ReviewPair.ps1` wrote raw, blinded, and readable evidence. The assistant adjudicated the blinded comments and wrote a schema-valid local result record, but that procedure was never packaged as a reusable prompt, skill, agent, or command. Implement an explicit AI adjudication owner before the next paired evaluation. Do not substitute maintainer-authored JSON or `Test-ReviewResults.ps1`; the latter validates existing records only.
+The original Phase Four workflow used an AI assistant interactively after evidence capture. `Invoke-HostedReview.ps1` replaces that incomplete boundary with deterministic local orchestration and script-guided maintainer adjudication. AI orchestration is prohibited, maintainers do not edit result JSON, and `Test-ReviewResults.ps1` remains an internal validator only.
 
 Generated evidence remains local to the maintainer checkout:
 
@@ -799,7 +794,7 @@ Generated evidence remains local to the maintainer checkout:
 - `regression/results/` contains schema-valid paired result records after adjudication.
 - Both generated directories are Git-ignored and must not be committed.
 - `Test-ReviewResults.ps1` validates all local result records when present and succeeds with zero records in a clean clone.
-- The final experiment conclusion and adoption rationale are checked in after evaluation; individual generated runs are not.
+- The final validation conclusion and adoption rationale are checked in after evaluation; individual generated runs are not.
 
 ## Package Manifest Requirements:
 
@@ -912,9 +907,9 @@ Before requesting a Hosted review:
 
 GitHub's built-in MCP server is read-only for the current repository by default. Additional MCP tools are repository settings, not files owned by this overlay, and must be separately approved by a repository administrator.
 
-## Experiment Acceptance Gates:
+## Pre-Adoption Validation Gates:
 
-The Experiment MVP is complete only when:
+The Hosted Toolkit is ready for an adoption decision only when:
 
 - Documentation, Go, and acceptance-test reviews complete without the captured prompt-size failure.
 - Every runtime path is first-party supported and manifest owned.
@@ -928,7 +923,7 @@ The Experiment MVP is complete only when:
 - Results distinguish useful findings, misses, duplicates, false positives, and model-confounded runs.
 - The evidence supports an explicit decision to adopt, revise, or stop the Hosted Toolkit direction.
 
-Passing the experiment does not automatically authorize automatic semantic synchronization, production-scale CI, or release machinery. Those remain adoption decisions.
+Passing pre-adoption validation does not automatically authorize automatic semantic synchronization, production-scale CI, or release machinery. Those remain adoption decisions.
 
 ## Naming Consistency And Immediate Next Step:
 

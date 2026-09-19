@@ -53,7 +53,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Use **Hosted Toolkit** for the isolated GitHub Copilot code-review product designed under `hosted_copilot/`.
 - Treat both toolkits as independently maintained and validated. The Interactive Toolkit is versioned, packaged, and released; the Hosted Toolkit is deployed directly from this repository into a target fork.
 - Treat `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` as the authority for the proposed Hosted Toolkit architecture while its runtime remains unimplemented.
-- Treat current Hosted Toolkit work as a controlled experiment until the architecture's Experiment MVP acceptance criteria support an explicit adoption decision.
+- Treat the Hosted Toolkit as pre-adoption software until the architecture's validation criteria support an explicit adoption decision.
 - Do not require deferred production generation, synchronization, regression, CI, or publication machinery merely to run the Hosted experiment.
 - Do not run the Interactive Toolkit validator as a substitute for Hosted Toolkit validation on Hosted Toolkit-only changes.
 - Use `tools/Validate-ChangedToolkits.ps1` for change-aware validation and use each profile validator directly only for complete validation of its owned toolkit.

@@ -93,9 +93,18 @@ if ($controlHead -eq $controlBase -or $controlHead -eq $hostedBase -or $hostedHe
 }
 if ($controlHead -eq $hostedHead) { throw 'Control and Hosted head branches must differ' }
 
-$capturePath = Join-Path (Split-Path -Parent $resolvedPairPath) "$($pair.runId).json"
+$rawDirectory = Split-Path -Parent (Split-Path -Parent $resolvedPairPath)
+$fixtureId = if ($pair.schemaVersion -eq 2 -and
+    $null -ne $pair.sourceProvenance -and
+    [string]$pair.sourceProvenance.type -eq 'synthetic_case') {
+    [string]$pair.sourceProvenance.caseId
+}
+else {
+    [string]$pair.caseId
+}
+$capturePath = Join-Path $rawDirectory "$fixtureId/$($pair.runId).json"
 if (-not $AllowMissingCapture -and -not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-    throw "Capture evidence is missing; run Capture-ReviewPair.ps1 -PairPath first: $capturePath"
+    throw "Capture evidence is missing: $capturePath"
 }
 
 $profiles = @(

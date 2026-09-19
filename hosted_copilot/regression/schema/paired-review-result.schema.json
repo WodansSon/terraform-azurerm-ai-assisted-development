@@ -22,7 +22,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "enum": [1, 2]
     },
     "runId": {
       "type": "string",
@@ -453,7 +453,6 @@
         "line",
         "body",
         "classification",
-        "ruleId",
         "duplicateOf",
         "adjudicationReason"
       ],
@@ -496,6 +495,9 @@
             "null"
           ]
         },
+        "ruleIds": {
+          "$ref": "#/$defs/ruleIds"
+        },
         "duplicateOf": {
           "type": [
             "integer",
@@ -506,7 +508,17 @@
         "adjudicationReason": {
           "type": "string"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "required": ["ruleId"],
+          "not": { "required": ["ruleIds"] }
+        },
+        {
+          "required": ["ruleIds"],
+          "not": { "required": ["ruleId"] }
+        }
+      ]
     },
     "ruleIds": {
       "type": "array",

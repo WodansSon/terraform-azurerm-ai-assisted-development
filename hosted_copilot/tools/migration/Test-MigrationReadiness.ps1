@@ -248,9 +248,8 @@ Invoke-ReadinessTest -Name 'command-surface-exact-coverage' -SuccessDetail 'Ever
 
     $commandMap = Get-Content -LiteralPath $commandMapPath -Raw
     $retirementIds = @($script:retirement.entries.id | ForEach-Object { [string]$_ })
-    $rootCommandNames = @('Install-Toolkit.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
+    $rootCommandNames = @('Install-Toolkit.ps1', 'Invoke-HostedReview.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
     $catalogCommandNames = @('Generate-Instructions.ps1', 'Test-UpstreamSources.ps1')
-    $reviewCommandNames = @('Capture-ReviewPair.ps1', 'Close-ReviewPair.ps1', 'Import-PullRequest.ps1', 'Initialize-ReviewBases.ps1', 'New-ReviewPair.ps1', 'Publish-TestCase.ps1')
     foreach ($entry in @($script:commandSurface.entries)) {
         $currentPath = [string]$entry.currentPath
         $plannedPath = [string]$entry.plannedPath
@@ -263,9 +262,6 @@ Invoke-ReadinessTest -Name 'command-surface-exact-coverage' -SuccessDetail 'Ever
                 }
                 elseif ($fileName -in $catalogCommandNames) {
                     "hosted_copilot/tools/commands/catalog/$fileName"
-                }
-                elseif ($fileName -in $reviewCommandNames) {
-                    "hosted_copilot/tools/commands/review/$fileName"
                 }
                 else {
                     throw "Maintainer command is not assigned to an approved command group: $currentPath"

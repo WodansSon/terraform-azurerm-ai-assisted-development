@@ -48,6 +48,25 @@ function Get-OptionalPropertyValue {
     return $property.Value
 }
 
+function Get-FindingRuleIds {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Finding
+    )
+
+    $ruleIds = Get-OptionalPropertyValue -InputObject $Finding -Name 'ruleIds'
+    if ($null -ne $ruleIds) {
+        return @($ruleIds)
+    }
+
+    $ruleId = Get-OptionalPropertyValue -InputObject $Finding -Name 'ruleId'
+    if ($null -eq $ruleId) {
+        return @()
+    }
+
+    return @([string]$ruleId)
+}
+
 if (-not (Test-Path -LiteralPath $SchemaPath -PathType Leaf)) {
     throw "Paired review result schema was not found: $SchemaPath"
 }
@@ -121,6 +140,15 @@ foreach ($resultPath in $resultPaths) {
             if (@($findingIds | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
                 throw "$($profile.instructionProfile) actualFindings contain duplicate IDs"
             }
+            foreach ($finding in @($profile.actualFindings)) {
+                $findingRuleIds = @(Get-FindingRuleIds -Finding $finding)
+                if ($finding.classification -eq 'expected' -and $findingRuleIds.Count -eq 0) {
+                    throw "$($profile.instructionProfile) expected finding $($finding.id) must reference at least one rule"
+                }
+                if (@($findingRuleIds | Where-Object { $_ -notin $expectedRuleIds }).Count -gt 0) {
+                    throw "$($profile.instructionProfile) finding $($finding.id) references a rule outside case expectations"
+                }
+            }
 
             $classificationLists = @{
                 duplicate = @($profile.duplicateFindings)
@@ -135,7 +163,7 @@ foreach ($resultPath in $resultPaths) {
                 }
             }
 
-            $foundRuleIds = @($profile.actualFindings | Where-Object classification -eq 'expected' | ForEach-Object ruleId | Sort-Object -Unique)
+            $foundRuleIds = @($profile.actualFindings | Where-Object classification -eq 'expected' | ForEach-Object { Get-FindingRuleIds -Finding $_ } | Sort-Object -Unique)
             $computedMisses = @($expectedRuleIds | Where-Object { $_ -notin $foundRuleIds } | Sort-Object)
             if (($computedMisses -join ',') -ne (@($profile.missedFindings | Sort-Object) -join ',')) {
                 throw "$($profile.instructionProfile) missedFindings do not match expected finding coverage"

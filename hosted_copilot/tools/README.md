@@ -1,6 +1,6 @@
 # Hosted Toolkit Commands
 
-Only the commands listed here are supported maintainer entry points. The three normal-operation commands remain at the tools root. Specialized public commands live beneath `commands/catalog/` and `commands/review/`.
+Only the commands listed here are supported maintainer entry points. The four normal-operation commands remain at the tools root. Specialized catalog commands live beneath `commands/catalog/`.
 
 Files beneath `internal/`, `modules/`, `tests/`, `migration/`, and `legacy-v3/` are implementation or validation details rather than an equivalent manual command surface. Reusable `.psm1` files live under `modules/`; `internal/` is reserved for implementation `.ps1` scripts.
 
@@ -11,6 +11,7 @@ Files beneath `internal/`, `modules/`, `tests/`, `migration/`, and `legacy-v3/` 
 | Validate the complete Hosted Toolkit | `pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1` |
 | Launch the Hosted Rule Workbench | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1` |
 | Plan or install the Hosted payload | `pwsh -NoProfile -File ./hosted_copilot/tools/Install-Toolkit.ps1` |
+| Run or resume a controlled Hosted review | `pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory <provider-fork> -CaseId <case-id>` |
 
 Review the command help before supplying operation-specific parameters. Installation defaults to a dry run.
 
@@ -24,18 +25,11 @@ Review the command help before supplying operation-specific parameters. Installa
 
 Live upstream drift is an explicit maintainer audit and is not a deterministic required-CI input.
 
-## Review Experiment
+## Hosted Review
 
-Use the [Hosted Review Experiment Runbook](../docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md) for required sequencing, parameters, mutation switches, and cleanup gates.
+Use [Hosted Review](../docs/HOSTED_REVIEW.md) for the complete local workflow. `Invoke-HostedReview.ps1` creates or resumes a controlled review, exits while GitHub reviews are pending, guides local maintainer adjudication, validates the result, and performs cleanup only with `-Cleanup`.
 
-The supported experiment commands are:
-
-- `Initialize-ReviewBases.ps1`
-- `Publish-TestCase.ps1`
-- `Import-PullRequest.ps1`
-- `New-ReviewPair.ps1`
-- `Capture-ReviewPair.ps1`
-- `Close-ReviewPair.ps1`
+Review branch topology, evidence capture, and result construction are internal implementation details. Do not invoke scripts beneath `internal/review/` directly.
 
 ## Focused Development
 

@@ -58,6 +58,11 @@ if ($PSCmdlet.ParameterSetName -eq 'PairRecord') {
     $ReviewEffort = [string]$pair.reviewEffort
     $SourceCommit = [string]$pair.sourceCommit
     $ManifestHash = [string]$pair.manifestHash
+    if ($pair.schemaVersion -eq 2 -and
+        $null -ne $pair.sourceProvenance -and
+        [string]$pair.sourceProvenance.type -eq 'synthetic_case') {
+        $FixtureId = [string]$pair.sourceProvenance.caseId
+    }
 }
 
 function Invoke-GitHubApi {

@@ -53,10 +53,10 @@ The Interactive Toolkit's many broad `applyTo` files work for its routed workflo
 
 ## Status:
 
-- The Experiment MVP is implemented under `hosted_copilot/` as a copy-ready overlay for the provider fork; it is not yet an adopted production toolkit.
+- The pre-adoption Hosted Toolkit is implemented under `hosted_copilot/` as a copy-ready overlay for the provider fork; it is not yet an adopted production toolkit.
 - Implemented runtime and deployment surfaces include compact repository, Go, test, and documentation instructions; the review skill; normalized catalog and deterministic generation; package manifest and installer; and complete Hosted validation.
-- Implemented maintenance surfaces include upstream drift detection, candidate collection, incremental semantic assessment with a committed baseline and local cache, the Hosted Rule Workbench, hash-bound approval export, controlled regression cases, paired-review lifecycle commands, and one adjudicated paired documentation result.
-- Remaining experiment work includes completing persisted intake decisions for the 349-rule Interactive baseline, collecting enough repeated paired evidence for an adoption decision, and deciding whether to implement repository-writing promotion and append-only audit receipts.
+- Implemented maintenance surfaces include upstream drift detection, candidate collection, incremental semantic assessment with a committed baseline and local cache, the Hosted Rule Workbench, hash-bound approval export, controlled regression cases, one resumable local review command, and adjudicated comparison results.
+- Remaining pre-adoption work includes completing persisted intake decisions for the 349-rule Interactive baseline, collecting enough repeated controlled evidence for an adoption decision, and deciding whether to implement repository-writing promotion and append-only audit receipts.
 - `Invoke-RulePromotion.ps1` and the promotion receipt directory are not implemented. The Workbench currently stops at a validated, hash-bound approval handoff and exposes no repository-write endpoint.
 - This document is repo-only maintainer guidance and must not be added to `installer/file-manifest.config`.
 
@@ -138,22 +138,22 @@ These constraints mean the Hosted Toolkit cannot reproduce the Interactive Toolk
 - Treating historical pull request comments as authoritative training data.
 - Unattended conversion of changed contributor prose or Interactive Toolkit rules into new Hosted compliance requirements.
 
-## Experiment MVP Handoff:
+## Pre-Adoption Validation:
 
-The first implementation milestone is a controlled experiment, not production adoption.
+The first implementation milestone is controlled validation, not production adoption.
 
-**Experiment Objective:**
+**Validation Objective:**
 
 Prove that a compact Hosted Toolkit can complete useful AzureRM pull request reviews within the observed hosted prompt boundary and can outperform or complement contributor-guidance-only review on identical test cases without introducing unacceptable false positives.
 
-**Current Experiment Implementation:**
+**Current Validation Implementation:**
 
-- Implemented: Compact runtime instructions and review skill, normalized catalog and generation, direct source deployment, profile validation, candidate collection and semantic assessment, the Hosted Rule Workbench, controlled regression cases, paired-review lifecycle tooling, and one adjudicated paired documentation result
-- In progress: Persisted decisions for the complete Interactive intake baseline and repeated paired evidence across implementation, testing, and documentation cases
+- Implemented: Compact runtime instructions and review skill, normalized catalog and generation, direct source deployment, profile validation, candidate collection and semantic assessment, the Hosted Rule Workbench, controlled regression cases, and one resumable local comparison workflow
+- In progress: Persisted decisions for the complete Interactive intake baseline and repeated controlled evidence across implementation, testing, and documentation cases
 - Not implemented: Repository-writing promotion, append-only promotion receipts, production CI rollout, and an adoption decision
-- Repository-only: The changed-toolkit dispatcher protects maintenance boundaries but is not an experiment success criterion
+- Repository-only: The changed-toolkit dispatcher protects maintenance boundaries but is not an adoption criterion
 
-**Required Experiment Artifacts:**
+**Required Validation Artifacts:**
 
 - Compact repository-wide, Go, test, and documentation instructions under `hosted_copilot/.github/`
 - One review-focused Hosted skill under `hosted_copilot/.github/skills/code-review/`
@@ -166,23 +166,24 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - Explicitly invoked, incremental AI-assisted candidate review with deterministic evidence, hash-bound cache reuse, impact weighting, projected token budgets, and explicit maintainer approval before catalog changes
 - A local Hosted Rule Workbench that presents intake as one guided promotion process while preserving PowerShell as the only repository-write boundary
 - A controlled test-case matrix with identical diffs, fixed review effort, expected findings, and blinded result adjudication
+- One local executable that owns setup, resumable capture, maintainer adjudication, result validation, reporting, and explicitly approved cleanup
 
-**Experiment Acceptance Criteria:**
+**Validation Criteria:**
 
 - The installer can preview and deploy the overlay from this checkout into the target fork without replacing unrelated files
 - Hosted review completes on implementation, acceptance-test, and documentation surfaces without the captured prompt-size failure
 - Every paired comparison uses identical test changes and review effort
 - Results record expected findings, misses, duplicate comments, unexpected findings, and observed model metadata
-- The experiment produces enough repeated evidence to decide whether to adopt, revise, or stop the Hosted Toolkit direction
+- Controlled review produces enough repeated evidence to decide whether to adopt, revise, or stop the Hosted Toolkit direction
 
 **Deferred Until an Adoption Decision:**
 
 - Unattended semantic interpretation or automatic application of upstream contributor or Interactive Toolkit changes
-- A production regression harness beyond the controlled experiment test-case matrix
+- A production regression harness beyond the controlled pre-adoption test-case matrix
 - Hosted-specific CI rollout and long-term operational monitoring
 - Any versioned release, archive, or publication workflow
 
-During the experiment, normalized rule sources and deterministic generation are required so evaluation uses reproducible guidance without losing maintainer conventions. Generated runtime files remain committed and frozen by source commit. Production automation beyond read-only drift detection remains an adoption decision.
+During pre-adoption validation, normalized rule sources and deterministic generation are required so evaluation uses reproducible guidance without losing maintainer conventions. Generated runtime files remain committed and frozen by source commit. Production automation beyond read-only drift detection remains an adoption decision.
 
 ## Current Hosted Source Layout:
 
@@ -222,33 +223,22 @@ hosted_copilot/
     raw/
     results/
   tools/
-    package-manifest.json
-    Capture-ReviewPair.ps1
-    Close-ReviewPair.ps1
+    Invoke-HostedReview.ps1
     Install-Toolkit.ps1
-    Generate-Instructions.ps1
-    Get-GuidanceCapacity.ps1
-    Import-PullRequest.ps1
-    Initialize-ReviewBases.ps1
-    Invoke-RuleIntakeAssessment.ps1
-    New-ReviewPair.ps1
-    New-RuleIntakeReview.ps1
-    Publish-RuleIntakeAssessmentBaseline.ps1
-    Publish-TestCase.ps1
-    Review.Common.psm1
     Start-RuleWorkbench.ps1
-    Test-InstructionGeneration.ps1
-    Test-ReviewResults.ps1
-    Test-RuleIntakeAssessment.ps1
-    Test-RuleIntakeReview.ps1
-    Test-RuleWorkbench.ps1
-    Test-RuleWorkbenchLayout.cjs
-    Test-UpstreamSources.ps1
     Test-Toolkit.ps1
+    commands/
+      catalog/
+    internal/
+      review/
+    modules/
+      review/
+    tests/
+    package-manifest.json
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
     HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
-    HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md
+    HOSTED_REVIEW.md
   workbench/
     index.html
     app.js
@@ -257,13 +247,14 @@ hosted_copilot/
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
 - `copilot-rule-catalog/` owns normalized rules, source-only Maintainer Proposals, shared rule assessments, intake decisions, and promotion schemas. Append-only promotion receipts remain a possible future extension.
-- `regression/` owns controlled cases, schemas, and local experiment artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
-- `tools/` owns assessment, generation, validation, paired-review lifecycle, evidence capture, and deployment support. Repository-writing promotion remains unimplemented.
+- `regression/` owns controlled cases, schemas, and local comparison artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
+- `tools/Invoke-HostedReview.ps1` is the only maintainer entry point for controlled review comparison. Scripts beneath `tools/internal/review/` are implementation stages, not separate maintainer commands.
+- `tools/` also owns assessment, generation, validation, evidence capture, and deployment support. Repository-writing promotion remains unimplemented.
 - `workbench/` owns the interactive local review interface built from static browser assets. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
 - `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
-- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit; the implementation guide and experiment runbook remain source-only maintainer documentation.
+- `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit; the implementation guide and Hosted review guide remain source-only maintainer documentation.
 - Generated path-specific instruction files are written directly beneath `hosted_copilot/.github/`, committed, and frozen by source commit. They must not be edited manually.
 - The promotion schemas define the planned write boundary, but `tools/Invoke-RulePromotion.ps1` and `copilot-rule-catalog/audit/` remain unimplemented until maintainers decide to proceed beyond approval export.
 
@@ -484,7 +475,7 @@ Maintainer proposal files are hand-authored source records, not runtime instruct
 
 The first Interactive baseline contains 349 active rules. All 349 must receive a persisted intake decision, even when their contract family appears unrelated to Hosted review. Direct implementation, testing, and documentation rules should be reviewed first, followed by cross-cutting review rules and then workflow-specific families. Contract-family routing is a review order, not permission to silently exclude rules.
 
-The current ledger captures the 349-rule source snapshot but contains no persisted decisions. Completing those decisions remains experiment work; the committed semantic assessment baseline does not replace the intake ledger.
+The current ledger captures the 349-rule source snapshot but contains no persisted decisions. Completing those decisions remains pre-adoption work; the committed semantic assessment baseline does not replace the intake ledger.
 
 The Interactive rule catalog provides stable IDs, contract ownership, lifecycle, hashes, provenance, and source mappings. The hand-authored Interactive contracts remain authoritative for rule wording. Intake tooling must include the exact contract rule block in semantic evidence rather than treating the catalog title as complete rule text.
 
@@ -719,7 +710,9 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 
 #### Historical Provenance:
 
-The paired-review design grew from experiments in [Vieran's AzureRM provider fork](https://github.com/Vieran/terraform-provider-azurerm). Those experiments compared a **Contribution Guide** profile with an **AI Toolkit** profile across six pull request pairs. GitHub's immutable pull request head refs preserve the same reviewed commit for each pair even though some source branches were later force-pushed or deleted:
+The paired-review design grew from experiments in [Vieran's AzureRM provider fork](https://github.com/Vieran/terraform-provider-azurerm). Those experiments compared a **Contribution Guide** profile with an **AI Toolkit** profile across six pull request pairs. GitHub's immutable pull request head refs preserve the same reviewed commit for each pair even though some source branches were later force-pushed or deleted.
+
+**The Immutable Pairs Are:**
 
 | Contribution Guide | AI Toolkit | Shared Head Commit |
 | --- | --- | --- |
@@ -833,7 +826,7 @@ This metadata belongs to the Hosted Toolkit regression system and must not be ad
 - `hosted_copilot/regression/raw/` stores complete GitHub API captures and profile-blinded adjudication views.
 - `hosted_copilot/regression/results/` stores schema-valid paired result records after adjudication.
 - Both directories are Git-ignored because they are generated experiment state available in the maintainer's local checkout.
-- The schema, capture tool, validation tool, controlled cases, and final experiment conclusion are checked in.
+- The schema, capture tool, validation tool, controlled cases, and final adoption conclusion are checked in.
 - Hosted validation validates local result records when present and succeeds with zero records in a clean clone.
 
 ### Repository Validation Dispatch:
@@ -888,14 +881,14 @@ Combined validation is a repository convenience, not a combined distribution gat
 
 ## Rollout Status And Direction:
 
-### Implemented Experiment Foundation:
+### Implemented Validation Foundation:
 
 - Measured the Interactive payload and established the isolated Hosted ownership and token-budget model.
 - Implemented normalized rules, deterministic instruction generation, compact runtime guidance, package ownership, safe dry-run installation, and complete profile validation.
-- Implemented source drift detection, incremental semantic assessment, the local Workbench, controlled regression cases, paired-review lifecycle tooling, and evidence capture.
+- Implemented source drift detection, incremental semantic assessment, the local Workbench, controlled regression cases, and one resumable local review workflow.
 - Protected `hosted_copilot/` and this architecture document through CODEOWNERS.
 
-### Active Experiment Work:
+### Active Validation Work:
 
 - Complete persisted decisions for the 349-rule Interactive intake baseline.
 - Run repeated paired comparisons across implementation, testing, and documentation cases with identical diffs and review effort.
@@ -927,7 +920,7 @@ Combined validation is a repository convenience, not a combined distribution gat
 
 ## Adoption Criteria:
 
-**The Experiment Is Ready for an Adoption Decision When:**
+**The Hosted Toolkit Is Ready for an Adoption Decision When:**
 
 - The Hosted Toolkit and Interactive Toolkit ownership boundaries are explicit
 - No Hosted Toolkit runtime dependency points into the Interactive Toolkit
