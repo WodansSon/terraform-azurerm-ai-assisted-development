@@ -131,11 +131,11 @@ $presentationConsumers = @(
     'regression/validate-regression-artifacts.ps1',
     'regression/write-regression-history-snapshot.ps1',
     'regression/write-regression-provenance-report.ps1',
-    '../hosted_copilot/tools/Test-InstructionGeneration.ps1',
-    '../hosted_copilot/tools/Test-ReviewResults.ps1',
-    '../hosted_copilot/tools/Test-RuleWorkbench.ps1',
+    '../hosted_copilot/tools/tests/Test-InstructionGeneration.ps1',
+    '../hosted_copilot/tools/tests/Test-ReviewResults.ps1',
+    '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
     '../hosted_copilot/tools/Test-Toolkit.ps1',
-    '../hosted_copilot/tools/Test-UpstreamSources.ps1'
+    '../hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1'
 )
 foreach ($relativePath in $presentationConsumers) {
     $consumerPath = Join-Path $PSScriptRoot $relativePath

@@ -7,13 +7,13 @@ This directory owns controlled Hosted review cases, the paired-result schema, an
 - `cases/` contains repository-shaped canonical content trees with expected findings.
 - `workbench/` contains schema-backed browser behavior mappings, target Playwright journeys, and a temporary Puppeteer consumer of the same current viewport suite.
 - `schema/paired-review-result.schema.json` defines adjudicated paired result records.
-- `../tools/Initialize-ReviewBases.ps1` creates or verifies the three persistent bases.
-- `../tools/Publish-TestCase.ps1` creates or updates a synthetic source PR against `test-content`.
-- `../tools/Import-PullRequest.ps1` creates or updates an imported source PR against `test-content`.
-- `../tools/New-ReviewPair.ps1` mirrors one source PR into identical disposable Control and Hosted review heads.
-- `../tools/Capture-ReviewPair.ps1` captures paired GitHub review evidence.
-- `../tools/Close-ReviewPair.ps1` closes a captured pair and deletes only its disposable heads.
-- `../tools/Test-ReviewResults.ps1` validates local result records and recomputes their totals.
+- `../tools/commands/review/Initialize-ReviewBases.ps1` creates or verifies the three persistent bases.
+- `../tools/commands/review/Publish-TestCase.ps1` creates or updates a synthetic source PR against `test-content`.
+- `../tools/commands/review/Import-PullRequest.ps1` creates or updates an imported source PR against `test-content`.
+- `../tools/commands/review/New-ReviewPair.ps1` mirrors one source PR into identical disposable Control and Hosted review heads.
+- `../tools/commands/review/Capture-ReviewPair.ps1` captures paired GitHub review evidence.
+- `../tools/commands/review/Close-ReviewPair.ps1` closes a captured pair and deletes only its disposable heads.
+- `../tools/tests/Test-ReviewResults.ps1` is the internal result validator invoked by `Test-Toolkit.ps1`; it is not a separate maintainer command.
 
 ## Local Artifacts:
 
@@ -22,31 +22,46 @@ This directory owns controlled Hosted review cases, the paired-result schema, an
 - Both directories are generated and Git-ignored.
 - A clean clone can contain neither directory and still pass Hosted validation.
 
-## Run A Pair:
+## Capture Review Evidence:
 
-Follow `../docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md`. The normal lifecycle is initialize once, create a pair, request both reviews, capture by pair record, then close by pair record.
-
-The lower-level manual capture form remains available for existing evidence that predates pair records:
-
-Capture both completed reviews using the source commit and ownership-manifest hash recorded by the deployed Hosted baseline:
+Follow `../docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md` for the complete lifecycle. The normal capture command requires only the pair record created by `New-ReviewPair.ps1`:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Capture-ReviewPair.ps1 `
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/review/Capture-ReviewPair.ps1 `
+  -PairPath ./hosted_copilot/regression/raw/source-pr-<source-pr-number>/<run-id>.pair.json
+```
+
+New pair records use schema version 2. They contain source provenance, the repository and source pull request, both mirror pull requests, changed files, diff hash, review effort, source commit, and manifest hash. Maintainers should not calculate or enter those values during a normal run.
+
+Capture writes `<run-id>.json`, `<run-id>.blind.json`, and `<run-id>.summary.md` beside the pair record. These contain the complete evidence, profile-blinded adjudication input, and readable runtime summary respectively.
+
+### Legacy Manual Capture:
+
+Use the lower-level manual form only to recover completed review evidence that predates pair records. `ManifestHash` identifies the exact Hosted package manifest deployed to `hosted-base`, preventing captured results from being attributed to the wrong toolkit baseline. `SourceCommit` identifies the toolkit source commit recorded by that same deployment.
+
+Read both values from the installed-state file committed on `hosted-base`, then pass them to the capture command:
+
+```powershell
+$state = git -C C:\github.com\WodansSon\terraform-provider-azurerm `
+  show hosted-base:.github/hosted-copilot-installed-state.json |
+  ConvertFrom-Json
+
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/review/Capture-ReviewPair.ps1 `
   -Repository WodansSon/terraform-provider-azurerm `
   -ControlPullRequest 1 `
   -HostedPullRequest 2 `
   -FixtureId documentation-example-validation-v2 `
   -RunId lite-01 `
   -ReviewEffort Lite `
-  -SourceCommit 0000000000000000000000000000000000000000 `
-  -ManifestHash 0000000000000000000000000000000000000000000000000000000000000000
+  -SourceCommit $state.commit `
+  -ManifestHash $state.manifestHash
 ```
 
-The command refuses pairs with different changed-file sets or GitHub file patches. It resolves each completed review to exactly one `Running Copilot Code Review` Actions run using the pull request number, reviewed head commit, and review window. The raw capture records the Actions-log hash, configured primary model, every instantiated model session and its `clientName` role, configured-only auxiliary models, runtime version, `MaxPromptTokens`, memory count, loaded skills, and previous-feedback deduplication counts. The caller must have permission to read Actions logs.
+The command refuses pairs with different changed-file sets or GitHub file patches. It resolves each completed review to exactly one `Running Copilot Code Review` Actions run using the pull request number, reviewed head commit, and review window. The raw capture records the Actions-log hash, deployed baseline identity, configured primary model, every instantiated model session and its `clientName` role, configured-only auxiliary models, runtime version, `MaxPromptTokens`, memory count, loaded skills, and previous-feedback deduplication counts. The caller must have permission to read Actions logs.
 
 In reports, present this value as **`MaxPromptTokens`: 110,000**. It is an observed GitHub Copilot review runtime field, not actual token usage or a user-configurable setting.
 
-It writes a complete raw capture, a profile-blinded view, and a readable Markdown summary beneath `raw/<fixtureId>/`. The summary lists instantiated models by role, keeps configured-only auxiliary models separate, and presents runtime, skill, memory, and deduplication evidence without replacing the JSON source evidence.
+Manual capture writes the same three artifacts beneath `raw/<FixtureId>/`. The summary lists instantiated models by role, keeps configured-only auxiliary models separate, and presents runtime, skill, memory, and deduplication evidence without replacing the JSON source evidence.
 
 ## Prepare A Live Pair:
 
@@ -57,12 +72,12 @@ It writes a complete raw capture, a profile-blinded view, and a readable Markdow
 - Reject `.github/` changes so test content cannot change the reviewer configuration.
 - Use fresh pull requests for every independent run; repeated reviews on one pull request invoke product-side deduplication against earlier review feedback.
 
-## Adjudicate And Validate:
+## Current Pipeline Boundary:
 
-Classify every captured comment as `expected`, `unexpected-valid`, `false-positive`, or `duplicate`. Record any expected rule not found as a miss, save the pair beneath `results/<fixtureId>/`, and validate all local records:
+`Capture-ReviewPair.ps1` completes the implemented evidence pipeline. It collects runtime evidence and writes the raw, blinded, and readable summary artifacts. Maintainers use `<run-id>.summary.md` to understand the conditions under which each review ran; they do not extract or populate runtime fields manually.
 
-```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-ReviewResults.ps1
-```
+The original Phase Four experiment used an AI assistant interactively after capture to review `<run-id>.blind.json`, classify the findings, and write `results/<fixture-id>/<run-id>.json`. That chat-driven step was never packaged as a reusable prompt, skill, agent, or command. The current supported command surface therefore ends at capture, and maintainers should not construct adjudicated result JSON manually.
 
-Use the instantiated `github/copilot-code-review` session for `modelName` and `reasoningLevel`. Preserve `COPILOT_AGENT_MODEL` as configured-primary evidence, classify other instantiated sessions by `clientName`, and do not report configured-only detector models as executed sessions. Treat the requested `Lite` or `Balanced` review effort and the internal session `ReasoningEffort` as separate evidence; do not translate one into the other. Missing or changed Actions-log markers produce `partial` or `unavailable` runtime evidence with explicit diagnostics instead of aborting review capture or silently asserting a model. Use `unknown` only when product-generated evidence is unavailable, and do not infer model identity from pull request titles. Unknown or differing primary-model evidence prevents a direct instruction-profile conclusion.
+The architecture document's **Historical Provenance** section records the immutable pull request pairs and implementation commits that produced this boundary.
+
+When a result record exists, normal Hosted Toolkit validation invokes `Test-ReviewResults.ps1` internally to verify it. Maintainers do not run that focused validator directly.

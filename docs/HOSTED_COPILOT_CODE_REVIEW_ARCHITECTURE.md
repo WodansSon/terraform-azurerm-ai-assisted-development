@@ -717,12 +717,29 @@ Hosted evaluation must score both defect recall and false positives. A smaller c
 
 ### Controlled Comparative Evaluation:
 
+#### Historical Provenance:
+
+The paired-review design grew from experiments in [Vieran's AzureRM provider fork](https://github.com/Vieran/terraform-provider-azurerm). Those experiments compared a **Contribution Guide** profile with an **AI Toolkit** profile across six pull request pairs. GitHub's immutable pull request head refs preserve the same reviewed commit for each pair even though some source branches were later force-pushed or deleted:
+
+| Contribution Guide | AI Toolkit | Shared Head Commit |
+| --- | --- | --- |
+| [PR 35](https://github.com/Vieran/terraform-provider-azurerm/pull/35) | [PR 44](https://github.com/Vieran/terraform-provider-azurerm/pull/44) | `6c4bca6da4ac5e75048750722b0e227e93e8eea7` |
+| [PR 36](https://github.com/Vieran/terraform-provider-azurerm/pull/36) | [PR 45](https://github.com/Vieran/terraform-provider-azurerm/pull/45) | `45649e771125ae4234373bc31939eb9ffa7ffc27` |
+| [PR 37](https://github.com/Vieran/terraform-provider-azurerm/pull/37) | [PR 46](https://github.com/Vieran/terraform-provider-azurerm/pull/46) | `105c0ba88fea044378b643261d2a250719a56fa9` |
+| [PR 38](https://github.com/Vieran/terraform-provider-azurerm/pull/38) | [PR 47](https://github.com/Vieran/terraform-provider-azurerm/pull/47) | `e9113ae60bca51f1d2e093edbbf98415240d9e98` |
+| [PR 39](https://github.com/Vieran/terraform-provider-azurerm/pull/39) | [PR 48](https://github.com/Vieran/terraform-provider-azurerm/pull/48) | `03861d76d4ce6d1a54b427d3b2a820aada292ccf` |
+| [PR 40](https://github.com/Vieran/terraform-provider-azurerm/pull/40) | [PR 49](https://github.com/Vieran/terraform-provider-azurerm/pull/49) | `6c02a67aecb5adbcd322000e48420a02d61d3a29` |
+
+The current repository generalized that comparison into the Phase Four Control-versus-Hosted design in commit [`e0f27a5`](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/commit/e0f27a51e75286c4aade23257458d081f2591a55) and added capture and result validation in commit [`4ed68f0`](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/commit/4ed68f08a5ec60f40600aefbd3d13e1ce5aa864f). The original local Phase Four run used an AI assistant interactively to adjudicate the blinded capture and write a result record. That AI step was never packaged as a reusable prompt, skill, agent, or command.
+
+This history explains both durable boundaries of the current implementation: pair creation and capture are supported commands, while adjudication remains an unformalized AI-assisted stage. Preserve the immutable pull request refs and the two implementation commits as the provenance authority; do not attempt to reconstruct this lineage from mutable fork branches.
+
 **The Historical Hosted-Review Experiments Compared Two Instruction Profiles:**
 
 - `Contribution Guide`: contributor documentation plus a focused review skill
 - `AI Toolkit`: the adapted toolkit instruction and skill package
 
-Six paired test cases used the same head branch, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-case reuse, but they cannot isolate instruction-profile effectiveness from model capability.
+The six paired test cases used the same head commit, changed-file set, and commit tip across both profiles. However, every pair used different model or reasoning labels. Those runs demonstrate useful test-case reuse, but they cannot isolate instruction-profile effectiveness from model capability.
 
 PR-title labels such as `[AI Toolkit][gpt-5.6-sol-xhigh]` are manually maintained experiment metadata. They are useful historical evidence but are not authoritative runtime attribution unless corroborated by a debug log or another product-generated record.
 

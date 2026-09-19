@@ -11,12 +11,12 @@
     "hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
-    "hosted_copilot/tools/AssessmentReconciliationValidation.psm1",
-    "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
-    "hosted_copilot/tools/Invoke-AssessmentReconciliation.ps1",
-    "hosted_copilot/tools/New-HostedRuleChangeRecommendations.ps1",
-    "hosted_copilot/tools/SourceEvidenceValidation.psm1",
-    "hosted_copilot/tools/assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md"
+    "hosted_copilot/tools/assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md",
+    "hosted_copilot/tools/internal/reconciliation/Invoke-AssessmentReconciliation.ps1",
+    "hosted_copilot/tools/internal/reconciliation/New-HostedRuleChangeRecommendations.ps1",
+    "hosted_copilot/tools/modules/reconciliation/AssessmentReconciliationValidation.psm1",
+    "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1"
   ],
   "idAllocation": {
     "numericWidth": 3,

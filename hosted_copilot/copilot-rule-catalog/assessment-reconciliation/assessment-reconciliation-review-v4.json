@@ -12,10 +12,10 @@
     "hosted_copilot/copilot-rule-catalog/source-generations/publication-request.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
-    "hosted_copilot/tools/AssessmentReconciliationValidation.psm1",
-    "hosted_copilot/tools/HostedToolkit.Helpers.psm1",
-    "hosted_copilot/tools/New-AssessmentReconciliationReview.ps1",
-    "hosted_copilot/tools/Publish-SourceGeneration.ps1",
-    "hosted_copilot/tools/SourceEvidenceValidation.psm1"
+    "hosted_copilot/tools/internal/publication/Publish-SourceGeneration.ps1",
+    "hosted_copilot/tools/internal/reconciliation/New-AssessmentReconciliationReview.ps1",
+    "hosted_copilot/tools/modules/reconciliation/AssessmentReconciliationValidation.psm1",
+    "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1"
   ]
 }

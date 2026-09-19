@@ -25,13 +25,13 @@ Both frameworks execute `shared/WorkbenchViewportSuite.cjs`, and validation requ
 Run the complete Workbench suite:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbench.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1
 ```
 
 Run one browser suite with the same owned synthetic fixture and server lifecycle:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbench.ps1 -Run browser-playwright-journeys
+pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run browser-playwright-journeys
 ```
 
 Supported focused suites are `loopback-host-validation`, `browser-behavior-manifest`, `browser-playwright-journeys`, `browser-viewport-layout`, `browser-framework-coverage`, and `authenticated-server-shutdown`. Focused browser-engine runs reuse installed dependencies when their versions match the lock; run the complete suite once when those packages are unavailable or stale.
@@ -43,7 +43,7 @@ The Hosted Toolkit profile invokes the same suite through `Test-Toolkit.ps1`.
 Start an owned Workbench, watch all Playwright journeys, and verify shutdown and cleanup:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-RuleWorkbenchHeaded.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbenchHeaded.ps1
 ```
 
 Use `-TestCase all` to play the complete suite explicitly, `-TestCase candidate-decorations` to play one journey, `-SlowMo 500` to change the per-action delay, or `-Port 43167` to select another available owned port. `-Journey` is an equivalent alias for `-TestCase`. Headed viewport playback resizes the visible Chromium window for every tested width, continues through every width when a checkpoint fails, and prints both frame and viewport dimensions. Owned playback fails when the selected port is occupied, clicks **Close Workbench** after the final journey, verifies the self-contained closed screen and stopped server, and removes its temporary staging directory even when playback fails.

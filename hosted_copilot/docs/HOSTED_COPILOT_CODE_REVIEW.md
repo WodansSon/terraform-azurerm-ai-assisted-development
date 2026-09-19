@@ -19,13 +19,13 @@ The source repository keeps path-specific rules in `hosted_copilot/copilot-rule-
 Check generated-file freshness without writing:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Generate-Instructions.ps1
 ```
 
 After approving a catalog change, regenerate explicitly with `-Write`. Check cited HashiCorp contributor sources independently with:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-UpstreamSources.ps1 -FailOnDrift
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1 -FailOnDrift
 ```
 
 Source drift never updates the catalog automatically. Review changed meaning before changing rule text or accepting a new baseline. Missing upstream coverage does not weaken confirmed or inferred maintainer conventions.

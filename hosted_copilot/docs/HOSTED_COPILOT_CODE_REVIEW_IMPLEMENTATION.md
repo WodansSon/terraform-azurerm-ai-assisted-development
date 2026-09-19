@@ -173,13 +173,13 @@ Published upstream standards, confirmed maintainer conventions, inferred maintai
 Check whether the committed files match the catalog without writing:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Generate-Instructions.ps1
 ```
 
 After reviewing an intentional catalog change, update all stale generated files explicitly:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Generate-Instructions.ps1 -Write
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Generate-Instructions.ps1 -Write
 ```
 
 The command validates the catalog schema, unique rule IDs, source and evidence references, provenance-specific evidence, active-rule coverage, output containment, and deterministic content. Check mode fails when a generated file is stale. Write mode changes only the catalog-owned path-specific instruction files.
@@ -191,7 +191,7 @@ The command validates the catalog schema, unique rule IDs, source and evidence r
 Run the Hosted-owned source check independently from the Interactive Toolkit:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-UpstreamSources.ps1 -FailOnDrift
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1 -FailOnDrift
 ```
 
 The command fetches the contributor README and every contributor topic in the Hosted source catalog, including documents not cited by an active Hosted rule. It compares raw-content SHA-256 values with approved baselines, reports affected rule IDs when mappings exist, and fails when the contributor README exposes an untracked topic or the catalog retains a stale topic. It is read-only and never updates the catalog. A changed digest or topic-coverage issue requires semantic maintainer review. Update approved rule text only when source meaning changed; update a baseline only after recording that review in the same catalog change.
@@ -250,7 +250,7 @@ The ledger preserves completed review work without coupling normal Hosted valida
 
 #### Review Bundle:
 
-Add `hosted_copilot/tools/New-RuleIntakeReview.ps1` as a read-only evidence collector. It must:
+Add `hosted_copilot/tools/legacy-v3/New-RuleIntakeReview.ps1` as a read-only evidence collector. It must:
 
 - Validate the Hosted catalog and intake ledger before analysis.
 - Collect changed upstream documents with immutable baseline and current source identity.
@@ -266,7 +266,7 @@ The instruction catalog pins the approved upstream baseline commit. Bundle gener
 Run the collector directly to refresh candidates or create a Workbench input artifact:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/New-RuleIntakeReview.ps1 -OutputPath <external-path>/rule-intake-review.json
+pwsh -NoProfile -File ./hosted_copilot/tools/legacy-v3/New-RuleIntakeReview.ps1 -OutputPath <external-path>/rule-intake-review.json
 ```
 
 The bundle classifies Interactive rules as `new`, `changed`, `retired`, `deferred`, or `current`. It classifies Maintainer Proposals as `new`, `changed`, `retired`, or `current` by comparing source status and exact rule text with the same Hosted rule ID. A source content hash, lifecycle, or contract-path change reopens a prior decision. Exact normalized contract rule text must match the Interactive catalog hash before it enters the bundle.
@@ -280,7 +280,7 @@ Do not make the Hosted package or complete Hosted validator depend on the curren
 Run the incremental assessment command when creating a complete Workbench bundle:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-RuleIntakeAssessment.ps1 -OutputPath <external-path>/rule-intake-review.json
+pwsh -NoProfile -File ./hosted_copilot/tools/legacy-v3/Invoke-RuleIntakeAssessment.ps1 -OutputPath <external-path>/rule-intake-review.json
 ```
 
 The command invokes `New-RuleIntakeReview.ps1`, partitions cache misses into bounded source-specific batches, and calls the local Copilot CLI noninteractively with the configured model and reasoning effort. Upstream contributor documents use a separate, smaller batch-size limit because each source carries complete document content. Decompose each contributor document into independently enforceable rule candidates, including each existing Hosted rule that cites the document and each uncovered requirement; Interactive and Maintainer Proposal sources each produce one rule candidate. Each rule candidate owns its lifecycle state, recommendation, proposed text, and at most one semantic Hosted target. Each model call runs in an isolated evidence directory containing only the batch, current Hosted catalog, and assessment schema; expose only the read-only `view` tool, consume the raw assistant message from JSONL output, and verify the reported model. Validate each source ID, rule-candidate ID, source hash, semantic target, semantic field, and final bundle schema, and fail closed after bounded malformed-output retries. Tests inject a fake evaluator and must never invoke a model.
@@ -288,7 +288,7 @@ The command invokes `New-RuleIntakeReview.ps1`, partitions cache misses into bou
 When a schema or evaluator-contract change adds proposal fields without invalidating existing semantic judgments, run smart field repair instead of forcing complete reassessment:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-RuleIntakeAssessment.ps1 -RepairMissingFields -OutputPath <external-path>/rule-intake-review.json
+pwsh -NoProfile -File ./hosted_copilot/tools/legacy-v3/Invoke-RuleIntakeAssessment.ps1 -RepairMissingFields -OutputPath <external-path>/rule-intake-review.json
 ```
 
 Smart repair loads the prior baseline only through this explicit mode, verifies the baseline envelope, catalog hash, source hashes, assessment identities, and all unchanged semantic fields, and determines the missing or invalid proposal fields per assessment. Existing targets inherit their exact target identity and current Hosted text deterministically when those values are sufficient. Remaining candidates enter compact source-specific repair batches containing the existing assessment and an explicit field allowlist. The evaluator returns only proposed identity, proposed text, category, and affected surfaces; merge only requested fields, preserve recommendation, applicability, factors, rationale, and target identity, then run complete assessment and bundle validation. Reserve proposal IDs across the full run, retry colliding model output within the normal bounded retry policy, persist validated repairs in the disposable cache, and report deterministic repairs, semantic repairs, repair batches, and full evaluations separately. Changed source hashes remain full assessment misses rather than being repaired against stale evidence.
@@ -306,8 +306,8 @@ Treat the machine-local cache as disposable acceleration state. When it contains
 After reviewing and accepting a complete refreshed bundle, preview and then explicitly publish the next shared baseline:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json
-pwsh -NoProfile -File ./hosted_copilot/tools/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json -Publish
+pwsh -NoProfile -File ./hosted_copilot/tools/legacy-v3/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json
+pwsh -NoProfile -File ./hosted_copilot/tools/legacy-v3/Publish-RuleIntakeAssessmentBaseline.ps1 -BundlePath <external-path>/rule-intake-review.json -Publish
 ```
 
 The publisher rejects unevaluated candidates and source-hash mismatches, validates the compact baseline schema, previews without writing by default, and replaces only the baseline file when `-Publish` is explicit.
@@ -372,7 +372,7 @@ Token reporting uses the dependency-free character-quarter estimate and the exis
 Run the shared read-only capacity command directly when inspecting current usage:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Get-GuidanceCapacity.ps1 -OutputFormat Json
+pwsh -NoProfile -File ./hosted_copilot/tools/internal/workbench/Get-GuidanceCapacity.ps1 -OutputFormat Json
 ```
 
 `Get-GuidanceCapacity.ps1` is the single arithmetic owner for current capacity. `New-RuleIntakeReview.ps1` embeds its complete eight-report result in each candidate bundle, and `Test-Toolkit.ps1 -OutputFormat Json` exposes the same result under `guidanceCapacity`. Consumers must not reconstruct capacity from validator detail text.
@@ -788,6 +788,10 @@ Historical pull request titles are contextual evidence only. They do not select 
 #### Phase Four Result Artifacts:
 
 Reusable result infrastructure is checked in beneath `hosted_copilot/`: controlled cases under `regression/cases/`, the paired-result schema under `regression/schema/`, and capture and validation commands under `tools/`.
+
+The architecture's **Historical Provenance** section owns the immutable Vieran pull request pairs and the commits that generalized them into the current Phase Four harness.
+
+**Known implementation gap:** The original Phase Four workflow used an AI assistant interactively after `Capture-ReviewPair.ps1` wrote raw, blinded, and readable evidence. The assistant adjudicated the blinded comments and wrote a schema-valid local result record, but that procedure was never packaged as a reusable prompt, skill, agent, or command. Implement an explicit AI adjudication owner before the next paired evaluation. Do not substitute maintainer-authored JSON or `Test-ReviewResults.ps1`; the latter validates existing records only.
 
 Generated evidence remains local to the maintainer checkout:
 

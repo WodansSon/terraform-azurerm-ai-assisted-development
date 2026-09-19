@@ -7,19 +7,20 @@ Use the lifecycle commands in this document instead of creating branches or pull
 - `control-base`, `hosted-base`, and `test-content` are the persistent experiment branches.
 - `control-base` and `test-content` point exactly at one pinned provider commit.
 - `hosted-base` descends from `control-base` and adds only the Hosted package.
-- Synthetic and imported source branches open canonical pull requests against `test-content`.
+- Synthetic `test-case/...` and imported `imported-pr/...` source branches open canonical pull requests against `test-content` and remain separate from disposable mirror heads.
 - Every run mirrors one source pull request into disposable `control-review/source-pr-<number>/<run>` and `hosted-review/source-pr-<number>/<run>` heads.
 - The two pull requests contain identical case patches and identical title and body text.
 - Capture evidence before deleting the disposable heads.
 - Never reuse or force-push a run head. GitHub associates closed pull requests and review history with those branch commits.
 - Mutating commands refuse the canonical HashiCorp repository, arbitrary forks, and forks not owned by the authenticated GitHub user.
+- New pair records use schema version 2 and are written beneath `regression/raw/source-pr-<number>/`. Pair, capture, summary, and result files are ignored local evidence and must not be committed.
 
 ## Initialize Bases
 
 Initialize the persistent bases once for a fixed provider commit and Hosted package:
 
 ```powershell
-./hosted_copilot/tools/Initialize-ReviewBases.ps1 `
+./hosted_copilot/tools/commands/review/Initialize-ReviewBases.ps1 `
   -RepoDirectory C:\github.com\WodansSon\terraform-provider-azurerm `
   -PinnedCommit <provider-main-commit> `
   -Initialize `
@@ -27,6 +28,12 @@ Initialize the persistent bases once for a fixed provider commit and Hosted pack
 ```
 
 Omit `-Initialize` to verify existing bases. Rebuild all three bases when the pinned provider commit or Hosted package changes. Do not rewrite bases while a run is active.
+
+Initialization records the deployed toolkit source commit and package-manifest hash in `.github/hosted-copilot-installed-state.json` on `hosted-base`. Pair creation reads that file and carries both values into the pair record automatically so captured results remain bound to the exact Hosted baseline.
+
+## Choose Review Effort
+
+`ReviewEffort` accepts `Lite` or `Balanced`. Use the same value for both mirror reviews in one run. This requested product setting is recorded as experiment evidence and is distinct from the internal model-session `ReasoningEffort`; do not translate one into the other.
 
 ## Author A Synthetic Case
 
@@ -48,7 +55,7 @@ cases/<surface>/<case-id>/
 Run validation without changing Git or GitHub:
 
 ```powershell
-./hosted_copilot/tools/Publish-TestCase.ps1 `
+./hosted_copilot/tools/commands/review/Publish-TestCase.ps1 `
   -RepoDirectory C:\github.com\WodansSon\terraform-provider-azurerm `
   -CaseId documentation-example-validation-v2 `
   -RunId lite-01 `
@@ -68,7 +75,7 @@ Request the configured review effort on both pull requests within the same test 
 Use a real HashiCorp AzureRM pull request as the canonical change set:
 
 ```powershell
-./hosted_copilot/tools/Import-PullRequest.ps1 `
+./hosted_copilot/tools/commands/review/Import-PullRequest.ps1 `
   -RepoDirectory C:\github.com\WodansSon\terraform-provider-azurerm `
   -PullRequest 33138 `
   -RunId lite-01 `
@@ -84,7 +91,7 @@ The default invocation validates source lineage, captures every changed file, re
 Any open pull request in the personal fork that targets `test-content` can drive a pair:
 
 ```powershell
-./hosted_copilot/tools/New-ReviewPair.ps1 `
+./hosted_copilot/tools/commands/review/New-ReviewPair.ps1 `
   -RepoDirectory C:\github.com\WodansSon\terraform-provider-azurerm `
   -SourcePullRequest <source-pr-number> `
   -RunId lite-01 `
@@ -93,28 +100,36 @@ Any open pull request in the personal fork that targets `test-content` can drive
 
 Add `-Create` to open the mirror pair. After updating the source PR, rerun the same command with the same run ID and `-Create` to synchronize both mirror heads. Use a new run ID when a fresh independent review pair is required.
 
+The generated schema-version-2 pair record stores source provenance, both pull requests and mirror commits, changed files, diff hash, requested review effort, and the source commit and manifest hash read from the deployed Hosted baseline. Maintainers do not calculate or enter those baseline values during a normal run.
+
 ## Capture A Pair
 
 After both reviews complete, use the pair record as the only input:
 
 ```powershell
-./hosted_copilot/tools/Capture-ReviewPair.ps1 `
-  -PairPath ./hosted_copilot/regression/raw/<case-id>/<run-id>.pair.json
+./hosted_copilot/tools/commands/review/Capture-ReviewPair.ps1 `
+  -PairPath ./hosted_copilot/regression/raw/source-pr-<source-pr-number>/<run-id>.pair.json
 ```
 
-Capture writes raw JSON, blinded JSON, and a readable Markdown summary beside the pair record.
+Capture writes these files beside the pair record:
+
+- `<run-id>.json` contains the complete unblinded capture and runtime evidence.
+- `<run-id>.blind.json` contains profile-blinded review comments for adjudication.
+- `<run-id>.summary.md` contains a readable runtime, model, skill, memory, and deduplication summary.
+
+`Capture-ReviewPair.ps1` can read existing schema-version-1 pair records for historical evidence recovery. New runs must use the schema-version-2 record created by `New-ReviewPair.ps1`. The lower-level manual capture form is documented in `../regression/README.md`; use it only when recovering evidence that predates pair records, and never invent `SourceCommit` or `ManifestHash` values.
 
 ## Close A Pair
 
 Validate cleanup without changing Git or GitHub:
 
 ```powershell
-./hosted_copilot/tools/Close-ReviewPair.ps1 `
+./hosted_copilot/tools/commands/review/Close-ReviewPair.ps1 `
   -RepoDirectory C:\github.com\WodansSon\terraform-provider-azurerm `
-  -PairPath ./hosted_copilot/regression/raw/<case-id>/<run-id>.pair.json
+  -PairPath ./hosted_copilot/regression/raw/source-pr-<source-pr-number>/<run-id>.pair.json
 ```
 
-Add `-Close` to close both pull requests and delete only their disposable local and remote heads. The command refuses cleanup before capture. Use `-AllowMissingCapture` only to abandon a failed run that cannot produce evidence.
+Add `-Close` to close both pull requests and delete only their disposable local and remote heads. The command validates the `control-review/source-pr-<number>/<run>` and `hosted-review/source-pr-<number>/<run>` topology and refuses cleanup unless `<run-id>.json` exists beside the pair record. Use `-AllowMissingCapture` only to abandon a failed run that cannot produce evidence.
 
 ## Recovery
 

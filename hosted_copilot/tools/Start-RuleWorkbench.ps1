@@ -14,7 +14,7 @@ param(
 
     [string]$AssessmentBaselinePath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-assessments/assessment-baseline.json'),
 
-    [string]$AssessmentScriptPath = (Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'),
+    [string]$AssessmentScriptPath = (Join-Path $PSScriptRoot 'legacy-v3/Invoke-RuleIntakeAssessment.ps1'),
 
     [string]$AssessmentModel = 'gpt-5.4',
 

@@ -33,14 +33,14 @@ $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.
 $experimentRunbookPath = Join-Path $hostedRoot 'docs/HOSTED_REVIEW_EXPERIMENT_RUNBOOK.md'
 $regressionCasesPath = Join-Path $hostedRoot 'regression/cases'
 $reviewResultSchemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
-$reviewCommonModulePath = Join-Path $PSScriptRoot 'Review.Common.psm1'
-$reviewBaseInitializerPath = Join-Path $PSScriptRoot 'Initialize-ReviewBases.ps1'
-$reviewPairCreatorPath = Join-Path $PSScriptRoot 'New-ReviewPair.ps1'
-$reviewPullRequestImporterPath = Join-Path $PSScriptRoot 'Import-PullRequest.ps1'
-$reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'Publish-TestCase.ps1'
-$reviewCapturePath = Join-Path $PSScriptRoot 'Capture-ReviewPair.ps1'
-$reviewPairCloserPath = Join-Path $PSScriptRoot 'Close-ReviewPair.ps1'
-$reviewResultValidatorPath = Join-Path $PSScriptRoot 'Test-ReviewResults.ps1'
+$reviewCommonModulePath = Join-Path $PSScriptRoot 'modules/review/Review.Common.psm1'
+$reviewBaseInitializerPath = Join-Path $PSScriptRoot 'commands/review/Initialize-ReviewBases.ps1'
+$reviewPairCreatorPath = Join-Path $PSScriptRoot 'commands/review/New-ReviewPair.ps1'
+$reviewPullRequestImporterPath = Join-Path $PSScriptRoot 'commands/review/Import-PullRequest.ps1'
+$reviewTestCasePublisherPath = Join-Path $PSScriptRoot 'commands/review/Publish-TestCase.ps1'
+$reviewCapturePath = Join-Path $PSScriptRoot 'commands/review/Capture-ReviewPair.ps1'
+$reviewPairCloserPath = Join-Path $PSScriptRoot 'commands/review/Close-ReviewPair.ps1'
+$reviewResultValidatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
 $intakeLedgerPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.json'
@@ -52,24 +52,24 @@ $assessmentBaselinePath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-asses
 $assessmentBaselineSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
 $maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "copilot-rule-catalog/maintainer-rules/$_" }
 $promotionAuditPath = Join-Path $hostedRoot 'copilot-rule-catalog/audit'
-$instructionGeneratorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
-$instructionGenerationTestPath = Join-Path $PSScriptRoot 'Test-InstructionGeneration.ps1'
-$guidanceCapacityPath = Join-Path $PSScriptRoot 'Get-GuidanceCapacity.ps1'
-$ruleIntakeBundlePath = Join-Path $PSScriptRoot 'New-RuleIntakeReview.ps1'
-$ruleIntakeTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeReview.ps1'
-$sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
-$sourceInventoryTestPath = Join-Path $PSScriptRoot 'Test-SourceInventory.ps1'
+$instructionGeneratorPath = Join-Path $PSScriptRoot 'commands/catalog/Generate-Instructions.ps1'
+$instructionGenerationTestPath = Join-Path $PSScriptRoot 'tests/Test-InstructionGeneration.ps1'
+$guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
+$ruleIntakeBundlePath = Join-Path $PSScriptRoot 'legacy-v3/New-RuleIntakeReview.ps1'
+$ruleIntakeTestPath = Join-Path $PSScriptRoot 'legacy-v3/Test-RuleIntakeReview.ps1'
+$sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
+$sourceInventoryTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceInventory.ps1'
 $sourceGenerationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/source-generations'
 $publicationRequestSchemaPath = Join-Path $sourceGenerationRoot 'publication-request.schema.json'
 $sourceGenerationSchemaPath = Join-Path $sourceGenerationRoot 'source-generation.schema.json'
-$sourceGenerationPublisherPath = Join-Path $PSScriptRoot 'Publish-SourceGeneration.ps1'
-$hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'HostedToolkit.Helpers.psm1'
-$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'SourceEvidenceValidation.psm1'
-$assessmentReconciliationValidationPath = Join-Path $PSScriptRoot 'AssessmentReconciliationValidation.psm1'
+$sourceGenerationPublisherPath = Join-Path $PSScriptRoot 'internal/publication/Publish-SourceGeneration.ps1'
+$hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
+$assessmentReconciliationValidationPath = Join-Path $PSScriptRoot 'modules/reconciliation/AssessmentReconciliationValidation.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
-$ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'Invoke-RuleIntakeAssessment.ps1'
-$ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'Test-RuleIntakeAssessment.ps1'
-$sourceAssessmentTestPath = Join-Path $PSScriptRoot 'Test-SourceAssessment.ps1'
+$ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'legacy-v3/Invoke-RuleIntakeAssessment.ps1'
+$ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'legacy-v3/Test-RuleIntakeAssessment.ps1'
+$sourceAssessmentTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceAssessment.ps1'
 $assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
 $assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
 $assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
@@ -78,21 +78,21 @@ $assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliatio
 $assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.schema.json'
 $assessmentReconciliationRecommendationsSchemaPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations.schema.json'
 $assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations-v1.json'
-$assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'Invoke-AssessmentReconciliation.ps1'
-$assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'New-HostedRuleChangeRecommendations.ps1'
-$assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'New-AssessmentReconciliationReview.ps1'
-$assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'Test-AssessmentReconciliation.ps1'
+$assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
+$assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-HostedRuleChangeRecommendations.ps1'
+$assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-AssessmentReconciliationReview.ps1'
+$assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
-$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'Test-MigrationReadiness.ps1'
-$v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'Test-WorkbenchContracts.ps1'
+$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'migration/Test-MigrationReadiness.ps1'
+$v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
 $v3FieldCompatibilitySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.schema.json'
 $v3FieldCompatibilityPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.json'
 $v3RetirementInventorySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.schema.json'
 $v3RetirementInventoryPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.json'
-$assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'Publish-RuleIntakeAssessmentBaseline.ps1'
+$assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'legacy-v3/Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
-$ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbench.ps1'
-$ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
+$ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
+$ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbenchHeaded.ps1'
 $ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
 $ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
 $ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.schema.json'
@@ -103,7 +103,7 @@ $nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
 $ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
 $ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
-$upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'Test-UpstreamSources.ps1'
+$upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'commands/catalog/Test-UpstreamSources.ps1'
 $tokenEstimator = 'character-quarter-estimate-25pct-v1'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -375,11 +375,23 @@ if ($runtimeStarted) {
         $upstreamSourceValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
-    if ($missingRuntimePaths.Count -eq 0) {
-        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime, installer, and user documentation paths exist.'
+    $expectedRootPowerShellFiles = @('Install-Toolkit.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
+    $actualRootPowerShellFiles = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in @('.ps1', '.psm1') } | Select-Object -ExpandProperty Name | Sort-Object)
+    $rootPowerShellDifference = @(Compare-Object -ReferenceObject $expectedRootPowerShellFiles -DifferenceObject $actualRootPowerShellFiles)
+    $modulesRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'modules'))
+    $misplacedModules = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.psm1' | Where-Object {
+        $_.FullName -notlike "*$([IO.Path]::DirectorySeparatorChar)node_modules$([IO.Path]::DirectorySeparatorChar)*" -and
+        -not $_.FullName.StartsWith($modulesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($missingRuntimePaths.Count -eq 0 -and $rootPowerShellDifference.Count -eq 0 -and $misplacedModules.Count -eq 0) {
+        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime paths exist, exactly three supported commands occupy the tools root, and every PowerShell module is beneath tools/modules.'
     }
     else {
-        Add-ValidationIssue -Name 'runtime-layout' -Issue ("Required Hosted runtime paths are missing: {0}" -f ($missingRuntimePaths -join ', '))
+        $layoutIssues = New-Object 'System.Collections.Generic.List[string]'
+        if ($missingRuntimePaths.Count -gt 0) { $layoutIssues.Add("required paths are missing: $($missingRuntimePaths -join ', ')") }
+        if ($rootPowerShellDifference.Count -gt 0) { $layoutIssues.Add("tools root must contain only: $($expectedRootPowerShellFiles -join ', ')") }
+        if ($misplacedModules.Count -gt 0) { $layoutIssues.Add("PowerShell modules must be beneath tools/modules: $($misplacedModules.FullName -join ', ')") }
+        Add-ValidationIssue -Name 'runtime-layout' -Issue ("Hosted runtime layout is invalid: {0}" -f ($layoutIssues -join '; '))
     }
 
     Start-ValidationCheck -Name 'lifecycle-tools'
