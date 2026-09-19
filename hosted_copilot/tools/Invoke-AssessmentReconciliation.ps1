@@ -138,7 +138,7 @@ if (-not [string]::IsNullOrWhiteSpace($PromotionPlanPath)) {
     $null = Copy-InputSnapshot -SourcePath ([IO.Path]::GetFullPath($PromotionPlanPath)) -DestinationPath $snapshotPromotionPlanPath
 }
 
-$baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline.schema.json'
+$baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
 $contractSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json'

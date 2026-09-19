@@ -68,6 +68,8 @@ $iconNames = @(
     'open-preview',
     'pass',
     'pass-compact',
+    'remote',
+    'remote-compact',
     'repo-forked',
     'save',
     'search',

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/approval-handoff-v4.schema.json",
+  "title": "Hosted Rule Workbench Approval Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "createdAt", "encoding", "hashAlgorithm", "previewPayloadSha256", "approval", "previewPayload"],
+  "properties": {
+    "$schema": { "const": "approval-handoff-v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "kind": { "const": "hosted-rule-workbench-approval-handoff" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "encoding": { "const": "utf-8" },
+    "hashAlgorithm": { "const": "sha256-payload-bytes-v1" },
+    "previewPayloadSha256": { "$ref": "#/$defs/sha256" },
+    "approval": { "$ref": "#/$defs/approval" },
+    "previewPayload": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "displayName"],
+      "properties": {
+        "type": { "enum": ["github-authenticated", "git-config", "manual"] },
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "approvedAt", "approvedBy", "method"],
+      "properties": {
+        "state": { "const": "approved" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedBy": { "$ref": "#/$defs/identity" },
+        "method": { "const": "hosted-rule-workbench" }
+      }
+    }
+  }
+}

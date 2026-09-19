@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline.schema.json",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json",
   "title": "Hosted Source Assessment Baseline",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "priorSourceGenerationSha256", "hostedCatalogSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
   "properties": {
     "$schema": {
-      "const": "source-assessment-baseline.schema.json"
+      "const": "source-assessment-baseline-v4.schema.json"
     },
     "schemaVersion": {
       "const": 4

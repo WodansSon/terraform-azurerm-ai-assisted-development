@@ -16,6 +16,9 @@ $compatibilitySchemaPath = Join-Path $reconciliationRoot 'version-3-field-compat
 $compatibilityPath = Join-Path $reconciliationRoot 'version-3-field-compatibility.json'
 $retirementSchemaPath = Join-Path $reconciliationRoot 'version-3-retirement-inventory.schema.json'
 $retirementPath = Join-Path $reconciliationRoot 'version-3-retirement-inventory.json'
+$commandSurfaceSchemaPath = Join-Path $PSScriptRoot 'tool-command-surface.schema.json'
+$commandSurfacePath = Join-Path $PSScriptRoot 'tool-command-surface.json'
+$commandMapPath = Join-Path $PSScriptRoot 'README.md'
 $ruleIntakeReviewSchemaPath = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog/rule-intake-review.schema.json'
 $baselineSchemaPath = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
 $catalogPath = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json'
@@ -32,6 +35,7 @@ $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
 $script:compatibility = $null
 $script:retirement = $null
+$script:commandSurface = $null
 $script:seed = $null
 $script:baselineCatalog = $null
 $script:currentCatalog = $null
@@ -210,6 +214,96 @@ Invoke-ReadinessTest -Name 'inventory-evidence-paths' -SuccessDetail 'Every curr
     Assert-EvidencePaths -Entries @($script:retirement.entries)
 }
 
+Invoke-ReadinessTest -Name 'command-surface-schema-validation' -SuccessDetail 'The Phase 2.5 command-surface move plan satisfies its strict schema.' -Action {
+    $content = Get-Content -LiteralPath $commandSurfacePath -Raw
+    if (-not ($content | Test-Json -SchemaFile $commandSurfaceSchemaPath -ErrorAction Stop)) {
+        throw 'Command-surface move plan schema validation failed'
+    }
+    $script:commandSurface = $content | ConvertFrom-Json
+    $entries = @($script:commandSurface.entries)
+    $duplicatePaths = @($entries | Group-Object currentPath | Where-Object Count -gt 1)
+    if ($duplicatePaths.Count -gt 0) {
+        throw "Command-surface move plan repeats current paths: $(@($duplicatePaths.Name) -join ', ')"
+    }
+    for ($index = 0; $index -lt $entries.Count; $index++) {
+        $expectedOrdinal = $index + 1
+        if ([int]$entries[$index].ordinal -ne $expectedOrdinal) {
+            throw "Command-surface entry $($entries[$index].currentPath) has ordinal $($entries[$index].ordinal); expected $expectedOrdinal"
+        }
+    }
+}
+
+Invoke-ReadinessTest -Name 'command-surface-exact-coverage' -SuccessDetail 'Every repository-owned PowerShell file is classified exactly once with one valid Phase 2.5 destination.' -Action {
+    $toolsRoot = Join-Path $repoRoot 'hosted_copilot/tools'
+    $actualPaths = @(Get-ChildItem -LiteralPath $toolsRoot -Recurse -File | Where-Object {
+        $_.Extension -in @('.ps1', '.psm1') -and $_.FullName -notlike "*$([IO.Path]::DirectorySeparatorChar)node_modules$([IO.Path]::DirectorySeparatorChar)*"
+    } | ForEach-Object { [IO.Path]::GetRelativePath($repoRoot, $_.FullName).Replace('\', '/') } | Sort-Object)
+    $declaredPaths = @($script:commandSurface.entries.currentPath | ForEach-Object { [string]$_ } | Sort-Object)
+    Assert-RequiredValues -Expected $actualPaths -Actual $declaredPaths -Name 'Command-surface file coverage'
+
+    $duplicatePlannedPaths = @($script:commandSurface.entries | Group-Object plannedPath | Where-Object Count -gt 1)
+    if ($duplicatePlannedPaths.Count -gt 0) {
+        throw "Command-surface move plan repeats destinations: $(@($duplicatePlannedPaths.Name) -join ', ')"
+    }
+
+    $commandMap = Get-Content -LiteralPath $commandMapPath -Raw
+    $retirementIds = @($script:retirement.entries.id | ForEach-Object { [string]$_ })
+    $rootCommandNames = @('Install-Toolkit.ps1', 'Start-RuleWorkbench.ps1', 'Test-Toolkit.ps1')
+    $catalogCommandNames = @('Generate-Instructions.ps1', 'Test-UpstreamSources.ps1')
+    $reviewCommandNames = @('Capture-ReviewPair.ps1', 'Close-ReviewPair.ps1', 'Import-PullRequest.ps1', 'Initialize-ReviewBases.ps1', 'New-ReviewPair.ps1', 'Publish-TestCase.ps1')
+    foreach ($entry in @($script:commandSurface.entries)) {
+        $currentPath = [string]$entry.currentPath
+        $plannedPath = [string]$entry.plannedPath
+        $extension = [IO.Path]::GetExtension($currentPath)
+        switch ([string]$entry.classification) {
+            'maintainer-command' {
+                $fileName = [IO.Path]::GetFileName($currentPath)
+                $expectedPath = if ($fileName -in $rootCommandNames) {
+                    "hosted_copilot/tools/$fileName"
+                }
+                elseif ($fileName -in $catalogCommandNames) {
+                    "hosted_copilot/tools/commands/catalog/$fileName"
+                }
+                elseif ($fileName -in $reviewCommandNames) {
+                    "hosted_copilot/tools/commands/review/$fileName"
+                }
+                else {
+                    throw "Maintainer command is not assigned to an approved command group: $currentPath"
+                }
+                if ($extension -cne '.ps1' -or $plannedPath -cne $expectedPath -or [string]$entry.documentationPath -cne 'hosted_copilot/tools/README.md' -or -not $commandMap.Contains($fileName)) {
+                    throw "Maintainer command classification is invalid: $currentPath"
+                }
+            }
+            'internal-implementation' {
+                if ($extension -cne '.ps1' -or $plannedPath -cnotlike 'hosted_copilot/tools/internal/*.ps1') {
+                    throw "Internal implementation destination is invalid: $currentPath"
+                }
+            }
+            'module' {
+                if ($extension -cne '.psm1' -or $plannedPath -cnotlike 'hosted_copilot/tools/modules/*.psm1') {
+                    throw "Module destination is invalid: $currentPath"
+                }
+            }
+            'focused-test' {
+                if ($extension -cne '.ps1' -or $plannedPath -cnotlike 'hosted_copilot/tools/tests/*.ps1') {
+                    throw "Focused test destination is invalid: $currentPath"
+                }
+            }
+            'migration-only' {
+                if ($extension -cne '.ps1' -or $plannedPath -cnotlike 'hosted_copilot/tools/migration/*.ps1' -or [string]$entry.retirementInventoryId -notin $retirementIds) {
+                    throw "Migration-only destination or retirement binding is invalid: $currentPath"
+                }
+            }
+            'legacy-v3' {
+                if ($extension -cne '.ps1' -or $plannedPath -cnotlike 'hosted_copilot/tools/legacy-v3/*.ps1' -or [string]$entry.retirementInventoryId -notin $retirementIds) {
+                    throw "Legacy version 3 destination or retirement binding is invalid: $currentPath"
+                }
+            }
+            default { throw "Unsupported command-surface classification: $($entry.classification)" }
+        }
+    }
+}
+
 Invoke-ReadinessTest -Name 'assessment-baseline-field-coverage' -SuccessDetail 'Every reachable version 3 assessment-baseline property appears exactly once.' -Action {
     $baselineSchema = Get-Content -LiteralPath $baselineSchemaPath -Raw | ConvertFrom-Json
     $expectedFields = @(Get-ReachableSchemaPropertyPaths -RootSchema $baselineSchema -Node $baselineSchema | Sort-Object -Unique)
@@ -254,7 +348,8 @@ $requiredRetirementIds = @(
     'V3-RETIRE-VALIDATOR-TOOLKIT-REGISTRATION', 'V3-RETIRE-VALIDATOR-RULE-INTAKE', 'V3-RETIRE-VALIDATOR-ASSESSMENT', 'V3-RETIRE-VALIDATOR-WORKBENCH',
     'V3-RETIRE-BROWSER-SCHEMA-CONSTANTS', 'V3-RETIRE-BROWSER-BUNDLE-READS', 'V3-RETIRE-BROWSER-ASSESSMENT-READS', 'V3-RETIRE-BROWSER-CAPACITY-READS', 'V3-RETIRE-BROWSER-SESSION-DRAFT-READS', 'V3-RETIRE-BROWSER-APPROVAL-READS',
     'V3-RETIRE-FIXTURE-RULE-INTAKE', 'V3-RETIRE-FIXTURE-ASSESSMENT', 'V3-RETIRE-FIXTURE-WORKBENCH', 'V3-RETIRE-FIXTURE-BROWSER-JOURNEYS',
-    'V3-RETIRE-WORKFLOW-CANDIDATE-VIEWS', 'V3-RETIRE-WORKFLOW-ASSESSMENT-RESULTS', 'V3-RETIRE-WORKFLOW-APPLICABILITY-OVERRIDE', 'V3-RETIRE-WORKFLOW-DECISION-PLAN', 'V3-RETIRE-WORKFLOW-CAPACITY', 'V3-RETIRE-WORKFLOW-PREVIEW-APPROVAL', 'V3-RETIRE-WORKFLOW-DRAFT-PERSISTENCE', 'V3-RETIRE-WORKFLOW-SHUTDOWN'
+    'V3-RETIRE-WORKFLOW-CANDIDATE-VIEWS', 'V3-RETIRE-WORKFLOW-ASSESSMENT-RESULTS', 'V3-RETIRE-WORKFLOW-APPLICABILITY-OVERRIDE', 'V3-RETIRE-WORKFLOW-DECISION-PLAN', 'V3-RETIRE-WORKFLOW-CAPACITY', 'V3-RETIRE-WORKFLOW-PREVIEW-APPROVAL', 'V3-RETIRE-WORKFLOW-DRAFT-PERSISTENCE', 'V3-RETIRE-WORKFLOW-SHUTDOWN',
+    'V3-RETIRE-MIGRATION-CATALOG-TRANSFORMER', 'V3-RETIRE-MIGRATION-CATALOG-TRANSFORMATION-TEST', 'V3-RETIRE-MIGRATION-READINESS-TEST', 'V3-RETIRE-MIGRATION-FIELD-COMPATIBILITY-SCHEMA', 'V3-RETIRE-MIGRATION-FIELD-COMPATIBILITY-DATA', 'V3-RETIRE-MIGRATION-RETIREMENT-SCHEMA', 'V3-RETIRE-MIGRATION-RETIREMENT-DATA', 'V3-RETIRE-MIGRATION-COMMAND-SURFACE-SCHEMA', 'V3-RETIRE-MIGRATION-COMMAND-SURFACE-DATA'
 )
 $requiredDependencyClasses = @('producer', 'schema', 'durable-artifact', 'cache', 'session-key', 'launcher-parameter', 'launcher-default', 'staged-filename', 'validator-registration', 'browser-schema-constant', 'browser-field-read', 'fixture-family', 'renderer-workflow')
 Invoke-ReadinessTest -Name 'required-retirement-dependencies' -SuccessDetail 'All explicit version 3 dependency IDs and dependency classes are inventoried.' -Action {

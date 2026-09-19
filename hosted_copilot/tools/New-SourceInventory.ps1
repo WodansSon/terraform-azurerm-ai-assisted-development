@@ -231,6 +231,11 @@ function Invoke-SourceInventoryParser {
             Import-Module $modulePath -Force
             return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
         }
+        'maintainer-proposals-v4' {
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/source-parsers/MaintainerProposalsV4.psm1'
+            Import-Module $modulePath -Force
+            return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
+        }
         'interactive-toolkit-v2' {
             if ($MatchedFiles.Count -ne 1 -or [string]$MatchedFiles[0].RelativePath -cne 'rule-catalog.json') {
                 throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json'
@@ -634,7 +639,7 @@ switch ([string]$definition.root.kind) {
 }
 
 $catalog = $null
-if ([string]$definition.parser -ceq 'maintainer-proposals-v2') {
+if ([string]$definition.parser -in @('maintainer-proposals-v2', 'maintainer-proposals-v4')) {
     $catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
     foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {

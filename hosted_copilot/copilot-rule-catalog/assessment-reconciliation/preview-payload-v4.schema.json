@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/preview-payload-v4.schema.json",
+  "title": "Hosted Catalog Mutation Preview Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "workbenchBundleSha256", "promotionPlanSha256", "hostedCatalogSha256", "sourceGenerationSha256", "mutations"],
+  "properties": {
+    "$schema": { "const": "preview-payload-v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "kind": { "const": "hosted-catalog-mutation-preview" },
+    "workbenchBundleSha256": { "$ref": "#/$defs/sha256" },
+    "promotionPlanSha256": { "$ref": "#/$defs/sha256" },
+    "hostedCatalogSha256": { "$ref": "#/$defs/sha256" },
+    "sourceGenerationSha256": { "$ref": "#/$defs/sha256" },
+    "mutations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/mutation" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hostedId": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+    "assessmentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentBaselineSha256", "sourceDefinitionId", "sourceId", "contentSha256", "assessmentId"],
+      "properties": {
+        "assessmentBaselineSha256": { "$ref": "#/$defs/sha256" },
+        "sourceDefinitionId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "assessmentId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaceId", "sectionHeading"],
+      "properties": {
+        "surfaceId": { "enum": ["implementation", "testing", "documentation"] },
+        "sectionHeading": { "type": "string", "minLength": 1 }
+      }
+    },
+    "catalogRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "text", "placements", "provenance", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/hostedId" },
+        "status": { "enum": ["active", "retired"] },
+        "text": { "type": "string", "minLength": 1 },
+        "placements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/placement" } },
+        "provenance": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["published-upstream-standard", "confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"] } },
+        "evidence": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "relationshipChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "sourceDefinitionId", "sourceId", "hostedRuleId", "relationshipKind", "assessmentEvidenceRefs", "rationale"],
+      "properties": {
+        "action": { "enum": ["upsert", "retire"] },
+        "sourceDefinitionId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "hostedRuleId": { "$ref": "#/$defs/hostedId" },
+        "relationshipKind": { "enum": ["supports", "equivalent", "included"] },
+        "assessmentEvidenceRefs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/assessmentRef" } },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "hostedId", "rationale", "memberAssessmentRefs", "before", "after", "relationshipChanges"],
+      "properties": {
+        "action": { "enum": ["add", "update", "retire", "restore"] },
+        "hostedId": { "$ref": "#/$defs/hostedId" },
+        "rationale": { "type": "string", "minLength": 1 },
+        "memberAssessmentRefs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/assessmentRef" } },
+        "before": { "oneOf": [{ "$ref": "#/$defs/catalogRule" }, { "type": "null" }] },
+        "after": { "oneOf": [{ "$ref": "#/$defs/catalogRule" }, { "type": "null" }] },
+        "relationshipChanges": { "type": "array", "items": { "$ref": "#/$defs/relationshipChange" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "const": "add" } }, "required": ["action"] },
+          "then": { "properties": { "before": { "type": "null" }, "after": { "$ref": "#/$defs/catalogRule" } } }
+        },
+        {
+          "if": { "properties": { "action": { "enum": ["update", "retire", "restore"] } }, "required": ["action"] },
+          "then": { "properties": { "before": { "$ref": "#/$defs/catalogRule" }, "after": { "$ref": "#/$defs/catalogRule" } } }
+        }
+      ]
+    }
+  }
+}

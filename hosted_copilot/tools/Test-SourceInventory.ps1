@@ -22,11 +22,13 @@ $contributorDefinitionPath = Join-Path $catalogRoot 'source-definitions/contribu
 $definitionSchemaPath = Join-Path $catalogRoot 'source-definitions/source-definition.schema.json'
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
 $contractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v2.json'
+$v4ContractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v4.json'
 $interactiveContractPath = Join-Path $catalogRoot 'parser-contracts/interactive-toolkit-v2.json'
 $contributorContractPath = Join-Path $catalogRoot 'parser-contracts/contributor-guidance-v2.json'
 $contractSchemaPath = Join-Path $catalogRoot 'parser-contracts/parser-contract.schema.json'
 $collectorPath = Join-Path $PSScriptRoot 'New-SourceInventory.ps1'
 $parserModulePath = Join-Path $PSScriptRoot 'source-parsers/MaintainerProposalsV2.psm1'
+$v4ParserModulePath = Join-Path $PSScriptRoot 'source-parsers/MaintainerProposalsV4.psm1'
 $interactiveParserModulePath = Join-Path $PSScriptRoot 'source-parsers/InteractiveToolkitV2.psm1'
 $contributorParserModulePath = Join-Path $PSScriptRoot 'source-parsers/ContributorGuidanceV2.psm1'
 $interactiveCatalogPath = Join-Path $repoRoot 'tools/interactive-rule-catalog/rule-catalog.json'
@@ -212,6 +214,7 @@ try {
 
     Add-TestResult -Name 'source-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $definitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Maintainer Proposals uses the strict shared source-definition schema.'
     Add-TestResult -Name 'parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Maintainer Proposals parser contract has a strict versioned shape.'
+    Add-TestResult -Name 'v4-parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $v4ContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The shadow version 4 Maintainer Proposals parser contract has a strict versioned shape.'
     Add-TestResult -Name 'interactive-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $interactiveDefinitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Interactive Toolkit uses the strict shared source-definition schema.'
     Add-TestResult -Name 'interactive-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $interactiveContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Interactive Toolkit parser contract has a strict versioned shape.'
     Add-TestResult -Name 'contributor-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contributorDefinitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Contributor Guidance uses the strict shared source-definition schema.'
@@ -221,14 +224,14 @@ try {
         'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
         'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
     )
-    $parserContracts = @($contractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
+    $parserContracts = @($contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
     $missingParserValidationFiles = @($parserContracts | ForEach-Object { $contract = $_; $requiredParserValidationFiles | Where-Object { $_ -notin @($contract.behaviorFiles) } })
     $maintainerCatalogSchemaPath = 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
     Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, and parser-specific validation schemas.'
 
     $interactiveCatalog = Get-Content -LiteralPath $interactiveCatalogPath -Raw | ConvertFrom-Json
     $interactiveContractSourcePaths = @($interactiveCatalog.rules.contractPath | Sort-Object -Unique | ForEach-Object { Join-Path $repoRoot $_ })
-    $protectedPaths = @($definitionPath, $interactiveDefinitionPath, $contributorDefinitionPath, $definitionSchemaPath, $inventorySchemaPath, $contractPath, $interactiveContractPath, $contributorContractPath, $contractSchemaPath, $parserModulePath, $interactiveParserModulePath, $contributorParserModulePath, $interactiveCatalogPath) + @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName) + $interactiveContractSourcePaths
+    $protectedPaths = @($definitionPath, $interactiveDefinitionPath, $contributorDefinitionPath, $definitionSchemaPath, $inventorySchemaPath, $contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath, $contractSchemaPath, $parserModulePath, $v4ParserModulePath, $interactiveParserModulePath, $contributorParserModulePath, $interactiveCatalogPath) + @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName) + $interactiveContractSourcePaths
     $hashesBefore = @($protectedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
     $firstRun = Invoke-Collector -OutputPath $firstOutputPath
     $secondRun = Invoke-Collector -OutputPath $secondOutputPath
@@ -385,6 +388,67 @@ try {
     $retiredPath = Join-Path $parserFixtureRoot 'retired.rules.md'
     Write-ProposalFixture -Path $retiredPath -Surface 'implementation' -Body "### IMPL-MAINT-902: Retired proposal`n`n- Rule: Reject an unbound retired proposal.`n- Provenance: local-safeguard`n- Rationale: Retirement requires an existing Hosted rule.`n- Status: retired"
     Add-TestResult -Name 'retired-mapping-required' -Passed (Test-ThrowsLike -Action { Get-MaintainerProposalInventoryRecords -SourcePaths @($retiredPath) -RepositoryRoot $fixtureRoot } -Pattern '*does not map to a Hosted rule*') -Detail 'Retired Maintainer Proposals must resolve to an existing Hosted rule.'
+
+    $v2Module = Import-Module $parserModulePath -Force -PassThru
+    $v4Module = Import-Module $v4ParserModulePath -Force -PassThru
+    $repositoryProposalPaths = @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName)
+    $v2RepositoryRecords = @(& $v2Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } $repositoryProposalPaths $repoRoot)
+    $v4RepositoryRecords = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } $repositoryProposalPaths $repoRoot)
+    Add-TestResult -Name 'v4-repository-parser-parity' -Passed (($v2RepositoryRecords | ConvertTo-Json -Depth 20 -Compress) -ceq ($v4RepositoryRecords | ConvertTo-Json -Depth 20 -Compress)) -Detail 'Version 4 emits field-for-field identical records for the repository-owned version 2 Maintainer Proposals corpus.'
+
+    $remoteRulesPath = Join-Path $parserFixtureRoot 'remote-testing.rules.md'
+    $remoteRulesContent = "---`ndescription: `"Remote testing rules.`"`nsurface: testing`nremoteRulesVersion: 1`n---`n`n### TEST-REMOTE-A1B2C3D4-001: Validate remote rules`n`n- Rule: Validate imported remote rules.`n- Provenance: inferred-maintainer-convention`n- Rationale: Evaluate this remote rule independently against the destination corpus.`n"
+    [IO.File]::WriteAllText($remoteRulesPath, $remoteRulesContent, [Text.UTF8Encoding]::new($false))
+    $remoteRulesRecords = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($remoteRulesPath) $fixtureRoot)
+    Add-TestResult -Name 'v4-remote-rules-valid' -Passed ($remoteRulesRecords.Count -eq 1 -and [string]$remoteRulesRecords[0].sourceId -ceq 'TEST-REMOTE-A1B2C3D4-001') -Detail 'Version 4 accepts one supported Remote Rules file through the existing Maintainer Proposals block grammar.'
+
+    $unsupportedRemoteRulesPath = Join-Path $parserFixtureRoot 'remote-unsupported.rules.md'
+    [IO.File]::WriteAllText($unsupportedRemoteRulesPath, $remoteRulesContent.Replace('remoteRulesVersion: 1', 'remoteRulesVersion: 2'), [Text.UTF8Encoding]::new($false))
+    Add-TestResult -Name 'v4-remote-version-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($unsupportedRemoteRulesPath) $fixtureRoot } -Pattern '*unsupported remoteRulesVersion*') -Detail 'Version 4 rejects unsupported Remote Rules versions.'
+
+    $unknownFrontmatterPath = Join-Path $parserFixtureRoot 'remote-unknown-frontmatter.rules.md'
+    [IO.File]::WriteAllText($unknownFrontmatterPath, $remoteRulesContent.Replace('surface: testing', "surface: testing`nsourceMachine: forbidden"), [Text.UTF8Encoding]::new($false))
+    Add-TestResult -Name 'v4-remote-frontmatter-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($unknownFrontmatterPath) $fixtureRoot } -Pattern '*unsupported frontmatter fields*') -Detail 'Version 4 rejects source-machine and other unknown Remote Rules frontmatter.'
+
+    $invalidRemoteIdPath = Join-Path $parserFixtureRoot 'remote-invalid-id.rules.md'
+    [IO.File]::WriteAllText($invalidRemoteIdPath, $remoteRulesContent.Replace('TEST-REMOTE-A1B2C3D4-001', 'TEST-MAINT-999'), [Text.UTF8Encoding]::new($false))
+    Add-TestResult -Name 'v4-remote-id-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($invalidRemoteIdPath) $fixtureRoot } -Pattern '*Remote Rules source ID is invalid*') -Detail 'Version 4 requires destination-neutral surface-scoped Remote Rules source IDs.'
+
+    $emptyRemoteRulesPath = Join-Path $parserFixtureRoot 'remote-empty.rules.md'
+    [IO.File]::WriteAllText($emptyRemoteRulesPath, "---`ndescription: `"Remote testing rules.`"`nsurface: testing`nremoteRulesVersion: 1`n---`n", [Text.UTF8Encoding]::new($false))
+    Add-TestResult -Name 'v4-empty-remote-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($emptyRemoteRulesPath) $fixtureRoot } -Pattern '*does not contain any rules*') -Detail 'Version 4 rejects empty Remote Rules files.'
+
+    $bomRemoteRulesPath = Join-Path $parserFixtureRoot 'remote-bom.rules.md'
+    [IO.File]::WriteAllText($bomRemoteRulesPath, $remoteRulesContent, [Text.UTF8Encoding]::new($true))
+    Add-TestResult -Name 'v4-remote-bom-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($bomRemoteRulesPath) $fixtureRoot } -Pattern '*must not contain a UTF-8 BOM*') -Detail 'Version 4 rejects Remote Rules files with a UTF-8 BOM.'
+
+    $invalidUtf8RemoteRulesPath = Join-Path $parserFixtureRoot 'remote-invalid-utf8.rules.md'
+    [IO.File]::WriteAllBytes($invalidUtf8RemoteRulesPath, [byte[]](0xC3, 0x28))
+    Add-TestResult -Name 'v4-remote-invalid-utf8-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($invalidUtf8RemoteRulesPath) $fixtureRoot } -Pattern '*is not valid UTF-8*') -Detail 'Version 4 rejects malformed UTF-8 before parsing frontmatter or rules.'
+
+    $crlfRemoteRulesPath = Join-Path $parserFixtureRoot 'remote-crlf.rules.md'
+    [IO.File]::WriteAllText($crlfRemoteRulesPath, $remoteRulesContent.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
+    $crlfRemoteRecords = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($crlfRemoteRulesPath) $fixtureRoot)
+    Add-TestResult -Name 'v4-remote-line-endings-normalized' -Passed ($crlfRemoteRecords.Count -eq 1 -and -not ([string]$crlfRemoteRecords[0].content).Contains("`r")) -Detail 'Version 4 normalizes imported rule blocks to LF before hashing and inventory output.'
+
+    $remoteRulesSecondPath = Join-Path $parserFixtureRoot 'remote-testing-second.rules.md'
+    $remoteRulesSecondContent = $remoteRulesContent.Replace('A1B2C3D4-001', 'B1C2D3E4-002').Replace('Validate remote rules', 'Preserve remote ordering').Replace('Validate imported remote rules.', 'Preserve deterministic remote ordering.')
+    [IO.File]::WriteAllText($remoteRulesSecondPath, $remoteRulesSecondContent, [Text.UTF8Encoding]::new($false))
+    $remoteOrderOne = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($remoteRulesSecondPath, $remoteRulesPath) $fixtureRoot)
+    $remoteOrderTwo = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($remoteRulesPath, $remoteRulesSecondPath) $fixtureRoot)
+    Add-TestResult -Name 'v4-remote-order-deterministic' -Passed (($remoteOrderOne | ConvertTo-Json -Depth 20 -Compress) -ceq ($remoteOrderTwo | ConvertTo-Json -Depth 20 -Compress)) -Detail 'Version 4 record order is independent of selected file order.'
+
+    $repositoryCollisionPath = Join-Path $parserFixtureRoot 'repository-collision.rules.md'
+    Write-ProposalFixture -Path $repositoryCollisionPath -Surface 'testing' -Body "### TEST-REMOTE-A1B2C3D4-001: Duplicate remote identity`n`n- Rule: Reject duplicate imported identities.`n- Provenance: local-safeguard`n- Rationale: Repository and imported proposal identities share one namespace."
+    Add-TestResult -Name 'v4-remote-repository-collision-rejected' -Passed (Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($repositoryCollisionPath, $remoteRulesPath) $fixtureRoot } -Pattern '*Duplicate maintainer rule ID*') -Detail 'Version 4 rejects duplicate source IDs across repository and imported proposals.'
+
+    $ordinal999Path = Join-Path $parserFixtureRoot 'remote-ordinal-999.rules.md'
+    [IO.File]::WriteAllText($ordinal999Path, $remoteRulesContent.Replace('A1B2C3D4-001', 'A1B2C3D4-999'), [Text.UTF8Encoding]::new($false))
+    $ordinal999Records = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($ordinal999Path) $fixtureRoot)
+    $ordinal1000Path = Join-Path $parserFixtureRoot 'remote-ordinal-1000.rules.md'
+    [IO.File]::WriteAllText($ordinal1000Path, $remoteRulesContent.Replace('A1B2C3D4-001', 'A1B2C3D4-1000'), [Text.UTF8Encoding]::new($false))
+    $ordinal1000Rejected = Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($ordinal1000Path) $fixtureRoot } -Pattern '*heading is invalid*'
+    Add-TestResult -Name 'v4-remote-ordinal-boundary' -Passed ($ordinal999Records.Count -eq 1 -and [string]$ordinal999Records[0].sourceId -ceq 'TEST-REMOTE-A1B2C3D4-999' -and $ordinal1000Rejected) -Detail 'Version 4 accepts ordinal 999 and rejects ordinal 1000.'
 
     $inventory = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json -DateKind String
     Add-TestResult -Name 'inventory-collection-only' -Passed ($null -eq $inventory.PSObject.Properties['acceptance'] -and $null -eq $inventory.PSObject.Properties['acceptedRevisions']) -Detail 'Staged inventory contains collection facts and records without per-lane acceptance or revision state.'

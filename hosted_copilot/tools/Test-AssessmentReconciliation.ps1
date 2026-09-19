@@ -198,6 +198,28 @@ try {
         $acceptedInventoryPaths.Add($inventoryPath)
         $inventoryHashes[$sourceDefinitionId] = Get-Sha256 -Path $inventoryPath
     }
+    $capacityReports = @('repository', 'go', 'test', 'documentation', 'skill', 'go-combined', 'test-combined', 'documentation-combined') | ForEach-Object {
+        [ordered]@{
+            name = $_
+            kind = if ($_ -like '*-combined') { 'combined' } else { 'file' }
+            paths = @("fixture/$_.md")
+            characterCount = 400
+            estimatedTokens = 100
+            guardedTokens = 125
+            budgetTokens = 1000
+            budgetHeadroomTokens = 875
+            utilizationPercent = 12.5
+            withinBudget = $true
+        }
+    }
+    $guidanceCapacityPath = Join-Path $tempRoot 'guidance-capacity.json'
+    Write-JsonFixture -Path $guidanceCapacityPath -Value ([ordered]@{
+        status = 'passed'
+        estimator = 'character-quarter-estimate-25pct-v1'
+        safetyMarginPercent = 25
+        reportCount = 8
+        reports = $capacityReports
+    })
     $sourceDefinitions = @('contributor-guidance', 'interactive-toolkit', 'maintainer-proposals') | ForEach-Object {
         $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repositoryRoot -SourceDefinitionId $_
         [ordered]@{
@@ -213,7 +235,7 @@ try {
     $assessmentContract = Get-Content -LiteralPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-v2.json') -Raw | ConvertFrom-Json
     $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $assessmentContract -RepositoryRoot $repositoryRoot
     $baseline = [ordered]@{
-        '$schema' = 'source-assessment-baseline.schema.json'
+        '$schema' = 'source-assessment-baseline-v4.schema.json'
         schemaVersion = 4
         generatedAt = $generatedAt
         inventoryHashes = $inventoryHashes
@@ -226,7 +248,7 @@ try {
     }
     $baselinePath = Join-Path $tempRoot 'baseline.json'
     Write-JsonFixture -Path $baselinePath -Value $baseline
-    $baselineValid = (Get-Content -LiteralPath $baselinePath -Raw) | Test-Json -SchemaFile (Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline.schema.json') -ErrorAction Stop
+    $baselineValid = (Get-Content -LiteralPath $baselinePath -Raw) | Test-Json -SchemaFile (Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline-v4.schema.json') -ErrorAction Stop
     Add-TestResult -Name 'three-lane-baseline-schema' -Passed $baselineValid -Detail 'Focused reconciliation fixtures use one schema-valid assessment from each independent source lane.'
 
     $contributorRef = Get-AssessmentRef -Entry $entries[0]
@@ -409,7 +431,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
 
     $reviewOutputPath = Join-Path $tempRoot 'assessment-reconciliation-review.json'
     try {
-        $reviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reviewExitCode = $LASTEXITCODE
     }
     catch {
@@ -418,10 +440,10 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     }
     $reviewResult = if ($reviewExitCode -eq 0) { ($reviewOutput | Out-String) | ConvertFrom-Json } else { $null }
     $review = if ($reviewExitCode -eq 0) { Get-Content -LiteralPath $reviewOutputPath -Raw | ConvertFrom-Json } else { $null }
-    $reviewContract = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-v1.json') -Raw | ConvertFrom-Json
+    $reviewContract = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-v4.json') -Raw | ConvertFrom-Json
     $expectedReviewContractSha256 = Get-AssessmentReconciliationReviewContractSha256 -Contract $reviewContract -RepositoryRoot $repositoryRoot
-    $reviewPassed = $reviewExitCode -eq 0 -and $review.readOnly -eq $true -and $review.schemaVersion -eq 4 -and @($review.assessmentPresentations).Count -eq 3 -and @($review.recommendationOutput.recommendations).Count -eq 1 -and @($review.recommendationOutput.assessmentCoverage).Count -eq 3 -and @($review.stagedInventories.PSObject.Properties).Count -eq 3 -and $null -ne $review.assessmentBaseline -and [string]$review.snapshots.reviewContractSha256 -ceq $expectedReviewContractSha256
-    Add-TestResult -Name 'self-contained-v4-bundle' -Passed $reviewPassed -Detail $(if ($reviewPassed) { 'The Workbench bundle embeds every staged inventory, the baseline, complete recommendation output, and one presentation per assessment.' } else { ($reviewOutput | Out-String).Trim() })
+    $reviewPassed = $reviewExitCode -eq 0 -and $review.readOnly -eq $true -and $review.schemaVersion -eq 4 -and @($review.assessmentPresentations).Count -eq 3 -and @($review.recommendationOutput.recommendations).Count -eq 1 -and @($review.recommendationOutput.assessmentCoverage).Count -eq 3 -and @($review.stagedInventories.PSObject.Properties).Count -eq 3 -and @($review.sourceDefinitions.PSObject.Properties).Count -eq 3 -and @($review.hostedCatalog.rules).Count -eq @($catalog.rules).Count -and @($review.guidanceCapacity.reports).Count -eq 8 -and [string]$review.snapshots.guidanceCapacitySha256 -ceq (Get-Sha256 -Path $guidanceCapacityPath) -and $null -ne $review.assessmentBaseline -and [string]$review.snapshots.reviewContractSha256 -ceq $expectedReviewContractSha256
+    Add-TestResult -Name 'self-contained-v4-bundle' -Passed $reviewPassed -Detail $(if ($reviewPassed) { 'The Workbench bundle embeds source metadata, every staged inventory, the baseline, recommendations, current catalog, capacity, and one presentation per assessment.' } else { ($reviewOutput | Out-String).Trim() })
     Add-TestResult -Name 'review-reported-hash' -Passed ($null -ne $reviewResult -and [string]$reviewResult.reviewSha256 -ceq (Get-Sha256 -Path $reviewOutputPath)) -Detail 'The review result reports the hash of the exact bytes written to its immutable destination.'
     $duplicateOwnershipSnapshot = Copy-JsonObject -Value $firstSnapshot
     $duplicateOwnershipRecommendation = Copy-JsonObject -Value $duplicateOwnershipSnapshot.recommendations[0]
@@ -430,7 +452,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     $duplicateOwnershipSnapshotPath = Join-Path $tempRoot 'duplicate-ownership-recommendations.json'
     Write-JsonFixture -Path $duplicateOwnershipSnapshotPath -Value $duplicateOwnershipSnapshot
     try {
-        $duplicateOwnershipOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $duplicateOwnershipSnapshotPath -OutputPath (Join-Path $tempRoot 'duplicate-ownership-review.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $duplicateOwnershipOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $duplicateOwnershipSnapshotPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath (Join-Path $tempRoot 'duplicate-ownership-review.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $duplicateOwnershipExitCode = $LASTEXITCODE
     }
     catch {
@@ -442,7 +464,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     [Array]::Reverse($reversedAcceptedInventoryPaths)
     $reorderedReviewPath = Join-Path $tempRoot 'assessment-reconciliation-reordered-review.json'
     try {
-        $reorderedReviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $reversedAcceptedInventoryPaths -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reorderedReviewPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reorderedReviewOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $reversedAcceptedInventoryPaths -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath $reorderedReviewPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reorderedReviewExitCode = $LASTEXITCODE
     }
     catch {
@@ -452,7 +474,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
     Add-TestResult -Name 'review-lane-order-independent' -Passed ($reorderedReviewExitCode -eq 0 -and (Get-Sha256 -Path $reviewOutputPath) -ceq (Get-Sha256 -Path $reorderedReviewPath)) -Detail 'Equivalent staged inventory lanes produce byte-identical Workbench bundles regardless of caller order.'
     $reviewHashBeforeOverwrite = Get-Sha256 -Path $reviewOutputPath
     try {
-        $reviewOverwriteOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $reviewOverwriteOutput = @(& $reviewBuilderPath -RepositoryRoot $repositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $firstRun.OutputPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath $reviewOutputPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
         $reviewOverwriteExitCode = $LASTEXITCODE
     }
     catch {
@@ -581,7 +603,7 @@ Copy-Item -LiteralPath $env:ASSESSMENT_RECONCILIATION_DRAFT -Destination $Output
         Write-JsonFixture -Path $consumerStrayIdSnapshotPath -Value $consumerStrayIdSnapshot
         $permissiveSchemaAllowsStrayId = (Get-Content -LiteralPath $consumerStrayIdSnapshotPath -Raw) | Test-Json -SchemaFile $isolatedRecommendationSchemaPath -ErrorAction Stop
         try {
-            $consumerStrayIdOutput = @(& $reviewBuilderPath -RepositoryRoot $isolatedRepositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $consumerStrayIdSnapshotPath -OutputPath (Join-Path $tempRoot 'consumer-stray-id-review.json') -HostedCatalogPath (Join-Path $isolatedCatalogRoot 'instruction-catalog.json') -ReviewContractPath (Join-Path $isolatedCatalogRoot 'assessment-reconciliation/assessment-reconciliation-review-v1.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+            $consumerStrayIdOutput = @(& $reviewBuilderPath -RepositoryRoot $isolatedRepositoryRoot -InventoryPaths $acceptedInventoryPaths.ToArray() -AssessmentBaselinePath $baselinePath -RecommendationSnapshotPath $consumerStrayIdSnapshotPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath (Join-Path $tempRoot 'consumer-stray-id-review.json') -HostedCatalogPath (Join-Path $isolatedCatalogRoot 'instruction-catalog.json') -ReviewContractPath (Join-Path $isolatedCatalogRoot 'assessment-reconciliation/assessment-reconciliation-review-v4.json') -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
             $consumerStrayIdExitCode = $LASTEXITCODE
         }
         catch {

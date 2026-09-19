@@ -97,7 +97,7 @@ $assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $sourceGenerationSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
-$baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline.schema.json'
+$baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json'
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'
 $catalogSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($HostedCatalogPath))) 'instruction-catalog.schema.json'
@@ -274,7 +274,7 @@ if ($missingSourceRefs.Count -gt 0) {
 $inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
 
 $baseline = [ordered]@{
-    '$schema' = 'source-assessment-baseline.schema.json'
+    '$schema' = 'source-assessment-baseline-v4.schema.json'
     schemaVersion = 4
     generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     inventoryHashes = $inventoryHashes

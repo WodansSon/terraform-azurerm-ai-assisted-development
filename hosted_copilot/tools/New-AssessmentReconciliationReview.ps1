@@ -14,11 +14,14 @@ param(
     [string]$RecommendationSnapshotPath,
 
     [Parameter(Mandatory = $true)]
+    [string]$GuidanceCapacityPath,
+
+    [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/instruction-catalog.json'),
 
-    [string]$ReviewContractPath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-review-v1.json'),
+    [string]$ReviewContractPath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-review-v4.json'),
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
@@ -111,10 +114,11 @@ if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::Ordina
 $catalogRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
 $reconciliationRoot = Join-Path $catalogRoot 'assessment-reconciliation'
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
-$baselineInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentBaselinePath)) -SchemaPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline.schema.json') -Name 'Source assessment baseline'
+$baselineInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentBaselinePath)) -SchemaPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline-v4.schema.json') -Name 'Source assessment baseline'
 $recommendationInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($RecommendationSnapshotPath)) -SchemaPath (Join-Path $reconciliationRoot 'hosted-rule-change-recommendations.schema.json') -Name 'Hosted rule change recommendations'
 $catalogInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Name 'Hosted instruction catalog'
-$reviewContractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReviewContractPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-contract.schema.json') -Name 'Assessment reconciliation review contract'
+$guidanceCapacityInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -SchemaPath (Join-Path $catalogRoot 'guidance-capacity.schema.json') -Name 'Guidance capacity'
+$reviewContractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReviewContractPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-review-v4-contract.schema.json') -Name 'Assessment reconciliation review contract'
 $priorSourceGenerationInput = $null
 if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
     $priorSourceGenerationInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath (Join-Path $catalogRoot 'source-generations/source-generation.schema.json') -Name 'Prior source generation'
@@ -146,6 +150,7 @@ if ($baselineInventoryJson -cne $recommendationInventoryJson) {
 $inventoryRecords = @{}
 $inventoryHashes = [ordered]@{}
 $inventories = [ordered]@{}
+$sourceDefinitions = [ordered]@{}
 foreach ($inventoryPath in $InventoryPaths) {
     $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Source inventory'
     $inventory = $inventoryInput.Value
@@ -159,6 +164,13 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
     $inventories[$sourceDefinitionId] = $inventory
+    $sourceDefinitions[$sourceDefinitionId] = [ordered]@{
+        sourceDefinitionSha256 = [string]$inventory.sourceDefinitionSha256
+        inventoryConfigurationSha256 = [string]$inventory.inventoryConfigurationSha256
+        parserId = [string]$inventory.parserId
+        parserContractSha256 = [string]$inventory.parserContractSha256
+        sourceRevision = $inventory.collection.sourceRevision
+    }
     $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $(if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Value }) -RemovedAt $GeneratedAt)
     foreach ($record in $projectionRecords) {
         $key = Get-SourceKey -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId)
@@ -170,6 +182,7 @@ foreach ($inventoryPath in $InventoryPaths) {
 }
 $inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
 $inventories = ConvertTo-OrdinalMap -Value $inventories
+$sourceDefinitions = ConvertTo-OrdinalMap -Value $sourceDefinitions
 if (($inventoryHashes | ConvertTo-Json -Compress) -cne $baselineInventoryJson) {
     throw 'Assessment reconciliation review requires every baseline inventory lane exactly once'
 }
@@ -304,7 +317,7 @@ if ($presentations.Count -ne $coverageByAssessment.Count) {
 }
 
 $review = [ordered]@{
-    '$schema' = 'assessment-reconciliation-review.schema.json'
+    '$schema' = 'assessment-reconciliation-review-v4.schema.json'
     schemaVersion = 4
     generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     readOnly = $true
@@ -314,13 +327,17 @@ $review = [ordered]@{
         acceptedSourceGenerationSha256 = $expectedPriorSourceGenerationSha256
         assessmentBaselineSha256 = $baselineInput.Snapshot.Sha256
         hostedCatalogSha256 = $catalogInput.Snapshot.Sha256
+        guidanceCapacitySha256 = $guidanceCapacityInput.Snapshot.Sha256
         reconciliationContractSha256 = [string]$recommendationSnapshot.reconciliationContractSha256
         reviewContractSha256 = $reviewContractSha256
     }
+    sourceDefinitions = $sourceDefinitions
     acceptedSourceGeneration = if ($null -eq $priorSourceGenerationInput) { $null } else { $priorSourceGenerationInput.Value }
     stagedInventories = $inventories
     assessmentBaseline = $baseline
     recommendationOutput = $recommendationSnapshot
+    hostedCatalog = $catalogInput.Value
+    guidanceCapacity = $guidanceCapacityInput.Value
     summary = [ordered]@{
         sourceCount = @($baseline.entries).Count
         assessmentCount = $presentations.Count
@@ -330,7 +347,7 @@ $review = [ordered]@{
     assessmentPresentations = @($presentations | Sort-Object -Property @{ Expression = { Get-AssessmentKey -Reference $_.assessmentRef } })
 }
 $reviewJson = $review | ConvertTo-Json -Depth 40
-if (-not ($reviewJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'assessment-reconciliation-review.schema.json') -ErrorAction Stop)) {
+if (-not ($reviewJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'assessment-reconciliation-review-v4.schema.json') -ErrorAction Stop)) {
     throw 'Assessment reconciliation review does not satisfy its schema'
 }
 $outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $review

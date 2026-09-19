@@ -16,7 +16,7 @@ Import-Module -Name $sourceEvidenceModulePath -Force
 $assessmentRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $builderPath = Join-Path $PSScriptRoot 'New-SourceAssessmentBaseline.ps1'
 $runnerPath = Join-Path $PSScriptRoot 'Invoke-SourceAssessment.ps1'
-$baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline.schema.json'
+$baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json'
 $inventorySchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $contractPath = Join-Path $assessmentRoot 'source-assessment-v2.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'

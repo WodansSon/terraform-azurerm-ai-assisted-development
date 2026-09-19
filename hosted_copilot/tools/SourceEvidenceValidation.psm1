@@ -372,7 +372,7 @@ function Assert-SourceGenerationIntegrity {
     $catalogRoot = Join-Path ([IO.Path]::GetFullPath($RepositoryRoot)) 'hosted_copilot/copilot-rule-catalog'
     $generationSchemaPath = Join-Path $catalogRoot 'source-generations/source-generation.schema.json'
     $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
-    $baselineSchemaPath = Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline.schema.json'
+    $baselineSchemaPath = Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline-v4.schema.json'
     if (-not ($canonicalContent | Test-Json -SchemaFile $generationSchemaPath -ErrorAction Stop)) {
         throw 'Source generation does not satisfy its schema'
     }

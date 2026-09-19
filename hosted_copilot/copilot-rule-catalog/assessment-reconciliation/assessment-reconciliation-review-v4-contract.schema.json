@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-review-contract.schema.json",
-  "title": "Hosted Assessment Reconciliation Review Contract",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-review-v4-contract.schema.json",
+  "title": "Hosted Assessment Reconciliation Review Contract Version 4",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "contractId", "behaviorFiles"],
   "properties": {
     "$schema": {
-      "const": "assessment-reconciliation-review-contract.schema.json"
+      "const": "assessment-reconciliation-review-v4-contract.schema.json"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 4
     },
     "contractId": {
       "type": "string",

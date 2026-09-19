@@ -8,7 +8,7 @@
     "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hosted-rule-change-recommendations.schema.json",
     "hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json",
     "hosted_copilot/copilot-rule-catalog/promotion-plan.schema.json",
-    "hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline.schema.json",
+    "hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
     "hosted_copilot/tools/AssessmentReconciliationValidation.psm1",

@@ -73,9 +73,9 @@ $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'Test-SourceAssessment.ps1'
 $assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
 $assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
 $assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
-$assessmentReconciliationReviewContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-contract.schema.json'
-$assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v1.json'
-$assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review.schema.json'
+$assessmentReconciliationReviewContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4-contract.schema.json'
+$assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.json'
+$assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.schema.json'
 $assessmentReconciliationRecommendationsSchemaPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations.schema.json'
 $assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations-v1.json'
 $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'Invoke-AssessmentReconciliation.ps1'
@@ -83,7 +83,8 @@ $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'New-HostedRuleCh
 $assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'New-AssessmentReconciliationReview.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'Test-AssessmentReconciliation.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
-$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'Test-V4MigrationReadiness.ps1'
+$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'Test-MigrationReadiness.ps1'
+$v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'Test-WorkbenchContracts.ps1'
 $v3FieldCompatibilitySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.schema.json'
 $v3FieldCompatibilityPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.json'
 $v3RetirementInventorySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.schema.json'
@@ -784,6 +785,22 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'v4-migration-readiness' -Issue "Hosted version 4 migration readiness validation failed: $($_.Exception.Message)"
     }
 
+    Start-ValidationCheck -Name 'v4-workbench-contracts'
+    try {
+        $v4WorkbenchContractsOutput = @(& pwsh -NoProfile -File $v4WorkbenchContractsTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($v4WorkbenchContractsOutput | Out-String).Trim())
+        }
+        $v4WorkbenchContractsResult = ($v4WorkbenchContractsOutput | Out-String) | ConvertFrom-Json
+        if ($v4WorkbenchContractsResult.status -ne 'passed') {
+            throw 'version 4 Workbench contract validation reported failures'
+        }
+        Add-CheckResult -Name 'v4-workbench-contracts' -Passed $true -Detail "Passed $($v4WorkbenchContractsResult.testCount) Draft, Plan, Preview, approval, and Remote Rules contract fixtures."
+    }
+    catch {
+        Add-ValidationIssue -Name 'v4-workbench-contracts' -Issue "Hosted version 4 Workbench contract validation failed: $($_.Exception.Message)"
+    }
+
     if ($SkipRuleWorkbench) {
         Add-SkippedCheck -Name 'rule-workbench' -Detail 'Hosted Rule Workbench validation was explicitly skipped.'
     }
@@ -1237,7 +1254,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'v4-migration-readiness', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'v4-migration-readiness', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }
