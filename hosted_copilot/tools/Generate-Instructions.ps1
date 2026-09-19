@@ -15,20 +15,25 @@ $ErrorActionPreference = 'Stop'
 
 $resolvedCatalogPath = [IO.Path]::GetFullPath($CatalogPath)
 $resolvedHostedRoot = [IO.Path]::GetFullPath($HostedRoot)
-$schemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
 
 if (-not (Test-Path -LiteralPath $resolvedCatalogPath -PathType Leaf)) {
     throw "Instruction catalog was not found: $resolvedCatalogPath"
 }
+
+$catalogContent = Get-Content -LiteralPath $resolvedCatalogPath -Raw
+$catalog = $catalogContent | ConvertFrom-Json
+$schemaName = [string]$catalog.'$schema'
+if ($schemaName -notin @('instruction-catalog.schema.json', 'instruction-catalog-v4.schema.json')) {
+    throw "Instruction catalog declares an unsupported schema: $schemaName"
+}
+$schemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) $schemaName
 if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
     throw "Instruction catalog schema was not found: $schemaPath"
 }
 
-$catalogContent = Get-Content -LiteralPath $resolvedCatalogPath -Raw
 if (-not ($catalogContent | Test-Json -SchemaFile $schemaPath)) {
     throw 'Instruction catalog schema validation failed'
 }
-$catalog = $catalogContent | ConvertFrom-Json
 
 $sourceIds = @($catalog.sources | ForEach-Object { [string]$_.id })
 if (@($sourceIds | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
@@ -48,9 +53,11 @@ foreach ($rule in @($catalog.rules)) {
     if ($rulesById.ContainsKey([string]$rule.id)) {
         throw "Instruction catalog contains duplicate rule ID: $($rule.id)"
     }
-    $unknownSourceIds = @($rule.sourceIds | Where-Object { $_ -notin $sourceIds })
-    if ($unknownSourceIds.Count -gt 0) {
-        throw "Rule $($rule.id) references unknown source IDs: $($unknownSourceIds -join ', ')"
+    if ($null -ne $rule.PSObject.Properties['sourceIds']) {
+        $unknownSourceIds = @($rule.sourceIds | Where-Object { $_ -notin $sourceIds })
+        if ($unknownSourceIds.Count -gt 0) {
+            throw "Rule $($rule.id) references unknown source IDs: $($unknownSourceIds -join ', ')"
+        }
     }
     $unknownEvidenceIds = @($rule.evidenceIds | Where-Object { $_ -notin $evidenceIds })
     if ($unknownEvidenceIds.Count -gt 0) {
