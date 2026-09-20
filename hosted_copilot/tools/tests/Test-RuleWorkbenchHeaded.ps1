@@ -79,27 +79,27 @@ function Assert-WorkbenchIdentity {
     $originBuilder.Query = ''
     $originBuilder.Fragment = ''
     $origin = $originBuilder.Uri
-    $bundleUri = [uri]::new($origin, 'rule-intake-review.json')
+    $displayUri = [uri]::new($origin, 'workbench-display.json')
 
     try {
         $pageResponse = Invoke-WebRequest -Uri $origin.AbsoluteUri -Method Get -TimeoutSec 5 -SkipHttpErrorCheck
-        $bundleResponse = Invoke-WebRequest -Uri $bundleUri.AbsoluteUri -Method Get -TimeoutSec 5 -SkipHttpErrorCheck
+        $displayResponse = Invoke-WebRequest -Uri $displayUri.AbsoluteUri -Method Get -TimeoutSec 5 -SkipHttpErrorCheck
     }
     catch {
         throw "Workbench port $($TargetUrl.Port) is not available at $($origin.AbsoluteUri)"
     }
 
     $pageIdentityValid = $pageResponse.StatusCode -eq 200 -and $pageResponse.Content -match '<title>Hosted Copilot Rule Manager</title>' -and $pageResponse.Content -match '<script src="app\.js" defer></script>'
-    $bundleIdentityValid = $false
-    if ($bundleResponse.StatusCode -eq 200) {
+    $displayIdentityValid = $false
+    if ($displayResponse.StatusCode -eq 200) {
         try {
-            $bundle = $bundleResponse.Content | ConvertFrom-Json
-            $bundleIdentityValid = $bundle.'$schema' -eq 'rule-intake-review.schema.json' -and $bundle.readOnly -eq $true
+            $display = $displayResponse.Content | ConvertFrom-Json
+            $displayIdentityValid = $display.'$schema' -eq 'workbench-display-v4.schema.json' -and $display.readOnly -eq $true
         }
         catch { }
     }
 
-    if (-not $pageIdentityValid -or -not $bundleIdentityValid) {
+    if (-not $pageIdentityValid -or -not $displayIdentityValid) {
         throw "Port $($TargetUrl.Port) is in use but does not serve a Hosted Copilot Rule Workbench"
     }
 }

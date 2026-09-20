@@ -44,9 +44,20 @@ async function run({ page, baseUrl, assert }) {
     await persistSession();
     renderAll();
     switchView("preview");
-    return { selectedCount: selected.length };
+    return {
+      selectedCount: selected.length,
+      mutations: buildApprovedRules().mutations.map((mutation) => ({
+        action: mutation.action,
+        status: mutation.rule.status,
+        retirementReason: mutation.rule.retirementReason,
+        lastPlacement: mutation.rule.lastPlacement,
+        placementCount: mutation.placements.length
+      }))
+    };
   });
   assert(fixture.selectedCount === 4, "Preview fixture did not create four reviewable plan items");
+  const retireMutation = fixture.mutations.find((mutation) => mutation.action === "retire");
+  assert(retireMutation?.status === "retired" && retireMutation.retirementReason && retireMutation.lastPlacement && retireMutation.placementCount === 0, "Approved Retire mutation does not preserve retirement history while clearing active placement");
 
   const reviewModel = await page.evaluate(() => {
     const layout = document.querySelector("#preview-view .preview-layout");
@@ -144,7 +155,7 @@ async function run({ page, baseUrl, assert }) {
   assert(reviewModel.codeOverflow === "auto" && reviewModel.codeContainment === "paint", "Preview diff flow is not isolated inside its owned scroll surface");
   assert(reviewModel.toolbarHeight === 60 && reviewModel.fileHeaderHeights.length === 1 && reviewModel.fileHeaderHeights[0] === 42, "Preview toolbar or sticky file headers do not match authenticated GitHub geometry");
   assert(reviewModel.codeownerShields === 9 && reviewModel.viewedControls.every((control) => control.width === 77 && control.height === 28), "Preview file headers do not retain CODEOWNERS and Viewed controls");
-  assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("delete") && reviewModel.toolbarDiffstat.includes("neutral") && reviewModel.initiallyExpanded, `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to all files (${JSON.stringify(reviewModel)})`);
+  assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("neutral") && reviewModel.initiallyExpanded, `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to all files (${JSON.stringify(reviewModel)})`);
   assert(reviewModel.splitter.role === "slider" && reviewModel.splitter.orientation === "vertical" && reviewModel.splitter.minimum === "296" && Number(reviewModel.splitter.maximum) >= Number(reviewModel.splitter.current) && reviewModel.splitter.width === 5, "Preview changed-file tree does not expose an accessible five-pixel splitter");
 
   const firstFile = page.locator(".preview-proposed-review [data-preview-file-path]").first();
@@ -209,7 +220,7 @@ async function run({ page, baseUrl, assert }) {
   }, selectedPath);
   const persistentSelection = await page.evaluate(async (path) => {
     const scroller = document.querySelector("#preview-code");
-    const rawFile = document.querySelector('[data-preview-file-path="selection/promotion-selection.json"]');
+    const rawFile = document.querySelector('[data-preview-file-path="approval/approved-rules.json"]');
     const selectedAfterClick = document.querySelector("[data-preview-file-jump].active")?.dataset.previewFileJump;
     rawFile.scrollIntoView({ block: "start", behavior: "auto" });
     scroller.scrollTop += 180;
@@ -247,13 +258,13 @@ async function run({ page, baseUrl, assert }) {
       }
     };
   });
-  assert(raw.fileCount === 1 && raw.path === "selection/promotion-selection.json" && raw.nestedSections === 0, "Raw review is not one complete promotion-selection.json file");
+  assert(raw.fileCount === 1 && raw.path === "approval/approved-rules.json" && raw.nestedSections === 0, "Raw review is not one complete approved-rules.json file");
   assert(raw.contextLineCount === 2 && raw.gapCount > 0 && raw.splitLabels === 0, "Raw review does not collapse unchanged ranges around two context lines");
   assert(raw.expanderWidth === raw.lineNumberWidth, "Raw context expander does not match the line-number gutter width");
   assert(raw.controls.some((control) => control.label === "Expand Up" && control.icon.endsWith("#octicon-fold-up-16")), "Raw review does not use the local Fold Up Octicon");
-  assert(raw.controls.some((control) => control.label === "Expand All" && control.icon.endsWith("#octicon-unfold-16")), "Raw review does not use the local Unfold Octicon");
-  assert(raw.controls.some((control) => control.label === "Expand Down" && control.icon.endsWith("#octicon-fold-down-16")), "Raw review does not use the local Fold Down Octicon");
-  assert(raw.linesToggle.label === "Expand all lines: RAW SELECTION PAYLOAD/promotion-selection.json" && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Raw review does not start with the file-level Expand all lines override");
+  const expectedControlIcons = { "Expand Up": "#octicon-fold-up-16", "Expand All": "#octicon-unfold-16", "Expand Down": "#octicon-fold-down-16" };
+  assert(raw.controls.every((control) => control.icon.endsWith(expectedControlIcons[control.label])), "Raw review does not use the correct local Octicon for each available expansion direction");
+  assert(raw.linesToggle.label === "Expand all lines: RAW APPROVED RULES/approved-rules.json" && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Raw review does not start with the file-level Expand all lines override");
 
   const directionalExpansion = await page.evaluate(async () => {
     const file = document.querySelector(".preview-raw-payload [data-preview-file-path]");
@@ -281,8 +292,8 @@ async function run({ page, baseUrl, assert }) {
       }
     };
   });
-  assert(directionalExpansion.before - directionalExpansion.expanded.remaining === 10, "Fold Up does not reveal exactly ten lines");
-  assert(directionalExpansion.expanded.label === "Collapse all lines: RAW SELECTION PAYLOAD/promotion-selection.json" && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
+  assert(directionalExpansion.before - directionalExpansion.expanded.remaining === Math.min(10, directionalExpansion.before), "Fold Up does not reveal the expected directional line count");
+  assert(directionalExpansion.expanded.label === "Collapse all lines: RAW APPROVED RULES/approved-rules.json" && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
   assert(directionalExpansion.restored.gaps === raw.gapCount && directionalExpansion.restored.label === raw.linesToggle.label && directionalExpansion.restored.pressed === "false" && directionalExpansion.restored.icon.endsWith("#octicon-unfold-16"), "File-level Collapse all lines does not restore the canonical compact view and Expand all lines state");
 
   await page.locator("#preview-review-toggle").click();

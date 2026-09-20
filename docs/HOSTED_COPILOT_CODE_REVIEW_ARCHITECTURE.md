@@ -481,7 +481,7 @@ The Interactive rule catalog provides stable IDs, contract ownership, lifecycle,
 
 ### Hosted-Owned Intake Ledger:
 
-`hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.json` records the latest approved decision for each reviewed Interactive rule. Supported durable decisions are `equivalent`, `included`, `excluded`, and `deferred`. Each record must preserve source identity and hash, lifecycle status, rationale, review date, mapped Hosted rule IDs, and the evidence-backed selection factors used for the decision.
+The version 3 Interactive intake ledger is archived under `local-only-docs/obsolete-v3/`. Current source inventories and assessment outputs remain evidence, reconciliation owns candidate grouping and Hosted identity, and only approved catalog mutations become durable through the canonical catalog and Git history.
 
 An unchanged source content hash keeps the prior decision current. A new rule, changed content hash, or lifecycle transition reopens semantic review. The ledger is Hosted-owned maintenance evidence, is not runtime guidance, and must not be installed into the target provider repository.
 
@@ -529,7 +529,7 @@ Typography is a viewport-independent theme invariant. Use `14px` regular text wi
 
 Status items use one Workbench-owned tooltip surface instead of browser-native `title` rendering. Position it above the status bar, clamp it within the rendered viewport, preserve stable intrinsic geometry regardless of pointer entry direction, and update the same surface for mouse and keyboard focus.
 
-On supported laptop and desktop widths, keep the title bar, activity rail, and status bar fixed to the viewport. Within Catalog, keep the compact search, outer workspace tabs, and Candidates/Details or Assessments/Details tabs fixed while only the active tree, assessment-result list, or detail form scrolls. Within Promotion Plan, keep the page header and Plan Projection fixed while the candidate table owns vertical and horizontal scrolling with sticky column headings. Within Preview, use a compact editor header, a full-height Approval properties pane, and one unframed right-hand review editor that scrolls Proposed Changes, Payload Changes, and Raw Selection Payload together.
+On supported laptop and desktop widths, keep the title bar, activity rail, and status bar fixed to the viewport. Within Catalog, keep the compact search, outer workspace tabs, and Candidates/Details or Assessments/Details tabs fixed while only the active tree, assessment-result list, or detail form scrolls. Within Promotion Plan, keep the page header and Plan Projection fixed while the candidate table owns vertical and horizontal scrolling with sticky column headings. Within Preview, use a compact editor header, a full-height Approval properties pane, and one unframed right-hand review editor that scrolls Proposed Changes, Payload Changes, and Raw Approved Rules together.
 
 Exercise scroll ownership through real browser geometry at the unsupported boundary, minimum supported width, every responsive breakpoint edge, and wide desktop. The regression must activate Candidate Details, Assessment Details, Promotion Plan, and Preview; reject document-level overflow; verify that only the designated pane accepts scrolling; and confirm that fixed view controls do not move with pane content.
 

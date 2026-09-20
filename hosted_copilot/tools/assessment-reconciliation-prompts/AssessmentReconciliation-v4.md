@@ -10,19 +10,20 @@ Reconcile the complete source assessment baseline against the complete Hosted in
 
 For the complete input corpus:
 
-- Determine whether each assessment is represented by a Hosted rule change recommendation, deferred for maintainer judgment, or excluded from Hosted scope.
+- Produce one recommendation for every assessment, including explicit `defer` and `exclude` recommendations that preserve a contingent category, placement, and Hosted identity for maintainer review.
 - Reconcile equivalent or complementary assessments into the smallest set of independently enforceable Hosted rule recommendations that preserves their complete meaning.
 - Evaluate proposed recommendations against active catalog rules before selecting an action, target, category, placement, and wording.
 - Account for every assessment exactly once in `assessmentCoverage` as `recommended`, `deferred`, or `excluded`.
 - Group equivalent or complementary assessments only when one condensed Hosted rule can enforce their complete meaning.
 - Keep independently enforceable or ambiguous overlaps separate and set `needsReview` when maintainer judgment is required.
-- Recommend only `add`, `update`, `no-change`, or `defer`.
+- Recommend only `add`, `update`, `no-change`, `defer`, or `exclude`.
 - Use an exact active catalog ID as `targetHostedId` when recommending `update` or `no-change` for that same Hosted rule; never target a retired rule because Restore is outside this workflow.
 - Set `targetHostedId` to null for `add`, select one contract-allowlisted `idFamily` matching the category and placement, and do not invent or allocate a numeric Hosted ID suffix.
+- Set `targetHostedId` to null for `exclude`, select one contract-allowlisted `idFamily` matching the contingent category and placement, and do not invent or allocate a numeric Hosted ID suffix.
 - Set `idFamily` to null for `update` and `no-change` because the existing target owns its identity.
 - For `defer`, identify exactly one existing catalog target with `idFamily` null, or one contract-allowlisted `idFamily` with `targetHostedId` null.
 - For `no-change`, preserve the exact current Hosted rule text; for `update`, provide text that differs from the current Hosted rule text.
-- For an implementation `add`, select every implementation model the proposed rule governs in `implementationModels`; omit that property for all other recommendations.
+- For an implementation `add` or `exclude`, select every implementation model the proposed rule governs in `implementationModels`; omit that property for all other recommendations.
 - Write one or two complete condensed sentences in `recommendedRuleText`.
 - Preserve complete assessment membership and related Hosted coverage references.
 - Use snapshot-local `draftKey` values only to connect recommendations to assessment coverage.

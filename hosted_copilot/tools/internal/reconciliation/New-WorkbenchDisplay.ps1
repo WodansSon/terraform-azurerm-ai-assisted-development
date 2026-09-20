@@ -230,7 +230,7 @@ foreach ($recommendation in @($draft.recommendations)) {
     if ($action -in @('update', 'no-change') -and $catalogRules.ContainsKey($targetHostedId) -and [string]$catalogRules[$targetHostedId].status -cne 'active') {
         throw "Recommendation $draftKey cannot target retired Hosted rule $targetHostedId without an explicit Restore decision"
     }
-    if ($action -eq 'add' -and ($null -ne $targetHostedId -or $null -eq $idFamily)) {
+    if ($action -in @('add', 'exclude') -and ($null -ne $targetHostedId -or $null -eq $idFamily)) {
         throw "Recommendation $draftKey must use an allowlisted Hosted ID family without a target"
     }
     if ($action -eq 'defer' -and (($null -eq $targetHostedId) -eq ($null -eq $idFamily))) {
@@ -279,16 +279,18 @@ foreach ($coverage in @($draft.assessmentCoverage)) {
     }
     $coverageByAssessment[$assessmentKey] = $coverage
     $draftKeys = @($coverage.recommendationDraftKeys)
-    if ([string]$coverage.disposition -ceq 'recommended') {
-        if ($draftKeys.Count -ne 1 -or -not $draftRecommendations.ContainsKey([string]$draftKeys[0])) {
-            throw 'Recommended assessment coverage must reference one known recommendation'
-        }
-        if (-not $membershipByAssessment.ContainsKey($assessmentKey) -or [string]$membershipByAssessment[$assessmentKey] -cne [string]$draftKeys[0]) {
-            throw 'Assessment coverage and recommendation membership do not match'
-        }
+    if ($draftKeys.Count -ne 1 -or -not $draftRecommendations.ContainsKey([string]$draftKeys[0])) {
+        throw 'Assessment coverage must reference one known recommendation'
     }
-    elseif ($membershipByAssessment.ContainsKey($assessmentKey)) {
-        throw 'Deferred or excluded assessment coverage cannot belong to a recommendation'
+    if (-not $membershipByAssessment.ContainsKey($assessmentKey) -or [string]$membershipByAssessment[$assessmentKey] -cne [string]$draftKeys[0]) {
+        throw 'Assessment coverage and recommendation membership do not match'
+    }
+    $recommendationAction = [string]$draftRecommendations[[string]$draftKeys[0]].recommendedAction
+    $disposition = [string]$coverage.disposition
+    if (($disposition -ceq 'recommended' -and $recommendationAction -notin @('add', 'update', 'no-change')) -or
+        ($disposition -ceq 'deferred' -and $recommendationAction -cne 'defer') -or
+        ($disposition -ceq 'excluded' -and $recommendationAction -cne 'exclude')) {
+        throw 'Assessment coverage disposition does not match its recommendation action'
     }
 }
 $missingCoverage = @($assessments.Keys | Where-Object { -not $coverageByAssessment.ContainsKey($_) })
@@ -479,10 +481,7 @@ foreach ($entry in @($baseline.entries)) {
         }
         $assessmentKey = Get-AssessmentKey -Reference $reference
         $coverage = $coverageByAssessment[$assessmentKey]
-        $recommendation = $null
-        if (@($coverage.recommendationDraftKeys).Count -eq 1) {
-            $recommendation = $recommendationsByDraftKey[[string]$coverage.recommendationDraftKeys[0]]
-        }
+        $recommendation = $recommendationsByDraftKey[[string]$coverage.recommendationDraftKeys[0]]
         $displayAssessment = [ordered]@{
             id = [string]$assessment.assessmentId
             title = [string]$assessment.title

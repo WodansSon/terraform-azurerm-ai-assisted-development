@@ -5,7 +5,7 @@ const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
 const WORKBENCH_DISPLAY_SCHEMA_VERSION = 4;
 const SESSION_SCHEMA_VERSION = 4;
-const APPROVAL_PAYLOAD_SCHEMA_VERSION = 7;
+const APPROVED_RULES_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
 const PROPOSED_HOSTED_RULE_ID_MAX_LENGTH = 32;
@@ -20,7 +20,7 @@ const PREVIEW_TREE_KEYBOARD_STEP = 16;
 const PREVIEW_SCOPE_LABELS = {
   proposed: "Proposed changes",
   payload: "Payload changes",
-  raw: "Raw selection payload"
+  raw: "Raw approved rules"
 };
 const FACTORS = [
   ["severity", "Severity", "Harm caused when this defect is missed", "value"],
@@ -507,6 +507,7 @@ function normalizeDisplayCandidates(display) {
       summary: candidate.assessment.sourceMeaning,
       assessmentConfidence: candidate.assessment.confidence,
       sourceContentSha256: source.contentSha256,
+      currentHostedCoverage: candidate.assessment.existingCoverage.rationale,
       recommendation: recommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
       proposedHostedRuleId,
       targetHostedRuleId,
@@ -534,6 +535,7 @@ function normalizeDisplayCandidates(display) {
       text: source.text,
       baselineText: source.priorText || null,
       priorDecision: null,
+      recommendation,
       assessment,
       relatedHostedRules: display.catalog.rules.filter((rule) => relatedHostedRuleIds.has(rule.id))
     };
@@ -2377,7 +2379,7 @@ function renderPreview() {
   previewFilesByScope = buildPreviewFiles(planCandidates);
   elements["preview-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.proposed, "No Proposed Changes", "Add an available rule action to review its line-level diff.");
   elements["preview-payload-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.payload, "No Payload Changes", "Add or update a Promotion Plan item to review its selection payload changes.");
-  elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "No Raw Payload Changes", "Add or update a Promotion Plan item to review its generated selection payload.");
+  elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "No Approved Rules", "Add, update, or retire a Promotion Plan item to review the approved catalog mutations.");
   elements["raw-payload-empty"].hidden = true;
   elements["preview-review-popover"].hidden = true;
   renderPreviewReview();
@@ -2419,39 +2421,77 @@ function buildPreviewFiles(candidates) {
     const changedAfter = Object.fromEntries(changedKeys.map((key) => [key, after[key]]));
     return createPreviewFile(`selection/${getEffectiveHostedRuleId(candidate)}.json`, candidate.title, JSON.stringify(changedBefore, null, 2).split("\n"), JSON.stringify(changedAfter, null, 2).split("\n"), false, "", "payload");
   }).filter(Boolean);
-  const proposedPayload = buildApprovalPayload();
+  const proposedPayload = buildApprovedRules();
   const currentPayload = {
     ...structuredClone(proposedPayload),
-    bulkOperations: [],
-    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, defaultDecision(candidate), null))
+    mutations: []
   };
   const raw = candidates.length
-    ? [createPreviewFile("selection/promotion-selection.json", "Complete promotion selection payload", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true, "", "raw")]
+    ? [createPreviewFile("approval/approved-rules.json", "Approved catalog mutations", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true, "", "raw")]
     : [];
   return { proposed, payload, raw };
 }
 
-function buildApprovalDecision(candidate, decision, override = getApplicabilityOverride(candidate)) {
+function copyCatalogRule(rule) {
+  return Object.fromEntries(["id", "origin", "status", "text", "provenance", "evidenceIds", "implementationModels", "documentationGap", "retirementReason", "lastPlacement", "selectionFactors", "selectionRationale"]
+    .filter((property) => rule?.[property] !== undefined)
+    .map((property) => [property, structuredClone(rule[property])]));
+}
+
+function buildApprovedMutation(candidate) {
+  const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
+  const recommendation = candidate.recommendation;
+  const existingRule = getCatalogStatus(candidate).rules[0] || null;
+  const placement = { surfaceId: recommendation.category, sectionHeading: recommendation.placement };
+  let rule;
+  let placements;
+  if (decision.action === "add") {
+    rule = {
+      id: getEffectiveHostedRuleId(candidate),
+      origin: "hosted-catalog-addition",
+      status: "active",
+      text: decision.proposedText,
+      provenance: [...recommendation.provenance],
+      evidenceIds: [...recommendation.evidenceIds],
+      ...(recommendation.implementationModels ? { implementationModels: [...recommendation.implementationModels] } : {}),
+      selectionFactors: { scoringStatus: "scored", ...assessment.factors },
+      selectionRationale: assessment.rationale
+    };
+    placements = [placement];
+  }
+  else if (decision.action === "update") {
+    rule = {
+      ...copyCatalogRule(existingRule),
+      status: "active",
+      text: decision.proposedText,
+      provenance: [...new Set([...(existingRule.provenance || []), ...recommendation.provenance])],
+      evidenceIds: [...new Set([...(existingRule.evidenceIds || []), ...recommendation.evidenceIds])],
+      selectionFactors: { scoringStatus: "scored", ...assessment.factors },
+      selectionRationale: assessment.rationale
+    };
+    delete rule.retirementReason;
+    delete rule.lastPlacement;
+    placements = [placement];
+  }
+  else if (decision.action === "retire") {
+    rule = {
+      ...copyCatalogRule(existingRule),
+      status: "retired",
+      retirementReason: decision.rationale.trim(),
+      lastPlacement: existingRule.placements[0]
+    };
+    placements = [];
+  }
+  else {
+    throw new Error(`Unsupported approved mutation action: ${decision.action}`);
+  }
   return {
-    sourceType: candidate.sourceType,
-    sourceId: candidate.sourceId,
-    candidateId: candidate.assessment.assessmentId,
-    sourcePath: candidate.sourcePath,
-    sourceRationale: candidate.sourceRationale || null,
-    provenance: candidate.provenance,
-    sourceContentSha256: candidate.hash,
-    catalogStatus: getCatalogStatus(candidate).key,
-    hostedRuleId: candidate.assessment.targetHostedRuleId,
-    proposedHostedRuleId: decision.proposedHostedRuleId.trim(),
     action: decision.action,
-    inPlan: decision.inPlan,
-    planMembership: { source: decision.planMembershipSource, bulkOperationId: decision.bulkOperationId },
     rationale: decision.rationale.trim(),
-    proposedText: decision.proposedText,
-    recommendation: assessment.recommendation,
-    hostedCategory: assessment.hostedCategory,
-    applicabilityOverride: override
+    rule,
+    placements,
+    sourceRelationships: structuredClone(recommendation.sourceRelationships)
   };
 }
 
@@ -3156,7 +3196,7 @@ function buildDraftExport() {
 }
 
 function deserializeDraft(draft, candidates) {
-  if (draft?.schemaVersion !== SESSION_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft" || draft.inputFingerprint !== state.bundle.inputFingerprint) return null;
+  if (draft?.schemaVersion !== SESSION_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft") return null;
   const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
@@ -3187,16 +3227,21 @@ function deserializeDraft(draft, candidates) {
   };
 }
 
-function buildApprovalPayload() {
-  const session = normalizeSessionTimestamps(state.session);
+function buildApprovedRules() {
+  const identity = getValidatedCodeOwnerIdentity();
+  const approvedBy = String(state.session.approverName || identity?.login || "").trim();
   return {
-    schemaVersion: APPROVAL_PAYLOAD_SCHEMA_VERSION,
-    kind: "hosted-rule-promotion-selection",
-    sessionId: state.session.id,
-    snapshots: session.snapshots,
-    inapplicableCandidateCount: state.excludedCandidateCount,
-    bulkOperations: session.bulkOperations,
-    decisions: state.candidates.map((candidate) => buildApprovalDecision(candidate, getDecision(candidate), session.applicabilityOverrides[candidate.key] || null))
+    $schema: "approved-rules-v4.schema.json",
+    schemaVersion: APPROVED_RULES_SCHEMA_VERSION,
+    kind: "hosted-approved-rules",
+    catalogContentSha256: state.bundle.catalog.contentSha256,
+    approvedAt: toUtcTimestamp(state.session.updatedAt),
+    approvedBy: {
+      type: identity ? "github-authenticated" : "manual",
+      id: identity?.login || approvedBy,
+      displayName: approvedBy
+    },
+    mutations: getPlanCandidates().filter((candidate) => isPromotionAction(getDecision(candidate).action)).map(buildApprovedMutation)
   };
 }
 
@@ -3215,7 +3260,7 @@ function handleApproverInput(event) {
   refreshPresentation();
 }
 
-async function approveAndExport() {
+function approveAndExport() {
   const readiness = getPreviewReadiness();
   if (!readiness.ready) {
     showToast("Complete the selected rule rationale and approver name before exporting.", true);
@@ -3223,42 +3268,14 @@ async function approveAndExport() {
   }
   elements["approve-export-button"].disabled = true;
   try {
-    const approvedAt = toUtcTimestamp();
-    const payload = buildApprovalPayload();
-    const payloadBytes = JSON.stringify(payload, null, 2) + "\n";
-    const approvedPayloadSha256 = await sha256Hex(payloadBytes);
-    const handoff = {
-      schemaVersion: 1,
-      kind: "hosted-rule-workbench-approval-handoff",
-      createdAt: approvedAt,
-      encoding: "utf-8",
-      hashAlgorithm: "sha256-payload-bytes-v1",
-      approvedPayloadSha256,
-      approval: {
-        state: "approved",
-        approvedAt,
-        approvedBy: {
-          type: "manual",
-          id: readiness.approverName,
-          displayName: readiness.approverName
-        },
-        method: "hosted-rule-workbench"
-      },
-      payload
-    };
-    const exportBytes = JSON.stringify(handoff, null, 2) + "\n";
-    downloadJson(exportBytes, `hosted-rule-approval-${approvedAt.replace(/[:.]/g, "-")}.json`);
-    showToast(`Approved handoff exported (${approvedPayloadSha256.slice(0, 12)}...)`);
+    const approvedRules = buildApprovedRules();
+    downloadJson(JSON.stringify(approvedRules, null, 2) + "\n", `hosted-approved-rules-${approvedRules.approvedAt.replace(/[:.]/g, "-")}.json`);
+    showToast("Approved rules exported");
   } catch {
-    showToast("Approval handoff could not be exported.", true);
+    showToast("Approved rules could not be exported.", true);
   } finally {
     renderPreview();
   }
-}
-
-async function sha256Hex(content) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function importDraft(event) {

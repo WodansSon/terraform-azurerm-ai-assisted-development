@@ -89,7 +89,7 @@ async function run({ page, baseUrl, assert, playback }) {
       allCollapsed: candidateHierarchicalView.model.nodes
         .filter((node) => ["source", "folder"].includes(node.kind))
         .every((node) => !node.expanded),
-      geometry: { top: rect.top, bottom: rect.bottom, width: rect.width, clientWidth: scroller.clientWidth },
+      geometry: { height: rect.height, width: rect.width, clientWidth: scroller.clientWidth },
       gutter: getComputedStyle(scroller).scrollbarGutter,
       sourceId: targetSource.source.id,
       folderId: folder.id,
@@ -302,7 +302,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const finalGeometry = await page.evaluate(() => {
     const scroller = document.querySelector("#candidate-list");
     const rect = scroller.getBoundingClientRect();
-    return { top: rect.top, bottom: rect.bottom, width: rect.width, clientWidth: scroller.clientWidth };
+    return { height: rect.height, width: rect.width, clientWidth: scroller.clientWidth };
   });
   assert(initial.gutter === "stable" && JSON.stringify(finalGeometry) === JSON.stringify(initial.geometry), "candidate disclosure changes scrollbar viewport geometry");
 

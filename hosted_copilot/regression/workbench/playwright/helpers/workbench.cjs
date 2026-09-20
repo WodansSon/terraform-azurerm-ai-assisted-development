@@ -3,7 +3,7 @@ async function openWorkbench(page, baseUrl) {
   page.setDefaultNavigationTimeout(10000);
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0
-    || Boolean(document.querySelector("#assessment-panel .empty-state")));
+    || document.querySelector("#assessment-panel .empty-state h2")?.textContent?.trim() === "Workbench Could Not Load");
   const loadState = await page.evaluate(() => ({
     catalogCount: Number(document.querySelector("#catalog-count")?.textContent) || 0,
     error: document.querySelector("#assessment-panel .empty-state p")?.textContent?.trim() || ""

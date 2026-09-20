@@ -178,8 +178,11 @@ $displayWithGeneration | Add-Member -NotePropertyName acceptedSourceGeneration -
 Add-TestResult -Name 'display-generation-rejected' -Passed (-not (Test-JsonInstance -Value $displayWithGeneration -SchemaPath $displaySchemaPath)) -Detail 'The v4 display rejects source-generation and publication authority.'
 $excludedDisplay = Copy-JsonValue -Value $display
 $excludedDisplay.candidates[0].reviewState = 'excluded'
-$excludedDisplay.candidates[0].recommendation = $null
-Add-TestResult -Name 'display-excluded-without-recommendation' -Passed (Test-JsonInstance -Value $excludedDisplay -SchemaPath $displaySchemaPath) -Detail 'Excluded assessments remain visible without a fabricated recommendation object.'
+$excludedDisplay.candidates[0].recommendation.action = 'exclude'
+Add-TestResult -Name 'display-excluded-with-contingent-recommendation' -Passed (Test-JsonInstance -Value $excludedDisplay -SchemaPath $displaySchemaPath) -Detail 'Excluded assessments retain reconciliation-owned identity and metadata for an explicit applicability override.'
+$excludedWithoutRecommendation = Copy-JsonValue -Value $excludedDisplay
+$excludedWithoutRecommendation.candidates[0].recommendation = $null
+Add-TestResult -Name 'display-recommendation-required' -Passed (-not (Test-JsonInstance -Value $excludedWithoutRecommendation -SchemaPath $displaySchemaPath)) -Detail 'No assessment can bypass reconciliation-owned identity and metadata.'
 
 $candidateKey = 'maintainer:IMPL-TEST-901:validate-rule'
 $draft = [ordered]@{

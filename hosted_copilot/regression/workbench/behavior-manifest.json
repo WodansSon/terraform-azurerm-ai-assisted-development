@@ -66,7 +66,7 @@
     },
     {
       "id": "WB-UX-PREVIEW-004",
-      "title": "Raw selection payload remains one contextual full-file diff with exact expansion controls",
+      "title": "Raw approved rules remain one contextual full-file diff with exact expansion controls",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
@@ -256,12 +256,12 @@
     },
     {
       "id": "WB-UX-SESSION-001",
-      "title": "Version 6 Draft migration persists version 7 decisions across reload",
+      "title": "Version 4 Draft state persists decisions across reload",
       "journey": "playwright/journeys/portable-review-state.journey.cjs"
     },
     {
       "id": "WB-UX-APPROVAL-001",
-      "title": "Approval download preserves exact payload bytes, attribution, timestamps, and decisions",
+      "title": "Approval download preserves exact approved-rules bytes, attribution, timestamps, and mutations",
       "journey": "playwright/journeys/portable-review-state.journey.cjs"
     },
     {

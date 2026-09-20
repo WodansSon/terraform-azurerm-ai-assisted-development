@@ -118,7 +118,7 @@
       "additionalProperties": false,
       "required": ["action", "hostedId", "idState", "targetHostedId", "ruleText", "category", "placement", "rationale", "needsReview", "assessmentKeys", "guardedTokenDelta", "provenance", "evidenceIds", "sourceRelationships"],
       "properties": {
-        "action": { "enum": ["add", "update", "no-change", "defer"] },
+        "action": { "enum": ["add", "update", "no-change", "defer", "exclude"] },
         "hostedId": { "$ref": "#/$defs/hostedId" },
         "idState": { "enum": ["existing", "tentative"] },
         "targetHostedId": { "oneOf": [{ "$ref": "#/$defs/hostedId" }, { "type": "null" }] },
@@ -136,7 +136,7 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "action": { "const": "add" }, "category": { "const": "implementation" } }, "required": ["action", "category"] },
+          "if": { "properties": { "action": { "enum": ["add", "exclude"] }, "category": { "const": "implementation" } }, "required": ["action", "category"] },
           "then": { "required": ["implementationModels"] }
         }
       ]
@@ -149,16 +149,20 @@
         "source": { "$ref": "#/$defs/source" },
         "assessment": { "$ref": "#/$defs/assessment" },
         "reviewState": { "enum": ["recommended", "deferred", "excluded"] },
-        "recommendation": { "oneOf": [{ "$ref": "#/$defs/recommendation" }, { "type": "null" }] }
+        "recommendation": { "$ref": "#/$defs/recommendation" }
       },
       "allOf": [
         {
           "if": { "properties": { "reviewState": { "const": "recommended" } }, "required": ["reviewState"] },
-          "then": { "properties": { "recommendation": { "$ref": "#/$defs/recommendation" } } }
+          "then": { "properties": { "recommendation": { "properties": { "action": { "enum": ["add", "update", "no-change"] } } } } }
+        },
+        {
+          "if": { "properties": { "reviewState": { "const": "deferred" } }, "required": ["reviewState"] },
+          "then": { "properties": { "recommendation": { "properties": { "action": { "const": "defer" } } } } }
         },
         {
           "if": { "properties": { "reviewState": { "const": "excluded" } }, "required": ["reviewState"] },
-          "then": { "properties": { "recommendation": { "type": "null" } } }
+          "then": { "properties": { "recommendation": { "properties": { "action": { "const": "exclude" } } } } }
         }
       ]
     },

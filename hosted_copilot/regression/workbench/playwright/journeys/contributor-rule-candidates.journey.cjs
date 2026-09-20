@@ -173,11 +173,11 @@ async function run({ page, baseUrl, assert, playback }) {
     const previewId = [...document.querySelectorAll(".preview-proposed-review [data-preview-file-path]")]
       .find((item) => item.dataset.previewFilePath === `rules/${fullLengthId}.md`)
       ?.dataset.previewFilePath.replace(/^rules\//, "").replace(/\.md$/, "");
-    const payloadDecision = buildApprovalPayload().decisions.find((item) => item.candidateId === candidate.assessment.assessmentId);
-    return { treeId, detailId, planId, previewId, payloadDecision, readiness: getPreviewReadiness() };
+    const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === fullLengthId);
+    return { treeId, detailId, planId, previewId, mutation, readiness: getPreviewReadiness() };
   }, { candidateKey: structure.addCandidate, fullLengthId });
   assert([propagated.treeId, propagated.detailId, propagated.planId, propagated.previewId].every((value) => value === fullLengthId), "accepted proposed Hosted rule ID does not propagate across Workbench views");
-  assert(propagated.payloadDecision.proposedHostedRuleId === fullLengthId && propagated.payloadDecision.hostedRuleId === null, "approval payload does not separate proposed and existing Hosted rule identities");
+  assert(propagated.mutation.action === "add" && propagated.mutation.rule.id === fullLengthId && propagated.mutation.rule.origin === "hosted-catalog-addition", "approved Add mutation does not preserve the assigned Hosted identity");
   assert(propagated.readiness.ready, "valid proposed Hosted rule ID does not restore approval readiness");
 
   await page.evaluate(async (candidateKey) => {
@@ -200,7 +200,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const mappedProposedIdField = page.getByRole("textbox", { name: "Proposed Hosted Rule ID:" });
   const mappedIdentity = await page.evaluate((candidateKey) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
-    const payloadDecision = buildApprovalPayload().decisions.find((item) => item.candidateId === candidate.assessment.assessmentId);
+    const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === candidate.assessment.targetHostedRuleId);
     const sharedTargetCandidate = {
       ...candidate,
       key: `${candidate.key}:shared-target`,
@@ -210,12 +210,12 @@ async function run({ page, baseUrl, assert, playback }) {
     const readiness = getPlanReadiness(candidate);
     state.assessedCandidates.pop();
     return {
-      payloadDecision,
+      mutation,
       readiness
     };
   }, structure.updateCandidate);
   assert(await mappedProposedIdField.inputValue() === "IMPL-PATCH-001" && await mappedProposedIdField.isEditable() === false, "mapped update does not expose its generated proposal identity as the immutable target ID");
-  assert(mappedIdentity.payloadDecision.hostedRuleId === "IMPL-PATCH-001" && mappedIdentity.payloadDecision.proposedHostedRuleId === "IMPL-PATCH-001", "mapped update export does not preserve existing and proposed Hosted identities");
+  assert(mappedIdentity.mutation.action === "update" && mappedIdentity.mutation.rule.id === "IMPL-PATCH-001", "mapped Update mutation does not preserve the existing Hosted identity");
   assert(mappedIdentity.readiness.ready, "mapped update proposal identity does not satisfy plan readiness when another assessment references the same target");
 
   await page.evaluate(async (candidateKey) => {
@@ -297,15 +297,14 @@ async function run({ page, baseUrl, assert, playback }) {
     });
     switchView("preview");
     const card = document.querySelector('[data-preview-file-path="rules/IMPL-PATCH-001.md"]');
-    const payload = buildApprovalPayload();
-    const decision = payload.decisions.find((item) => item.candidateId === "IMPL-PATCH-001");
+    const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === "IMPL-PATCH-001");
     return {
       heading: card?.dataset.previewSourceId?.toUpperCase(),
       target: card?.dataset.previewFilePath?.replace(/^rules\//, "").replace(/\.md$/, ""),
       deleted: [...(card?.querySelectorAll(".preview-diff-cell.delete code") || [])].map((line) => line.textContent),
       added: [...(card?.querySelectorAll(".preview-diff-cell.add code") || [])].map((line) => line.textContent),
-      decision,
-      hasMappedHostedRuleIds: Object.hasOwn(decision, "mappedHostedRuleIds")
+      mutation,
+      hasMappedHostedRuleIds: Object.hasOwn(mutation, "mappedHostedRuleIds")
     };
   }, structure.updateCandidate);
 
@@ -313,8 +312,8 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(preview.target === "IMPL-PATCH-001", "preview does not identify the singular semantic target");
   assert(preview.deleted.length === 1 && preview.deleted[0].includes("PATCH preserves omitted properties"), "preview removal is not scoped to the target rule");
   assert(preview.added.length === 1 && preview.added[0].includes("Prefer PUT") && preview.added[0].includes("If PATCH is required"), "preview replacement does not preserve and extend the target rule");
-  assert(preview.decision.hostedRuleId === "IMPL-PATCH-001" && preview.decision.sourceId === "guide-new-resource" && preview.decision.candidateId === "IMPL-PATCH-001", "approval payload does not preserve singular source, candidate, and target identities");
-  assert(!preview.hasMappedHostedRuleIds, "approval payload still exports aggregate provenance mappings as action targets");
+  assert(preview.mutation.rule.id === "IMPL-PATCH-001" && preview.mutation.sourceRelationships.some((relationship) => relationship.sourceId === "guide-new-resource"), "approved mutation does not preserve singular source and target identities");
+  assert(!preview.hasMappedHostedRuleIds, "approved mutation still exports aggregate provenance mappings as action targets");
 }
 
 module.exports = { name: "contributor rule candidates", behaviorIds, viewport: { width: 768, height: 900 }, run };

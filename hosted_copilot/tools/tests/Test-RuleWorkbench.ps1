@@ -136,7 +136,7 @@ function New-WorkbenchDisplayFixture {
 
                 $reviewState = if (-not [bool]$assessment.hostedApplicable) { 'excluded' } elseif ([string]$assessment.recommendation -ceq 'defer') { 'deferred' } else { 'recommended' }
                 $recommendation = $null
-                if ($reviewState -cne 'excluded') {
+                if ($reviewState -in @('recommended', 'deferred', 'excluded')) {
                     $category = if ([string]$assessment.hostedCategory -in @('implementation', 'testing', 'documentation')) { [string]$assessment.hostedCategory } else { 'implementation' }
                     $placement = if ($category -ceq 'implementation') { 'Schema And State' } elseif ($category -ceq 'testing') { 'Assertions And Validation' } else { 'Examples And Imports' }
                     $sourceDefinitionId = if ($sourceGroup.Lane -ceq 'contributor') { 'contributor-guidance' } elseif ($sourceGroup.Lane -ceq 'interactive') { 'interactive-toolkit' } else { 'maintainer-proposals' }
@@ -159,7 +159,7 @@ function New-WorkbenchDisplayFixture {
                         evidenceIds = @($evidenceIds | Sort-Object -Unique)
                         sourceRelationships = @([ordered]@{ sourceDefinitionId = $sourceDefinitionId; sourceId = [string]$sourceCandidate.id; relationshipKind = 'included'; rationale = "Assessment $($assessment.assessmentId) is included in this recommendation." })
                     }
-                    if ($category -ceq 'implementation' -and [string]$assessment.recommendation -ceq 'add') { $recommendation['implementationModels'] = @('legacy', 'typed', 'framework') }
+                    if ($category -ceq 'implementation' -and [string]$assessment.recommendation -in @('add', 'exclude')) { $recommendation['implementationModels'] = @('legacy', 'typed', 'framework') }
                 }
                 $candidates.Add([ordered]@{
                     source = $source
@@ -356,31 +356,8 @@ try {
         New-CapacityReport -Name 'test-combined' -Kind 'combined'
         New-CapacityReport -Name 'documentation-combined' -Kind 'combined'
     )
-    $bundle = [ordered]@{
-        '$schema' = 'rule-intake-review.schema.json'
-        schemaVersion = 3
+    $fixture = [ordered]@{
         generatedAt = '2026-09-03T00:00:00Z'
-        readOnly = $true
-        refreshMode = 'regenerate-read-only-bundle'
-        snapshots = [ordered]@{
-            hostedCatalogSha256 = 'a' * 64
-            intakeLedgerSha256 = 'b' * 64
-            upstream = [ordered]@{ repository = 'hashicorp/terraform-provider-azurerm'; baselineCommit = '1' * 40; currentRef = 'main'; currentCommit = '2' * 40 }
-            interactive = [ordered]@{ catalogPath = 'tools/interactive-rule-catalog/rule-catalog.json'; previousCatalogSha256 = 'c' * 64; currentCatalogSha256 = 'c' * 64; catalogChanged = $false }
-            maintainer = [ordered]@{ directoryPath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules'; sourceSha256 = 'e' * 64 }
-        }
-        summary = [ordered]@{
-            upstreamSourceCount = 0
-            changedUpstreamCount = 0
-            interactiveRuleCount = 1
-            interactiveReviewCount = 1
-            interactiveCurrentCount = 0
-            interactiveStateCounts = [ordered]@{ new = 1; changed = 0; retired = 0; deferred = 0; current = 0 }
-            maintainerRuleCount = 0
-            maintainerReviewCount = 0
-            maintainerCurrentCount = 0
-            maintainerStateCounts = [ordered]@{ new = 0; changed = 0; retired = 0; current = 0 }
-        }
         guidanceCapacity = [ordered]@{
             status = 'passed'
             estimator = 'character-quarter-estimate-25pct-v1'
@@ -531,14 +508,14 @@ try {
         )
         maintainerCandidates = @()
     }
-    $maintainerAssessment = $bundle.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $maintainerAssessment = $fixture.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     $maintainerAssessment.assessmentId = 'DOCS-MAINT-001'
     $maintainerAssessment.title = 'Maintainer proposal'
     $maintainerAssessment.sourceContentSha256 = 'f' * 64
     $maintainerAssessment.hostedCategory = 'documentation'
     $maintainerAssessment.proposedHostedRuleId = 'DOCS-CAND-001'
     $maintainerAssessment.proposedText = 'Flag documentation that omits a required maintainer convention.'
-    $excludedAssessmentAlpha = $bundle.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedAssessmentAlpha = $fixture.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     $excludedAssessmentAlpha.assessmentId = 'REVIEW-EXCL-001'
     $excludedAssessmentAlpha.title = 'Excluded assessment alpha'
     $excludedAssessmentAlpha.hostedApplicable = $false
@@ -560,23 +537,20 @@ try {
     $excludedAssessmentBravo.sourceContentSha256 = '4' * 64
     $excludedAssessmentBravo.applicabilityRationale = 'This second excluded result provides deterministic sorting evidence.'
     $excludedAssessmentBravo.proposedText = 'Keep the second excluded assessment available for deterministic audit ordering.'
-    $excludedInteractiveAlpha = $bundle.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedInteractiveAlpha = $fixture.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     $excludedInteractiveAlpha.id = 'REVIEW-EXCL-001'
     $excludedInteractiveAlpha.title = 'Excluded assessment alpha'
     $excludedInteractiveAlpha.contentSha256 = '3' * 64
     $excludedInteractiveAlpha.ruleText = 'Review excluded behavior after a maintainer records an explicit override rationale.'
     $excludedInteractiveAlpha.assessments = @($excludedAssessmentAlpha)
-    $excludedInteractiveBravo = $bundle.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $excludedInteractiveBravo = $fixture.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     $excludedInteractiveBravo.id = 'REVIEW-EXCL-002'
     $excludedInteractiveBravo.title = 'Excluded assessment bravo'
     $excludedInteractiveBravo.contentSha256 = '4' * 64
     $excludedInteractiveBravo.ruleText = 'Keep a second excluded behavior available for deterministic assessment sorting.'
     $excludedInteractiveBravo.assessments = @($excludedAssessmentBravo)
-    $bundle.interactiveCandidates += @($excludedInteractiveAlpha, $excludedInteractiveBravo)
-    $bundle.summary.interactiveRuleCount = 3
-    $bundle.summary.interactiveReviewCount = 3
-    $bundle.summary.interactiveStateCounts.new = 3
-    $bundle.maintainerCandidates = @([ordered]@{
+    $fixture.interactiveCandidates += @($excludedInteractiveAlpha, $excludedInteractiveBravo)
+    $fixture.maintainerCandidates = @([ordered]@{
         id = 'DOCS-MAINT-001'
         title = 'Maintainer proposal'
         sourcePath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'
@@ -591,10 +565,7 @@ try {
         relatedHostedRules = @()
         assessments = @($maintainerAssessment)
     })
-    $bundle.summary.maintainerRuleCount = 1
-    $bundle.summary.maintainerReviewCount = 1
-    $bundle.summary.maintainerStateCounts.new = 1
-    $display = New-WorkbenchDisplayFixture -Fixture $bundle
+    $display = New-WorkbenchDisplayFixture -Fixture $fixture
     $displayJson = $display | ConvertTo-Json -Depth 30
     [IO.File]::WriteAllText($displayPath, $displayJson + "`n", [Text.UTF8Encoding]::new($false))
     if ([string]::IsNullOrWhiteSpace($Run)) {
@@ -694,7 +665,7 @@ try {
         $appContent -match 'return date\.toISOString\(\)\.replace\(/Z\$/, "0000Z"\)' -and
         $appContent -match 'function normalizeSessionTimestamps\(session\)' -and
         $appContent -match 'const snapshot = normalizeSessionTimestamps\(state\.session\)' -and
-        $appContent -match 'buildApprovalDecision\(candidate, getDecision\(candidate\), session\.applicabilityOverrides\[candidate\.key\] \|\| null\)' -and
+        $appContent -match 'buildApprovedMutation\(candidate\)' -and
         $appContent -notmatch 'new Date\(\)\.toISOString\(\)'
     Add-TestResult -Name 'browser-timestamp-normalization' -Passed $timestampNormalizationValid -Detail 'Workbench persistence and exports use one browser canonicalizer that matches the PowerShell seven-digit UTC wire format.'
 
@@ -932,7 +903,7 @@ try {
         $hierarchicalViewContent -match 'patchNode\(row, rendered\)'
     Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree and Details checkboxes are synchronized projections of membership-only state in both directions without replacing scroll, focus, selection, or expanded folders; explicit Undo retains the full-reset lifecycle.'
 
-    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
+    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'recommendation,\s*assessment,' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
     Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Authoritative mappings are separate from source state; native radios expose only status-constrained actions, and plan membership remains an independent explicit choice.'
 
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and $indexContent -match 'data-bulk-scope="add"' -and $indexContent -match 'data-bulk-scope="update"' -and $indexContent -match 'data-bulk-scope="actionable"' -and $indexContent -match 'data-bulk-undo' -and $appContent -match 'bulkOperations:\s*\[\]' -and $appContent -match 'function createPlanMembership\(' -and $appContent -match 'function isValidPlanMembership\(' -and $appContent -match 'function getBulkActionCandidates\(' -and $appContent -match 'return !decision\.inPlan' -and $appContent -match 'function applyBulkSelection\(' -and $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and $appContent -match 'function undoBulkOperation\(' -and $appContent -match 'decision\?\.planMembershipSource !== "bulk" \|\| decision\.bulkOperationId !== operation\.id' -and $appContent -match 'promotesManualMembership' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'source:\s*decision\.planMembershipSource' -and $appContent -match 'bulkOperations:\s*state\.session\.bulkOperations' -and $appContent -match 'draft\.bulkOperations' -and $stylesContent -match '\.bulk-actions-menu\s*\{' -and $stylesContent -match '\.plan-membership-badge\s*\{'
@@ -966,7 +937,6 @@ try {
         $stylesContent -match '\.candidate-tree-copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 16px'
     Add-TestResult -Name 'semantic-color-contract' -Passed $semanticColorsValid -Detail 'Lifecycle, recommendation, catalog mapping, selected action, plan membership, and Undo states use readable semantic colors and visible borders.'
 
-    $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*not-allowed !important' -and $stylesContent -match '\.raw-change-navigation \.icon-button:disabled\s*\{[^}]*cursor:\s*default !important' -and $indexContent -match 'stage-link active clickable' -and $indexContent -match '<summary class="clickable">[\s\S]*?Raw Selection Payload[\s\S]*?</summary>' -and $appContent -match 'assessment-result-row clickable' -and $appContent -match 'candidate-tree-row clickable' -and $appContent -match 'action-option clickable' -and $appContent -match 'plan-detail-link clickable'
     $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and
         $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
         $indexContent -match 'class="preview-review-button clickable"[^>]*id="preview-review-toggle"' -and
@@ -1002,9 +972,9 @@ try {
     $planTokenDeltaValid = $appContent -match 'function getAssessmentTokenValue\(' -and $appContent -match '!getApplicabilityOverride\(candidate\) \|\| assessment\.guardedTokenDelta !== 0' -and $appContent -match 'estimateGuardedTokens\(decision\.proposedText \|\| candidate\.text\)' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'if \(getApplicabilityOverride\(candidate\)\)' -and $appContent -match 'function getPlanTokenValue\(' -and $appContent -match 'function getPlanTokenDisplay\(' -and $appContent -match 'return formatSignedNumber\(getPlanTokenValue\(candidate\)\)' -and $appContent -match 'function getPlanTokenDelta\(' -and $appContent -match 'getAssessmentTokenValue\(candidate, assessment, decision\)' -and $appContent -match 'return -Math\.ceil\(estimatedTokens \* 1\.25\)' -and $appContent -match 'function getPlanAffectedSurfaces\(' -and $appContent -match 'placementSurfaces\.length \? placementSurfaces : assessment\?\.affectedSurfaces' -and $appContent -match '<td class="mono">\$\{cost\}</td>' -and $appContent -match 'token\.textContent = formatCandidateTokenValue\(candidate, assessment\)' -and $appContent -match 'sum \+ getPlanTokenValue\(candidate\)'
     Add-TestResult -Name 'promotion-plan-token-deltas' -Passed $planTokenDeltaValid -Detail 'Token displays and Draft Item Estimate reuse signed action-aware values, including maintained proposed-text estimates for unresolved overrides, while capacity projections wait for an explicit action and Retire retains negative savings.'
 
-    $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'function buildApprovalPayload' -and $appContent -match 'function approveAndExport' -and $appContent -match 'hosted-rule-workbench-approval-handoff' -and $appContent -match 'sha256-payload-bytes-v1' -and $appContent -match 'crypto\.subtle\.digest\("SHA-256"' -and $appContent -match 'approvedBy:\s*\{\s*type:\s*"manual"' -and $stylesContent -match '\.approval-requirements'
+    $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'function buildApprovedRules' -and $appContent -match 'function buildApprovedMutation' -and $appContent -match 'function approveAndExport' -and $appContent -match '\$schema: "approved-rules-v4\.schema\.json"' -and $appContent -match 'kind: "hosted-approved-rules"' -and $appContent -match 'catalogContentSha256: state\.bundle\.catalog\.contentSha256' -and $appContent -notmatch 'hosted-rule-workbench-approval-handoff|sha256-payload-bytes-v1|crypto\.subtle\.digest\("SHA-256"' -and $stylesContent -match '\.approval-requirements'
     $approvalExportValid = $approvalExportValid -and $appContent -match '\["Rule actions", readiness\.missingActionCount' -and $appContent -match 'missingActionCount === 0' -and $appContent -match 'status = "needs action"'
-    $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVAL_PAYLOAD_SCHEMA_VERSION = 7'
+    $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVED_RULES_SCHEMA_VERSION = 4'
     Add-TestResult -Name 'preview-approval-export' -Passed $approvalExportValid -Detail 'Preview explains plan, action, rationale, and identity gates and blocks export until every selected candidate has an explicit promotion action and rationale.'
 
     $previewDiffValid = $indexContent -match 'id="preview-diff"' -and
@@ -1060,8 +1030,8 @@ try {
         $stylesContent -match '\.preview-diff-cell\.delete\s*\{[^}]*background:\s*#3c1e23'
     Add-TestResult -Name 'preview-change-review' -Passed $previewDiffValid -Detail 'Preview renders one authenticated GitHub-style continuous split-file review with virtual artifact paths, status-aware tree icons, graphical totals, CODEOWNERS headers, explicit selection, and independent Viewed and disclosure state.'
 
-    $rawPayloadNavigationValid = $appContent -match 'PREVIEW_CONTEXT_LINE_COUNT = 2' -and $appContent -match 'PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10' -and $appContent -match 'createPreviewFile\("selection/promotion-selection\.json"' -and $appContent -match 'function createContextualPreviewRows\(' -and $appContent -match 'direction: start === 0 \? "up" : index === rows\.length \? "down" : "all"' -and $appContent -match 'const selectedRows = direction === "all"' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $stylesContent -match '\.preview-context-gap\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)' -and $stylesContent -match '\.preview-context-expand\s*\{[^}]*width:\s*44px'
-    Add-TestResult -Name 'raw-payload-change-navigation' -Passed $rawPayloadNavigationValid -Detail 'Raw selection payload renders as one contextual full-file split diff with two context lines and exact local Octicon expansion controls.'
+    $rawPayloadNavigationValid = $appContent -match 'PREVIEW_CONTEXT_LINE_COUNT = 2' -and $appContent -match 'PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10' -and $appContent -match 'createPreviewFile\("approval/approved-rules\.json"' -and $appContent -match 'function createContextualPreviewRows\(' -and $appContent -match 'direction: start === 0 \? "up" : index === rows\.length \? "down" : "all"' -and $appContent -match 'const selectedRows = direction === "all"' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $stylesContent -match '\.preview-context-gap\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)' -and $stylesContent -match '\.preview-context-expand\s*\{[^}]*width:\s*44px'
+    Add-TestResult -Name 'raw-payload-change-navigation' -Passed $rawPayloadNavigationValid -Detail 'Raw approved rules render as one contextual full-file split diff with two context lines and exact local Octicon expansion controls.'
 
     $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'const allowedActions = getAllowedActions\(candidate, proposedText\)' -and $appContent -match 'inPlan: saved\.inPlan && isPromotionAction\(saved\.action\)'
     $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'inPlan: saved\.inPlan,' -and $appContent -match 'const proposed = candidates\.filter\(\(candidate\) => isPromotionAction\(getDecision\(candidate\)\.action\)\)' -and $appContent -match 'elements\["preview-diff"\]\.innerHTML = renderPreviewFiles\(previewFilesByScope\.proposed'
@@ -1070,7 +1040,7 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
-    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
+    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches collect, assess, reconcile, and stage one v4 display; an explicit DisplayPath remains a model-free staging path.'
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
@@ -1165,7 +1135,7 @@ try {
             else {
                 @()
             }
-            $behaviorExecutionValid = @(Compare-Object -ReferenceObject $selectedBehaviorIds -DifferenceObject $executedBehaviorIds).Count -eq 0
+            $behaviorExecutionValid = (@($selectedBehaviorIds) -join [char]0) -ceq (@($executedBehaviorIds) -join [char]0)
             $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $selectedJourneyCount -and $playwrightResult.behaviorCount -eq $selectedBehaviors.Count -and $behaviorExecutionValid -and $playwrightResult.assertionCount -gt 0
             if ($Journey -eq 'all') {
                 $playwrightValid = $playwrightValid -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9 -and $playwrightResult.shutdownVerified

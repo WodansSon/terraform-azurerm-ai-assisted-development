@@ -36,6 +36,8 @@ param(
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
+    [switch]$ShowProgress,
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
 )
@@ -258,7 +260,6 @@ $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
-$ledgerPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.json'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
 foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
@@ -502,7 +503,7 @@ try {
         Copy-Item -LiteralPath $promptPath -Destination $batchPromptPath
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
 
-        if ($OutputFormat -eq 'Text') {
+        if ($OutputFormat -eq 'Text' -or $ShowProgress) {
             Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
         }
         $response = $null
@@ -584,7 +585,7 @@ try {
         foreach ($entry in @($response.entries)) {
             $draftEntries.Add($entry)
         }
-        if ($OutputFormat -eq 'Text') {
+        if ($OutputFormat -eq 'Text' -or $ShowProgress) {
             Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
         }
     }

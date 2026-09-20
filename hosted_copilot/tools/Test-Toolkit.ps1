@@ -46,53 +46,28 @@ $reviewResultValidatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.p
 $hostedReviewWorkflowTestPath = Join-Path $PSScriptRoot 'tests/Test-HostedReviewWorkflow.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
-$intakeLedgerPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.json'
-$intakeLedgerSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/interactive-intake-ledger.schema.json'
-$promotionPlanSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-plan.schema.json'
-$promotionReceiptSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/promotion-receipt.schema.json'
-$ruleIntakeBundleSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-intake-review.schema.json'
-$assessmentBaselinePath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.json'
-$assessmentBaselineSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/rule-assessments/assessment-baseline.schema.json'
 $maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "copilot-rule-catalog/maintainer-rules/$_" }
-$promotionAuditPath = Join-Path $hostedRoot 'copilot-rule-catalog/audit'
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'commands/catalog/Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'tests/Test-InstructionGeneration.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
-$ruleIntakeBundlePath = Join-Path $PSScriptRoot 'legacy-v3/New-RuleIntakeReview.ps1'
-$ruleIntakeTestPath = Join-Path $PSScriptRoot 'legacy-v3/Test-RuleIntakeReview.ps1'
 $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceInventory.ps1'
-$sourceGenerationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/source-generations'
-$publicationRequestSchemaPath = Join-Path $sourceGenerationRoot 'publication-request.schema.json'
-$sourceGenerationSchemaPath = Join-Path $sourceGenerationRoot 'source-generation.schema.json'
-$sourceGenerationPublisherPath = Join-Path $PSScriptRoot 'internal/publication/Publish-SourceGeneration.ps1'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
-$assessmentReconciliationValidationPath = Join-Path $PSScriptRoot 'modules/reconciliation/AssessmentReconciliationValidation.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
-$ruleIntakeAssessmentPath = Join-Path $PSScriptRoot 'legacy-v3/Invoke-RuleIntakeAssessment.ps1'
-$ruleIntakeAssessmentTestPath = Join-Path $PSScriptRoot 'legacy-v3/Test-RuleIntakeAssessment.ps1'
 $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceAssessment.ps1'
 $assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
 $assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
 $assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
-$assessmentReconciliationReviewContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4-contract.schema.json'
-$assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.json'
-$assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.schema.json'
-$assessmentReconciliationRecommendationsSchemaPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations.schema.json'
 $assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-v4.json'
+$workbenchDisplaySchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-display-v4.schema.json'
+$workbenchDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-draft-v4.schema.json'
+$approvedRulesSchemaPath = Join-Path $assessmentReconciliationRoot 'approved-rules-v4.schema.json'
 $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-WorkbenchDisplay.ps1'
-$assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-AssessmentReconciliationReview.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
-$v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'migration/Test-MigrationReadiness.ps1'
 $v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
-$v3FieldCompatibilitySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.schema.json'
-$v3FieldCompatibilityPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.json'
-$v3RetirementInventorySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.schema.json'
-$v3RetirementInventoryPath = Join-Path $assessmentReconciliationRoot 'version-3-retirement-inventory.json'
-$assessmentBaselinePublisherPath = Join-Path $PSScriptRoot 'legacy-v3/Publish-RuleIntakeAssessmentBaseline.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
 $ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbenchHeaded.ps1'
@@ -324,47 +299,24 @@ if ($runtimeStarted) {
         $hostedReviewWorkflowTestPath,
         $instructionCatalogPath,
         $instructionCatalogSchemaPath,
-        $intakeLedgerPath,
-        $intakeLedgerSchemaPath,
-        $promotionPlanSchemaPath,
-        $promotionReceiptSchemaPath,
-        $ruleIntakeBundleSchemaPath,
-        $assessmentBaselinePath,
-        $assessmentBaselineSchemaPath,
         $instructionGeneratorPath,
         $instructionGenerationTestPath,
         $guidanceCapacityPath,
-        $ruleIntakeBundlePath,
-        $ruleIntakeTestPath,
-        $ruleIntakeAssessmentPath,
-        $ruleIntakeAssessmentTestPath,
         $hostedToolkitHelpersPath,
         $sourceEvidenceModulePath,
-        $assessmentReconciliationValidationPath,
         $sourceInventoryCollectorPath,
         $sourceInventoryTestPath,
-        $publicationRequestSchemaPath,
-        $sourceGenerationSchemaPath,
-        $sourceGenerationPublisherPath,
         $sourceAssessmentTestPath,
         $assessmentReconciliationContractSchemaPath,
         $assessmentReconciliationDraftSchemaPath,
-        $assessmentReconciliationReviewContractSchemaPath,
-        $assessmentReconciliationReviewContractPath,
-        $assessmentReconciliationReviewSchemaPath,
-        $assessmentReconciliationRecommendationsSchemaPath,
         $assessmentReconciliationContractPath,
+        $workbenchDisplaySchemaPath,
+        $workbenchDraftSchemaPath,
+        $approvedRulesSchemaPath,
         $assessmentReconciliationRunnerPath,
         $assessmentReconciliationBuilderPath,
-        $assessmentReconciliationReviewBuilderPath,
         $assessmentReconciliationTestPath,
         $assessmentReconciliationPromptPath,
-        $v4MigrationReadinessTestPath,
-        $v3FieldCompatibilitySchemaPath,
-        $v3FieldCompatibilityPath,
-        $v3RetirementInventorySchemaPath,
-        $v3RetirementInventoryPath,
-        $assessmentBaselinePublisherPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
         $ruleWorkbenchHeadedTestPath,
@@ -407,7 +359,7 @@ if ($runtimeStarted) {
 
     Start-ValidationCheck -Name 'lifecycle-tools'
     $lifecycleIssues = New-Object 'System.Collections.Generic.List[string]'
-    $lifecyclePaths = @($hostedReviewCommandPath, $hostedReviewWorkflowModulePath, $reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath, $ruleIntakeAssessmentPath, $assessmentBaselinePublisherPath)
+    $lifecyclePaths = @($hostedReviewCommandPath, $hostedReviewWorkflowModulePath, $reviewCommonModulePath, $reviewBaseInitializerPath, $reviewPairCreatorPath, $reviewPullRequestImporterPath, $reviewTestCasePublisherPath, $reviewCapturePath, $reviewPairCloserPath)
     foreach ($lifecyclePath in $lifecyclePaths) {
         if (-not (Test-Path -LiteralPath $lifecyclePath -PathType Leaf)) {
             $lifecycleIssues.Add("lifecycle command is missing: $lifecyclePath")
@@ -663,32 +615,8 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'instruction-generation-tests' -Issue "Hosted instruction generation regression failed: $($_.Exception.Message)"
     }
 
-    Start-ValidationCheck -Name 'rule-intake-contracts'
+    Start-ValidationCheck -Name 'source-inventory-contracts'
     try {
-        $ledgerContent = Get-Content -LiteralPath $intakeLedgerPath -Raw
-        if (-not ($ledgerContent | Test-Json -SchemaFile $intakeLedgerSchemaPath -ErrorAction Stop)) {
-            throw 'Interactive intake ledger schema validation failed'
-        }
-        $ledger = $ledgerContent | ConvertFrom-Json
-        $duplicateDecisionIds = @($ledger.decisions | Group-Object sourceRuleId | Where-Object Count -gt 1)
-        if ($duplicateDecisionIds.Count -gt 0) {
-            throw "Interactive intake ledger contains duplicate source rule IDs: $(@($duplicateDecisionIds.Name) -join ', ')"
-        }
-
-        $hostedRuleIds = @((Get-Content -LiteralPath $instructionCatalogPath -Raw | ConvertFrom-Json).rules | ForEach-Object { [string]$_.id })
-        $unknownHostedRuleIds = @($ledger.decisions | ForEach-Object { $_.hostedRuleIds } | Where-Object { $_ -notin $hostedRuleIds } | Sort-Object -Unique)
-        if ($unknownHostedRuleIds.Count -gt 0) {
-            throw "Interactive intake ledger references unknown Hosted rule IDs: $($unknownHostedRuleIds -join ', ')"
-        }
-
-        $intakeTestOutput = @(& pwsh -NoProfile -File $ruleIntakeTestPath -OutputFormat Json 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw (($intakeTestOutput | Out-String).Trim())
-        }
-        $intakeTestResult = ($intakeTestOutput | Out-String) | ConvertFrom-Json
-        if ($intakeTestResult.status -ne 'passed') {
-            throw 'rule intake regression suite reported failures'
-        }
         $sourceInventoryTestOutput = @(& pwsh -NoProfile -File $sourceInventoryTestPath -OutputFormat Json 2>&1)
         if ($LASTEXITCODE -ne 0) {
             throw (($sourceInventoryTestOutput | Out-String).Trim())
@@ -705,70 +633,10 @@ if ($runtimeStarted) {
         if ($deployedMaintainerRulePaths.Count -gt 0) {
             throw "Maintainer rule sources must not be deployed: $($deployedMaintainerRulePaths -join ', ')"
         }
-
-        $receiptCount = 0
-        $receiptPlanHashes = New-Object 'System.Collections.Generic.List[string]'
-        if (Test-Path -LiteralPath $promotionAuditPath -PathType Container) {
-            foreach ($receiptPath in @(Get-ChildItem -LiteralPath $promotionAuditPath -Filter '*.json' -File)) {
-                $receiptContent = Get-Content -LiteralPath $receiptPath.FullName -Raw
-                if (-not ($receiptContent | Test-Json -SchemaFile $promotionReceiptSchemaPath -ErrorAction Stop)) {
-                    throw "Promotion receipt schema validation failed: $($receiptPath.Name)"
-                }
-                $receipt = $receiptContent | ConvertFrom-Json
-                $expectedSuffix = "-$($receipt.planSha256).json"
-                if (-not $receiptPath.Name.EndsWith($expectedSuffix, [StringComparison]::Ordinal)) {
-                    throw "Promotion receipt filename does not end with its plan hash: $($receiptPath.Name)"
-                }
-                $receiptPlanHashes.Add([string]$receipt.planSha256)
-                $receiptCount++
-            }
-        }
-        $duplicateReceiptHashes = @($receiptPlanHashes | Group-Object | Where-Object Count -gt 1)
-        if ($duplicateReceiptHashes.Count -gt 0) {
-            throw "Promotion audit contains duplicate plan hashes: $(@($duplicateReceiptHashes.Name) -join ', ')"
-        }
-
-        Add-CheckResult -Name 'rule-intake-contracts' -Passed $true -Detail "Validated the source-pinned ledger, three source-only Maintainer Proposal files, $($intakeTestResult.testCount) contract tests, $($sourceInventoryTestResult.testCount) source inventory tests, and $receiptCount append-only promotion receipts without comparing Interactive freshness."
+        Add-CheckResult -Name 'source-inventory-contracts' -Passed $true -Detail "Validated three source-only Maintainer Proposal files and passed $($sourceInventoryTestResult.testCount) current source inventory tests."
     }
     catch {
-        Add-ValidationIssue -Name 'rule-intake-contracts' -Issue "Hosted rule intake contracts are invalid: $($_.Exception.Message)"
-    }
-
-    Start-ValidationCheck -Name 'rule-intake-assessment'
-    try {
-        $assessmentBaselineContent = Get-Content -LiteralPath $assessmentBaselinePath -Raw
-        if (-not ($assessmentBaselineContent | Test-Json -SchemaFile $assessmentBaselineSchemaPath -ErrorAction Stop)) {
-            throw 'committed assessment baseline schema validation failed'
-        }
-        $assessmentBaseline = $assessmentBaselineContent | ConvertFrom-Json
-        $instructionCatalogSha256 = (Get-FileHash -LiteralPath $instructionCatalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($assessmentBaseline.hostedCatalogSha256 -ne $instructionCatalogSha256) {
-            throw 'committed assessment baseline does not target the current Hosted instruction catalog'
-        }
-        $baselineIdentities = @($assessmentBaseline.entries | ForEach-Object { "$($_.sourceType):$($_.id)" })
-        if (@($baselineIdentities | Sort-Object -Unique).Count -ne $baselineIdentities.Count) {
-            throw 'committed assessment baseline contains duplicate candidate identities'
-        }
-        $staleBaselineEntries = @($assessmentBaseline.entries | Where-Object {
-            $entry = $_
-            @($entry.assessments | Where-Object { $_.sourceContentSha256 -ne $entry.sourceContentSha256 }).Count -gt 0
-        })
-        if ($staleBaselineEntries.Count -gt 0) {
-            throw 'committed assessment baseline contains source-hash mismatches'
-        }
-
-        $assessmentTestOutput = @(& pwsh -NoProfile -File $ruleIntakeAssessmentTestPath -OutputFormat Json 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw (($assessmentTestOutput | Out-String).Trim())
-        }
-        $assessmentTestResult = ($assessmentTestOutput | Out-String) | ConvertFrom-Json
-        if ($assessmentTestResult.status -ne 'passed') {
-            throw 'rule intake assessment regression suite reported failures'
-        }
-        Add-CheckResult -Name 'rule-intake-assessment' -Passed $true -Detail "Validated $($assessmentBaseline.entries.Count) committed baseline entries and passed $($assessmentTestResult.testCount) publication, shared reuse, incremental cache, changed-rule invalidation, evaluator retry, schema, and output-boundary tests without model calls."
-    }
-    catch {
-        Add-ValidationIssue -Name 'rule-intake-assessment' -Issue "Hosted rule intake assessment validation failed: $($_.Exception.Message)"
+        Add-ValidationIssue -Name 'source-inventory-contracts' -Issue "Hosted source inventory contracts are invalid: $($_.Exception.Message)"
     }
 
     Start-ValidationCheck -Name 'source-assessment'
@@ -803,22 +671,6 @@ if ($runtimeStarted) {
         Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"
     }
 
-    Start-ValidationCheck -Name 'v4-migration-readiness'
-    try {
-        $migrationReadinessOutput = @(& pwsh -NoProfile -File $v4MigrationReadinessTestPath -OutputFormat Json 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw (($migrationReadinessOutput | Out-String).Trim())
-        }
-        $migrationReadinessResult = ($migrationReadinessOutput | Out-String) | ConvertFrom-Json
-        if ($migrationReadinessResult.status -ne 'passed') {
-            throw 'version 4 migration readiness validation reported failures'
-        }
-        Add-CheckResult -Name 'v4-migration-readiness' -Passed $true -Detail "Passed $($migrationReadinessResult.testCount) preservation and inventory tests across $($migrationReadinessResult.compatibilityEntryCount) compatibility entries, $($migrationReadinessResult.retirementEntryCount) retirement entries, $($migrationReadinessResult.ruleCount) rules, and $($migrationReadinessResult.legacyTupleCount) legacy tuples."
-    }
-    catch {
-        Add-ValidationIssue -Name 'v4-migration-readiness' -Issue "Hosted version 4 migration readiness validation failed: $($_.Exception.Message)"
-    }
-
     Start-ValidationCheck -Name 'v4-workbench-contracts'
     try {
         $v4WorkbenchContractsOutput = @(& pwsh -NoProfile -File $v4WorkbenchContractsTestPath -OutputFormat Json 2>&1)
@@ -829,7 +681,7 @@ if ($runtimeStarted) {
         if ($v4WorkbenchContractsResult.status -ne 'passed') {
             throw 'version 4 Workbench contract validation reported failures'
         }
-        Add-CheckResult -Name 'v4-workbench-contracts' -Passed $true -Detail "Passed $($v4WorkbenchContractsResult.testCount) Draft, Plan, Preview, approval, and Remote Rules contract fixtures."
+        Add-CheckResult -Name 'v4-workbench-contracts' -Passed $true -Detail "Passed $($v4WorkbenchContractsResult.testCount) display, Draft, approved-rules, and Remote Rules contract fixtures."
     }
     catch {
         Add-ValidationIssue -Name 'v4-workbench-contracts' -Issue "Hosted version 4 Workbench contract validation failed: $($_.Exception.Message)"
@@ -1292,7 +1144,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'rule-intake-contracts', 'rule-intake-assessment', 'source-assessment', 'assessment-reconciliation', 'v4-migration-readiness', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

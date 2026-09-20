@@ -29,14 +29,29 @@ async function run({ page, baseUrl, assert, playback }) {
 
   const interactiveCandidate = await page.evaluate(() => state.candidates.find((candidate) => candidate.sourceType === "interactive").id);
   await page.locator("#search-input").fill(interactiveCandidate);
-  await page.waitForFunction(() => Boolean(document.querySelector("#candidate-list .candidate-tree-row.search-match")));
+  const interactiveDiagnostic = await page.evaluate(() => {
+    const candidate = getBestCandidateSearchMatch();
+    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidate?.key);
+    return {
+      query: state.queries["candidate-sources"],
+      candidateKey: candidate?.key || null,
+      nodeId: node?.id || null,
+      rowRendered: Boolean(candidate && document.querySelector(`#candidate-list [data-candidate-key="${CSS.escape(candidate.key)}"]`)),
+      searchMatchRendered: Boolean(document.querySelector("#candidate-list .candidate-tree-row.search-match"))
+    };
+  });
+  assert(interactiveDiagnostic.searchMatchRendered, `Interactive search did not render its match (${JSON.stringify(interactiveDiagnostic)})`);
   const interactiveState = await getSearchState(page);
   assert(["interactive", "upstream", "maintainer"].every((type) => interactiveState.rootTypes.includes(type)), "Interactive search removed an unrelated source root");
   assert(interactiveState.openRootTypes.includes("interactive") && interactiveState.openParentCount >= 2, "Interactive search did not expand the matching source and category path");
   assert(interactiveState.matchVisible, "Interactive search result was not scrolled into view");
 
-  await page.locator("#search-input").fill("guide-new-resource");
-  await page.waitForFunction(() => document.querySelector("#candidate-list .candidate-tree-row.search-match")?.dataset.candidateKey?.startsWith("upstream:guide-new-resource:"));
+  const contributorCandidate = await page.evaluate(() => {
+    const candidate = state.candidates.find((item) => item.sourceType === "upstream");
+    return { sourceId: candidate.sourceId, keyPrefix: `contributor:${candidate.sourceId}:` };
+  });
+  await page.locator("#search-input").fill(contributorCandidate.sourceId);
+  await page.waitForFunction((keyPrefix) => document.querySelector("#candidate-list .candidate-tree-row.search-match")?.dataset.candidateKey?.startsWith(keyPrefix), contributorCandidate.keyPrefix);
   const contributorState = await getSearchState(page);
   assert(["interactive", "upstream", "maintainer"].every((type) => contributorState.rootTypes.includes(type)), "Contributor search removed an unrelated source root");
   assert(contributorState.openRootTypes.includes("upstream") && contributorState.openParentCount >= 2, "Contributor search did not expand the matching source and document path");

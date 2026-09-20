@@ -2,7 +2,7 @@
 
 Only the commands listed here are supported maintainer entry points. The four normal-operation commands remain at the tools root. Specialized catalog commands live beneath `commands/catalog/`.
 
-Files beneath `internal/`, `modules/`, `tests/`, `migration/`, and `legacy-v3/` are implementation or validation details rather than an equivalent manual command surface. Reusable `.psm1` files live under `modules/`; `internal/` is reserved for implementation `.ps1` scripts.
+Files beneath `internal/`, `modules/`, and `tests/` are implementation or validation details rather than an equivalent manual command surface. Reusable `.psm1` files live under `modules/`; `internal/` is reserved for implementation `.ps1` scripts. Retired migration and version 3 tools are preserved under `local-only-docs/obsolete-v3/`.
 
 ## Normal Operations
 

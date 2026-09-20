@@ -92,7 +92,7 @@
           "pattern": "^recommendation-[1-9][0-9]*$"
         },
         "recommendedAction": {
-          "enum": ["add", "update", "no-change", "defer"]
+          "enum": ["add", "update", "no-change", "defer", "exclude"]
         },
         "targetHostedId": {
           "oneOf": [
@@ -161,7 +161,7 @@
         {
           "if": {
             "properties": {
-              "recommendedAction": { "const": "add" },
+              "recommendedAction": { "enum": ["add", "exclude"] },
               "category": { "const": "implementation" }
             },
             "required": ["recommendedAction", "category"]
@@ -193,7 +193,7 @@
           "if": {
             "properties": {
               "recommendedAction": {
-                "const": "add"
+                "enum": ["add", "exclude"]
               }
             },
             "required": ["recommendedAction"]
@@ -271,6 +271,7 @@
         },
         "recommendationDraftKeys": {
           "type": "array",
+          "minItems": 1,
           "maxItems": 1,
           "uniqueItems": true,
           "items": {
@@ -294,9 +295,7 @@
               "rationale": {
                 "type": "null"
               },
-              "recommendationDraftKeys": {
-                "minItems": 1
-              }
+              "recommendationDraftKeys": { "minItems": 1 }
             }
           },
           "else": {
@@ -305,9 +304,7 @@
                 "type": "string",
                 "minLength": 1
               },
-              "recommendationDraftKeys": {
-                "maxItems": 0
-              }
+              "recommendationDraftKeys": { "minItems": 1 }
             }
           }
         }

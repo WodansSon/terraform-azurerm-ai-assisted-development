@@ -121,7 +121,7 @@ async function run({ page, baseUrl, assert, playback }) {
     }));
     assert(preview.proposedChangeCount === 0 && preview.proposedEmptyTitle === "No Proposed Changes", "Unselected decision remained in Proposed Changes");
     assert(preview.payloadChangeCount === 0 && preview.payloadEmptyTitle === "No Payload Changes", "Unselected decision remained in Payload Changes");
-    assert(preview.rawChangeCount === 0 && preview.rawEmptyTitle === "No Raw Payload Changes", "Unselected decision remained in Raw Selection Payload");
+    assert(preview.rawChangeCount === 0 && preview.rawEmptyTitle === "No Approved Rules", "Unselected decision remained in Raw Approved Rules");
   } finally {
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;

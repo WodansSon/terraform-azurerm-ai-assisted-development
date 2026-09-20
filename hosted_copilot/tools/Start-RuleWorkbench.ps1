@@ -216,6 +216,7 @@ function Update-StagedDisplay {
                 Model = $Model
                 ReasoningEffort = $AssessmentReasoningEffort
                 MaxRetries = $MaxRetries
+                ShowProgress = $OutputFormat -eq 'Text'
                 OutputFormat = 'Json'
             }
             $assessmentOutput = @(& $sourceAssessmentPath @assessmentParameters 2>&1)

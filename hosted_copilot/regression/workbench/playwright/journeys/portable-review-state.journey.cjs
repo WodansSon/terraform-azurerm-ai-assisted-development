@@ -1,4 +1,3 @@
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const { openWorkbench } = require("../helpers/workbench.cjs");
 
@@ -75,10 +74,10 @@ async function run({ page, baseUrl, assert, playback }) {
     const draft = JSON.parse(draftBytes.toString("utf8"));
     const decisionKey = Object.keys(draft.decisions).find((key) => key.endsWith(`:${candidateId}`) || draft.decisions[key].proposedHostedRuleId === proposedId);
     assert(draftBytes.at(-1) === 0x0a, "Draft download does not end with the expected newline byte");
-    assert(draft.schemaVersion === 7 && draft.kind === "hosted-rule-workbench-draft", "Draft download has the wrong contract identity");
+    assert(draft.schemaVersion === 4 && draft.kind === "hosted-rule-workbench-draft", "Draft download has the wrong contract identity");
     assert(Boolean(decisionKey), "Draft download omitted the selected decision");
     assert(draft.decisions[decisionKey].action === "add" && draft.decisions[decisionKey].proposedHostedRuleId === proposedId, "Draft download changed the selected action or proposed ID");
-    assert(draft.decisions[decisionKey].rationale === rationale && draft.decisions[decisionKey].inPlan, "Draft download changed rationale or plan membership");
+    assert(draft.decisions[decisionKey].rationale === rationale && draft.decisions[decisionKey].selected && draft.decisions[decisionKey].selectionSource === "manual", "Draft download changed rationale or plan membership");
 
     await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
     await page.locator('#assessment-panel [data-plan-toggle]').uncheck();
@@ -91,23 +90,19 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(await page.locator('#assessment-panel [data-plan-toggle]').isChecked(), "Draft import did not restore plan membership");
 
     const beforeRejectedImports = await sessionFingerprint(page);
-    const mismatchedDraft = { ...draft, sessionId: `${draft.sessionId}:mismatch` };
+    const mismatchedDraft = { ...draft, inputFingerprint: "0".repeat(64) };
     await importBytes(page, Buffer.from(`${JSON.stringify(mismatchedDraft, null, 2)}\n`), "mismatched-draft.json");
     assert((await page.locator("#toast-message").textContent()).includes("different source snapshot"), "Mismatched Draft import did not report its bundle rejection");
     assert(JSON.stringify(await sessionFingerprint(page)) === JSON.stringify(beforeRejectedImports), "Mismatched Draft import changed browser or IndexedDB state");
 
     const invalidDraft = structuredClone(draft);
-    invalidDraft.decisions[decisionKey].sourceHash = "0".repeat(64);
+    invalidDraft.decisions[decisionKey].sourceContentSha256 = "0".repeat(64);
     await importBytes(page, Buffer.from(`${JSON.stringify(invalidDraft, null, 2)}\n`), "invalid-draft.json");
     assert((await page.locator("#toast-message").textContent()).includes("draft decision"), "Invalid Draft import did not report its decision rejection");
     assert(JSON.stringify(await sessionFingerprint(page)) === JSON.stringify(beforeRejectedImports), "Invalid Draft import changed browser or IndexedDB state");
 
-    await playback.show(page, "Version 6 Draft migration · import, persist, and reload");
-    const version6Draft = structuredClone(draft);
-    version6Draft.schemaVersion = 6;
-    delete version6Draft.decisions[decisionKey].proposedHostedRuleId;
-    await importBytes(page, Buffer.from(`${JSON.stringify(version6Draft, null, 2)}\n`), "version-6-draft.json");
-    const migrated = await page.evaluate(async (key) => {
+    await playback.show(page, "Version 4 Draft persistence · import, persist, and reload");
+    const persistedDraft = await page.evaluate(async (key) => {
       const persisted = await readSession(state.session.id);
       return {
         memoryVersion: state.session.schemaVersion,
@@ -115,13 +110,13 @@ async function run({ page, baseUrl, assert, playback }) {
         proposedHostedRuleId: persisted.decisions[key].proposedHostedRuleId
       };
     }, decisionKey);
-    assert(migrated.memoryVersion === 7 && migrated.persistedVersion === 7, "Version 6 Draft did not persist as session schema version 7");
-    assert(migrated.proposedHostedRuleId === "REVIEW-REPO-001", "Version 6 Draft did not restore the assessment-owned proposed ID");
+    assert(persistedDraft.memoryVersion === 4 && persistedDraft.persistedVersion === 4, "Version 4 Draft did not persist as session schema version 4");
+    assert(persistedDraft.proposedHostedRuleId === proposedId, "Version 4 Draft did not retain the selected proposed ID");
 
     await openWorkbench(page, baseUrl);
-    await openCandidate(page, candidateSearchId);
+    await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Migrated decision action did not survive reload");
-    assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').inputValue() === "REVIEW-REPO-001", "Migrated proposed ID did not survive reload");
+    assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').inputValue() === proposedId, "Proposed ID did not survive reload");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Migrated rationale did not survive reload");
     assert(await page.locator('#assessment-panel [data-plan-toggle]').isChecked(), "Migrated plan membership did not survive reload");
 
@@ -131,24 +126,21 @@ async function run({ page, baseUrl, assert, playback }) {
     await page.locator("#approver-name").fill("Phase Zero Maintainer");
     await page.locator("#preview-review-toggle").click();
     assert(!await page.locator("#approve-export-button").isDisabled(), "UI-complete decision did not reach approval readiness");
-    const expectedPayloadBytes = await page.evaluate(() => `${JSON.stringify(buildApprovalPayload(), null, 2)}\n`);
+    const expectedPayloadBytes = await page.evaluate(() => `${JSON.stringify(buildApprovedRules(), null, 2)}\n`);
     const [approvalDownload] = await Promise.all([
       page.waitForEvent("download"),
       page.locator("#approve-export-button").click()
     ]);
     const approvalBytes = await readDownload(approvalDownload);
-    const handoff = JSON.parse(approvalBytes.toString("utf8"));
-    const payloadBytes = `${JSON.stringify(handoff.payload, null, 2)}\n`;
-    const recomputedHash = crypto.createHash("sha256").update(payloadBytes, "utf8").digest("hex");
-    const approvedDecision = handoff.payload.decisions.find((decision) => decision.candidateId === candidateId);
-    assert(approvalBytes.at(-1) === 0x0a, "Approval handoff download does not end with the expected newline byte");
-    assert(handoff.schemaVersion === 1 && handoff.kind === "hosted-rule-workbench-approval-handoff", "Approval handoff has the wrong contract identity");
-    assert(payloadBytes === expectedPayloadBytes, "Approval handoff payload bytes differ from the exact UI-approved payload");
-    assert(handoff.approvedPayloadSha256 === recomputedHash, "Approval handoff hash does not match the exact exported payload bytes");
-    assert(handoff.createdAt === handoff.approval.approvedAt && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/.test(handoff.createdAt), "Approval timestamps are not equal canonical UTC values");
-    assert(handoff.approval.approvedBy.type === "manual" && handoff.approval.approvedBy.id === "Phase Zero Maintainer" && handoff.approval.approvedBy.displayName === "Phase Zero Maintainer", "Approval handoff lost exact maintainer attribution");
-    assert(approvedDecision.action === "add" && approvedDecision.proposedHostedRuleId === "REVIEW-REPO-001" && approvedDecision.hostedRuleId === null, "Approval payload changed the migrated decision identity or action");
-    assert(approvedDecision.rationale === rationale && approvedDecision.inPlan && approvedDecision.planMembership.source === "manual", "Approval payload changed rationale or manual plan ownership");
+    const approvedRules = JSON.parse(approvalBytes.toString("utf8"));
+    const approvedMutation = approvedRules.mutations.find((mutation) => mutation.rule.id === proposedId);
+    assert(approvalBytes.at(-1) === 0x0a, "Approved-rules download does not end with the expected newline byte");
+    assert(approvalBytes.toString("utf8") === expectedPayloadBytes, "Downloaded approved rules differ from the exact Preview object");
+    assert(approvedRules.schemaVersion === 4 && approvedRules.kind === "hosted-approved-rules", "Approved rules have the wrong contract identity");
+    assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/.test(approvedRules.approvedAt), "Approval timestamp is not canonical UTC");
+    assert(approvedRules.approvedBy.type === "github-authenticated" && approvedRules.approvedBy.id === "fixture-codeowner" && approvedRules.approvedBy.displayName === "Phase Zero Maintainer", "Approved rules lost exact maintainer attribution");
+    assert(approvedMutation.action === "add" && approvedMutation.rule.id === proposedId && approvedMutation.rule.status === "active", "Approved mutation changed the selected identity or action");
+    assert(approvedMutation.rationale === rationale && approvedMutation.placements.length === 1 && approvedMutation.sourceRelationships.length > 0, "Approved mutation is incomplete");
   } finally {
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;

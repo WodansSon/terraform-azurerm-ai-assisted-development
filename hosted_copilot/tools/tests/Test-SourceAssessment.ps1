@@ -148,7 +148,8 @@ function Invoke-Runner {
         [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
         [string[]]$PriorInventoryPaths = @(),
         [int]$MaxRetries = 1,
-        [int]$EvaluatorPayloadBudgetBytes = 393216
+        [int]$EvaluatorPayloadBudgetBytes = 393216,
+        [switch]$ShowProgress
     )
 
     $parameters = @{
@@ -165,8 +166,14 @@ function Invoke-Runner {
     if ($PriorInventoryPaths.Count -gt 0) {
         $parameters.PriorInventoryPaths = $PriorInventoryPaths
     }
+    if ($ShowProgress) {
+        $parameters.ShowProgress = $true
+    }
+    $progressOutput = @()
     try {
-        $output = @(& $runnerPath @parameters 2>&1)
+        $rawOutput = @(& $runnerPath @parameters 6>&1 2>&1)
+        $progressOutput = @($rawOutput | Where-Object { $_ -is [Management.Automation.InformationRecord] } | ForEach-Object { [string]$_.MessageData })
+        $output = @($rawOutput | Where-Object { $_ -isnot [Management.Automation.InformationRecord] })
         $exitCode = 0
     }
     catch {
@@ -176,6 +183,7 @@ function Invoke-Runner {
     return [pscustomobject]@{
         ExitCode = $exitCode
         Output = ($output | Out-String).Trim()
+        Progress = $progressOutput
     }
 }
 
@@ -724,7 +732,7 @@ $response = [ordered]@{
     $env:SOURCE_ASSESSMENT_CALL_LOG = $callLogPath
     $env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH = $failOncePath
     Write-TestProgress -Name 'batched-assessment' -Detail 'Running complete multi-lane assessment with retry and prior-inventory comparison'
-    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
+    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -ShowProgress
     $runnerExitCode = $runnerRun.ExitCode
     $runnerResult = if ($runnerExitCode -eq 0) { $runnerRun.Output | ConvertFrom-Json } else { $null }
     if ($runnerExitCode -ne 0) {
@@ -732,6 +740,9 @@ $response = [ordered]@{
     }
     $runnerCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
     Add-TestResult -Name 'source-defined-batching' -Passed ($runnerExitCode -eq 0 -and $runnerResult.sourceCount -eq 25 -and $runnerResult.batchCount -eq 4 -and $runnerCalls.Count -eq 5 -and $runnerCalls[0] -like '*:3' -and $runnerCalls[1] -like '*:3' -and $runnerCalls[2] -like '*:1' -and $runnerCalls[3] -like '*:20' -and $runnerCalls[4] -like '*:1') -Detail 'The complete three-lane runner uses each source definition batch size, retries one malformed response, and preserves deterministic packet order including prior-only tombstones.'
+    $runningProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+source-assessment/' })
+    $passedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment/' })
+    Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits one start and completion line per assessment batch without corrupting the final JSON result.'
     $runnerBaselineJson = if ($runnerExitCode -eq 0) { Get-Content -LiteralPath $runnerOutputPath -Raw } else { '' }
     Add-TestResult -Name 'runner-baseline-output' -Passed ($runnerExitCode -eq 0 -and $runnerResult.assessmentCount -eq 25 -and (Test-JsonInstance -Json $runnerBaselineJson -SchemaPath $baselineSchemaPath)) -Detail 'The runner delegates exhaustive three-lane draft assembly to the trusted baseline builder and emits a schema-valid version 4 snapshot.'
     $runnerBaseline = if ($runnerExitCode -eq 0) { $runnerBaselineJson | ConvertFrom-Json -DateKind String } else { $null }

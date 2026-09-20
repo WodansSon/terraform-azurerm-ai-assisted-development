@@ -10,7 +10,6 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../../../tools/ValidationOutput.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../modules/shared/SourceEvidenceValidation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot '../modules/reconciliation/AssessmentReconciliationValidation.psm1') -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $catalogRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog'
@@ -256,11 +255,14 @@ try {
     $draft = [ordered]@{
         '$schema' = 'assessment-reconciliation-draft.schema.json'
         schemaVersion = 1
-        recommendations = @([ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'Two assessments describe one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef, $interactiveRef); relatedHostedCoverage = @(); implementationModels = @('legacy', 'typed', 'framework') })
+        recommendations = @(
+            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'Two assessments describe one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef, $interactiveRef); relatedHostedCoverage = @(); implementationModels = @('legacy', 'typed', 'framework') },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); relatedHostedCoverage = @() }
+        )
         assessmentCoverage = @(
             [ordered]@{ assessmentRef = $contributorRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
             [ordered]@{ assessmentRef = $interactiveRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
-            [ordered]@{ assessmentRef = $maintainerRef; disposition = 'excluded'; rationale = 'Outside Hosted review scope.'; recommendationDraftKeys = @() }
+            [ordered]@{ assessmentRef = $maintainerRef; disposition = 'excluded'; rationale = 'Outside Hosted review scope.'; recommendationDraftKeys = @('recommendation-2') }
         )
     }
     Add-TestResult -Name 'reconciliation-response-schema' -Passed (Test-JsonInstance -Value $draft -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json')) -Detail 'The evaluator response has strict recommendations and exhaustive coverage.'
@@ -288,7 +290,7 @@ try {
     $projectedCatalogRule = @($display.catalog.rules | Where-Object { [string]$_.id -ceq 'IMPL-EVID-001' })[0]
     $catalogMetadataValid = [string]$projectedCatalogRule.origin -ceq 'hosted-baseline-migration' -and @($projectedCatalogRule.provenance).Count -gt 0 -and @($projectedCatalogRule.evidenceIds).Count -gt 0 -and @($projectedCatalogRule.implementationModels).Count -gt 0
     Add-TestResult -Name 'complete-catalog-rule-projection' -Passed $catalogMetadataValid -Detail 'Existing catalog rules retain the complete metadata required for Update, Retire, and Restore mutations.'
-    Add-TestResult -Name 'excluded-candidate-visible' -Passed ($excluded.Count -eq 1 -and $null -eq $excluded[0].recommendation) -Detail 'Excluded assessments remain visible without fabricated recommendations.'
+    Add-TestResult -Name 'excluded-candidate-visible' -Passed ($excluded.Count -eq 1 -and [string]$excluded[0].recommendation.action -ceq 'exclude' -and [string]$excluded[0].recommendation.hostedId -like 'DOCS-EX-*') -Detail 'Excluded assessments remain visible with contingent reconciliation-owned identity and metadata.'
     $obsoleteDisplayProperties = @(@('snapshots', 'acceptedSourceGeneration', 'stagedInventories', 'assessmentBaseline', 'recommendationOutput') | Where-Object { $display.PSObject.Properties[$_] })
     Add-TestResult -Name 'display-excludes-transaction-state' -Passed ($obsoleteDisplayProperties.Count -eq 0) -Detail 'The display excludes generation and transaction state.'
 
@@ -342,8 +344,8 @@ try {
     Add-TestResult -Name 'exhaustive-coverage-required' -Passed ($missingCoverageRun.ExitCode -ne 0 -and $missingCoverageRun.Output -like '*does not cover every assessment*') -Detail 'Reconciliation cannot omit an assessment.'
     $duplicateMembership = Copy-JsonObject -Value $draft
     $secondRecommendation = Copy-JsonObject -Value $duplicateMembership.recommendations[0]
-    $secondRecommendation.draftKey = 'recommendation-2'
-    $duplicateMembership.recommendations = @($duplicateMembership.recommendations[0], $secondRecommendation)
+    $secondRecommendation.draftKey = 'recommendation-3'
+    $duplicateMembership.recommendations = @($duplicateMembership.recommendations[0], $duplicateMembership.recommendations[1], $secondRecommendation)
     $duplicateRun = Invoke-DisplayBuilder -Draft $duplicateMembership -Name 'duplicate-membership'
     Add-TestResult -Name 'duplicate-membership-rejected' -Passed ($duplicateRun.ExitCode -ne 0 -and $duplicateRun.Output -like '*more than one generated recommendation*') -Detail 'One assessment cannot belong to multiple recommendations.'
 
