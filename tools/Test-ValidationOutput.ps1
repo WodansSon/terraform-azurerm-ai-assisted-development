@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [ValidateSet('All', 'Interactive', 'Hosted')]
+    [string]$ProductScope = 'All'
 )
 
 Set-StrictMode -Version Latest
@@ -111,32 +114,40 @@ Assert-OutputSequence -Name 'two-column table' -Actual @(
 Assert-OutputSequence -Name 'text output ending' -Actual @(Complete-ValidationTextOutput) -Expected @('')
 
 $presentationConsumers = @(
-    'check-upstream-contributor-drift.ps1',
     'Test-ChangedToolkitRouting.ps1',
-    'Test-InteractiveRuleCatalog.ps1',
-    'Test-PRReady.ps1',
     'Test-ValidationOutput.ps1',
-    'Validate-ChangedToolkits.ps1',
-    'validate-ai-toolkit.ps1',
-    'validate-architecture-layout.ps1',
-    'validate-changelog-consistency.ps1',
-    'validate-changelog-taxonomy.ps1',
-    'validate-contracts.ps1',
-    'validate-copied-markdown-links.ps1',
-    'validate-runtime-line-endings.ps1',
-    'regression/run-regression-harness.ps1',
-    'regression/run-regression-suite.ps1',
-    'regression/score-regression-case.ps1',
-    'regression/summarize-regression-history.ps1',
-    'regression/validate-regression-artifacts.ps1',
-    'regression/write-regression-history-snapshot.ps1',
-    'regression/write-regression-provenance-report.ps1',
-    '../hosted_copilot/tools/tests/Test-InstructionGeneration.ps1',
-    '../hosted_copilot/tools/tests/Test-ReviewResults.ps1',
-    '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
-    '../hosted_copilot/tools/Test-Toolkit.ps1',
-    '../hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1'
+    'Validate-ChangedToolkits.ps1'
 )
+if ($ProductScope -in @('All', 'Interactive')) {
+    $presentationConsumers += @(
+        'check-upstream-contributor-drift.ps1',
+        'Test-InteractiveRuleCatalog.ps1',
+        'Test-PRReady.ps1',
+        'validate-ai-toolkit.ps1',
+        'validate-architecture-layout.ps1',
+        'validate-changelog-consistency.ps1',
+        'validate-changelog-taxonomy.ps1',
+        'validate-contracts.ps1',
+        'validate-copied-markdown-links.ps1',
+        'validate-runtime-line-endings.ps1',
+        'regression/run-regression-harness.ps1',
+        'regression/run-regression-suite.ps1',
+        'regression/score-regression-case.ps1',
+        'regression/summarize-regression-history.ps1',
+        'regression/validate-regression-artifacts.ps1',
+        'regression/write-regression-history-snapshot.ps1',
+        'regression/write-regression-provenance-report.ps1'
+    )
+}
+if ($ProductScope -in @('All', 'Hosted')) {
+    $presentationConsumers += @(
+        '../hosted_copilot/tools/tests/Test-InstructionGeneration.ps1',
+        '../hosted_copilot/tools/tests/Test-ReviewResults.ps1',
+        '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
+        '../hosted_copilot/tools/Test-HostedRules.ps1',
+        '../hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1'
+    )
+}
 foreach ($relativePath in $presentationConsumers) {
     $consumerPath = Join-Path $PSScriptRoot $relativePath
     $consumerContent = Get-Content -LiteralPath $consumerPath -Raw
@@ -151,10 +162,32 @@ foreach ($relativePath in $presentationConsumers) {
     }
 }
 
-foreach ($relativePath in @('Validate-ChangedToolkits.ps1', 'validate-ai-toolkit.ps1')) {
+foreach ($relativePath in @('Validate-ChangedToolkits.ps1') + $(if ($ProductScope -in @('All', 'Interactive')) { @('validate-ai-toolkit.ps1') } else { @() })) {
     $consumerContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot $relativePath) -Raw
     if ($consumerContent -notmatch '\^\\s\*\\\[\(RUNNING\|PASSED\|FAILED\|SKIPPED\)\\\]' -or $consumerContent -notmatch 'Add-ValidationIndent -Line') {
         $issues.Add("$relativePath does not preserve nested child status indentation")
+    }
+}
+
+if ($ProductScope -in @('All', 'Interactive')) {
+    $interactiveValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'validate-ai-toolkit.ps1') -Raw
+    if ($interactiveValidationContent -match "-Name 'npm-install'" -or
+        $interactiveValidationContent -notmatch "-Name 'npm-packages'.*-RunningDetail 'VERIFYING AUDITED LOCKFILE'.*-SuccessDetail 'CURRENT \(MATCHES AUDITED LOCKFILE\)'" -or
+        $interactiveValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
+        $interactiveValidationContent -notmatch "npm-validation/node_modules/\.package-lock\.json" -or
+        $interactiveValidationContent -notmatch 'if \(-not \(Test-NpmPackageGraphCurrent') {
+        $issues.Add('Interactive npm validation must report package currency against the audited lockfile instead of labeling the result as an install')
+    }
+}
+
+if ($ProductScope -in @('All', 'Hosted')) {
+    $hostedWorkbenchValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1') -Raw
+    if ($hostedWorkbenchValidationContent -match "Start-TestResult -Name 'locked-browser-dependencies'" -or
+        $hostedWorkbenchValidationContent -notmatch "Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'" -or
+        $hostedWorkbenchValidationContent -notmatch "Add-TestResult -Name 'npm-packages'.*-SuccessDetail 'CURRENT \(MATCHES AUDITED LOCKFILE\)'" -or
+        $hostedWorkbenchValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
+        $hostedWorkbenchValidationContent -notmatch "node_modules/\.package-lock\.json") {
+        $issues.Add('Hosted npm validation must skip redundant installs and report package currency against its audited lockfile')
     }
 }
 

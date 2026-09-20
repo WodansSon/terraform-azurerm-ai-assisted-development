@@ -79,6 +79,23 @@ else {
 })
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
+$validationRows = New-Object 'System.Collections.Generic.List[object]'
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail)
+    }
+}
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted paired review result validation'
+}
+Write-TestProgress -Name 'result-validation' -Detail ("Validating {0} paired review result files against schema and fixture evidence" -f $resultPaths.Count)
 $validatedRuns = New-Object 'System.Collections.Generic.List[string]'
 foreach ($resultPath in $resultPaths) {
     try {
@@ -182,9 +199,11 @@ foreach ($resultPath in $resultPaths) {
             throw 'adjudicated records require adjudication.completedAt'
         }
         $validatedRuns.Add([string]$record.runId)
+        $validationRows.Add([pscustomobject]@{ status = 'passed'; name = [string]$record.runId })
     }
     catch {
         $issues.Add("$($resultPath.FullName): $($_.Exception.Message)")
+        $validationRows.Add([pscustomobject]@{ status = 'failed'; name = $resultPath.Name })
     }
 }
 
@@ -192,6 +211,7 @@ $result = [ordered]@{
     status = if ($issues.Count -eq 0) { 'passed' } else { 'failed' }
     resultCount = $resultPaths.Count
     validatedRuns = @($validatedRuns.ToArray())
+    results = @($validationRows.ToArray())
     issueCount = $issues.Count
     issues = @($issues.ToArray())
 }
@@ -206,8 +226,10 @@ else {
         'Result Count' = $result.resultCount
         'Issue Count' = $result.issueCount
     })
+    Write-ValidationSectionHeader -Title 'Paired review results'
+    Write-ValidationTwoColumnTable -Rows $result.results -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Result' -SecondProperty 'name' -UppercaseFirst
     if ($result.issues.Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Issues'
+        Write-ValidationSectionHeader -Title 'Failures'
     }
     foreach ($issue in $result.issues) {
         Write-Output "  - $issue"

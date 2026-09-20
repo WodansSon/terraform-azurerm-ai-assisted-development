@@ -35,7 +35,7 @@ Source drift never updates the catalog automatically. Review changed meaning bef
 Run the installer from the source checkout and pass the target repository explicitly:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Install-Toolkit.ps1 `
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1 `
   -RepoDirectory C:\path\to\terraform-provider-azurerm
 ```
 
@@ -44,7 +44,7 @@ The default operation is a dry run. Review every reported addition, update, owne
 Install the approved plan with:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Install-Toolkit.ps1 `
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1 `
   -RepoDirectory C:\path\to\terraform-provider-azurerm `
   -Install
 ```
@@ -56,7 +56,7 @@ Use `-Force` only after reviewing a reported unowned collision or a locally modi
 Validate the Hosted source package with:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1
 ```
 
 The validator reports each check as `RUNNING`, `PASSED`, `FAILED`, or `SKIPPED`, and enforces runtime layout, catalog schema and freshness, manifest ownership, deployable-payload secret scanning, lockfile-backed browser tooling, deployment-time hashing, frontmatter, per-surface and cumulative guidance budgets, installer linked-path rejection, and test-case integrity. Required CI uses `-SkipUpstreamDrift` because live upstream content is a moving external input. Run `Test-UpstreamSources.ps1 -FailOnDrift` explicitly for the fail-closed maintainer audit before accepting a new upstream baseline.

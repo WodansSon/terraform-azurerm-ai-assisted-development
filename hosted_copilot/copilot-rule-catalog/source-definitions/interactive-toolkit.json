@@ -8,7 +8,8 @@
     "path": "tools/interactive-rule-catalog"
   },
   "files": [
-    "rule-catalog.json"
+    "rule-catalog.json",
+    "rule-catalog.schema.json"
   ],
   "exclude": [],
   "parser": "interactive-toolkit-v2",

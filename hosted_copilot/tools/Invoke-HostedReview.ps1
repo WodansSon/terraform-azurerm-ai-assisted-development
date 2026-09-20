@@ -32,6 +32,31 @@ $schemaPath = Join-Path $regressionDirectory 'schema/paired-review-result.schema
 
 Import-Module $workflowModulePath -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1') -Force
+
+$reviewPhase = 'INITIALIZATION'
+trap {
+    $failureMessage = ($_.Exception.Message -replace '\s+', ' ').Trim()
+    Write-ValidationSectionHeader -Title 'Hosted review workflow summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = 'FAILED'
+        Phase = $reviewPhase
+        'Issue Count' = 1
+    })
+    Write-ValidationSectionHeader -Title 'Failures'
+    Write-Output ("  - {0}: {1}" -f $reviewPhase, $failureMessage)
+    Complete-ValidationTextOutput
+    exit 1
+}
+
+Write-ValidationSectionHeader -Title 'Hosted review workflow'
+Write-ValidationSummary -Fields ([ordered]@{
+    Repository = [IO.Path]::GetFullPath($RepoDirectory)
+    Case = $(if ([string]::IsNullOrWhiteSpace($CaseId)) { 'AUTO-DETECT' } else { $CaseId })
+    Effort = $ReviewEffort.ToUpperInvariant()
+    'New Run' = [bool]$NewRun
+    Cleanup = [bool]$Cleanup
+})
 
 function Invoke-Git {
     $arguments = @($args)
@@ -106,13 +131,15 @@ function Get-RunRecords {
 function Show-ReviewRequest {
     param([Parameter(Mandatory = $true)]$Run)
 
-    Write-Output ''
-    Write-Output 'Hosted review is ready for the only required GitHub action.'
-    Write-Output "Request a $($Run.pair.reviewEffort) Copilot review on both pull requests:"
-    Write-Output "  Control: $($Run.pair.control.url)"
-    Write-Output "  Hosted : $($Run.pair.hosted.url)"
-    Write-Output ''
-    Write-Output 'After both reviews finish, rerun this same command. Nothing is waiting or polling.'
+    Write-ValidationSectionHeader -Title 'Hosted review request'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = 'ACTION REQUIRED'
+        Effort = ([string]$Run.pair.reviewEffort).ToUpperInvariant()
+        Control = $Run.pair.control.url
+        Hosted = $Run.pair.hosted.url
+        'Next Step' = 'Request Copilot review on both pull requests, then rerun this command.'
+    })
+    Complete-ValidationTextOutput
 }
 
 function Read-Adjudications {
@@ -123,24 +150,24 @@ function Read-Adjudications {
 
     $expected = @($Case.expectedFindings)
     $result = @{}
-    Write-Output ''
-    Write-Output 'Expected findings:'
+    Write-ValidationSectionHeader -Title 'Hosted review adjudication' | Write-Host
+    Write-Host 'Expected findings:'
     for ($index = 0; $index -lt $expected.Count; $index++) {
-        Write-Output "  $($index + 1). [$($expected[$index].ruleId)] $($expected[$index].reason)"
+        Write-Host "  $($index + 1). [$($expected[$index].ruleId)] $($expected[$index].reason)"
     }
 
     foreach ($profile in @($BlindCapture.profiles)) {
         $slot = [string]$profile.slot
         $slotDecisions = @{}
         $previousComments = New-Object 'System.Collections.Generic.List[object]'
-        Write-Output ''
-        Write-Output "Adjudicate blinded profile $slot"
+        Write-Host ''
+        Write-Host "Adjudicate blinded profile $slot"
         foreach ($comment in @($profile.comments)) {
             $ordinal = $previousComments.Count + 1
-            Write-Output ''
-            Write-Output "Comment $ordinal"
-            Write-Output "  File: $($comment.path):$($comment.line)"
-            Write-Output "  $($comment.body)"
+            Write-Host ''
+            Write-Host "Comment $ordinal"
+            Write-Host "  File: $($comment.path):$($comment.line)"
+            Write-Host "  $($comment.body)"
 
             $classification = $null
             while ($null -eq $classification) {
@@ -220,17 +247,19 @@ function Test-GeneratedResult {
 function Show-ResultSummary {
     param([Parameter(Mandatory = $true)]$Result)
 
-    Write-Output ''
-    Write-Output 'Hosted review comparison complete'
-    Write-Output "  Status : $($Result.summary.comparisonStatus)"
-    Write-Output "  Control: $($Result.summary.control.expectedFound) expected, $($Result.summary.control.missed) missed, $($Result.summary.control.unexpectedValid) additional valid, $($Result.summary.control.falsePositives) false positive"
-    Write-Output "  Hosted : $($Result.summary.hosted.expectedFound) expected, $($Result.summary.hosted.missed) missed, $($Result.summary.hosted.unexpectedValid) additional valid, $($Result.summary.hosted.falsePositives) false positive"
+    Write-ValidationSectionHeader -Title 'Hosted review comparison summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = ([string]$Result.summary.comparisonStatus).ToUpperInvariant()
+        Control = "$($Result.summary.control.expectedFound) expected, $($Result.summary.control.missed) missed, $($Result.summary.control.unexpectedValid) additional valid, $($Result.summary.control.falsePositives) false positive"
+        Hosted = "$($Result.summary.hosted.expectedFound) expected, $($Result.summary.hosted.missed) missed, $($Result.summary.hosted.unexpectedValid) additional valid, $($Result.summary.hosted.falsePositives) false positive"
+    })
     foreach ($reason in @($Result.summary.confoundingReasons)) {
-        Write-Output "  Limit  : $reason"
+        Write-Output "  Limit : $reason"
     }
 }
 
 $resolvedRepoDirectory = [IO.Path]::GetFullPath($RepoDirectory)
+$reviewPhase = 'REPOSITORY VALIDATION'
 $gitCommand = Get-Command git -ErrorAction SilentlyContinue
 if ($null -eq $gitCommand) { throw 'git was not found on PATH' }
 if (-not (Test-Path -LiteralPath (Join-Path $resolvedRepoDirectory '.git'))) {
@@ -241,6 +270,7 @@ if (-not [string]::IsNullOrWhiteSpace((Invoke-Git status --porcelain | Out-Strin
 }
 
 $runs = @(Get-RunRecords)
+$reviewPhase = 'RUN DISCOVERY'
 $matchingRuns = @($runs | Where-Object {
         [string]::IsNullOrWhiteSpace($CaseId) -or $_.fixtureId -eq $CaseId
     } | Sort-Object modifiedAt -Descending)
@@ -249,12 +279,15 @@ $run = if ($NewRun) { $null } elseif ($activeRuns.Count -gt 0) { $activeRuns[0] 
 
 if ([string]::IsNullOrWhiteSpace($CaseId)) {
     if ($activeRuns.Count -gt 1) {
+        Write-ValidationSectionHeader -Title 'Hosted review status'
         Write-Output 'More than one unfinished controlled review exists. Rerun with one of these CaseId values:'
         $activeRuns.fixtureId | Sort-Object -Unique | ForEach-Object { Write-Output "  $_" }
         return
     }
     if ($null -eq $run) {
-        Write-Output 'No controlled review exists. Start one by supplying -CaseId.'
+        Write-ValidationSectionHeader -Title 'Hosted review status'
+        Write-ValidationSummary -Fields ([ordered]@{ Status = 'NOT STARTED'; 'Next Step' = 'Supply -CaseId to start a controlled review.' })
+        Complete-ValidationTextOutput
         return
     }
     $CaseId = $run.fixtureId
@@ -262,6 +295,7 @@ if ([string]::IsNullOrWhiteSpace($CaseId)) {
 
 $case = Get-CaseRecord -Id $CaseId
 if ($null -eq $run) {
+    $reviewPhase = 'RUN CREATION'
     if ($Cleanup) {
         throw 'No completed Hosted review is available for cleanup'
     }
@@ -295,6 +329,7 @@ if ($null -eq $run) {
 $ReviewEffort = [string]$run.pair.reviewEffort
 
 if (Test-Path -LiteralPath $run.resultPath -PathType Leaf) {
+    $reviewPhase = 'RESULT PRESENTATION'
     $result = Get-Content -LiteralPath $run.resultPath -Raw | ConvertFrom-Json
     Show-ResultSummary -Result $result
     if ($Cleanup) {
@@ -308,6 +343,7 @@ if (Test-Path -LiteralPath $run.resultPath -PathType Leaf) {
 }
 
 if (-not (Test-Path -LiteralPath $run.capturePath -PathType Leaf)) {
+    $reviewPhase = 'REVIEW CAPTURE'
     try {
         $null = Invoke-JsonStage -Path $capturePath -Arguments @('-PairPath', $run.pairPath)
     }
@@ -325,6 +361,7 @@ if (-not (Test-Path -LiteralPath $run.blindPath -PathType Leaf)) {
 }
 $capture = Get-Content -LiteralPath $run.capturePath -Raw | ConvertFrom-Json
 $blindCapture = Get-Content -LiteralPath $run.blindPath -Raw | ConvertFrom-Json
+$reviewPhase = 'ADJUDICATION'
 $adjudications = Read-Adjudications -BlindCapture $blindCapture -Case $case
 $rawCapturePath = [IO.Path]::GetRelativePath($regressionDirectory, $run.capturePath).Replace('\', '/')
 $result = New-HostedReviewResult -Capture $capture -Case $case -Adjudications $adjudications -RawCapturePath $rawCapturePath -CompletedAt (ConvertTo-UtcTimestamp -Value ([DateTimeOffset]::UtcNow))

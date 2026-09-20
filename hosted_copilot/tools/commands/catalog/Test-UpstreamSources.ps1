@@ -29,6 +29,11 @@ if (-not ($catalogContent | Test-Json -SchemaFile $schemaPath)) {
 }
 $catalog = $catalogContent | ConvertFrom-Json
 
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted upstream source drift validation'
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'source-fetch' -Detail ("Fetching and hashing {0} tracked upstream sources" -f @($catalog.sources).Count))
+}
+
 $currentContentBySourceId = @{}
 $sourceResults = @()
 foreach ($source in @($catalog.sources)) {
@@ -110,22 +115,26 @@ else {
         'Fetch Failed' = $result.failedCount
         'Updates Catalog' = $result.updatesCatalog
     })
-    if (@($sourceResults | Where-Object status -ne 'unchanged').Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Source issues'
+    Write-ValidationSectionHeader -Title 'Source results'
+    $sourceNameWidth = Get-ValidationNameWidth -Names @($sourceResults.id) -MinimumWidth 30
+    foreach ($source in $sourceResults) {
+        Write-Output (Format-ValidationStatusLine -Status $source.status -Name $source.id -Detail $source.referenceUrl -NameWidth $sourceNameWidth)
     }
-    foreach ($source in @($sourceResults | Where-Object status -ne 'unchanged')) {
-        Write-Output (Format-ValidationStatusLine -Status $source.status -Name $source.id -Detail $source.referenceUrl)
-        Write-Output "    Affected rules: $($source.affectedRuleIds -join ', ')"
-    }
-    foreach ($path in $untrackedTopicPaths) {
-        Write-Output (Format-ValidationStatusLine -Status 'untracked' -Name $path -Detail 'Contributor topic is missing from the Hosted source catalog')
-    }
-    foreach ($path in $staleTopicPaths) {
-        Write-Output (Format-ValidationStatusLine -Status 'stale' -Name $path -Detail 'Hosted source catalog topic is missing from the contributor index')
+    if (-not $result.success) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        foreach ($source in @($sourceResults | Where-Object status -ne 'unchanged')) {
+            Write-Output ("  - {0}: {1}; affected rules: {2}" -f $source.id, $source.status, ($source.affectedRuleIds -join ', '))
+        }
+        foreach ($path in $untrackedTopicPaths) {
+            Write-Output "  - Untracked contributor topic: $path"
+        }
+        foreach ($path in $staleTopicPaths) {
+            Write-Output "  - Stale Hosted source topic: $path"
+        }
     }
     Complete-ValidationTextOutput
 }
 
 if ($FailOnDrift -and -not $result.success) {
-    throw 'Hosted upstream source drift or topic coverage requires semantic maintainer review; the catalog was not modified'
+    exit 1
 }

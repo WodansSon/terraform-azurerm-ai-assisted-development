@@ -22,7 +22,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Ask clarification and approval questions through natural conversational dialogue. Do not use multiple-choice questions or question widgets.
 - Treat a terminal with an active command as exclusively owned by that execution until it completes. Never issue another command into the same terminal; use a separate terminal for concurrent diagnostics.
 - Use human-readable text output for validation commands during active development so maintainers can follow progress in the terminal. Reserve `-OutputFormat Json` for pipelines, automation, or an explicit maintainer request for machine-readable output. When linting Markdown manually, run `npx -y markdownlint-cli2 "AGENTS.md" --config .github/.markdownlint.json` so repository-disabled rules such as `MD013` are honored.
-- Do not run `hosted_copilot/tools/tests/Test-RuleWorkbench.ps1` merely to validate changes unrelated to the Workbench. Prefer the narrow owning test scripts during active development, and use `hosted_copilot/tools/Test-Toolkit.ps1 -SkipRuleWorkbench` when complete Hosted validation is otherwise needed. Run the Workbench suite when changes affect `hosted_copilot/workbench/**`, Workbench bundle or state contracts, its launcher or read-only server, Workbench regression files, or another dependency that can change rendered or interactive behavior, or when the maintainer explicitly requests complete Hosted validation.
+- Do not run `hosted_copilot/tools/tests/Test-RuleWorkbench.ps1` merely to validate changes unrelated to the Workbench. Prefer the narrow owning test scripts during active development, and use `hosted_copilot/tools/Test-HostedRules.ps1 -SkipRuleWorkbench` when complete Hosted validation is otherwise needed. Run the Workbench suite when changes affect `hosted_copilot/workbench/**`, Workbench bundle or state contracts, its launcher or read-only server, Workbench regression files, or another dependency that can change rendered or interactive behavior, or when the maintainer explicitly requests complete Hosted validation.
 - Before proposing or making an edit, restate the shared invariant or architectural behavior that is actually being fixed.
 - Do not weaken production contracts, authority boundaries, validation, required inputs, or test fidelity for implementation convenience. Implement the technically correct design even when it requires more work; fixtures and helpers must model the real required shape and behavior, while exceptional, negative, and scale scenarios belong in dedicated tests rather than shortcuts in the happy path. If the correct implementation is blocked, stop and report the blocker instead of substituting a convenient approximation.
 - Prefer fixes that generalize across all applicable reviews, prompts, contracts, or skills instead of fixes that only help the surfaced example.
@@ -51,7 +51,14 @@ These rules govern maintainer collaboration behavior before any formal review wo
 
 - Use **Interactive Toolkit** for the existing VS Code-oriented runtime, installer, contracts, prompts, skills, and regression harness.
 - Use **Hosted Toolkit** for the isolated GitHub Copilot code-review product designed under `hosted_copilot/`.
+- Once a task is scoped to the Hosted Toolkit, keep product discovery, review, edits, and validation inside `hosted_copilot/**` and other paths classified as Hosted by `tools/toolkit-ownership.json`. Access an explicitly shared or repository-maintenance file only when its Hosted-specific reference, routing, or validation behavior requires alignment.
+- Classify ownership by declared purpose and packaging, not by top-level path alone. Repo-only files that explicitly coordinate both toolkits, such as the toolkit-maintenance and changelog-maintenance skills, shared dispatchers, and shared CI, are shared consumers rather than Interactive Toolkit runtime.
+- During Hosted-only work, never load, invoke, inspect, edit, or validate against Interactive-owned runtime prompts, instructions, skills, agents, installers, regression fixtures, validators, changelogs, or release documentation.
+- Do not invoke Interactive review agents or workflows, including `review-local`, `review-committed`, `code-review-local-changes`, or their contracts and fixtures, to assess Hosted Toolkit changes. Use Hosted-owned tests and contracts or a direct read-only audit restricted to `hosted_copilot/**`.
+- Treat a Hosted task that appears to require an Interactive-owned file as an ownership-boundary conflict. Stop and obtain explicit maintainer approval naming that file before reading or changing it; do not broaden scope through search results, validation routing, or agent prerequisites. Keep changes to explicitly shared consumers limited to the Hosted-owned reference or routing surface that requires alignment.
 - Treat both toolkits as independently maintained and validated. The Interactive Toolkit is versioned, packaged, and released; the Hosted Toolkit is deployed directly from this repository into a target fork.
+- Only the Interactive Toolkit may build a versioned release bundle, archive, or published release. Hosted maintenance and Workbench workflows run locally from the source checkout; the only deployable Hosted output is the exact manifest-owned overlay copied from `hosted_copilot/` into a target fork.
+- Treat a Hosted Workbench assessment or display bundle as ephemeral local workflow data, never as a distribution bundle, release artifact, or versioned package.
 - Treat `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` as the authority for the proposed Hosted Toolkit architecture while its runtime remains unimplemented.
 - Treat the Hosted Toolkit as pre-adoption software until the architecture's validation criteria support an explicit adoption decision.
 - Do not require deferred production generation, synchronization, regression, CI, or publication machinery merely to run the Hosted experiment.
@@ -61,6 +68,14 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Do not let combined validation create a changelog, installer, deployment, or runtime dependency between the toolkits.
 - Keep root `CHANGELOG.md` and `installer/VERSION` owned by the Interactive Toolkit; keep the unversioned Hosted Toolkit changelog at `hosted_copilot/CHANGELOG.md`.
 - Treat explicitly designated shared configuration and dispatcher files as affecting both toolkits; treat unclassified paths as requiring an ownership decision rather than guessing.
+
+## Toolkit Separation Verification
+
+- Run `pwsh -NoProfile -File ./tools/Test-ChangedToolkitRouting.ps1` to verify root Interactive paths, nested Hosted deployment paths, shared paths, release exclusion, and fail-closed unclassified paths.
+- Run `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipUpstreamDrift` to validate the Interactive Toolkit, including its release boundaries. This workflow must not invoke Hosted validation.
+- Run `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift` to validate the Hosted Toolkit from local source. This workflow must not invoke Interactive validation or release tooling.
+- Before an Interactive release, run `tools/build-release-bundle_dry_run.ps1` with reserved version `0.0.1` and an external output root. The builder fails if `installer/file-manifest.config` contains any `hosted_copilot/**` path.
+- Treat a passing separation gate plus independently passing product validators as the required evidence that Hosted files cannot enter an Interactive release and that neither product validator depends on the other product.
 
 ## Interactive Toolkit Release Validation Safety
 

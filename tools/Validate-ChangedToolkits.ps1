@@ -34,7 +34,7 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
-$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-Toolkit.ps1'
+$hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-HostedRules.ps1'
 $npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $npmValidationRoot = Join-Path $PSScriptRoot 'npm-validation'
 $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }

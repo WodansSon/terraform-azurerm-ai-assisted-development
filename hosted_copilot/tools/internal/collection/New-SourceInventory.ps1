@@ -237,12 +237,14 @@ function Invoke-SourceInventoryParser {
             return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
         }
         'interactive-toolkit-v2' {
-            if ($MatchedFiles.Count -ne 1 -or [string]$MatchedFiles[0].RelativePath -cne 'rule-catalog.json') {
-                throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json'
+            $catalogFiles = @($MatchedFiles | Where-Object { [string]$_.RelativePath -ceq 'rule-catalog.json' })
+            $schemaFiles = @($MatchedFiles | Where-Object { [string]$_.RelativePath -ceq 'rule-catalog.schema.json' })
+            if ($MatchedFiles.Count -ne 2 -or $catalogFiles.Count -ne 1 -or $schemaFiles.Count -ne 1) {
+                throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json and rule-catalog.schema.json'
             }
             $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/InteractiveToolkitV2.psm1'
             Import-Module $modulePath -Force
-            return @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$MatchedFiles[0].FullName) -RepositoryRoot $RepositoryRoot)
+            return @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$catalogFiles[0].FullName) -RepositoryRoot $RepositoryRoot)
         }
         'contributor-guidance-v2' {
             if ([string]$Definition.root.kind -cne 'github') {

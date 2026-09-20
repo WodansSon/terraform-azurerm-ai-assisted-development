@@ -13,7 +13,7 @@ param(
 
     [string]$TestContentBase = 'test-content',
 
-    [string]$InstallerPath = (Join-Path $PSScriptRoot '../../Install-Toolkit.ps1'),
+    [string]$InstallerPath = (Join-Path $PSScriptRoot '../../Install-HostedRules.ps1'),
 
     [switch]$Initialize,
 

@@ -2,6 +2,8 @@
 param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '..'),
 
+    [string[]]$LockPath = @(),
+
     [string[]]$AdditionalLockPath = @(),
 
     [switch]$Fix,
@@ -29,6 +31,9 @@ if ($null -eq $gitCommand) {
 }
 if ($AllowBreakingFix -and -not $Fix) {
     throw 'AllowBreakingFix requires Fix'
+}
+if ($PSBoundParameters.ContainsKey('LockPath') -and $AdditionalLockPath.Count -gt 0) {
+    throw 'LockPath cannot be combined with AdditionalLockPath'
 }
 
 function Resolve-RepositoryPath {
@@ -226,13 +231,17 @@ function Invoke-NpmRemediation {
     }
 }
 
-$trackedLockPaths = @(& $gitCommand.Source -C $resolvedRepositoryRoot ls-files -- 'package-lock.json' '**/package-lock.json')
-if ($LASTEXITCODE -ne 0) {
-    throw 'git could not enumerate tracked npm lockfiles'
+$candidateLockPaths = @($LockPath)
+if (-not $PSBoundParameters.ContainsKey('LockPath')) {
+    $trackedLockPaths = @(& $gitCommand.Source -C $resolvedRepositoryRoot ls-files -- 'package-lock.json' '**/package-lock.json')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'git could not enumerate tracked npm lockfiles'
+    }
+    $candidateLockPaths = @($trackedLockPaths) + @($AdditionalLockPath)
 }
 
 $lockPaths = New-Object 'System.Collections.Generic.List[string]'
-foreach ($path in @($trackedLockPaths) + @($AdditionalLockPath)) {
+foreach ($path in $candidateLockPaths) {
     if ([string]::IsNullOrWhiteSpace([string]$path)) {
         continue
     }

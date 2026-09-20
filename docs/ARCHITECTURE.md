@@ -507,7 +507,7 @@ The current repository architecture includes deterministic validation and benchm
 - `tools/Test-PRReady.ps1`: deterministic offline regression coverage for project-readiness argument handling, help, output, and errors.
 - `tools/validate-ai-toolkit.ps1`: one-shot maintainer validation for changelog, contracts, project-readiness behavior, markdown, architecture layout, copied-template links, regression harness, and upstream drift.
 - `tools/Validate-InteractiveToolkit.ps1`: canonical Interactive Toolkit validation entrypoint that currently delegates to the existing implementation.
-- `hosted_copilot/tools/Test-Toolkit.ps1`: complete Hosted Toolkit validation for architecture, isolation, runtime, catalogs, Workbench behavior, regression assets, and deployment prerequisites.
+- `hosted_copilot/tools/Test-HostedRules.ps1`: complete Hosted Toolkit validation for architecture, isolation, runtime, catalogs, Workbench behavior, regression assets, and deployment prerequisites.
 - `tools/Validate-ChangedToolkits.ps1`: changed-path dispatcher for Interactive, Hosted, mixed, shared, repository-maintenance, and unclassified changes.
 - `tools/toolkit-ownership.json`: ordered ownership map used by the changed-path dispatcher.
 - `tools/Test-ChangedToolkitRouting.ps1`: deterministic ownership and routing matrix test.

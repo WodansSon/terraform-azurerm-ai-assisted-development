@@ -13,8 +13,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $resolvedCatalogPath = [IO.Path]::GetFullPath($CatalogPath)
 $resolvedHostedRoot = [IO.Path]::GetFullPath($HostedRoot)
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted instruction generation'
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'catalog-validation' -Detail 'Validating catalog schema, evidence, provenance, and rule references')
+}
 
 if (-not (Test-Path -LiteralPath $resolvedCatalogPath -PathType Leaf)) {
     throw "Instruction catalog was not found: $resolvedCatalogPath"
@@ -74,6 +82,9 @@ foreach ($rule in @($catalog.rules)) {
 
 $usedRuleIds = New-Object 'System.Collections.Generic.List[string]'
 $outputs = New-Object 'System.Collections.Generic.List[object]'
+if ($OutputFormat -eq 'Text') {
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'surface-rendering' -Detail 'Rendering and comparing every Hosted instruction surface')
+}
 foreach ($surface in @($catalog.surfaces)) {
     $lines = New-Object 'System.Collections.Generic.List[string]'
     $lines.Add('---')
@@ -168,14 +179,26 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 6
 }
 else {
-    Write-Output 'Hosted instruction generation'
-    Write-Output "  Mode         : $($result.mode.ToUpperInvariant())"
-    Write-Output "  Active rules : $($result.activeRuleCount)"
+    Write-ValidationSectionHeader -Title 'Hosted instruction generation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $(if ($result.success) { 'PASSED' } else { 'FAILED' })
+        Mode = $result.mode.ToUpperInvariant()
+        'Active Rules' = $result.activeRuleCount
+        'Retired Rules' = $result.retiredRuleCount
+        Outputs = $outputs.Count
+        Stale = $staleOutputs.Count
+    })
+    Write-ValidationSectionHeader -Title 'Instruction surfaces'
     foreach ($output in $outputs) {
-        Write-Output ("  {0,-13}: {1} ({2})" -f $output.surface, $output.status.ToUpperInvariant(), $output.path)
+        Write-Output (Format-ValidationStatusLine -Status $output.status -Name $output.surface -Detail $output.path)
     }
+    if (-not $result.success) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        Write-Output '  - Generated Hosted instructions are stale; rerun with -Write after reviewing the catalog changes.'
+    }
+    Complete-ValidationTextOutput
 }
 
 if (-not $result.success) {
-    throw 'Generated Hosted instructions are stale; rerun with -Write after reviewing the catalog changes'
+    exit 1
 }

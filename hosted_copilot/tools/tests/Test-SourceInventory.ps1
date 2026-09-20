@@ -31,10 +31,13 @@ $parserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/Maintaine
 $v4ParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV4.psm1'
 $interactiveParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/InteractiveToolkitV2.psm1'
 $contributorParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/ContributorGuidanceV2.psm1'
-$interactiveCatalogPath = Join-Path $repoRoot 'tools/interactive-rule-catalog/rule-catalog.json'
 $maintainerRoot = Join-Path $catalogRoot 'maintainer-rules'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted source inventory'
+}
 
 function Add-TestResult {
     param(
@@ -50,6 +53,17 @@ function Add-TestResult {
     })
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
+    }
+}
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail)
     }
 }
 
@@ -144,11 +158,69 @@ function Write-ProposalFixture {
 
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-inventory-' + [guid]::NewGuid().ToString('N'))
 try {
+    Write-TestProgress -Name 'evidence-utilities' -Detail 'Checking timestamps, bounded retries, and GraphQL retry classification'
     $null = New-Item -ItemType Directory -Path $fixtureRoot -Force
     $firstOutputPath = Join-Path $fixtureRoot 'maintainer-first.json'
     $secondOutputPath = Join-Path $fixtureRoot 'maintainer-second.json'
     $interactiveFirstOutputPath = Join-Path $fixtureRoot 'interactive-first.json'
     $interactiveSecondOutputPath = Join-Path $fixtureRoot 'interactive-second.json'
+
+    $interactiveFixtureRepositoryRoot = Join-Path $fixtureRoot 'interactive-repository'
+    $interactiveFixtureCatalogRoot = Join-Path $interactiveFixtureRepositoryRoot 'tools/interactive-rule-catalog'
+    $interactiveFixtureContractPath = Join-Path $interactiveFixtureRepositoryRoot '.github/instructions/synthetic-compliance-contract.instructions.md'
+    $interactiveContract = Get-Content -LiteralPath $interactiveContractPath -Raw | ConvertFrom-Json
+    foreach ($behaviorFile in @($interactiveContract.behaviorFiles | Where-Object { $_ -cne 'tools/interactive-rule-catalog/rule-catalog.schema.json' })) {
+        $sourcePath = Join-Path $repoRoot ([string]$behaviorFile)
+        $destinationPath = Join-Path $interactiveFixtureRepositoryRoot ([string]$behaviorFile)
+        $null = New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force
+        Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
+    }
+    $null = New-Item -ItemType Directory -Path $interactiveFixtureCatalogRoot, (Split-Path -Parent $interactiveFixtureContractPath) -Force
+    $interactiveRuleContent = "### TEST-FIXTURE-001: Synthetic interactive rule`n`n- Rule: Validate the synthetic Interactive intake parser."
+    [IO.File]::WriteAllText($interactiveFixtureContractPath, "# Synthetic Interactive contract`n`n## Rule IDs`n`n$interactiveRuleContent`n`n<!-- TEST-FIXTURE-CONTRACT-EOF -->`n", [Text.UTF8Encoding]::new($false))
+    Write-JsonFixture -Path (Join-Path $interactiveFixtureCatalogRoot 'rule-catalog.schema.json') -Value ([ordered]@{
+        '$schema' = 'https://json-schema.org/draft/2020-12/schema'
+        type = 'object'
+        additionalProperties = $false
+        required = @('$schema', 'schemaVersion', 'rules')
+        properties = [ordered]@{
+            '$schema' = [ordered]@{ type = 'string' }
+            schemaVersion = [ordered]@{ const = 1 }
+            rules = [ordered]@{
+                type = 'array'
+                minItems = 1
+                items = [ordered]@{
+                    type = 'object'
+                    additionalProperties = $false
+                    required = @('id', 'title', 'contractPath', 'contentSha256', 'status', 'provenance', 'evidence', 'sourceIds')
+                    properties = [ordered]@{
+                        id = [ordered]@{ type = 'string' }
+                        title = [ordered]@{ type = 'string' }
+                        contractPath = [ordered]@{ type = 'string' }
+                        contentSha256 = [ordered]@{ type = 'string'; pattern = '^[0-9a-f]{64}$' }
+                        status = [ordered]@{ enum = @('active', 'deprecated', 'retired') }
+                        provenance = [ordered]@{ type = 'string' }
+                        evidence = [ordered]@{ type = 'array' }
+                        sourceIds = [ordered]@{ type = 'array' }
+                    }
+                }
+            }
+        }
+    })
+    Write-JsonFixture -Path (Join-Path $interactiveFixtureCatalogRoot 'rule-catalog.json') -Value ([ordered]@{
+        '$schema' = 'rule-catalog.schema.json'
+        schemaVersion = 1
+        rules = @([ordered]@{
+            id = 'TEST-FIXTURE-001'
+            title = 'Synthetic interactive rule'
+            contractPath = '.github/instructions/synthetic-compliance-contract.instructions.md'
+            contentSha256 = Get-StringSha256 -Value $interactiveRuleContent
+            status = 'active'
+            provenance = 'local-safeguard'
+            evidence = @()
+            sourceIds = @()
+        })
+    })
 
     $canonicalUtcTimestamp = ConvertTo-UtcTimestamp -Value '2026-09-15T14:30:00+02:00'
     $expectedCanonicalUtcTimestamp = [datetime]::new(2026, 9, 15, 12, 30, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
@@ -211,7 +283,7 @@ try {
     } $graphQlFunctionDefinitions
     Add-TestResult -Name 'graphql-body-error-retried' -Passed ($graphQlRetryAttemptCount -eq 2) -Detail 'A structured transient GraphQL error in an HTTP-success response remains inside the bounded retry boundary.'
 
-
+    Write-TestProgress -Name 'contract-validation' -Detail 'Validating source definitions, parser contracts, schemas, and behavior dependencies'
     Add-TestResult -Name 'source-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $definitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Maintainer Proposals uses the strict shared source-definition schema.'
     Add-TestResult -Name 'parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Maintainer Proposals parser contract has a strict versioned shape.'
     Add-TestResult -Name 'v4-parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $v4ContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The shadow version 4 Maintainer Proposals parser contract has a strict versioned shape.'
@@ -229,14 +301,18 @@ try {
     $maintainerCatalogSchemaPath = 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
     Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, and parser-specific validation schemas.'
 
-    $interactiveCatalog = Get-Content -LiteralPath $interactiveCatalogPath -Raw | ConvertFrom-Json
-    $interactiveContractSourcePaths = @($interactiveCatalog.rules.contractPath | Sort-Object -Unique | ForEach-Object { Join-Path $repoRoot $_ })
-    $protectedPaths = @($definitionPath, $interactiveDefinitionPath, $contributorDefinitionPath, $definitionSchemaPath, $inventorySchemaPath, $contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath, $contractSchemaPath, $parserModulePath, $v4ParserModulePath, $interactiveParserModulePath, $contributorParserModulePath, $interactiveCatalogPath) + @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName) + $interactiveContractSourcePaths
+    Write-TestProgress -Name 'inventory-generation' -Detail 'Collecting Maintainer Proposal inventories and a synthetic Interactive intake fixture'
+    $interactiveFixtureProtectedPaths = @(
+        Join-Path $interactiveFixtureCatalogRoot 'rule-catalog.json'
+        Join-Path $interactiveFixtureCatalogRoot 'rule-catalog.schema.json'
+        $interactiveFixtureContractPath
+    )
+    $protectedPaths = @($definitionPath, $interactiveDefinitionPath, $contributorDefinitionPath, $definitionSchemaPath, $inventorySchemaPath, $contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath, $contractSchemaPath, $parserModulePath, $v4ParserModulePath, $interactiveParserModulePath, $contributorParserModulePath) + @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName) + $interactiveFixtureProtectedPaths
     $hashesBefore = @($protectedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
     $firstRun = Invoke-Collector -OutputPath $firstOutputPath
     $secondRun = Invoke-Collector -OutputPath $secondOutputPath
-    $interactiveFirstRun = Invoke-Collector -OutputPath $interactiveFirstOutputPath -DefinitionPath $interactiveDefinitionPath
-    $interactiveSecondRun = Invoke-Collector -OutputPath $interactiveSecondOutputPath -DefinitionPath $interactiveDefinitionPath
+    $interactiveFirstRun = Invoke-Collector -OutputPath $interactiveFirstOutputPath -DefinitionPath $interactiveDefinitionPath -RepositoryRoot $interactiveFixtureRepositoryRoot
+    $interactiveSecondRun = Invoke-Collector -OutputPath $interactiveSecondOutputPath -DefinitionPath $interactiveDefinitionPath -RepositoryRoot $interactiveFixtureRepositoryRoot
     $hashesAfter = @($protectedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
 
     $firstInventory = if ($firstRun.ExitCode -eq 0) { Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json } else { $null }
@@ -250,9 +326,16 @@ try {
     Add-TestResult -Name 'generated-parser-hash-binding' -Passed ($null -ne $firstInventory -and [string]$firstInventory.parserContractSha256 -ceq [string]$currentMaintainerEvidence.ParserContractSha256) -Detail 'Generated inventory stores the automatically calculated hash of its exact parser behavior contract.'
     Add-TestResult -Name 'inventory-deterministic' -Passed ($null -ne $firstInventory -and $null -ne $secondInventory -and $firstInventory.collection.inventorySha256 -ceq $secondInventory.collection.inventorySha256 -and $firstInventory.inventoryConfigurationSha256 -ceq $secondInventory.inventoryConfigurationSha256) -Detail 'Repeated collection produces identical factual and configuration hashes.'
     Add-TestResult -Name 'inventory-source-only' -Passed ($null -ne $firstInventory -and @($firstInventory.records | Where-Object { $_.PSObject.Properties['state'] -or $_.PSObject.Properties['requiresReview'] -or $_.PSObject.Properties['relatedHostedRules'] }).Count -eq 0) -Detail 'Inventory records contain source facts without candidate or Hosted decision state.'
-    Add-TestResult -Name 'interactive-inventory-generated' -Passed ($interactiveFirstRun.ExitCode -eq 0 -and $interactiveSecondRun.ExitCode -eq 0) -Detail 'The collector generates staged inventories for the real Interactive Toolkit catalog.'
+    $interactiveInventoryGenerated = $interactiveFirstRun.ExitCode -eq 0 -and $interactiveSecondRun.ExitCode -eq 0
+    $interactiveInventoryGenerationDetail = if ($interactiveInventoryGenerated) {
+        'The collector generates staged inventories from a self-contained synthetic Interactive catalog.'
+    }
+    else {
+        "Synthetic Interactive collection failed: first=$($interactiveFirstRun.Output); second=$($interactiveSecondRun.Output)"
+    }
+    Add-TestResult -Name 'interactive-inventory-generated' -Passed $interactiveInventoryGenerated -Detail $interactiveInventoryGenerationDetail
     Add-TestResult -Name 'interactive-inventory-schema' -Passed ($null -ne $interactiveFirstInventory -and (Test-JsonInstance -Json (Get-Content -LiteralPath $interactiveFirstOutputPath -Raw) -SchemaPath $inventorySchemaPath)) -Detail 'The Interactive staged inventory satisfies the strict shared inventory schema.'
-    Add-TestResult -Name 'interactive-inventory-count' -Passed ($null -ne $interactiveFirstInventory -and @($interactiveFirstInventory.records).Count -eq 349 -and @($interactiveFirstInventory.records.sourceId | Sort-Object -Unique).Count -eq 349) -Detail 'The Interactive inventory contains exactly all 349 unique catalog rule IDs.'
+    Add-TestResult -Name 'interactive-inventory-count' -Passed ($null -ne $interactiveFirstInventory -and @($interactiveFirstInventory.records).Count -eq 1 -and [string]$interactiveFirstInventory.records[0].sourceId -ceq 'TEST-FIXTURE-001') -Detail 'The synthetic Interactive inventory contains exactly its one expected rule.'
     Add-TestResult -Name 'interactive-inventory-deterministic' -Passed ($null -ne $interactiveFirstInventory -and $null -ne $interactiveSecondInventory -and $interactiveFirstInventory.collection.inventorySha256 -ceq $interactiveSecondInventory.collection.inventorySha256 -and $interactiveFirstInventory.inventoryConfigurationSha256 -ceq $interactiveSecondInventory.inventoryConfigurationSha256 -and $interactiveFirstInventory.collection.sourceRevision.worktreeSha256 -ceq $interactiveSecondInventory.collection.sourceRevision.worktreeSha256) -Detail 'Repeated Interactive collection produces identical factual, configuration, and source-revision hashes.'
     Add-TestResult -Name 'interactive-inventory-source-only' -Passed ($null -ne $interactiveFirstInventory -and @($interactiveFirstInventory.records | Where-Object { $_.PSObject.Properties['state'] -or $_.PSObject.Properties['requiresReview'] -or $_.PSObject.Properties['hostedRuleIds'] -or $_.PSObject.Properties['relatedHostedRules'] }).Count -eq 0) -Detail 'Interactive records contain source facts without ledger decisions or Hosted candidate state.'
     Import-Module $contributorParserModulePath -Force
@@ -264,6 +347,7 @@ try {
     Add-TestResult -Name 'contributor-parser-records' -Passed ($contributorRecords.Count -eq 2 -and [string]$contributorRecords[0].sourceId -ceq 'contributing-readme' -and [string]$contributorRecords[1].sourceId -ceq 'guide-new-resource') -Detail 'Contributor documents retain legacy-compatible deterministic source IDs.'
     Add-TestResult -Name 'contributor-parser-pinned-evidence' -Passed (@($contributorRecords | Where-Object { $_.resolvedCommit -cne ('a' * 40) -or $_.referenceUrl -notlike "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('a' * 40)/*" }).Count -eq 0) -Detail 'Contributor records bind content and references to one immutable commit.'
 
+    Write-TestProgress -Name 'snapshot-consistency' -Detail 'Verifying parser-time mutations cannot split records from source revision evidence'
     $snapshotRepositoryRoot = Join-Path $fixtureRoot 'snapshot-repository'
     $snapshotCatalogRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
     $snapshotDefinitionRoot = Join-Path $snapshotCatalogRoot 'source-definitions'
@@ -338,6 +422,7 @@ try {
     $boundaryRun = Invoke-Collector -OutputPath $insideRepositoryOutput
     Add-TestResult -Name 'repository-output-rejected' -Passed ($boundaryRun.ExitCode -ne 0 -and -not (Test-Path -LiteralPath $insideRepositoryOutput)) -Detail 'Staged inventory output cannot be written inside the repository.'
 
+    Write-TestProgress -Name 'collection-boundaries' -Detail 'Checking repository output, include/exclude, traversal, and parser failure boundaries'
     $definitionFixtureRoot = Join-Path $fixtureRoot 'source-definitions'
     $null = New-Item -ItemType Directory -Path $definitionFixtureRoot -Force
     Copy-Item -LiteralPath $definitionSchemaPath -Destination $definitionFixtureRoot
@@ -391,6 +476,7 @@ try {
     Write-ProposalFixture -Path $retiredPath -Surface 'implementation' -Body "### IMPL-MAINT-902: Retired proposal`n`n- Rule: Reject an unbound retired proposal.`n- Provenance: local-safeguard`n- Rationale: Retirement requires an existing Hosted rule.`n- Status: retired"
     Add-TestResult -Name 'retired-mapping-required' -Passed (Test-ThrowsLike -Action { Get-MaintainerProposalInventoryRecords -SourcePaths @($retiredPath) -RepositoryRoot $fixtureRoot } -Pattern '*does not map to a Hosted rule*') -Detail 'Retired Maintainer Proposals must resolve to an existing Hosted rule.'
 
+    Write-TestProgress -Name 'remote-rules' -Detail 'Validating version 4 parser parity and imported Remote Rules boundaries'
     $v2Module = Import-Module $parserModulePath -Force -PassThru
     $v4Module = Import-Module $v4ParserModulePath -Force -PassThru
     $repositoryProposalPaths = @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName)
@@ -452,6 +538,7 @@ try {
     $ordinal1000Rejected = Test-ThrowsLike -Action { & $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } @($ordinal1000Path) $fixtureRoot } -Pattern '*heading is invalid*'
     Add-TestResult -Name 'v4-remote-ordinal-boundary' -Passed ($ordinal999Records.Count -eq 1 -and [string]$ordinal999Records[0].sourceId -ceq 'TEST-REMOTE-A1B2C3D4-999' -and $ordinal1000Rejected) -Detail 'Version 4 accepts ordinal 999 and rejects ordinal 1000.'
 
+    Write-TestProgress -Name 'inventory-integrity' -Detail 'Checking collection-only shape, configuration drift, and record tampering'
     $inventory = Get-Content -LiteralPath $firstOutputPath -Raw | ConvertFrom-Json -DateKind String
     Add-TestResult -Name 'inventory-collection-only' -Passed ($null -eq $inventory.PSObject.Properties['acceptance'] -and $null -eq $inventory.PSObject.Properties['acceptedRevisions']) -Detail 'Staged inventory contains collection facts and records without per-lane acceptance or revision state.'
 
@@ -505,16 +592,15 @@ else {
         Tests = $result.testCount
         Issues = $result.issueCount
     })
-    Write-Output ''
+    Write-ValidationSectionHeader -Title 'Source inventory tests'
     Write-ValidationTwoColumnTable -Rows @($result.tests) -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -FirstWidth 10 -UppercaseFirst
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Failures:'
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {
-            Write-Output "- $issue"
+            Write-Output "  - $issue"
         }
     }
-    Write-Host ''
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

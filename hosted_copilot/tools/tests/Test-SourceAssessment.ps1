@@ -149,6 +149,9 @@ function Invoke-Runner {
         [string[]]$PriorInventoryPaths = @(),
         [int]$MaxRetries = 1,
         [int]$EvaluatorPayloadBudgetBytes = 393216,
+        [string]$CacheDirectory,
+        [string]$ResumeRunDirectory,
+        [string]$Model = 'gpt-5.4',
         [switch]$ShowProgress
     )
 
@@ -161,6 +164,8 @@ function Invoke-Runner {
         RetryDelayMilliseconds = 0
         EvaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
         GeneratedAt = '2026-09-15T09:00:00-05:00'
+        CacheDirectory = if ([string]::IsNullOrWhiteSpace($CacheDirectory)) { Join-Path $tempRoot ('batch-cache-' + [guid]::NewGuid().ToString('N')) } else { $CacheDirectory }
+        Model = $Model
         OutputFormat = 'Json'
     }
     if ($PriorInventoryPaths.Count -gt 0) {
@@ -168,6 +173,9 @@ function Invoke-Runner {
     }
     if ($ShowProgress) {
         $parameters.ShowProgress = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
+        $parameters.ResumeRunDirectory = $ResumeRunDirectory
     }
     $progressOutput = @()
     try {
@@ -282,7 +290,7 @@ try {
     $null = New-Item -ItemType Directory -Path $tempRoot -Force
 
     if ($OutputFormat -eq 'Text') {
-        Write-ValidationSectionHeader -Title 'Hosted source assessment test summary'
+        Write-ValidationSectionHeader -Title 'Hosted source assessment'
     }
     Write-TestProgress -Name 'contract-validation' -Detail 'Validating source lanes, schemas, behavior identity, and evaluator prompt'
 
@@ -571,6 +579,10 @@ if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH) -an
     [IO.File]::WriteAllText($OutputPath, "{`n", [Text.UTF8Encoding]::new($false))
     return
 }
+if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_FAIL_LANE) -and [string]$batch.sourceDefinitionId -ceq $env:SOURCE_ASSESSMENT_FAIL_LANE) {
+    [IO.File]::WriteAllText($OutputPath, "{`n", [Text.UTF8Encoding]::new($false))
+    return
+}
 $entries = @($batch.records | ForEach-Object {
     [object[]]$assessments = @()
     if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE) -and [string]$_.sourceRef.sourceDefinitionId -ceq $env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE) {
@@ -738,8 +750,9 @@ $response = [ordered]@{
     $failOncePath = Join-Path $tempRoot 'runner-fail-once.marker'
     $env:SOURCE_ASSESSMENT_CALL_LOG = $callLogPath
     $env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH = $failOncePath
+    $runnerCacheDirectory = Join-Path $tempRoot 'runner-source-cache'
     Write-TestProgress -Name 'batched-assessment' -Detail 'Running complete multi-lane assessment with retry and prior-inventory comparison'
-    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -ShowProgress
+    $runnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath $runnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -CacheDirectory $runnerCacheDirectory -ShowProgress
     $runnerExitCode = $runnerRun.ExitCode
     $runnerResult = if ($runnerExitCode -eq 0) { $runnerRun.Output | ConvertFrom-Json } else { $null }
     if ($runnerExitCode -ne 0) {
@@ -750,6 +763,31 @@ $response = [ordered]@{
     $runningProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+source-assessment/' })
     $passedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment/' })
     Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits one start and completion line per assessment batch without corrupting the final JSON result.'
+    $assessmentProgressColonIndexes = @($runningProgress + $passedProgress | ForEach-Object { $_.IndexOf(' : ') })
+    Add-TestResult -Name 'batch-progress-alignment' -Passed (@($assessmentProgressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $assessmentProgressColonIndexes[0] -gt 0) -Detail 'Every assessment batch status line aligns its detail separator to the shared 42-character assessment name column.'
+    $callsBeforeCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
+    $cachedRunnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'cached-runner-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -CacheDirectory $runnerCacheDirectory -ShowProgress
+    $cachedRunnerResult = if ($cachedRunnerRun.ExitCode -eq 0) { $cachedRunnerRun.Output | ConvertFrom-Json } else { $null }
+    $callsAfterCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
+    $sourceCacheFileCount = @(Get-ChildItem -LiteralPath $runnerCacheDirectory -File -ErrorAction SilentlyContinue).Count
+    Add-TestResult -Name 'validated-source-cache-reuse' -Passed ($cachedRunnerRun.ExitCode -eq 0 -and $cachedRunnerResult.cachedSourceCount -eq $runnerResult.sourceCount -and $cachedRunnerResult.evaluatedSourceCount -eq 0 -and $cachedRunnerResult.evaluatedBatchCount -eq 0 -and $callsAfterCacheReuse -eq $callsBeforeCacheReuse -and @($cachedRunnerRun.Progress | Where-Object { $_ -match 'source-assessment/reuse' }).Count -eq 1) -Detail "An identical assessment run revalidates and reuses every content-addressed source entry without invoking the evaluator. Cache files: $sourceCacheFileCount; cached: $($cachedRunnerResult.cachedSourceCount); evaluated sources: $($cachedRunnerResult.evaluatedSourceCount); evaluated batches: $($cachedRunnerResult.evaluatedBatchCount); evaluator call delta: $($callsAfterCacheReuse - $callsBeforeCacheReuse); progress: $($cachedRunnerRun.Progress -join ' | ')."
+
+    $changedRunnerInventory = Copy-JsonObject -Value (Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json)
+    $changedRunnerInventory.records[0].content = 'Changed runner source record 1.'
+    $changedRunnerInventory.records[0].contentSha256 = Get-StringSha256 -Value $changedRunnerInventory.records[0].content
+    $changedRunnerInventory.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($changedRunnerInventory.records)
+    $changedRunnerInventoryPath = Join-Path $tempRoot 'changed-runner-maintainer-inventory.json'
+    Write-JsonFixture -Path $changedRunnerInventoryPath -Value $changedRunnerInventory
+    [string[]]$changedRunnerInventoryPaths = @($runnerContributorInventoryPath, $interactiveInventoryPath, $changedRunnerInventoryPath)
+    $callsBeforeSourceDelta = @(Get-Content -LiteralPath $callLogPath).Count
+    $sourceDeltaRun = Invoke-Runner -AcceptedInventoryPaths $changedRunnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'source-delta-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -CacheDirectory $runnerCacheDirectory
+    $sourceDeltaResult = if ($sourceDeltaRun.ExitCode -eq 0) { $sourceDeltaRun.Output | ConvertFrom-Json } else { $null }
+    $callsAfterSourceDelta = @(Get-Content -LiteralPath $callLogPath).Count
+    Add-TestResult -Name 'source-cache-delta-reuse' -Passed ($sourceDeltaRun.ExitCode -eq 0 -and $sourceDeltaResult.cachedSourceCount -eq ($runnerResult.sourceCount - 1) -and $sourceDeltaResult.evaluatedSourceCount -eq 1 -and $sourceDeltaResult.evaluatedBatchCount -eq 1 -and $callsAfterSourceDelta -eq ($callsBeforeSourceDelta + 1)) -Detail 'Changing one source record reuses every unchanged assessment and evaluates only the changed source.'
+
+    $modelChangedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'model-changed-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -CacheDirectory $runnerCacheDirectory -Model 'gpt-5.3'
+    $modelChangedResult = if ($modelChangedRun.ExitCode -eq 0) { $modelChangedRun.Output | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'source-cache-model-invalidation' -Passed ($modelChangedRun.ExitCode -eq 0 -and $modelChangedResult.cachedSourceCount -eq 0 -and $modelChangedResult.evaluatedSourceCount -eq $runnerResult.sourceCount -and $modelChangedResult.evaluatedBatchCount -eq $runnerResult.batchCount) -Detail 'Changing the evaluator model invalidates all otherwise matching source checkpoints.'
     $runnerBaselineJson = if ($runnerExitCode -eq 0) { Get-Content -LiteralPath $runnerOutputPath -Raw } else { '' }
     Add-TestResult -Name 'runner-baseline-output' -Passed ($runnerExitCode -eq 0 -and $runnerResult.assessmentCount -eq 25 -and (Test-JsonInstance -Json $runnerBaselineJson -SchemaPath $baselineSchemaPath)) -Detail 'The runner delegates exhaustive three-lane draft assembly to the trusted baseline builder and emits a schema-valid version 4 snapshot.'
     $runnerBaseline = if ($runnerExitCode -eq 0) { $runnerBaselineJson | ConvertFrom-Json -DateKind String } else { $null }
@@ -845,11 +883,20 @@ $response = [ordered]@{
     Add-TestResult -Name 'runner-reassessment-required' -Passed ($missingReassessmentRun.ExitCode -ne 0 -and $missingReassessmentRun.Output -like '*omitted semantic reassessment for changed source evidence*') -Detail 'The runner rejects changed source evidence when the evaluator omits its semantic reassessment.'
 
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue
+    $env:SOURCE_ASSESSMENT_FAIL_LANE = 'interactive-toolkit'
+    $retainedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'retained-run-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    $retainedRunDirectory = if ($retainedRun.Output -match '(?s)run artifacts were retained at\s+([^\r\n]+)') { $Matches[1].Trim().TrimStart('|').Trim() } else { $null }
+    Remove-Item Env:SOURCE_ASSESSMENT_FAIL_LANE -ErrorAction SilentlyContinue
+    $recoveryCacheDirectory = Join-Path $tempRoot 'recovery-source-cache'
+    $recoveredRun = if (-not [string]::IsNullOrWhiteSpace($retainedRunDirectory)) { Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'recovered-run-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -CacheDirectory $recoveryCacheDirectory -ResumeRunDirectory $retainedRunDirectory } else { $null }
+    $recoveredResult = if ($null -ne $recoveredRun -and $recoveredRun.ExitCode -eq 0) { $recoveredRun.Output | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'retained-run-recovery' -Passed ($retainedRun.ExitCode -ne 0 -and $null -ne $recoveredResult -and $recoveredResult.recoveredSourceCount -gt 0 -and $recoveredResult.evaluatedSourceCount -gt 0 -and ($recoveredResult.recoveredSourceCount + $recoveredResult.evaluatedSourceCount) -eq $recoveredResult.sourceCount -and -not (Test-Path -LiteralPath $retainedRunDirectory)) -Detail "An explicit retained-run recovery imports exact validated source entries, evaluates only missing or invalid sources, and removes the successfully recovered toolkit-managed run. Retained path: $retainedRunDirectory; recovery result: $($recoveredRun.Output)"
+
     $callsBeforeUnknownCoverage = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath).Count } else { 0 }
     $env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE = 'IMPL-WF-004'
     $unknownCoverageRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'unknown-related-coverage-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
     $callsAfterUnknownCoverage = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath).Count } else { 0 }
-    Add-TestResult -Name 'runner-related-coverage-retry' -Passed ($unknownCoverageRun.ExitCode -ne 0 -and $unknownCoverageRun.Output -like '*failed after 2 attempts*unknown related Hosted coverage*IMPL-WF-004*' -and $callsAfterUnknownCoverage -eq ($callsBeforeUnknownCoverage + 2)) -Detail 'Unknown evaluator-authored related Hosted coverage is retried and rejected inside its batch before later batches run.'
+    Add-TestResult -Name 'runner-related-coverage-retry' -Passed ($unknownCoverageRun.ExitCode -ne 0 -and $unknownCoverageRun.Output -like '*failed after 2 attempts*unknown related Hosted coverage*IMPL-WF-004*' -and $callsAfterUnknownCoverage -eq ($callsBeforeUnknownCoverage + 2)) -Detail "Unknown evaluator-authored related Hosted coverage is retried and rejected inside its batch before later batches run. Evaluator call delta: $($callsAfterUnknownCoverage - $callsBeforeUnknownCoverage); output: $($unknownCoverageRun.Output)"
 
     Remove-Item Env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE -ErrorAction SilentlyContinue
     $env:SOURCE_ASSESSMENT_UNKNOWN_MAPPING = 'IMPL-UNKNOWN-999'
@@ -865,6 +912,7 @@ finally {
     Remove-Item Env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH -ErrorAction SilentlyContinue
+    Remove-Item Env:SOURCE_ASSESSMENT_FAIL_LANE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_MALFORMED_NESTED -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_MUTATE_INVENTORY_PATH -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue
@@ -893,7 +941,7 @@ else {
     Write-ValidationSectionHeader -Title 'Source assessment tests'
     Write-ValidationTwoColumnTable -Rows @($result.tests) -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -UppercaseFirst
     if ($issues.Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Issues'
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {
             Write-Output "  - $issue"
         }

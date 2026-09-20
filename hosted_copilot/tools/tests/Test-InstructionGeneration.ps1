@@ -18,6 +18,10 @@ $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-instruction-generation-{0}" -f [Guid]::NewGuid().ToString('N'))
 
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted instruction generation'
+}
+
 function Add-TestResult {
     param(
         [Parameter(Mandatory = $true)]
@@ -37,6 +41,17 @@ function Add-TestResult {
     })
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
+    }
+}
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail)
     }
 }
 
@@ -66,6 +81,7 @@ function Invoke-Generator {
 }
 
 try {
+    Write-TestProgress -Name 'fixture-preparation' -Detail 'Staging the catalog, schema, and generated instruction files'
     $catalogDirectory = Join-Path $tempRoot 'copilot-rule-catalog'
     New-Item -ItemType Directory -Path $catalogDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.json')
@@ -79,6 +95,7 @@ try {
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath
     }
 
+    Write-TestProgress -Name 'baseline-generation' -Detail 'Checking committed instructions against the current catalog'
     $baseline = Invoke-Generator
     Add-TestResult -Name 'baseline-freshness' -Passed ($baseline.exitCode -eq 0) -Detail $(if ($baseline.exitCode -eq 0) { 'Current catalog reproduces all committed instruction files.' } else { $baseline.output })
 
@@ -90,12 +107,14 @@ try {
         $implementationOutput.Contains('- `[IMPL-SCHEMA-007]` [legacy, typed, framework]')
     Add-TestResult -Name 'implementation-model-rendering' -Passed $modelRenderingPassed -Detail $(if ($modelRenderingPassed) { 'Generated implementation rules preserve model-specific applicability.' } else { 'Generated implementation model markers are missing or incorrect.' })
 
+    Write-TestProgress -Name 'catalog-behavior' -Detail 'Validating model applicability and catalog-native rule origins'
     $tempCatalogPath = Join-Path $catalogDirectory 'instruction-catalog.json'
     $catalog.rules[0].origin = 'hosted-catalog-addition'
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
     $catalogAddition = Invoke-Generator
     Add-TestResult -Name 'catalog-addition-origin' -Passed ($catalogAddition.exitCode -eq 0) -Detail $(if ($catalogAddition.exitCode -eq 0) { 'Catalog-native rule origin passes schema validation without changing output.' } else { $catalogAddition.output })
 
+    Write-TestProgress -Name 'write-boundaries' -Detail 'Checking read-only stale detection, explicit writes, and schema enforcement'
     $firstOutputPath = Join-Path $tempRoot ([string]$catalog.surfaces[0].outputPath)
     $beforeStaleHash = (Get-FileHash -LiteralPath $firstOutputPath -Algorithm SHA256).Hash
     $catalog.rules[0].text = "$($catalog.rules[0].text) Regression probe."
@@ -143,7 +162,7 @@ else {
     Write-ValidationSectionHeader -Title 'Generation tests'
     Write-ValidationTwoColumnTable -Rows @($results.ToArray()) -FirstHeader 'status' -FirstProperty 'status' -SecondHeader 'test' -SecondProperty 'name' -UppercaseFirst
     if ($issues.Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Issues'
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {
             Write-Output "  - $issue"
         }

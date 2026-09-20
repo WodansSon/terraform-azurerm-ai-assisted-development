@@ -39,6 +39,7 @@ $headedPlaybackPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
 $implementationContractPath = Join-Path $PSScriptRoot '../../docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md'
 $nodePackageManifestPath = Join-Path $toolsRoot 'package.json'
 $nodePackageLockPath = Join-Path $toolsRoot 'package-lock.json'
+$nodeInstalledLockPath = Join-Path $toolsRoot 'node_modules/.package-lock.json'
 $nodePackageLockRelativePath = 'hosted_copilot/tools/package-lock.json'
 $npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
@@ -69,12 +70,13 @@ function Test-ShouldRun {
 
 function Start-TestResult {
     param(
-        [Parameter(Mandatory = $true)][string]$Name
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string]$RunningDetail = 'IN PROGRESS'
     )
 
     $testStartTimes[$Name] = Get-Date
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail)
     }
 }
 
@@ -82,7 +84,8 @@ function Add-TestResult {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][bool]$Passed,
-        [Parameter(Mandatory = $true)][string]$Detail
+        [Parameter(Mandatory = $true)][string]$Detail,
+        [string]$SuccessDetail
     )
 
     $durationSeconds = 0
@@ -97,10 +100,52 @@ function Add-TestResult {
         detail = $Detail
     })
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+        $statusDetail = if ($Passed -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { "{0}s" -f $durationSeconds }
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail)
     }
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
+    }
+}
+
+function Test-NpmPackageGraphCurrent {
+    param(
+        [Parameter(Mandatory = $true)][string]$LockPath,
+        [Parameter(Mandatory = $true)][string]$InstalledLockPath
+    )
+
+    if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf) -or -not (Test-Path -LiteralPath $InstalledLockPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $lock = Get-Content -LiteralPath $LockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $installedLock = Get-Content -LiteralPath $InstalledLockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        if ($lock['lockfileVersion'] -ne $installedLock['lockfileVersion'] -or $null -eq $lock['packages'] -or $null -eq $installedLock['packages']) {
+            return $false
+        }
+        foreach ($packagePath in @($installedLock['packages'].Keys)) {
+            if (-not $lock['packages'].ContainsKey($packagePath)) {
+                return $false
+            }
+        }
+        foreach ($packagePath in @($lock['packages'].Keys | Where-Object { $_ -ne '' })) {
+            if (-not $installedLock['packages'].ContainsKey($packagePath)) {
+                if (-not [bool]$lock['packages'][$packagePath]['optional']) {
+                    return $false
+                }
+                continue
+            }
+            $lockedPackage = $lock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
+            $installedPackage = $installedLock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
+            if ($lockedPackage -cne $installedPackage) {
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
     }
 }
 
@@ -268,7 +313,7 @@ try {
         $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
         $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
         Start-TestResult -Name 'npm audit'
-        $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-OutputFormat', 'Json')
+        $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-LockPath', $nodePackageLockRelativePath, '-OutputFormat', 'Json')
         if ($FixNpmAudit) { $npmSecurityArguments += '-Fix' }
         if ($AllowBreakingNpmFix) { $npmSecurityArguments += '-AllowBreakingFix' }
         $auditOutput = @(& pwsh @npmSecurityArguments 2>&1)
@@ -300,11 +345,15 @@ try {
             $failureAlreadyReported = $true
             throw 'npm audit failed before dependency installation'
         }
-        Start-TestResult -Name 'locked-browser-dependencies'
-        $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
-        $dependencyExitCode = $LASTEXITCODE
-        $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-Path -LiteralPath $nodePackageLockPath -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
-        Add-TestResult -Name 'locked-browser-dependencies' -Passed $lockedDependencyValid -Detail $(if ($lockedDependencyValid) { "Installed integrity-locked Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer) browser test graphs." } else { ($dependencyOutput | Out-String).Trim() })
+        Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'
+        $dependencyOutput = @()
+        $dependencyExitCode = 0
+        if (-not (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath)) {
+            $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
+            $dependencyExitCode = $LASTEXITCODE
+        }
+        $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
+        Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Detail $(if ($lockedDependencyValid) { "Installed packages match the audited lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)." } else { ($dependencyOutput | Out-String).Trim() })
         if (-not $lockedDependencyValid) {
             throw 'locked browser validation dependencies could not be installed'
         }
@@ -577,15 +626,24 @@ try {
     Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
 
     $siteDirectory = Join-Path $tempRoot 'site'
+    $stageCacheDirectory = Join-Path $tempRoot 'assessment-cache'
     $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
     Start-TestResult -Name 'external-staging-valid'
-    $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $stageExitCode = $LASTEXITCODE
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
     $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
     $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports v4 display candidates.' } else { ($stageOutput | Out-String).Trim() })
+    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets, reports v4 display candidates, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
     Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Workbench staging does not modify its source display.'
+
+    $missingDisplayPath = Join-Path $tempRoot 'missing-workbench-display.json'
+    $failureSiteDirectory = Join-Path $tempRoot 'failure-site'
+    $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -DisplayPath $missingDisplayPath -StageOnly -NoLaunch -OutputFormat Text 2>&1)
+    $failureExitCode = $LASTEXITCODE
+    $failureText = ($failureOutput | Out-String)
+    $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 1' -and $failureText -match 'Passed\s+: 0' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+FAILED\s+PREBUILT DISPLAY STAGING' -and $failureText -match 'FAILURES[\s\S]+- PREBUILT DISPLAY STAGING: DisplayPath was not found:' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
+    Add-TestResult -Name 'launcher-failure-summary' -Passed $launcherFailureSummaryValid -Detail 'Startup failures report opening context, closing stage counts, a stage table, and failures without a raw PowerShell stack trace.'
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -1040,7 +1098,7 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
-    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
+    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Collection'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches collect, assess, reconcile, and stage one v4 display; an explicit DisplayPath remains a model-free staging path.'
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
@@ -1272,7 +1330,7 @@ else {
         })
     }
     if ($issues.Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Issues'
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {
             Write-Output "  - $issue"
         }

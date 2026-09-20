@@ -35,9 +35,6 @@ param(
     [ValidateRange(0, 60000)]
     [int]$RetryDelayMilliseconds = 1000,
 
-    [ValidateRange(1024, 10485760)]
-    [int]$EvaluatorPayloadBudgetBytes = 1048576,
-
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
@@ -81,18 +78,6 @@ function Get-EvaluatorJson {
         throw 'Evaluator response does not contain a JSON object'
     }
     return $trimmed.Substring($objectStart, $objectEnd - $objectStart + 1)
-}
-
-function Get-PayloadSizeBytes {
-    param([Parameter(Mandatory = $true)][string[]]$Paths)
-
-    $size = 0
-    foreach ($path in $Paths) {
-        if (-not [string]::IsNullOrWhiteSpace($path)) {
-            $size += [IO.File]::ReadAllBytes($path).Length
-        }
-    }
-    return $size
 }
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -179,12 +164,6 @@ if (@(Compare-Object $expectedSourceIds $baselineSourceIds -SyncWindow 0).Count 
     throw "Assessment reconciliation requires exactly the approved source lanes: $($expectedSourceIds -join ', ')"
 }
 
-$payloadPaths = @($snapshotBaselinePath, $snapshotCatalogPath, $snapshotContractPath, $draftSchemaPath, $promptPath)
-$payloadSizeBytes = Get-PayloadSizeBytes -Paths $payloadPaths
-if ($payloadSizeBytes -gt $EvaluatorPayloadBudgetBytes) {
-    throw "Assessment reconciliation payload exceeds evaluator budget: measured $payloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes"
-}
-
 $resolvedEvaluatorScriptPath = $null
 $evaluatorIdentity = $EvaluatorCommand
 if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
@@ -201,7 +180,7 @@ try {
     for ($attempt = 1; $attempt -le ($MaxRetries + 1); $attempt++) {
         try {
             if ($OutputFormat -eq 'Text') {
-                Write-Host ("[RUNNING]  assessment-reconciliation : attempt {0}, {1} payload bytes" -f $attempt, $payloadSizeBytes)
+                Write-Host ("[RUNNING]  assessment-reconciliation : attempt {0}" -f $attempt)
             }
             if ($null -ne $resolvedEvaluatorScriptPath) {
                 $parameters = @{
@@ -298,7 +277,6 @@ $result = [ordered]@{
     outputPath = $resolvedOutputPath
     candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
-    payloadSizeBytes = $payloadSizeBytes
     evaluator = $evaluatorIdentity
     displaySha256 = [string]$builderResult.displaySha256
 }

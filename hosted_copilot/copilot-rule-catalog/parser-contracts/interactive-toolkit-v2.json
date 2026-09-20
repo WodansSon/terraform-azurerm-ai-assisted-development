@@ -10,7 +10,6 @@
     "hosted_copilot/tools/internal/collection/New-SourceInventory.ps1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1",
-    "hosted_copilot/tools/modules/source-parsers/InteractiveToolkitV2.psm1",
-    "tools/interactive-rule-catalog/rule-catalog.schema.json"
+    "hosted_copilot/tools/modules/source-parsers/InteractiveToolkitV2.psm1"
   ]
 }

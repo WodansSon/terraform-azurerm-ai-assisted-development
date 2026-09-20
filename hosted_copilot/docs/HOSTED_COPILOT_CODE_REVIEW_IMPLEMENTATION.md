@@ -58,12 +58,12 @@ hosted_copilot/
     Review.Common.psm1
     Import-PullRequest.ps1
     Initialize-ReviewBases.ps1
-    Install-Toolkit.ps1
+    Install-HostedRules.ps1
     New-ReviewPair.ps1
     Publish-TestCase.ps1
     Test-ReviewResults.ps1
     Test-InstructionGeneration.ps1
-    Test-Toolkit.ps1
+    Test-HostedRules.ps1
     Test-UpstreamSources.ps1
     package-manifest.json
 ```
@@ -184,7 +184,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Generate-Instructi
 
 The command validates the catalog schema, unique rule IDs, source and evidence references, provenance-specific evidence, active-rule coverage, output containment, and deterministic content. Check mode fails when a generated file is stale. Write mode changes only the catalog-owned path-specific instruction files.
 
-`Test-InstructionGeneration.ps1` exercises baseline freshness, catalog-native rule origins, read-only stale detection, and explicit writes entirely in a temporary Hosted root. `Test-Toolkit.ps1` runs this regression suite as part of the complete Hosted profile.
+`Test-InstructionGeneration.ps1` exercises baseline freshness, catalog-native rule origins, read-only stale detection, and explicit writes entirely in a temporary Hosted root. `Test-HostedRules.ps1` runs this regression suite as part of the complete Hosted profile.
 
 ### Review Upstream Drift:
 
@@ -196,7 +196,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/commands/catalog/Test-UpstreamSourc
 
 The command fetches the contributor README and every contributor topic in the Hosted source catalog, including documents not cited by an active Hosted rule. It compares raw-content SHA-256 values with approved baselines, reports affected rule IDs when mappings exist, and fails when the contributor README exposes an untracked topic or the catalog retains a stale topic. It is read-only and never updates the catalog. A changed digest or topic-coverage issue requires semantic maintainer review. Update approved rule text only when source meaning changed; update a baseline only after recording that review in the same catalog change.
 
-Run live upstream drift detection as an explicit maintainer audit, not as a required pull-request or push CI gate. Required CI must pass `-SkipHostedUpstreamDrift` through `Validate-ChangedToolkits.ps1`, or `-SkipUpstreamDrift` when invoking `Test-Toolkit.ps1` directly, so unrelated upstream changes cannot make validation of an unchanged commit nondeterministic. CI still validates the committed source catalog, pinned baseline identity, schemas, mappings, and generated runtime output.
+Run live upstream drift detection as an explicit maintainer audit, not as a required pull-request or push CI gate. Required CI must pass `-SkipHostedUpstreamDrift` through `Validate-ChangedToolkits.ps1`, or `-SkipUpstreamDrift` when invoking `Test-HostedRules.ps1` directly, so unrelated upstream changes cannot make validation of an unchanged commit nondeterministic. CI still validates the committed source catalog, pinned baseline identity, schemas, mappings, and generated runtime output.
 
 ### Semantic Rule Intake:
 
@@ -375,7 +375,7 @@ Run the shared read-only capacity command directly when inspecting current usage
 pwsh -NoProfile -File ./hosted_copilot/tools/internal/workbench/Get-GuidanceCapacity.ps1 -OutputFormat Json
 ```
 
-`Get-GuidanceCapacity.ps1` is the single arithmetic owner for current capacity. `New-RuleIntakeReview.ps1` embeds its complete eight-report result in each candidate bundle, and `Test-Toolkit.ps1 -OutputFormat Json` exposes the same result under `guidanceCapacity`. Consumers must not reconstruct capacity from validator detail text.
+`Get-GuidanceCapacity.ps1` is the single arithmetic owner for current capacity. `New-RuleIntakeReview.ps1` embeds its complete eight-report result in each candidate bundle, and `Test-HostedRules.ps1 -OutputFormat Json` exposes the same result under `guidanceCapacity`. Consumers must not reconstruct capacity from validator detail text.
 
 For every current and projected runtime file and combined review surface, report:
 
@@ -399,7 +399,7 @@ The static proof-of-concept interface lives beneath `hosted_copilot/workbench/`.
 pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
 ```
 
-By default, the launcher collects the three source inventories, assesses their source-local meanings, reconciles them into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid `workbench-display.json` before reporting the server as ready at `http://127.0.0.1:43143/`. Each phase reports progress so assessment cannot look like a hung server launch. JSON output remains one machine-readable launcher result. Static content accepts only `GET` and `HEAD`; the sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches. Use `-DisplayPath` to stage a prebuilt schema-valid display without collecting or assessing sources. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening the browser automatically.
+By default, the launcher collects the three source inventories, assesses their source-local meanings, reconciles them into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid `workbench-display.json` before reporting the server as ready at `http://127.0.0.1:43143/`. Each phase reports progress so assessment cannot look like a hung server launch. Validated assessments are cached per source record under `%LOCALAPPDATA%\hosted-workbench\assessment-cache`; unchanged records are revalidated and reused indefinitely, while changed records alone return to bounded evaluation batches. The launcher prints the resolved cache path in Text mode and includes it in JSON output. Use `-AssessmentCacheDirectory` to select another external cache and `-AssessmentResumeDirectory` to import valid source entries from one retained failed run. Successful runs remove their temporary artifacts, successful recovery removes only a toolkit-managed retained run, malformed cache entries are removed when read, and caches or recovery directories outside the repository are never treated as source files. Static content accepts only `GET` and `HEAD`; the sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches. Use `-DisplayPath` to stage a prebuilt schema-valid display without collecting or assessing sources. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening the browser automatically.
 
 The Workbench supports laptop and desktop browsers only. At viewport widths below `768px`, or when the browser identifies as mobile, display the unsupported-device screen with the approved yellow JSON-braces product lockup and no `HR` mark, and do not load the candidate bundle or initialize IndexedDB. Do not maintain a separate responsive handset workflow for rule assessment or promotion.
 
@@ -547,9 +547,9 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-VIEWPORT-010`: Candidate, Assessment, Plan, and Preview panes retain fixed controls.
 - `WB-UX-SHUTDOWN-001`: Close Workbench triggers authenticated server shutdown and renders the closed state.
 
-`regression/workbench/behavior-manifest.json` maps each behavior ID to exactly one target Playwright journey. When Workbench behavior changes, update this authoritative contract and the mapped journey in the same change. Add a new behavior ID for a separately testable user-visible invariant; do not rely on assertion totals as the coverage contract. Playwright journeys run in isolated browser contexts and must restore any temporary application state they create. `Test-RuleWorkbench.ps1` executes the manifest and journeys, and `Test-Toolkit.ps1` consumes that result in the complete Hosted profile.
+`regression/workbench/behavior-manifest.json` maps each behavior ID to exactly one target Playwright journey. When Workbench behavior changes, update this authoritative contract and the mapped journey in the same change. Add a new behavior ID for a separately testable user-visible invariant; do not rely on assertion totals as the coverage contract. Playwright journeys run in isolated browser contexts and must restore any temporary application state they create. `Test-RuleWorkbench.ps1` executes the manifest and journeys, and `Test-HostedRules.ps1` consumes that result in the complete Hosted profile.
 
-Before installing or executing Node validation dependencies, the complete Workbench suite must invoke the shared `tools/Test-NpmSecurity.ps1` authority against every tracked lockfile with package scripts disabled and fail immediately on findings at any severity. Default validation must not modify dependency manifests. `-FixNpmAudit` delegates staged ordinary npm fixes and same-major transitive overrides to the shared validator, which re-audits the complete staged graph and applies both manifests only after the graph is clean. Require the additional `-AllowBreakingNpmFix` switch before evaluating npm's breaking direct-dependency recommendation, and still reject it when the resulting graph does not pass the same audit. After applying a clean remediation, install the resulting lock with package scripts disabled and run the complete Workbench suite.
+Before installing or executing Node validation dependencies, the complete Workbench suite must invoke the shared `tools/Test-NpmSecurity.ps1` authority against `hosted_copilot/tools/package-lock.json` only, with package scripts disabled, and fail immediately on findings at any severity. Shared repository validation remains responsible for auditing every tracked lockfile when shared infrastructure changes. Default validation must not modify dependency manifests. `-FixNpmAudit` delegates staged ordinary npm fixes and same-major transitive overrides to the shared validator, which re-audits the complete staged graph and applies both manifests only after the graph is clean. Require the additional `-AllowBreakingNpmFix` switch before evaluating npm's breaking direct-dependency recommendation, and still reject it when the resulting graph does not pass the same audit. After applying a clean remediation, install the resulting lock with package scripts disabled and run the complete Workbench suite.
 
 Keep `regression/workbench/puppeteer/` as a temporary second consumer while behaviors move to Playwright. Puppeteer and Playwright must execute the same current viewport suite and report the same assertion and viewport totals. Remove the Puppeteer consumer after Playwright owns all browser behavior. Static source checks complement browser journeys but do not replace user-visible interaction coverage.
 
@@ -586,7 +586,7 @@ After successful apply and worktree validation, ordinary Git diff and commit his
 - Build the static Workbench, IndexedDB persistence, draft portability, and stale-source invalidation.
 - Implement staged preview and guarded promotion with offline fixtures.
 - Add AI-maintenance workflow guidance and the immutable approval handoff.
-- Integrate schema, storage, read-only server, projection, staging, no-partial-write, and receipt tests into `Test-Toolkit.ps1`.
+- Integrate schema, storage, read-only server, projection, staging, no-partial-write, and receipt tests into `Test-HostedRules.ps1`.
 - Run the initial 349-rule Interactive intake audit and review proposed Hosted additions before changing runtime guidance.
 
 ### Review Skill:
@@ -764,7 +764,7 @@ The commands enforce the following contract:
 
 - Accept the pinned upstream commit, change source, run identifier, and review effort as explicit inputs.
 - Create or verify immutable `control-base`, `hosted-base`, and `test-content` branches without rewriting existing experiment history.
-- Deploy the Hosted overlay only to `hosted-base` through `Install-Toolkit.ps1`.
+- Deploy the Hosted overlay only to `hosted-base` through `Install-HostedRules.ps1`.
 - Require each canonical source PR to target `test-content`, then apply its exact diff independently to Control and Hosted review heads.
 - Guard every mutation so it can target only the authenticated user's writable fork of HashiCorp's AzureRM provider.
 - Derive disposable review heads from validated case and run identifiers, require exact `control-review/` and `hosted-review/` namespaces during cleanup, and reject any pair record that names unrelated branches.
@@ -821,7 +821,7 @@ The installer and validator consume this shared schema rather than defining para
 
 ## Installer Requirements:
 
-`Install-Toolkit.ps1` runs from this source checkout and accepts an explicit target repository directory.
+`Install-HostedRules.ps1` runs from this source checkout and accepts an explicit target repository directory.
 
 **Dry-Run Behavior:**
 
@@ -845,7 +845,7 @@ The Hosted installer must not call, import, overwrite, or otherwise depend on th
 
 ## Validation Requirements:
 
-`Test-Toolkit.ps1` remains the complete Hosted profile validator. As each phase is implemented, extend it to enforce:
+`Test-HostedRules.ps1` remains the complete Hosted profile validator. As each phase is implemented, extend it to enforce:
 
 - Required Hosted layout
 - Valid instruction frontmatter and exact `applyTo` patterns

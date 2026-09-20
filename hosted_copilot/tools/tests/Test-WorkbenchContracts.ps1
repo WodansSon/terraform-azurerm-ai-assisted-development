@@ -15,6 +15,10 @@ $reconciliationRoot = Join-Path $catalogRoot 'assessment-reconciliation'
 $assessmentRoot = Join-Path $catalogRoot 'rule-assessments'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted Workbench contracts'
+}
 $hash = 'a' * 64
 $timestamp = '2026-09-19T12:00:00Z'
 
@@ -48,6 +52,17 @@ function Add-TestResult {
     $results.Add([pscustomobject]@{ name = $Name; status = if ($Passed) { 'passed' } else { 'failed' }; detail = $Detail })
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
+    }
+}
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail)
     }
 }
 
@@ -159,6 +174,7 @@ $display = [ordered]@{
         reports = $capacityReports
     }
 }
+Write-TestProgress -Name 'display-contract' -Detail 'Validating display candidates, catalog lifecycle, capacity, and authority boundaries'
 $displaySchemaPath = Join-Path $reconciliationRoot 'workbench-display-v4.schema.json'
 Add-TestResult -Name 'display-valid' -Passed (Test-JsonInstance -Value $display -SchemaPath $displaySchemaPath) -Detail 'The v4 display contains only display-ready candidates, catalog projection, capacity, and one input fingerprint.'
 $activeRuleWithoutPlacement = Copy-JsonValue -Value $display
@@ -184,6 +200,7 @@ $excludedWithoutRecommendation = Copy-JsonValue -Value $excludedDisplay
 $excludedWithoutRecommendation.candidates[0].recommendation = $null
 Add-TestResult -Name 'display-recommendation-required' -Passed (-not (Test-JsonInstance -Value $excludedWithoutRecommendation -SchemaPath $displaySchemaPath)) -Detail 'No assessment can bypass reconciliation-owned identity and metadata.'
 
+Write-TestProgress -Name 'draft-contract' -Detail 'Validating local draft decisions and approval boundaries'
 $candidateKey = 'maintainer:IMPL-TEST-901:validate-rule'
 $draft = [ordered]@{
     '$schema' = 'workbench-draft-v4.schema.json'
@@ -218,6 +235,7 @@ $draftWithBundleHash = Copy-JsonValue -Value $draft
 $draftWithBundleHash | Add-Member -NotePropertyName workbenchBundleSha256 -NotePropertyValue $hash
 Add-TestResult -Name 'draft-bundle-hash-rejected' -Passed (-not (Test-JsonInstance -Value $draftWithBundleHash -SchemaPath $draftSchemaPath)) -Detail 'The local draft uses one input fingerprint instead of a bundle transaction identity.'
 
+Write-TestProgress -Name 'approved-rules-contract' -Detail 'Validating approved mutations, placements, relationships, and rejected non-mutations'
 $approved = [ordered]@{
     '$schema' = 'approved-rules-v4.schema.json'
     schemaVersion = 4
@@ -255,6 +273,7 @@ $approvedWithPayload = Copy-JsonValue -Value $approved
 $approvedWithPayload | Add-Member -NotePropertyName previewPayload -NotePropertyValue '{}'
 Add-TestResult -Name 'approved-rules-envelope-rejected' -Passed (-not (Test-JsonInstance -Value $approvedWithPayload -SchemaPath $approvedSchemaPath)) -Detail 'The approved-rules file is the payload and rejects a duplicate embedded approval envelope.'
 
+Write-TestProgress -Name 'behavior-boundaries' -Detail 'Checking contract dependencies, Remote Rules ownership, and v4 naming'
 $sourceAssessmentContract = Get-Content -LiteralPath (Join-Path $assessmentRoot 'source-assessment-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $reconciliationContract = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $forbiddenBehaviorPattern = '(?:source-generations/|publication-request|promotion-plan|approval-handoff|catalog-apply-receipt)'
@@ -295,7 +314,7 @@ else {
         Tests = $result.testCount
         Issues = $result.issueCount
     })
-    Write-Output ''
+    Write-ValidationSectionHeader -Title 'Workbench contract tests'
     Write-ValidationTwoColumnTable -Rows @($result.tests) -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -FirstWidth 10 -UppercaseFirst
     if ($issues.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Failures'

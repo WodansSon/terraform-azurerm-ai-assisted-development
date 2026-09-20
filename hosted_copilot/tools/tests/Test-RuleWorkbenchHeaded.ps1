@@ -19,6 +19,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot '../../../tools/ValidationOutput.psm1') -Force
+Write-ValidationSectionHeader -Title 'Hosted Rule Workbench headed playback'
+Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'dependency-validation' -Detail 'Checking playback assets and integrity-locked browser dependencies')
+
 if ($Url -and ($Url.Scheme -ne 'http' -or $Url.Host -notin @('127.0.0.1', 'localhost'))) {
     throw 'Url must use HTTP and target the local Workbench at `127.0.0.1` or `localhost`'
 }
@@ -109,9 +113,11 @@ $serverJob = $null
 $serverProcessId = $null
 $siteDirectory = $null
 $resultPath = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-headed-result-" + [guid]::NewGuid().ToString('N') + '.json')
+$result = $null
 $playbackFailure = $null
 $cleanupFailure = $null
 if ($ownedServer) {
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'workbench-server' -Detail ("Starting an owned Workbench on port {0}" -f $Port))
     if (Test-PortInUse -TargetPort $Port) {
         throw "Port $Port is already in use; choose an available port"
     }
@@ -148,7 +154,7 @@ try {
     }
 
     $journeyLabel = if ($Journey -eq 'all') { 'all journeys' } else { $Journey }
-    Write-Host "Playing $journeyLabel at $($Url.AbsoluteUri) with ${SlowMo}ms action delay and ${TransitionDelay}ms transition delay..."
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'visible-playback' -Detail ("Playing {0} at {1} with {2}ms action delay and {3}ms transition delay" -f $journeyLabel, $Url.AbsoluteUri, $SlowMo, $TransitionDelay))
     & $nodeExecutable @runnerArguments
     if ($LASTEXITCODE -ne 0) {
         throw 'Visible Playwright playback failed; see the streamed error above'
@@ -167,7 +173,6 @@ try {
             throw "Close Workbench did not stop the owned server on port $Port"
         }
     }
-    Write-Host "Passed $($result.assertionCount) assertions across $($result.journeyCount) visible Playwright journey(s) covering $($result.behaviorCount) behavior ID(s)."
 }
 catch {
     $playbackFailure = $_
@@ -206,12 +211,26 @@ finally {
     }
 }
 
-if ($playbackFailure) {
-    if ($cleanupFailure) {
-        Write-Error -ErrorRecord $cleanupFailure -ErrorAction Continue
+$failures = @(@($playbackFailure, $cleanupFailure) | Where-Object { $null -ne $_ })
+$passed = $failures.Count -eq 0
+Write-ValidationSectionHeader -Title 'Hosted Rule Workbench headed playback test summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    Status = $(if ($passed) { 'PASSED' } else { 'FAILED' })
+    Tests = 1
+    Passed = $(if ($passed) { 1 } else { 0 })
+    Failed = $(if ($passed) { 0 } else { 1 })
+    Assertions = $(if ($null -ne $result) { $result.assertionCount } else { 0 })
+    Journeys = $(if ($null -ne $result) { $result.journeyCount } else { 0 })
+})
+Write-ValidationSectionHeader -Title 'Headed playback tests'
+Write-ValidationTwoColumnTable -Rows @([pscustomobject]@{ status = if ($passed) { 'passed' } else { 'failed' }; name = 'visible-playback' }) -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -UppercaseFirst
+if (-not $passed) {
+    Write-ValidationSectionHeader -Title 'Failures'
+    foreach ($failure in $failures) {
+        Write-Output "  - $($failure.Exception.Message)"
     }
-    throw $playbackFailure
 }
-if ($cleanupFailure) {
-    throw $cleanupFailure
+Complete-ValidationTextOutput
+if (-not $passed) {
+    exit 1
 }

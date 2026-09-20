@@ -54,6 +54,8 @@ If preflight is incomplete, do not proceed with changelog work.
 
 - Root `CHANGELOG.md` belongs to the Interactive Toolkit and uses the taxonomy and grouping rules below.
 - `hosted_copilot/CHANGELOG.md` belongs to the Hosted Toolkit and uses its independent Keep a Changelog structure.
+- For Hosted-only work, read and edit only `hosted_copilot/CHANGELOG.md`; do not load root `CHANGELOG.md` or run Interactive release preparation.
+- For Interactive-only work, read and edit only root `CHANGELOG.md`; do not load the Hosted changelog.
 - Changes affecting both products require independent entries or explicit waivers for both changelogs.
 - Repository-maintenance-only changes require neither product changelog by default.
 - Keep Hosted Toolkit history under `Unreleased`; do not add a version file or versioned release section while it uses direct source deployment.
@@ -186,7 +188,7 @@ pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
 For a Hosted Toolkit changelog change, also run:
 
 ```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1
 ```
 
 ## Output expectation

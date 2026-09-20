@@ -8,7 +8,7 @@ This directory owns controlled Hosted review cases, the review-result schema, Wo
 - `workbench/` contains schema-backed browser behavior mappings, target Playwright journeys, and a temporary Puppeteer consumer of the same current viewport suite.
 - `schema/paired-review-result.schema.json` defines adjudicated comparison records.
 - `../tools/Invoke-HostedReview.ps1` is the only supported maintainer command for starting or resuming a controlled review.
-- `../tools/tests/Test-ReviewResults.ps1` is the internal result validator invoked by `Test-Toolkit.ps1`; it is not a separate maintainer command.
+- `../tools/tests/Test-ReviewResults.ps1` is the internal result validator invoked by `Test-HostedRules.ps1`; it is not a separate maintainer command.
 
 ## Local Artifacts:
 

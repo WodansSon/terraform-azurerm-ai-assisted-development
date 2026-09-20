@@ -176,8 +176,12 @@ function New-CatalogBoundAssessmentSet {
 try {
     $null = New-Item -ItemType Directory -Path $tempRoot -Force
     if ($OutputFormat -eq 'Text') {
-        Write-ValidationSectionHeader -Title 'Hosted assessment reconciliation test summary'
+        Write-ValidationSectionHeader -Title 'Hosted assessment reconciliation'
     }
+
+    $runnerContent = Get-Content -LiteralPath $runnerPath -Raw
+    $reconciliationInputUnbounded = $runnerContent -notmatch 'EvaluatorPayloadBudgetBytes|Get-PayloadSizeBytes|payload exceeds evaluator budget'
+    Add-TestResult -Name 'reconciliation-input-not-guidance-budget' -Passed $reconciliationInputUnbounded -Detail 'Reconciliation input size is not conflated with final Hosted guidance token-capacity enforcement.'
 
     Write-TestProgress -Name 'fixture-validation' -Detail 'Preparing source lanes, assessment set, reconciliation response, catalog, and capacity'
 

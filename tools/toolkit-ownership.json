@@ -6,6 +6,10 @@
       "ownership": "hosted"
     },
     {
+      "pattern": "hosted_copilot/.github/**",
+      "ownership": "hosted"
+    },
+    {
       "pattern": "hosted_copilot/**",
       "ownership": "hosted"
     },

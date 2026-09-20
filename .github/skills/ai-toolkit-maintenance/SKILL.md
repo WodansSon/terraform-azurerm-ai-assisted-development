@@ -29,7 +29,22 @@ The repository contains two independently owned products:
 
 Use `tools/Validate-ChangedToolkits.ps1` to classify changed ownership before choosing profile-specific maintenance checks. Do not use the Interactive Toolkit validator as a substitute for Hosted Toolkit validation.
 
+## Scope-First Routing
+
+Classify the requested work with `tools/toolkit-ownership.json` before loading product guidance.
+
+- For Hosted-only work, use `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md`, `hosted_copilot/CHANGELOG.md`, and Hosted-owned files under `hosted_copilot/**`. Do not load Interactive Toolkit contracts, prompts, skills, agents, regression fixtures, source catalogs, installers, changelog, release guidance, or validators.
+- Treat `hosted_copilot/.github/**` as the Hosted deployment payload and root `.github/**` as Interactive unless an earlier ownership rule explicitly classifies a path as shared or repository maintenance.
+- For Interactive-only work, use the Interactive sources listed below and do not load Hosted implementation files as substitute guidance.
+- For explicitly shared or repository-maintenance work, inspect only the shared surface and the minimum product-specific references it coordinates.
+- Run both product validators only when the ownership map classifies a changed path as `shared` or when both product scopes changed. Repository-maintenance-only paths require shared repository checks, not either product validator.
+- Only Interactive maintenance may create versioned release bundles, archives, versions, or published releases. Hosted maintenance runs locally from the source checkout and may deploy only the exact manifest-owned overlay; local Workbench bundles are ephemeral assessment data, not release artifacts.
+
 ## Canonical sources of truth
+
+For Hosted-only work, use only the Hosted architecture, Hosted implementation guide, Hosted changelog, Hosted validator, and the relevant files under `hosted_copilot/**`.
+
+The source list below applies to Interactive Toolkit maintenance. Do not load it during Hosted-only work.
 
 When doing AI-toolkit maintenance in this repository, use these sources in this order:
 
@@ -56,7 +71,9 @@ Before applying this skill, read this file to EOF.
 Before making AI-toolkit maintenance changes with this skill, complete this checklist:
 
 - [ ] I have read this skill to EOF.
-- [ ] I have read `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md` to EOF.
+- [ ] I have classified the requested paths as Hosted, Interactive, shared, or repository maintenance before loading product-specific guidance.
+- [ ] For Hosted-only work, I have read the Hosted architecture and have not loaded Interactive Toolkit guidance or validation assets.
+- [ ] For Interactive work, I have read `docs/AI_TOOLKIT_ALIGNMENT_CHECKLIST.md` to EOF.
 - [ ] I have identified whether upstream HashiCorp contributor docs under `contributing/topics/` are part of the change I am making.
 - [ ] If upstream contributor alignment is in scope, I will run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` before concluding the toolkit is current.
 - [ ] I have identified whether the target change is runtime payload or repo-maintenance-only.
@@ -74,6 +91,19 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 - In runtime guidance under `.github/copilot-instructions.md`, `.github/instructions/`, and `.github/skills/`, prefer generic placeholders such as `{{RESOURCE_NAME}}`, `{{FIELD_NAME}}`, and `{{SERVICE_NAME}}` for broad rules and worked patterns. Reserve concrete resource-specific examples for dedicated example docs, regression fixtures, or evidence that truly depends on the real upstream incident.
 
 ## Maintenance workflow
+
+### Hosted-only maintenance
+
+- Keep Hosted implementation, tests, runtime guidance, schemas, Workbench assets, and product documentation under `hosted_copilot/**` or another path explicitly classified as Hosted.
+- Use `hosted_copilot/tools/package-manifest.json` and `Install-HostedRules.ps1` for direct source deployment. Do not inspect or invoke the Interactive installer or `installer/file-manifest.config`.
+- Use `Test-HostedRules.ps1` for complete Hosted validation. Do not invoke Interactive review agents, prompts, fixtures, or validators for Hosted changes.
+- Use Hosted source-intake and upstream-drift commands only when that Hosted maintenance flow is explicitly requested. Normal Hosted validation must not read the live Interactive catalog.
+- Limit edits to shared consumers to the Hosted-specific command, path, ownership, or routing reference that requires alignment.
+- Do not run Interactive release preparation, release-bundle generation, versioning, publication, or archive workflows for Hosted changes.
+
+### Interactive-only maintenance
+
+The `MAINT-UPSTREAM-*` rules and contributor-source workflow below apply only to Interactive Toolkit maintenance. Do not load or apply them during Hosted-only work.
 
 ### MAINT-UPSTREAM-001: Review upstream PR workflow guidance before changing local maintainer workflow
 
@@ -153,7 +183,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 - Run the repo maintenance checks:
   - Prefer `pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1` for change-aware repository validation.
   - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1` for complete direct validation of the Interactive Toolkit.
-  - Use `pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1` for complete direct validation of the Hosted Toolkit.
+  - Use `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1` for complete direct validation of the Hosted Toolkit.
   - Treat the dispatcher as owning independent changelog decisions; a waiver for one toolkit does not satisfy the other toolkit.
   - Use `pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues` when Interactive Toolkit CI should still fail on changed tracked sources or rule issues but the remaining uncovered upstream topic catalog gaps are being reviewed separately.
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.

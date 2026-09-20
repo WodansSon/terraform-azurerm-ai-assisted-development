@@ -158,8 +158,8 @@ Prove that a compact Hosted Toolkit can complete useful AzureRM pull request rev
 - Compact repository-wide, Go, test, and documentation instructions under `hosted_copilot/.github/`
 - One review-focused Hosted skill under `hosted_copilot/.github/skills/code-review/`
 - `package-manifest.json` containing the exact deployable paths, mirrored from `hosted_copilot/` into the target repository
-- `Install-Toolkit.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
-- `Test-Toolkit.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
+- `Install-HostedRules.ps1` accepting an explicit target fork directory and supporting dry-run deployment from the current checkout
+- `Test-HostedRules.ps1` enforcing structure, isolation, Markdown validity, and per-surface token budgets
 - A normalized rule catalog and schema that preserve upstream, maintainer, and local provenance independently
 - Deterministic path-specific instruction generation and read-only drift detection across the complete upstream contributor-document set
 - A Hosted-owned intake ledger that records semantic decisions for every reviewed Interactive Toolkit rule without creating a runtime synchronization dependency
@@ -224,9 +224,9 @@ hosted_copilot/
     results/
   tools/
     Invoke-HostedReview.ps1
-    Install-Toolkit.ps1
+    Install-HostedRules.ps1
     Start-RuleWorkbench.ps1
-    Test-Toolkit.ps1
+    Test-HostedRules.ps1
     commands/
       catalog/
     internal/
@@ -253,7 +253,7 @@ hosted_copilot/
 - `workbench/` owns the interactive local review interface built from static browser assets. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
 - `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
-- `tools/Install-Toolkit.ps1` owns safe deployment into a target repository.
+- `tools/Install-HostedRules.ps1` owns safe deployment into a target repository.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit; the implementation guide and Hosted review guide remain source-only maintainer documentation.
 - Generated path-specific instruction files are written directly beneath `hosted_copilot/.github/`, committed, and frozen by source commit. They must not be edited manually.
 - The promotion schemas define the planned write boundary, but `tools/Invoke-RulePromotion.ps1` and `copilot-rule-catalog/audit/` remain unimplemented until maintainers decide to proceed beyond approval export.
@@ -282,7 +282,7 @@ Files with the same names or roles in the Interactive Toolkit are not shared dep
 
 ### Hosted Deployment:
 
-The overlay remains manually copyable, but `Install-Toolkit.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
+The overlay remains manually copyable, but `Install-HostedRules.ps1` is the recommended deployment path because repository roots commonly contain an existing `.github/` tree.
 
 The Hosted Toolkit is deployed directly from the current source checkout into a target fork. It does not use a separate release bundle, archive, or version file. Reproducibility comes from the source Git commit, the manifest ownership map, and the exact deployed hashes recorded in installed state.
 
@@ -604,7 +604,7 @@ The hosted source-maintenance flow should be deterministic until semantic judgme
 - Measure each generated surface against its token budget.
 - Validate rule IDs, required metadata, source links, duplicate mappings, and conflicting requirements.
 - Update `package-manifest.json` only when the hosted package intentionally adds, removes, or relocates an owned path.
-- Preview deployment with `Install-Toolkit.ps1` in dry-run mode before writing to a target repository.
+- Preview deployment with `Install-HostedRules.ps1` in dry-run mode before writing to a target repository.
 - Reject manifest source or destination paths that traverse a symbolic link, junction, or other filesystem reparse point before any installation write.
 - Require review of rules whose evidence disappeared or whose upstream source was renamed or removed.
 
@@ -838,7 +838,7 @@ Profile validators must remain deterministic and validate their complete owned p
 | Changed Ownership | Required Validation |
 | --- | --- |
 | Interactive Toolkit only | Run `tools/Validate-InteractiveToolkit.ps1` |
-| Hosted Toolkit only | Run `hosted_copilot/tools/Test-Toolkit.ps1` |
+| Hosted Toolkit only | Run `hosted_copilot/tools/Test-HostedRules.ps1` |
 | Both toolkits | Run both profile validators and report both results |
 | Repository maintenance only | Run shared repository checks without requiring either product validator or product changelog |
 | Shared path | Run both profile validators plus applicable shared checks |
@@ -897,7 +897,7 @@ Combined validation is a repository convenience, not a combined distribution gat
 
 ### Deferred Adoption Work:
 
-- Run `Install-Toolkit.ps1` in dry-run mode against the target repository.
+- Run `Install-HostedRules.ps1` in dry-run mode against the target repository.
 - Review and resolve every reported destination collision before installation.
 - Install only the manifest-owned `.github/` runtime and Hosted user documentation into matching target paths.
 - Commit the installed runtime and user documentation in the target repository.

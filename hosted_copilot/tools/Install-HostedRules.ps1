@@ -16,12 +16,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $hostedRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $resolvedManifestPath = [System.IO.Path]::GetFullPath($ManifestPath)
 $resolvedRepoDirectory = [System.IO.Path]::GetFullPath($RepoDirectory)
 $mode = if ($Install) { 'install' } else { 'dry-run' }
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $operations = New-Object 'System.Collections.Generic.List[object]'
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted Rules deployment'
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'manifest-validation' -Detail 'Validating the deployment manifest and target repository boundaries')
+}
 
 function Test-PathWithinRoot {
     param(
@@ -135,6 +143,9 @@ if (Test-Path -LiteralPath $installedStatePath -PathType Leaf) {
 }
 
 $seenPaths = @{}
+if ($OutputFormat -eq 'Text') {
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'deployment-planning' -Detail 'Comparing packaged files with the target repository')
+}
 foreach ($file in @($manifestConfig.files)) {
     if ($file -isnot [string]) {
         throw 'Manifest files entries must be relative path strings'
@@ -215,6 +226,9 @@ if ($null -ne $gitCommand) {
 }
 
 if ($Install -and $issues.Count -eq 0) {
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'deployment-apply' -Detail 'Installing planned files and verifying hashes')
+    }
     foreach ($operation in $operations) {
         if ($operation.status -eq 'unchanged') {
             continue
@@ -274,24 +288,28 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
-    Write-Output 'Hosted Toolkit deployment plan'
-    Write-Output ("  Status       : {0}" -f $(if ($result.success) { 'READY' } else { 'BLOCKED' }))
-    Write-Output ("  Mode         : {0}" -f $mode.ToUpperInvariant())
-    Write-Output ("  Repository   : {0}" -f $resolvedRepoDirectory)
-    Write-Output ("  Manifest     : {0}" -f $resolvedManifestPath)
-    Write-Output ("  Commit       : {0}" -f $(if ($commit) { $commit } else { 'unavailable' }))
-    Write-Output ''
-
+    Write-ValidationSectionHeader -Title 'Hosted Rules deployment summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $(if ($result.success) { 'PASSED' } else { 'FAILED' })
+        Mode = $mode.ToUpperInvariant()
+        Operations = $operations.Count
+        'Issue Count' = $issues.Count
+        Repository = $resolvedRepoDirectory
+        Manifest = $resolvedManifestPath
+        Commit = $(if ($commit) { $commit } else { 'unavailable' })
+    })
+    Write-ValidationSectionHeader -Title 'Deployment operations'
+    $operationNameWidth = Get-ValidationNameWidth -Names @($operations.targetPath) -MinimumWidth 30
     foreach ($operation in $operations) {
-        Write-Output ("  [{0}] {1}" -f $operation.status.ToUpperInvariant(), $operation.targetPath)
+        Write-Output (Format-ValidationStatusLine -Status $operation.status -Name $operation.targetPath -Detail $(if ($operation.requiresForce) { 'REQUIRES FORCE' } else { 'READY' }) -NameWidth $operationNameWidth)
     }
-
     if ($issues.Count -gt 0) {
-        Write-Output ''
+        Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {
-            Write-Output ("  [BLOCKED] {0}" -f $issue)
+            Write-Output "  - $issue"
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

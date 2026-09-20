@@ -34,6 +34,10 @@ param(
     [ValidateRange(1024, 10485760)]
     [int]$EvaluatorPayloadBudgetBytes = 393216,
 
+    [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/assessment-cache'),
+
+    [string]$ResumeRunDirectory,
+
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [switch]$ShowProgress,
@@ -47,6 +51,8 @@ $ErrorActionPreference = 'Stop'
 
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../../modules/shared/SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
+$validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
 
 function Write-JsonAtomically {
     param(
@@ -66,6 +72,158 @@ function Write-JsonAtomically {
     finally {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Get-AssessmentSourceCacheIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$SourceRecord,
+        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
+        [Parameter(Mandatory = $true)][string]$CatalogPath,
+        [Parameter(Mandatory = $true)][string]$ContractPath,
+        [Parameter(Mandatory = $true)][string]$DraftSchemaPath,
+        [Parameter(Mandatory = $true)][string]$PromptPath,
+        [Parameter(Mandatory = $true)][string]$Evaluator,
+        [Parameter(Mandatory = $true)][string]$Model,
+        [Parameter(Mandatory = $true)][string]$ReasoningEffort
+    )
+
+    return [ordered]@{
+        sourceRecordSha256 = Get-SourceEvidenceContentSha256 -Content ($SourceRecord | ConvertTo-Json -Depth 40 -Compress)
+        assessmentCardinality = $AssessmentCardinality
+        hostedCatalogSha256 = Get-SourceEvidenceFileSha256 -Path $CatalogPath
+        assessmentContractSha256 = Get-SourceEvidenceFileSha256 -Path $ContractPath
+        draftSchemaSha256 = Get-SourceEvidenceFileSha256 -Path $DraftSchemaPath
+        promptSha256 = Get-SourceEvidenceFileSha256 -Path $PromptPath
+        evaluator = $Evaluator
+        model = $Model
+        reasoningEffort = $ReasoningEffort
+    }
+}
+
+function Get-AssessmentSourceCacheKey {
+    param([Parameter(Mandatory = $true)][object]$Identity)
+
+    return Get-SourceEvidenceContentSha256 -Content ($Identity | ConvertTo-Json -Depth 10 -Compress)
+}
+
+function Test-AssessmentResponseEntry {
+    param(
+        [Parameter(Mandatory = $true)][object]$Entry,
+        [Parameter(Mandatory = $true)][object]$ExpectedRecord,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
+        [Parameter(Mandatory = $true)][Collections.Generic.HashSet[string]]$KnownHostedRuleIds,
+        [Parameter(Mandatory = $true)][string]$DraftSchemaPath
+    )
+
+    $response = [ordered]@{
+        '$schema' = 'source-assessment-draft.schema.json'
+        schemaVersion = 1
+        entries = @($Entry)
+    }
+    $responseJson = $response | ConvertTo-Json -Depth 40
+    if (-not (Test-Json -Json $responseJson -SchemaFile $DraftSchemaPath -ErrorAction Stop)) {
+        throw "Assessment response entry does not satisfy the source assessment draft: $Context"
+    }
+    $validatedResponse = $responseJson | ConvertFrom-Json
+    Assert-BatchResponse -Response $validatedResponse -ExpectedRecords @($ExpectedRecord) -BatchId $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds
+}
+
+function Read-AssessmentSourceCache {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ExpectedCacheKey,
+        [Parameter(Mandatory = $true)][object]$ExpectedIdentity,
+        [Parameter(Mandatory = $true)][object]$ExpectedRecord,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
+        [Parameter(Mandatory = $true)][Collections.Generic.HashSet[string]]$KnownHostedRuleIds,
+        [Parameter(Mandatory = $true)][string]$DraftSchemaPath,
+        [switch]$ShowProgress
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $entry = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $actualProperties = @($entry.PSObject.Properties.Name | Sort-Object)
+        if (Compare-Object -ReferenceObject @('cacheKey', 'entry', 'identity', 'kind', 'schemaVersion') -DifferenceObject $actualProperties) {
+            throw 'Source cache entry has an unexpected property set'
+        }
+        if ([int]$entry.schemaVersion -ne 1 -or [string]$entry.kind -cne 'hosted-source-assessment-source-cache' -or [string]$entry.cacheKey -cne $ExpectedCacheKey) {
+            throw 'Source cache entry identity is invalid'
+        }
+        if (($entry.identity | ConvertTo-Json -Depth 10 -Compress) -cne ($ExpectedIdentity | ConvertTo-Json -Depth 10 -Compress)) {
+            throw 'Source cache entry inputs do not match the current assessment'
+        }
+        Test-AssessmentResponseEntry -Entry $entry.entry -ExpectedRecord $ExpectedRecord -Context $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $DraftSchemaPath
+        return $entry.entry
+    }
+    catch {
+        if ($ShowProgress) {
+            Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'source-assessment/cache' -Detail ("{0}; {1}" -f $Context, $_.Exception.Message) -NameWidth 42)
+        }
+        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+}
+
+function Get-RetainedAssessmentEntries {
+    param(
+        [Parameter(Mandatory = $true)][string]$RetainedRunDirectory,
+        [Parameter(Mandatory = $true)][string]$CurrentCatalogPath,
+        [Parameter(Mandatory = $true)][string]$CurrentContractPath,
+        [Parameter(Mandatory = $true)][string]$CurrentDraftSchemaPath,
+        [Parameter(Mandatory = $true)][string]$CurrentPromptPath,
+        [Parameter(Mandatory = $true)][Collections.Generic.HashSet[string]]$KnownHostedRuleIds
+    )
+
+    $retainedContractPath = Join-Path $RetainedRunDirectory 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+    if (-not (Test-Path -LiteralPath $retainedContractPath -PathType Leaf) -or (Get-SourceEvidenceFileSha256 -Path $CurrentContractPath) -cne (Get-SourceEvidenceFileSha256 -Path $retainedContractPath)) {
+        return @{}
+    }
+    $entries = @{}
+    foreach ($retainedBatchDirectory in @(Get-ChildItem -LiteralPath $RetainedRunDirectory -Directory)) {
+        $batchPath = Join-Path $retainedBatchDirectory.FullName 'source-records.json'
+        $responsePath = Join-Path $retainedBatchDirectory.FullName 'response.json'
+        $pairs = @(
+            @($CurrentCatalogPath, (Join-Path $retainedBatchDirectory.FullName 'hosted-instruction-catalog.json')),
+            @($CurrentDraftSchemaPath, (Join-Path $retainedBatchDirectory.FullName 'source-assessment-draft.schema.json')),
+            @($CurrentPromptPath, (Join-Path $retainedBatchDirectory.FullName 'SourceAssessment-v4.md'))
+        )
+        if (-not (Test-Path -LiteralPath $batchPath -PathType Leaf) -or -not (Test-Path -LiteralPath $responsePath -PathType Leaf)) {
+            continue
+        }
+        if (@($pairs | Where-Object { -not (Test-Path -LiteralPath $_[1] -PathType Leaf) -or (Get-SourceEvidenceFileSha256 -Path $_[0]) -cne (Get-SourceEvidenceFileSha256 -Path $_[1]) }).Count -gt 0) {
+            continue
+        }
+        try {
+            $batch = Get-Content -LiteralPath $batchPath -Raw | ConvertFrom-Json
+            $response = Get-Content -LiteralPath $responsePath -Raw | ConvertFrom-Json
+            $recordsByKey = @{}
+            foreach ($record in @($batch.records)) {
+                $recordsByKey["$($record.sourceRef.sourceDefinitionId):$($record.sourceRef.sourceId)"] = $record
+            }
+            foreach ($entry in @($response.entries)) {
+                $key = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
+                if (-not $recordsByKey.ContainsKey($key) -or $entries.ContainsKey($key)) {
+                    continue
+                }
+                try {
+                    Test-AssessmentResponseEntry -Entry $entry -ExpectedRecord $recordsByKey[$key] -Context "retained $($retainedBatchDirectory.Name):$key" -AssessmentCardinality ([string]$batch.assessmentCardinality) -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $CurrentDraftSchemaPath
+                    $entries[$key] = [pscustomobject]@{
+                        Record = $recordsByKey[$key]
+                        Entry = $entry
+                        AssessmentCardinality = [string]$batch.assessmentCardinality
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+    return $entries
 }
 
 function Copy-RunInputFile {
@@ -259,6 +417,20 @@ $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
 if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Source assessment output must be outside the repository root'
 }
+$resolvedCacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
+if ($resolvedCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'CacheDirectory must be outside the repository root'
+}
+$resolvedResumeRunDirectory = $null
+if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
+    $resolvedResumeRunDirectory = [IO.Path]::GetFullPath($ResumeRunDirectory)
+    if ($resolvedResumeRunDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'ResumeRunDirectory must be outside the repository root'
+    }
+    if (-not (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
+        throw "ResumeRunDirectory was not found: $resolvedResumeRunDirectory"
+    }
+}
 
 $resolvedBuilderPath = [IO.Path]::GetFullPath($BaselineBuilderPath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
@@ -268,6 +440,7 @@ $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilo
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
+$managedRunRootPrefix = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'hosted-source-assessment')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
 foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -445,9 +618,65 @@ $staticEvaluatorInputBytes = 0
 foreach ($path in @($resolvedCatalogPath, $draftSchemaPath, $promptPath)) {
     $staticEvaluatorInputBytes += [IO.File]::ReadAllBytes($path).Length
 }
+$draftEntries = [Collections.Generic.List[object]]::new()
+$cachedSourceCount = 0
+$recoveredSourceCount = 0
+$evaluatedSourceCount = 0
+$sourceCacheMetadata = @{}
+$retainedEntries = if ($null -ne $resolvedResumeRunDirectory) {
+    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
+}
+else {
+    @{}
+}
+$pendingLanes = [Collections.Generic.List[object]]::new()
+foreach ($lane in $orderedLanes) {
+    $pendingRecords = [Collections.Generic.List[object]]::new()
+    foreach ($record in @($lane.records)) {
+        $sourceKey = "$($record.sourceRef.sourceDefinitionId):$($record.sourceRef.sourceId)"
+        $cacheIdentity = Get-AssessmentSourceCacheIdentity -SourceRecord $record -AssessmentCardinality ([string]$lane.assessmentCardinality) -CatalogPath $resolvedCatalogPath -ContractPath $resolvedContractPath -DraftSchemaPath $draftSchemaPath -PromptPath $promptPath -Evaluator $evaluatorIdentity -Model $Model -ReasoningEffort $ReasoningEffort
+        $cacheKey = Get-AssessmentSourceCacheKey -Identity $cacheIdentity
+        $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
+        $sourceCacheMetadata[$sourceKey] = [pscustomobject]@{ Identity = $cacheIdentity; Key = $cacheKey; Path = $cachePath; Record = $record; AssessmentCardinality = [string]$lane.assessmentCardinality }
+        $entry = Read-AssessmentSourceCache -Path $cachePath -ExpectedCacheKey $cacheKey -ExpectedIdentity $cacheIdentity -ExpectedRecord $record -Context "cached $sourceKey" -AssessmentCardinality ([string]$lane.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds -DraftSchemaPath $draftSchemaPath -ShowProgress:($OutputFormat -eq 'Text' -or $ShowProgress)
+        if ($null -ne $entry) {
+            $draftEntries.Add($entry)
+            $cachedSourceCount++
+            continue
+        }
+        if ($retainedEntries.ContainsKey($sourceKey)) {
+            $retained = $retainedEntries[$sourceKey]
+            if ([string]$retained.AssessmentCardinality -ceq [string]$lane.assessmentCardinality -and ($retained.Record | ConvertTo-Json -Depth 40 -Compress) -ceq ($record | ConvertTo-Json -Depth 40 -Compress)) {
+                Test-AssessmentResponseEntry -Entry $retained.Entry -ExpectedRecord $record -Context "recovered $sourceKey" -AssessmentCardinality ([string]$lane.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds -DraftSchemaPath $draftSchemaPath
+                Write-JsonAtomically -Path $cachePath -Value ([ordered]@{
+                    schemaVersion = 1
+                    kind = 'hosted-source-assessment-source-cache'
+                    cacheKey = $cacheKey
+                    identity = $cacheIdentity
+                    entry = $retained.Entry
+                })
+                $draftEntries.Add($retained.Entry)
+                $recoveredSourceCount++
+                continue
+            }
+        }
+        $pendingRecords.Add($record)
+    }
+    if ($pendingRecords.Count -gt 0) {
+        $pendingLanes.Add([ordered]@{
+            sourceDefinitionId = [string]$lane.sourceDefinitionId
+            assessmentBatchSize = [int]$lane.assessmentBatchSize
+            assessmentCardinality = [string]$lane.assessmentCardinality
+            records = $pendingRecords.ToArray()
+        })
+    }
+}
+if (($OutputFormat -eq 'Text' -or $ShowProgress) -and ($cachedSourceCount -gt 0 -or $recoveredSourceCount -gt 0)) {
+    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'source-assessment/reuse' -Detail ("{0} cached, {1} recovered, {2} require evaluation" -f $cachedSourceCount, $recoveredSourceCount, ($orderedLanes.records.Count - $cachedSourceCount - $recoveredSourceCount)) -NameWidth 42)
+}
 $batches = [Collections.Generic.List[object]]::new()
 $nextBatchNumber = 1
-foreach ($lane in $orderedLanes) {
+foreach ($lane in $pendingLanes) {
     $currentRecords = [Collections.Generic.List[object]]::new()
     foreach ($record in @($lane.records)) {
         if ($currentRecords.Count -eq [int]$lane.assessmentBatchSize) {
@@ -464,7 +693,7 @@ foreach ($lane in $orderedLanes) {
         $candidatePayloadSizeBytes = Get-AssessmentBatchPayloadSizeBytes -Packet $candidatePacket -StaticInputBytes $staticEvaluatorInputBytes
         if ($candidatePayloadSizeBytes -gt $EvaluatorPayloadBudgetBytes) {
             if ($currentRecords.Count -eq 0) {
-            throw "Source assessment record exceeds evaluator payload budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidatePayloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
+                throw "Source assessment record exceeds evaluator payload budget: source stream $($lane.sourceDefinitionId), source record $($record.sourceRef.sourceId), measured $candidatePayloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes; reduce or split the parser-owned source record before assessment"
             }
             $batchId = '{0}-{1:D3}' -f $lane.sourceDefinitionId, $nextBatchNumber
             $packet = New-AssessmentBatchPacket -BatchId $batchId -SourceDefinitionId ([string]$lane.sourceDefinitionId) -AssessmentCardinality ([string]$lane.assessmentCardinality) -Records $currentRecords.ToArray()
@@ -493,7 +722,7 @@ foreach ($lane in $orderedLanes) {
     }
 }
 
-$draftEntries = [Collections.Generic.List[object]]::new()
+$evaluatedBatchCount = 0
 $succeeded = $false
 try {
     $null = New-Item -ItemType Directory -Path $runDirectory -Force
@@ -513,7 +742,7 @@ try {
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
 
         if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-            Write-Host ("[RUNNING]  source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
+            Write-Host (Format-ValidationStatusLine -Status 'running' -Name "source-assessment/$batchId" -Detail ("{0} sources, {1} payload bytes" -f @($batchPacket.records).Count, $batch.payloadSizeBytes) -NameWidth 42)
         }
         $response = $null
         $lastError = $null
@@ -574,6 +803,7 @@ try {
                 }
                 $response = $responseJson | ConvertFrom-Json
                 Assert-BatchResponse -Response $response -ExpectedRecords @($batchPacket.records) -BatchId $batchId -AssessmentCardinality ([string]$batchPacket.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
+                $evaluatedBatchCount++
                 $lastError = $null
                 break
             }
@@ -592,10 +822,20 @@ try {
             throw "Source assessment $batchId failed after $($MaxRetries + 1) attempts: $($lastError.Exception.Message)"
         }
         foreach ($entry in @($response.entries)) {
+            $sourceKey = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
+            $cacheMetadata = $sourceCacheMetadata[$sourceKey]
+            Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
+                schemaVersion = 1
+                kind = 'hosted-source-assessment-source-cache'
+                cacheKey = $cacheMetadata.Key
+                identity = $cacheMetadata.Identity
+                entry = $entry
+            })
             $draftEntries.Add($entry)
+            $evaluatedSourceCount++
         }
         if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-            Write-Host ("[PASSED]   source-assessment/{0,-24} : {1} sources, {2} payload bytes" -f $batchId, @($batchPacket.records).Count, $batch.payloadSizeBytes)
+            Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment/$batchId" -Detail ("evaluated; {0} sources, {1} payload bytes" -f @($batchPacket.records).Count, $batch.payloadSizeBytes) -NameWidth 42)
         }
     }
 
@@ -638,6 +878,9 @@ finally {
     if ($succeeded -and (Test-Path -LiteralPath $runDirectory -PathType Container)) {
         Remove-Item -LiteralPath $runDirectory -Recurse -Force
     }
+    if ($succeeded -and $null -ne $resolvedResumeRunDirectory -and $resolvedResumeRunDirectory.StartsWith($managedRunRootPrefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
+        Remove-Item -LiteralPath $resolvedResumeRunDirectory -Recurse -Force
+    }
 }
 
 $result = [ordered]@{
@@ -646,6 +889,11 @@ $result = [ordered]@{
     sourceCount = [int]$builderResult.sourceCount
     assessmentCount = [int]$builderResult.assessmentCount
     batchCount = $batches.Count
+    cachedSourceCount = $cachedSourceCount
+    recoveredSourceCount = $recoveredSourceCount
+    evaluatedSourceCount = $evaluatedSourceCount
+    evaluatedBatchCount = $evaluatedBatchCount
+    cacheDirectory = $resolvedCacheDirectory
     baselineSha256 = [string]$builderResult.baselineSha256
     assessmentContractSha256 = [string]$builderResult.assessmentContractSha256
     assessmentRunConfigurationSha256 = [string]$builderResult.assessmentRunConfigurationSha256
@@ -654,7 +902,7 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Source assessment completed: $($result.sourceCount) sources, $($result.assessmentCount) assessments, $($result.batchCount) batches"
+    Write-Output "Source assessment completed: $($result.sourceCount) sources, $($result.assessmentCount) assessments; $($result.cachedSourceCount) cached, $($result.recoveredSourceCount) recovered, $($result.evaluatedSourceCount) evaluated across $($result.evaluatedBatchCount) batches"
     Write-Output "Output: $($result.outputPath)"
     Write-Output "Baseline SHA-256: $($result.baselineSha256)"
 }

@@ -12,6 +12,10 @@ param(
 
     [string]$InventoryDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/inventories'),
 
+    [string]$AssessmentCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/assessment-cache'),
+
+    [string]$AssessmentResumeDirectory,
+
     [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
@@ -48,9 +52,14 @@ $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-Sour
 $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
+$resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
+$resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'SiteDirectory must be outside the source repository'
+}
+if ($resolvedAssessmentCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'AssessmentCacheDirectory must be outside the source repository'
 }
 
 foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $guidanceCapacityPath)) {
@@ -157,6 +166,14 @@ $shutdownConfig = [ordered]@{
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $resolvedDisplayPath = if ([string]::IsNullOrWhiteSpace($DisplayPath)) { $null } else { [IO.Path]::GetFullPath($DisplayPath) }
 $assessmentResult = $null
+$workbenchPhase = 'INITIALIZATION'
+$workbenchStages = [Collections.Generic.List[object]]::new()
+
+function Complete-WorkbenchStage {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $script:workbenchStages.Add([pscustomobject]@{ status = 'passed'; name = $Name })
+}
 
 function Copy-FileAtomically {
     param(
@@ -184,6 +201,10 @@ function Update-StagedDisplay {
         $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
         $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
         try {
+            if ($OutputFormat -eq 'Text') {
+                Write-ValidationSectionHeader -Title 'Source Collection' | Write-Host
+            }
+            $script:workbenchPhase = 'SOURCE COLLECTION'
             $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
             $currentInventoryPaths = [Collections.Generic.List[string]]::new()
             $priorInventoryPaths = [Collections.Generic.List[string]]::new()
@@ -202,10 +223,13 @@ function Update-StagedDisplay {
                     $priorInventoryPaths.Add($priorInventoryPath)
                 }
             }
+            Complete-WorkbenchStage -Name $workbenchPhase
 
             $assessmentSetPath = Join-Path $runDirectory 'assessment-set.json'
+            $script:workbenchPhase = 'SOURCE ASSESSMENT'
             if ($OutputFormat -eq 'Text') {
-                Write-Host '[RUNNING]  source-assessment           : Evaluating current source inventories'
+                Write-ValidationSectionHeader -Title 'Assessment Status' | Write-Host
+                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'source-assessment' -Detail 'Evaluating current source inventories' -NameWidth 42)
             }
             $assessmentParameters = @{
                 RepositoryRoot = $repositoryRoot
@@ -216,29 +240,39 @@ function Update-StagedDisplay {
                 Model = $Model
                 ReasoningEffort = $AssessmentReasoningEffort
                 MaxRetries = $MaxRetries
+                CacheDirectory = $resolvedAssessmentCacheDirectory
                 ShowProgress = $OutputFormat -eq 'Text'
                 OutputFormat = 'Json'
+            }
+            if ($null -ne $resolvedAssessmentResumeDirectory) {
+                $assessmentParameters.ResumeRunDirectory = $resolvedAssessmentResumeDirectory
             }
             $assessmentOutput = @(& $sourceAssessmentPath @assessmentParameters 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 throw "Source assessment failed: $(($assessmentOutput | Out-String).Trim())"
             }
             $script:assessmentResult = ($assessmentOutput | Out-String) | ConvertFrom-Json
+            Complete-WorkbenchStage -Name $workbenchPhase
 
             $capacityPath = Join-Path $runDirectory 'guidance-capacity.json'
+            $script:workbenchPhase = 'GUIDANCE CAPACITY'
             $capacityOutput = @(& $guidanceCapacityPath -HostedRoot (Join-Path $repositoryRoot 'hosted_copilot') -OutputFormat Json 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 throw "Guidance capacity calculation failed: $(($capacityOutput | Out-String).Trim())"
             }
             [IO.File]::WriteAllText($capacityPath, (($capacityOutput | Out-String).Trim() + "`n"), [Text.UTF8Encoding]::new($false))
+            Complete-WorkbenchStage -Name $workbenchPhase
 
             if ($OutputFormat -eq 'Text') {
+                Write-ValidationSectionHeader -Title 'Reconciliation Status' | Write-Host
                 Write-Host '[RUNNING]  assessment-reconciliation   : Consolidating assessments into the Workbench display'
             }
+            $script:workbenchPhase = 'ASSESSMENT RECONCILIATION'
             $reconciliationOutput = @(& $assessmentReconciliationPath -RepositoryRoot $repositoryRoot -AssessmentBaselinePath $assessmentSetPath -InventoryPaths $currentInventoryPaths.ToArray() -GuidanceCapacityPath $capacityPath -OutputPath $stagedDisplayPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $AssessmentReasoningEffort -MaxRetries $MaxRetries -OutputFormat Json 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
+            Complete-WorkbenchStage -Name $workbenchPhase
             foreach ($inventoryPath in $currentInventoryPaths) {
                 Copy-FileAtomically -SourcePath $inventoryPath -DestinationPath (Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) ([IO.Path]::GetFileName($inventoryPath)))
             }
@@ -248,6 +282,7 @@ function Update-StagedDisplay {
         }
     }
     else {
+        $script:workbenchPhase = 'PREBUILT DISPLAY STAGING'
         if (-not (Test-Path -LiteralPath $resolvedDisplayPath -PathType Leaf)) {
             throw "DisplayPath was not found: $resolvedDisplayPath"
         }
@@ -256,16 +291,57 @@ function Update-StagedDisplay {
             throw 'DisplayPath does not satisfy the Workbench display schema'
         }
         [IO.File]::WriteAllText($stagedDisplayPath, $displayContent.TrimEnd() + "`n", [Text.UTF8Encoding]::new($false))
+        Complete-WorkbenchStage -Name $workbenchPhase
     }
 
+    $script:workbenchPhase = 'DISPLAY VALIDATION'
     $content = Get-Content -LiteralPath $stagedDisplayPath -Raw
     if (-not ($content | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
         throw 'Staged Workbench display does not satisfy its schema'
     }
+    Complete-WorkbenchStage -Name $workbenchPhase
     return ($content | ConvertFrom-Json)
 }
 
-$stagedDisplay = Update-StagedDisplay
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'
+    Write-ValidationSummary -Fields ([ordered]@{
+        'Cache Directory' = $resolvedAssessmentCacheDirectory
+        'Recovery Directory' = $(if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { $resolvedAssessmentResumeDirectory })
+    })
+}
+try {
+    $stagedDisplay = Update-StagedDisplay
+}
+catch {
+    $failureMessage = ($_.Exception.Message -replace '\s+', ' ').Trim()
+    $failure = [ordered]@{
+        status = 'failed'
+        phase = $workbenchPhase
+        error = $failureMessage
+        assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
+        assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
+    }
+    if ($OutputFormat -eq 'Json') {
+        $failure | ConvertTo-Json -Depth 5
+    }
+    else {
+        $failureStages = @($workbenchStages.ToArray()) + @([pscustomobject]@{ status = 'failed'; name = $failure.phase })
+        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
+        Write-ValidationSummary -Fields ([ordered]@{
+            Status = 'FAILED'
+            Stages = $failureStages.Count
+            Passed = @($failureStages | Where-Object status -eq 'passed').Count
+            Failed = 1
+        })
+        Write-ValidationSectionHeader -Title 'Workbench Stages'
+        Write-ValidationTwoColumnTable -Rows $failureStages -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Stage' -SecondProperty 'name' -UppercaseFirst
+        Write-ValidationSectionHeader -Title 'Failures'
+        Write-Output ("  - {0}: {1}" -f $failure.phase, $failure.error)
+        Complete-ValidationTextOutput
+    }
+    exit 1
+}
 $stagedCandidates = @($stagedDisplay.candidates)
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
@@ -273,6 +349,8 @@ $result = [ordered]@{
     url = $url
     siteDirectory = $resolvedSiteDirectory
     displayPath = $stagedDisplayPath
+    assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
+    assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
     discoveredCandidateCount = $stagedCandidates.Count
     evaluatedCandidateCount = $stagedCandidates.Count
     ruleCandidateCount = $stagedCandidates.Count
@@ -289,16 +367,23 @@ if ($StageOnly) {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench staging'
+        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
         Write-ValidationSummary -Fields ([ordered]@{
-            Status = $result.status.ToUpperInvariant()
+            Status = 'PASSED'
+            Stages = $workbenchStages.Count
+            Passed = $workbenchStages.Count
+            Failed = 0
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
+            'Assessment Cache' = $result.assessmentCacheDirectory
+            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { $result.assessmentResumeDirectory })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
         })
+        Write-ValidationSectionHeader -Title 'Workbench Stages'
+        Write-ValidationTwoColumnTable -Rows $workbenchStages.ToArray() -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Stage' -SecondProperty 'name' -UppercaseFirst
         Complete-ValidationTextOutput
     }
     return
@@ -359,17 +444,24 @@ try {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'
+        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
         Write-ValidationSummary -Fields ([ordered]@{
-            Status = 'READY'
+            Status = 'PASSED'
+            Stages = $workbenchStages.Count
+            Passed = $workbenchStages.Count
+            Failed = 0
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
+            'Assessment Cache' = $result.assessmentCacheDirectory
+            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { $result.assessmentResumeDirectory })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'
         })
+        Write-ValidationSectionHeader -Title 'Workbench Stages'
+        Write-ValidationTwoColumnTable -Rows $workbenchStages.ToArray() -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Stage' -SecondProperty 'name' -UppercaseFirst
         Write-Output 'Press Ctrl+C to stop the Workbench.'
         Complete-ValidationTextOutput
     }

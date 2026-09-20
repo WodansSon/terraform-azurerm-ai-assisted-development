@@ -8,12 +8,14 @@ Files beneath `internal/`, `modules/`, and `tests/` are implementation or valida
 
 | Task | Command |
 | --- | --- |
-| Validate the complete Hosted Toolkit | `pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1` |
+| Validate the complete Hosted Toolkit | `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1` |
 | Launch the Hosted Rule Workbench | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1` |
-| Plan or install the Hosted payload | `pwsh -NoProfile -File ./hosted_copilot/tools/Install-Toolkit.ps1` |
+| Plan or install the Hosted payload | `pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1` |
 | Run or resume a controlled Hosted review | `pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory <provider-fork> -CaseId <case-id>` |
 
 Review the command help before supplying operation-specific parameters. Installation defaults to a dry run.
+
+Workbench source assessment stores validated per-source entries under `%LOCALAPPDATA%\hosted-workbench\assessment-cache` by default and reports the resolved path during startup. Use `-AssessmentCacheDirectory <external-path>` to override it. After a failed assessment, restart with `-AssessmentResumeDirectory <retained-run-path>` to import every still-valid source result and evaluate only misses. Cache entries persist across successful runs; temporary run artifacts are removed only after success.
 
 ## Catalog Maintenance
 
@@ -33,4 +35,4 @@ Review branch topology, evidence capture, and result construction are internal i
 
 ## Focused Development
 
-Focused tests are invoked while changing their owning implementation and are also composed by `Test-Toolkit.ps1`. They are not normal maintainer operations. Migration-only tools exist solely to prove and complete the version 4 cutover and are removed from normal validation before archival.
+Focused tests are invoked while changing their owning implementation and are also composed by `Test-HostedRules.ps1`. They are not normal maintainer operations. Migration-only tools exist solely to prove and complete the version 4 cutover and are removed from normal validation before archival.

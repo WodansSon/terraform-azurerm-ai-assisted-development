@@ -36,7 +36,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run b
 
 Supported focused suites are `loopback-host-validation`, `browser-behavior-manifest`, `browser-playwright-journeys`, `browser-viewport-layout`, `browser-framework-coverage`, and `authenticated-server-shutdown`. Focused browser-engine runs reuse installed dependencies when their versions match the lock; run the complete suite once when those packages are unavailable or stale.
 
-The Hosted Toolkit profile invokes the same suite through `Test-Toolkit.ps1`.
+The Hosted Toolkit profile invokes the same suite through `Test-HostedRules.ps1`.
 
 ## Visible Playback
 

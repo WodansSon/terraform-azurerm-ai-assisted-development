@@ -43,7 +43,13 @@ jobs:
               exit $LASTEXITCODE
             }
 
-            ./tools/Validate-ChangedToolkits.ps1 -ChangedPaths $changedPaths -SkipInteractiveRegressionHarness -SkipInteractiveUpstreamDrift -SkipHostedUpstreamDrift
+            $validationParameters = @{
+              ChangedPaths = $changedPaths
+              SkipInteractiveRegressionHarness = $true
+              SkipInteractiveUpstreamDrift = $true
+              SkipHostedUpstreamDrift = $true
+            }
+            ./tools/Validate-ChangedToolkits.ps1 @validationParameters
             exit $LASTEXITCODE
           }
 
@@ -54,7 +60,7 @@ jobs:
             $validationFailed = $true
           }
 
-          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-Toolkit.ps1 -SkipUpstreamDrift
+          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift
           if ($LASTEXITCODE -ne 0) {
             $validationFailed = $true
           }

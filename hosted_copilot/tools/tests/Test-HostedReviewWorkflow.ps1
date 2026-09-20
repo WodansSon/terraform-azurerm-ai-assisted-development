@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [ValidateSet('Text', 'Json')]
+    [string]$OutputFormat = 'Text'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -11,8 +14,16 @@ $caseDirectory = Join-Path $hostedRoot 'regression/cases'
 $schemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-review-workflow-$([guid]::NewGuid().ToString('N'))")
 $resultsDirectory = Join-Path $tempRoot 'results'
+$validationOutputModulePath = Join-Path $hostedRoot '../tools/ValidationOutput.psm1'
 
 Import-Module $workflowModulePath -Force
+Import-Module $validationOutputModulePath -Force
+$passed = $false
+$failure = $null
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted review workflow'
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'offline-result' -Detail 'Building and validating one controlled paired-review result')
+}
 New-Item -ItemType Directory -Path $resultsDirectory -Force | Out-Null
 try {
     $case = Get-Content -LiteralPath (Join-Path $caseDirectory 'documentation/example-validation-v2/case.json') -Raw | ConvertFrom-Json
@@ -74,8 +85,42 @@ try {
         throw 'Combined expected finding was incorrectly recorded as missed'
     }
 
-    Write-Output 'Hosted review workflow tests passed: 1 of 1.'
+    $passed = $true
+}
+catch {
+    $failure = $_.Exception.Message
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$resultSummary = [ordered]@{
+    status = if ($passed) { 'passed' } else { 'failed' }
+    testCount = 1
+    passedCount = if ($passed) { 1 } else { 0 }
+    failedCount = if ($passed) { 0 } else { 1 }
+    tests = @([ordered]@{ name = 'offline-result'; status = if ($passed) { 'passed' } else { 'failed' } })
+    issues = @($(if ($null -eq $failure) { @() } else { @($failure) }))
+}
+if ($OutputFormat -eq 'Json') {
+    $resultSummary | ConvertTo-Json -Depth 5
+}
+else {
+    Write-ValidationSectionHeader -Title 'Hosted review workflow test summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $resultSummary.status.ToUpperInvariant()
+        Tests = $resultSummary.testCount
+        Passed = $resultSummary.passedCount
+        Failed = $resultSummary.failedCount
+    })
+    Write-ValidationSectionHeader -Title 'Hosted review workflow tests'
+    Write-ValidationTwoColumnTable -Rows $resultSummary.tests -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -UppercaseFirst
+    if (-not $passed) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        Write-Output "  - $failure"
+    }
+    Complete-ValidationTextOutput
+}
+if (-not $passed) {
+    exit 1
 }

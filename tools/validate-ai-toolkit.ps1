@@ -51,8 +51,52 @@ $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
 $npmCommand = Get-Command $npmCommandName -ErrorAction SilentlyContinue
 $markdownlintRelativePath = if ($IsWindows) { 'npm-validation/node_modules/.bin/markdownlint-cli2.cmd' } else { 'npm-validation/node_modules/.bin/markdownlint-cli2' }
 $markdownlintCommandPath = Join-Path $PSScriptRoot $markdownlintRelativePath
+$npmLockPath = Join-Path $PSScriptRoot 'npm-validation/package-lock.json'
+$npmInstalledLockPath = Join-Path $PSScriptRoot 'npm-validation/node_modules/.package-lock.json'
 
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
+
+function Test-NpmPackageGraphCurrent {
+    param(
+        [Parameter(Mandatory = $true)][string]$LockPath,
+        [Parameter(Mandatory = $true)][string]$InstalledLockPath
+    )
+
+    if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf) -or -not (Test-Path -LiteralPath $InstalledLockPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $lock = Get-Content -LiteralPath $LockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $installedLock = Get-Content -LiteralPath $InstalledLockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        if ($lock['lockfileVersion'] -ne $installedLock['lockfileVersion'] -or $null -eq $lock['packages'] -or $null -eq $installedLock['packages']) {
+            return $false
+        }
+
+        foreach ($packagePath in @($installedLock['packages'].Keys)) {
+            if (-not $lock['packages'].ContainsKey($packagePath)) {
+                return $false
+            }
+        }
+        foreach ($packagePath in @($lock['packages'].Keys | Where-Object { $_ -ne '' })) {
+            if (-not $installedLock['packages'].ContainsKey($packagePath)) {
+                if (-not [bool]$lock['packages'][$packagePath]['optional']) {
+                    return $false
+                }
+                continue
+            }
+            $lockedPackage = $lock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
+            $installedPackage = $installedLock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
+            if ($lockedPackage -cne $installedPackage) {
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
 
 function Invoke-ValidationStep {
     param(
@@ -63,6 +107,10 @@ function Invoke-ValidationStep {
         [scriptblock]$Command,
 
         [string]$Detail,
+
+        [string]$RunningDetail = 'IN PROGRESS',
+
+        [string]$SuccessDetail,
 
         [switch]$Skipped,
 
@@ -86,7 +134,7 @@ function Invoke-ValidationStep {
     }
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail)
     }
 
     $started = Get-Date
@@ -115,7 +163,8 @@ function Invoke-ValidationStep {
 
     if ($OutputFormat -eq 'Text') {
         $durationDetail = Format-ValidationDuration -DurationSeconds $durationSeconds
-        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $durationDetail)
+        $statusDetail = if ($status -eq 'passed' -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { $durationDetail }
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail)
     }
 
     return [pscustomobject]@{
@@ -415,7 +464,7 @@ try {
         '-NoProfile',
         '-File',
         $npmSecurityScriptPath,
-        '-AdditionalLockPath',
+        '-LockPath',
         'tools/npm-validation/package-lock.json'
     )
     if ($FixNpmAudit) {
@@ -425,18 +474,26 @@ try {
         $npmSecurityArguments += '-AllowBreakingFix'
     }
 
-    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit every tracked npm integrity lock and reject vulnerabilities of any severity before dependency installation.' -Command {
+    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit the Interactive Toolkit npm integrity lock and reject vulnerabilities of any severity before dependency verification.' -Command {
         & pwsh @npmSecurityArguments
     }
     $steps += $npmSecurityStep
 
-    $npmInstallStep = Invoke-ValidationStep -Name 'npm-install' -Detail 'Install only the audited, integrity-locked npm validation graph without lifecycle scripts.' -Skipped:(-not $npmSecurityStep.success) -Command {
+    $npmPackagesStep = Invoke-ValidationStep -Name 'npm-packages' -Detail 'Verify that installed npm validation packages exactly match the audited integrity lock without running lifecycle scripts.' -RunningDetail 'VERIFYING AUDITED LOCKFILE' -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Skipped:(-not $npmSecurityStep.success) -Command {
         if ($null -eq $npmCommand) {
             throw 'npm was not found on PATH'
         }
-        & $npmCommand.Source ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund
+        if (-not (Test-NpmPackageGraphCurrent -LockPath $npmLockPath -InstalledLockPath $npmInstalledLockPath)) {
+            & $npmCommand.Source ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) {
+                return
+            }
+            if (-not (Test-NpmPackageGraphCurrent -LockPath $npmLockPath -InstalledLockPath $npmInstalledLockPath)) {
+                throw 'installed npm package graph does not match the audited lockfile after npm ci'
+            }
+        }
     }
-    $steps += $npmInstallStep
+    $steps += $npmPackagesStep
 
     $steps += Invoke-ValidationStep -Name 'changelog' -Detail 'Confirm the current branch has an explicit changelog decision: either CHANGELOG.md is updated or a maintainer explicitly marks the branch as changelog-not-required.' -Skipped:$SkipChangelog -Command {
         if ($null -eq $gitCommand) {
@@ -492,7 +549,7 @@ try {
     }
 
     $steps += Invoke-ValidationStep -Name 'validation-output' -Detail 'Verify the shared repository-maintenance presentation contract for section headers, summaries, status lines, tables, and output endings.' -Command {
-        & pwsh -NoProfile -File $validationOutputTestScriptPath
+        & pwsh -NoProfile -File $validationOutputTestScriptPath -ProductScope Interactive
     }
 
     $steps += Invoke-ValidationStep -Name 'changed-regression-cases' -Detail 'Confirm branch-local regression case changes are runnable with adjudicated example results, not merely schema-valid.' -Command {
@@ -530,7 +587,7 @@ try {
         }
     }
 
-    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmInstallStep.success) -Command {
+    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmPackagesStep.success) -Command {
         if (-not (Test-Path -LiteralPath $markdownlintCommandPath -PathType Leaf)) {
             throw "markdownlint was not installed from the repository lockfile: $markdownlintCommandPath"
         }
