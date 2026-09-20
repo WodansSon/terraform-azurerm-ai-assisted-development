@@ -80,12 +80,12 @@ $assessmentReconciliationReviewContractSchemaPath = Join-Path $assessmentReconci
 $assessmentReconciliationReviewContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.json'
 $assessmentReconciliationReviewSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-review-v4.schema.json'
 $assessmentReconciliationRecommendationsSchemaPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations.schema.json'
-$assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'hosted-rule-change-recommendations-v1.json'
+$assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-v4.json'
 $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
-$assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-HostedRuleChangeRecommendations.ps1'
+$assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-WorkbenchDisplay.ps1'
 $assessmentReconciliationReviewBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-AssessmentReconciliationReview.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
-$assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
+$assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
 $v4MigrationReadinessTestPath = Join-Path $PSScriptRoot 'migration/Test-MigrationReadiness.ps1'
 $v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
 $v3FieldCompatibilitySchemaPath = Join-Path $assessmentReconciliationRoot 'version-3-field-compatibility.schema.json'
@@ -781,7 +781,7 @@ if ($runtimeStarted) {
         if ($sourceAssessmentTestResult.status -ne 'passed') {
             throw 'source assessment regression suite reported failures'
         }
-        Add-CheckResult -Name 'source-assessment' -Passed $true -Detail "Passed $($sourceAssessmentTestResult.testCount) version 4 contract, confidence, staged-inventory and prior-generation binding, exhaustive coverage, Hosted-reference, and external-output tests without model calls."
+        Add-CheckResult -Name 'source-assessment' -Passed $true -Detail "Passed $($sourceAssessmentTestResult.testCount) version 4 contract, confidence, current- and prior-inventory binding, exhaustive coverage, Hosted-reference, and external-output tests without model calls."
     }
     catch {
         Add-ValidationIssue -Name 'source-assessment' -Issue "Hosted source assessment validation failed: $($_.Exception.Message)"
@@ -797,7 +797,7 @@ if ($runtimeStarted) {
         if ($assessmentReconciliationTestResult.status -ne 'passed') {
             throw 'assessment reconciliation regression suite reported failures'
         }
-        Add-CheckResult -Name 'assessment-reconciliation' -Passed $true -Detail "Passed $($assessmentReconciliationTestResult.testCount) complete-corpus reconciliation, deterministic Hosted identity, exhaustive coverage, immutable snapshot, source-transition, and read-only v4 review tests without model calls."
+        Add-CheckResult -Name 'assessment-reconciliation' -Passed $true -Detail "Passed $($assessmentReconciliationTestResult.testCount) direct-display, deterministic Hosted identity, exhaustive coverage, source-transition, and retired-rule lifecycle tests without model calls."
     }
     catch {
         Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"

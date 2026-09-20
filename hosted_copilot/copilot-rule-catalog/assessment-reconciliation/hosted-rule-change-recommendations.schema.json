@@ -4,7 +4,7 @@
   "title": "Hosted Rule Change Recommendations",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "assessmentBaselineSha256", "hostedCatalogSha256", "reconciliationContractSha256", "inputPromotionPlanFileSha256", "recommendations", "assessmentCoverage"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "assessmentBaselineSha256", "hostedCatalogSha256", "reconciliationContractSha256", "recommendations", "assessmentCoverage"],
   "properties": {
     "$schema": {
       "const": "hosted-rule-change-recommendations.schema.json"
@@ -34,16 +34,6 @@
     },
     "reconciliationContractSha256": {
       "$ref": "#/$defs/sha256"
-    },
-    "inputPromotionPlanFileSha256": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/sha256"
-        },
-        {
-          "type": "null"
-        }
-      ]
     },
     "recommendations": {
       "type": "array",

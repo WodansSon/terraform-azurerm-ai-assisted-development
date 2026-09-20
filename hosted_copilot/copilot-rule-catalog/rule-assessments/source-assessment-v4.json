@@ -1,7 +1,7 @@
 {
   "$schema": "assessment-contract.schema.json",
   "schemaVersion": 1,
-  "contractId": "source-assessment-v2",
+  "contractId": "source-assessment-v4",
   "behaviorFiles": [
     "hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json",
     "hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json",
@@ -11,9 +11,8 @@
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json",
-    "hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json",
     "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
-    "hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md",
+    "hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md",
     "hosted_copilot/tools/internal/assessment/Invoke-SourceAssessment.ps1",
     "hosted_copilot/tools/internal/assessment/New-SourceAssessmentBaseline.ps1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",

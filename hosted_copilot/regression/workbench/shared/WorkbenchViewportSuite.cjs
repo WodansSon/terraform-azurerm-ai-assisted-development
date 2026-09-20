@@ -6,7 +6,13 @@ function assert(condition, message) {
 }
 
 async function waitForWorkbench(page) {
-  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0);
+  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0
+    || Boolean(document.querySelector("#assessment-panel .empty-state")));
+  const loadState = await page.evaluate(() => ({
+    catalogCount: Number(document.querySelector("#catalog-count")?.textContent) || 0,
+    error: document.querySelector("#assessment-panel .empty-state p")?.textContent?.trim() || ""
+  }));
+  if (loadState.catalogCount === 0) throw new Error(`Workbench did not load: ${loadState.error || "no catalog rules rendered"}`);
 }
 
 async function waitForWorkbenchTooltip(page) {
@@ -376,6 +382,7 @@ async function assertOverridesDecoration(page, width) {
       state.session.decisions[candidate.key] = {
         ...state.session.decisions[candidate.key],
         action: getDefaultPlanAction(candidate, assessment.recommendation),
+        proposedHostedRuleId: "IMPL-OVERRIDE-999",
         rationale: "Viewport regression override is ready for promotion."
       };
       syncCandidateTreeRows();
@@ -485,9 +492,8 @@ async function assertBulkActionsPreserveContext(page, width) {
         && decision.planMembershipSource === "bulk"
         && decision.bulkOperationId === operation.id;
     });
-    const operationAuditValid = operation.recordedBy.type === "github-cli"
-      && operation.recordedBy.login === "fixture-codeowner"
-      && operation.candidateKeys.every((key) => operation.candidateSourceHashes[key] === state.session.decisions[key].sourceHash);
+    const operationAuditValid = operation.action === "actionable"
+      && operation.candidateKeys.every((key) => state.session.decisions[key].bulkOperationId === operation.id);
     const manualDecisionPreserved = !operation.candidateKeys.includes(manualCandidate.key)
       && JSON.stringify(state.session.decisions[manualCandidate.key]) === manualDecisionBefore;
 

@@ -149,9 +149,26 @@
           "items": {
             "$ref": "#/$defs/relatedHostedCoverage"
           }
+        },
+        "implementationModels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["legacy", "typed", "framework"] }
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": { "const": "add" },
+              "category": { "const": "implementation" }
+            },
+            "required": ["recommendedAction", "category"]
+          },
+          "then": { "required": ["implementationModels"] },
+          "else": { "not": { "required": ["implementationModels"] } }
+        },
         {
           "if": {
             "properties": {

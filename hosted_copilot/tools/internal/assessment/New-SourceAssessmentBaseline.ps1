@@ -5,14 +5,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InventoryPaths,
 
-    [string]$PriorSourceGenerationPath,
+    [string[]]$PriorInventoryPaths = @(),
 
     [Parameter(Mandatory = $true)]
     [string]$AssessmentDraftPath,
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
-    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v2.json'),
+    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
 
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
@@ -95,7 +95,6 @@ if ([string]::IsNullOrWhiteSpace($Model) -or [string]::IsNullOrWhiteSpace($Evalu
 
 $assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$sourceGenerationSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json'
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
@@ -123,16 +122,25 @@ $draft = $draftInput.Value
 $inventoryHashes = [ordered]@{}
 $inventoryRecords = @{}
 $priorSourceEvidenceByKey = @{}
+$sourceTransitionByKey = @{}
 $assessmentCardinalityBySourceDefinition = @{}
 $runSourceDefinitions = [Collections.Generic.List[object]]::new()
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
-$priorSourceGeneration = $null
-$priorSourceGenerationSha256 = $null
-if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
-    $priorInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath)) -SchemaPath $sourceGenerationSchemaPath
-    $priorSourceGeneration = $priorInput.Value
-    $priorSourceGenerationSha256 = $priorInput.Snapshot.Sha256
-    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGeneration -RepositoryRoot $resolvedRepositoryRoot -ExpectedSha256 $priorInput.Snapshot.Sha256
+$priorInventories = @{}
+$priorInventoryHashes = [ordered]@{}
+foreach ($priorInventoryPath in $PriorInventoryPaths) {
+    $priorInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($priorInventoryPath)) -SchemaPath $inventorySchemaPath
+    $priorInventory = $priorInput.Value
+    Assert-SourceInventoryIntegrity -Inventory $priorInventory
+    $priorSourceDefinitionId = [string]$priorInventory.sourceDefinitionId
+    if ($priorInventories.ContainsKey($priorSourceDefinitionId)) {
+        throw "Assessment received duplicate prior inventory sourceDefinitionId: $priorSourceDefinitionId"
+    }
+    if ($priorSourceDefinitionId -notin $expectedSourceDefinitionIds) {
+        throw "Assessment received an unknown prior inventory sourceDefinitionId: $priorSourceDefinitionId"
+    }
+    $priorInventories[$priorSourceDefinitionId] = $priorInventory
+    $priorInventoryHashes[$priorSourceDefinitionId] = $priorInput.Snapshot.Sha256
 }
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
@@ -155,14 +163,22 @@ foreach ($inventoryPath in $InventoryPaths) {
         assessmentCardinality = [string]$sourceEvidence.AssessmentCardinality
     })
 
-    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $priorSourceGeneration -RemovedAt $GeneratedAt)
+    $priorInventory = if ($priorInventories.ContainsKey($sourceDefinitionId)) { $priorInventories[$sourceDefinitionId] } else { $null }
+    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorInventory $priorInventory -RemovedAt $GeneratedAt)
     foreach ($record in $projectionRecords) {
         $key = "$sourceDefinitionId`:$($record.sourceId)"
-        $priorSourceEvidenceByKey[$key] = if ($null -eq $priorSourceGeneration) {
+        $priorRecord = if ($null -eq $priorInventory) {
             $null
         }
         else {
-            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentRecord $record
+            @($priorInventory.records | Where-Object { [string]$_.sourceId -ceq [string]$record.sourceId }) | Select-Object -First 1
+        }
+        $sourceTransitionByKey[$key] = Get-SourceInventoryTransition -CurrentRecord $record -PriorRecord $priorRecord
+        $priorSourceEvidenceByKey[$key] = if ($null -eq $priorInventory) {
+            $null
+        }
+        else {
+            Get-PriorSourceInventoryEvidence -PriorInventory $priorInventory -SourceId ([string]$record.sourceId) -CurrentRecord $record
         }
         if ($inventoryRecords.ContainsKey($key)) {
             throw "Source inventories contain duplicate source reference: $key"
@@ -262,6 +278,7 @@ foreach ($entry in $draftEntries) {
             }
         })
     }
+    $entry | Add-Member -NotePropertyName transition -NotePropertyValue $sourceTransitionByKey[$key]
     $entry | Add-Member -NotePropertyName priorSourceEvidence -NotePropertyValue $priorSourceEvidenceByKey[$key]
     $draftBySourceRef[$key] = $entry
 }
@@ -272,13 +289,14 @@ if ($missingSourceRefs.Count -gt 0) {
     throw "Assessment draft does not cover every staged inventory record: $($missingSourceRefs -join ', ')"
 }
 $inventoryHashes = ConvertTo-OrdinalMap -Value $inventoryHashes
+$priorInventoryHashes = ConvertTo-OrdinalMap -Value $priorInventoryHashes
 
 $baseline = [ordered]@{
     '$schema' = 'source-assessment-baseline-v4.schema.json'
     schemaVersion = 4
     generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     inventoryHashes = $inventoryHashes
-    priorSourceGenerationSha256 = $priorSourceGenerationSha256
+    priorInventoryHashes = $priorInventoryHashes
     hostedCatalogSha256 = $hostedCatalogInput.Snapshot.Sha256
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256

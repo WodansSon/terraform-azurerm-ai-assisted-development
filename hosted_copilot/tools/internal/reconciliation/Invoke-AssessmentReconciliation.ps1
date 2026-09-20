@@ -6,15 +6,19 @@ param(
     [string]$AssessmentBaselinePath,
 
     [Parameter(Mandatory = $true)]
+    [string[]]$InventoryPaths,
+
+    [Parameter(Mandatory = $true)]
+    [string]$GuidanceCapacityPath,
+
+    [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
-    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/hosted-rule-change-recommendations-v1.json'),
+    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'),
 
-    [string]$BuilderPath = (Join-Path $PSScriptRoot 'New-HostedRuleChangeRecommendations.ps1'),
-
-    [string]$PromotionPlanPath,
+    [string]$BuilderPath = (Join-Path $PSScriptRoot 'New-WorkbenchDisplay.ps1'),
 
     [string]$EvaluatorCommand = 'copilot',
 
@@ -102,7 +106,7 @@ $resolvedBaselinePath = [IO.Path]::GetFullPath($AssessmentBaselinePath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($ReconciliationContractPath)
 $resolvedBuilderPath = [IO.Path]::GetFullPath($BuilderPath)
-$canonicalBuilderPath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-HostedRuleChangeRecommendations.ps1'))
+$canonicalBuilderPath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'))
 if ($resolvedBuilderPath -cne $canonicalBuilderPath) {
     throw 'BuilderPath must identify the canonical contract-owned recommendation builder'
 }
@@ -122,7 +126,7 @@ foreach ($relativePath in @($contract.behaviorFiles)) {
     $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot ([string]$relativePath)))
     $null = Copy-InputSnapshot -SourcePath $sourcePath -DestinationPath $destinationPath
 }
-$snapshotContractPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hosted-rule-change-recommendations-v1.json'
+$snapshotContractPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'
 $snapshotContractDirectory = Split-Path -Parent $snapshotContractPath
 if (-not (Test-Path -LiteralPath $snapshotContractDirectory -PathType Container)) {
     $null = New-Item -ItemType Directory -Path $snapshotContractDirectory -Force
@@ -132,17 +136,22 @@ $snapshotBaselinePath = Join-Path $runDirectory 'source-assessment-baseline.json
 $baselineSnapshot = Copy-InputSnapshot -SourcePath $resolvedBaselinePath -DestinationPath $snapshotBaselinePath
 $snapshotCatalogPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json'
 $catalogSnapshot = Copy-InputSnapshot -SourcePath $resolvedCatalogPath -DestinationPath $snapshotCatalogPath
-$snapshotPromotionPlanPath = $null
-if (-not [string]::IsNullOrWhiteSpace($PromotionPlanPath)) {
-    $snapshotPromotionPlanPath = Join-Path $runDirectory 'promotion-plan.json'
-    $null = Copy-InputSnapshot -SourcePath ([IO.Path]::GetFullPath($PromotionPlanPath)) -DestinationPath $snapshotPromotionPlanPath
+$snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
+foreach ($inventoryPath in $InventoryPaths) {
+    $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
+    $inventory = Get-Content -LiteralPath $resolvedInventoryPath -Raw | ConvertFrom-Json -DateKind String
+    $snapshotInventoryPath = Join-Path $runDirectory "inventories/$([string]$inventory.sourceDefinitionId).json"
+    $null = Copy-InputSnapshot -SourcePath $resolvedInventoryPath -DestinationPath $snapshotInventoryPath
+    $snapshotInventoryPaths.Add($snapshotInventoryPath)
 }
+$snapshotGuidanceCapacityPath = Join-Path $runDirectory 'guidance-capacity.json'
+$null = Copy-InputSnapshot -SourcePath ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -DestinationPath $snapshotGuidanceCapacityPath
 
 $baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
 $contractSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json'
-$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/HostedRuleChangeRecommendationsV1.md'
+$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
 if (-not ($baselineSnapshot.Content | Test-Json -SchemaFile $baselineSchemaPath -ErrorAction Stop)) {
     throw 'Source assessment baseline does not satisfy its schema'
 }
@@ -170,7 +179,7 @@ if (@(Compare-Object $expectedSourceIds $baselineSourceIds -SyncWindow 0).Count 
     throw "Assessment reconciliation requires exactly the approved source lanes: $($expectedSourceIds -join ', ')"
 }
 
-$payloadPaths = @($snapshotBaselinePath, $snapshotCatalogPath, $snapshotContractPath, $draftSchemaPath, $promptPath, $snapshotPromotionPlanPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$payloadPaths = @($snapshotBaselinePath, $snapshotCatalogPath, $snapshotContractPath, $draftSchemaPath, $promptPath)
 $payloadSizeBytes = Get-PayloadSizeBytes -Paths $payloadPaths
 if ($payloadSizeBytes -gt $EvaluatorPayloadBudgetBytes) {
     throw "Assessment reconciliation payload exceeds evaluator budget: measured $payloadSizeBytes bytes, budget $EvaluatorPayloadBudgetBytes bytes"
@@ -205,9 +214,6 @@ try {
                     Model = $Model
                     ReasoningEffort = $ReasoningEffort
                 }
-                if ($null -ne $snapshotPromotionPlanPath) {
-                    $parameters.PromotionPlanPath = $snapshotPromotionPlanPath
-                }
                 $evaluatorOutput = @(& pwsh -NoProfile -File $resolvedEvaluatorScriptPath @parameters 2>&1)
                 if ($LASTEXITCODE -ne 0) {
                     throw "Evaluator script failed: $(($evaluatorOutput | Out-String).Trim())"
@@ -218,7 +224,7 @@ try {
                 if ($null -eq $command) {
                     throw "Evaluator command was not found: $EvaluatorCommand"
                 }
-                $attemptPrompt = 'Read the complete assessment baseline, Hosted catalog, reconciliation contract, output schema, prompt, and optional Promotion Plan in the current directory. Write only the requested JSON object in your final response.'
+                $attemptPrompt = 'Read the complete assessment baseline, Hosted catalog, reconciliation contract, output schema, and prompt in the current directory. Write only the requested JSON object in your final response.'
                 $evaluatorOutput = @(& $command.Source -C $runDirectory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $Model --effort $ReasoningEffort --available-tools=view --output-format json 2>&1)
                 if ($LASTEXITCODE -ne 0) {
                     throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
@@ -261,20 +267,19 @@ try {
     $builderParameters = @{
         RepositoryRoot = $runRepositoryRoot
         AssessmentBaselinePath = $snapshotBaselinePath
+        InventoryPaths = $snapshotInventoryPaths.ToArray()
         ReconciliationDraftPath = $responsePath
+        GuidanceCapacityPath = $snapshotGuidanceCapacityPath
         OutputPath = $resolvedOutputPath
         HostedCatalogPath = $snapshotCatalogPath
         ReconciliationContractPath = $snapshotContractPath
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
     }
-    if ($null -ne $snapshotPromotionPlanPath) {
-        $builderParameters.PromotionPlanPath = $snapshotPromotionPlanPath
-    }
-    $snapshotBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-HostedRuleChangeRecommendations.ps1'
+    $snapshotBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'
     $builderOutput = @(& pwsh -NoProfile -File $snapshotBuilderPath @builderParameters 2>&1)
     if ($LASTEXITCODE -ne 0) {
-        throw "Recommendation builder failed: $(($builderOutput | Out-String).Trim())"
+        throw "Workbench display builder failed: $(($builderOutput | Out-String).Trim())"
     }
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
     $succeeded = $true
@@ -291,18 +296,17 @@ finally {
 $result = [ordered]@{
     status = 'passed'
     outputPath = $resolvedOutputPath
+    candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
-    assessmentCount = [int]$builderResult.assessmentCount
     payloadSizeBytes = $payloadSizeBytes
     evaluator = $evaluatorIdentity
-    recommendationSnapshotSha256 = [string]$builderResult.recommendationSnapshotSha256
-    reconciliationContractSha256 = [string]$builderResult.reconciliationContractSha256
+    displaySha256 = [string]$builderResult.displaySha256
 }
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Assessment reconciliation completed: $($result.recommendationCount) recommendations, $($result.assessmentCount) assessments"
+    Write-Output "Assessment reconciliation completed: $($result.candidateCount) candidates, $($result.recommendationCount) recommendations"
     Write-Output "Output: $($result.outputPath)"
-    Write-Output "Snapshot SHA-256: $($result.recommendationSnapshotSha256)"
+    Write-Output "Display SHA-256: $($result.displaySha256)"
 }

@@ -5,14 +5,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InventoryPaths,
 
-    [string]$PriorSourceGenerationPath,
+    [string[]]$PriorInventoryPaths = @(),
 
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
-    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v2.json'),
+    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
 
     [string]$BaselineBuilderPath = (Join-Path $PSScriptRoot 'New-SourceAssessmentBaseline.ps1'),
 
@@ -143,7 +143,7 @@ function New-EvaluatorAttemptPrompt {
     return @"
 Read the source assessment contract, source record batch, Hosted instruction catalog, and output schema from the current batch directory before evaluating the batch.
 
-Source assessment contract: SourceAssessmentV2.md
+Source assessment contract: SourceAssessment-v4.md
 Source record batch: source-records.json
 Hosted instruction catalog: hosted-instruction-catalog.json
 Output schema: source-assessment-draft.schema.json
@@ -255,10 +255,9 @@ $resolvedBuilderPath = [IO.Path]::GetFullPath($BaselineBuilderPath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($AssessmentContractPath)
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$sourceGenerationSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
-$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md'
+$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
 $ledgerPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/interactive-intake-ledger.json'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
@@ -273,7 +272,7 @@ if ($resolvedBuilderPath -cne $canonicalBuilderPath) {
 }
 $null = New-Item -ItemType Directory -Path $runRepositoryRoot -Force
 $assessmentContract = Get-Content -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json
-$assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v2.json'
+$assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
 $null = Copy-RunInputFile -SourcePath $resolvedContractPath -DestinationPath $assessmentContractSnapshotPath
 $repositoryInputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($relativePath in @(
@@ -281,7 +280,6 @@ foreach ($relativePath in @(
     'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
-    'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json',
     'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
 ) + @($assessmentContract.behaviorFiles)) {
     $null = $repositoryInputs.Add([string]$relativePath)
@@ -305,11 +303,10 @@ $resolvedBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/intern
 $resolvedCatalogPath = Copy-RunInputFile -SourcePath $resolvedCatalogPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json')
 $resolvedContractPath = $assessmentContractSnapshotPath
 $inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$sourceGenerationSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-generations/source-generation.schema.json'
 $definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
-$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessmentV2.md'
+$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
 $resolvedEvaluatorScriptPath = $null
 $evaluatorIdentity = $EvaluatorCommand
 if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
@@ -339,17 +336,30 @@ foreach ($rule in @($catalog.rules)) {
 }
 $lanes = [Collections.Generic.List[object]]::new()
 $snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
-$snapshotPriorSourceGenerationPath = $null
-$priorSourceGeneration = $null
-if (-not [string]::IsNullOrWhiteSpace($PriorSourceGenerationPath)) {
-    $priorSnapshot = Get-SourceEvidenceFileSnapshot -Path ([IO.Path]::GetFullPath($PriorSourceGenerationPath))
-    if (-not (Test-Json -Json $priorSnapshot.Content -SchemaFile $sourceGenerationSchemaPath -ErrorAction Stop)) {
-        throw 'Prior source generation does not satisfy its schema'
+$snapshotPriorInventoryPaths = [Collections.Generic.List[string]]::new()
+$priorInventories = @{}
+foreach ($priorInventoryPath in $PriorInventoryPaths) {
+    $priorSnapshot = Get-SourceEvidenceFileSnapshot -Path ([IO.Path]::GetFullPath($priorInventoryPath))
+    if (-not (Test-Json -Json $priorSnapshot.Content -SchemaFile $inventorySchemaPath -ErrorAction Stop)) {
+        throw "Prior source inventory does not satisfy its schema: $priorInventoryPath"
     }
-    $priorSourceGeneration = $priorSnapshot.Content | ConvertFrom-Json -DateKind String
-    Assert-SourceGenerationIntegrity -SourceGeneration $priorSourceGeneration -RepositoryRoot $runRepositoryRoot -ExpectedSha256 $priorSnapshot.Sha256
-    $snapshotPriorSourceGenerationPath = Join-Path $runDirectory 'prior-source-generation.json'
-    [IO.File]::WriteAllBytes($snapshotPriorSourceGenerationPath, $priorSnapshot.Bytes)
+    $priorInventory = $priorSnapshot.Content | ConvertFrom-Json -DateKind String
+    Assert-SourceInventoryIntegrity -Inventory $priorInventory
+    $priorSourceDefinitionId = [string]$priorInventory.sourceDefinitionId
+    if ($priorInventories.ContainsKey($priorSourceDefinitionId)) {
+        throw "Source assessment received duplicate prior inventory sourceDefinitionId: $priorSourceDefinitionId"
+    }
+    if ($priorSourceDefinitionId -notin $expectedSourceDefinitionIds) {
+        throw "Source assessment received an unknown prior inventory sourceDefinitionId: $priorSourceDefinitionId"
+    }
+    $snapshotPriorInventoryPath = Join-Path $runDirectory "prior-inventories/$priorSourceDefinitionId.json"
+    $snapshotPriorInventoryDirectory = Split-Path -Parent $snapshotPriorInventoryPath
+    if (-not (Test-Path -LiteralPath $snapshotPriorInventoryDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $snapshotPriorInventoryDirectory -Force
+    }
+    [IO.File]::WriteAllBytes($snapshotPriorInventoryPath, $priorSnapshot.Bytes)
+    $snapshotPriorInventoryPaths.Add($snapshotPriorInventoryPath)
+    $priorInventories[$priorSourceDefinitionId] = $priorInventory
 }
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
@@ -379,7 +389,8 @@ foreach ($inventoryPath in $InventoryPaths) {
     $sourceEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $runRepositoryRoot -SourceDefinitionId $sourceDefinitionId
     Assert-CurrentSourceInventory -Inventory $inventory -Evidence $sourceEvidence
 
-    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorSourceGeneration $priorSourceGeneration -RemovedAt $GeneratedAt)
+    $priorInventory = if ($priorInventories.ContainsKey($sourceDefinitionId)) { $priorInventories[$sourceDefinitionId] } else { $null }
+    $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorInventory $priorInventory -RemovedAt $GeneratedAt)
     $packetRecords = @($projectionRecords | ForEach-Object {
         $record = $_
         $mappedHostedRuleIds = [Collections.Generic.List[string]]::new()
@@ -389,11 +400,11 @@ foreach ($inventoryPath in $InventoryPaths) {
             }
         }
         [string[]]$uniqueMappedIds = @($mappedHostedRuleIds | Sort-Object -Unique)
-        $priorSourceEvidence = if ($null -eq $priorSourceGeneration) {
+        $priorSourceEvidence = if ($null -eq $priorInventory) {
             $null
         }
         else {
-            Get-PriorSourceGenerationEvidence -SourceGeneration $priorSourceGeneration -SourceDefinitionId $sourceDefinitionId -SourceId ([string]$record.sourceId) -CurrentRecord $record
+            Get-PriorSourceInventoryEvidence -PriorInventory $priorInventory -SourceId ([string]$record.sourceId) -CurrentRecord $record
         }
         [ordered]@{
             sourceRef = [ordered]@{
@@ -484,7 +495,7 @@ try {
         $batchPath = Join-Path $batchDirectory 'source-records.json'
         $catalogPath = Join-Path $batchDirectory 'hosted-instruction-catalog.json'
         $schemaPath = Join-Path $batchDirectory 'source-assessment-draft.schema.json'
-        $batchPromptPath = Join-Path $batchDirectory 'SourceAssessmentV2.md'
+        $batchPromptPath = Join-Path $batchDirectory 'SourceAssessment-v4.md'
         $responsePath = Join-Path $batchDirectory 'response.json'
         Copy-Item -LiteralPath $resolvedCatalogPath -Destination $catalogPath
         Copy-Item -LiteralPath $draftSchemaPath -Destination $schemaPath
@@ -598,8 +609,8 @@ try {
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
     }
-    if ($null -ne $snapshotPriorSourceGenerationPath) {
-        $builderParameters.PriorSourceGenerationPath = $snapshotPriorSourceGenerationPath
+    if ($snapshotPriorInventoryPaths.Count -gt 0) {
+        $builderParameters.PriorInventoryPaths = $snapshotPriorInventoryPaths.ToArray()
     }
     try {
         $builderOutput = @(& $resolvedBuilderPath @builderParameters 2>&1)

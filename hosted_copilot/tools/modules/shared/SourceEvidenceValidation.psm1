@@ -241,24 +241,20 @@ function Get-SourceAssessmentRunConfigurationSha256 {
     return Get-SourceEvidenceContentSha256 -Content ($identity | ConvertTo-Json -Depth 10 -Compress)
 }
 
-function Get-PriorSourceGenerationEvidence {
+function Get-PriorSourceInventoryEvidence {
     param(
-        [Parameter(Mandatory = $true)][object]$SourceGeneration,
-        [Parameter(Mandatory = $true)][string]$SourceDefinitionId,
+        [Parameter(Mandatory = $true)][object]$PriorInventory,
         [Parameter(Mandatory = $true)][string]$SourceId,
         [Parameter(Mandatory = $true)][object]$CurrentRecord
     )
 
-    $inventoryProperty = $SourceGeneration.inventories.PSObject.Properties[$SourceDefinitionId]
-    if ($null -eq $inventoryProperty) {
-        return $null
-    }
-    $priorRecords = @($inventoryProperty.Value.records | Where-Object { [string]$_.sourceId -ceq $SourceId })
+    $sourceDefinitionId = [string]$PriorInventory.sourceDefinitionId
+    $priorRecords = @($PriorInventory.records | Where-Object { [string]$_.sourceId -ceq $SourceId })
     if ($priorRecords.Count -eq 0) {
         return $null
     }
     if ($priorRecords.Count -ne 1) {
-        throw "Prior source generation contains duplicate source IDs: $SourceDefinitionId`:$SourceId"
+        throw "Prior source inventory contains duplicate source IDs: $sourceDefinitionId`:$SourceId"
     }
     $priorRecord = $priorRecords[0]
     $sourceChanged = [string]$priorRecord.contentSha256 -cne [string]$CurrentRecord.contentSha256 -or
@@ -270,20 +266,47 @@ function Get-PriorSourceGenerationEvidence {
     }
     return [ordered]@{
         sourceRef = [ordered]@{
-            sourceDefinitionId = $SourceDefinitionId
+            sourceDefinitionId = $sourceDefinitionId
             sourceId = $SourceId
             contentSha256 = [string]$priorRecord.contentSha256
         }
         sourceRecord = $priorRecord
-        acceptedAt = ConvertTo-UtcTimestamp -Value $SourceGeneration.acceptance.acceptedAt
-        inventorySha256 = [string]$inventoryProperty.Value.collection.inventorySha256
+        observedAt = ConvertTo-UtcTimestamp -Value $PriorInventory.collectedAt
+        inventorySha256 = [string]$PriorInventory.collection.inventorySha256
     }
+}
+
+function Get-SourceInventoryTransition {
+    param(
+        [Parameter(Mandatory = $true)][object]$CurrentRecord,
+        [object]$PriorRecord
+    )
+
+    if ($null -eq $PriorRecord) {
+        return 'added'
+    }
+    if ([string]$CurrentRecord.presence -ceq 'removed') {
+        return $(if ([string]$PriorRecord.presence -ceq 'removed') { 'current' } else { 'removed' })
+    }
+    if ([string]$PriorRecord.presence -ceq 'removed') {
+        return 'reappeared'
+    }
+    if ([string]$CurrentRecord.contentSha256 -cne [string]$PriorRecord.contentSha256) {
+        return 'changed'
+    }
+    if ([string]$CurrentRecord.location -cne [string]$PriorRecord.location) {
+        return 'moved'
+    }
+    if ([string]$CurrentRecord.sourceLifecycle -cne [string]$PriorRecord.sourceLifecycle) {
+        return 'source-lifecycle-changed'
+    }
+    return 'current'
 }
 
 function Get-SourceInventoryProjectionRecords {
     param(
         [Parameter(Mandatory = $true)][object]$CurrentInventory,
-        [object]$PriorSourceGeneration,
+        [object]$PriorInventory,
         [Parameter(Mandatory = $true)][object]$RemovedAt
     )
 
@@ -296,21 +319,21 @@ function Get-SourceInventoryProjectionRecords {
         }
         $recordsById[$sourceId] = $record
     }
-    if ($null -ne $PriorSourceGeneration) {
-        $priorInventoryProperty = $PriorSourceGeneration.inventories.PSObject.Properties[$sourceDefinitionId]
-        if ($null -ne $priorInventoryProperty) {
-            foreach ($priorRecord in @($priorInventoryProperty.Value.records)) {
-                $sourceId = [string]$priorRecord.sourceId
-                if ($recordsById.ContainsKey($sourceId)) {
-                    continue
-                }
-                $tombstone = ($priorRecord | ConvertTo-Json -Depth 30 -Compress) | ConvertFrom-Json -DateKind String
-                if ([string]$tombstone.presence -cne 'removed') {
-                    $tombstone.presence = 'removed'
-                    $tombstone | Add-Member -NotePropertyName removedAt -NotePropertyValue (ConvertTo-UtcTimestamp -Value $RemovedAt)
-                }
-                $recordsById[$sourceId] = $tombstone
+    if ($null -ne $PriorInventory) {
+        if ([string]$PriorInventory.sourceDefinitionId -cne $sourceDefinitionId) {
+            throw "Prior source inventory lane does not match current inventory: $sourceDefinitionId"
+        }
+        foreach ($priorRecord in @($PriorInventory.records)) {
+            $sourceId = [string]$priorRecord.sourceId
+            if ($recordsById.ContainsKey($sourceId)) {
+                continue
             }
+            $tombstone = ($priorRecord | ConvertTo-Json -Depth 30 -Compress) | ConvertFrom-Json -DateKind String
+            if ([string]$tombstone.presence -cne 'removed') {
+                $tombstone.presence = 'removed'
+                $tombstone | Add-Member -NotePropertyName removedAt -NotePropertyValue (ConvertTo-UtcTimestamp -Value $RemovedAt)
+            }
+            $recordsById[$sourceId] = $tombstone
         }
     }
     [string[]]$sourceIds = @($recordsById.Keys)
@@ -416,4 +439,4 @@ function Assert-SourceGenerationIntegrity {
     }
 }
 
-Export-ModuleMember -Function Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceGenerationEvidence, Get-SourceInventoryProjectionRecords, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory, Assert-SourceGenerationIntegrity
+Export-ModuleMember -Function Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceInventoryEvidence, Get-SourceInventoryTransition, Get-SourceInventoryProjectionRecords, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory, Assert-SourceGenerationIntegrity

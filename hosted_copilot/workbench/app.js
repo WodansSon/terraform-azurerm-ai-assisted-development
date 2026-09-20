@@ -3,8 +3,8 @@
 const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
-const RULE_INTAKE_REVIEW_SCHEMA_VERSION = 3;
-const SESSION_SCHEMA_VERSION = 7;
+const WORKBENCH_DISPLAY_SCHEMA_VERSION = 4;
+const SESSION_SCHEMA_VERSION = 4;
 const APPROVAL_PAYLOAD_SCHEMA_VERSION = 7;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
@@ -400,17 +400,17 @@ function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, a
 }
 
 async function loadBundle() {
-  setSaveIndicator("Loading bundle");
+  setSaveIndicator("Loading display");
   try {
-    const response = await fetch("rule-intake-review.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Bundle request failed with ${response.status}`);
-    const bundle = await response.json();
-    validateBundle(bundle);
-    state.bundle = bundle;
-    const discoveredCandidates = normalizeCandidates(bundle);
-    const sessionId = getSessionId(bundle);
+    const response = await fetch("workbench-display.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Display request failed with ${response.status}`);
+    const display = await response.json();
+    validateDisplay(display);
+    state.bundle = display;
+    const discoveredCandidates = normalizeDisplayCandidates(display);
+    const sessionId = getSessionId(display);
     const existing = await readSession(sessionId);
-    state.session = migrateSession(existing, discoveredCandidates) || createSession(sessionId, bundle);
+    state.session = migrateSession(existing, discoveredCandidates) || createSession(sessionId, display);
     autofillApproverName();
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
@@ -475,108 +475,83 @@ async function closeWorkbench() {
   }
 }
 
-function validateBundle(bundle) {
-  if (!bundle || bundle.schemaVersion !== RULE_INTAKE_REVIEW_SCHEMA_VERSION || bundle.readOnly !== true || bundle.refreshMode !== "regenerate-read-only-bundle") {
-    throw new Error("The candidate bundle does not satisfy the read-only Workbench contract.");
+function validateDisplay(display) {
+  if (!display || display.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION || display.kind !== "hosted-rule-workbench-display" || display.readOnly !== true || !/^[a-f0-9]{64}$/.test(display.inputFingerprint)) {
+    throw new Error("The Workbench display does not satisfy the read-only display contract.");
   }
-  if (!bundle.guidanceCapacity || bundle.guidanceCapacity.reportCount !== 8) {
-    throw new Error("The candidate bundle does not contain all guidance capacity reports.");
+  if (!Array.isArray(display.candidates) || !display.catalog || !Array.isArray(display.catalog.rules)) {
+    throw new Error("The Workbench display does not contain candidates and a catalog projection.");
+  }
+  if (!display.guidanceCapacity || display.guidanceCapacity.reportCount !== 8) {
+    throw new Error("The Workbench display does not contain all guidance capacity reports.");
   }
 }
 
-function normalizeCandidates(bundle) {
-  const getAssessments = (candidate) => candidate.assessments || [];
-  const normalizeAssessment = (assessment) => ({ ...assessment });
-  const getTargetRules = (candidate, assessment) => assessment.targetHostedRuleId
-    ? (bundle.hostedRules || candidate.relatedHostedRules || []).filter((rule) => rule.id === assessment.targetHostedRuleId)
-    : [];
-  const upstream = bundle.upstreamCandidates.flatMap((candidate) => getAssessments(candidate).map((rawAssessment) => {
-    const assessment = normalizeAssessment(rawAssessment);
+function normalizeDisplayCandidates(display) {
+  return display.candidates.map((candidate) => {
+    const { source, recommendation, reviewState } = candidate;
+    const sourceType = source.lane === "contributor" ? "upstream" : source.lane;
+    const targetHostedRuleId = recommendation?.targetHostedId || null;
+    const proposedHostedRuleId = recommendation?.hostedId || "";
+    const hostedCategory = recommendation?.category
+      || candidate.assessment.affectedSurfaces.find((surface) => ["repository", "implementation", "testing", "documentation"].includes(surface))
+      || "repository";
+    const relatedHostedRuleIds = new Set([
+      ...(candidate.assessment.relatedHostedCoverage || []).map((coverage) => coverage.hostedRuleId),
+      ...(targetHostedRuleId ? [targetHostedRuleId] : [])
+    ]);
+    const assessment = {
+      ...candidate.assessment,
+      status: "evaluated",
+      assessmentId: candidate.assessment.id,
+      summary: candidate.assessment.sourceMeaning,
+      assessmentConfidence: candidate.assessment.confidence,
+      sourceContentSha256: source.contentSha256,
+      recommendation: recommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
+      proposedHostedRuleId,
+      targetHostedRuleId,
+      proposedText: recommendation?.ruleText || candidate.assessment.sourceLocalProposedText,
+      hostedCategory,
+      guardedTokenDelta: recommendation?.guardedTokenDelta || 0
+    };
     return {
-      key: `upstream:${candidate.id}:${assessment.assessmentId}`,
-      id: assessment.targetHostedRuleId || assessment.assessmentId,
-      sourceId: candidate.id,
-      sourceTitle: candidate.title,
-      sourceType: "upstream",
-      sourceLabel: "Contributor guidance",
-      category: getUpstreamCategory(candidate),
-      title: assessment.title,
-      state: assessment.candidateState,
-      requiresReview: candidate.requiresReview,
-      provenance: "published-upstream-standard",
-      sourcePath: candidate.referenceUrl,
-      hash: candidate.currentSha256,
-      text: candidate.currentContent,
-      baselineText: candidate.baselineContent,
+      key: `${source.lane}:${source.id}:${candidate.assessment.id}`,
+      id: proposedHostedRuleId || targetHostedRuleId || candidate.assessment.id,
+      sourceId: source.id,
+      sourceTitle: source.title,
+      sourceType,
+      sourceLabel: sourceType === "upstream" ? "Contributor guidance" : sourceType === "interactive" ? "Interactive rule" : "Maintainer proposal",
+      category: sourceType === "upstream" ? (source.transition === "changed" ? "Changed guidance (drift)" : "Current guidance") : sourceType === "maintainer" ? capitalize(source.surface) : formatContractCategory(source.location),
+      title: candidate.assessment.title,
+      state: source.transition,
+      requiresReview: Boolean(recommendation?.needsReview) || candidate.assessment.confidence.level !== "high",
+      provenance: source.provenance,
+      sourcePath: source.location,
+      sourceRationale: source.rationale,
+      surface: source.surface,
+      revision: source.revision,
+      hash: source.contentSha256,
+      text: source.text,
+      baselineText: source.priorText || null,
       priorDecision: null,
       assessment,
-      relatedHostedRules: getTargetRules(candidate, assessment)
+      relatedHostedRules: display.catalog.rules.filter((rule) => relatedHostedRuleIds.has(rule.id))
     };
-  }));
-  const interactive = bundle.interactiveCandidates.flatMap((candidate) => getAssessments(candidate).map((rawAssessment) => {
-    const assessment = normalizeAssessment(rawAssessment);
-    return {
-      key: `interactive:${candidate.id}:${assessment.assessmentId}`,
-      id: assessment.targetHostedRuleId || assessment.assessmentId,
-      sourceId: candidate.id,
-      sourceTitle: candidate.title,
-      sourceType: "interactive",
-      sourceLabel: "Interactive rule",
-      category: formatContractCategory(candidate.contractPath),
-      title: assessment.title,
-      state: assessment.candidateState,
-      requiresReview: candidate.requiresReview,
-      provenance: candidate.provenance,
-      sourcePath: candidate.contractPath,
-      hash: candidate.contentSha256,
-      text: candidate.ruleText || "Retired source rule",
-      baselineText: null,
-      priorDecision: candidate.priorDecision,
-      assessment,
-      relatedHostedRules: getTargetRules(candidate, assessment)
-    };
-  }));
-  const maintainer = bundle.maintainerCandidates.flatMap((candidate) => getAssessments(candidate).map((rawAssessment) => {
-    const assessment = normalizeAssessment(rawAssessment);
-    return {
-      key: `maintainer:${candidate.id}:${assessment.assessmentId}`,
-      id: assessment.targetHostedRuleId || assessment.assessmentId,
-      sourceId: candidate.id,
-      sourceTitle: candidate.title,
-      sourceType: "maintainer",
-      sourceLabel: "Maintainer proposal",
-      category: capitalize(candidate.surface),
-      title: assessment.title,
-      state: assessment.candidateState,
-      requiresReview: candidate.requiresReview,
-      provenance: candidate.provenance,
-      sourcePath: candidate.sourcePath,
-      sourceRationale: candidate.rationale,
-      surface: candidate.surface,
-      hash: candidate.contentSha256,
-      text: candidate.ruleText,
-      baselineText: null,
-      priorDecision: null,
-      assessment,
-      relatedHostedRules: getTargetRules(candidate, assessment)
-    };
-  }));
-  return [...interactive, ...upstream, ...maintainer];
+  });
 }
 
-function getSessionId(bundle) {
-  const snapshots = bundle.snapshots;
-  return [snapshots.hostedCatalogSha256, snapshots.interactive.currentCatalogSha256, snapshots.upstream.currentCommit, snapshots.maintainer.sourceSha256].join(":");
+function getSessionId(display) {
+  return display.inputFingerprint;
 }
 
-function createSession(id, bundle) {
+function createSession(id, display) {
   const timestamp = toUtcTimestamp();
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     id,
     createdAt: timestamp,
     updatedAt: timestamp,
-    snapshots: bundle.snapshots,
+    inputFingerprint: display.inputFingerprint,
     approverName: "",
     decisions: {},
     applicabilityOverrides: {},
@@ -586,15 +561,8 @@ function createSession(id, bundle) {
 
 function migrateSession(session, candidates) {
   if (!session) return null;
-  if (session.schemaVersion === SESSION_SCHEMA_VERSION) return session;
-  if (session.schemaVersion !== 6) return null;
-  const migrated = structuredClone(session);
-  for (const [key, decision] of Object.entries(migrated.decisions || {})) {
-    const candidate = candidates.find((item) => item.key === key);
-    decision.proposedHostedRuleId = String(decision.proposedHostedRuleId ?? candidate?.assessment?.proposedHostedRuleId ?? "");
-  }
-  migrated.schemaVersion = SESSION_SCHEMA_VERSION;
-  return migrated;
+  if (session.schemaVersion !== SESSION_SCHEMA_VERSION || session.inputFingerprint !== session.id) return null;
+  return session;
 }
 
 function createPlanMembership(source = "none", bulkOperationId = null) {
@@ -610,22 +578,11 @@ function isValidBulkOperation(operation) {
     && typeof operation.id === "string"
     && Boolean(operation.id)
     && typeof operation.createdAt === "string"
-    && operation.scope === "current-results"
-    && ["add", "update", "actionable"].includes(operation.recommendationScope)
-    && typeof operation.query === "string"
-    && operation.recordedBy?.type === "github-cli"
-    && typeof operation.recordedBy.login === "string"
-    && Boolean(operation.recordedBy.login)
-    && operation.candidateSourceHashes
-    && typeof operation.candidateSourceHashes === "object"
-    && !Array.isArray(operation.candidateSourceHashes)
+    && ["add", "update", "actionable"].includes(operation.action)
     && Array.isArray(operation.candidateKeys)
     && operation.candidateKeys.length > 0
     && new Set(operation.candidateKeys).size === operation.candidateKeys.length
-    && Object.keys(operation.candidateSourceHashes).length === operation.candidateKeys.length
-    && operation.candidateKeys.every((key) => typeof key === "string"
-      && Boolean(key)
-      && /^[a-f0-9]{64}$/.test(operation.candidateSourceHashes[key]));
+    && operation.candidateKeys.every((key) => typeof key === "string" && Boolean(key));
 }
 
 function isValidPlanMembership(decision, candidateKey, operations = state.session.bulkOperations) {
@@ -751,7 +708,7 @@ function getProposedHostedRuleIdValidation(candidate, value, decisions = state.s
     return { valid: false, message: "Use a Hosted rule ID such as REVIEW-EVID-001." };
   }
   const targetHostedRuleId = candidate.assessment.targetHostedRuleId;
-  if ((state.bundle?.hostedRules || []).some((rule) => rule.id === proposedHostedRuleId) && proposedHostedRuleId !== targetHostedRuleId) {
+  if ((state.bundle?.catalog?.rules || []).some((rule) => rule.id === proposedHostedRuleId) && proposedHostedRuleId !== targetHostedRuleId) {
     return { valid: false, message: `${proposedHostedRuleId} is already assigned to an existing Hosted rule.` };
   }
   if (proposedHostedRuleId === targetHostedRuleId) return { valid: true, message: "Proposed Hosted Rule ID is valid." };
@@ -877,11 +834,7 @@ function removePlanMembership(candidate) {
 
 function removeCandidateFromBulkOperations(candidateKey) {
   state.session.bulkOperations = state.session.bulkOperations
-    .map((operation) => {
-      const candidateSourceHashes = { ...operation.candidateSourceHashes };
-      delete candidateSourceHashes[candidateKey];
-      return { ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey), candidateSourceHashes };
-    })
+    .map((operation) => ({ ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey) }))
     .filter((operation) => operation.candidateKeys.length > 0);
 }
 
@@ -891,14 +844,12 @@ function restoreBulkOperationMembership(candidateKey, operationSnapshot) {
   if (existing) {
     if (!existing.candidateKeys.includes(candidateKey)) {
       existing.candidateKeys.push(candidateKey);
-      existing.candidateSourceHashes[candidateKey] = operationSnapshot.candidateSourceHashes[candidateKey];
     }
     return;
   }
   state.session.bulkOperations.push({
     ...operationSnapshot,
-    candidateKeys: [candidateKey],
-    candidateSourceHashes: { [candidateKey]: operationSnapshot.candidateSourceHashes[candidateKey] }
+    candidateKeys: [candidateKey]
   });
 }
 
@@ -1213,12 +1164,8 @@ function applyBulkSelection(recommendationScope) {
   const operation = {
     id: crypto.randomUUID(),
     createdAt: toUtcTimestamp(),
-    scope: "current-results",
-    recommendationScope,
-    query: state.queries["candidate-sources"],
-    candidateKeys: candidates.map((candidate) => candidate.key),
-    candidateSourceHashes: Object.fromEntries(candidates.map((candidate) => [candidate.key, candidate.hash])),
-    recordedBy: { type: "github-cli", login: identity.login }
+    action: recommendationScope,
+    candidateKeys: candidates.map((candidate) => candidate.key)
   };
   state.session.bulkOperations.push(operation);
   candidates.forEach((candidate) => {
@@ -1484,10 +1431,10 @@ function groupCandidatesBySource(candidates) {
 }
 
 function renderSourceSummaryLabel(sourceType, label, decoration) {
-  const source = state.bundle.snapshots.upstream;
-  const shortCommit = source.currentCommit.slice(0, 8);
-  const provenanceLabel = `${source.repository} · ${source.currentRef}@${shortCommit}`;
-  const provenance = sourceType === "upstream"
+  const revision = state.assessedCandidates.find((candidate) => candidate.sourceType === "upstream")?.revision;
+  const shortCommit = revision?.resolvedCommit?.slice(0, 8);
+  const provenanceLabel = revision?.repository && shortCommit ? `${revision.repository}@${shortCommit}` : "";
+  const provenance = sourceType === "upstream" && provenanceLabel
     ? `<span class="source-provenance-pill type-compact" data-workbench-tooltip="${escapeHtml(provenanceLabel)}">${escapeHtml(provenanceLabel)}</span>`
     : "";
   const selection = decoration === undefined ? "" : renderCandidateAggregateDecoration(decoration);
@@ -2208,7 +2155,7 @@ function renderPlan() {
   const planCandidates = sortPlanCandidates(getPlanCandidates(), state.planSort);
   const latestBulkOperation = getLatestBulkOperation();
   const bulkUndoLabel = latestBulkOperation
-    ? `Undo bulk ${latestBulkOperation.recommendationScope} of ${formatNumber(latestBulkOperation.candidateKeys.length)} candidates`
+    ? `Undo bulk ${latestBulkOperation.action} of ${formatNumber(latestBulkOperation.candidateKeys.length)} candidates`
     : "No bulk selection to undo";
   elements["plan-bulk-undo"].disabled = !latestBulkOperation;
   elements["plan-bulk-undo"].setAttribute("aria-label", bulkUndoLabel);
@@ -3177,15 +3124,66 @@ function switchView(view) {
 function buildDraftExport() {
   const session = normalizeSessionTimestamps(state.session);
   return {
+    $schema: "workbench-draft-v4.schema.json",
     schemaVersion: SESSION_SCHEMA_VERSION,
     kind: "hosted-rule-workbench-draft",
-    sessionId: state.session.id,
-    exportedAt: toUtcTimestamp(),
-    snapshots: session.snapshots,
+    inputFingerprint: session.inputFingerprint,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
     approverName: session.approverName || "",
-    decisions: session.decisions,
-    applicabilityOverrides: session.applicabilityOverrides,
-    bulkOperations: session.bulkOperations
+    decisions: Object.fromEntries(Object.entries(session.decisions).map(([key, decision]) => [key, {
+      action: decision.action ?? null,
+      selected: decision.inPlan,
+      selectionSource: decision.planMembershipSource,
+      bulkOperationId: decision.bulkOperationId,
+      rationale: decision.rationale,
+      proposedHostedRuleId: decision.proposedHostedRuleId || null,
+      proposedText: decision.proposedText,
+      sourceContentSha256: decision.sourceHash,
+      updatedAt: decision.updatedAt
+    }])),
+    applicabilityOverrides: Object.fromEntries(Object.entries(session.applicabilityOverrides).map(([key, override]) => [key, {
+      ...override,
+      recordedBy: override.recordedBy.login
+    }])),
+    bulkOperations: session.bulkOperations.map((operation) => ({
+      id: operation.id,
+      action: operation.action,
+      candidateKeys: operation.candidateKeys,
+      createdAt: operation.createdAt
+    }))
+  };
+}
+
+function deserializeDraft(draft, candidates) {
+  if (draft?.schemaVersion !== SESSION_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft" || draft.inputFingerprint !== state.bundle.inputFingerprint) return null;
+  const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+  return {
+    schemaVersion: SESSION_SCHEMA_VERSION,
+    id: draft.inputFingerprint,
+    inputFingerprint: draft.inputFingerprint,
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+    approverName: draft.approverName,
+    decisions: Object.fromEntries(Object.entries(draft.decisions || {}).map(([key, decision]) => [key, {
+      action: decision.action,
+      inPlan: decision.selected,
+      planMembershipSource: decision.selectionSource,
+      bulkOperationId: decision.bulkOperationId,
+      rationale: decision.rationale,
+      proposedHostedRuleId: decision.proposedHostedRuleId || "",
+      proposedText: decision.proposedText,
+      sourceHash: decision.sourceContentSha256,
+      updatedAt: decision.updatedAt
+    }])),
+    applicabilityOverrides: Object.fromEntries(Object.entries(draft.applicabilityOverrides || {}).map(([key, override]) => [key, {
+      ...override,
+      recordedBy: { type: "draft", login: override.recordedBy }
+    }])),
+    bulkOperations: (draft.bulkOperations || []).map((operation) => ({
+      ...operation,
+      candidateKeys: operation.candidateKeys.filter((key) => candidatesByKey.has(key))
+    }))
   };
 }
 
@@ -3269,9 +3267,9 @@ async function importDraft(event) {
   if (!file) return;
   try {
     const importedDraft = JSON.parse(await file.text());
-    const draft = migrateSession(importedDraft, state.assessedCandidates);
+    const draft = deserializeDraft(importedDraft, state.assessedCandidates);
     if (!draft) throw new Error("The draft version is not supported.");
-    if (draft.kind !== "hosted-rule-workbench-draft" || draft.sessionId !== state.session.id) {
+    if (draft.inputFingerprint !== state.session.inputFingerprint) {
       throw new Error("The draft belongs to a different source snapshot.");
     }
     if (!draft.decisions || typeof draft.decisions !== "object" || Array.isArray(draft.decisions)) {
@@ -3299,8 +3297,7 @@ async function importDraft(event) {
     }
     for (const operation of draft.bulkOperations) {
       if (operation.candidateKeys.some((key) => draft.decisions[key]?.planMembershipSource !== "bulk"
-        || draft.decisions[key]?.bulkOperationId !== operation.id
-        || draft.decisions[key]?.sourceHash !== operation.candidateSourceHashes[key])) {
+        || draft.decisions[key]?.bulkOperationId !== operation.id)) {
         throw new Error(`The draft bulk operation ${operation.id} is inconsistent with its decisions.`);
       }
     }

@@ -8,33 +8,20 @@ param(
 
     [string]$SiteDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'hosted-rule-workbench/site'),
 
-    [string]$BundlePath,
+    [string]$DisplayPath,
 
-    [string]$AssessmentCachePath = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/assessment-cache.json'),
+    [string]$InventoryDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/inventories'),
 
-    [string]$AssessmentBaselinePath = (Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-assessments/assessment-baseline.json'),
-
-    [string]$AssessmentScriptPath = (Join-Path $PSScriptRoot 'legacy-v3/Invoke-RuleIntakeAssessment.ps1'),
-
-    [string]$AssessmentModel = 'gpt-5.4',
+    [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
     [string]$AssessmentReasoningEffort = 'high',
 
     [ValidateRange(1, 50)]
-    [int]$AssessmentBatchSize = 20,
-
-    [ValidateRange(1, 20)]
-    [int]$UpstreamAssessmentBatchSize = 5,
-
     [ValidateRange(0, 3)]
-    [int]$AssessmentMaxRetries = 1,
+    [int]$MaxRetries = 1,
 
     [string]$EvaluatorCommand = 'copilot',
-
-    [switch]$ForceAssessment,
-
-    [switch]$RepairMissingAssessmentFields,
 
     [switch]$StageOnly,
 
@@ -53,15 +40,20 @@ Import-Module -Name $validationOutputModulePath -Force
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
 $workbenchIconSource = Join-Path $workbenchSource 'icons'
-$assessmentPath = [IO.Path]::GetFullPath($AssessmentScriptPath)
-$bundleSchemaPath = Join-Path $PSScriptRoot '../copilot-rule-catalog/rule-intake-review.schema.json'
+$catalogRoot = Join-Path $PSScriptRoot '../copilot-rule-catalog'
+$displaySchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-display-v4.schema.json'
+$sourceDefinitionSetPath = Join-Path $catalogRoot 'source-definitions/source-definition-set.json'
+$inventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
+$sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-SourceAssessment.ps1'
+$assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
+$guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'SiteDirectory must be outside the source repository'
 }
 
-foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $assessmentPath, $bundleSchemaPath)) {
+foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $guidanceCapacityPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -162,85 +154,128 @@ $shutdownConfig = [ordered]@{
 } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
 
-$stagedBundlePath = Join-Path $resolvedSiteDirectory 'rule-intake-review.json'
-$resolvedBundlePath = if ([string]::IsNullOrWhiteSpace($BundlePath)) { $null } else { [IO.Path]::GetFullPath($BundlePath) }
+$stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
+$resolvedDisplayPath = if ([string]::IsNullOrWhiteSpace($DisplayPath)) { $null } else { [IO.Path]::GetFullPath($DisplayPath) }
 $assessmentResult = $null
 
-function Update-StagedBundle {
-    if ($null -eq $resolvedBundlePath) {
-        $assessmentOutputFormat = if ($OutputFormat -eq 'Text') { 'Text' } else { 'Json' }
-        $assessmentArguments = @(
-            '-NoProfile',
-            '-File', $assessmentPath,
-            '-RepositoryRoot', $repositoryRoot,
-            '-OutputPath', $stagedBundlePath,
-            '-CachePath', $AssessmentCachePath,
-            '-BaselinePath', $AssessmentBaselinePath,
-            '-Model', $AssessmentModel,
-            '-ReasoningEffort', $AssessmentReasoningEffort,
-            '-BatchSize', $AssessmentBatchSize,
-            '-UpstreamBatchSize', $UpstreamAssessmentBatchSize,
-            '-MaxRetries', $AssessmentMaxRetries,
-            '-EvaluatorCommand', $EvaluatorCommand,
-            '-OutputFormat', $assessmentOutputFormat
-        )
-        if ($ForceAssessment) {
-            $assessmentArguments += '-Force'
-        }
-        if ($RepairMissingAssessmentFields) {
-            $assessmentArguments += '-RepairMissingFields'
-        }
-        if ($OutputFormat -eq 'Text') {
-            Write-Host '[RUNNING]  assessment                  : Collecting candidates and resolving AI assessments'
-            & pwsh @assessmentArguments 2>&1 | ForEach-Object { Write-Host $_ }
+function Copy-FileAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    $directory = Split-Path -Parent $DestinationPath
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $directory -Force
+    }
+    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($DestinationPath) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [IO.File]::WriteAllBytes($temporaryPath, [IO.File]::ReadAllBytes($SourcePath))
+        [IO.File]::Move($temporaryPath, $DestinationPath, $true)
+    }
+    finally {
+        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Update-StagedDisplay {
+    if ($null -eq $resolvedDisplayPath) {
+        $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
+        $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
+        $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
+        try {
+            $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
+            $currentInventoryPaths = [Collections.Generic.List[string]]::new()
+            $priorInventoryPaths = [Collections.Generic.List[string]]::new()
+            foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
+                $inventoryPath = Join-Path $currentInventoryDirectory "$sourceDefinitionId.json"
+                if ($OutputFormat -eq 'Text') {
+                    Write-Host ("[RUNNING]  collect/{0,-21} : Building current source inventory" -f $sourceDefinitionId)
+                }
+                $collectionOutput = @(& $inventoryCollectorPath -RepositoryRoot $repositoryRoot -SourceDefinitionPath (Join-Path $catalogRoot "source-definitions/$sourceDefinitionId.json") -OutputPath $inventoryPath -OutputFormat Json 2>&1)
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Source inventory collection failed for $sourceDefinitionId`: $(($collectionOutput | Out-String).Trim())"
+                }
+                $currentInventoryPaths.Add($inventoryPath)
+                $priorInventoryPath = Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) "$sourceDefinitionId.json"
+                if (Test-Path -LiteralPath $priorInventoryPath -PathType Leaf) {
+                    $priorInventoryPaths.Add($priorInventoryPath)
+                }
+            }
+
+            $assessmentSetPath = Join-Path $runDirectory 'assessment-set.json'
+            if ($OutputFormat -eq 'Text') {
+                Write-Host '[RUNNING]  source-assessment           : Evaluating current source inventories'
+            }
+            $assessmentParameters = @{
+                RepositoryRoot = $repositoryRoot
+                InventoryPaths = $currentInventoryPaths.ToArray()
+                PriorInventoryPaths = $priorInventoryPaths.ToArray()
+                OutputPath = $assessmentSetPath
+                EvaluatorCommand = $EvaluatorCommand
+                Model = $Model
+                ReasoningEffort = $AssessmentReasoningEffort
+                MaxRetries = $MaxRetries
+                OutputFormat = 'Json'
+            }
+            $assessmentOutput = @(& $sourceAssessmentPath @assessmentParameters 2>&1)
             if ($LASTEXITCODE -ne 0) {
-                throw 'Rule intake assessment failed; review the assessment output above'
+                throw "Source assessment failed: $(($assessmentOutput | Out-String).Trim())"
             }
-            Write-Host '[PASSED]   assessment                  : Candidate bundle is ready for Workbench staging'
-        }
-        else {
-            $bundleOutput = @(& pwsh @assessmentArguments 2>&1)
+            $script:assessmentResult = ($assessmentOutput | Out-String) | ConvertFrom-Json
+
+            $capacityPath = Join-Path $runDirectory 'guidance-capacity.json'
+            $capacityOutput = @(& $guidanceCapacityPath -HostedRoot (Join-Path $repositoryRoot 'hosted_copilot') -OutputFormat Json 2>&1)
             if ($LASTEXITCODE -ne 0) {
-                throw "Rule intake assessment failed: $(($bundleOutput | Out-String).Trim())"
+                throw "Guidance capacity calculation failed: $(($capacityOutput | Out-String).Trim())"
             }
-            try {
-                $script:assessmentResult = ($bundleOutput | Out-String) | ConvertFrom-Json
+            [IO.File]::WriteAllText($capacityPath, (($capacityOutput | Out-String).Trim() + "`n"), [Text.UTF8Encoding]::new($false))
+
+            if ($OutputFormat -eq 'Text') {
+                Write-Host '[RUNNING]  assessment-reconciliation   : Consolidating assessments into the Workbench display'
             }
-            catch {
-                throw "Rule intake assessment did not return valid JSON: $($_.Exception.Message)"
+            $reconciliationOutput = @(& $assessmentReconciliationPath -RepositoryRoot $repositoryRoot -AssessmentBaselinePath $assessmentSetPath -InventoryPaths $currentInventoryPaths.ToArray() -GuidanceCapacityPath $capacityPath -OutputPath $stagedDisplayPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $AssessmentReasoningEffort -MaxRetries $MaxRetries -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
+            foreach ($inventoryPath in $currentInventoryPaths) {
+                Copy-FileAtomically -SourcePath $inventoryPath -DestinationPath (Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) ([IO.Path]::GetFileName($inventoryPath)))
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $runDirectory -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
     else {
-        if (-not (Test-Path -LiteralPath $resolvedBundlePath -PathType Leaf)) {
-            throw "BundlePath was not found: $resolvedBundlePath"
+        if (-not (Test-Path -LiteralPath $resolvedDisplayPath -PathType Leaf)) {
+            throw "DisplayPath was not found: $resolvedDisplayPath"
         }
-        $bundleContent = Get-Content -LiteralPath $resolvedBundlePath -Raw
-        if (-not ($bundleContent | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) {
-            throw 'BundlePath does not satisfy the rule intake review schema'
+        $displayContent = Get-Content -LiteralPath $resolvedDisplayPath -Raw
+        if (-not ($displayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+            throw 'DisplayPath does not satisfy the Workbench display schema'
         }
-        [IO.File]::WriteAllText($stagedBundlePath, $bundleContent.TrimEnd() + "`n", [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($stagedDisplayPath, $displayContent.TrimEnd() + "`n", [Text.UTF8Encoding]::new($false))
     }
 
-    $content = Get-Content -LiteralPath $stagedBundlePath -Raw
-    if (-not ($content | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) {
-        throw 'Staged Workbench bundle does not satisfy the rule intake review schema'
+    $content = Get-Content -LiteralPath $stagedDisplayPath -Raw
+    if (-not ($content | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+        throw 'Staged Workbench display does not satisfy its schema'
     }
     return ($content | ConvertFrom-Json)
 }
 
-$stagedBundle = Update-StagedBundle
-$stagedCandidates = @($stagedBundle.interactiveCandidates) + @($stagedBundle.maintainerCandidates) + @($stagedBundle.upstreamCandidates)
+$stagedDisplay = Update-StagedDisplay
+$stagedCandidates = @($stagedDisplay.candidates)
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
     url = $url
     siteDirectory = $resolvedSiteDirectory
-    bundlePath = $stagedBundlePath
+    displayPath = $stagedDisplayPath
     discoveredCandidateCount = $stagedCandidates.Count
-    evaluatedCandidateCount = @($stagedCandidates | Where-Object { $_.PSObject.Properties['assessments'] }).Count
-    ruleCandidateCount = @($stagedCandidates | ForEach-Object { @($_.assessments) }).Count
-    capacityReportCount = @($stagedBundle.guidanceCapacity.reports).Count
+    evaluatedCandidateCount = $stagedCandidates.Count
+    ruleCandidateCount = $stagedCandidates.Count
+    capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
     readOnly = $true
     allowedMethods = @('GET', 'HEAD')
@@ -258,7 +293,7 @@ if ($StageOnly) {
             Status = $result.status.ToUpperInvariant()
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($null -eq $resolvedBundlePath) { 'COMPLETED ABOVE' } else { 'PREBUILT BUNDLE' })
+            Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -329,7 +364,7 @@ try {
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($null -eq $resolvedBundlePath) { 'COMPLETED ABOVE' } else { 'PREBUILT BUNDLE' })
+            Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'

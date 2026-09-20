@@ -15,13 +15,15 @@ async function run() {
 
   try {
     const page = await browser.newPage();
+    page.setDefaultTimeout(10000);
+    page.setDefaultNavigationTimeout(10000);
     const result = await runViewportSuite(page, baseUrl, {
       setViewport: (targetPage, viewport) => targetPage.setViewport({
         width: viewport.width,
         height: viewport.height,
         deviceScaleFactor: viewport.deviceScaleFactor
       }),
-      goto: (targetPage, url) => targetPage.goto(url, { waitUntil: "networkidle0" })
+      goto: (targetPage, url) => targetPage.goto(url, { waitUntil: "domcontentloaded" })
     });
     process.stdout.write(JSON.stringify(result));
   } finally {

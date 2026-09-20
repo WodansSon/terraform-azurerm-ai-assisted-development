@@ -143,6 +143,15 @@
           },
           "documentationGap": { "type": "boolean" },
           "retirementReason": { "type": "string", "minLength": 1 },
+          "lastPlacement": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["surfaceId", "sectionHeading"],
+            "properties": {
+              "surfaceId": { "enum": ["implementation", "testing", "documentation"] },
+              "sectionHeading": { "type": "string", "minLength": 1 }
+            }
+          },
           "selectionFactors": {
             "type": "object",
             "additionalProperties": false,
@@ -208,7 +217,15 @@
           },
           {
             "if": { "properties": { "status": { "const": "retired" } } },
-            "then": { "required": ["retirementReason"] }
+            "then": { "required": ["retirementReason", "lastPlacement"] },
+            "else": {
+              "not": {
+                "anyOf": [
+                  { "required": ["retirementReason"] },
+                  { "required": ["lastPlacement"] }
+                ]
+              }
+            }
           }
         ]
       }

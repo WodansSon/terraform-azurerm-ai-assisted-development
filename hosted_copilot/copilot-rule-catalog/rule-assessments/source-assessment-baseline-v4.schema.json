@@ -4,7 +4,7 @@
   "title": "Hosted Source Assessment Baseline",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "priorSourceGenerationSha256", "hostedCatalogSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "priorInventoryHashes", "hostedCatalogSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
   "properties": {
     "$schema": {
       "const": "source-assessment-baseline-v4.schema.json"
@@ -26,15 +26,14 @@
         "$ref": "#/$defs/sha256"
       }
     },
-    "priorSourceGenerationSha256": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/sha256"
-        },
-        {
-          "type": "null"
-        }
-      ]
+    "priorInventoryHashes": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      }
     },
     "hostedCatalogSha256": {
       "$ref": "#/$defs/sha256"
@@ -82,7 +81,7 @@
     "priorSourceEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceRef", "sourceRecord", "acceptedAt", "inventorySha256"],
+      "required": ["sourceRef", "sourceRecord", "observedAt", "inventorySha256"],
       "properties": {
         "sourceRef": {
           "$ref": "#/$defs/sourceRef"
@@ -90,7 +89,7 @@
         "sourceRecord": {
           "$ref": "#/$defs/sourceRecord"
         },
-        "acceptedAt": {
+        "observedAt": {
           "type": "string",
           "format": "date-time"
         },
@@ -680,10 +679,13 @@
     "entry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceRef", "priorSourceEvidence", "assessments"],
+      "required": ["sourceRef", "transition", "priorSourceEvidence", "assessments"],
       "properties": {
         "sourceRef": {
           "$ref": "#/$defs/sourceRef"
+        },
+        "transition": {
+          "enum": ["current", "added", "changed", "moved", "source-lifecycle-changed", "removed", "reappeared"]
         },
         "priorSourceEvidence": {
           "oneOf": [

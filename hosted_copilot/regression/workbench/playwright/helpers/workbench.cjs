@@ -1,6 +1,14 @@
 async function openWorkbench(page, baseUrl) {
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0);
+  page.setDefaultTimeout(10000);
+  page.setDefaultNavigationTimeout(10000);
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0
+    || Boolean(document.querySelector("#assessment-panel .empty-state")));
+  const loadState = await page.evaluate(() => ({
+    catalogCount: Number(document.querySelector("#catalog-count")?.textContent) || 0,
+    error: document.querySelector("#assessment-panel .empty-state p")?.textContent?.trim() || ""
+  }));
+  if (loadState.catalogCount === 0) throw new Error(`Workbench did not load: ${loadState.error || "no catalog rules rendered"}`);
   await page.evaluate(() => {
     globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = {
       status: "validated",

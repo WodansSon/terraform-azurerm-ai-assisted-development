@@ -43,7 +43,7 @@ $nodePackageLockRelativePath = 'hosted_copilot/tools/package-lock.json'
 $npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
 $puppeteerCliPath = Join-Path $toolsRoot $puppeteerCliRelativePath
-$bundleSchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/rule-intake-review.schema.json'
+$displaySchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation/workbench-display-v4.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
@@ -101,6 +101,118 @@ function Add-TestResult {
     }
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
+    }
+}
+
+function New-WorkbenchDisplayFixture {
+    param([Parameter(Mandatory = $true)][object]$Fixture)
+
+    $candidates = [Collections.Generic.List[object]]::new()
+    foreach ($sourceGroup in @(
+        [pscustomobject]@{ Lane = 'contributor'; Items = @($Fixture.upstreamCandidates) },
+        [pscustomobject]@{ Lane = 'interactive'; Items = @($Fixture.interactiveCandidates) },
+        [pscustomobject]@{ Lane = 'maintainer'; Items = @($Fixture.maintainerCandidates) }
+    )) {
+        foreach ($sourceCandidate in $sourceGroup.Items) {
+            foreach ($assessment in @($sourceCandidate.assessments)) {
+                $source = [ordered]@{
+                    lane = [string]$sourceGroup.Lane
+                    id = [string]$sourceCandidate.id
+                    title = [string]$sourceCandidate.title
+                    location = [string]$(if ($sourceGroup.Lane -ceq 'contributor') { $sourceCandidate.referenceUrl } elseif ($sourceGroup.Lane -ceq 'interactive') { $sourceCandidate.contractPath } else { $sourceCandidate.sourcePath })
+                    text = [string]$(if ($sourceGroup.Lane -ceq 'contributor') { $sourceCandidate.currentContent } else { $sourceCandidate.ruleText })
+                    contentSha256 = [string]$(if ($sourceGroup.Lane -ceq 'contributor') { $sourceCandidate.currentSha256 } else { $sourceCandidate.contentSha256 })
+                    provenance = [string]$(if ($sourceGroup.Lane -ceq 'contributor') { 'published-upstream-standard' } else { $sourceCandidate.provenance })
+                    transition = if ([string]$assessment.candidateState -ceq 'new') { 'added' } else { [string]$assessment.candidateState }
+                }
+                if ($sourceGroup.Lane -ceq 'contributor') {
+                    $source['priorText'] = [string]$sourceCandidate.baselineContent
+                    $source['revision'] = [ordered]@{ repository = 'hashicorp/terraform-provider-azurerm'; resolvedCommit = '2' * 40 }
+                }
+                if ($sourceCandidate.PSObject.Properties['surface']) { $source['surface'] = [string]$sourceCandidate.surface }
+                if ($sourceCandidate.PSObject.Properties['rationale']) { $source['rationale'] = [string]$sourceCandidate.rationale }
+                if ($sourceCandidate.PSObject.Properties['evidence']) { $source['evidence'] = @($sourceCandidate.evidence) }
+                if ($sourceCandidate.PSObject.Properties['sourceIds']) { $source['sourceIds'] = @($sourceCandidate.sourceIds) }
+
+                $reviewState = if (-not [bool]$assessment.hostedApplicable) { 'excluded' } elseif ([string]$assessment.recommendation -ceq 'defer') { 'deferred' } else { 'recommended' }
+                $recommendation = $null
+                if ($reviewState -cne 'excluded') {
+                    $category = if ([string]$assessment.hostedCategory -in @('implementation', 'testing', 'documentation')) { [string]$assessment.hostedCategory } else { 'implementation' }
+                    $placement = if ($category -ceq 'implementation') { 'Schema And State' } elseif ($category -ceq 'testing') { 'Assertions And Validation' } else { 'Examples And Imports' }
+                    $sourceDefinitionId = if ($sourceGroup.Lane -ceq 'contributor') { 'contributor-guidance' } elseif ($sourceGroup.Lane -ceq 'interactive') { 'interactive-toolkit' } else { 'maintainer-proposals' }
+                    $evidenceIds = @($(if ($category -ceq 'implementation') { 'implementation-contract' } elseif ($category -ceq 'testing') { 'testing-contract' } else { 'documentation-contract' }))
+                    if ([string]$source.provenance -ceq 'local-safeguard') { $evidenceIds += 'hosted-architecture' }
+                    if ([string]$source.provenance -ceq 'confirmed-maintainer-convention') { $evidenceIds += 'docs-list-marker-confirmation' }
+                    $recommendation = [ordered]@{
+                        action = [string]$assessment.recommendation
+                        hostedId = [string]$assessment.proposedHostedRuleId
+                        idState = if ($null -ne $assessment.targetHostedRuleId) { 'existing' } else { 'tentative' }
+                        targetHostedId = $assessment.targetHostedRuleId
+                        ruleText = [string]$assessment.proposedText
+                        category = $category
+                        placement = $placement
+                        rationale = [string]$assessment.selectionRationale
+                        needsReview = [bool]$sourceCandidate.requiresReview
+                        assessmentKeys = @("$($sourceGroup.Lane):$($sourceCandidate.id):$($assessment.assessmentId)")
+                        guardedTokenDelta = [int]$assessment.guardedTokenDelta
+                        provenance = @([string]$source.provenance)
+                        evidenceIds = @($evidenceIds | Sort-Object -Unique)
+                        sourceRelationships = @([ordered]@{ sourceDefinitionId = $sourceDefinitionId; sourceId = [string]$sourceCandidate.id; relationshipKind = 'included'; rationale = "Assessment $($assessment.assessmentId) is included in this recommendation." })
+                    }
+                    if ($category -ceq 'implementation' -and [string]$assessment.recommendation -ceq 'add') { $recommendation['implementationModels'] = @('legacy', 'typed', 'framework') }
+                }
+                $candidates.Add([ordered]@{
+                    source = $source
+                    assessment = [ordered]@{
+                        id = [string]$assessment.assessmentId
+                        title = [string]$assessment.title
+                        sourceMeaning = [string]$assessment.summary
+                        impactDescription = [string]$assessment.impactDescription
+                        hostedApplicable = [bool]$assessment.hostedApplicable
+                        applicabilityRationale = [string]$assessment.applicabilityRationale
+                        selectionFactors = $assessment.selectionFactors
+                        selectionRationale = [string]$assessment.selectionRationale
+                        confidence = [ordered]@{ level = 'high'; rationale = 'The offline fixture is deterministic.'; uncertainties = @() }
+                        affectedSurfaces = @($assessment.affectedSurfaces)
+                        sourceLocalProposedText = [string]$assessment.proposedText
+                        existingCoverage = [ordered]@{ score = if ($null -ne $assessment.targetHostedRuleId) { 5 } else { 0 }; rationale = [string]$assessment.currentHostedCoverage }
+                        relatedHostedCoverage = @()
+                        evaluatedAt = [string]$assessment.assessedAt
+                        evaluator = [string]$assessment.evaluator
+                    }
+                    reviewState = $reviewState
+                    recommendation = $recommendation
+                })
+            }
+        }
+    }
+    return [ordered]@{
+        '$schema' = 'workbench-display-v4.schema.json'
+        schemaVersion = 4
+        kind = 'hosted-rule-workbench-display'
+        generatedAt = [string]$Fixture.generatedAt
+        readOnly = $true
+        inputFingerprint = 'a' * 64
+        candidates = $candidates.ToArray()
+        catalog = [ordered]@{
+            contentSha256 = 'b' * 64
+            rules = @($Fixture.hostedRules | ForEach-Object {
+                $projectedRule = [ordered]@{
+                    id = [string]$_.id
+                    origin = 'hosted-baseline-migration'
+                    status = [string]$_.status
+                    text = [string]$_.text
+                    provenance = @('published-upstream-standard')
+                    evidenceIds = @($(if ([string]$_.id -like 'IMPL-*') { 'implementation-contract' } else { 'documentation-contract' }))
+                    placements = @($_.placements)
+                }
+                if ([string]$_.id -like 'IMPL-*') { $projectedRule['implementationModels'] = @('legacy', 'typed', 'framework') }
+                if ($_.PSObject.Properties['retirementReason']) { $projectedRule['retirementReason'] = [string]$_.retirementReason }
+                if ($_.PSObject.Properties['lastPlacement']) { $projectedRule['lastPlacement'] = $_.lastPlacement }
+                $projectedRule
+            })
+        }
+        guidanceCapacity = $Fixture.guidanceCapacity
     }
 }
 
@@ -233,7 +345,7 @@ try {
             }
         }
     }
-    $bundlePath = Join-Path $tempRoot 'rule-intake-review.json'
+    $displayPath = Join-Path $tempRoot 'workbench-display.json'
     $capacityReports = @(
         New-CapacityReport -Name 'repository' -Kind 'file'
         New-CapacityReport -Name 'go' -Kind 'file'
@@ -482,55 +594,27 @@ try {
     $bundle.summary.maintainerRuleCount = 1
     $bundle.summary.maintainerReviewCount = 1
     $bundle.summary.maintainerStateCounts.new = 1
-    $bundleJson = $bundle | ConvertTo-Json -Depth 20
-    [IO.File]::WriteAllText($bundlePath, $bundleJson + "`n", [Text.UTF8Encoding]::new($false))
+    $display = New-WorkbenchDisplayFixture -Fixture $bundle
+    $displayJson = $display | ConvertTo-Json -Depth 30
+    [IO.File]::WriteAllText($displayPath, $displayJson + "`n", [Text.UTF8Encoding]::new($false))
     if ([string]::IsNullOrWhiteSpace($Run)) {
-    Add-TestResult -Name 'fixture-bundle-valid' -Passed ([bool]($bundleJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench bundle satisfies the candidate review schema.'
+    Add-TestResult -Name 'fixture-display-valid' -Passed ([bool]($displayJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench display satisfies the v4 display schema.'
 
-    $invalidAssessmentBundle = $bundleJson | ConvertFrom-Json
-    $invalidAssessmentBundle.interactiveCandidates[0].assessments[0].selectionFactors.severity = 6
-    $invalidAssessmentJson = $invalidAssessmentBundle | ConvertTo-Json -Depth 20
-    Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $bundleSchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
+    $invalidAssessmentDisplay = $displayJson | ConvertFrom-Json
+    $invalidAssessmentDisplay.candidates[0].assessment.selectionFactors.severity = 6
+    $invalidAssessmentJson = $invalidAssessmentDisplay | ConvertTo-Json -Depth 30
+    Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
 
     $siteDirectory = Join-Path $tempRoot 'site'
-    $bundleHashBefore = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
+    $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
     Start-TestResult -Name 'external-staging-valid'
-    $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -BundlePath $bundlePath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $stageExitCode = $LASTEXITCODE
     $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $bundleHashAfter = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
-    $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'rule-intake-review.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 5 -and $stageResult.evaluatedCandidateCount -eq 5 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports source records and rule-level AI candidates separately.' } else { ($stageOutput | Out-String).Trim() })
-    Add-TestResult -Name 'source-bundle-read-only' -Passed ($bundleHashBefore -eq $bundleHashAfter) -Detail 'Workbench staging does not modify its source bundle.'
-
-    $fakeAssessmentPath = Join-Path $tempRoot 'fake-assessment.ps1'
-    $escapedBundlePath = $bundlePath.Replace("'", "''")
-    [IO.File]::WriteAllText($fakeAssessmentPath, @"
-[CmdletBinding()]
-param(
-    [string]`$RepositoryRoot,
-    [string]`$OutputPath,
-    [string]`$CachePath,
-    [string]`$BaselinePath,
-    [string]`$Model,
-    [string]`$ReasoningEffort,
-    [int]`$BatchSize,
-    [int]`$UpstreamBatchSize,
-    [int]`$MaxRetries,
-    [string]`$EvaluatorCommand,
-    [switch]`$Force,
-    [switch]`$RepairMissingFields,
-    [string]`$OutputFormat
-)
-Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
-[ordered]@{ status = 'passed'; candidateCount = 5; ruleCandidateCount = 7; cacheHitCount = 1; baselineHitCount = 1; seededCount = 0; evaluatedCount = 0; batchCount = 0; applicableCount = 5; inapplicableCount = 2; model = `$Model; reasoningEffort = `$ReasoningEffort; repositoryWrites = `$false } | ConvertTo-Json
-"@, [Text.UTF8Encoding]::new($false))
-    $jsonAssessmentSiteDirectory = Join-Path $tempRoot 'json-assessment-site'
-    Start-TestResult -Name 'json-assessment-launch'
-    $jsonAssessmentOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $jsonAssessmentSiteDirectory -AssessmentScriptPath $fakeAssessmentPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
-    $jsonAssessmentExitCode = $LASTEXITCODE
-    $jsonAssessmentResult = if ($jsonAssessmentExitCode -eq 0) { ($jsonAssessmentOutput | Out-String) | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'json-assessment-launch' -Passed ($jsonAssessmentExitCode -eq 0 -and $jsonAssessmentResult.discoveredCandidateCount -eq 5 -and $jsonAssessmentResult.ruleCandidateCount -eq 7 -and $jsonAssessmentResult.assessment.cacheHitCount -eq 1 -and $jsonAssessmentResult.assessment.baselineHitCount -eq 1) -Detail $(if ($jsonAssessmentExitCode -eq 0) { 'JSON mode executes assessment without a prebuilt bundle and returns one machine-readable launcher result.' } else { ($jsonAssessmentOutput | Out-String).Trim() })
+    $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
+    $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
+    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets and reports v4 display candidates.' } else { ($stageOutput | Out-String).Trim() })
+    Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Workbench staging does not modify its source display.'
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -600,7 +684,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     }
     Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
 
-    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"' -and $indexContent -match 'id="status-target"' -and $indexContent -match 'id="status-mapped"' -and $indexContent -match 'id="status-headroom"' -and $indexContent -notmatch 'id="metrics-band"|Refresh candidates' -and $appContent -match 'RULE_INTAKE_REVIEW_SCHEMA_VERSION = 3' -and $appContent -match 'bundle\.schemaVersion !== RULE_INTAKE_REVIEW_SCHEMA_VERSION' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'elements\["status-target"\]\.textContent' -and $appContent -match 'elements\["status-mapped"\]\.textContent' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML'
+    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"' -and $indexContent -match 'id="status-target"' -and $indexContent -match 'id="status-mapped"' -and $indexContent -match 'id="status-headroom"' -and $indexContent -notmatch 'id="metrics-band"|Refresh candidates' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'elements\["status-target"\]\.textContent' -and $appContent -match 'elements\["status-mapped"\]\.textContent' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML'
     $shutdownPresentationValid = $appContent -match '<div class="shutdown-brand-lockup">\s*<svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="' -and $appContent -match '<p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $appContent -match '<h1>Workbench Closed</h1>' -and $appContent -notmatch '<span class="brand-mark" aria-hidden="true">HR</span>'
     $shutdownPresentationValid = $shutdownPresentationValid -and $stylesContent -match '\.shutdown-state\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center' -and $stylesContent -match '\.shutdown-brand-lockup\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center' -and $stylesContent -match '\.shutdown-brand-icon\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*color:\s*#ffff00;[^}]*fill:\s*currentColor' -and $stylesContent -match '\.shutdown-state \.shutdown-product-name\s*\{[^}]*font-size:\s*20px !important;[^}]*font-weight:\s*600 !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.shutdown-state > h1\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important'
     $browserContractValid = $browserContractValid -and $shutdownPresentationValid
@@ -734,7 +818,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $assessmentPaneValid = $indexContent -match 'class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace"' -and $indexContent -match 'data-assessment-pane="assessments"' -and $indexContent -match 'data-assessment-pane="details"' -and $indexContent -match 'id="assessment-results-list-panel" role="tabpanel"' -and $indexContent -match 'id="assessment-results-detail" role="tabpanel"[^>]*hidden' -and $stylesContent -match '#assessment-results-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-panel\.workspace-tab-panel\.active\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-detail\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $appContent -match 'assessmentPane:\s*"assessments"' -and $appContent -match 'state\.assessmentPane = "assessments";\s*renderAll\(\);[\s\S]*?showAssessmentPane\("assessments"\)' -and $appContent -match 'selectAssessmentResult\(row\.dataset\.assessmentKey\);\s*showAssessmentPane\("details"\)' -and $appContent -match 'selectAssessmentResult, \(\) => showAssessmentPane\("details"\)' -and $appContent -match 'function syncAssessmentResultRows\(' -and $appContent -match 'row\.dataset\.assessmentKey === state\.assessmentActiveKey' -and $appContent -match 'function showAssessmentPane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "assessments"'
     Add-TestResult -Name 'assessment-pane-navigation' -Passed $assessmentPaneValid -Detail 'Assessment Results always exposes full-width Assessments and Details tabs, initializes without a selection, opens Details on row activation, and synchronizes the selected-row highlight from one state owner.'
 
-    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
+    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'function updateOverrideLifecycle\(' -and $appContent -match 'repairOverridePlanMembership\(\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, override, \{ \.\.\.defaultDecision\(candidate\), \.\.\.createPlanMembership\("override"\) \}\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'class="button warning-action clickable"[^>]*data-override-open' -and $appContent -match '\$\{icon\("chat-sparkle-error"\)\}Contest Assessment' -and $stylesContent -match '--warning-action-background:\s*#352a05' -and $stylesContent -match '--warning-action-background-hover:\s*#453b19' -and $stylesContent -match '--warning-action-border:\s*#b89500' -and $stylesContent -match '--warning-action-foreground:\s*#ffffff' -and $stylesContent -match '\.button\.warning-action\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background\);[^}]*border-color:\s*var\(--warning-action-border\)' -and $stylesContent -match '\.button\.warning-action:hover\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background-hover\);[^}]*border-color:\s*var\(--warning-action-border\)'
     Add-TestResult -Name 'maintainer-applicability-override' -Passed $overrideContractValid -Detail 'Authenticated Hosted CODEOWNERS can atomically move an exclusion into Overrides and the plan, while removal returns it to active exclusions without mutating the AI assessment.'
@@ -848,13 +932,13 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $hierarchicalViewContent -match 'patchNode\(row, rendered\)'
     Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree and Details checkboxes are synchronized projections of membership-only state in both directions without replacing scroll, focus, selection, or expanded folders; explicit Undo retains the full-reset lifecycle.'
 
-    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'schemaVersion:\s*SESSION_SCHEMA_VERSION,\s*kind: "hosted-rule-workbench-draft"'
+    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'catalogStatus:\s*getCatalogStatus\(candidate\)\.key' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
     Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Authoritative mappings are separate from source state; native radios expose only status-constrained actions, and plan membership remains an independent explicit choice.'
 
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and $indexContent -match 'data-bulk-scope="add"' -and $indexContent -match 'data-bulk-scope="update"' -and $indexContent -match 'data-bulk-scope="actionable"' -and $indexContent -match 'data-bulk-undo' -and $appContent -match 'bulkOperations:\s*\[\]' -and $appContent -match 'function createPlanMembership\(' -and $appContent -match 'function isValidPlanMembership\(' -and $appContent -match 'function getBulkActionCandidates\(' -and $appContent -match 'return !decision\.inPlan' -and $appContent -match 'function applyBulkSelection\(' -and $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and $appContent -match 'function undoBulkOperation\(' -and $appContent -match 'decision\?\.planMembershipSource !== "bulk" \|\| decision\.bulkOperationId !== operation\.id' -and $appContent -match 'promotesManualMembership' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'source:\s*decision\.planMembershipSource' -and $appContent -match 'bulkOperations:\s*state\.session\.bulkOperations' -and $appContent -match 'draft\.bulkOperations' -and $stylesContent -match '\.bulk-actions-menu\s*\{' -and $stylesContent -match '\.plan-membership-badge\s*\{'
     $bulkActionsValid = $bulkActionsValid -and $appContent -match 'addEventListener\("mouseleave", handleBulkActionsMouseLeave\)' -and $appContent -match 'function renderBulkSelectionOutputs\(\) \{\s*syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*renderAssessment\(\);\s*renderDecisionOutputs\(\);\s*\}' -and ([regex]::Matches($appContent, 'renderBulkSelectionOutputs\(\)').Count -eq 3) -and $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);' -and $appContent -notmatch 'renderAllPreservingCandidateDisclosures' -and $appContent -match 'data-source-type="overrides"' -and $appContent -match 'data-source-type="\$\{escapeHtml\(sourceType\)\}"'
     $bulkActionsValid = $bulkActionsValid -and $indexContent -match 'id="bulk-actions-note"' -and $appContent -match 'function getValidatedCodeOwnerIdentity\(' -and $appContent -match 'button\.disabled = !identity \|\| count === 0' -and $appContent -match 'if \(state\.session\.decisions\[candidate\.key\]\) return false' -and $appContent -match 'function getBulkDecisionRationale\(' -and $appContent -match 'action: assessment\.recommendation' -and $appContent -match 'rationale: getBulkDecisionRationale\(candidate, assessment\.recommendation\)'
-    $bulkActionsValid = $bulkActionsValid -and $appContent -match 'candidateSourceHashes: Object\.fromEntries' -and $appContent -match 'recordedBy: \{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'operation\.recordedBy\?\.type === "github-cli"' -and $appContent -match 'draft\.decisions\[key\]\?\.sourceHash !== operation\.candidateSourceHashes\[key\]'
+    $bulkActionsValid = $bulkActionsValid -and $appContent -match 'action: recommendationScope' -and $appContent -match 'candidateKeys: candidates\.map' -and $appContent -notmatch 'candidateSourceHashes: Object\.fromEntries' -and $appContent -notmatch 'operation\.recordedBy\?\.type === "github-cli"'
     $bulkActionsValid = $bulkActionsValid -and $stylesContent -match '\.bulk-actions-menu::before\s*\{[^}]*top:\s*-5px;[^}]*height:\s*5px;[^}]*content:\s*""' -and $stylesContent -match '\.bulk-actions-menu button:disabled\s*\{[^}]*cursor:\s*default !important'
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and
         $appContent -match 'bulkOperations:\s*\[\]' -and
@@ -864,8 +948,8 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
         $appContent -match 'function renderBulkSelectionOutputs\(\) \{\s*syncCandidateTreeRows\(\);' -and
         $appContent -match 'const overrideRootId = "candidate:source:overrides"' -and
         $appContent -match 'const sourceId = `candidate:source:\$\{sourceType\}`' -and
-        $appContent -match 'recordedBy: \{ type: "github-cli", login: identity\.login \}' -and
-        $appContent -match 'candidateSourceHashes: Object\.fromEntries'
+        $appContent -match 'action: recommendationScope' -and
+        $appContent -match 'candidateKeys: candidates\.map'
     Add-TestResult -Name 'bulk-plan-membership' -Passed $bulkActionsValid -Detail 'CODEOWNER-only Bulk Actions create complete recommendation-aligned decisions with deterministic rationale and actor/hash provenance, preserve manual decisions, promote subsequent edits to manual ownership, and undo only entries still owned by the matching operation.'
 
     $capacityProjectionValid = $appContent -match 'Plan projection' -and $appContent -match 'getProjectedCapacityDelta' -and $appContent -match 'projectedGuardedTokens' -and $appContent -match 'projectedHeadroomTokens' -and $appContent -match 'function renderDecisionOutputs\(\)[\s\S]*?renderPlan\(\);[\s\S]*?renderCapacity\(\);[\s\S]*?renderPreview\(\);[\s\S]*?renderCounts\(\);' -and $appContent -match 'function resetCandidate\(' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)' -and $appContent -match 'saveDecision\(candidate, null\)' -and $appContent -match 'clearCandidateSelection\(candidate\)' -and $appContent -match 'if \(\["add", "update"\]\.includes\(decision\.action\)\)' -and $appContent -match 'if \(decision\.action !== "retire"\) return 0' -and $appContent -match 'function showToast\(message, error = false\)' -and $appContent -match 'if \(!error\) toastTimer = setTimeout\(dismissNotification, 8000\)' -and $appContent -notmatch 'showToast\([^\n]+, false, \{' -and $indexContent -match 'id="toast-close"[^>]*aria-label="Dismiss Notification"' -and $stylesContent -match '\.toast\.visible\s*\{[^}]*pointer-events:\s*auto'
@@ -986,8 +1070,8 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
-    $assessmentLaunchValid = $launcherContent -match 'Invoke-RuleIntakeAssessment\.ps1' -and $launcherContent -match '\$null -eq \$resolvedBundlePath' -and $launcherContent -match '''-CachePath'', \$AssessmentCachePath' -and $launcherContent -match '''-BaselinePath'', \$AssessmentBaselinePath' -and $launcherContent -match '''-Model'', \$AssessmentModel' -and $launcherContent -match '\$assessmentOutputFormat = if \(\$OutputFormat -eq ''Text''\) \{ ''Text'' \} else \{ ''Json'' \}' -and $launcherContent -match "Write-Host '\[RUNNING\].*assessment" -and $launcherContent -match '& pwsh @assessmentArguments 2>&1 \| ForEach-Object \{ Write-Host \$_ \}' -and $launcherContent -match "Write-Host '\[PASSED\].*assessment" -and $launcherContent -match 'Rule intake assessment failed'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Text launches visibly complete candidate assessment before Workbench staging, JSON launches remain machine-readable, and an explicit BundlePath remains a model-free staging path.'
+    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches collect, assess, reconcile, and stage one v4 display; an explicit DisplayPath remains a model-free staging path.'
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
     Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, rejects non-loopback Host values, serves only local runtime assets through GET and HEAD, and exposes one token-authenticated shutdown endpoint.'
@@ -999,9 +1083,9 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
     $serverJob = Start-Job -ScriptBlock {
-        param($LauncherPath, $SiteDirectory, $FixtureBundlePath, $Port)
-        & pwsh -NoProfile -File $LauncherPath -SiteDirectory $SiteDirectory -BundlePath $FixtureBundlePath -Port $Port -NoLaunch -OutputFormat Json
-    } -ArgumentList $launcherPath, $shutdownSiteDirectory, $bundlePath, $shutdownPort
+        param($LauncherPath, $SiteDirectory, $FixtureDisplayPath, $Port)
+        & pwsh -NoProfile -File $LauncherPath -SiteDirectory $SiteDirectory -DisplayPath $FixtureDisplayPath -Port $Port -NoLaunch -OutputFormat Json
+    } -ArgumentList $launcherPath, $shutdownSiteDirectory, $displayPath, $shutdownPort
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
@@ -1122,7 +1206,7 @@ Copy-Item -LiteralPath '$escapedBundlePath' -Destination `$OutputPath -Force
     if ([string]::IsNullOrWhiteSpace($Run)) {
         $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
         Start-TestResult -Name 'repository-staging-rejected'
-        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -BundlePath $bundlePath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -DisplayPath $displayPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
         $repositoryStagingRejected = $LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $repositorySiteDirectory)
         Add-TestResult -Name 'repository-staging-rejected' -Passed $repositoryStagingRejected -Detail 'The launcher rejects generated staging output inside the source repository.'
     }
