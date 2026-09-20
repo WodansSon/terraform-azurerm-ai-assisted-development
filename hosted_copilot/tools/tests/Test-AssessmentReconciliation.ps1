@@ -159,6 +159,56 @@ function Invoke-DisplayBuilder {
     return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output | Out-String).Trim(); OutputPath = $outputPath }
 }
 
+function Invoke-ReconciliationRunner {
+    param(
+        [Parameter(Mandatory = $true)][string]$AssessmentSetPath,
+        [Parameter(Mandatory = $true)][string[]]$InventoryPaths,
+        [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [int]$MaxRetries = 0,
+        [string]$ResumeRunDirectory
+    )
+
+    $outputPath = Join-Path $tempRoot "$Name-display.json"
+    $parameters = @{
+        RepositoryRoot = $repositoryRoot
+        AssessmentBaselinePath = $AssessmentSetPath
+        InventoryPaths = $InventoryPaths
+        GuidanceCapacityPath = $guidanceCapacityPath
+        OutputPath = $outputPath
+        EvaluatorScriptPath = $EvaluatorScriptPath
+        Model = 'fixture-model'
+        ReasoningEffort = 'high'
+        MaxRetries = $MaxRetries
+        RetryDelayMilliseconds = 0
+        GeneratedAt = $generatedAt
+        OutputFormat = 'Json'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
+        $parameters.ResumeRunDirectory = $ResumeRunDirectory
+    }
+    $output = [Collections.Generic.List[object]]::new()
+    $progress = [Collections.Generic.List[string]]::new()
+    $errorMessage = ''
+    try {
+        & $runnerPath @parameters 6>&1 2>&1 | ForEach-Object {
+            if ($_ -is [Management.Automation.InformationRecord]) {
+                $progress.Add([string]$_.MessageData)
+            }
+            else {
+                $output.Add($_)
+            }
+        }
+        $exitCode = 0
+    }
+    catch {
+        $output.Add($_)
+        $errorMessage = [string]$_.Exception.Message
+        $exitCode = 1
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output | Out-String).Trim(); OutputPath = $outputPath; Progress = $progress.ToArray(); ErrorMessage = $errorMessage }
+}
+
 function New-CatalogBoundAssessmentSet {
     param(
         [Parameter(Mandatory = $true)][object]$AssessmentSet,
@@ -182,6 +232,24 @@ try {
     $runnerContent = Get-Content -LiteralPath $runnerPath -Raw
     $reconciliationInputUnbounded = $runnerContent -notmatch 'EvaluatorPayloadBudgetBytes|Get-PayloadSizeBytes|payload exceeds evaluator budget'
     Add-TestResult -Name 'reconciliation-input-not-guidance-budget' -Passed $reconciliationInputUnbounded -Detail 'Reconciliation input size is not conflated with final Hosted guidance token-capacity enforcement.'
+    $defaultProgressContract = $runnerContent -match '\[switch\]\$Quiet' -and
+        $runnerContent -match 'if \(-not \$Quiet\)' -and
+        $runnerContent -match 'assessment-reconciliation/batch' -and
+        $runnerContent -notmatch '\$OutputFormat -eq ''Text'''
+    Add-TestResult -Name 'reconciliation-progress-default' -Passed $defaultProgressContract -Detail 'Reconciliation reports evaluator and display-building activity by default regardless of result format, with an explicit quiet opt-out.'
+    $builderArrayBindingContract = $runnerContent -match '\$builderOutput = @\(& \$snapshotBuilderPath @builderParameters 2>&1\)' -and
+        $runnerContent -notmatch 'pwsh -NoProfile -File \$snapshotBuilderPath'
+    Add-TestResult -Name 'builder-array-binding' -Passed $builderArrayBindingContract -Detail 'Reconciliation invokes the snapshotted display builder in-process so InventoryPaths remains one array-valued parameter.'
+    $sourceDefinedBatchContract = $runnerContent -notmatch 'ReconciliationBatchSize' -and
+        $runnerContent -match '\$batchSize = \[int\]\$sourceDefinition\.assessmentBatchSize' -and
+        $runnerContent -match '\$batchBaseline\.entries = \$batchEntries'
+    Add-TestResult -Name 'source-defined-reconciliation-batches' -Passed $sourceDefinedBatchContract -Detail 'Reconciliation reuses each source definition assessmentBatchSize and keeps complete source entries intact.'
+
+    $runnerTokens = $null
+    $runnerParseErrors = $null
+    $runnerAst = [Management.Automation.Language.Parser]::ParseFile($runnerPath, [ref]$runnerTokens, [ref]$runnerParseErrors)
+    $identityFunction = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReconciliationBaselineIdentityJson' }, $true)
+    . ([scriptblock]::Create($identityFunction.Extent.Text))
 
     Write-TestProgress -Name 'fixture-validation' -Detail 'Preparing source lanes, assessment set, reconciliation response, catalog, and capacity'
 
@@ -252,6 +320,135 @@ try {
     $assessmentSetPath = Join-Path $tempRoot 'assessment-set.json'
     Write-JsonFixture -Path $assessmentSetPath -Value $assessmentSet
     Add-TestResult -Name 'three-lane-assessment-set' -Passed (Test-JsonInstance -Value $assessmentSet -SchemaPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-baseline-v4.schema.json')) -Detail 'The fixture contains one valid assessment from each source lane.'
+
+    $volatileBaseline = Copy-JsonObject -Value $assessmentSet
+    $volatileBaseline.generatedAt = '2026-09-20T18:00:00Z'
+    $volatileBaseline.inventoryHashes.'contributor-guidance' = 'b' * 64
+    $volatileBaseline.entries[0].assessments[0].assessmentProvenance.assessedAt = '2026-09-20T18:00:00Z'
+    $volatileBaselinePath = Join-Path $tempRoot 'volatile-assessment-set.json'
+    Write-JsonFixture -Path $volatileBaselinePath -Value $volatileBaseline
+    $changedMeaningBaseline = Copy-JsonObject -Value $volatileBaseline
+    $changedMeaningBaseline.entries[0].assessments[0].sourceMeaning = 'Changed assessment meaning.'
+    $changedMeaningBaselinePath = Join-Path $tempRoot 'changed-meaning-assessment-set.json'
+    Write-JsonFixture -Path $changedMeaningBaselinePath -Value $changedMeaningBaseline
+    $semanticIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath) -ceq (Get-ReconciliationBaselineIdentityJson -Path $volatileBaselinePath) -and
+        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath) -cne (Get-ReconciliationBaselineIdentityJson -Path $changedMeaningBaselinePath)
+    Add-TestResult -Name 'recovery-semantic-baseline-identity' -Passed $semanticIdentityValid -Detail 'Recovery ignores regenerated timestamps and inventory snapshot hashes while rejecting changed assessment meaning.'
+
+    $fakeEvaluatorPath = Join-Path $tempRoot 'fake-reconciliation-evaluator.ps1'
+    $fakeEvaluator = @'
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string]$BaselinePath,
+    [Parameter(Mandatory = $true)][string]$CatalogPath,
+    [Parameter(Mandatory = $true)][string]$ContractPath,
+    [Parameter(Mandatory = $true)][string]$SchemaPath,
+    [Parameter(Mandatory = $true)][string]$PromptPath,
+    [Parameter(Mandatory = $true)][string]$OutputPath,
+    [Parameter(Mandatory = $true)][string]$Model,
+    [Parameter(Mandatory = $true)][string]$ReasoningEffort
+)
+$baseline = Get-Content -LiteralPath $BaselinePath -Raw | ConvertFrom-Json -DateKind String
+$recommendations = [Collections.Generic.List[object]]::new()
+$coverage = [Collections.Generic.List[object]]::new()
+foreach ($entry in @($baseline.entries)) {
+    foreach ($assessment in @($entry.assessments)) {
+        $draftKey = 'recommendation-{0}' -f ($recommendations.Count + 1)
+        $reference = [ordered]@{
+            sourceDefinitionId = [string]$entry.sourceRef.sourceDefinitionId
+            sourceId = [string]$entry.sourceRef.sourceId
+            contentSha256 = [string]$entry.sourceRef.contentSha256
+            assessmentId = [string]$assessment.assessmentId
+        }
+        $recommendation = [ordered]@{
+            draftKey = $draftKey
+            recommendedAction = if ([bool]$assessment.hostedApplicable) { 'add' } else { 'exclude' }
+            targetHostedId = $null
+            idFamily = 'IMPL-SCHEMA'
+            title = [string]$assessment.title
+            recommendedRuleText = [string]$assessment.sourceLocalProposedText
+            category = 'implementation'
+            placement = 'Schema And State'
+            rationale = [string]$assessment.selectionRationale
+            needsReview = $false
+            memberAssessmentRefs = @($reference)
+            relatedHostedCoverage = @()
+            implementationModels = @('legacy', 'typed', 'framework')
+        }
+        $recommendations.Add($recommendation)
+        $coverage.Add([ordered]@{
+            assessmentRef = $reference
+            disposition = if ([bool]$assessment.hostedApplicable) { 'recommended' } else { 'excluded' }
+            rationale = if ([bool]$assessment.hostedApplicable) { $null } else { [string]$assessment.applicabilityRationale }
+            recommendationDraftKeys = @($draftKey)
+        })
+    }
+}
+$draft = [ordered]@{
+    '$schema' = 'assessment-reconciliation-draft.schema.json'
+    schemaVersion = 1
+    recommendations = $recommendations.ToArray()
+    assessmentCoverage = $coverage.ToArray()
+}
+[IO.File]::WriteAllText($OutputPath, (($draft | ConvertTo-Json -Depth 50) + "`n"), [Text.UTF8Encoding]::new($false))
+'@
+    [IO.File]::WriteAllText($fakeEvaluatorPath, $fakeEvaluator, [Text.UTF8Encoding]::new($false))
+    $batchedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'batched'
+    $batchedResult = if ($batchedRun.ExitCode -eq 0) { $batchedRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $batchedDisplay = if ($batchedRun.ExitCode -eq 0) { Get-Content -LiteralPath $batchedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $batchedMergeValid = $batchedRun.ExitCode -eq 0 -and [int]$batchedResult.batchCount -eq 3 -and [int]$batchedResult.candidateCount -eq 3 -and [int]$batchedResult.recommendationCount -eq 3 -and @($batchedDisplay.candidates).Count -eq 3
+    Add-TestResult -Name 'batched-reconciliation-merge' -Passed $batchedMergeValid -Detail $(if ($batchedMergeValid) { 'Three source-defined lane batches validate independently and merge into one exhaustive display with unique recommendation keys.' } else { $batchedRun.Output })
+
+    $failingEvaluatorPath = Join-Path $tempRoot 'failing-reconciliation-evaluator.ps1'
+    $failureGuard = @'
+$sourceDefinitionId = [string]$baseline.entries[0].sourceRef.sourceDefinitionId
+if ($sourceDefinitionId -ceq 'interactive-toolkit' -and $env:RECONCILIATION_FAIL_INTERACTIVE -eq '1') {
+    throw 'Synthetic Interactive reconciliation failure.'
+}
+$recommendations = [Collections.Generic.List[object]]::new()
+'@
+    $failingEvaluator = $fakeEvaluator.Replace('$recommendations = [Collections.Generic.List[object]]::new()', $failureGuard)
+    [IO.File]::WriteAllText($failingEvaluatorPath, $failingEvaluator, [Text.UTF8Encoding]::new($false))
+    $env:RECONCILIATION_FAIL_INTERACTIVE = '1'
+    try {
+        $failedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $failingEvaluatorPath -Name 'failed-batch' -MaxRetries 1
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_FAIL_INTERACTIVE -ErrorAction SilentlyContinue
+    }
+    $runningProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' })
+    $passedProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/batch*' })
+    $retryProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]RETRYING[]]*assessment-reconciliation/batch*' })
+    $failedProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]FAILED[]]*assessment-reconciliation/batch*' })
+    $retainedMatch = [regex]::Match($failedRun.ErrorMessage, 'run artifacts were retained at (?<path>.+)$')
+    $retainedPath = if ($retainedMatch.Success) { $retainedMatch.Groups['path'].Value.Trim() } else { '' }
+    $siblingArtifactsRetained = -not [string]::IsNullOrWhiteSpace($retainedPath) -and
+        (Test-Path -LiteralPath (Join-Path $retainedPath 'batches/batch-001/workbench-display.json') -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $retainedPath 'batches/batch-003/workbench-display.json') -PathType Leaf)
+    $parallelFailureValid = $failedRun.ExitCode -ne 0 -and
+        -not (Test-Path -LiteralPath $failedRun.OutputPath -PathType Leaf) -and
+        $runningProgress.Count -eq 4 -and
+        $passedProgress.Count -eq 2 -and
+        $retryProgress.Count -eq 1 -and
+        $failedProgress.Count -eq 1 -and
+        @($passedProgress | Where-Object { $_ -match '1/3|3/3' }).Count -eq 2 -and
+        $failedRun.ErrorMessage -like '*batch 2 interactive-toolkit*' -and
+        $failedRun.ErrorMessage -like '*Synthetic Interactive reconciliation failure*' -and
+        $siblingArtifactsRetained
+    Add-TestResult -Name 'parallel-batch-failure-retention' -Passed $parallelFailureValid -Detail $(if ($parallelFailureValid) { 'Successful siblings complete once, only the failed batch retries, terminal failure is emitted once, no display is published, and retained artifacts preserve successful batch outputs.' } else { "progress=$($failedRun.Progress -join ' | '); error=$($failedRun.ErrorMessage)" })
+    $recoveredRun = if (-not [string]::IsNullOrWhiteSpace($retainedPath)) { Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $failingEvaluatorPath -Name 'recovered-batch' -ResumeRunDirectory $retainedPath } else { $null }
+    $recoveredResult = if ($null -ne $recoveredRun -and $recoveredRun.ExitCode -eq 0) { $recoveredRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $recoveryProgress = if ($null -ne $recoveredRun) { @($recoveredRun.Progress) } else { @() }
+    $recoveryValid = $null -ne $recoveredResult -and
+        [int]$recoveredResult.reusedBatchCount -eq 2 -and
+        [int]$recoveredResult.evaluatedBatchCount -eq 1 -and
+        @($recoveryProgress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/reuse*' }).Count -eq 2 -and
+        @($recoveryProgress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' }).Count -eq 1 -and
+        -not (Test-Path -LiteralPath $retainedPath -PathType Container)
+    Add-TestResult -Name 'retained-batch-recovery' -Passed $recoveryValid -Detail $(if ($recoveryValid) { 'Recovery revalidates two successful retained batches, evaluates only the missing batch, publishes the display, and removes the consumed managed run.' } else { "progress=$($recoveryProgress -join ' | '); output=$(if ($null -eq $recoveredRun) { 'not run' } else { $recoveredRun.Output })" })
+    if (-not [string]::IsNullOrWhiteSpace($retainedPath) -and (Test-Path -LiteralPath $retainedPath -PathType Container)) {
+        Remove-Item -LiteralPath $retainedPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     $contributorRef = Get-AssessmentRef -Entry $entries[0]
     $interactiveRef = Get-AssessmentRef -Entry $entries[1]
@@ -372,7 +569,10 @@ try {
     Write-JsonFixture -Path $unclassifiedAssessmentSetPath -Value $unclassifiedAssessmentSet
     [string[]]$unclassifiedInventoryPaths = @($inventoryPaths[0], $unclassifiedInventoryPath, $inventoryPaths[2])
     $unclassifiedRun = Invoke-DisplayBuilder -Draft $draft -Name 'unclassified' -AssessmentSetPath $unclassifiedAssessmentSetPath -InventoryPaths $unclassifiedInventoryPaths
-    Add-TestResult -Name 'unclassified-provenance-rejected' -Passed ($unclassifiedRun.ExitCode -ne 0 -and $unclassifiedRun.Output -like '*contains unclassified source provenance*') -Detail 'The producer refuses approval metadata it cannot classify from trusted source evidence.'
+    $unclassifiedDisplay = if ($unclassifiedRun.ExitCode -eq 0) { Get-Content -LiteralPath $unclassifiedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $unclassifiedCandidate = if ($null -ne $unclassifiedDisplay) { @($unclassifiedDisplay.candidates | Where-Object { [string]$_.source.provenance -ceq 'unclassified' })[0] } else { $null }
+    $unclassifiedExcluded = $unclassifiedRun.ExitCode -eq 0 -and [string]$unclassifiedCandidate.reviewState -ceq 'excluded' -and -not [bool]$unclassifiedCandidate.assessment.hostedApplicable -and [string]$unclassifiedCandidate.assessment.applicabilityRationale -like '*maintainer must contest this exclusion before promotion*' -and [string]$unclassifiedCandidate.recommendation.action -ceq 'exclude' -and $null -eq $unclassifiedCandidate.recommendation.targetHostedId -and [bool]$unclassifiedCandidate.recommendation.needsReview -and 'local-safeguard' -in @($unclassifiedCandidate.recommendation.provenance) -and 'hosted-architecture' -in @($unclassifiedCandidate.recommendation.evidenceIds)
+    Add-TestResult -Name 'unclassified-provenance-excluded' -Passed $unclassifiedExcluded -Detail $(if ($unclassifiedExcluded) { 'Unclassified source provenance defaults to an excluded assessment that requires a maintainer contest before promotion.' } else { $unclassifiedRun.Output })
 }
 catch {
     $issues.Add($_.Exception.Message)

@@ -658,6 +658,51 @@ try {
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
+    $launcherTokens = $null
+    $launcherParseErrors = $null
+    $launcherAst = [Management.Automation.Language.Parser]::ParseFile($launcherPath, [ref]$launcherTokens, [ref]$launcherParseErrors)
+    foreach ($functionName in @('Find-AutomaticAssessmentRecoveryDirectory', 'Find-AutomaticReconciliationRecoveryDirectory')) {
+        $functionAst = $launcherAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
+        if ($null -ne $functionAst) {
+            . ([scriptblock]::Create($functionAst.Extent.Text))
+        }
+    }
+    $automaticRecoveryRoot = Join-Path $tempRoot 'automatic-recovery'
+    $assessmentRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-source-assessment'
+    $reconciliationRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-assessment-reconciliation'
+    $compatibleAssessmentRun = Join-Path $assessmentRecoveryRoot 'compatible-assessment'
+    $incompleteAssessmentRun = Join-Path $assessmentRecoveryRoot 'newer-incomplete-assessment'
+    $currentAssessmentContractPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+    foreach ($runPath in @($compatibleAssessmentRun, $incompleteAssessmentRun)) {
+        $retainedContractPath = Join-Path $runPath 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $retainedContractPath) -Force | Out-Null
+        Copy-Item -LiteralPath $currentAssessmentContractPath -Destination $retainedContractPath
+        New-Item -ItemType Directory -Path (Join-Path $runPath 'batch-001') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $runPath 'batch-001/source-records.json'), '{}', [Text.UTF8Encoding]::new($false))
+    }
+    [IO.File]::WriteAllText((Join-Path $compatibleAssessmentRun 'batch-001/response.json'), '{}', [Text.UTF8Encoding]::new($false))
+    (Get-Item -LiteralPath $compatibleAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
+    (Get-Item -LiteralPath $incompleteAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
+
+    $compatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'compatible-reconciliation'
+    $incompatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'newer-incompatible-reconciliation'
+    foreach ($runPath in @($compatibleReconciliationRun, $incompatibleReconciliationRun)) {
+        $batchPath = Join-Path $runPath 'batches/batch-001'
+        New-Item -ItemType Directory -Path $batchPath -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $batchPath 'source-assessment-baseline.json'), '{}', [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $batchPath 'assessment-reconciliation-draft.json'), '{}', [Text.UTF8Encoding]::new($false))
+    }
+    [IO.File]::WriteAllText((Join-Path $compatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'copilot'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $incompatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'script:fixture'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+    (Get-Item -LiteralPath $compatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
+    (Get-Item -LiteralPath $incompatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
+
+    $selectedAssessmentRecovery = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath $currentAssessmentContractPath
+    $selectedReconciliationRecovery = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator 'copilot' -Model 'gpt-5.4' -ReasoningEffort 'high'
+    $automaticRecoveryValid = @($launcherParseErrors).Count -eq 0 -and
+        [string]$selectedAssessmentRecovery -ceq [IO.Path]::GetFullPath($compatibleAssessmentRun) -and
+        [string]$selectedReconciliationRecovery -ceq [IO.Path]::GetFullPath($compatibleReconciliationRun)
+    Add-TestResult -Name 'automatic-recovery-discovery' -Passed $automaticRecoveryValid -Detail 'A normal launch skips newer incomplete or evaluator-incompatible managed runs and selects the newest compatible completed assessment and reconciliation artifacts.'
     $playwrightRunnerContent = Get-Content -LiteralPath $playwrightRunnerPath -Raw
     $headedPlaybackContent = Get-Content -LiteralPath $headedPlaybackPath -Raw
     $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg', 'chat-sparkle-error.svg', 'discard-all.svg') }).Count
@@ -1096,7 +1141,7 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
-    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Collection'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
+    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and $launcherContent -match 'Find-AutomaticAssessmentRecoveryDirectory' -and $launcherContent -match 'Find-AutomaticReconciliationRecoveryDirectory' -and $launcherContent -match "assessmentRecoveryMode = 'AUTO'" -and $launcherContent -match "reconciliationRecoveryMode = 'AUTO'" -and $launcherContent -match '\[ValidateRange\(1, 8\)\]\s*\[int\]\$MaxParallelBatches = 3' -and $launcherContent -match 'MaxParallelBatches = \$MaxParallelBatches' -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Collection'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches collect, assess, reconcile, and stage one v4 display; an explicit DisplayPath remains a model-free staging path.'
 
     $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'

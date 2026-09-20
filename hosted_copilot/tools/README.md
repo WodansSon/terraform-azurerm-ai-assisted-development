@@ -15,7 +15,7 @@ Files beneath `internal/`, `modules/`, and `tests/` are implementation or valida
 
 Review the command help before supplying operation-specific parameters. Installation defaults to a dry run.
 
-Workbench source assessment stores validated per-source entries under `%LOCALAPPDATA%\hosted-workbench\assessment-cache` by default and reports the resolved path during startup. Use `-AssessmentCacheDirectory <external-path>` to override it. After a failed assessment, restart with `-AssessmentResumeDirectory <retained-run-path>` to import every still-valid source result and evaluate only misses. Cache entries persist across successful runs; temporary run artifacts are removed only after success.
+The normal Workbench command automatically reuses validated per-source assessments from `%LOCALAPPDATA%\hosted-workbench\assessment-cache` and discovers compatible toolkit-managed artifacts from failed assessment or reconciliation runs. Reconciliation uses each source definition's existing batch size, runs up to three batches concurrently, merges results deterministically, and reports recovery and batch progress during startup. Restart with the same normal command after a failure; use `-AssessmentCacheDirectory`, `-AssessmentResumeDirectory`, `-ReconciliationResumeDirectory`, or `-MaxParallelBatches` only for diagnostic or controlled overrides. Cache entries persist across successful runs, and temporary or recovered run artifacts are removed only after successful completion.
 
 ## Catalog Maintenance
 

@@ -195,6 +195,64 @@ if ($assessments.Count -eq 0) {
     throw 'Source assessment baseline contains no assessments to reconcile'
 }
 
+$forcedExcludedDraftKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($recommendation in @($draft.recommendations)) {
+    $containsUnclassifiedSource = $false
+    foreach ($reference in @($recommendation.memberAssessmentRefs)) {
+        $assessmentKey = Get-AssessmentKey -Reference $reference
+        if (-not $assessments.ContainsKey($assessmentKey)) {
+            continue
+        }
+        $member = $assessments[$assessmentKey]
+        $sourceKey = [string]$reference.sourceDefinitionId + [char]0 + [string]$reference.sourceId
+        $sourceRecord = if ($inventoryRecords.ContainsKey($sourceKey)) {
+            $inventoryRecords[$sourceKey]
+        }
+        elseif ($null -ne $member.entry.priorSourceEvidence) {
+            $member.entry.priorSourceEvidence.sourceRecord
+        }
+        else {
+            $null
+        }
+        if ($null -ne $sourceRecord -and $sourceRecord.PSObject.Properties['provenance'] -and [string]$sourceRecord.provenance -ceq 'unclassified') {
+            $containsUnclassifiedSource = $true
+            break
+        }
+    }
+    if (-not $containsUnclassifiedSource) {
+        continue
+    }
+
+    $draftKey = [string]$recommendation.draftKey
+    $category = [string]$recommendation.category
+    $placement = [string]$recommendation.placement
+    $allowedFamilies = @($contract.idAllocation.families | Where-Object {
+        [string]$_.category -ceq $category -and [string]$_.placement -ceq $placement
+    } | Sort-Object -Property idFamily)
+    if ($allowedFamilies.Count -eq 0) {
+        throw "Recommendation $draftKey cannot be excluded because its category and placement have no allowlisted Hosted ID family"
+    }
+    $allowedFamilyIds = @($allowedFamilies | ForEach-Object { [string]$_.idFamily })
+    $idFamily = if ($null -ne $recommendation.idFamily -and [string]$recommendation.idFamily -in $allowedFamilyIds) {
+        [string]$recommendation.idFamily
+    }
+    elseif ($null -ne $recommendation.targetHostedId -and [string]$recommendation.targetHostedId -match '^(.*)-[0-9]{3}[A-Z]?$' -and [string]$Matches[1] -in $allowedFamilyIds) {
+        [string]$Matches[1]
+    }
+    else {
+        $allowedFamilyIds[0]
+    }
+    $recommendation.recommendedAction = 'exclude'
+    $recommendation.targetHostedId = $null
+    $recommendation.idFamily = $idFamily
+    $recommendation.needsReview = $true
+    $recommendation.rationale = ([string]$recommendation.rationale).TrimEnd() + ' Source provenance is unclassified, so this recommendation is excluded until maintainers classify it.'
+    if ($category -ceq 'implementation' -and -not $recommendation.PSObject.Properties['implementationModels']) {
+        $recommendation | Add-Member -NotePropertyName implementationModels -NotePropertyValue @('legacy', 'typed', 'framework')
+    }
+    $null = $forcedExcludedDraftKeys.Add($draftKey)
+}
+
 $draftRecommendations = @{}
 $membershipByAssessment = @{}
 foreach ($recommendation in @($draft.recommendations)) {
@@ -285,6 +343,10 @@ foreach ($coverage in @($draft.assessmentCoverage)) {
     if (-not $membershipByAssessment.ContainsKey($assessmentKey) -or [string]$membershipByAssessment[$assessmentKey] -cne [string]$draftKeys[0]) {
         throw 'Assessment coverage and recommendation membership do not match'
     }
+    if ($forcedExcludedDraftKeys.Contains([string]$draftKeys[0])) {
+        $coverage.disposition = 'excluded'
+        $coverage.rationale = 'Source provenance is unclassified; the recommendation is excluded until maintainers classify it.'
+    }
     $recommendationAction = [string]$draftRecommendations[[string]$draftKeys[0]].recommendedAction
     $disposition = [string]$coverage.disposition
     if (($disposition -ceq 'recommended' -and $recommendationAction -notin @('add', 'update', 'no-change')) -or
@@ -370,9 +432,18 @@ foreach ($recommendation in $orderedDraftRecommendations) {
         }
         $sourceProvenance = if ($sourceRecord.PSObject.Properties['provenance']) { [string]$sourceRecord.provenance } else { 'published-upstream-standard' }
         if ($sourceProvenance -ceq 'unclassified') {
-            throw "Recommendation $draftKey contains unclassified source provenance"
+            if ([string]$recommendation.recommendedAction -cne 'exclude') {
+                throw "Recommendation $draftKey contains unclassified source provenance without deterministic exclusion"
+            }
+            $null = $provenance.Add('local-safeguard')
+            if (-not $catalogEvidence.ContainsKey('hosted-architecture')) {
+                throw "Recommendation $draftKey requires missing catalog evidence hosted-architecture"
+            }
+            $null = $evidenceIds.Add('hosted-architecture')
         }
-        $null = $provenance.Add($sourceProvenance)
+        else {
+            $null = $provenance.Add($sourceProvenance)
+        }
         if ($sourceRecord.PSObject.Properties['evidence']) {
             foreach ($evidenceId in @($sourceRecord.evidence)) {
                 if ($catalogEvidence.ContainsKey([string]$evidenceId)) {
@@ -481,14 +552,16 @@ foreach ($entry in @($baseline.entries)) {
         }
         $assessmentKey = Get-AssessmentKey -Reference $reference
         $coverage = $coverageByAssessment[$assessmentKey]
-        $recommendation = $recommendationsByDraftKey[[string]$coverage.recommendationDraftKeys[0]]
+        $draftKey = [string]$coverage.recommendationDraftKeys[0]
+        $recommendation = $recommendationsByDraftKey[$draftKey]
+        $forcedExcluded = $forcedExcludedDraftKeys.Contains($draftKey)
         $displayAssessment = [ordered]@{
             id = [string]$assessment.assessmentId
             title = [string]$assessment.title
             sourceMeaning = [string]$assessment.sourceMeaning
             impactDescription = [string]$assessment.impactDescription
-            hostedApplicable = [bool]$assessment.hostedApplicable
-            applicabilityRationale = [string]$assessment.applicabilityRationale
+            hostedApplicable = [bool]$assessment.hostedApplicable -and -not $forcedExcluded
+            applicabilityRationale = if ($forcedExcluded) { ([string]$assessment.applicabilityRationale).TrimEnd() + ' Source provenance is unclassified, so a maintainer must contest this exclusion before promotion.' } else { [string]$assessment.applicabilityRationale }
             selectionFactors = $assessment.selectionFactors
             selectionRationale = [string]$assessment.selectionRationale
             confidence = $assessment.assessmentConfidence

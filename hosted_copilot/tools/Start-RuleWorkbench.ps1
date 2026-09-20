@@ -16,14 +16,18 @@ param(
 
     [string]$AssessmentResumeDirectory,
 
+    [string]$ReconciliationResumeDirectory,
+
     [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
     [string]$AssessmentReasoningEffort = 'high',
 
-    [ValidateRange(1, 50)]
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
+
+    [ValidateRange(1, 8)]
+    [int]$MaxParallelBatches = 3,
 
     [string]$EvaluatorCommand = 'copilot',
 
@@ -54,6 +58,9 @@ $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-Guidance
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
 $resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
+$resolvedReconciliationResumeDirectory = if ([string]::IsNullOrWhiteSpace($ReconciliationResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($ReconciliationResumeDirectory) }
+$assessmentRecoveryMode = if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
+$reconciliationRecoveryMode = if ($null -eq $resolvedReconciliationResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'SiteDirectory must be outside the source repository'
@@ -66,6 +73,74 @@ foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySche
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
+}
+
+function Find-AutomaticAssessmentRecoveryDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$ManagedRoot,
+        [Parameter(Mandatory = $true)][string]$CurrentContractPath
+    )
+
+    if (-not (Test-Path -LiteralPath $ManagedRoot -PathType Container)) {
+        return $null
+    }
+    $currentContractHash = (Get-FileHash -LiteralPath $CurrentContractPath -Algorithm SHA256).Hash
+    foreach ($candidate in @(Get-ChildItem -LiteralPath $ManagedRoot -Directory | Sort-Object LastWriteTime -Descending)) {
+        $retainedContractPath = Join-Path $candidate.FullName 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+        if (-not (Test-Path -LiteralPath $retainedContractPath -PathType Leaf) -or (Get-FileHash -LiteralPath $retainedContractPath -Algorithm SHA256).Hash -cne $currentContractHash) {
+            continue
+        }
+        $reusableBatch = @(Get-ChildItem -LiteralPath $candidate.FullName -Directory | Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.FullName 'source-records.json') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'response.json') -PathType Leaf)
+        } | Select-Object -First 1)
+        if ($reusableBatch.Count -eq 1) {
+            return $candidate.FullName
+        }
+    }
+    return $null
+}
+
+function Find-AutomaticReconciliationRecoveryDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$ManagedRoot,
+        [Parameter(Mandatory = $true)][string]$Evaluator,
+        [Parameter(Mandatory = $true)][string]$Model,
+        [Parameter(Mandatory = $true)][string]$ReasoningEffort
+    )
+
+    if (-not (Test-Path -LiteralPath $ManagedRoot -PathType Container)) {
+        return $null
+    }
+    foreach ($candidate in @(Get-ChildItem -LiteralPath $ManagedRoot -Directory | Sort-Object LastWriteTime -Descending)) {
+        $configurationMatches = $false
+        $configurationPath = Join-Path $candidate.FullName 'reconciliation-run.json'
+        $baselinePath = Join-Path $candidate.FullName 'source-assessment-baseline.json'
+        try {
+            if (Test-Path -LiteralPath $configurationPath -PathType Leaf) {
+                $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json
+                $configurationMatches = [string]$configuration.evaluator -ceq $Evaluator -and [string]$configuration.model -ceq $Model -and [string]$configuration.reasoningEffort -ceq $ReasoningEffort
+            }
+            elseif (Test-Path -LiteralPath $baselinePath -PathType Leaf) {
+                $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+                $configurationMatches = [string]$baseline.runConfiguration.evaluator -ceq $Evaluator -and [string]$baseline.runConfiguration.model -ceq $Model -and [string]$baseline.runConfiguration.reasoningEffort -ceq $ReasoningEffort
+            }
+        }
+        catch {
+            $configurationMatches = $false
+        }
+        if (-not $configurationMatches) {
+            continue
+        }
+        $reusableBatch = @(Get-ChildItem -LiteralPath (Join-Path $candidate.FullName 'batches') -Directory -ErrorAction SilentlyContinue | Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.FullName 'source-assessment-baseline.json') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'assessment-reconciliation-draft.json') -PathType Leaf)
+        } | Select-Object -First 1)
+        if ($reusableBatch.Count -eq 1) {
+            return $candidate.FullName
+        }
+    }
+    return $null
 }
 
 if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
@@ -165,6 +240,20 @@ $shutdownConfig = [ordered]@{
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $resolvedDisplayPath = if ([string]::IsNullOrWhiteSpace($DisplayPath)) { $null } else { [IO.Path]::GetFullPath($DisplayPath) }
+if ($null -eq $resolvedDisplayPath -and $null -eq $resolvedAssessmentResumeDirectory) {
+    $assessmentRecoveryRoot = Join-Path ([IO.Path]::GetTempPath()) 'hosted-source-assessment'
+    $resolvedAssessmentResumeDirectory = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-v4.json')
+    if ($null -ne $resolvedAssessmentResumeDirectory) {
+        $assessmentRecoveryMode = 'AUTO'
+    }
+}
+if ($null -eq $resolvedDisplayPath -and $null -eq $resolvedReconciliationResumeDirectory) {
+    $reconciliationRecoveryRoot = Join-Path ([IO.Path]::GetTempPath()) 'hosted-assessment-reconciliation'
+    $resolvedReconciliationResumeDirectory = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator $EvaluatorCommand -Model $Model -ReasoningEffort $AssessmentReasoningEffort
+    if ($null -ne $resolvedReconciliationResumeDirectory) {
+        $reconciliationRecoveryMode = 'AUTO'
+    }
+}
 $assessmentResult = $null
 $workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
@@ -268,7 +357,23 @@ function Update-StagedDisplay {
                 Write-Host '[RUNNING]  assessment-reconciliation   : Consolidating assessments into the Workbench display'
             }
             $script:workbenchPhase = 'ASSESSMENT RECONCILIATION'
-            $reconciliationOutput = @(& $assessmentReconciliationPath -RepositoryRoot $repositoryRoot -AssessmentBaselinePath $assessmentSetPath -InventoryPaths $currentInventoryPaths.ToArray() -GuidanceCapacityPath $capacityPath -OutputPath $stagedDisplayPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $AssessmentReasoningEffort -MaxRetries $MaxRetries -OutputFormat Json 2>&1)
+            $reconciliationParameters = @{
+                RepositoryRoot = $repositoryRoot
+                AssessmentBaselinePath = $assessmentSetPath
+                InventoryPaths = $currentInventoryPaths.ToArray()
+                GuidanceCapacityPath = $capacityPath
+                OutputPath = $stagedDisplayPath
+                EvaluatorCommand = $EvaluatorCommand
+                Model = $Model
+                ReasoningEffort = $AssessmentReasoningEffort
+                MaxRetries = $MaxRetries
+                MaxParallelBatches = $MaxParallelBatches
+                OutputFormat = 'Json'
+            }
+            if ($null -ne $resolvedReconciliationResumeDirectory) {
+                $reconciliationParameters.ResumeRunDirectory = $resolvedReconciliationResumeDirectory
+            }
+            $reconciliationOutput = @(& $assessmentReconciliationPath @reconciliationParameters 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
@@ -307,7 +412,8 @@ if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'
     Write-ValidationSummary -Fields ([ordered]@{
         'Cache Directory' = $resolvedAssessmentCacheDirectory
-        'Recovery Directory' = $(if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { $resolvedAssessmentResumeDirectory })
+        'Assessment Recovery' = $(if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { "$assessmentRecoveryMode`: $resolvedAssessmentResumeDirectory" })
+        'Reconciliation Recovery' = $(if ($null -eq $resolvedReconciliationResumeDirectory) { 'NONE' } else { "$reconciliationRecoveryMode`: $resolvedReconciliationResumeDirectory" })
     })
 }
 try {
@@ -321,6 +427,9 @@ catch {
         error = $failureMessage
         assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
         assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
+        reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
+        assessmentRecoveryMode = $assessmentRecoveryMode
+        reconciliationRecoveryMode = $reconciliationRecoveryMode
     }
     if ($OutputFormat -eq 'Json') {
         $failure | ConvertTo-Json -Depth 5
@@ -351,6 +460,9 @@ $result = [ordered]@{
     displayPath = $stagedDisplayPath
     assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
     assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
+    reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
+    assessmentRecoveryMode = $assessmentRecoveryMode
+    reconciliationRecoveryMode = $reconciliationRecoveryMode
     discoveredCandidateCount = $stagedCandidates.Count
     evaluatedCandidateCount = $stagedCandidates.Count
     ruleCandidateCount = $stagedCandidates.Count
@@ -377,7 +489,8 @@ if ($StageOnly) {
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
-            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { $result.assessmentResumeDirectory })
+            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
+            'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -455,7 +568,8 @@ try {
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
-            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { $result.assessmentResumeDirectory })
+            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
+            'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'

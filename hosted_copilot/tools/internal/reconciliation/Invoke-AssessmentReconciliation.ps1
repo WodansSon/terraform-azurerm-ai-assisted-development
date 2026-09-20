@@ -24,6 +24,8 @@ param(
 
     [string]$EvaluatorScriptPath,
 
+    [string]$ResumeRunDirectory,
+
     [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
@@ -35,10 +37,15 @@ param(
     [ValidateRange(0, 60000)]
     [int]$RetryDelayMilliseconds = 1000,
 
+    [ValidateRange(1, 8)]
+    [int]$MaxParallelBatches = 3,
+
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
@@ -80,11 +87,82 @@ function Get-EvaluatorJson {
     return $trimmed.Substring($objectStart, $objectEnd - $objectStart + 1)
 }
 
+function Get-ReconciliationBaselineIdentityJson {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $baseline = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
+    $baseline.PSObject.Properties.Remove('generatedAt')
+    $baseline.PSObject.Properties.Remove('inventoryHashes')
+    $baseline.PSObject.Properties.Remove('priorInventoryHashes')
+    foreach ($entry in @($baseline.entries)) {
+        if ($null -ne $entry.priorSourceEvidence) {
+            $entry.priorSourceEvidence.PSObject.Properties.Remove('observedAt')
+            $entry.priorSourceEvidence.PSObject.Properties.Remove('inventorySha256')
+        }
+        foreach ($assessment in @($entry.assessments)) {
+            $assessment.assessmentProvenance.PSObject.Properties.Remove('assessedAt')
+        }
+    }
+    return $baseline | ConvertTo-Json -Depth 100 -Compress
+}
+
+function New-ReconciliationBatchBaselines {
+    param(
+        [Parameter(Mandatory = $true)][object]$Baseline,
+        [Parameter(Mandatory = $true)][string]$Directory
+    )
+
+    $batches = [Collections.Generic.List[object]]::new()
+    foreach ($sourceDefinition in @($Baseline.runConfiguration.sourceDefinitions)) {
+        $sourceDefinitionId = [string]$sourceDefinition.sourceDefinitionId
+        $batchSize = [int]$sourceDefinition.assessmentBatchSize
+        if ($batchSize -lt 1) {
+            throw "Assessment reconciliation source stream $sourceDefinitionId has an invalid assessmentBatchSize"
+        }
+        $sourceEntries = @($Baseline.entries | Where-Object {
+            [string]$_.sourceRef.sourceDefinitionId -ceq $sourceDefinitionId -and @($_.assessments).Count -gt 0
+        })
+        for ($start = 0; $start -lt $sourceEntries.Count; $start += $batchSize) {
+            $entryCount = [Math]::Min($batchSize, $sourceEntries.Count - $start)
+            $batchEntries = @($sourceEntries[$start..($start + $entryCount - 1)])
+            $batchBaseline = ($Baseline | ConvertTo-Json -Depth 100 -Compress) | ConvertFrom-Json -DateKind String
+            $batchBaseline.entries = $batchEntries
+            $batchNumber = $batches.Count + 1
+            $batchDirectory = Join-Path $Directory ('batch-{0:D3}' -f $batchNumber)
+            $null = New-Item -ItemType Directory -Path $batchDirectory -Force
+            $batchBaselinePath = Join-Path $batchDirectory 'source-assessment-baseline.json'
+            [IO.File]::WriteAllText($batchBaselinePath, (($batchBaseline | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
+            $batches.Add([pscustomobject]@{
+                Number = $batchNumber
+                SourceDefinitionId = $sourceDefinitionId
+                BatchSize = $batchSize
+                EntryCount = $entryCount
+                AssessmentCount = @($batchEntries.assessments).Count
+                Directory = $batchDirectory
+                BaselinePath = $batchBaselinePath
+            })
+        }
+    }
+    if ($batches.Count -eq 0) {
+        throw 'Assessment reconciliation requires at least one assessment'
+    }
+    return $batches.ToArray()
+}
+
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
 $repositoryPrefix = $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar
 if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Hosted rule change recommendation output must be outside the repository root'
+}
+$resolvedResumeRunDirectory = if ([string]::IsNullOrWhiteSpace($ResumeRunDirectory)) { $null } else { [IO.Path]::GetFullPath($ResumeRunDirectory) }
+if ($null -ne $resolvedResumeRunDirectory) {
+    if ($resolvedResumeRunDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'ResumeRunDirectory must be outside the repository root'
+    }
+    if (-not (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
+        throw "ResumeRunDirectory was not found: $resolvedResumeRunDirectory"
+    }
 }
 
 $resolvedBaselinePath = [IO.Path]::GetFullPath($AssessmentBaselinePath)
@@ -172,77 +250,297 @@ if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
     [IO.File]::WriteAllBytes($resolvedEvaluatorScriptPath, $evaluatorSnapshot.Bytes)
     $evaluatorIdentity = 'script:' + $evaluatorSnapshot.Sha256
 }
+$reconciliationRunConfiguration = [ordered]@{
+    schemaVersion = 1
+    kind = 'hosted-assessment-reconciliation-run'
+    evaluator = $evaluatorIdentity
+    model = $Model
+    reasoningEffort = $ReasoningEffort
+}
+[IO.File]::WriteAllText((Join-Path $runDirectory 'reconciliation-run.json'), (($reconciliationRunConfiguration | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
 
+$snapshotBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'
 $responsePath = Join-Path $runDirectory 'assessment-reconciliation-draft.json'
+$batchRoot = Join-Path $runDirectory 'batches'
+$reconciliationBatches = @(New-ReconciliationBatchBaselines -Baseline $baseline -Directory $batchRoot)
+$mergedRecommendations = [Collections.Generic.List[object]]::new()
+$mergedCoverage = [Collections.Generic.List[object]]::new()
 $succeeded = $false
 try {
-    $lastError = $null
-    for ($attempt = 1; $attempt -le ($MaxRetries + 1); $attempt++) {
-        try {
-            if ($OutputFormat -eq 'Text') {
-                Write-Host ("[RUNNING]  assessment-reconciliation : attempt {0}" -f $attempt)
-            }
-            if ($null -ne $resolvedEvaluatorScriptPath) {
-                $parameters = @{
-                    BaselinePath = $snapshotBaselinePath
-                    CatalogPath = $snapshotCatalogPath
-                    ContractPath = $snapshotContractPath
-                    SchemaPath = $draftSchemaPath
-                    PromptPath = $promptPath
-                    OutputPath = $responsePath
-                    Model = $Model
-                    ReasoningEffort = $ReasoningEffort
-                }
-                $evaluatorOutput = @(& pwsh -NoProfile -File $resolvedEvaluatorScriptPath @parameters 2>&1)
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Evaluator script failed: $(($evaluatorOutput | Out-String).Trim())"
-                }
-            }
-            else {
-                $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
-                if ($null -eq $command) {
-                    throw "Evaluator command was not found: $EvaluatorCommand"
-                }
-                $attemptPrompt = 'Read the complete assessment baseline, Hosted catalog, reconciliation contract, output schema, and prompt in the current directory. Write only the requested JSON object in your final response.'
-                $evaluatorOutput = @(& $command.Source -C $runDirectory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $Model --effort $ReasoningEffort --available-tools=view --output-format json 2>&1)
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
-                }
-                $assistantMessages = @($evaluatorOutput | ForEach-Object {
-                    $line = ([string]$_).Trim()
-                    if (-not [string]::IsNullOrWhiteSpace($line)) {
-                        try { $event = $line | ConvertFrom-Json } catch { throw "Copilot evaluator returned a non-JSONL event: $line" }
-                        if ($event.type -eq 'assistant.message' -and -not [string]::IsNullOrWhiteSpace([string]$event.data.content)) { $event.data }
-                    }
-                })
-                if ($assistantMessages.Count -eq 0) {
-                    throw 'Copilot evaluator did not return an assistant message'
-                }
-                $assistantMessage = $assistantMessages[-1]
-                if ([string]$assistantMessage.model -cne $Model) {
-                    throw "Copilot evaluator used model $($assistantMessage.model) instead of $Model"
-                }
-                [IO.File]::WriteAllText($responsePath, (Get-EvaluatorJson -Content ([string]$assistantMessage.content)) + "`n", [Text.UTF8Encoding]::new($false))
-            }
-            $responseJson = Get-Content -LiteralPath $responsePath -Raw
-            if (-not ($responseJson | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
-                throw 'Evaluator response does not satisfy the assessment reconciliation draft schema'
-            }
-            $lastError = $null
-            break
-        }
-        catch {
-            $lastError = $_
-            Remove-Item -LiteralPath $responsePath -Force -ErrorAction SilentlyContinue
-            if ($attempt -le $MaxRetries -and $RetryDelayMilliseconds -gt 0) {
-                Start-Sleep -Milliseconds ([int][Math]::Min(60000, $RetryDelayMilliseconds * [Math]::Pow(2, $attempt - 1)))
-            }
-        }
-    }
-    if ($null -ne $lastError) {
-        throw "Assessment reconciliation failed after $($MaxRetries + 1) attempts: $($lastError.Exception.Message)"
+    foreach ($batch in $reconciliationBatches) {
+        $batchCatalogPath = Join-Path $batch.Directory 'instruction-catalog.json'
+        $batchContractPath = Join-Path $batch.Directory 'assessment-reconciliation-v4.json'
+        $batchSchemaPath = Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'
+        $batchPromptPath = Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'
+        [IO.File]::WriteAllBytes($batchCatalogPath, [IO.File]::ReadAllBytes($snapshotCatalogPath))
+        [IO.File]::WriteAllBytes($batchContractPath, [IO.File]::ReadAllBytes($snapshotContractPath))
+        [IO.File]::WriteAllBytes($batchSchemaPath, [IO.File]::ReadAllBytes($draftSchemaPath))
+        [IO.File]::WriteAllBytes($batchPromptPath, [IO.File]::ReadAllBytes($promptPath))
     }
 
+    $evaluatorCommandPath = $null
+    if ($null -eq $resolvedEvaluatorScriptPath) {
+        $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
+        if ($null -eq $command) {
+            throw "Evaluator command was not found: $EvaluatorCommand"
+        }
+        $evaluatorCommandPath = $command.Source
+    }
+
+    $batchByNumber = @{}
+    foreach ($batch in $reconciliationBatches) {
+        $batchByNumber[[int]$batch.Number] = $batch
+    }
+    $validatedDrafts = @{}
+    $batchErrors = @{}
+    $reusedBatchCount = 0
+    if ($null -ne $resolvedResumeRunDirectory) {
+        $retainedConfigurationPath = Join-Path $resolvedResumeRunDirectory 'reconciliation-run.json'
+        $retainedBaselinePath = Join-Path $resolvedResumeRunDirectory 'source-assessment-baseline.json'
+        $resumeConfigurationValid = if (Test-Path -LiteralPath $retainedConfigurationPath -PathType Leaf) {
+            $retainedConfiguration = Get-Content -LiteralPath $retainedConfigurationPath -Raw | ConvertFrom-Json
+            ($retainedConfiguration | ConvertTo-Json -Compress) -ceq ($reconciliationRunConfiguration | ConvertTo-Json -Compress)
+        }
+        elseif (Test-Path -LiteralPath $retainedBaselinePath -PathType Leaf) {
+            $retainedBaseline = Get-Content -LiteralPath $retainedBaselinePath -Raw | ConvertFrom-Json
+            [string]$retainedBaseline.runConfiguration.evaluator -ceq $evaluatorIdentity -and
+                [string]$retainedBaseline.runConfiguration.model -ceq $Model -and
+                [string]$retainedBaseline.runConfiguration.reasoningEffort -ceq $ReasoningEffort
+        }
+        else {
+            $false
+        }
+        if (-not $resumeConfigurationValid) {
+            throw 'ResumeRunDirectory reconciliation identity does not match the current evaluator configuration'
+        }
+
+        foreach ($batch in $reconciliationBatches) {
+            $retainedBatchDirectory = Join-Path $resolvedResumeRunDirectory ('batches/batch-{0:D3}' -f $batch.Number)
+            $retainedBaselinePath = Join-Path $retainedBatchDirectory 'source-assessment-baseline.json'
+            $retainedResponsePath = Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.json'
+            $retainedStaticPairs = @(
+                @((Join-Path $batch.Directory 'instruction-catalog.json'), (Join-Path $retainedBatchDirectory 'instruction-catalog.json')),
+                @((Join-Path $batch.Directory 'assessment-reconciliation-v4.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-v4.json')),
+                @((Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.schema.json')),
+                @((Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'), (Join-Path $retainedBatchDirectory 'AssessmentReconciliation-v4.md'))
+            )
+            if (-not (Test-Path -LiteralPath $retainedResponsePath -PathType Leaf) -or
+                -not (Test-Path -LiteralPath $retainedBaselinePath -PathType Leaf) -or
+                @($retainedStaticPairs | Where-Object { -not (Test-Path -LiteralPath $_[1] -PathType Leaf) -or (Get-FileHash -LiteralPath $_[0] -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $_[1] -Algorithm SHA256).Hash }).Count -gt 0 -or
+                (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath) -cne (Get-ReconciliationBaselineIdentityJson -Path $retainedBaselinePath)) {
+                continue
+            }
+
+            $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
+            $batchDisplayPath = Join-Path $batch.Directory 'workbench-display.json'
+            try {
+                [IO.File]::WriteAllBytes($batchResponsePath, [IO.File]::ReadAllBytes($retainedResponsePath))
+                $batchBuilderParameters = @{
+                    RepositoryRoot = $runRepositoryRoot
+                    AssessmentBaselinePath = $batch.BaselinePath
+                    InventoryPaths = $snapshotInventoryPaths.ToArray()
+                    ReconciliationDraftPath = $batchResponsePath
+                    GuidanceCapacityPath = $snapshotGuidanceCapacityPath
+                    OutputPath = $batchDisplayPath
+                    HostedCatalogPath = $snapshotCatalogPath
+                    ReconciliationContractPath = $snapshotContractPath
+                    GeneratedAt = $GeneratedAt
+                    OutputFormat = 'Json'
+                }
+                $null = @(& $snapshotBuilderPath @batchBuilderParameters 2>&1)
+                $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
+                $reusedBatchCount++
+                if (-not $Quiet) {
+                    Write-Host ("[PASSED]   assessment-reconciliation/reuse : {0}/{1} {2}; retained batch revalidated" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId)
+                }
+            }
+            catch {
+                Remove-Item -LiteralPath $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
+                if (-not $Quiet) {
+                    Write-Host ("[SKIPPED]  assessment-reconciliation/reuse : {0}/{1} {2}; {3}" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId, $_.Exception.Message)
+                }
+            }
+        }
+    }
+    $pendingBatches = @($reconciliationBatches | Where-Object { -not $validatedDrafts.ContainsKey([int]$_.Number) })
+    for ($attempt = 1; $attempt -le ($MaxRetries + 1) -and $pendingBatches.Count -gt 0; $attempt++) {
+        if ($attempt -gt 1 -and $RetryDelayMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([int][Math]::Min(60000, $RetryDelayMilliseconds * [Math]::Pow(2, $attempt - 2)))
+        }
+        $retryBatches = [Collections.Generic.List[object]]::new()
+        $workerEvaluatorScriptPath = $resolvedEvaluatorScriptPath
+        $workerEvaluatorCommandPath = $evaluatorCommandPath
+        $workerModel = $Model
+        $workerReasoningEffort = $ReasoningEffort
+        $workerAttempt = $attempt
+        $workerAttemptCount = $MaxRetries + 1
+        $pendingBatches | ForEach-Object -Parallel {
+            $batch = $_
+            [pscustomobject]@{
+                Kind = 'started'
+                Number = [int]$batch.Number
+                SourceDefinitionId = [string]$batch.SourceDefinitionId
+                EntryCount = [int]$batch.EntryCount
+                AssessmentCount = [int]$batch.AssessmentCount
+                Attempt = $using:workerAttempt
+                AttemptCount = $using:workerAttemptCount
+            }
+            try {
+                $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
+                if ($null -ne $using:workerEvaluatorScriptPath) {
+                    $parameters = @{
+                        BaselinePath = $batch.BaselinePath
+                        CatalogPath = Join-Path $batch.Directory 'instruction-catalog.json'
+                        ContractPath = Join-Path $batch.Directory 'assessment-reconciliation-v4.json'
+                        SchemaPath = Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'
+                        PromptPath = Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'
+                        OutputPath = $batchResponsePath
+                        Model = $using:workerModel
+                        ReasoningEffort = $using:workerReasoningEffort
+                    }
+                    $evaluatorOutput = @(& pwsh -NoProfile -File $using:workerEvaluatorScriptPath @parameters 2>&1)
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Evaluator script failed: $(($evaluatorOutput | Out-String).Trim())"
+                    }
+                }
+                else {
+                    $attemptPrompt = 'Read source-assessment-baseline.json, instruction-catalog.json, assessment-reconciliation-v4.json, assessment-reconciliation-draft.schema.json, and AssessmentReconciliation-v4.md in the current directory. The baseline is one complete source-defined reconciliation batch. Cover every assessment in that batch exactly once and write only the requested JSON object in your final response.'
+                    $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
+                    }
+                }
+                [pscustomobject]@{
+                    Kind = 'completed'
+                    Number = [int]$batch.Number
+                    Succeeded = $true
+                    Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
+                    Error = ''
+                }
+            }
+            catch {
+                [pscustomobject]@{
+                    Kind = 'completed'
+                    Number = [int]$batch.Number
+                    Succeeded = $false
+                    Output = @()
+                    Error = [string]$_.Exception.Message
+                }
+            }
+        } -ThrottleLimit $MaxParallelBatches | ForEach-Object {
+            $workerResult = $_
+            $batch = $batchByNumber[[int]$workerResult.Number]
+            if ([string]$workerResult.Kind -ceq 'started') {
+                if (-not $Quiet) {
+                    Write-Host ("[RUNNING]  assessment-reconciliation/batch : {0}/{1} {2}; {3} source records, {4} assessments; attempt {5}/{6}" -f $workerResult.Number, $reconciliationBatches.Count, $workerResult.SourceDefinitionId, $workerResult.EntryCount, $workerResult.AssessmentCount, $workerResult.Attempt, $workerResult.AttemptCount)
+                }
+                return
+            }
+
+            $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
+            $batchDisplayPath = Join-Path $batch.Directory 'workbench-display.json'
+            try {
+                if (-not [bool]$workerResult.Succeeded) {
+                    throw [string]$workerResult.Error
+                }
+                if ($null -eq $resolvedEvaluatorScriptPath) {
+                    $assistantMessages = @($workerResult.Output | ForEach-Object {
+                        $line = ([string]$_).Trim()
+                        if (-not [string]::IsNullOrWhiteSpace($line)) {
+                            try { $event = $line | ConvertFrom-Json } catch { throw "Copilot evaluator returned a non-JSONL event: $line" }
+                            if ($event.type -eq 'assistant.message' -and -not [string]::IsNullOrWhiteSpace([string]$event.data.content)) { $event.data }
+                        }
+                    })
+                    if ($assistantMessages.Count -eq 0) {
+                        throw 'Copilot evaluator did not return an assistant message'
+                    }
+                    $assistantMessage = $assistantMessages[-1]
+                    if ([string]$assistantMessage.model -cne $Model) {
+                        throw "Copilot evaluator used model $($assistantMessage.model) instead of $Model"
+                    }
+                    [IO.File]::WriteAllText($batchResponsePath, (Get-EvaluatorJson -Content ([string]$assistantMessage.content)) + "`n", [Text.UTF8Encoding]::new($false))
+                }
+                $batchResponseJson = Get-Content -LiteralPath $batchResponsePath -Raw
+                if (-not ($batchResponseJson | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
+                    throw 'Evaluator response does not satisfy the assessment reconciliation draft schema'
+                }
+                $batchBuilderParameters = @{
+                    RepositoryRoot = $runRepositoryRoot
+                    AssessmentBaselinePath = $batch.BaselinePath
+                    InventoryPaths = $snapshotInventoryPaths.ToArray()
+                    ReconciliationDraftPath = $batchResponsePath
+                    GuidanceCapacityPath = $snapshotGuidanceCapacityPath
+                    OutputPath = $batchDisplayPath
+                    HostedCatalogPath = $snapshotCatalogPath
+                    ReconciliationContractPath = $snapshotContractPath
+                    GeneratedAt = $GeneratedAt
+                    OutputFormat = 'Json'
+                }
+                try {
+                    $null = @(& $snapshotBuilderPath @batchBuilderParameters 2>&1)
+                }
+                catch {
+                    throw "Batch reconciliation validation failed: $($_.Exception.Message)"
+                }
+                $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
+                $batchErrors.Remove([int]$batch.Number)
+                if (-not $Quiet) {
+                    Write-Host ("[PASSED]   assessment-reconciliation/batch : {0}/{1} validated; {2} recommendations" -f $batch.Number, $reconciliationBatches.Count, @($validatedDrafts[[int]$batch.Number].recommendations).Count)
+                }
+            }
+            catch {
+                Remove-Item -LiteralPath $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
+                $batchErrors[[int]$batch.Number] = [string]$_.Exception.Message
+                $retryBatches.Add($batch)
+                if (-not $Quiet) {
+                    $retryStatus = if ($attempt -le $MaxRetries) { 'RETRYING' } else { 'FAILED' }
+                    Write-Host ("[{0}] assessment-reconciliation/batch : {1}/{2} {3}" -f $retryStatus, $batch.Number, $reconciliationBatches.Count, $_.Exception.Message)
+                }
+            }
+        }
+        $pendingBatches = @($retryBatches.ToArray())
+    }
+    if ($pendingBatches.Count -gt 0) {
+        $failureDetails = @($pendingBatches | Sort-Object Number | ForEach-Object { "batch $($_.Number) $($_.SourceDefinitionId): $($batchErrors[[int]$_.Number])" })
+        throw "Assessment reconciliation failed after $($MaxRetries + 1) attempts: $($failureDetails -join '; ')"
+    }
+
+    foreach ($batch in @($reconciliationBatches | Sort-Object Number)) {
+        $batchDraft = $validatedDrafts[[int]$batch.Number]
+        $draftKeyMap = @{}
+        foreach ($recommendation in @($batchDraft.recommendations)) {
+            $sourceDraftKey = [string]$recommendation.draftKey
+            $mergedDraftKey = 'recommendation-{0}' -f ($mergedRecommendations.Count + 1)
+            $draftKeyMap[$sourceDraftKey] = $mergedDraftKey
+            $recommendation.draftKey = $mergedDraftKey
+            $mergedRecommendations.Add($recommendation)
+        }
+        foreach ($coverage in @($batchDraft.assessmentCoverage)) {
+            $coverage.recommendationDraftKeys = @($coverage.recommendationDraftKeys | ForEach-Object {
+                $sourceDraftKey = [string]$_
+                if (-not $draftKeyMap.ContainsKey($sourceDraftKey)) {
+                    throw "Assessment reconciliation batch references unknown draft key $sourceDraftKey"
+                }
+                $draftKeyMap[$sourceDraftKey]
+            })
+            $mergedCoverage.Add($coverage)
+        }
+    }
+
+    $mergedDraft = [ordered]@{
+        '$schema' = 'assessment-reconciliation-draft.schema.json'
+        schemaVersion = 1
+        recommendations = $mergedRecommendations.ToArray()
+        assessmentCoverage = $mergedCoverage.ToArray()
+    }
+    [IO.File]::WriteAllText($responsePath, (($mergedDraft | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
+    if (-not ((Get-Content -LiteralPath $responsePath -Raw) | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
+        throw 'Merged assessment reconciliation draft does not satisfy its schema'
+    }
+
+    if (-not $Quiet) {
+        Write-Host '[RUNNING]  assessment-reconciliation/display   : building Workbench display'
+    }
     $builderParameters = @{
         RepositoryRoot = $runRepositoryRoot
         AssessmentBaselinePath = $snapshotBaselinePath
@@ -255,12 +553,16 @@ try {
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
     }
-    $snapshotBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'
-    $builderOutput = @(& pwsh -NoProfile -File $snapshotBuilderPath @builderParameters 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Workbench display builder failed: $(($builderOutput | Out-String).Trim())"
+    try {
+        $builderOutput = @(& $snapshotBuilderPath @builderParameters 2>&1)
+    }
+    catch {
+        throw "Workbench display builder failed: $($_.Exception.Message)"
     }
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
+    if (-not $Quiet) {
+        Write-Host '[PASSED]   assessment-reconciliation/display   : Workbench display built'
+    }
     $succeeded = $true
 }
 catch {
@@ -270,11 +572,19 @@ finally {
     if ($succeeded -and (Test-Path -LiteralPath $runDirectory -PathType Container)) {
         Remove-Item -LiteralPath $runDirectory -Recurse -Force
     }
+    $managedRunRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'hosted-assessment-reconciliation'))
+    $managedRunRootPrefix = $managedRunRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if ($succeeded -and $null -ne $resolvedResumeRunDirectory -and $resolvedResumeRunDirectory.StartsWith($managedRunRootPrefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
+        Remove-Item -LiteralPath $resolvedResumeRunDirectory -Recurse -Force
+    }
 }
 
 $result = [ordered]@{
     status = 'passed'
     outputPath = $resolvedOutputPath
+    batchCount = $reconciliationBatches.Count
+    reusedBatchCount = $reusedBatchCount
+    evaluatedBatchCount = $reconciliationBatches.Count - $reusedBatchCount
     candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
     evaluator = $evaluatorIdentity
