@@ -136,9 +136,7 @@ function Test-NpmPackageGraphCurrent {
                 }
                 continue
             }
-            $lockedPackage = $lock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
-            $installedPackage = $installedLock['packages'][$packagePath] | ConvertTo-Json -Depth 20 -Compress
-            if ($lockedPackage -cne $installedPackage) {
+            if ([string]$lock['packages'][$packagePath]['version'] -cne [string]$installedLock['packages'][$packagePath]['version']) {
                 return $false
             }
         }

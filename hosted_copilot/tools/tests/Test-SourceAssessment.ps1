@@ -856,7 +856,7 @@ $response = [ordered]@{
     Add-TestResult -Name 'evaluator-payload-budget-batching' -Passed ($budgetedRun.ExitCode -eq 0 -and $budgetedResult.batchCount -gt 4) -Detail 'A constrained evaluator payload budget deterministically closes batches before the source record-count maximum.'
 
     $oversizedInventory = Copy-JsonObject -Value (Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json)
-    $oversizedInventory.records[0].content = 'x' * 12000
+    $oversizedInventory.records[0].content = 'x' * 70000
     $oversizedInventory.records[0].contentSha256 = Get-StringSha256 -Value ([string]$oversizedInventory.records[0].content)
     $oversizedInventory.collection.inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records @($oversizedInventory.records)
     $oversizedInventoryPath = Join-Path $tempRoot 'oversized-runner-accepted-inventory.json'
