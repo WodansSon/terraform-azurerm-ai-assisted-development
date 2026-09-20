@@ -178,6 +178,7 @@ function Invoke-Runner {
         $parameters.ResumeRunDirectory = $ResumeRunDirectory
     }
     $progressOutput = @()
+    $errorMessage = ''
     try {
         $rawOutput = @(& $runnerPath @parameters 6>&1 2>&1)
         $progressOutput = @($rawOutput | Where-Object { $_ -is [Management.Automation.InformationRecord] } | ForEach-Object { [string]$_.MessageData })
@@ -186,12 +187,14 @@ function Invoke-Runner {
     }
     catch {
         $output = @($_)
+        $errorMessage = [string]$_.Exception.Message
         $exitCode = 1
     }
     return [pscustomobject]@{
         ExitCode = $exitCode
         Output = ($output | Out-String).Trim()
         Progress = $progressOutput
+        ErrorMessage = $errorMessage
     }
 }
 
@@ -865,8 +868,10 @@ $response = [ordered]@{
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
     $oversizedRun = Invoke-Runner -AcceptedInventoryPaths $oversizedInventoryPaths -OutputPath (Join-Path $tempRoot 'oversized-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
     $oversizedCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
-    $oversizedDiagnostic = $oversizedRun.Output -like '*source stream maintainer-proposals*' -and $oversizedRun.Output -like '*source record IMPL-RUNNER-001*' -and $oversizedRun.Output -like '*measured * bytes, budget 60000 bytes*' -and $oversizedRun.Output -like '*reduce or split the parser-owned source record*'
-    Add-TestResult -Name 'oversized-source-record-rejected' -Passed ($oversizedRun.ExitCode -ne 0 -and @($oversizedCalls).Count -eq 0 -and $oversizedDiagnostic) -Detail 'One oversized parser record fails before evaluator invocation with stream, record, measured size, budget, and corrective action.'
+    $oversizedDiagnostic = $oversizedRun.ErrorMessage -match '^Source assessment record exceeds evaluator payload budget: source stream maintainer-proposals, source record IMPL-RUNNER-001, measured \d+ bytes, budget 60000 bytes; reduce or split the parser-owned source record before assessment$'
+    $oversizedPassed = $oversizedRun.ExitCode -ne 0 -and @($oversizedCalls).Count -eq 0 -and $oversizedDiagnostic
+    $oversizedDetail = if ($oversizedPassed) { 'One oversized parser record fails before evaluator invocation with stream, record, measured size, budget, and corrective action.' } else { "Oversized record result: exitCode=$($oversizedRun.ExitCode), evaluatorCalls=$(@($oversizedCalls).Count), errorMessage=$($oversizedRun.ErrorMessage)" }
+    Add-TestResult -Name 'oversized-source-record-rejected' -Passed $oversizedPassed -Detail $oversizedDetail
 
     $env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE = 'interactive-toolkit'
     $invalidCardinalityRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'invalid-cardinality-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
