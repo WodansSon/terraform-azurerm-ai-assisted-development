@@ -1,4 +1,4 @@
-const { openWorkbench, getCandidateHierarchy, getCssTokenColor } = require("../helpers/workbench.cjs");
+const { getCandidateHierarchy, getCssTokenColor, hoverForWorkbenchTooltip, openWorkbench } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-TREE-001",
@@ -219,8 +219,7 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(categoryProbe.text === "Review classification & evidence", "Assessment category fixture does not contain the full display value");
   assert(categoryProbe.singleLine && categoryProbe.truncated && categoryProbe.ellipsis && categoryProbe.tooltipOwner, `Assessment category does not truncate to one line with shared tooltip ownership (${JSON.stringify(categoryProbe)})`);
   const category = page.locator("#assessment-category-tooltip-probe .assessment-result-category");
-  await category.hover();
-  await page.waitForTimeout(600);
+  await hoverForWorkbenchTooltip(page, category);
   const categoryTooltip = await page.locator("#status-surface-tooltip").evaluate((tooltip) => ({
     visible: tooltip.classList.contains("visible") && tooltip.getAttribute("aria-hidden") === "false",
     text: tooltip.textContent.trim()

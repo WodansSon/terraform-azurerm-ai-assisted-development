@@ -1,4 +1,4 @@
-const { openWorkbench, revealCandidate, waitForWorkbenchTooltip } = require("../helpers/workbench.cjs");
+const { hoverForWorkbenchTooltip, openWorkbench, revealCandidate } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-CONTRIBUTOR-001",
@@ -265,10 +265,8 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(truncation.parent.title === null && truncation.parent.generatedTooltip && truncation.parent.textAlign === "left", "long contributor parent title retains a native tooltip or lacks shared tooltip ownership");
   assert(Math.abs(truncation.parent.rowHeight - 40) < 0.1 && truncation.parent.gapToPill >= 7.9 && !truncation.parent.overlapsPill, "long contributor parent title changes row geometry or overlaps its count pill");
   assert(truncation.child.clipped && truncation.child.textOverflow === "ellipsis" && truncation.child.whiteSpace === "nowrap" && truncation.child.title === null && truncation.child.generatedTooltip, "long contributor child ID does not ellipsize through the shared tooltip contract");
-
   const parentTitle = page.locator('#candidate-list [data-node-id="candidate:folder:upstream:guide-new-resource"] .candidate-parent-label > strong');
-  await parentTitle.hover({ position: { x: 20, y: 10 } });
-  await waitForWorkbenchTooltip(page);
+  await hoverForWorkbenchTooltip(page, parentTitle, { position: { x: 20, y: 10 } });
   const tooltip = await page.evaluate(() => {
     const node = document.querySelector("#status-surface-tooltip");
     const rect = node.getBoundingClientRect();

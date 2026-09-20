@@ -57,8 +57,28 @@ async function revealCandidate(page, candidateKey) {
   return getCandidateHierarchy(page, candidateKey);
 }
 
-async function waitForWorkbenchTooltip(page) {
-  await page.waitForFunction(() => document.querySelector("#status-surface-tooltip")?.classList.contains("visible"));
+async function waitForWorkbenchTooltip(page, timeout = 10000) {
+  await page.waitForFunction(() => document.querySelector("#status-surface-tooltip")?.classList.contains("visible"), null, { timeout });
 }
 
-module.exports = { openWorkbench, getCandidateHierarchy, getCssTokenColor, revealCandidate, waitForWorkbenchTooltip };
+async function hoverForWorkbenchTooltip(page, locator, options = {}) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("Workbench tooltip owner is not visible");
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.evaluate(() => hideStatusTooltip());
+    await page.mouse.move(Math.max(0, box.x - 8), Math.max(0, box.y - 8));
+    await locator.hover(options);
+    await locator.evaluate((node) => {
+      if (!node.matches(":hover")) throw new Error("Workbench tooltip owner did not receive hover state");
+    });
+    try {
+      await waitForWorkbenchTooltip(page, 2000);
+      return;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
+}
+
+module.exports = { hoverForWorkbenchTooltip, openWorkbench, getCandidateHierarchy, getCssTokenColor, revealCandidate, waitForWorkbenchTooltip };
