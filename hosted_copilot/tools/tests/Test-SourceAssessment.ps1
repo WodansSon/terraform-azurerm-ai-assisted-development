@@ -621,6 +621,13 @@ $entries = @($batch.records | ForEach-Object {
         if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_UNKNOWN_MAPPING)) {
             $assessment.mappedHostedRuleIds = @($env:SOURCE_ASSESSMENT_UNKNOWN_MAPPING)
         }
+        if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE)) {
+            $assessment.relatedHostedCoverage = @([ordered]@{
+                hostedRuleId = $env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE
+                relationship = 'related'
+                rationale = 'The fixture intentionally references an unknown Hosted rule.'
+            })
+        }
         if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_ASSESSMENT_MALFORMED_NESTED) -and [string]$_.sourceRef.sourceDefinitionId -ceq $env:SOURCE_ASSESSMENT_MALFORMED_NESTED) {
             $assessment.Remove('title')
         }
@@ -838,6 +845,13 @@ $response = [ordered]@{
     Add-TestResult -Name 'runner-reassessment-required' -Passed ($missingReassessmentRun.ExitCode -ne 0 -and $missingReassessmentRun.Output -like '*omitted semantic reassessment for changed source evidence*') -Detail 'The runner rejects changed source evidence when the evaluator omits its semantic reassessment.'
 
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue
+    $callsBeforeUnknownCoverage = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath).Count } else { 0 }
+    $env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE = 'IMPL-WF-004'
+    $unknownCoverageRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'unknown-related-coverage-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1
+    $callsAfterUnknownCoverage = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath).Count } else { 0 }
+    Add-TestResult -Name 'runner-related-coverage-retry' -Passed ($unknownCoverageRun.ExitCode -ne 0 -and $unknownCoverageRun.Output -like '*failed after 2 attempts*unknown related Hosted coverage*IMPL-WF-004*' -and $callsAfterUnknownCoverage -eq ($callsBeforeUnknownCoverage + 2)) -Detail 'Unknown evaluator-authored related Hosted coverage is retried and rejected inside its batch before later batches run.'
+
+    Remove-Item Env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE -ErrorAction SilentlyContinue
     $env:SOURCE_ASSESSMENT_UNKNOWN_MAPPING = 'IMPL-UNKNOWN-999'
     $unknownMappingRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'unknown-mapping-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
     Add-TestResult -Name 'runner-mapping-authority' -Passed ($unknownMappingRun.ExitCode -ne 0 -and $unknownMappingRun.Output -like '*does not satisfy the source assessment draft*') -Detail 'Strict batch validation rejects evaluator-authored accepted mappings before trusted injection.'
@@ -848,6 +862,7 @@ catch {
 }
 finally {
     Remove-Item Env:SOURCE_ASSESSMENT_CALL_LOG -ErrorAction SilentlyContinue
+    Remove-Item Env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_EMPTY_EXACT_LANE -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_ONCE_PATH -ErrorAction SilentlyContinue
     Remove-Item Env:SOURCE_ASSESSMENT_MALFORMED_NESTED -ErrorAction SilentlyContinue

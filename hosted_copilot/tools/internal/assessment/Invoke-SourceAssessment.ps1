@@ -186,7 +186,8 @@ function Assert-BatchResponse {
         [Parameter(Mandatory = $true)][object]$Response,
         [Parameter(Mandatory = $true)][object[]]$ExpectedRecords,
         [Parameter(Mandatory = $true)][string]$BatchId,
-        [Parameter(Mandatory = $true)][string]$AssessmentCardinality
+        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
+        [Parameter(Mandatory = $true)][Collections.Generic.HashSet[string]]$KnownHostedRuleIds
     )
 
     $actualProperties = @($Response.PSObject.Properties.Name | Sort-Object)
@@ -228,6 +229,12 @@ function Assert-BatchResponse {
         }
         $priorSourceEvidence = $expectedByKey[$key].priorSourceEvidence
         foreach ($assessment in @($entry.assessments)) {
+            foreach ($coverage in @($assessment.relatedHostedCoverage)) {
+                $hostedRuleId = [string]$coverage.hostedRuleId
+                if (-not $KnownHostedRuleIds.Contains($hostedRuleId)) {
+                    throw "Evaluator response references unknown related Hosted coverage in $BatchId`: $key`: $hostedRuleId"
+                }
+            }
             if ($null -eq $priorSourceEvidence) {
                 if ($null -ne $assessment.semanticReassessment) {
                     throw "Evaluator returned semantic reassessment without prior source evidence in $BatchId`: $key"
@@ -327,7 +334,9 @@ if (-not (Test-Json -Json $catalogJson -SchemaFile $catalogSchemaPath -ErrorActi
 }
 $catalog = $catalogJson | ConvertFrom-Json
 $hostedRulesBySourceId = @{}
+$knownHostedRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($rule in @($catalog.rules)) {
+    $null = $knownHostedRuleIds.Add([string]$rule.id)
     foreach ($sourceId in @($rule.sourceIds)) {
         if (-not $hostedRulesBySourceId.ContainsKey([string]$sourceId)) {
             $hostedRulesBySourceId[[string]$sourceId] = [Collections.Generic.List[string]]::new()
@@ -564,7 +573,7 @@ try {
                     throw "Evaluator response does not satisfy the source assessment draft: $batchId"
                 }
                 $response = $responseJson | ConvertFrom-Json
-                Assert-BatchResponse -Response $response -ExpectedRecords @($batchPacket.records) -BatchId $batchId -AssessmentCardinality ([string]$batchPacket.assessmentCardinality)
+                Assert-BatchResponse -Response $response -ExpectedRecords @($batchPacket.records) -BatchId $batchId -AssessmentCardinality ([string]$batchPacket.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
                 $lastError = $null
                 break
             }
