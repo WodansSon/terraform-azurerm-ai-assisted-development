@@ -142,14 +142,29 @@ function Invoke-DisplayBuilder {
         [Parameter(Mandatory = $true)][string]$Name,
         [string]$AssessmentSetPath = $script:assessmentSetPath,
         [string]$HostedCatalogPath = $script:catalogPath,
-        [string[]]$InventoryPaths = $script:inventoryPaths
+        [string[]]$InventoryPaths = $script:inventoryPaths,
+        [switch]$AllowConflicts
     )
 
     $draftPath = Join-Path $tempRoot "$Name-reconciliation.json"
     $outputPath = Join-Path $tempRoot "$Name-display.json"
     Write-JsonFixture -Path $draftPath -Value $Draft
     try {
-        $output = @(& $builderPath -RepositoryRoot $repositoryRoot -AssessmentBaselinePath $AssessmentSetPath -InventoryPaths $InventoryPaths -ReconciliationDraftPath $draftPath -GuidanceCapacityPath $guidanceCapacityPath -OutputPath $outputPath -HostedCatalogPath $HostedCatalogPath -GeneratedAt $generatedAt -OutputFormat Json 2>&1)
+        $parameters = @{
+            RepositoryRoot = $repositoryRoot
+            AssessmentBaselinePath = $AssessmentSetPath
+            InventoryPaths = $InventoryPaths
+            ReconciliationDraftPath = $draftPath
+            GuidanceCapacityPath = $guidanceCapacityPath
+            OutputPath = $outputPath
+            HostedCatalogPath = $HostedCatalogPath
+            GeneratedAt = $generatedAt
+            OutputFormat = 'Json'
+        }
+        if ($AllowConflicts) {
+            $parameters.AllowConflicts = $true
+        }
+        $output = @(& $builderPath @parameters 2>&1)
         $exitCode = 0
     }
     catch {
@@ -425,6 +440,16 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $siblingArtifactsRetained = -not [string]::IsNullOrWhiteSpace($retainedPath) -and
         (Test-Path -LiteralPath (Join-Path $retainedPath 'batches/batch-001/workbench-display.json') -PathType Leaf) -and
         (Test-Path -LiteralPath (Join-Path $retainedPath 'batches/batch-003/workbench-display.json') -PathType Leaf)
+    $failedAttemptPaths = if ([string]::IsNullOrWhiteSpace($retainedPath)) { @() } else { @(
+        (Join-Path $retainedPath 'batches/batch-002/attempts/attempt-001/failure.json'),
+        (Join-Path $retainedPath 'batches/batch-002/attempts/attempt-002/failure.json')
+    ) }
+    $failedAttemptsRetained = $failedAttemptPaths.Count -eq 2 -and @($failedAttemptPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0
+    if ($failedAttemptsRetained) {
+        $failedAttemptsRetained = @($failedAttemptPaths | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json } | Where-Object {
+            [int]$_.batchNumber -ne 2 -or [string]$_.sourceDefinitionId -cne 'interactive-toolkit' -or [string]$_.validationError -notlike '*Synthetic Interactive reconciliation failure*'
+        }).Count -eq 0
+    }
     $parallelFailureValid = $failedRun.ExitCode -ne 0 -and
         -not (Test-Path -LiteralPath $failedRun.OutputPath -PathType Leaf) -and
         $runningProgress.Count -eq 4 -and
@@ -434,8 +459,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
         @($passedProgress | Where-Object { $_ -match '1/3|3/3' }).Count -eq 2 -and
         $failedRun.ErrorMessage -like '*batch 2 interactive-toolkit*' -and
         $failedRun.ErrorMessage -like '*Synthetic Interactive reconciliation failure*' -and
-        $siblingArtifactsRetained
-    Add-TestResult -Name 'parallel-batch-failure-retention' -Passed $parallelFailureValid -Detail $(if ($parallelFailureValid) { 'Successful siblings complete once, only the failed batch retries, terminal failure is emitted once, no display is published, and retained artifacts preserve successful batch outputs.' } else { "progress=$($failedRun.Progress -join ' | '); error=$($failedRun.ErrorMessage)" })
+        $siblingArtifactsRetained -and
+        $failedAttemptsRetained
+    Add-TestResult -Name 'parallel-batch-failure-retention' -Passed $parallelFailureValid -Detail $(if ($parallelFailureValid) { 'Successful siblings complete once, only the failed batch retries, terminal failure is emitted once, and retained artifacts preserve successful batch outputs plus every failed attempt reason.' } else { "progress=$($failedRun.Progress -join ' | '); error=$($failedRun.ErrorMessage)" })
     $recoveredRun = if (-not [string]::IsNullOrWhiteSpace($retainedPath)) { Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $failingEvaluatorPath -Name 'recovered-batch' -ResumeRunDirectory $retainedPath } else { $null }
     $recoveredResult = if ($null -ne $recoveredRun -and $recoveredRun.ExitCode -eq 0) { $recoveredRun.Output | ConvertFrom-Json -DateKind String } else { $null }
     $recoveryProgress = if ($null -ne $recoveredRun) { @($recoveredRun.Progress) } else { @() }
@@ -549,6 +575,40 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $duplicateMembership.recommendations = @($duplicateMembership.recommendations[0], $duplicateMembership.recommendations[1], $secondRecommendation)
     $duplicateRun = Invoke-DisplayBuilder -Draft $duplicateMembership -Name 'duplicate-membership'
     Add-TestResult -Name 'duplicate-membership-rejected' -Passed ($duplicateRun.ExitCode -ne 0 -and $duplicateRun.Output -like '*more than one generated recommendation*') -Detail 'One assessment cannot belong to multiple recommendations.'
+
+    $duplicateTarget = Copy-JsonObject -Value $draft
+    $firstTargetRecommendation = $duplicateTarget.recommendations[0]
+    $firstTargetRecommendation.recommendedAction = 'update'
+    $firstTargetRecommendation.targetHostedId = 'IMPL-SCHEMA-001'
+    $firstTargetRecommendation.idFamily = $null
+    $firstTargetRecommendation.title = 'First competing schema update'
+    $firstTargetRecommendation.recommendedRuleText = 'First competing update for schema validation.'
+    $firstTargetRecommendation.memberAssessmentRefs = @($contributorRef)
+    $firstTargetRecommendation.PSObject.Properties.Remove('implementationModels')
+    $secondTargetRecommendation = Copy-JsonObject -Value $firstTargetRecommendation
+    $secondTargetRecommendation.draftKey = 'recommendation-3'
+    $secondTargetRecommendation.title = 'Second competing schema update'
+    $secondTargetRecommendation.recommendedRuleText = 'Second competing update for schema validation.'
+    $secondTargetRecommendation.memberAssessmentRefs = @($interactiveRef)
+    $duplicateTarget.recommendations = @($firstTargetRecommendation, $duplicateTarget.recommendations[1], $secondTargetRecommendation)
+    $duplicateTarget.assessmentCoverage[0].recommendationDraftKeys = @('recommendation-1')
+    $duplicateTarget.assessmentCoverage[1].recommendationDraftKeys = @('recommendation-3')
+    $strictDuplicateTargetRun = Invoke-DisplayBuilder -Draft $duplicateTarget -Name 'duplicate-target-strict'
+    Add-TestResult -Name 'duplicate-target-strict-rejected' -Passed ($strictDuplicateTargetRun.ExitCode -ne 0 -and $strictDuplicateTargetRun.Output -like '*More than one recommendation owns Hosted ID IMPL-SCHEMA-001*') -Detail 'Strict batch validation rejects competing recommendations for one existing Hosted target.'
+    $blockedDuplicateTargetRun = Invoke-DisplayBuilder -Draft $duplicateTarget -Name 'duplicate-target-blocked' -AllowConflicts
+    $blockedDuplicateTargetResult = if ($blockedDuplicateTargetRun.ExitCode -eq 0) { $blockedDuplicateTargetRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $blockedDuplicateTargetDisplay = if ($blockedDuplicateTargetRun.ExitCode -eq 0) { Get-Content -LiteralPath $blockedDuplicateTargetRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $blockedConflict = if ($null -ne $blockedDuplicateTargetDisplay) { @($blockedDuplicateTargetDisplay.reconciliation.conflicts)[0] } else { $null }
+    $blockedDisplayValid = $blockedDuplicateTargetRun.ExitCode -eq 0 -and
+        [string]$blockedDuplicateTargetResult.status -ceq 'blocked' -and
+        [int]$blockedDuplicateTargetResult.conflictCount -eq 1 -and
+        [string]$blockedDuplicateTargetDisplay.reconciliation.status -ceq 'blocked' -and
+        @($blockedDuplicateTargetDisplay.candidates).Count -eq 3 -and
+        [string]$blockedConflict.targetHostedId -ceq 'IMPL-SCHEMA-001' -and
+        @($blockedConflict.recommendations).Count -eq 2 -and
+        @($blockedConflict.recommendations.memberAssessments).Count -eq 2 -and
+        @($blockedDuplicateTargetDisplay.candidates | Where-Object { $_.PSObject.Properties['conflictId'] -and [string]$_.conflictId -ceq 'duplicate-target:IMPL-SCHEMA-001' -and -not [string]::IsNullOrWhiteSpace([string]$_.conflictDraftKey) }).Count -eq 2
+    Add-TestResult -Name 'duplicate-target-blocked-display' -Passed $blockedDisplayValid -Detail $(if ($blockedDisplayValid) { 'Final display construction marks duplicate-target proposals as conflict candidates, preserves their assessment evidence, and emits unrelated valid candidates in a blocked display.' } else { $blockedDuplicateTargetRun.Output })
 
     $tamperedInventory = Get-Content -LiteralPath $inventoryPaths[1] -Raw | ConvertFrom-Json -DateKind String
     $tamperedInventory.collectedAt = '2026-09-16T13:00:00Z'

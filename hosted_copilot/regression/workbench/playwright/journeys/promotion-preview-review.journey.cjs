@@ -305,6 +305,47 @@ async function run({ page, baseUrl, assert }) {
   assert(review.visible && review.approval && review.approver, "Review changes does not expose the existing approval workflow");
   await page.locator("#preview-review-close").click();
 
+  const blockedReconciliation = await page.evaluate(() => {
+    const originalReconciliation = structuredClone(state.bundle.reconciliation);
+    state.bundle.reconciliation = {
+      status: "blocked",
+      conflicts: [
+        { targetHostedId: "DOCS-ARG-001" },
+        { targetHostedId: "IMPL-WF-001A" }
+      ]
+    };
+    renderReconciliationState();
+    renderPreview();
+    const readiness = getPreviewReadiness();
+    const result = {
+      bannerVisible: !document.querySelector("#reconciliation-conflict-banner").hidden,
+      workspaceBlocked: document.querySelector("#workspace").classList.contains("has-reconciliation-conflicts"),
+      title: document.querySelector("#reconciliation-conflict-title").textContent,
+      detail: document.querySelector("#reconciliation-conflict-detail").textContent,
+      stageBlocked: document.querySelector("#promotion-plan-stage").classList.contains("reconciliation-blocked"),
+      stageIcon: document.querySelector("#promotion-plan-stage-icon").getAttribute("href"),
+      planIndicatorVisible: !document.querySelector("#plan-conflict-indicator").hidden,
+      planIndicatorIcon: document.querySelector("#plan-conflict-indicator use").getAttribute("href"),
+      planIndicatorText: document.querySelector("#plan-conflict-count").textContent,
+      approvalDisabled: document.querySelector("#approve-export-button").disabled,
+      requirement: [...document.querySelectorAll("#approval-requirements .approval-requirement")].map((item) => item.textContent.trim().replace(/\s+/g, " ")).find((text) => text.startsWith("Reconciliation conflicts")),
+      conflictCount: readiness.reconciliationConflictCount,
+      status: readiness.status,
+      ready: readiness.ready
+    };
+    state.bundle.reconciliation = originalReconciliation;
+    renderReconciliationState();
+    renderPreview();
+    result.readyStageIcon = document.querySelector("#promotion-plan-stage-icon").getAttribute("href");
+    result.readyPlanIndicatorHidden = document.querySelector("#plan-conflict-indicator").hidden;
+    return result;
+  });
+  assert(blockedReconciliation.bannerVisible && blockedReconciliation.workspaceBlocked && blockedReconciliation.title === "2 Reconciliation conflicts require maintainer review", "Blocked reconciliation does not render its persistent Workbench warning state");
+  assert(blockedReconciliation.detail.includes("DOCS-ARG-001, IMPL-WF-001A") && blockedReconciliation.detail.includes("Approval remains blocked"), "Blocked reconciliation banner does not identify conflicting targets and approval impact");
+  assert(blockedReconciliation.stageBlocked && blockedReconciliation.stageIcon.endsWith("#codicon-git-pull-request-error") && blockedReconciliation.planIndicatorVisible && blockedReconciliation.planIndicatorIcon.endsWith("#codicon-git-branch-conflicts") && blockedReconciliation.planIndicatorText === "2 Conflicts", `Promotion Plan does not expose both blocked conflict icons (${JSON.stringify(blockedReconciliation)})`);
+  assert(blockedReconciliation.readyStageIcon.endsWith("#codicon-new-session") && blockedReconciliation.readyPlanIndicatorHidden, "Promotion Plan conflict icons do not clear with reconciliation state");
+  assert(blockedReconciliation.approvalDisabled && blockedReconciliation.requirement === "Reconciliation conflicts 2 unresolved" && blockedReconciliation.conflictCount === 2 && blockedReconciliation.status === "reconciliation conflicts" && !blockedReconciliation.ready, `Unresolved reconciliation conflicts do not block the authoritative approval readiness path (${JSON.stringify(blockedReconciliation)})`);
+
   await page.setViewportSize({ width: 768, height: 900 });
   const narrow = await page.evaluate(() => {
     const sidebar = document.querySelector("#preview-view .preview-summary").getBoundingClientRect();

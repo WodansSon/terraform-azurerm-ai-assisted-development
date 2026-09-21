@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function captureElements() {
   for (const id of [
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
-    "promotion-plan-stage", "plan-activity-count",
+    "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count", "plan-conflict-indicator", "plan-conflict-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
@@ -142,7 +142,7 @@ function captureElements() {
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code",
     "preview-review-toolbar",
     "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
-    "approve-export-button", "toast", "toast-message", "toast-close"
+    "approve-export-button", "reconciliation-conflict-banner", "reconciliation-conflict-title", "reconciliation-conflict-detail", "workspace", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -407,6 +407,7 @@ async function loadBundle() {
     const display = await response.json();
     validateDisplay(display);
     state.bundle = display;
+    renderReconciliationState();
     const discoveredCandidates = normalizeDisplayCandidates(display);
     const sessionId = getSessionId(display);
     const existing = await readSession(sessionId);
@@ -485,6 +486,28 @@ function validateDisplay(display) {
   if (!display.guidanceCapacity || display.guidanceCapacity.reportCount !== 8) {
     throw new Error("The Workbench display does not contain all guidance capacity reports.");
   }
+  if (!display.reconciliation || !["ready", "blocked"].includes(display.reconciliation.status) || !Array.isArray(display.reconciliation.conflicts)) {
+    throw new Error("The Workbench display does not contain reconciliation status.");
+  }
+  if ((display.reconciliation.status === "ready") !== (display.reconciliation.conflicts.length === 0)) {
+    throw new Error("The Workbench display reconciliation status does not match its conflicts.");
+  }
+}
+
+function renderReconciliationState() {
+  const conflicts = state.bundle?.reconciliation?.conflicts || [];
+  const blocked = conflicts.length > 0;
+  elements.workspace.classList.toggle("has-reconciliation-conflicts", blocked);
+  elements["promotion-plan-stage"].classList.toggle("reconciliation-blocked", blocked);
+  elements["reconciliation-conflict-banner"].hidden = !blocked;
+  elements["promotion-plan-stage-icon"].setAttribute("href", `icons/codicons/sprite.svg#codicon-${blocked ? "git-pull-request-error" : "new-session"}`);
+  elements["plan-conflict-indicator"].hidden = !blocked;
+  elements["plan-conflict-count"].textContent = blocked ? formatCountLabel(conflicts.length, "Conflict") : "";
+  setWorkbenchTooltip(elements["plan-conflict-indicator"], blocked ? `${formatCountLabel(conflicts.length, "Unresolved conflict")} block approval` : "");
+  if (!blocked) return;
+  const targets = conflicts.map((conflict) => conflict.targetHostedId);
+  elements["reconciliation-conflict-title"].textContent = `${formatCountLabel(conflicts.length, "Reconciliation conflict")} require maintainer review`;
+  elements["reconciliation-conflict-detail"].textContent = `${targets.join(", ")}. Approval remains blocked until every conflict is resolved and the full proposal is revalidated.`;
 }
 
 function normalizeDisplayCandidates(display) {
@@ -626,7 +649,11 @@ function getEffectiveHostedApplicability(candidate) {
 }
 
 function refreshEffectiveCandidates() {
-  state.candidates = state.assessedCandidates.filter((candidate) => getEffectiveHostedApplicability(candidate));
+  state.candidates = state.assessedCandidates.filter((candidate) => getEffectiveHostedApplicability(candidate) && isPromotionOwner(candidate));
+}
+
+function isPromotionOwner(candidate) {
+  return candidate.recommendation.assessmentKeys[0] === candidate.key;
 }
 
 function repairOverridePlanMembership() {
@@ -2910,6 +2937,7 @@ function diffTextLines(beforeText, afterText) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
+  const reconciliationConflictCount = state.bundle?.reconciliation?.conflicts?.length || 0;
   const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
   const invalidProposedHostedRuleIdCount = planCandidates.filter((candidate) => getPlanReadiness(candidate).proposedHostedRuleIdRequired).length;
   const missingRationaleCount = planCandidates.filter((candidate) => {
@@ -2919,7 +2947,8 @@ function getPreviewReadiness() {
   const missingRationale = missingRationaleCount > 0;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
-  if (planCandidates.length === 0) status = "no actions";
+  if (reconciliationConflictCount) status = "reconciliation conflicts";
+  else if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
   else if (invalidProposedHostedRuleIdCount) status = "needs valid rule ID";
   else if (missingRationale) status = "needs rationale";
@@ -2930,13 +2959,15 @@ function getPreviewReadiness() {
     missingActionCount,
     invalidProposedHostedRuleIdCount,
     missingRationaleCount,
+    reconciliationConflictCount,
     status,
-    ready: planCandidates.length > 0 && missingActionCount === 0 && invalidProposedHostedRuleIdCount === 0 && !missingRationale && Boolean(approverName)
+    ready: reconciliationConflictCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && invalidProposedHostedRuleIdCount === 0 && !missingRationale && Boolean(approverName)
   };
 }
 
 function renderApprovalRequirements(readiness) {
   const requirements = [
+    ["Reconciliation conflicts", readiness.reconciliationConflictCount ? `${readiness.reconciliationConflictCount} unresolved` : "None", readiness.reconciliationConflictCount === 0],
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
     ["Proposed rule IDs", readiness.invalidProposedHostedRuleIdCount ? `${readiness.invalidProposedHostedRuleIdCount} invalid` : "Valid", readiness.planCandidates.length > 0 && readiness.invalidProposedHostedRuleIdCount === 0],
@@ -3263,7 +3294,7 @@ function handleApproverInput(event) {
 function approveAndExport() {
   const readiness = getPreviewReadiness();
   if (!readiness.ready) {
-    showToast("Complete the selected rule rationale and approver name before exporting.", true);
+    showToast(readiness.reconciliationConflictCount ? "Resolve all reconciliation conflicts before approval." : "Complete the selected rule rationale and approver name before exporting.", true);
     return;
   }
   elements["approve-export-button"].disabled = true;

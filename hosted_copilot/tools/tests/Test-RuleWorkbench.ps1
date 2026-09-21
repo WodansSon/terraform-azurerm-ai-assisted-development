@@ -5,6 +5,8 @@ param(
     [ValidatePattern('^(all|[a-z0-9-]+)$')]
     [string]$Journey = 'all',
 
+    [switch]$Headed,
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
 
@@ -35,7 +37,6 @@ $behaviorManifestPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.js
 $behaviorManifestSchemaPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.schema.json'
 $playwrightRunnerPath = Join-Path $workbenchRegressionRoot 'playwright/run.cjs'
 $layoutTestPath = Join-Path $workbenchRegressionRoot 'puppeteer/Test-RuleWorkbenchLayout.cjs'
-$headedPlaybackPath = Join-Path $PSScriptRoot 'Test-RuleWorkbenchHeaded.ps1'
 $implementationContractPath = Join-Path $PSScriptRoot '../../docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md'
 $nodePackageManifestPath = Join-Path $toolsRoot 'package.json'
 $nodePackageLockPath = Join-Path $toolsRoot 'package-lock.json'
@@ -56,7 +57,66 @@ $npmFixApplied = $false
 $npmFixRequiresBreaking = $false
 $npmFixChanges = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
-$supportedFocusedRuns = @('loopback-host-validation', 'browser-behavior-manifest', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
+$mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
+$browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
+$serverTestNames = @('loopback-host-validation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
+$staticTestNames = @(
+    'fixture-display-valid',
+    'assessment-factor-range',
+    'external-staging-valid',
+    'source-display-read-only',
+    'launcher-failure-summary',
+    'automatic-recovery-discovery',
+    'local-icon-family-sprites',
+    'portable-icon-generation',
+    'browser-state-contract',
+    'browser-behavior-manifest',
+    'browser-timestamp-normalization',
+    'repository-identity-presentation',
+    'promotion-plan-activity-badge',
+    'row-keyboard-navigation',
+    'assessment-results-audit',
+    'assessment-results-sorting',
+    'shared-presentation-utilities',
+    'assessment-pane-navigation',
+    'maintainer-applicability-override',
+    'current-bundle-assessment-ownership',
+    'dark-theme-contract',
+    'global-typography-contract',
+    'component-typography-consistency',
+    'scrollbar-theme-contract',
+    'ide-shell-contract',
+    'preview-editor-layout',
+    'contained-view-scrolling',
+    'impact-factor-guidance',
+    'detail-presentation-contract',
+    'static-information-colors',
+    'evaluated-source-tree',
+    'contributor-document-children',
+    'candidate-header-tooltips',
+    'tree-leaf-direct-updates',
+    'catalog-status-rule-actions',
+    'bulk-plan-membership',
+    'undo-updates-capacity-projection',
+    'semantic-color-contract',
+    'clickable-cursor-affordance',
+    'promotion-plan-column-alignment',
+    'promotion-plan-detail-routing',
+    'promotion-plan-token-deltas',
+    'preview-approval-export',
+    'preview-change-review',
+    'raw-payload-change-navigation',
+    'no-op-update-suppression',
+    'mobile-unsupported-contract',
+    'incremental-assessment-launch',
+    'loopback-read-only-server',
+    'repository-staging-rejected'
+)
+$supportedFocusedRuns = @($mandatoryTestNames + $staticTestNames + $serverTestNames + $browserRuntimeTestNames | Where-Object { $_ -ne 'run-selection' } | Sort-Object -Unique)
+$testScriptContent = Get-Content -LiteralPath $PSCommandPath -Raw
+$declaredTestNames = @([regex]::Matches($testScriptContent, "Add-TestResult\s+-Name\s+'(?<name>[^']+)'") | ForEach-Object { [string]$_.Groups['name'].Value } | Sort-Object -Unique)
+$missingFocusedRuns = @($declaredTestNames | Where-Object { $_ -ne 'run-selection' -and $_ -notin $supportedFocusedRuns })
+$unknownFocusedRuns = @($supportedFocusedRuns | Where-Object { $_ -notin $declaredTestNames })
 
 if ($Journey -ne 'all' -and $Run -ne 'browser-playwright-journeys') {
     throw '-Journey requires -Run browser-playwright-journeys'
@@ -65,7 +125,7 @@ if ($Journey -ne 'all' -and $Run -ne 'browser-playwright-journeys') {
 function Test-ShouldRun {
     param([Parameter(Mandatory = $true)][string]$Name)
 
-    return [string]::IsNullOrWhiteSpace($Run) -or $Run -eq $Name
+    return [string]::IsNullOrWhiteSpace($Run) -or $Run -eq $Name -or $Name -in $mandatoryTestNames
 }
 
 function Start-TestResult {
@@ -74,6 +134,9 @@ function Start-TestResult {
         [string]$RunningDetail = 'IN PROGRESS'
     )
 
+    if (-not (Test-ShouldRun -Name $Name)) {
+        return
+    }
     $testStartTimes[$Name] = Get-Date
     if ($OutputFormat -eq 'Text') {
         Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail)
@@ -88,6 +151,9 @@ function Add-TestResult {
         [string]$SuccessDetail
     )
 
+    if (-not (Test-ShouldRun -Name $Name)) {
+        return
+    }
     $durationSeconds = 0
     if ($testStartTimes.ContainsKey($Name)) {
         $durationSeconds = [Math]::Round(((Get-Date) - $testStartTimes[$Name]).TotalSeconds, 2)
@@ -236,6 +302,7 @@ function New-WorkbenchDisplayFixture {
         generatedAt = [string]$Fixture.generatedAt
         readOnly = $true
         inputFingerprint = 'a' * 64
+        reconciliation = [ordered]@{ status = 'ready'; conflicts = @() }
         candidates = $candidates.ToArray()
         catalog = [ordered]@{
             contentSha256 = 'b' * 64
@@ -300,61 +367,67 @@ try {
     elseif ($FixNpmAudit -and -not [string]::IsNullOrWhiteSpace($Run)) {
         Add-TestResult -Name 'run-selection' -Passed $false -Detail '-FixNpmAudit is available only for the complete Workbench suite'
     }
+    elseif ($missingFocusedRuns.Count -gt 0 -or $unknownFocusedRuns.Count -gt 0) {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail "Focused-run catalog is out of sync: missing=$($missingFocusedRuns -join ', '); unknown=$($unknownFocusedRuns -join ', ')"
+    }
+    elseif ($Headed -and $Run -ne 'browser-playwright-journeys') {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-Headed requires -Run browser-playwright-journeys'
+    }
     elseif (-not [string]::IsNullOrWhiteSpace($Run) -and $Run -notin $supportedFocusedRuns) {
-        $supportedRunList = ($supportedFocusedRuns | ForEach-Object { "      - '$_'" }) -join "`n"
-        Add-TestResult -Name 'run-selection' -Passed $false -Detail "Requested Workbench test suite '$Run' is not supported.`n`n    SUPPORTED SUITES:`n`n$supportedRunList"
+        $supportedTestList = ($supportedFocusedRuns | ForEach-Object { "      - '$_'" }) -join "`n"
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail "Requested Workbench test '$Run' is not supported.`n`n    SUPPORTED TESTS:`n`n$supportedTestList"
     }
     else {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
-    if ([string]::IsNullOrWhiteSpace($Run)) {
-        $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
-        $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
-        Start-TestResult -Name 'npm audit'
-        $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-LockPath', $nodePackageLockRelativePath, '-OutputFormat', 'Json')
-        if ($FixNpmAudit) { $npmSecurityArguments += '-Fix' }
-        if ($AllowBreakingNpmFix) { $npmSecurityArguments += '-AllowBreakingFix' }
-        $auditOutput = @(& pwsh @npmSecurityArguments 2>&1)
-        $auditExitCode = $LASTEXITCODE
-        $auditResult = try { ($auditOutput | Out-String) | ConvertFrom-Json } catch { $null }
-        $hostedAuditReport = if ($null -ne $auditResult) { @($auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath })[0] } else { $null }
-        $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
-        if ($null -ne $hostedAuditReport) {
-            $dependencyAuditCounts = $hostedAuditReport.counts
-            foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
-            foreach ($change in @($hostedAuditReport.remediationChanges)) { $npmFixChanges.Add($change) }
-            $npmFixApplied = [bool]$hostedAuditReport.remediationApplied
-            $npmFixRequiresBreaking = [bool]$hostedAuditReport.requiresBreakingFix
-        }
-        if (-not $auditPassed) {
-            $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
-        }
-        $auditDetail = if (-not $auditPassed) {
-            "$dependencyAuditError; dependency installation blocked"
-        }
-        elseif ($npmFixApplied) {
-            'Remediated the lockfile and passed the shared npm audit at the low threshold'
-        }
-        else {
-            "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
-        }
-        Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
-        if (-not $auditPassed) {
-            $failureAlreadyReported = $true
-            throw 'npm audit failed before dependency installation'
-        }
-        Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'
-        $dependencyOutput = @()
-        $dependencyExitCode = 0
-        if (-not (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath)) {
-            $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
-            $dependencyExitCode = $LASTEXITCODE
-        }
-        $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
-        Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Detail $(if ($lockedDependencyValid) { "Installed packages match the audited lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)." } else { ($dependencyOutput | Out-String).Trim() })
-        if (-not $lockedDependencyValid) {
-            throw 'locked browser validation dependencies could not be installed'
-        }
+    $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
+    $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
+    Start-TestResult -Name 'npm audit'
+    $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-LockPath', $nodePackageLockRelativePath, '-OutputFormat', 'Json')
+    if ($FixNpmAudit) { $npmSecurityArguments += '-Fix' }
+    if ($AllowBreakingNpmFix) { $npmSecurityArguments += '-AllowBreakingFix' }
+    $auditOutput = @(& pwsh @npmSecurityArguments 2>&1)
+    $auditExitCode = $LASTEXITCODE
+    $auditResult = try { ($auditOutput | Out-String) | ConvertFrom-Json } catch { $null }
+    $hostedAuditReport = if ($null -ne $auditResult) { @($auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath })[0] } else { $null }
+    $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
+    if ($null -ne $hostedAuditReport) {
+        $dependencyAuditCounts = $hostedAuditReport.counts
+        foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
+        foreach ($change in @($hostedAuditReport.remediationChanges)) { $npmFixChanges.Add($change) }
+        $npmFixApplied = [bool]$hostedAuditReport.remediationApplied
+        $npmFixRequiresBreaking = [bool]$hostedAuditReport.requiresBreakingFix
+    }
+    if (-not $auditPassed) {
+        $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
+    }
+    $auditDetail = if (-not $auditPassed) {
+        "$dependencyAuditError; dependency installation blocked"
+    }
+    elseif ($npmFixApplied) {
+        'Remediated the lockfile and passed the shared npm audit at the low threshold'
+    }
+    else {
+        "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
+    }
+    Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
+    if (-not $auditPassed) {
+        $failureAlreadyReported = $true
+        throw 'npm audit failed before dependency installation'
+    }
+    Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'
+    $dependencyOutput = @()
+    $dependencyExitCode = 0
+    if (-not (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath)) {
+        $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
+        $dependencyExitCode = $LASTEXITCODE
+    }
+    $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
+    Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Detail $(if ($lockedDependencyValid) { "Installed packages match the audited lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)." } else { ($dependencyOutput | Out-String).Trim() })
+    if (-not $lockedDependencyValid) {
+        throw 'locked browser validation dependencies could not be installed'
+    }
+    if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in $browserRuntimeTestNames) {
         Start-TestResult -Name 'locked-browser-runtime'
         $browserInstallOutput = New-Object 'System.Collections.Generic.List[string]'
         $browserInstallPassed = Test-Path -LiteralPath $puppeteerCliPath -PathType Leaf
@@ -369,27 +442,6 @@ try {
         Add-TestResult -Name 'locked-browser-runtime' -Passed $browserInstallPassed -Detail $(if ($browserInstallPassed) { 'Installed the Puppeteer-pinned Chrome and Chrome Headless Shell runtimes through the locked local CLI.' } else { ($browserInstallOutput | Out-String).Trim() })
         if (-not $browserInstallPassed) {
             throw 'locked browser runtimes could not be installed'
-        }
-    }
-    else {
-        $requiredBrowserPackages = if ($Run -eq 'browser-playwright-journeys') {
-            @('@playwright/test', 'puppeteer')
-        }
-        elseif ($Run -in @('browser-viewport-layout', 'browser-framework-coverage')) {
-            @('puppeteer')
-        }
-        else {
-            @()
-        }
-        foreach ($packageName in $requiredBrowserPackages) {
-            $installedPackagePath = Join-Path $toolsRoot "node_modules/$packageName/package.json"
-            if (-not (Test-Path -LiteralPath $installedPackagePath -PathType Leaf)) {
-                throw "Focused browser validation requires installed package '$packageName'; run the complete Workbench suite once to install locked dependencies"
-            }
-            $installedPackage = Get-Content -LiteralPath $installedPackagePath -Raw | ConvertFrom-Json
-            if ([string]$installedPackage.version -ne [string]$nodePackageConfig.devDependencies.$packageName) {
-                throw "Focused browser validation requires locked $packageName version $($nodePackageConfig.devDependencies.$packageName), found $($installedPackage.version)"
-            }
         }
     }
     $displayPath = Join-Path $tempRoot 'workbench-display.json'
@@ -615,7 +667,6 @@ try {
     $display = New-WorkbenchDisplayFixture -Fixture $fixture
     $displayJson = $display | ConvertTo-Json -Depth 30
     [IO.File]::WriteAllText($displayPath, $displayJson + "`n", [Text.UTF8Encoding]::new($false))
-    if ([string]::IsNullOrWhiteSpace($Run)) {
     Add-TestResult -Name 'fixture-display-valid' -Passed ([bool]($displayJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench display satisfies the v4 display schema.'
 
     $invalidAssessmentDisplay = $displayJson | ConvertFrom-Json
@@ -623,25 +674,30 @@ try {
     $invalidAssessmentJson = $invalidAssessmentDisplay | ConvertTo-Json -Depth 30
     Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
 
-    $siteDirectory = Join-Path $tempRoot 'site'
-    $stageCacheDirectory = Join-Path $tempRoot 'assessment-cache'
-    $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
-    Start-TestResult -Name 'external-staging-valid'
-    $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
-    $stageExitCode = $LASTEXITCODE
-    $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
-    $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
-    $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-    Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets, reports v4 display candidates, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
-    Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Workbench staging does not modify its source display.'
+    $stageResult = $null
+    if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('external-staging-valid', 'source-display-read-only', 'loopback-read-only-server')) {
+        $siteDirectory = Join-Path $tempRoot 'site'
+        $stageCacheDirectory = Join-Path $tempRoot 'assessment-cache'
+        $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
+        Start-TestResult -Name 'external-staging-valid'
+        $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $stageExitCode = $LASTEXITCODE
+        $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
+        $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
+        $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
+        Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets, reports v4 display candidates, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
+        Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Workbench staging does not modify its source display.'
+    }
 
-    $missingDisplayPath = Join-Path $tempRoot 'missing-workbench-display.json'
-    $failureSiteDirectory = Join-Path $tempRoot 'failure-site'
-    $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -DisplayPath $missingDisplayPath -StageOnly -NoLaunch -OutputFormat Text 2>&1)
-    $failureExitCode = $LASTEXITCODE
-    $failureText = ($failureOutput | Out-String)
-    $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 1' -and $failureText -match 'Passed\s+: 0' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+FAILED\s+PREBUILT DISPLAY STAGING' -and $failureText -match 'FAILURES[\s\S]+- PREBUILT DISPLAY STAGING: DisplayPath was not found:' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
-    Add-TestResult -Name 'launcher-failure-summary' -Passed $launcherFailureSummaryValid -Detail 'Startup failures report opening context, closing stage counts, a stage table, and failures without a raw PowerShell stack trace.'
+    if (Test-ShouldRun -Name 'launcher-failure-summary') {
+        $missingDisplayPath = Join-Path $tempRoot 'missing-workbench-display.json'
+        $failureSiteDirectory = Join-Path $tempRoot 'failure-site'
+        $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -DisplayPath $missingDisplayPath -StageOnly -NoLaunch -OutputFormat Text 2>&1)
+        $failureExitCode = $LASTEXITCODE
+        $failureText = ($failureOutput | Out-String)
+        $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 1' -and $failureText -match 'Passed\s+: 0' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+FAILED\s+PREBUILT DISPLAY STAGING' -and $failureText -match 'FAILURES[\s\S]+- PREBUILT DISPLAY STAGING: DisplayPath was not found:' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
+        Add-TestResult -Name 'launcher-failure-summary' -Passed $launcherFailureSummaryValid -Detail 'Startup failures report opening context, closing stage counts, a stage table, and failures without a raw PowerShell stack trace.'
+    }
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -658,57 +714,57 @@ try {
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
-    $launcherTokens = $null
-    $launcherParseErrors = $null
-    $launcherAst = [Management.Automation.Language.Parser]::ParseFile($launcherPath, [ref]$launcherTokens, [ref]$launcherParseErrors)
-    foreach ($functionName in @('Find-AutomaticAssessmentRecoveryDirectory', 'Find-AutomaticReconciliationRecoveryDirectory')) {
-        $functionAst = $launcherAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
-        if ($null -ne $functionAst) {
-            . ([scriptblock]::Create($functionAst.Extent.Text))
+    if (Test-ShouldRun -Name 'automatic-recovery-discovery') {
+        $launcherTokens = $null
+        $launcherParseErrors = $null
+        $launcherAst = [Management.Automation.Language.Parser]::ParseFile($launcherPath, [ref]$launcherTokens, [ref]$launcherParseErrors)
+        foreach ($functionName in @('Find-AutomaticAssessmentRecoveryDirectory', 'Find-AutomaticReconciliationRecoveryDirectory')) {
+            $functionAst = $launcherAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
+            if ($null -ne $functionAst) {
+                . ([scriptblock]::Create($functionAst.Extent.Text))
+            }
         }
-    }
-    $automaticRecoveryRoot = Join-Path $tempRoot 'automatic-recovery'
-    $assessmentRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-source-assessment'
-    $reconciliationRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-assessment-reconciliation'
-    $compatibleAssessmentRun = Join-Path $assessmentRecoveryRoot 'compatible-assessment'
-    $incompleteAssessmentRun = Join-Path $assessmentRecoveryRoot 'newer-incomplete-assessment'
-    $currentAssessmentContractPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-    foreach ($runPath in @($compatibleAssessmentRun, $incompleteAssessmentRun)) {
-        $retainedContractPath = Join-Path $runPath 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-        New-Item -ItemType Directory -Path (Split-Path -Parent $retainedContractPath) -Force | Out-Null
-        Copy-Item -LiteralPath $currentAssessmentContractPath -Destination $retainedContractPath
-        New-Item -ItemType Directory -Path (Join-Path $runPath 'batch-001') -Force | Out-Null
-        [IO.File]::WriteAllText((Join-Path $runPath 'batch-001/source-records.json'), '{}', [Text.UTF8Encoding]::new($false))
-    }
-    [IO.File]::WriteAllText((Join-Path $compatibleAssessmentRun 'batch-001/response.json'), '{}', [Text.UTF8Encoding]::new($false))
-    (Get-Item -LiteralPath $compatibleAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
-    (Get-Item -LiteralPath $incompleteAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
+        $automaticRecoveryRoot = Join-Path $tempRoot 'automatic-recovery'
+        $assessmentRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-source-assessment'
+        $reconciliationRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-assessment-reconciliation'
+        $compatibleAssessmentRun = Join-Path $assessmentRecoveryRoot 'compatible-assessment'
+        $incompleteAssessmentRun = Join-Path $assessmentRecoveryRoot 'newer-incomplete-assessment'
+        $currentAssessmentContractPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+        foreach ($runPath in @($compatibleAssessmentRun, $incompleteAssessmentRun)) {
+            $retainedContractPath = Join-Path $runPath 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $retainedContractPath) -Force | Out-Null
+            Copy-Item -LiteralPath $currentAssessmentContractPath -Destination $retainedContractPath
+            New-Item -ItemType Directory -Path (Join-Path $runPath 'batch-001') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $runPath 'batch-001/source-records.json'), '{}', [Text.UTF8Encoding]::new($false))
+        }
+        [IO.File]::WriteAllText((Join-Path $compatibleAssessmentRun 'batch-001/response.json'), '{}', [Text.UTF8Encoding]::new($false))
+        (Get-Item -LiteralPath $compatibleAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
+        (Get-Item -LiteralPath $incompleteAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
 
-    $compatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'compatible-reconciliation'
-    $incompatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'newer-incompatible-reconciliation'
-    foreach ($runPath in @($compatibleReconciliationRun, $incompatibleReconciliationRun)) {
-        $batchPath = Join-Path $runPath 'batches/batch-001'
-        New-Item -ItemType Directory -Path $batchPath -Force | Out-Null
-        [IO.File]::WriteAllText((Join-Path $batchPath 'source-assessment-baseline.json'), '{}', [Text.UTF8Encoding]::new($false))
-        [IO.File]::WriteAllText((Join-Path $batchPath 'assessment-reconciliation-draft.json'), '{}', [Text.UTF8Encoding]::new($false))
-    }
-    [IO.File]::WriteAllText((Join-Path $compatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'copilot'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText((Join-Path $incompatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'script:fixture'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
-    (Get-Item -LiteralPath $compatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
-    (Get-Item -LiteralPath $incompatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
+        $compatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'compatible-reconciliation'
+        $incompatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'newer-incompatible-reconciliation'
+        foreach ($runPath in @($compatibleReconciliationRun, $incompatibleReconciliationRun)) {
+            $batchPath = Join-Path $runPath 'batches/batch-001'
+            New-Item -ItemType Directory -Path $batchPath -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $batchPath 'source-assessment-baseline.json'), '{}', [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText((Join-Path $batchPath 'assessment-reconciliation-draft.json'), '{}', [Text.UTF8Encoding]::new($false))
+        }
+        [IO.File]::WriteAllText((Join-Path $compatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'copilot'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $incompatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'script:fixture'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+        (Get-Item -LiteralPath $compatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
+        (Get-Item -LiteralPath $incompatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
 
-    $selectedAssessmentRecovery = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath $currentAssessmentContractPath
-    $selectedReconciliationRecovery = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator 'copilot' -Model 'gpt-5.4' -ReasoningEffort 'high'
-    $automaticRecoveryValid = @($launcherParseErrors).Count -eq 0 -and
-        [string]$selectedAssessmentRecovery -ceq [IO.Path]::GetFullPath($compatibleAssessmentRun) -and
-        [string]$selectedReconciliationRecovery -ceq [IO.Path]::GetFullPath($compatibleReconciliationRun)
-    Add-TestResult -Name 'automatic-recovery-discovery' -Passed $automaticRecoveryValid -Detail 'A normal launch skips newer incomplete or evaluator-incompatible managed runs and selects the newest compatible completed assessment and reconciliation artifacts.'
-    $playwrightRunnerContent = Get-Content -LiteralPath $playwrightRunnerPath -Raw
-    $headedPlaybackContent = Get-Content -LiteralPath $headedPlaybackPath -Raw
+        $selectedAssessmentRecovery = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath $currentAssessmentContractPath
+        $selectedReconciliationRecovery = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator 'copilot' -Model 'gpt-5.4' -ReasoningEffort 'high'
+        $automaticRecoveryValid = @($launcherParseErrors).Count -eq 0 -and
+            [string]$selectedAssessmentRecovery -ceq [IO.Path]::GetFullPath($compatibleAssessmentRun) -and
+            [string]$selectedReconciliationRecovery -ceq [IO.Path]::GetFullPath($compatibleReconciliationRun)
+        Add-TestResult -Name 'automatic-recovery-discovery' -Passed $automaticRecoveryValid -Detail 'A normal launch skips newer incomplete or evaluator-incompatible managed runs and selects the newest compatible completed assessment and reconciliation artifacts.'
+    }
     $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg', 'chat-sparkle-error.svg', 'discard-all.svg') }).Count
     $octiconSourceCount = @(Get-ChildItem -LiteralPath $octiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
-    $codiconContractValid = $codiconSourceCount -eq 68 -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 70)
-    $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
+    $codiconContractValid = $codiconSourceCount -eq 70 -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 72)
+    $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-git-branch-conflicts"' -and $spriteContent -match 'id="codicon-git-pull-request-error"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-check-compact"' -and $spriteContent -match 'id="codicon-circle-slash-compact"' -and $spriteContent -match 'id="codicon-debug-disconnect-compact"' -and $spriteContent -match 'id="codicon-checklist-compact"' -and $spriteContent -match 'id="codicon-shield-compact"' -and $spriteContent -match 'id="codicon-chevron-right-compact"' -and $spriteContent -match 'id="codicon-chevron-down-compact"' -and $spriteContent -match 'id="codicon-fold-up"' -and $spriteContent -match 'id="codicon-diff-modified"' -and $spriteContent -match 'id="codicon-arrow-circle-down"' -and $spriteContent -match 'id="codicon-arrow-circle-left"' -and $spriteContent -match 'id="codicon-arrow-circle-right"' -and $spriteContent -match 'id="codicon-arrow-circle-up"' -and $spriteContent -match 'id="codicon-arrow-circle-up-sparkle"' -and $spriteContent -match 'id="codicon-close"' -and $spriteContent -match 'id="codicon-close-small"' -and $spriteContent -match 'id="codicon-close-compact"' -and $spriteContent -match 'id="codicon-pass"' -and $spriteContent -match 'id="codicon-pass-compact"' -and $spriteContent -match 'id="codicon-git-stash-apply"' -and $spriteContent -match 'id="codicon-kebab-vertical"' -and $spriteContent -match 'id="codicon-layers"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-folder-opened"' -and $spriteContent -match 'id="codicon-folder-opened-compact"' -and $spriteContent -match 'id="codicon-folder-library"' -and $spriteContent -match 'id="codicon-folder-compact"' -and $spriteContent -match 'id="codicon-folder-active"' -and $spriteContent -match 'id="codicon-file-symlink-directory"' -and $spriteContent -match 'id="codicon-remote"' -and $spriteContent -match 'id="codicon-remote-compact"' -and $spriteContent -match 'id="codicon-workspace-untrusted"' -and $spriteContent -match 'id="codicon-workspace-unknown"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match '1c47ab36a4bb845c437866405c2fa67b8ca0fe36' -and $attributionContent -match 'Creative Commons Attribution 4\.0 International'
@@ -719,7 +775,7 @@ try {
     $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-check-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-collection' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-circle-slash-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-debug-disconnect-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-new-session' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-shield-compact'
     $codiconContractValid = $codiconContractValid -and $appContent -match 'octicon\("copy"\)' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $indexContent -match 'data-view="catalog"[\s\S]*?codicon-collection' -and $indexContent -match 'data-view="plan"[\s\S]*?codicon-new-session' -and $indexContent -match 'data-view="preview"[\s\S]*?codicon-open-preview' -and $appContent -match 'icon\("discard"\)'
     $chatSparkleErrorContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-chat-sparkle-error"' -and $iconGeneratorContent -match "'chat-sparkle-error'"
-    $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 70) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
+    $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 72) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
     $diffModifiedContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'diff-modified.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-diff-modified"' -and $appContent -match 'codicon-diff-modified'
     $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid
     $octiconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0 -and $octiconSourceCount -eq 44 -and ([regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -eq 44) -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
@@ -727,34 +783,36 @@ try {
     $iconFamiliesValid = $codiconContractValid -and $octiconContractValid -and $iconPreviewsValid
     Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'The Workbench separately owns pinned, attributed, offline Codicon and Octicon source families, generated sprites, and visible PNG inventory sheets, stages both recursively, and has no runtime icon-network dependency.'
 
-    Start-TestResult -Name 'portable-icon-generation'
-    $iconGenerationRoot = Join-Path $tempRoot 'icon-generation'
-    $generatedCodiconRoot = Join-Path $iconGenerationRoot 'codicons'
-    $generatedOcticonRoot = Join-Path $iconGenerationRoot 'octicons'
-    New-Item -ItemType Directory -Path $iconGenerationRoot -Force | Out-Null
-    Copy-Item -LiteralPath $codiconRoot -Destination $generatedCodiconRoot -Recurse
-    Copy-Item -LiteralPath $octiconRoot -Destination $generatedOcticonRoot -Recurse
-    Remove-Item -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg'), (Join-Path $generatedCodiconRoot 'preview.png'), (Join-Path $generatedOcticonRoot 'sprite.svg'), (Join-Path $generatedOcticonRoot 'preview.png') -Force -ErrorAction SilentlyContinue
-    $codiconGenerationOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconDirectory $generatedCodiconRoot 2>&1)
-    $codiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-    $octiconGenerationOutput = @(& pwsh -NoProfile -File $octiconGeneratorPath -IconDirectory $generatedOcticonRoot 2>&1)
-    $octiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-    $generatedCodiconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -Raw } else { '' }
-    $generatedOcticonSprite = if (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -Raw } else { '' }
-    $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and
-        [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq 70 -and
-        [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq 44 -and
-        (Test-PngFile -Path (Join-Path $generatedCodiconRoot 'preview.png')) -and
-        (Test-PngFile -Path (Join-Path $generatedOcticonRoot 'preview.png')) -and
-        -not (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'preview.svg')) -and
-        -not (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'preview.svg'))
-    $iconGenerationDetail = if ($portableIconGenerationValid) {
-        'Regenerated both icon-family sprites and valid PNG inventories through locked headless Puppeteer in temporary directories.'
+    if (Test-ShouldRun -Name 'portable-icon-generation') {
+        Start-TestResult -Name 'portable-icon-generation'
+        $iconGenerationRoot = Join-Path $tempRoot 'icon-generation'
+        $generatedCodiconRoot = Join-Path $iconGenerationRoot 'codicons'
+        $generatedOcticonRoot = Join-Path $iconGenerationRoot 'octicons'
+        New-Item -ItemType Directory -Path $iconGenerationRoot -Force | Out-Null
+        Copy-Item -LiteralPath $codiconRoot -Destination $generatedCodiconRoot -Recurse
+        Copy-Item -LiteralPath $octiconRoot -Destination $generatedOcticonRoot -Recurse
+        Remove-Item -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg'), (Join-Path $generatedCodiconRoot 'preview.png'), (Join-Path $generatedOcticonRoot 'sprite.svg'), (Join-Path $generatedOcticonRoot 'preview.png') -Force -ErrorAction SilentlyContinue
+        $codiconGenerationOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconDirectory $generatedCodiconRoot 2>&1)
+        $codiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        $octiconGenerationOutput = @(& pwsh -NoProfile -File $octiconGeneratorPath -IconDirectory $generatedOcticonRoot 2>&1)
+        $octiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        $generatedCodiconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -Raw } else { '' }
+        $generatedOcticonSprite = if (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -Raw } else { '' }
+        $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and
+            [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq 72 -and
+            [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq 44 -and
+            (Test-PngFile -Path (Join-Path $generatedCodiconRoot 'preview.png')) -and
+            (Test-PngFile -Path (Join-Path $generatedOcticonRoot 'preview.png')) -and
+            -not (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'preview.svg')) -and
+            -not (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'preview.svg'))
+        $iconGenerationDetail = if ($portableIconGenerationValid) {
+            'Regenerated both icon-family sprites and valid PNG inventories through locked headless Puppeteer in temporary directories.'
+        }
+        else {
+            "Codicon exit $codiconGenerationExitCode`: $(($codiconGenerationOutput | Out-String).Trim()); Octicon exit $octiconGenerationExitCode`: $(($octiconGenerationOutput | Out-String).Trim())"
+        }
+        Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
-    else {
-        "Codicon exit $codiconGenerationExitCode`: $(($codiconGenerationOutput | Out-String).Trim()); Octicon exit $octiconGenerationExitCode`: $(($octiconGenerationOutput | Out-String).Trim())"
-    }
-    Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
 
     $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"' -and $indexContent -match 'id="status-target"' -and $indexContent -match 'id="status-mapped"' -and $indexContent -match 'id="status-headroom"' -and $indexContent -notmatch 'id="metrics-band"|Refresh candidates' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'elements\["status-target"\]\.textContent' -and $appContent -match 'elements\["status-mapped"\]\.textContent' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML'
     $shutdownPresentationValid = $appContent -match '<div class="shutdown-brand-lockup">\s*<svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="' -and $appContent -match '<p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $appContent -match '<h1>Workbench Closed</h1>' -and $appContent -notmatch '<span class="brand-mark" aria-hidden="true">HR</span>'
@@ -769,9 +827,6 @@ try {
         $appContent -match 'buildApprovedMutation\(candidate\)' -and
         $appContent -notmatch 'new Date\(\)\.toISOString\(\)'
     Add-TestResult -Name 'browser-timestamp-normalization' -Passed $timestampNormalizationValid -Detail 'Workbench persistence and exports use one browser canonicalizer that matches the PowerShell seven-digit UTC wire format.'
-
-    $headedPlaybackValid = $playwrightRunnerContent -match 'args\.includes\("--shutdown-at-end"\)' -and $playwrightRunnerContent -match 'locator\("#close-button"\)\.click\(\)' -and $playwrightRunnerContent -match 'locator\("\.shutdown-state h1"\)' -and $headedPlaybackContent -match '\$ownedServer = -not \$Url' -and $headedPlaybackContent -match 'Port \$Port is already in use; choose an available port' -and $headedPlaybackContent -match '\$runnerArguments \+= ''--shutdown-at-end''' -and $headedPlaybackContent -match 'Wait-Job -Job \$serverJob -Timeout 10' -and $headedPlaybackContent -match 'Remove-Item -LiteralPath \$siteDirectory -Recurse -Force'
-    Add-TestResult -Name 'headed-playback-lifecycle' -Passed $headedPlaybackValid -Detail 'Visible Playwright playback owns its default server, fails closed on occupied ports, clicks Close Workbench, verifies shutdown, and cleans temporary staging while explicit URL attachment remains non-destructive.'
 
     $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and $launcherContent -match '\$repository\.fork -eq \$true' -and $launcherContent -match '\$repository\.parent\.full_name -eq ''hashicorp/terraform-provider-azurerm''' -and $launcherContent -match '\$comparisonOutput = @\(& \$ghCommand\.Source api' -and $launcherContent -match 'aheadBy = if \(\$null -ne \$comparison\)' -and $launcherContent -match 'behindBy = if \(\$null -ne \$comparison\)' -and $appContent -match 'function renderTarget\(' -and $appContent -match 'syncIndicators\.push\(`↓ \$\{behindBy\}`\)' -and $appContent -match 'syncIndicators\.push\(`↑ \$\{aheadBy\}`\)' -and $appContent -match 'classList\.toggle\("sync-behind", behindBy > 0\)' -and $appContent -match '\[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and $indexContent -match 'id="target-chip"[^>]*data-truncation-owner' -and $appContent -match 'node\.closest\("\[data-truncation-owner\]"\)' -and $stylesContent -match '\.target-chip\.sync-behind,\s*\.target-chip\.sync-behind:hover\s*\{[^}]*color:\s*var\(--gold\)' -and $stylesContent -match '#status-target\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis' -and $stylesContent -match '\.ide-statusbar\s*\{[^}]*cursor:\s*default;[^}]*user-select:\s*none' -and $appContent -match 'function renderSourceSummaryLabel\(' -and ([regex]::Matches($appContent, '\$\{renderSourceSummaryLabel\(sourceType,').Count -eq 2) -and $appContent -match 'data-source-provenance-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and $appContent -notmatch 'Contributor guidance source:' -and $stylesContent -match '\.source-summary-label\s*\{[^}]*gap:\s*8px' -and $stylesContent -match '\.source-provenance-pill\s*\{[^}]*color:\s*var\(--success\);[^}]*background:\s*var\(--success-soft\);[^}]*border:\s*1px solid var\(--success\)' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.candidate-source-root > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) 108px'
     $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and
@@ -1144,10 +1199,28 @@ try {
     $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and $launcherContent -match 'Find-AutomaticAssessmentRecoveryDirectory' -and $launcherContent -match 'Find-AutomaticReconciliationRecoveryDirectory' -and $launcherContent -match "assessmentRecoveryMode = 'AUTO'" -and $launcherContent -match "reconciliationRecoveryMode = 'AUTO'" -and $launcherContent -match '\[ValidateRange\(1, 8\)\]\s*\[int\]\$MaxParallelBatches = 3' -and $launcherContent -match 'MaxParallelBatches = \$MaxParallelBatches' -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Collection'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match 'Copy-FileAtomically' -and $launcherContent -match 'workbench-display\.json' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches collect, assess, reconcile, and stage one v4 display; an explicit DisplayPath remains a model-free staging path.'
 
-    $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
-    Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, rejects non-loopback Host values, serves only local runtime assets through GET and HEAD, and exposes one token-authenticated shutdown endpoint.'
+    if (Test-ShouldRun -Name 'loopback-read-only-server') {
+        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
+        Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The server binds to loopback, rejects non-loopback Host values, serves only local runtime assets through GET and HEAD, and exposes one token-authenticated shutdown endpoint.'
     }
 
+    $behaviorManifestValid = $true
+    if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-behavior-manifest', 'browser-playwright-journeys', 'browser-framework-coverage')) {
+        $behaviorManifestContent = Get-Content -LiteralPath $behaviorManifestPath -Raw
+        $behaviorManifest = $behaviorManifestContent | ConvertFrom-Json
+        $behaviorIds = @($behaviorManifest.behaviors | ForEach-Object { [string]$_.id })
+        $journeyPaths = @($behaviorManifest.behaviors | ForEach-Object { Join-Path $workbenchRegressionRoot ([string]$_.journey) } | Sort-Object -Unique)
+        $implementationContractContent = Get-Content -LiteralPath $implementationContractPath -Raw
+        $behaviorManifestValid = [bool]($behaviorManifestContent | Test-Json -SchemaFile $behaviorManifestSchemaPath -ErrorAction Stop) -and @($behaviorIds | Sort-Object -Unique).Count -eq $behaviorIds.Count -and @($journeyPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and @($behaviorIds | Where-Object { $implementationContractContent -notmatch [regex]::Escape($_) }).Count -eq 0
+        if (Test-ShouldRun -Name 'browser-behavior-manifest') {
+            Start-TestResult -Name 'browser-behavior-manifest'
+            Add-TestResult -Name 'browser-behavior-manifest' -Passed $behaviorManifestValid -Detail "Mapped $($behaviorIds.Count) authoritative Workbench behavior IDs to $($journeyPaths.Count) Playwright journeys."
+        }
+        if (-not $behaviorManifestValid) {
+            throw 'Workbench browser behavior manifest is invalid'
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in $serverTestNames) {
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
     $shutdownPort = ([Net.IPEndPoint]$portProbe.LocalEndpoint).Port
@@ -1178,19 +1251,6 @@ try {
             Add-TestResult -Name 'loopback-host-validation' -Passed $hostValidationValid -Detail 'An unrecognized Host cannot read staged Workbench files or the per-launch shutdown token through DNS rebinding.'
         }
         $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
-        $behaviorManifestContent = Get-Content -LiteralPath $behaviorManifestPath -Raw
-        $behaviorManifest = $behaviorManifestContent | ConvertFrom-Json
-        $behaviorIds = @($behaviorManifest.behaviors | ForEach-Object { [string]$_.id })
-        $journeyPaths = @($behaviorManifest.behaviors | ForEach-Object { Join-Path $workbenchRegressionRoot ([string]$_.journey) } | Sort-Object -Unique)
-        $implementationContractContent = Get-Content -LiteralPath $implementationContractPath -Raw
-        $behaviorManifestValid = [bool]($behaviorManifestContent | Test-Json -SchemaFile $behaviorManifestSchemaPath -ErrorAction Stop) -and @($behaviorIds | Sort-Object -Unique).Count -eq $behaviorIds.Count -and @($journeyPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and @($behaviorIds | Where-Object { $implementationContractContent -notmatch [regex]::Escape($_) }).Count -eq 0
-        if (Test-ShouldRun -Name 'browser-behavior-manifest') {
-            Start-TestResult -Name 'browser-behavior-manifest'
-            Add-TestResult -Name 'browser-behavior-manifest' -Passed $behaviorManifestValid -Detail "Mapped $($behaviorIds.Count) authoritative Workbench behavior IDs to $($journeyPaths.Count) Playwright journeys."
-        }
-        if (-not $behaviorManifestValid -and ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage'))) {
-            throw 'Workbench browser behavior manifest is invalid'
-        }
         $shutdownConfigContent = Get-Content -LiteralPath (Join-Path $shutdownSiteDirectory 'shutdown-config.js') -Raw
         if ($shutdownConfigContent -notmatch '"shutdownToken":"(?<token>[0-9a-f]{64})"') {
             throw 'staged shutdown token was not found'
@@ -1215,9 +1275,13 @@ try {
         }
         if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-playwright-journeys', 'browser-framework-coverage')) {
             if (Test-ShouldRun -Name 'browser-playwright-journeys') { Start-TestResult -Name 'browser-playwright-journeys' }
-            $playwrightArguments = @($playwrightRunnerPath, $shutdownUrl)
+            $playwrightResultPath = Join-Path $tempRoot 'playwright-result.json'
+            $playwrightArguments = @($playwrightRunnerPath, $shutdownUrl, '--result-file', $playwrightResultPath)
             if ($Journey -ne 'all') {
                 $playwrightArguments += @('--journey', $Journey)
+            }
+            if ($Headed) {
+                $playwrightArguments += @('--headed', '--transition-delay', '1000')
             }
             $selectedBehaviors = if ($Journey -eq 'all') {
                 @($behaviorManifest.behaviors)
@@ -1228,7 +1292,7 @@ try {
             $selectedJourneyCount = @($selectedBehaviors | ForEach-Object { [string]$_.journey } | Sort-Object -Unique).Count
             $playwrightOutput = @(& $nodeExecutable @playwrightArguments 2>&1)
             $playwrightExitCode = $LASTEXITCODE
-            $playwrightResult = if ($playwrightExitCode -eq 0) { ($playwrightOutput | Out-String) | ConvertFrom-Json } else { $null }
+            $playwrightResult = if ($playwrightExitCode -eq 0 -and (Test-Path -LiteralPath $playwrightResultPath -PathType Leaf)) { Get-Content -LiteralPath $playwrightResultPath -Raw | ConvertFrom-Json } else { $null }
             $selectedBehaviorIds = @($selectedBehaviors | ForEach-Object { [string]$_.id } | Sort-Object)
             $executedBehaviorIds = if ($null -ne $playwrightResult) {
                 @($playwrightResult.executedBehaviorIds | ForEach-Object { [string]$_ } | Sort-Object)
@@ -1237,7 +1301,8 @@ try {
                 @()
             }
             $behaviorExecutionValid = (@($selectedBehaviorIds) -join [char]0) -ceq (@($executedBehaviorIds) -join [char]0)
-            $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.journeyCount -eq $selectedJourneyCount -and $playwrightResult.behaviorCount -eq $selectedBehaviors.Count -and $behaviorExecutionValid -and $playwrightResult.assertionCount -gt 0
+            $expectedPlaywrightMode = if ($Headed) { 'headed' } else { 'headless' }
+            $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.mode -eq $expectedPlaywrightMode -and $playwrightResult.journeyCount -eq $selectedJourneyCount -and $playwrightResult.behaviorCount -eq $selectedBehaviors.Count -and $behaviorExecutionValid -and $playwrightResult.assertionCount -gt 0
             if ($Journey -eq 'all') {
                 $playwrightValid = $playwrightValid -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9 -and $playwrightResult.shutdownVerified
             }
@@ -1246,8 +1311,14 @@ try {
             }
         }
         if (Test-ShouldRun -Name 'browser-framework-coverage') {
-            $browserCoverageValid = $playwrightValid -and $layoutValid -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
-            Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
+            $browserCoverageValid = $playwrightValid -and $layoutValid -and $null -ne $playwrightResult -and $null -ne $layoutTestResult -and $playwrightResult.viewportCount -eq $layoutTestResult.viewportCount -and $playwrightResult.viewportAssertionCount -eq $layoutTestResult.assertionCount
+            $browserCoverageDetail = if ($browserCoverageValid) {
+                "Playwright and Puppeteer each passed $($layoutTestResult.assertionCount) current-behavior assertions across $($layoutTestResult.viewportCount) viewport boundaries."
+            }
+            else {
+                'Playwright and Puppeteer coverage could not be matched because one or both prerequisite browser suites failed.'
+            }
+            Add-TestResult -Name 'browser-framework-coverage' -Passed $browserCoverageValid -Detail $browserCoverageDetail
         }
         $uiShutdownVerified = $null -ne $playwrightResult -and $playwrightResult.shutdownVerified
         if ($uiShutdownVerified) {
@@ -1273,8 +1344,9 @@ try {
         }
         Remove-Job -Job $serverJob -Force
     }
+    }
 
-    if ([string]::IsNullOrWhiteSpace($Run)) {
+    if (Test-ShouldRun -Name 'repository-staging-rejected') {
         $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
         Start-TestResult -Name 'repository-staging-rejected'
         $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -DisplayPath $displayPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)

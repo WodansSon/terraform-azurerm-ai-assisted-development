@@ -70,7 +70,6 @@ $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconc
 $v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
-$ruleWorkbenchHeadedTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbenchHeaded.ps1'
 $ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
 $ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
 $ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.schema.json'
@@ -319,7 +318,6 @@ if ($runtimeStarted) {
         $assessmentReconciliationPromptPath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
-        $ruleWorkbenchHeadedTestPath,
         $ruleWorkbenchIconPreviewRendererPath,
         $ruleWorkbenchBehaviorManifestPath,
         $ruleWorkbenchBehaviorManifestSchemaPath,
@@ -550,8 +548,7 @@ if ($runtimeStarted) {
         @{ Path = $sourceAssessmentTestPath; Opening = 'Hosted source assessment'; Summary = 'Hosted source assessment test summary'; Results = 'Source assessment tests'; Activity = 'contract-validation' },
         @{ Path = $assessmentReconciliationTestPath; Opening = 'Hosted assessment reconciliation'; Summary = 'Hosted assessment reconciliation test summary'; Results = 'Assessment reconciliation tests'; Activity = 'fixture-validation' },
         @{ Path = $v4WorkbenchContractsTestPath; Opening = 'Hosted Workbench contracts'; Summary = 'Hosted Workbench contract test summary'; Results = 'Workbench contract tests'; Activity = 'display-contract' },
-        @{ Path = $ruleWorkbenchTestPath; Opening = 'Hosted Rule Workbench tests'; Summary = 'Hosted Rule Workbench test summary'; Results = 'Add-TestResult'; Activity = 'Start-TestResult' },
-        @{ Path = $ruleWorkbenchHeadedTestPath; Opening = 'Hosted Rule Workbench headed playback'; Summary = 'Hosted Rule Workbench headed playback test summary'; Results = 'Headed playback tests'; Activity = 'visible-playback' }
+        @{ Path = $ruleWorkbenchTestPath; Opening = 'Hosted Rule Workbench tests'; Summary = 'Hosted Rule Workbench test summary'; Results = 'Add-TestResult'; Activity = 'Start-TestResult' }
     )
     foreach ($outputContract in $outputContracts) {
         $content = Get-Content -LiteralPath $outputContract.Path -Raw

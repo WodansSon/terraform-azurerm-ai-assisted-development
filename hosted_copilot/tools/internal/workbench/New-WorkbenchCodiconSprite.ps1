@@ -52,8 +52,10 @@ $iconNames = @(
     'folder-opened',
     'folder-opened-compact',
     'git-branch-compact',
+    'git-branch-conflicts',
     'git-commit',
     'git-pull-request-draft',
+    'git-pull-request-error',
     'git-stash-apply',
     'graph',
     'inbox',
@@ -115,7 +117,7 @@ $sprite = @(
     '</svg>'
 ) -join "`n"
 $spritePath = Join-Path $IconDirectory 'sprite.svg'
-Set-Content -LiteralPath $spritePath -Value $sprite -Encoding utf8NoBOM
+[IO.File]::WriteAllText($spritePath, $sprite + "`n", [Text.UTF8Encoding]::new($false))
 $previewPngPath = New-WorkbenchIconPreview -IconDirectory $IconDirectory -FamilyName 'Visual Studio Code Codicons' -Commit $commit -SymbolPrefix 'codicon' -IconNames $iconNames
 
 [pscustomobject]@{

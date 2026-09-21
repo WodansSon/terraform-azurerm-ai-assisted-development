@@ -819,6 +819,31 @@ button.assessment-override-pill {
   min-height: 48px;
 }
 
+.plan-heading-controls,
+.plan-conflict-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.plan-heading-controls {
+  gap: 4px;
+}
+
+.plan-conflict-indicator {
+  height: 26px;
+  gap: 5px;
+  padding: 0 7px;
+  color: var(--warning-foreground);
+  background: var(--warning-action-background);
+  border: 1px solid var(--warning-action-border);
+  border-radius: 4px;
+}
+
+.stage-link.reconciliation-blocked,
+.stage-link.reconciliation-blocked:hover {
+  color: var(--warning-foreground);
+}
+
 #candidate-panel > .panel-heading,
 #assessment-results-list-panel > .panel-heading {
   padding: 12px 14px;
@@ -3819,6 +3844,43 @@ html.theme-hosted-dark body .stage-count-badge {
 .workspace {
   padding: 8px;
   background: var(--paper);
+}
+
+.workspace.has-reconciliation-conflicts {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.workspace.has-reconciliation-conflicts > .view.active {
+  min-height: 0;
+}
+
+.reconciliation-conflict-banner {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--warning-action-background);
+  border: 1px solid var(--warning-action-border);
+  border-left-width: 3px;
+}
+
+.reconciliation-conflict-banner > .codicon {
+  width: 20px;
+  height: 20px;
+  color: var(--warning-foreground);
+}
+
+.reconciliation-conflict-banner strong,
+.reconciliation-conflict-banner p {
+  margin: 0;
+}
+
+.reconciliation-conflict-banner p {
+  margin-top: 2px;
+  color: var(--muted);
 }
 
 .ide-statusbar {

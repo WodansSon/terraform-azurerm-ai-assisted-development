@@ -57,7 +57,7 @@
         <span class="sr-only">Eligible Candidates</span>
       </button>
       <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" data-workbench-tooltip="Promotion Plan (0)" aria-label="Promotion Plan (0)">
-        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
+        <svg class="codicon" aria-hidden="true"><use id="promotion-plan-stage-icon" href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
         <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
         <span class="sr-only">Promotion Plan</span>
       </button>
@@ -67,7 +67,14 @@
       </button>
     </aside>
 
-    <main class="workspace">
+    <main class="workspace" id="workspace">
+      <section class="reconciliation-conflict-banner" id="reconciliation-conflict-banner" role="status" hidden>
+        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-warning"></use></svg>
+        <div>
+          <strong id="reconciliation-conflict-title">Reconciliation conflicts require maintainer review</strong>
+          <p id="reconciliation-conflict-detail"></p>
+        </div>
+      </section>
       <section class="view active" id="catalog-view" data-view-panel="catalog">
         <div class="catalog-toolbar">
           <label class="search-field">
@@ -156,6 +163,10 @@
         <div class="page-heading">
           <h2>Promotion Plan:</h2>
           <div class="plan-heading-controls">
+            <span class="plan-conflict-indicator" id="plan-conflict-indicator" hidden>
+              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-conflicts"></use></svg>
+              <span id="plan-conflict-count"></span>
+            </span>
             <button class="titlebar-icon clickable" id="return-catalog-button" type="button" aria-label="Return to catalog" data-workbench-tooltip="Return to catalog">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
             </button>

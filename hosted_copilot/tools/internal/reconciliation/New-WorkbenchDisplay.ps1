@@ -24,7 +24,9 @@ param(
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [switch]$AllowConflicts
 )
 
 Set-StrictMode -Version Latest
@@ -361,8 +363,72 @@ if ($missingCoverage.Count -ne 0) {
 }
 
 $orderedDraftRecommendations = @($draftRecommendations.Values | Sort-Object -Property @{ Expression = { [string]$_.category } }, @{ Expression = { [string]$_.placement } }, @{ Expression = { [string]$_.idFamily } }, @{ Expression = { [string]$_.targetHostedId } }, @{ Expression = { [string]$_.title } }, @{ Expression = { [string]$_.draftKey } })
+$duplicateTargetGroups = @($orderedDraftRecommendations |
+    Where-Object { $null -ne $_.targetHostedId } |
+    Group-Object -Property { [string]$_.targetHostedId } |
+    Where-Object { $_.Count -gt 1 } |
+    Sort-Object -Property Name)
+if ($duplicateTargetGroups.Count -gt 0 -and -not $AllowConflicts) {
+    throw "More than one recommendation owns Hosted ID $($duplicateTargetGroups[0].Name)"
+}
+$conflictDraftKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$conflictIdByDraftKey = @{}
+$reconciliationConflicts = [Collections.Generic.List[object]]::new()
+foreach ($targetGroup in $duplicateTargetGroups) {
+    $targetHostedId = [string]$targetGroup.Name
+    $conflictId = "duplicate-target:$targetHostedId"
+    $conflictRecommendations = [Collections.Generic.List[object]]::new()
+    foreach ($recommendation in @($targetGroup.Group | Sort-Object -Property draftKey)) {
+        $draftKey = [string]$recommendation.draftKey
+        $null = $conflictDraftKeys.Add($draftKey)
+        $conflictIdByDraftKey[$draftKey] = $conflictId
+        $memberAssessments = [Collections.Generic.List[object]]::new()
+        foreach ($reference in @($recommendation.memberAssessmentRefs)) {
+            $assessmentKey = Get-AssessmentKey -Reference $reference
+            $member = $assessments[$assessmentKey].assessment
+            $memberAssessments.Add([ordered]@{
+                key = Get-DisplayAssessmentKey -Reference $reference
+                sourceDefinitionId = [string]$reference.sourceDefinitionId
+                sourceId = [string]$reference.sourceId
+                contentSha256 = [string]$reference.contentSha256
+                assessmentId = [string]$reference.assessmentId
+                title = [string]$member.title
+                sourceMeaning = [string]$member.sourceMeaning
+                impactDescription = [string]$member.impactDescription
+                sourceLocalProposedText = [string]$member.sourceLocalProposedText
+                relatedHostedCoverage = @($member.relatedHostedCoverage | ForEach-Object {
+                    [ordered]@{
+                        hostedRuleId = [string]$_.hostedRuleId
+                        relationship = [string]$_.relationship
+                        rationale = [string]$_.rationale
+                    }
+                })
+            })
+        }
+        $conflictRecommendations.Add([ordered]@{
+            draftKey = $draftKey
+            action = [string]$recommendation.recommendedAction
+            title = [string]$recommendation.title
+            ruleText = [string]$recommendation.recommendedRuleText
+            category = [string]$recommendation.category
+            placement = [string]$recommendation.placement
+            rationale = [string]$recommendation.rationale
+            needsReview = $true
+            memberAssessments = $memberAssessments.ToArray()
+        })
+    }
+    $reconciliationConflicts.Add([ordered]@{
+        id = $conflictId
+        kind = 'duplicate-target-ownership'
+        targetHostedId = $targetHostedId
+        existingRuleText = [string]$catalogRules[$targetHostedId].text
+        validationError = "More than one recommendation owns Hosted ID $targetHostedId"
+        recommendations = $conflictRecommendations.ToArray()
+    })
+}
+$activeDraftRecommendations = $orderedDraftRecommendations
 $hostedIdByDraftKey = @{}
-foreach ($recommendation in $orderedDraftRecommendations) {
+foreach ($recommendation in $activeDraftRecommendations) {
     $draftKey = [string]$recommendation.draftKey
     if ($null -ne $recommendation.targetHostedId) {
         $hostedId = [string]$recommendation.targetHostedId
@@ -381,14 +447,14 @@ foreach ($recommendation in $orderedDraftRecommendations) {
     if (-not $occupiedHostedIds.Add($hostedId) -and $null -eq $recommendation.targetHostedId) {
         throw "Hosted ID allocation produced a duplicate ID: $hostedId"
     }
-    if ($hostedIdByDraftKey.Values -contains $hostedId) {
+    if ($hostedIdByDraftKey.Values -contains $hostedId -and -not ($AllowConflicts -and $conflictDraftKeys.Contains($draftKey))) {
         throw "More than one recommendation owns Hosted ID $hostedId"
     }
     $hostedIdByDraftKey[$draftKey] = $hostedId
 }
 
 $recommendationsByDraftKey = @{}
-foreach ($recommendation in $orderedDraftRecommendations) {
+foreach ($recommendation in $activeDraftRecommendations) {
     $draftKey = [string]$recommendation.draftKey
     $hostedId = [string]$hostedIdByDraftKey[$draftKey]
     $currentText = ''
@@ -575,12 +641,17 @@ foreach ($entry in @($baseline.entries)) {
         if (-not $displaySource.Contains('surface') -and @($assessment.affectedSurfaces).Count -eq 1 -and [string]$assessment.affectedSurfaces[0] -in @('implementation', 'testing', 'documentation')) {
             $displaySource['surface'] = [string]$assessment.affectedSurfaces[0]
         }
-        $candidates.Add([ordered]@{
+        $displayCandidate = [ordered]@{
             source = $displaySource
             assessment = $displayAssessment
             reviewState = [string]$coverage.disposition
             recommendation = $recommendation
-        })
+        }
+        if ($conflictIdByDraftKey.ContainsKey($draftKey)) {
+            $displayCandidate['conflictId'] = [string]$conflictIdByDraftKey[$draftKey]
+            $displayCandidate['conflictDraftKey'] = $draftKey
+        }
+        $candidates.Add($displayCandidate)
     }
 }
 
@@ -628,6 +699,10 @@ $display = [ordered]@{
     generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     readOnly = $true
     inputFingerprint = $inputFingerprint
+    reconciliation = [ordered]@{
+        status = if ($reconciliationConflicts.Count -gt 0) { 'blocked' } else { 'ready' }
+        conflicts = $reconciliationConflicts.ToArray()
+    }
     candidates = @($candidates | Sort-Object -Property @{ Expression = { [string]$_.source.lane + [char]0 + [string]$_.source.id + [char]0 + [string]$_.assessment.id } })
     catalog = [ordered]@{
         contentSha256 = $catalogInput.Snapshot.Sha256
@@ -645,17 +720,18 @@ if (-not $displayValid) {
 $outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $display
 
 $result = [ordered]@{
-    status = 'passed'
+    status = if ($reconciliationConflicts.Count -gt 0) { 'blocked' } else { 'passed' }
     outputPath = $resolvedOutputPath
     candidateCount = $display.candidates.Count
     recommendationCount = $recommendationsByDraftKey.Count
+    conflictCount = $reconciliationConflicts.Count
     displaySha256 = $outputSnapshot.Sha256
 }
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Workbench display generated: $($result.candidateCount) candidates, $($result.recommendationCount) recommendations"
+    Write-Output "Workbench display generated with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations, $($result.conflictCount) conflicts"
     Write-Output "Output: $($result.outputPath)"
     Write-Output "Display SHA-256: $($result.displaySha256)"
 }

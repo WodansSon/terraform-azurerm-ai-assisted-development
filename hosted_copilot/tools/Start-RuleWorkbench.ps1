@@ -466,6 +466,8 @@ $result = [ordered]@{
     discoveredCandidateCount = $stagedCandidates.Count
     evaluatedCandidateCount = $stagedCandidates.Count
     ruleCandidateCount = $stagedCandidates.Count
+    reconciliationStatus = [string]$stagedDisplay.reconciliation.status
+    reconciliationConflictCount = @($stagedDisplay.reconciliation.conflicts).Count
     capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
     readOnly = $true
@@ -491,6 +493,7 @@ if ($StageOnly) {
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
+            Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -570,6 +573,7 @@ try {
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
+            Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'

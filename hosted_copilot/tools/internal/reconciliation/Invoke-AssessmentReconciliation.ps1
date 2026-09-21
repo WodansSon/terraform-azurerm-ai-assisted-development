@@ -106,6 +106,31 @@ function Get-ReconciliationBaselineIdentityJson {
     return $baseline | ConvertTo-Json -Depth 100 -Compress
 }
 
+function Save-ReconciliationAttemptFailure {
+    param(
+        [Parameter(Mandatory = $true)][object]$Batch,
+        [Parameter(Mandatory = $true)][int]$Attempt,
+        [Parameter(Mandatory = $true)][string]$ErrorMessage,
+        [Parameter(Mandatory = $true)][string]$ResponsePath
+    )
+
+    $attemptDirectory = Join-Path $Batch.Directory ('attempts/attempt-{0:D3}' -f $Attempt)
+    $null = New-Item -ItemType Directory -Path $attemptDirectory -Force
+    if (Test-Path -LiteralPath $ResponsePath -PathType Leaf) {
+        [IO.File]::WriteAllBytes((Join-Path $attemptDirectory 'assessment-reconciliation-draft.json'), [IO.File]::ReadAllBytes($ResponsePath))
+    }
+    $failure = [ordered]@{
+        schemaVersion = 1
+        kind = 'hosted-assessment-reconciliation-attempt-failure'
+        batchNumber = [int]$Batch.Number
+        sourceDefinitionId = [string]$Batch.SourceDefinitionId
+        attempt = $Attempt
+        failedAt = ConvertTo-UtcTimestamp -Value ([DateTime]::UtcNow)
+        validationError = $ErrorMessage
+    }
+    [IO.File]::WriteAllText((Join-Path $attemptDirectory 'failure.json'), (($failure | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+}
+
 function New-ReconciliationBatchBaselines {
     param(
         [Parameter(Mandatory = $true)][object]$Baseline,
@@ -489,6 +514,7 @@ try {
                 }
             }
             catch {
+                Save-ReconciliationAttemptFailure -Batch $batch -Attempt $attempt -ErrorMessage ([string]$_.Exception.Message) -ResponsePath $batchResponsePath
                 Remove-Item -LiteralPath $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
                 $batchErrors[[int]$batch.Number] = [string]$_.Exception.Message
                 $retryBatches.Add($batch)
@@ -552,6 +578,7 @@ try {
         ReconciliationContractPath = $snapshotContractPath
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
+        AllowConflicts = $true
     }
     try {
         $builderOutput = @(& $snapshotBuilderPath @builderParameters 2>&1)
@@ -561,7 +588,12 @@ try {
     }
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
     if (-not $Quiet) {
-        Write-Host '[PASSED]   assessment-reconciliation/display   : Workbench display built'
+        if ([string]$builderResult.status -ceq 'blocked') {
+            Write-Host ("[BLOCKED]  assessment-reconciliation/display   : Workbench display built with {0} unresolved conflicts" -f [int]$builderResult.conflictCount)
+        }
+        else {
+            Write-Host '[PASSED]   assessment-reconciliation/display   : Workbench display built'
+        }
     }
     $succeeded = $true
 }
@@ -580,13 +612,14 @@ finally {
 }
 
 $result = [ordered]@{
-    status = 'passed'
+    status = [string]$builderResult.status
     outputPath = $resolvedOutputPath
     batchCount = $reconciliationBatches.Count
     reusedBatchCount = $reusedBatchCount
     evaluatedBatchCount = $reconciliationBatches.Count - $reusedBatchCount
     candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
+    conflictCount = [int]$builderResult.conflictCount
     evaluator = $evaluatorIdentity
     displaySha256 = [string]$builderResult.displaySha256
 }
@@ -594,7 +627,7 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Assessment reconciliation completed: $($result.candidateCount) candidates, $($result.recommendationCount) recommendations"
+    Write-Output "Assessment reconciliation completed with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations, $($result.conflictCount) conflicts"
     Write-Output "Output: $($result.outputPath)"
     Write-Output "Display SHA-256: $($result.displaySha256)"
 }

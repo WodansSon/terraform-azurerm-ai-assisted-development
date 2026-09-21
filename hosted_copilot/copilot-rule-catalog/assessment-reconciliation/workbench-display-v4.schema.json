@@ -4,7 +4,7 @@
   "title": "Hosted Rule Workbench Display Version 4",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "kind", "generatedAt", "readOnly", "inputFingerprint", "candidates", "catalog", "guidanceCapacity"],
+  "required": ["$schema", "schemaVersion", "kind", "generatedAt", "readOnly", "inputFingerprint", "reconciliation", "candidates", "catalog", "guidanceCapacity"],
   "properties": {
     "$schema": { "const": "workbench-display-v4.schema.json" },
     "schemaVersion": { "const": 4 },
@@ -12,6 +12,7 @@
     "generatedAt": { "type": "string", "format": "date-time" },
     "readOnly": { "const": true },
     "inputFingerprint": { "$ref": "#/$defs/sha256" },
+    "reconciliation": { "$ref": "#/$defs/reconciliation" },
     "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
     "catalog": { "$ref": "#/$defs/catalog" },
     "guidanceCapacity": { "$ref": "#/$defs/guidanceCapacity" }
@@ -91,6 +92,68 @@
         "rationale": { "type": "string", "minLength": 1 }
       }
     },
+    "conflictAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "sourceDefinitionId", "sourceId", "contentSha256", "assessmentId", "title", "sourceMeaning", "impactDescription", "sourceLocalProposedText", "relatedHostedCoverage"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "sourceDefinitionId": { "enum": ["contributor-guidance", "interactive-toolkit", "maintainer-proposals"] },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "assessmentId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "sourceMeaning": { "type": "string", "minLength": 1 },
+        "impactDescription": { "type": "string", "minLength": 1 },
+        "sourceLocalProposedText": { "type": "string", "minLength": 1 },
+        "relatedHostedCoverage": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedCoverage" } }
+      }
+    },
+    "conflictRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftKey", "action", "title", "ruleText", "category", "placement", "rationale", "needsReview", "memberAssessments"],
+      "properties": {
+        "draftKey": { "type": "string", "pattern": "^recommendation-[1-9][0-9]*$" },
+        "action": { "enum": ["update", "no-change", "defer"] },
+        "title": { "type": "string", "minLength": 1 },
+        "ruleText": { "type": "string", "minLength": 1 },
+        "category": { "enum": ["implementation", "testing", "documentation"] },
+        "placement": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "needsReview": { "type": "boolean" },
+        "memberAssessments": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/conflictAssessment" } }
+      }
+    },
+    "reconciliationConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "targetHostedId", "existingRuleText", "validationError", "recommendations"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^duplicate-target:[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+        "kind": { "const": "duplicate-target-ownership" },
+        "targetHostedId": { "$ref": "#/$defs/hostedId" },
+        "existingRuleText": { "type": "string", "minLength": 1 },
+        "validationError": { "type": "string", "minLength": 1 },
+        "recommendations": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/conflictRecommendation" } }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "conflicts"],
+      "properties": {
+        "status": { "enum": ["ready", "blocked"] },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/reconciliationConflict" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "ready" } }, "required": ["status"] },
+          "then": { "properties": { "conflicts": { "maxItems": 0 } } },
+          "else": { "properties": { "conflicts": { "minItems": 1 } } }
+        }
+      ]
+    },
     "assessment": {
       "type": "object",
       "additionalProperties": false,
@@ -149,7 +212,13 @@
         "source": { "$ref": "#/$defs/source" },
         "assessment": { "$ref": "#/$defs/assessment" },
         "reviewState": { "enum": ["recommended", "deferred", "excluded"] },
-        "recommendation": { "$ref": "#/$defs/recommendation" }
+        "recommendation": { "$ref": "#/$defs/recommendation" },
+        "conflictId": { "type": "string", "pattern": "^duplicate-target:[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+        "conflictDraftKey": { "type": "string", "pattern": "^recommendation-[1-9][0-9]*$" }
+      },
+      "dependentRequired": {
+        "conflictId": ["conflictDraftKey"],
+        "conflictDraftKey": ["conflictId"]
       },
       "allOf": [
         {
