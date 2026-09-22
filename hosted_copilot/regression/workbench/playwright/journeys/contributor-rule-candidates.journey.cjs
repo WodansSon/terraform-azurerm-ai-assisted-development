@@ -106,84 +106,28 @@ async function run({ page, baseUrl, assert, playback }) {
     syncAssessmentActionControls(candidate);
   }, structure.addCandidate);
 
-  const proposedIdField = page.getByRole("textbox", { name: "Proposed Hosted Rule ID:" });
-  const proposedIdStatus = page.locator("#proposed-hosted-rule-id-status");
-  const proposedIdCounter = page.locator("#proposed-hosted-rule-id-limit");
-  assert(await proposedIdField.inputValue() === "REVIEW-REPO-001", "Add candidate does not initialize from its persisted assessment identity");
-  assert(await proposedIdField.getAttribute("maxlength") === "32", "proposed Hosted rule ID does not enforce the 32-character limit");
-  assert(await proposedIdStatus.innerText() === "Proposed Hosted Rule ID is valid.", "persisted proposed Hosted rule ID is not initially valid");
-  assert((await proposedIdStatus.locator("use").getAttribute("href"))?.endsWith("#codicon-check-compact"), "valid proposed Hosted rule ID does not use the compact check icon");
+  const generatedId = "REVIEW-REPO-001";
+  const identityReadout = page.locator("#assessment-panel .rule-action-header .detail-identity");
+  assert((await identityReadout.innerText()).replace(/\s+/g, " ") === `RULE: ${generatedId}`, "Add candidate does not show its generated Hosted identity in the embedded Rule Actions header");
+  assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').count() === 0, "Details still exposes a maintainer-editable Hosted rule ID control");
 
-  await proposedIdField.fill("IMPL-PATCH-001");
-  await page.waitForTimeout(350);
-  assert((await proposedIdStatus.innerText()).includes("already assigned to an existing Hosted rule"), "catalog collision does not report the existing-rule reason");
-  assert((await proposedIdStatus.locator("use").getAttribute("href"))?.endsWith("#codicon-circle-slash-compact"), "invalid proposed Hosted rule ID does not use the compact circle-slash icon");
-  const blocked = await page.evaluate((candidateKey) => {
-    const candidate = state.candidates.find((item) => item.key === candidateKey);
-    return { plan: getPlanReadiness(candidate), preview: getPreviewReadiness() };
-  }, structure.addCandidate);
-  assert(!blocked.plan.ready && blocked.plan.label === "Needs valid rule ID" && !blocked.preview.ready, "catalog collision does not block plan and approval readiness");
-
-  const fullLengthId = "IMPLEMENTATION-EVID-RULESETS-001";
-  await proposedIdField.fill("CUSTOM-EVID-001");
-  await page.waitForTimeout(350);
-  assert(await proposedIdStatus.innerText() === "Proposed Hosted Rule ID is valid.", "collision state did not return to valid before debounce testing");
-  await proposedIdField.click();
-  await proposedIdField.press("Control+A");
-  const mutationCount = await page.evaluate(() => {
-    globalThis.__proposedIdStatusMutationCount = 0;
-    globalThis.__proposedIdStatusObserver = new MutationObserver(() => { globalThis.__proposedIdStatusMutationCount += 1; });
-    globalThis.__proposedIdStatusObserver.observe(document.querySelector("#proposed-hosted-rule-id-status"), { childList: true, subtree: true, characterData: true, attributes: true });
-    return globalThis.__proposedIdStatusMutationCount;
-  });
-  assert(mutationCount === 0, "proposed Hosted rule ID mutation observer did not initialize cleanly");
-  await proposedIdField.pressSequentially(fullLengthId, { delay: 10 });
-  assert(await proposedIdCounter.innerText() === "32 / 32 characters", "character count does not update immediately at the maximum length");
-  await page.waitForTimeout(350);
-  const boundary = await page.evaluate(() => {
-    globalThis.__proposedIdStatusObserver.disconnect();
-    const input = document.querySelector("#proposed-hosted-rule-id");
-    const status = document.querySelector("#proposed-hosted-rule-id-status");
-    const counter = document.querySelector("#proposed-hosted-rule-id-limit");
-    const inputStyle = getComputedStyle(input);
-    const rationaleStyle = getComputedStyle(document.querySelector('[data-decision-field="rationale"]'));
-    const statusRect = status.getBoundingClientRect();
-    const counterRect = counter.getBoundingClientRect();
-    return {
-      valueLength: input.value.length,
-      status: status.innerText,
-      mutationCount: globalThis.__proposedIdStatusMutationCount,
-      overlap: statusRect.right > counterRect.left && statusRect.bottom > counterRect.top && statusRect.top < counterRect.bottom,
-      metadataOverflow: status.parentElement.scrollWidth > status.parentElement.clientWidth,
-      inputOverflow: input.scrollWidth > input.clientWidth,
-      stylesMatch: inputStyle.backgroundColor === rationaleStyle.backgroundColor
-        && inputStyle.borderColor === rationaleStyle.borderColor
-        && inputStyle.color === rationaleStyle.color
-        && inputStyle.padding === rationaleStyle.padding
-        && inputStyle.borderRadius === rationaleStyle.borderRadius
-    };
-  });
-  assert(boundary.valueLength === 32 && boundary.status === "Proposed Hosted Rule ID is valid.", "full-length valid proposed Hosted rule ID was not retained");
-  assert(boundary.mutationCount === 0, "unchanged valid feedback flickered while entering a valid proposed Hosted rule ID");
-  assert(!boundary.overlap && !boundary.metadataOverflow && !boundary.inputOverflow, "32-character proposed Hosted rule ID overlaps or overflows at 768px");
-  assert(boundary.stylesMatch, "proposed Hosted rule ID field does not match Decision Rationale control colors and geometry");
-
-  const propagated = await page.evaluate(({ candidateKey, fullLengthId }) => {
+  const propagated = await page.evaluate(({ candidateKey, generatedId }) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
     const treeId = document.querySelector(`[data-candidate-key="${CSS.escape(candidateKey)}"] .candidate-tree-copy strong`)?.textContent;
     const detailId = document.querySelector("#assessment-panel > .assessment-title .detail-identity span:last-child")?.textContent;
+    const readoutId = document.querySelector("#assessment-panel .rule-action-header .detail-identity span:last-child")?.textContent;
     switchView("plan");
     const planId = document.querySelector(`[data-plan-row="${CSS.escape(candidateKey)}"] .candidate-link`)?.textContent;
     switchView("preview");
     const previewId = [...document.querySelectorAll(".preview-proposed-review [data-preview-file-path]")]
-      .find((item) => item.dataset.previewFilePath === `rules/${fullLengthId}.md`)
+      .find((item) => item.dataset.previewFilePath === `rules/${generatedId}.md`)
       ?.dataset.previewFilePath.replace(/^rules\//, "").replace(/\.md$/, "");
-    const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === fullLengthId);
-    return { treeId, detailId, planId, previewId, mutation, readiness: getPreviewReadiness() };
-  }, { candidateKey: structure.addCandidate, fullLengthId });
-  assert([propagated.treeId, propagated.detailId, propagated.planId, propagated.previewId].every((value) => value === fullLengthId), "accepted proposed Hosted rule ID does not propagate across Workbench views");
-  assert(propagated.mutation.action === "add" && propagated.mutation.rule.id === fullLengthId && propagated.mutation.rule.origin === "hosted-catalog-addition", "approved Add mutation does not preserve the assigned Hosted identity");
-  assert(propagated.readiness.ready, "valid proposed Hosted rule ID does not restore approval readiness");
+    const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === generatedId);
+    return { treeId, detailId, readoutId, planId, previewId, mutation, readiness: getPreviewReadiness() };
+  }, { candidateKey: structure.addCandidate, generatedId });
+  assert([propagated.treeId, propagated.detailId, propagated.readoutId, propagated.planId, propagated.previewId].every((value) => value === generatedId), "builder-generated Hosted rule ID does not propagate unchanged across Workbench views");
+  assert(propagated.mutation.action === "add" && propagated.mutation.rule.id === generatedId && propagated.mutation.rule.origin === "hosted-catalog-addition", "approved Add mutation does not preserve the builder-generated Hosted identity");
+  assert(propagated.readiness.ready, "builder-generated Hosted identity does not satisfy approval readiness");
 
   await page.evaluate(async (candidateKey) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
@@ -202,7 +146,7 @@ async function run({ page, baseUrl, assert, playback }) {
     });
     syncAssessmentActionControls(candidate);
   }, structure.updateCandidate);
-  const mappedProposedIdField = page.getByRole("textbox", { name: "Proposed Hosted Rule ID:" });
+  const mappedIdentityReadout = page.locator("#assessment-panel .rule-action-header .detail-identity span:last-child");
   const mappedIdentity = await page.evaluate((candidateKey) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
     const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === candidate.assessment.targetHostedRuleId);
@@ -219,7 +163,7 @@ async function run({ page, baseUrl, assert, playback }) {
       readiness
     };
   }, structure.updateCandidate);
-  assert(await mappedProposedIdField.inputValue() === "IMPL-PATCH-001" && await mappedProposedIdField.isEditable() === false, "mapped update does not expose its generated proposal identity as the immutable target ID");
+  assert(await mappedIdentityReadout.innerText() === "IMPL-PATCH-001", "mapped update does not expose its generated proposal identity as the immutable target ID");
   assert(mappedIdentity.mutation.action === "update" && mappedIdentity.mutation.rule.id === "IMPL-PATCH-001", "mapped Update mutation does not preserve the existing Hosted identity");
   assert(mappedIdentity.readiness.ready, "mapped update proposal identity does not satisfy plan readiness when another assessment references the same target");
 

@@ -13,6 +13,8 @@ Import-Module -Name $validationOutputModulePath -Force
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../modules/shared/SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
+$helpersModulePath = Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersModulePath -Force
 $assessmentRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $builderPath = Join-Path $PSScriptRoot '../internal/assessment/New-SourceAssessmentBaseline.ps1'
 $runnerPath = Join-Path $PSScriptRoot '../internal/assessment/Invoke-SourceAssessment.ps1'
@@ -375,7 +377,7 @@ try {
     }
     $interactiveContent = 'Interactive review behavior.'
     $interactiveRecords = @([ordered]@{
-        sourceId = 'REVIEW-TEST-001'
+        sourceId = 'IMPL-EVID-001'
         presence = 'present'
         sourceLifecycle = 'active'
         location = '.github/instructions/code-review-compliance-contract.instructions.md'
@@ -427,7 +429,7 @@ try {
             [ordered]@{
                 sourceRef = [ordered]@{
                     sourceDefinitionId = 'interactive-toolkit'
-                    sourceId = 'REVIEW-TEST-001'
+                    sourceId = 'IMPL-EVID-001'
                     contentSha256 = [string]$interactiveRecords[0].contentSha256
                 }
                 assessments = @(New-Assessment -AssessmentId 'interactive-review')
@@ -557,6 +559,10 @@ try {
     $runnerContent = Get-Content -LiteralPath $runnerPath -Raw
     $runnerConstrained = $runnerContent -match '--available-tools=view' -and $runnerContent -match '--output-format json' -and $runnerContent -match '--disallow-temp-dir' -and $runnerContent -match '--no-custom-instructions' -and $runnerContent -notmatch '--allow-all|--allow-all-tools|--allow-all-paths|--yolo'
     Add-TestResult -Name 'runner-evaluator-constrained' -Passed $runnerConstrained -Detail 'Real Copilot source assessment runs in an isolated batch directory with only the read-only view tool exposed.'
+    Add-TestResult -Name 'source-assessment-bootstrap-throughput' -Passed ($runnerContent -match '\$sourceAssessmentBootstrapBytesPerSecondPerWorker = 500' -and $runnerContent -match '-BootstrapBytesPerSecondPerWorker \$sourceAssessmentBootstrapBytesPerSecondPerWorker') -Detail 'Source assessment owns an explicit 500-byte-per-second-per-worker bootstrap estimate instead of inheriting an implicit shared default.'
+    $silentEvaluatorFailure = Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode 1 -Output @()
+    $structuredEvaluatorFailure = Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode 2 -Output @('{"type":"error","data":{"message":"Synthetic rate limit"}}')
+    Add-TestResult -Name 'evaluator-failure-diagnostics' -Passed ($silentEvaluatorFailure -ceq 'Copilot evaluator exited with code 1 without diagnostic output' -and $structuredEvaluatorFailure -ceq 'Copilot evaluator exited with code 2: Synthetic rate limit') -Detail 'Native evaluator failures always retain the exit code and prefer structured JSONL diagnostics without producing an empty failure label.'
 
     Write-TestProgress -Name 'evaluator-fixture' -Detail 'Preparing deterministic multi-lane evaluator and inventory fixtures'
 
@@ -793,9 +799,14 @@ if ($null -ne $timingStem) {
     $runnerBatchSizes = @($runnerCallGroups | ForEach-Object { [int](([string]$_.Group[0] -split ':')[1]) } | Sort-Object)
     $runnerCallCounts = @($runnerCallGroups | ForEach-Object Count | Sort-Object)
     Add-TestResult -Name 'source-defined-batching' -Passed ($runnerExitCode -eq 0 -and $runnerResult.sourceCount -eq 25 -and $runnerResult.batchCount -eq 4 -and $runnerCalls.Count -eq 5 -and ($runnerBatchSizes -join ',') -ceq '1,1,3,20' -and ($runnerCallCounts -join ',') -ceq '1,1,1,2') -Detail "The complete three-lane runner uses each source definition batch size, retries only one malformed batch, and preserves deterministic batch membership including prior-only tombstones independent of completion order. Calls: $($runnerCalls -join ' | '); sizes: $($runnerBatchSizes -join ','); counts: $($runnerCallCounts -join ',')."
-    $runningProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+source-assessment/' })
-    $passedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment/' })
-    Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits one start and completion line per assessment batch without corrupting the final JSON result.'
+    $runningProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+source-assessment \d+/\d+' })
+    $passedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment \d+/\d+' })
+    $planProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Sources\s+:\s+25 total \| 0 cached \| 0 recovered \| 25 pending$' })
+    $batchPlanProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Batches\s+:\s+4 pending$' })
+    $estimatePlanProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Estimated\s+:\s+\d{2}:\d{2}:\d{2}$' })
+    $positionedProgress = @($runningProgress + $passedProgress | Where-Object { $_ -match 'source-assessment [1-4]/4\s+:' })
+    $estimatedProgress = @($passedProgress | Where-Object { $_ -match 'Total Elapsed \d{2}:\d{2}:\d{2} : \[Batch: \d{2}:\d{2}:\d{2}\] : \[Remaining: \d{2}:\d{2}:\d{2}\]' })
+    Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $planProgress.Count -eq 1 -and $batchPlanProgress.Count -eq 1 -and $estimatePlanProgress.Count -eq 1 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $positionedProgress.Count -eq ($runnerResult.batchCount * 2) -and $estimatedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits one compact execution plan, then derives elapsed and remaining time from current-run throughput without corrupting the final JSON result.'
     $assessmentProgressColonIndexes = @($runningProgress + $passedProgress | ForEach-Object { $_.IndexOf(' : ') })
     Add-TestResult -Name 'batch-progress-alignment' -Passed (@($assessmentProgressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $assessmentProgressColonIndexes[0] -gt 0) -Detail 'Every assessment batch status line aligns its detail separator to the shared 42-character assessment name column.'
     $callsBeforeCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
@@ -803,7 +814,9 @@ if ($null -ne $timingStem) {
     $cachedRunnerResult = if ($cachedRunnerRun.ExitCode -eq 0) { $cachedRunnerRun.Output | ConvertFrom-Json } else { $null }
     $callsAfterCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
     $sourceCacheFileCount = @(Get-ChildItem -LiteralPath $runnerCacheDirectory -File -ErrorAction SilentlyContinue).Count
-    Add-TestResult -Name 'validated-source-cache-reuse' -Passed ($cachedRunnerRun.ExitCode -eq 0 -and $cachedRunnerResult.cachedSourceCount -eq $runnerResult.sourceCount -and $cachedRunnerResult.evaluatedSourceCount -eq 0 -and $cachedRunnerResult.evaluatedBatchCount -eq 0 -and $callsAfterCacheReuse -eq $callsBeforeCacheReuse -and @($cachedRunnerRun.Progress | Where-Object { $_ -match 'source-assessment/reuse' }).Count -eq 1) -Detail "An identical assessment run revalidates and reuses every content-addressed source entry without invoking the evaluator. Cache files: $sourceCacheFileCount; cached: $($cachedRunnerResult.cachedSourceCount); evaluated sources: $($cachedRunnerResult.evaluatedSourceCount); evaluated batches: $($cachedRunnerResult.evaluatedBatchCount); evaluator call delta: $($callsAfterCacheReuse - $callsBeforeCacheReuse); progress: $($cachedRunnerRun.Progress -join ' | ')."
+    $cachedPlanProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Sources\s+:\s+25 total \| 25 cached \| 0 recovered \| 0 pending$' })
+    $cachedEstimateProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Estimated\s+:\s+00:00:00$' })
+    Add-TestResult -Name 'validated-source-cache-reuse' -Passed ($cachedRunnerRun.ExitCode -eq 0 -and $cachedRunnerResult.cachedSourceCount -eq $runnerResult.sourceCount -and $cachedRunnerResult.evaluatedSourceCount -eq 0 -and $cachedRunnerResult.evaluatedBatchCount -eq 0 -and $callsAfterCacheReuse -eq $callsBeforeCacheReuse -and $cachedPlanProgress.Count -eq 1 -and $cachedEstimateProgress.Count -eq 1) -Detail "An identical assessment run reports a compact zero-batch plan, revalidates and reuses every content-addressed source entry, and does not invoke the evaluator. Cache files: $sourceCacheFileCount; cached: $($cachedRunnerResult.cachedSourceCount); evaluated sources: $($cachedRunnerResult.evaluatedSourceCount); evaluated batches: $($cachedRunnerResult.evaluatedBatchCount); evaluator call delta: $($callsAfterCacheReuse - $callsBeforeCacheReuse); progress: $($cachedRunnerRun.Progress -join ' | ')."
 
     $changedRunnerInventory = Copy-JsonObject -Value (Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json)
     $changedRunnerInventory.records[0].content = 'Changed runner source record 1.'
@@ -873,11 +886,11 @@ if ($null -ne $timingStem) {
     $retryInvariantBaseline = if ($retryInvariantRun.ExitCode -eq 0) { Get-Content -LiteralPath (Join-Path $tempRoot 'retry-invariant-baseline.json') -Raw | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'retry-limit-identity-invariant' -Passed ($retryInvariantRun.ExitCode -eq 0 -and [string]$retryInvariantBaseline.assessmentRunConfigurationSha256 -ceq [string]$runnerBaseline.assessmentRunConfigurationSha256) -Detail 'Changing transport retry limits does not change model-visible input or assessment run identity.'
 
-    $catalog = Get-Content -LiteralPath $hostedCatalogPath -Raw | ConvertFrom-Json
-    [string[]]$expectedContributorMappings = @($catalog.rules | Where-Object { 'guide-new-resource' -in @($_.sourceIds) } | ForEach-Object { [string]$_.id } | Sort-Object -Unique)
     $contributorEntry = @($runnerBaseline.entries | Where-Object { $_.sourceRef.sourceDefinitionId -ceq 'contributor-guidance' -and $_.sourceRef.sourceId -ceq 'guide-new-resource' })[0]
     $contributorAssessment = $contributorEntry.assessments[0]
-    Add-TestResult -Name 'trusted-mapping-injection' -Passed ($expectedContributorMappings.Count -gt 0 -and @(Compare-Object $expectedContributorMappings @($contributorAssessment.mappedHostedRuleIds) -SyncWindow 0).Count -eq 0) -Detail 'The trusted builder injects the exact canonical Contributor mappings after evaluator validation.'
+    $interactiveEntry = @($runnerBaseline.entries | Where-Object { $_.sourceRef.sourceDefinitionId -ceq 'interactive-toolkit' -and $_.sourceRef.sourceId -ceq 'IMPL-EVID-001' })[0]
+    $interactiveAssessment = $interactiveEntry.assessments[0]
+    Add-TestResult -Name 'trusted-mapping-injection' -Passed (@($interactiveAssessment.mappedHostedRuleIds).Count -eq 1 -and [string]$interactiveAssessment.mappedHostedRuleIds[0] -ceq 'IMPL-EVID-001' -and @($contributorAssessment.mappedHostedRuleIds).Count -eq 0) -Detail 'The trusted builder injects only catalog-owned canonical mappings across source lanes after evaluator validation.'
     $expectedPriorObservedAt = [datetime]::new(2026, 9, 15, 11, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     $priorEvidenceRetained = [string]$contributorEntry.priorSourceEvidence.sourceRef.contentSha256 -ceq [string]$priorContributorRecords[0].contentSha256 -and [string]$contributorEntry.priorSourceEvidence.sourceRecord.content -ceq $priorContributorContent -and [string]$contributorEntry.priorSourceEvidence.observedAt -ceq $expectedPriorObservedAt -and [string]$contributorEntry.priorSourceEvidence.inventorySha256 -ceq [string]$priorContributorInventory.collection.inventorySha256
     Add-TestResult -Name 'prior-source-reassessment-binding' -Passed ($priorEvidenceRetained -and $contributorAssessment.semanticReassessment.classification -ceq 'meaning-unchanged' -and [string]$contributorAssessment.semanticReassessment.priorContentSha256 -ceq [string]$priorContributorRecords[0].contentSha256) -Detail "Changed Contributor evidence retains the exact prior inventory record and binds semantic reassessment to that prior source hash. Observed observedAt=$($contributorEntry.priorSourceEvidence.observedAt), inventorySha256=$($contributorEntry.priorSourceEvidence.inventorySha256), content=$($contributorEntry.priorSourceEvidence.sourceRecord.content)."
@@ -903,7 +916,7 @@ if ($null -ne $timingStem) {
     Add-TestResult -Name 'tampered-prior-inventory-rejected' -Passed ($tamperedPriorRun.ExitCode -ne 0 -and @($tamperedPriorCalls).Count -eq 0 -and $tamperedPriorRun.Output -like '*record hash does not match*') -Detail 'A prior inventory whose records no longer match its collection hash fails before evaluator invocation.'
 
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
-    $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
+    $budgetedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'budgeted-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 70000
     $budgetedResult = if ($budgetedRun.ExitCode -eq 0) { $budgetedRun.Output | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'evaluator-payload-budget-batching' -Passed ($budgetedRun.ExitCode -eq 0 -and $budgetedResult.batchCount -gt 4) -Detail 'A constrained evaluator payload budget deterministically closes batches before the source record-count maximum.'
 
@@ -915,9 +928,9 @@ if ($null -ne $timingStem) {
     Write-JsonFixture -Path $oversizedInventoryPath -Value $oversizedInventory
     [string[]]$oversizedInventoryPaths = @($runnerContributorInventoryPath, $interactiveInventoryPath, $oversizedInventoryPath)
     Remove-Item -LiteralPath $callLogPath -Force -ErrorAction SilentlyContinue
-    $oversizedRun = Invoke-Runner -AcceptedInventoryPaths $oversizedInventoryPaths -OutputPath (Join-Path $tempRoot 'oversized-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 60000
+    $oversizedRun = Invoke-Runner -AcceptedInventoryPaths $oversizedInventoryPaths -OutputPath (Join-Path $tempRoot 'oversized-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -EvaluatorPayloadBudgetBytes 70000
     $oversizedCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
-    $oversizedDiagnostic = $oversizedRun.ErrorMessage -match '^Source assessment record exceeds evaluator payload budget: source stream maintainer-proposals, source record IMPL-RUNNER-001, measured \d+ bytes, budget 60000 bytes; reduce or split the parser-owned source record before assessment$'
+    $oversizedDiagnostic = $oversizedRun.ErrorMessage -match '^Source assessment record exceeds evaluator payload budget: source stream maintainer-proposals, source record IMPL-RUNNER-001, measured \d+ bytes, budget 70000 bytes; reduce or split the parser-owned source record before assessment$'
     $oversizedPassed = $oversizedRun.ExitCode -ne 0 -and @($oversizedCalls).Count -eq 0 -and $oversizedDiagnostic
     $oversizedDetail = if ($oversizedPassed) { 'One oversized parser record fails before evaluator invocation with stream, record, measured size, budget, and corrective action.' } else { "Oversized record result: exitCode=$($oversizedRun.ExitCode), evaluatorCalls=$(@($oversizedCalls).Count), errorMessage=$($oversizedRun.ErrorMessage)" }
     Add-TestResult -Name 'oversized-source-record-rejected' -Passed $oversizedPassed -Detail $oversizedDetail
@@ -938,13 +951,16 @@ if ($null -ne $timingStem) {
 
     Remove-Item Env:SOURCE_ASSESSMENT_OMIT_REASSESSMENT -ErrorAction SilentlyContinue
     $env:SOURCE_ASSESSMENT_FAIL_LANE = 'interactive-toolkit'
-    $retainedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'retained-run-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0
+    $interruptedCacheDirectory = Join-Path $tempRoot 'interrupted-source-cache'
+    $retainedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'retained-run-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -CacheDirectory $interruptedCacheDirectory
     $retainedRunDirectory = if ($retainedRun.Output -match '(?s)run artifacts were retained at\s+([^\r\n]+)') { $Matches[1].Trim().TrimStart('|').Trim() } else { $null }
+    $interruptedCacheCount = @(Get-ChildItem -LiteralPath $interruptedCacheDirectory -File -ErrorAction SilentlyContinue).Count
+    Add-TestResult -Name 'validated-batches-persist-before-run-completion' -Passed ($retainedRun.ExitCode -ne 0 -and $interruptedCacheCount -gt 0) -Detail "Validated sibling batches persist $interruptedCacheCount source-cache entries before a later batch failure terminates the run."
     Remove-Item Env:SOURCE_ASSESSMENT_FAIL_LANE -ErrorAction SilentlyContinue
     $recoveryCacheDirectory = Join-Path $tempRoot 'recovery-source-cache'
     $recoveredRun = if (-not [string]::IsNullOrWhiteSpace($retainedRunDirectory)) { Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -OutputPath (Join-Path $tempRoot 'recovered-run-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -CacheDirectory $recoveryCacheDirectory -ResumeRunDirectory $retainedRunDirectory } else { $null }
     $recoveredResult = if ($null -ne $recoveredRun -and $recoveredRun.ExitCode -eq 0) { $recoveredRun.Output | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'retained-run-recovery' -Passed ($retainedRun.ExitCode -ne 0 -and $null -ne $recoveredResult -and $recoveredResult.recoveredSourceCount -gt 0 -and $recoveredResult.evaluatedSourceCount -gt 0 -and ($recoveredResult.recoveredSourceCount + $recoveredResult.evaluatedSourceCount) -eq $recoveredResult.sourceCount -and -not (Test-Path -LiteralPath $retainedRunDirectory)) -Detail "An explicit retained-run recovery imports exact validated source entries, evaluates only missing or invalid sources, and removes the successfully recovered toolkit-managed run. Retained path: $retainedRunDirectory; recovery result: $($recoveredRun.Output)"
+    Add-TestResult -Name 'retained-run-recovery' -Passed ($retainedRun.ExitCode -ne 0 -and $null -ne $recoveredResult -and $recoveredResult.recoveredSourceCount -gt 0 -and $recoveredResult.evaluatedSourceCount -gt 0 -and ($recoveredResult.recoveredSourceCount + $recoveredResult.evaluatedSourceCount) -eq $recoveredResult.sourceCount -and (Test-Path -LiteralPath $retainedRunDirectory -PathType Container)) -Detail "An explicit retained-run recovery imports exact validated source entries, evaluates only missing or invalid sources, and leaves the supplied directory available for maintainer inspection. Retained path: $retainedRunDirectory; recovery result: $($recoveredRun.Output)"
 
     $callsBeforeUnknownCoverage = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath).Count } else { 0 }
     $env:SOURCE_ASSESSMENT_UNKNOWN_RELATED_COVERAGE = 'IMPL-WF-004'

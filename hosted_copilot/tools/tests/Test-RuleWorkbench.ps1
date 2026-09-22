@@ -66,7 +66,6 @@ $staticTestNames = @(
     'external-staging-valid',
     'source-display-read-only',
     'launcher-failure-summary',
-    'automatic-recovery-discovery',
     'local-icon-family-sprites',
     'portable-icon-generation',
     'browser-state-contract',
@@ -291,6 +290,13 @@ function New-WorkbenchDisplayFixture {
                     }
                     reviewState = $reviewState
                     recommendation = $recommendation
+                    catalogMapping = if ($null -ne $assessment.targetHostedRuleId) {
+                        $mappedRule = @($Fixture.hostedRules | Where-Object { [string]$_.id -ceq [string]$assessment.targetHostedRuleId })[0]
+                        [ordered]@{ state = [string]$mappedRule.status; hostedRuleId = [string]$assessment.targetHostedRuleId }
+                    }
+                    else {
+                        [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
+                    }
                 })
             }
         }
@@ -314,6 +320,7 @@ function New-WorkbenchDisplayFixture {
                     text = [string]$_.text
                     provenance = @('published-upstream-standard')
                     evidenceIds = @($(if ([string]$_.id -like 'IMPL-*') { 'implementation-contract' } else { 'documentation-contract' }))
+                    canonicalCandidate = [ordered]@{ sourceDefinitionId = 'contributor-guidance'; sourceId = 'guide-new-resource'; assessmentId = [string]$_.id }
                     placements = @($_.placements)
                 }
                 if ([string]$_.id -like 'IMPL-*') { $projectedRule['implementationModels'] = @('legacy', 'typed', 'framework') }
@@ -714,53 +721,6 @@ try {
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
-    if (Test-ShouldRun -Name 'automatic-recovery-discovery') {
-        $launcherTokens = $null
-        $launcherParseErrors = $null
-        $launcherAst = [Management.Automation.Language.Parser]::ParseFile($launcherPath, [ref]$launcherTokens, [ref]$launcherParseErrors)
-        foreach ($functionName in @('Find-AutomaticAssessmentRecoveryDirectory', 'Find-AutomaticReconciliationRecoveryDirectory')) {
-            $functionAst = $launcherAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
-            if ($null -ne $functionAst) {
-                . ([scriptblock]::Create($functionAst.Extent.Text))
-            }
-        }
-        $automaticRecoveryRoot = Join-Path $tempRoot 'automatic-recovery'
-        $assessmentRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-source-assessment'
-        $reconciliationRecoveryRoot = Join-Path $automaticRecoveryRoot 'hosted-assessment-reconciliation'
-        $compatibleAssessmentRun = Join-Path $assessmentRecoveryRoot 'compatible-assessment'
-        $incompleteAssessmentRun = Join-Path $assessmentRecoveryRoot 'newer-incomplete-assessment'
-        $currentAssessmentContractPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-        foreach ($runPath in @($compatibleAssessmentRun, $incompleteAssessmentRun)) {
-            $retainedContractPath = Join-Path $runPath 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-            New-Item -ItemType Directory -Path (Split-Path -Parent $retainedContractPath) -Force | Out-Null
-            Copy-Item -LiteralPath $currentAssessmentContractPath -Destination $retainedContractPath
-            New-Item -ItemType Directory -Path (Join-Path $runPath 'batch-001') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $runPath 'batch-001/source-records.json'), '{}', [Text.UTF8Encoding]::new($false))
-        }
-        [IO.File]::WriteAllText((Join-Path $compatibleAssessmentRun 'batch-001/response.json'), '{}', [Text.UTF8Encoding]::new($false))
-        (Get-Item -LiteralPath $compatibleAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
-        (Get-Item -LiteralPath $incompleteAssessmentRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
-
-        $compatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'compatible-reconciliation'
-        $incompatibleReconciliationRun = Join-Path $reconciliationRecoveryRoot 'newer-incompatible-reconciliation'
-        foreach ($runPath in @($compatibleReconciliationRun, $incompatibleReconciliationRun)) {
-            $batchPath = Join-Path $runPath 'batches/batch-001'
-            New-Item -ItemType Directory -Path $batchPath -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $batchPath 'source-assessment-baseline.json'), '{}', [Text.UTF8Encoding]::new($false))
-            [IO.File]::WriteAllText((Join-Path $batchPath 'assessment-reconciliation-draft.json'), '{}', [Text.UTF8Encoding]::new($false))
-        }
-        [IO.File]::WriteAllText((Join-Path $compatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'copilot'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
-        [IO.File]::WriteAllText((Join-Path $incompatibleReconciliationRun 'reconciliation-run.json'), (([ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-reconciliation-run'; evaluator = 'script:fixture'; model = 'gpt-5.4'; reasoningEffort = 'high' } | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
-        (Get-Item -LiteralPath $compatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-2)
-        (Get-Item -LiteralPath $incompatibleReconciliationRun).LastWriteTime = [DateTime]::UtcNow.AddMinutes(-1)
-
-        $selectedAssessmentRecovery = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath $currentAssessmentContractPath
-        $selectedReconciliationRecovery = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator 'copilot' -Model 'gpt-5.4' -ReasoningEffort 'high'
-        $automaticRecoveryValid = @($launcherParseErrors).Count -eq 0 -and
-            [string]$selectedAssessmentRecovery -ceq [IO.Path]::GetFullPath($compatibleAssessmentRun) -and
-            [string]$selectedReconciliationRecovery -ceq [IO.Path]::GetFullPath($compatibleReconciliationRun)
-        Add-TestResult -Name 'automatic-recovery-discovery' -Passed $automaticRecoveryValid -Detail 'A normal launch skips newer incomplete or evaluator-incompatible managed runs and selects the newest compatible completed assessment and reconciliation artifacts.'
-    }
     $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg', 'chat-sparkle-error.svg', 'discard-all.svg') }).Count
     $octiconSourceCount = @(Get-ChildItem -LiteralPath $octiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
     $codiconContractValid = $codiconSourceCount -eq 70 -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 72)
@@ -975,7 +935,7 @@ try {
 
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.plan-table \.candidate-link\s*\{[^}]*font-size:\s*var\(--font-size-ui\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-ui\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy strong, \.plan-table \.candidate-link\)\s*\{[^}]*color:\s*var\(--accent-bright\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy small, \.plan-candidate-title\)\s*\{[^}]*color:\s*var\(--ink\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*400 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
-    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 2) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 3) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
+    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 3) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 3) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
     Add-TestResult -Name 'component-typography-consistency' -Passed $componentConsistencyValid -Detail 'Candidate Sources, Assessment Results, Conflicts, and Promotion Plan share one 14/20 blue-ID and neutral-title hierarchy; semantic pills remain semibold inside compact surfaces, and Preview section labels retain one heading treatment.'
 
     $scrollbarThemeValid = $stylesContent -match '@property --workbench-scrollbar-thumb' -and $stylesContent -match '\.scroll-surface\s*\{[^}]*scrollbar-color:\s*var\(--workbench-scrollbar-thumb\) var\(--scrollbar-track\);[^}]*transition:\s*--workbench-scrollbar-thumb 360ms ease-out' -and $stylesContent -match '\.scroll-surface:is\(:hover, :focus-within\)\s*\{[^}]*transition-duration:\s*180ms' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*0' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-button' -and $stylesContent -match '--scrollbar-track: transparent' -and $indexContent -match 'candidate-list scroll-surface type-ui'
@@ -1002,7 +962,7 @@ try {
 
     $detailLayoutValid = $stylesContent -match '#catalog-view\s*\{[^}]*max-width:\s*none' -and $stylesContent -match '#candidate-sources-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#candidate-sources-panel \.assessment-panel\s*\{[^}]*min-width:\s*0' -and $indexContent -match 'class="candidate-pane-switch" role="tablist" aria-label="Candidate workspace"' -and $indexContent -match 'data-candidate-pane="candidates"' -and $indexContent -match 'data-candidate-pane="details" disabled' -and $appContent -match 'function showCandidatePane\(pane\)' -and $appContent -match 'elements\["candidate-panel"\]\.hidden = detailsActive' -and $appContent -match 'elements\["assessment-panel"\]\.hidden = !detailsActive' -and $stylesContent -match '\.candidate-pane-tab\.active'
     $sharedPresentationValid = $stylesContent -match 'html\.theme-hosted-dark body,\s*html\.theme-hosted-dark body \*\s*\{[^}]*font-family:\s*"Segoe UI", Tahoma, sans-serif !important' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.subcontext-container\s*\{[^}]*padding:\s*12px;[^}]*background:\s*var\(--blue-soft\);[^}]*border-left:\s*3px solid var\(--blue\)' -and $stylesContent -match '\.subcontext-container > p,\s*p\.subcontext-container\s*\{[^}]*color:\s*#c6d4ff;[^}]*font-size:\s*0\.8rem' -and $appContent -match 'overlap-item subcontext-container' -and $appContent -match 'ai-evaluation-summary subcontext-container' -and $appContent -match 'adjudication-text-box subcontext-container' -and $appContent -match 'evidence-summary-box subcontext-container'
-    $actionControlsValid = $appContent -match 'DECISION_RATIONALE_MAX_LENGTH = 500' -and $appContent -match 'rule-actions-content subcontext-container' -and $appContent -match '<span class="control-subtitle">Rule Action:</span>\s*<div class="control-group action-plan-group">[\s\S]*?<fieldset class="action-options">[\s\S]*?<label class="plan-toggle'
+    $actionControlsValid = $appContent -match 'DECISION_RATIONALE_MAX_LENGTH = 500' -and $appContent -match 'rule-actions-content subcontext-container' -and $appContent -match 'class="assessment-title rule-action-header"[\s\S]*?<span>RULE:</span><span>\$\{escapeHtml\(candidate\.assessment\.proposedHostedRuleId\)\}</span>' -and $appContent -match '<span class="control-subtitle">Rule Action:</span>\s*<div class="control-group action-plan-group">[\s\S]*?<fieldset class="action-options">' -and $appContent -notmatch 'data-plan-toggle|class="plan-toggle'
     $actionControlsValid = $actionControlsValid -and $appContent -match '<div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save"[^>]*data-rationale-save[^>]*aria-label=' -and $appContent -match '<label><textarea[^>]*maxlength="\$\{DECISION_RATIONALE_MAX_LENGTH\}"[^>]*aria-labelledby="decision-rationale-label"[^>]*aria-describedby="decision-rationale-limit"'
     $actionControlsValid = $actionControlsValid -and $appContent -match 'rationale-limit.*DECISION_RATIONALE_MAX_LENGTH' -and $appContent -match 'decision\.rationale\.length > DECISION_RATIONALE_MAX_LENGTH' -and $stylesContent -match '\.field-stack textarea\s*\{[^}]*height:\s*84px;[^}]*max-height:\s*84px;[^}]*resize:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match '\.rationale-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*flex-end' -and $stylesContent -match '\.rationale-heading \.rationale-save svg\s*\{[^}]*transform:\s*translateY\(2px\)' -and $stylesContent -match '\.rationale-heading \.rationale-save:disabled\s*\{[^}]*cursor:\s*default !important' -and $stylesContent -notmatch '\.rationale-actions' -and $stylesContent -match '\.assessment-title-statuses\s*\{[^}]*width:\s*270px;[^}]*flex:\s*0 0 270px;[^}]*justify-content:\s*flex-end'
     $assessmentLegendValid = $appContent -notmatch 'impact / 100 tokens' -and $appContent -match '<span class="control-subtitle scoring-legend-title">Scoring Legend:</span>\s*<div class="scoring-legend subcontext-container">' -and $appContent -match 'Score Scale:</span><span>Scores run from 0 \(none\) through 5 \(very high\)' -and $appContent -match 'Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely' -and $appContent -match 'direction-badge positive">Adds to Impact' -and $appContent -match 'direction-badge negative">Reduces Impact' -and $appContent -match 'risk-\$\{value <= 2 \? "low" : value === 3 \? "moderate" : "high"\}' -and $stylesContent -match '\.factor-line\.penalty\.risk-low \.factor-value\s*\{[^}]*color:\s*var\(--success\)' -and $stylesContent -match '\.scoring-legend-item\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)'
@@ -1056,16 +1016,36 @@ try {
     $directTreeUpdatesValid = $directTreeUpdatesValid -and $appContent -match 'function removePlanMembership\(candidate\) \{\s*const \{ assessment, \.\.\.maintainerDecision \} = getDecision\(candidate\);\s*removeCandidateFromBulkOperations\(candidate\.key\);\s*saveDecision\(candidate, \{ \.\.\.maintainerDecision, \.\.\.createPlanMembership\(\) \}\);' -and $appContent -match 'if \(candidateCheckbox\.checked\) \{\s*updateDecision\(candidate, \{ inPlan: true \}\)' -and $appContent -match 'else \{\s*removePlanMembership\(candidate\)' -and $appContent -match 'updateDecision\(candidate, \{ action \}\);\s*syncAssessmentActionControls\(candidate\)' -and $appContent -match 'function syncAssessmentActionControls\(candidate\)' -and $appContent -match 'control\.closest\("\.action-option"\)\?\.classList\.toggle\("selected", selected\)' -and $appContent -match 'badge\.textContent = formatRecommendation\(decision\.action\)' -and $appContent -match 'if \(event\.target\.hasAttribute\("data-plan-toggle"\)\) \{\s*if \(event\.target\.checked\) updateDecision\(candidate, \{ inPlan: true \}\);\s*else removePlanMembership\(candidate\);\s*return;' -and $appContent -match 'Include this candidate in the promotion plan' -and $appContent -notmatch 'Remove and reset|Remove candidate and reset its decision'
     $directTreeUpdatesValid = $appContent -match 'function syncCandidateTreeRows' -and
         $appContent -match 'function selectCandidate\(key, rationaleReturnView = null\)\s*\{[^}]*syncCandidateTreeRows\(\)' -and
-        $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);' -and
-        $appContent -match 'control\.checked = getDecision\(candidate\)\.inPlan' -and
+        $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*renderDecisionOutputs\(\);' -and
+        $appContent -notmatch 'syncAssessmentPlanToggle|data-plan-toggle|Include this candidate in the promotion plan' -and
         $appContent -match 'function updateCandidateSort\(button\)[\s\S]*?candidateHierarchicalView\.refresh\(\)' -and
         $hierarchicalViewContent -match 'target\.checked = source\.checked' -and
         $hierarchicalViewContent -match 'const existing = new Map\(Array\.from\(this\.rowsContainer\.children\)' -and
         $hierarchicalViewContent -match 'patchNode\(row, rendered\)'
-    Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree and Details checkboxes are synchronized projections of membership-only state in both directions without replacing scroll, focus, selection, or expanded folders; explicit Undo retains the full-reset lifecycle.'
+    Add-TestResult -Name 'tree-leaf-direct-updates' -Passed $directTreeUpdatesValid -Detail 'Tree membership shortcuts update in place without replacing scroll, focus, selection, or expanded folders; Details derives membership from a saved action and explicit Undo retains the full-reset lifecycle.'
 
-    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and $appContent -notmatch 'elements\["plan-action-count"\]' -and $appContent -match 'function getCatalogStatus' -and $appContent -match 'function getAllowedActions' -and $appContent -match 'allowedActions\.map\(\(action\)' -and $appContent -match 'data-rule-action=' -and $appContent -match 'type="radio" name="rule-action"' -and $appContent -match 'data-plan-toggle' -and $appContent -match 'recommendation,\s*assessment,' -and $appContent -notmatch 'disposition' -and $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
-    Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Authoritative mappings are separate from source state; native radios expose only status-constrained actions, and plan membership remains an independent explicit choice.'
+    $ruleActionsValid = $indexContent -notmatch 'plan-count-control|plan-action-count' -and
+        $appContent -notmatch 'elements\["plan-action-count"\]|data-plan-toggle|Include this candidate in the promotion plan' -and
+        $appContent -match 'function getCatalogStatus' -and
+        $appContent -match 'candidate\.catalogMapping\.state === "active"' -and
+        $appContent -match 'candidate\.catalogMapping\.state === "retired"' -and
+        $appContent -notmatch 'relatedHostedRules|isPromotionOwner' -and
+        $appContent -match 'function getAllowedActions' -and
+        $appContent -match 'allowedActions\.map\(\(action\)' -and
+        $appContent -match 'type="radio" name="rule-action"' -and
+        $appContent -match 'syncAssessmentActionControls\(candidate, action\)' -and
+        $appContent -match 'if \(action === "no-change"\)[\s\S]*?saveDecision\(candidate, null\);[\s\S]*?renderAssessment\(\);' -and
+        $appContent -match 'decision\.action === "no-change" \? "disabled" : ""' -and
+        $appContent -notmatch 'updateDecision\(candidate, \{ action \}\)' -and
+        $appContent -match 'createPlanMembership\(isPromotionAction\(action\) \? "manual" : "none"\)' -and
+        $appContent -match 'if \(!rationale\)[\s\S]*?saveDecision\(candidate, null\)' -and
+        $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and
+        $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
+    $ruleActionsValid = $ruleActionsValid -and
+        $appContent -match 'class="assessment-title rule-action-header"[\s\S]*?<span>RULE:</span><span>\$\{escapeHtml\(candidate\.assessment\.proposedHostedRuleId\)\}</span>' -and
+        $appContent -notmatch 'proposed-hosted-rule-id|data-decision-field="proposedHostedRuleId"' -and
+        $stylesContent -match '\.rule-actions-content > \.rule-action-header\s*\{[^}]*width:\s*calc\(100% \+ 24px\);[^}]*margin:\s*-12px -12px 0;[^}]*padding:\s*12px 16px 14px;[^}]*background:\s*var\(--context-header\);'
+    Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Catalog-owned mapping controls lifecycle actions and immutable identity; Rule Actions shows the generated ID in a flush embedded header, and related coverage cannot infer ownership.'
 
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and $indexContent -match 'data-bulk-scope="add"' -and $indexContent -match 'data-bulk-scope="update"' -and $indexContent -match 'data-bulk-scope="actionable"' -and $indexContent -match 'data-bulk-undo' -and $appContent -match 'bulkOperations:\s*\[\]' -and $appContent -match 'function createPlanMembership\(' -and $appContent -match 'function isValidPlanMembership\(' -and $appContent -match 'function getBulkActionCandidates\(' -and $appContent -match 'return !decision\.inPlan' -and $appContent -match 'function applyBulkSelection\(' -and $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and $appContent -match 'function undoBulkOperation\(' -and $appContent -match 'decision\?\.planMembershipSource !== "bulk" \|\| decision\.bulkOperationId !== operation\.id' -and $appContent -match 'promotesManualMembership' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'source:\s*decision\.planMembershipSource' -and $appContent -match 'bulkOperations:\s*state\.session\.bulkOperations' -and $appContent -match 'draft\.bulkOperations' -and $stylesContent -match '\.bulk-actions-menu\s*\{' -and $stylesContent -match '\.plan-membership-badge\s*\{'
     $bulkActionsValid = $bulkActionsValid -and $appContent -match 'addEventListener\("mouseleave", handleBulkActionsMouseLeave\)' -and $appContent -match 'function renderBulkSelectionOutputs\(\) \{\s*syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*renderAssessment\(\);\s*renderDecisionOutputs\(\);\s*\}' -and ([regex]::Matches($appContent, 'renderBulkSelectionOutputs\(\)').Count -eq 3) -and $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);' -and $appContent -notmatch 'renderAllPreservingCandidateDisclosures' -and $appContent -match 'data-source-type="overrides"' -and $appContent -match 'data-source-type="\$\{escapeHtml\(sourceType\)\}"'
@@ -1084,7 +1064,7 @@ try {
         $appContent -match 'candidateKeys: candidates\.map'
     Add-TestResult -Name 'bulk-plan-membership' -Passed $bulkActionsValid -Detail 'CODEOWNER-only Bulk Actions create complete recommendation-aligned decisions with deterministic rationale and actor/hash provenance, preserve manual decisions, promote subsequent edits to manual ownership, and undo only entries still owned by the matching operation.'
 
-    $capacityProjectionValid = $appContent -match 'Plan projection' -and $appContent -match 'getProjectedCapacityDelta' -and $appContent -match 'projectedGuardedTokens' -and $appContent -match 'projectedHeadroomTokens' -and $appContent -match 'function renderDecisionOutputs\(\)[\s\S]*?renderPlan\(\);[\s\S]*?renderCapacity\(\);[\s\S]*?renderPreview\(\);[\s\S]*?renderCounts\(\);' -and $appContent -match 'function resetCandidate\(' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)' -and $appContent -match 'saveDecision\(candidate, null\)' -and $appContent -match 'clearCandidateSelection\(candidate\)' -and $appContent -match 'if \(\["add", "update"\]\.includes\(decision\.action\)\)' -and $appContent -match 'if \(decision\.action !== "retire"\) return 0' -and $appContent -match 'function showToast\(message, error = false\)' -and $appContent -match 'if \(!error\) toastTimer = setTimeout\(dismissNotification, 8000\)' -and $appContent -notmatch 'showToast\([^\n]+, false, \{' -and $indexContent -match 'id="toast-close"[^>]*aria-label="Dismiss Notification"' -and $stylesContent -match '\.toast\.visible\s*\{[^}]*pointer-events:\s*auto'
+    $capacityProjectionValid = $appContent -match 'Plan projection' -and $appContent -match 'getProjectedCapacityDelta' -and $appContent -match 'projectedGuardedTokens' -and $appContent -match 'projectedHeadroomTokens' -and $appContent -match 'function renderDecisionOutputs\(\)[\s\S]*?renderPlan\(\);[\s\S]*?renderCapacity\(\);[\s\S]*?renderPreview\(\);[\s\S]*?renderCounts\(\);' -and $appContent -match 'function resetCandidate\(' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)' -and $appContent -match 'saveDecision\(candidate, null\)' -and $appContent -match 'clearCandidateSelection\(candidate\)' -and $appContent -match 'if \(\["add", "update", "restore"\]\.includes\(decision\.action\)\)' -and $appContent -match 'if \(decision\.action !== "retire"\) return 0' -and $appContent -match 'function showToast\(message, error = false\)' -and $appContent -match 'if \(!error\) toastTimer = setTimeout\(dismissNotification, 8000\)' -and $appContent -notmatch 'showToast\([^\n]+, false, \{' -and $indexContent -match 'id="toast-close"[^>]*aria-label="Dismiss Notification"' -and $stylesContent -match '\.toast\.visible\s*\{[^}]*pointer-events:\s*auto'
     $capacityProjectionValid = $capacityProjectionValid -and $stylesContent -match '\.toast\s*\{[^}]*bottom:\s*26px'
     Add-TestResult -Name 'undo-updates-capacity-projection' -Passed $capacityProjectionValid -Detail 'Explicit Undo clears decision, membership, selection, Preview, and any provisional override atomically; membership-only uncheck preserves the decision and unresolved items contribute no capacity delta.'
 
@@ -1201,9 +1181,26 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
-    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and $launcherContent -match '\$null -eq \$resolvedDisplayPath' -and $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and $launcherContent -match 'Find-AutomaticAssessmentRecoveryDirectory' -and $launcherContent -match 'Find-AutomaticReconciliationRecoveryDirectory' -and $launcherContent -match "assessmentRecoveryMode = 'AUTO'" -and $launcherContent -match "reconciliationRecoveryMode = 'AUTO'" -and $launcherContent -match '\[ValidateRange\(1, 8\)\]\s*\[int\]\$MaxParallelBatches = 3' -and $launcherContent -match 'MaxParallelBatches = \$MaxParallelBatches' -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Collection'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and $launcherContent -match 'OutputPath = \$reconciledDisplayPath' -and $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
+    $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and
+        $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and
+        $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and
+        $launcherContent -match 'Get-GuidanceCapacity\.ps1' -and
+        $launcherContent -match 'PriorInventoryPaths = \$priorInventoryPaths\.ToArray\(\)' -and
+        $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and
+        $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and
+        $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and
+        $launcherContent -notmatch 'Find-Automatic.*Recovery|RecoveryRunDirectories' -and
+        $launcherContent -match '\[ValidateRange\(1, 8\)\]\s*\[int\]\$MaxParallelBatches = 3' -and
+        $launcherContent -match 'MaxParallelBatches = \$MaxParallelBatches' -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and
+        $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and
+        $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
+        $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
+        $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and
+        $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
     $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory' -and $launcherContent -match 'Remove-Item -LiteralPath \$stagedDisplayPath -Force -ErrorAction SilentlyContinue'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches reuse independently validated assessment and reconciliation caches, delete the disposable staged display, rebuild it in an immutable run directory, and publish it atomically.'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches recover through independently validated assessment and reconciliation caches without scanning temporary run directories; explicit resume paths remain optional legacy overrides.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'

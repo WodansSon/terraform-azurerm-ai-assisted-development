@@ -61,7 +61,6 @@ async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const addedColor = await getCssTokenColor(page, "--added-resource");
-  const modifiedColor = await getCssTokenColor(page, "--modified-resource");
   const accentColor = await getCssTokenColor(page, "--accent-bright");
 
   try {
@@ -84,16 +83,20 @@ async function run({ page, baseUrl, assert, playback }) {
     await row.locator(".candidate-tree-copy").click();
     await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
     await page.locator('[data-candidate-pane="candidates"]').click();
-    await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${key}"]`)?.classList.contains("candidate-decoration-needs-input"), candidate.key);
-    await playback.show(page, "Manual ownership · incomplete amber hierarchy");
-    const manualIncomplete = await inspectCandidate(page, candidate.key);
-    assert(manualIncomplete.decision.source === "manual" && manualIncomplete.decision.bulkOperationId === null && !manualIncomplete.operationOwnsCandidate, "Manual edit did not remove bulk ownership");
-    assert(manualIncomplete.decision.action === "no-change" && hierarchyMatches(manualIncomplete, "needs-input", modifiedColor), "Manual incomplete decision did not color the full hierarchy amber");
-    assert(manualIncomplete.bulkUndoDisabled, "Bulk Undo remained enabled after the candidate moved to Manual ownership");
+    await page.waitForFunction((key) => {
+      const row = document.querySelector(`[data-candidate-key="${key}"]`);
+      return row && !row.classList.contains("candidate-decoration-ready") && !row.classList.contains("candidate-decoration-needs-input");
+    }, candidate.key);
+    await playback.show(page, "No Change reset · neutral hierarchy");
+    const reset = await inspectCandidate(page, candidate.key);
+    assert(reset.decision.source === "none" && reset.decision.bulkOperationId === null && !reset.operationOwnsCandidate, "No Change did not clear bulk ownership and restore the default decision");
+    assert(reset.decision.action === "no-change" && reset.bulkUndoDisabled, "No Change did not return the candidate to an unselected neutral state");
 
     await row.locator(".candidate-tree-copy").click();
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Maintainer manually confirmed this Add decision after bulk review.");
+    await page.locator("#assessment-panel [data-rationale-save]").click();
+    await page.evaluate(() => persistencePromise);
     await page.locator('[data-candidate-pane="candidates"]').click();
     await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${key}"]`)?.classList.contains("candidate-decoration-ready"), candidate.key);
     await playback.show(page, "Manual ownership · completed green hierarchy");

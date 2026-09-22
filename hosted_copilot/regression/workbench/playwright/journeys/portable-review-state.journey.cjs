@@ -49,7 +49,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const candidateId = "resource-identity-list-resource";
   const candidateSearchId = "REVIEW-REPO-001";
-  const proposedId = "REVIEW-DRAFT-001";
+  const proposedId = candidateSearchId;
   const rationale = "Capture and restore this exact Phase 0 draft decision.";
 
   try {
@@ -58,9 +58,7 @@ async function run({ page, baseUrl, assert, playback }) {
     const initialActions = await page.locator("#assessment-panel [data-rule-action]").evaluateAll((controls) => controls.map((control) => control.dataset.ruleAction));
     assert(initialActions.includes("add"), `Draft candidate does not expose Add: ${initialActions.join(", ")}`);
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
-    await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').fill(proposedId);
-    await page.waitForTimeout(350);
-    await page.locator('#assessment-panel [data-plan-toggle]').check();
+    assert(!await page.evaluate(() => Boolean(state.session.decisions[state.activeKey])), "Unsaved Rule Action unexpectedly persisted before its rationale was saved");
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill(rationale);
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
@@ -80,14 +78,14 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(draft.decisions[decisionKey].rationale === rationale && draft.decisions[decisionKey].selected && draft.decisions[decisionKey].selectionSource === "manual", "Draft download changed rationale or plan membership");
 
     await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
-    await page.locator('#assessment-panel [data-plan-toggle]').uncheck();
-    await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Mutated after export.");
+    assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').isDisabled(), "No Change did not disable Decision Rationale");
+    assert(!await page.evaluate(() => Boolean(state.session.decisions[state.activeKey])), "No Change did not remove the saved decision");
     await importBytes(page, draftBytes, "draft.json");
     await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Draft import did not restore the selected action");
-    assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').inputValue() === proposedId, "Draft import did not restore the proposed ID");
+    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === proposedId, "Draft import did not preserve the generated Hosted ID");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Draft import did not restore the rationale");
-    assert(await page.locator('#assessment-panel [data-plan-toggle]').isChecked(), "Draft import did not restore plan membership");
+    assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Draft import did not restore action-derived plan membership");
 
     const beforeRejectedImports = await sessionFingerprint(page);
     const mismatchedDraft = { ...draft, inputFingerprint: "0".repeat(64) };
@@ -116,9 +114,9 @@ async function run({ page, baseUrl, assert, playback }) {
     await openWorkbench(page, baseUrl);
     await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Migrated decision action did not survive reload");
-    assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').inputValue() === proposedId, "Proposed ID did not survive reload");
+    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === proposedId, "Generated Hosted ID did not survive reload");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Migrated rationale did not survive reload");
-    assert(await page.locator('#assessment-panel [data-plan-toggle]').isChecked(), "Migrated plan membership did not survive reload");
+    assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Migrated action-derived plan membership did not survive reload");
 
     await playback.show(page, "Approval export · exact payload bytes and attribution");
     await page.locator('[data-view="preview"]').click();

@@ -187,4 +187,138 @@ function Get-BehaviorManifestSha256 {
     return Get-Sha256 -Content $builder.ToString()
 }
 
-Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Get-BehaviorManifestSha256
+function Format-ElapsedDuration {
+    param([Parameter(Mandatory = $true)][long]$Milliseconds)
+
+    $duration = [TimeSpan]::FromMilliseconds([Math]::Max(0, $Milliseconds))
+    return '{0:00}:{1:00}:{2:00}' -f [Math]::Floor($duration.TotalHours), $duration.Minutes, $duration.Seconds
+}
+
+function Format-ByteSize {
+    param([Parameter(Mandatory = $true)][long]$Bytes)
+
+    if ($Bytes -ge 1MB) {
+        return '{0:N1} MB' -f ($Bytes / 1MB)
+    }
+    return '{0:N0} KB' -f ($Bytes / 1KB)
+}
+
+function Format-IndentedDiagnostic {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$Label = 'Error:',
+        [ValidateRange(40, 200)][int]$Width = 110,
+        [ValidateRange(0, 10)][int]$IndentLevel = 2
+    )
+
+    $indent = '  ' * $IndentLevel
+    $availableWidth = $Width - $indent.Length
+    $words = @((($Label.Trim() + ' ' + (($Message -replace '\s+', ' ').Trim())).Trim()) -split ' ')
+    $lines = [Collections.Generic.List[string]]::new()
+    $line = ''
+    foreach ($word in $words) {
+        if ($line.Length -gt 0 -and ($line.Length + 1 + $word.Length) -gt $availableWidth) {
+            $lines.Add($indent + $line)
+            $line = $word
+        }
+        elseif ($line.Length -eq 0) {
+            $line = $word
+        }
+        else {
+            $line += ' ' + $word
+        }
+    }
+    if ($line.Length -gt 0) {
+        $lines.Add($indent + $line)
+    }
+    return $lines.ToArray()
+}
+
+function Get-EvaluatorFailureMessage {
+    param(
+        [Parameter(Mandatory = $true)][string]$EvaluatorName,
+        [Parameter(Mandatory = $true)][int]$ExitCode,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Output
+    )
+
+    [string[]]$outputLines = @($Output | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $structuredMessages = [Collections.Generic.List[string]]::new()
+    foreach ($line in $outputLines) {
+        try {
+            $event = $line | ConvertFrom-Json
+            $eventMessages = [Collections.Generic.List[object]]::new()
+            $messageProperty = $event.PSObject.Properties['message']
+            if ($null -ne $messageProperty) {
+                $eventMessages.Add($messageProperty.Value)
+            }
+            $errorProperty = $event.PSObject.Properties['error']
+            if ($null -ne $errorProperty) {
+                if ($errorProperty.Value -is [string]) {
+                    $eventMessages.Add($errorProperty.Value)
+                }
+                elseif ($null -ne $errorProperty.Value -and $null -ne $errorProperty.Value.PSObject.Properties['message']) {
+                    $eventMessages.Add($errorProperty.Value.PSObject.Properties['message'].Value)
+                }
+            }
+            $dataProperty = $event.PSObject.Properties['data']
+            if ($null -ne $dataProperty -and $null -ne $dataProperty.Value) {
+                $dataMessageProperty = $dataProperty.Value.PSObject.Properties['message']
+                if ($null -ne $dataMessageProperty) {
+                    $eventMessages.Add($dataMessageProperty.Value)
+                }
+                $dataErrorProperty = $dataProperty.Value.PSObject.Properties['error']
+                if ($null -ne $dataErrorProperty) {
+                    if ($dataErrorProperty.Value -is [string]) {
+                        $eventMessages.Add($dataErrorProperty.Value)
+                    }
+                    elseif ($null -ne $dataErrorProperty.Value -and $null -ne $dataErrorProperty.Value.PSObject.Properties['message']) {
+                        $eventMessages.Add($dataErrorProperty.Value.PSObject.Properties['message'].Value)
+                    }
+                }
+            }
+            foreach ($message in $eventMessages) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$message)) {
+                    $structuredMessages.Add(([string]$message).Trim())
+                }
+            }
+        }
+        catch {
+        }
+    }
+
+    $detail = if ($structuredMessages.Count -gt 0) {
+        @($structuredMessages | Select-Object -Unique) -join '; '
+    }
+    elseif ($outputLines.Count -gt 0) {
+        $outputLines -join ' '
+    }
+    else {
+        $null
+    }
+    $prefix = "$EvaluatorName exited with code $ExitCode"
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        return "$prefix without diagnostic output"
+    }
+    return "$prefix`: $detail"
+}
+
+function Get-EstimatedRemainingMilliseconds {
+    param(
+        [Parameter(Mandatory = $true)][long]$CompletedPayloadBytes,
+        [Parameter(Mandatory = $true)][long]$CompletedElapsedMilliseconds,
+        [Parameter(Mandatory = $true)][long]$RemainingPayloadBytes,
+        [Parameter(Mandatory = $true)][int]$MaxParallelBatches,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 1000000)][int]$BootstrapBytesPerSecondPerWorker
+    )
+
+    if ($RemainingPayloadBytes -le 0) {
+        return 0L
+    }
+    if ($CompletedPayloadBytes -le 0 -or $CompletedElapsedMilliseconds -le 0) {
+        return [long][Math]::Ceiling(($RemainingPayloadBytes / ([double]$BootstrapBytesPerSecondPerWorker * [Math]::Max(1, $MaxParallelBatches))) * 1000)
+    }
+    $bytesPerMillisecondPerWorker = [double]$CompletedPayloadBytes / [double]$CompletedElapsedMilliseconds
+    return [long][Math]::Ceiling($RemainingPayloadBytes / ($bytesPerMillisecondPerWorker * [Math]::Max(1, $MaxParallelBatches)))
+}
+
+Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds

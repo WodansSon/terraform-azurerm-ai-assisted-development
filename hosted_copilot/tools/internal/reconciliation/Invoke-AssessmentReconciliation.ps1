@@ -55,6 +55,8 @@ $ErrorActionPreference = 'Stop'
 
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersPath -Force
+$reconciliationBootstrapBytesPerSecondPerWorker = 650
+$reconciliationStopwatch = [Diagnostics.Stopwatch]::StartNew()
 
 function Copy-InputSnapshot {
     param(
@@ -87,6 +89,35 @@ function Get-EvaluatorJson {
         throw 'Evaluator response does not contain a JSON object'
     }
     return $trimmed.Substring($objectStart, $objectEnd - $objectStart + 1)
+}
+
+function Test-EvaluatorDraftJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$Json,
+        [Parameter(Mandatory = $true)][string]$SchemaPath,
+        [Parameter(Mandatory = $true)][int]$BatchNumber
+    )
+
+    try {
+        $valid = Test-Json -Json $Json -SchemaFile $SchemaPath -ErrorAction Stop
+    }
+    catch {
+        $exception = $_.Exception
+        while ($null -ne $exception.InnerException) {
+            $exception = $exception.InnerException
+        }
+        $parserDetail = [string]$exception.Message
+        if ($Json -match '(?<=[\[:,])\s*undefined(?=\s*[,}\]])') {
+            throw "Evaluator response for batch $BatchNumber is not valid JSON: bare undefined is invalid; omit optional properties instead ($parserDetail)"
+        }
+        if ([string]$_.FullyQualifiedErrorId -like 'InvalidJson*') {
+            throw "Evaluator response for batch $BatchNumber is not valid JSON: $parserDetail"
+        }
+        throw "Evaluator response for batch $BatchNumber does not satisfy the reconciliation schema: $parserDetail"
+    }
+    if (-not $valid) {
+        throw "Evaluator response for batch $BatchNumber does not satisfy the reconciliation schema"
+    }
 }
 
 function Get-ReconciliationBaselineIdentityJson {
@@ -327,6 +358,7 @@ try {
         [IO.File]::WriteAllBytes($batchContractPath, [IO.File]::ReadAllBytes($snapshotContractPath))
         [IO.File]::WriteAllBytes($batchSchemaPath, [IO.File]::ReadAllBytes($draftSchemaPath))
         [IO.File]::WriteAllBytes($batchPromptPath, [IO.File]::ReadAllBytes($promptPath))
+        $batch | Add-Member -NotePropertyName PayloadSizeBytes -NotePropertyValue ([long]((Get-Item -LiteralPath $batch.BaselinePath).Length + (Get-Item -LiteralPath $batchCatalogPath).Length + (Get-Item -LiteralPath $batchContractPath).Length + (Get-Item -LiteralPath $batchSchemaPath).Length + (Get-Item -LiteralPath $batchPromptPath).Length)) -Force
     }
 
     $batchByNumber = @{}
@@ -390,20 +422,21 @@ try {
             $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
             $cachedBatchCount++
             $reusedBatchCount++
-            if (-not $Quiet) {
-                Write-Host ("[PASSED]   assessment-reconciliation/cache : {0}/{1} {2}; cached batch revalidated" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId)
-            }
         }
         catch {
             Remove-Item -LiteralPath $cachePath, $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
             if (-not $Quiet) {
-                Write-Host ("[SKIPPED]  assessment-reconciliation/cache : {0}/{1} {2}; {3}" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId, $_.Exception.Message)
+                Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name ("assessment-reconciliation {0}/{1}" -f $batch.Number, $reconciliationBatches.Count) -Detail ("{0} cache rejected" -f $batch.SourceDefinitionId) -NameWidth 42)
+                foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Message ([string]$_.Exception.Message))) {
+                    Write-Host $diagnosticLine
+                }
             }
         }
     }
     if ($null -ne $resolvedResumeRunDirectory) {
-        $retainedConfigurationPath = Join-Path $resolvedResumeRunDirectory 'reconciliation-run.json'
-        $retainedBaselinePath = Join-Path $resolvedResumeRunDirectory 'source-assessment-baseline.json'
+        $recoveryRunDirectory = $resolvedResumeRunDirectory
+        $retainedConfigurationPath = Join-Path $recoveryRunDirectory 'reconciliation-run.json'
+        $retainedBaselinePath = Join-Path $recoveryRunDirectory 'source-assessment-baseline.json'
         $resumeConfigurationValid = if (Test-Path -LiteralPath $retainedConfigurationPath -PathType Leaf) {
             $retainedConfiguration = Get-Content -LiteralPath $retainedConfigurationPath -Raw | ConvertFrom-Json
             ($retainedConfiguration | ConvertTo-Json -Compress) -ceq ($reconciliationRunConfiguration | ConvertTo-Json -Compress)
@@ -418,14 +451,14 @@ try {
             $false
         }
         if (-not $resumeConfigurationValid) {
-            throw 'ResumeRunDirectory reconciliation identity does not match the current evaluator configuration'
+            throw 'Reconciliation recovery directory is incompatible with the current run. Rerun without -ReconciliationResumeDirectory to use validated cache entries.'
         }
 
         foreach ($batch in $reconciliationBatches) {
             if ($validatedDrafts.ContainsKey([int]$batch.Number)) {
                 continue
             }
-            $retainedBatchDirectory = Join-Path $resolvedResumeRunDirectory ('batches/batch-{0:D3}' -f $batch.Number)
+            $retainedBatchDirectory = Join-Path $recoveryRunDirectory ('batches/batch-{0:D3}' -f $batch.Number)
             $retainedBaselinePath = Join-Path $retainedBatchDirectory 'source-assessment-baseline.json'
             $retainedResponsePath = Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.json'
             $retainedStaticPairs = @(
@@ -468,19 +501,36 @@ try {
                     draft = $validatedDrafts[[int]$batch.Number]
                 })
                 $reusedBatchCount++
-                if (-not $Quiet) {
-                    Write-Host ("[PASSED]   assessment-reconciliation/reuse : {0}/{1} {2}; retained batch revalidated" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId)
-                }
             }
             catch {
                 Remove-Item -LiteralPath $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
                 if (-not $Quiet) {
-                    Write-Host ("[SKIPPED]  assessment-reconciliation/reuse : {0}/{1} {2}; {3}" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId, $_.Exception.Message)
+                    Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name ("assessment-reconciliation {0}/{1}" -f $batch.Number, $reconciliationBatches.Count) -Detail ("{0} recovery rejected" -f $batch.SourceDefinitionId) -NameWidth 42)
+                    foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Message ([string]$_.Exception.Message))) {
+                        Write-Host $diagnosticLine
+                    }
                 }
             }
         }
     }
     $pendingBatches = @($reconciliationBatches | Where-Object { -not $validatedDrafts.ContainsKey([int]$_.Number) })
+    if (-not $Quiet) {
+        [long]$pendingPayloadBytes = 0
+        $pendingAssessmentCount = 0
+        foreach ($pendingBatch in $pendingBatches) {
+            $pendingPayloadBytes += [long]$pendingBatch.PayloadSizeBytes
+            $pendingAssessmentCount += [int]$pendingBatch.AssessmentCount
+        }
+        $totalAssessmentCount = @($reconciliationBatches | Measure-Object -Property AssessmentCount -Sum)[0].Sum
+        $initialEstimate = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes 0 -CompletedElapsedMilliseconds 0 -RemainingPayloadBytes $pendingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $reconciliationBootstrapBytesPerSecondPerWorker
+        Write-Host ''
+        Write-Host ("  Assessments : {0} total | {1} pending" -f $totalAssessmentCount, $pendingAssessmentCount)
+        Write-Host ("  Batches     : {0} total | {1} cached | {2} recovered | {3} pending" -f $reconciliationBatches.Count, $cachedBatchCount, ($reusedBatchCount - $cachedBatchCount), $pendingBatches.Count)
+        Write-Host ("  Workers     : {0}" -f $MaxParallelBatches)
+        Write-Host ("  Payload     : {0}" -f (Format-ByteSize -Bytes $pendingPayloadBytes))
+        Write-Host ("  Estimated   : {0}" -f (Format-ElapsedDuration -Milliseconds $initialEstimate))
+        Write-Host ''
+    }
     $evaluatorCommandPath = $null
     if ($pendingBatches.Count -gt 0 -and $null -eq $resolvedEvaluatorScriptPath) {
         $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
@@ -500,6 +550,11 @@ try {
         $workerReasoningEffort = $ReasoningEffort
         $workerAttempt = $attempt
         $workerAttemptCount = $MaxRetries + 1
+        if ($attempt -eq 1) {
+            $completedBatchNumbers = [Collections.Generic.HashSet[int]]::new()
+            [long]$completedPayloadBytes = 0
+            [long]$completedElapsedMilliseconds = 0
+        }
         $pendingBatches | ForEach-Object -Parallel {
             $batch = $_
             [pscustomobject]@{
@@ -511,6 +566,10 @@ try {
                 Attempt = $using:workerAttempt
                 AttemptCount = $using:workerAttemptCount
             }
+            $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+            $evaluatorOutput = @()
+            $evaluatorExitCode = 0
+            $failureKind = 'execution'
             try {
                 $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
                 if ($null -ne $using:workerEvaluatorScriptPath) {
@@ -532,14 +591,19 @@ try {
                 else {
                     $attemptPrompt = 'Read source-assessment-baseline.json, instruction-catalog.json, assessment-reconciliation-v4.json, assessment-reconciliation-draft.schema.json, and AssessmentReconciliation-v4.md in the current directory. The baseline is one complete source-defined reconciliation batch. Cover every assessment in that batch exactly once and write only the requested JSON object in your final response.'
                     $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
+                    $evaluatorExitCode = $LASTEXITCODE
+                    if ($evaluatorExitCode -ne 0) {
+                        $failureKind = 'copilot-exit'
+                        throw "Copilot evaluator exited with code $evaluatorExitCode"
                     }
                 }
                 [pscustomobject]@{
                     Kind = 'completed'
                     Number = [int]$batch.Number
                     Succeeded = $true
+                    ElapsedMilliseconds = [long]$stopwatch.ElapsedMilliseconds
+                    ExitCode = 0
+                    FailureKind = ''
                     Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
                     Error = ''
                 }
@@ -549,7 +613,10 @@ try {
                     Kind = 'completed'
                     Number = [int]$batch.Number
                     Succeeded = $false
-                    Output = @()
+                    ElapsedMilliseconds = [long]$stopwatch.ElapsedMilliseconds
+                    ExitCode = [int]$evaluatorExitCode
+                    FailureKind = $failureKind
+                    Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
                     Error = [string]$_.Exception.Message
                 }
             }
@@ -557,8 +624,8 @@ try {
             $workerResult = $_
             $batch = $batchByNumber[[int]$workerResult.Number]
             if ([string]$workerResult.Kind -ceq 'started') {
-                if (-not $Quiet) {
-                    Write-Host ("[RUNNING]  assessment-reconciliation/batch : {0}/{1} {2}; {3} source records, {4} assessments; attempt {5}/{6}" -f $workerResult.Number, $reconciliationBatches.Count, $workerResult.SourceDefinitionId, $workerResult.EntryCount, $workerResult.AssessmentCount, $workerResult.Attempt, $workerResult.AttemptCount)
+                if (-not $Quiet -and [int]$workerResult.Attempt -eq 1) {
+                    Write-Host (Format-ValidationStatusLine -Status 'running' -Name ("assessment-reconciliation {0}/{1}" -f $workerResult.Number, $reconciliationBatches.Count) -Detail ("{0} ({1} assessments)" -f $workerResult.SourceDefinitionId, $workerResult.AssessmentCount) -NameWidth 42)
                 }
                 return
             }
@@ -567,6 +634,9 @@ try {
             $batchDisplayPath = Join-Path $batch.Directory 'workbench-display.json'
             try {
                 if (-not [bool]$workerResult.Succeeded) {
+                    if ([string]$workerResult.FailureKind -ceq 'copilot-exit') {
+                        throw (Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode ([int]$workerResult.ExitCode) -Output @($workerResult.Output))
+                    }
                     throw [string]$workerResult.Error
                 }
                 if ($null -eq $resolvedEvaluatorScriptPath) {
@@ -587,9 +657,7 @@ try {
                     [IO.File]::WriteAllText($batchResponsePath, (Get-EvaluatorJson -Content ([string]$assistantMessage.content)) + "`n", [Text.UTF8Encoding]::new($false))
                 }
                 $batchResponseJson = Get-Content -LiteralPath $batchResponsePath -Raw
-                if (-not ($batchResponseJson | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
-                    throw 'Evaluator response does not satisfy the assessment reconciliation draft schema'
-                }
+                Test-EvaluatorDraftJson -Json $batchResponseJson -SchemaPath $draftSchemaPath -BatchNumber ([int]$batch.Number)
                 $batchBuilderParameters = @{
                     RepositoryRoot = $runRepositoryRoot
                     AssessmentBaselinePath = $batch.BaselinePath
@@ -618,8 +686,16 @@ try {
                     draft = $validatedDrafts[[int]$batch.Number]
                 })
                 $batchErrors.Remove([int]$batch.Number)
+                $null = $completedBatchNumbers.Add([int]$batch.Number)
+                $completedPayloadBytes += [long]$batch.PayloadSizeBytes
+                $completedElapsedMilliseconds += [long]$workerResult.ElapsedMilliseconds
+                [long]$remainingPayloadBytes = 0
+                foreach ($remainingBatch in @($reconciliationBatches | Where-Object { -not $validatedDrafts.ContainsKey([int]$_.Number) })) {
+                    $remainingPayloadBytes += [long]$remainingBatch.PayloadSizeBytes
+                }
+                $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $reconciliationBootstrapBytesPerSecondPerWorker
                 if (-not $Quiet) {
-                    Write-Host ("[PASSED]   assessment-reconciliation/batch : {0}/{1} validated; {2} recommendations" -f $batch.Number, $reconciliationBatches.Count, @($validatedDrafts[[int]$batch.Number].recommendations).Count)
+                    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name ("assessment-reconciliation {0}/{1}" -f $batch.Number, $reconciliationBatches.Count) -Detail ("Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$reconciliationStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)) -NameWidth 42)
                 }
             }
             catch {
@@ -628,8 +704,24 @@ try {
                 $batchErrors[[int]$batch.Number] = [string]$_.Exception.Message
                 $retryBatches.Add($batch)
                 if (-not $Quiet) {
-                    $retryStatus = if ($attempt -le $MaxRetries) { 'RETRYING' } else { 'FAILED' }
-                    Write-Host ("[{0}] assessment-reconciliation/batch : {1}/{2} {3}" -f $retryStatus, $batch.Number, $reconciliationBatches.Count, $_.Exception.Message)
+                    foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Label ("[ERROR] Batch {0}/{1}:" -f $batch.Number, $reconciliationBatches.Count) -Message ([string]$_.Exception.Message))) {
+                        Write-Host $diagnosticLine
+                    }
+                    $completedPayloadBytes += [long]$batch.PayloadSizeBytes
+                    $completedElapsedMilliseconds += [long]$workerResult.ElapsedMilliseconds
+                    [long]$remainingPayloadBytes = 0
+                    foreach ($remainingBatch in @($reconciliationBatches | Where-Object { -not $validatedDrafts.ContainsKey([int]$_.Number) })) {
+                        $remainingPayloadBytes += [long]$remainingBatch.PayloadSizeBytes
+                    }
+                    $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $reconciliationBootstrapBytesPerSecondPerWorker
+                    $failureStatus = if ($attempt -le $MaxRetries) { 'retrying' } else { 'failed' }
+                    $failureDetail = if ($attempt -le $MaxRetries) {
+                        "Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$reconciliationStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)
+                    }
+                    else {
+                        "Total Elapsed {0} : [Batch: {1}]" -f (Format-ElapsedDuration -Milliseconds ([long]$reconciliationStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds))
+                    }
+                    Write-Host (Format-ValidationStatusLine -Status $failureStatus -Name ("assessment-reconciliation {0}/{1}" -f $batch.Number, $reconciliationBatches.Count) -Detail $failureDetail -NameWidth 42)
                 }
             }
         }
@@ -674,7 +766,7 @@ try {
     }
 
     if (-not $Quiet) {
-        Write-Host '[RUNNING]  assessment-reconciliation/display   : building Workbench display'
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/display' -Detail 'building Workbench display' -NameWidth 42)
     }
     $builderParameters = @{
         RepositoryRoot = $runRepositoryRoot
@@ -698,10 +790,10 @@ try {
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
     if (-not $Quiet) {
         if ([string]$builderResult.status -ceq 'blocked') {
-            Write-Host ("[BLOCKED]  assessment-reconciliation/display   : Workbench display built with {0} unresolved conflicts" -f [int]$builderResult.conflictCount)
+            Write-Host (Format-ValidationStatusLine -Status 'blocked' -Name 'assessment-reconciliation/display' -Detail ("Workbench display built with {0} unresolved conflicts" -f [int]$builderResult.conflictCount) -NameWidth 42)
         }
         else {
-            Write-Host '[PASSED]   assessment-reconciliation/display   : Workbench display built'
+            Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail 'Workbench display built' -NameWidth 42)
         }
     }
     $succeeded = $true
@@ -712,11 +804,6 @@ catch {
 finally {
     if ($succeeded -and (Test-Path -LiteralPath $runDirectory -PathType Container)) {
         Remove-Item -LiteralPath $runDirectory -Recurse -Force
-    }
-    $managedRunRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'hosted-assessment-reconciliation'))
-    $managedRunRootPrefix = $managedRunRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    if ($succeeded -and $null -ne $resolvedResumeRunDirectory -and $resolvedResumeRunDirectory.StartsWith($managedRunRootPrefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
-        Remove-Item -LiteralPath $resolvedResumeRunDirectory -Recurse -Force
     }
 }
 

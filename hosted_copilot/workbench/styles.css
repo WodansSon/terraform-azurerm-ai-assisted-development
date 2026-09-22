@@ -1837,52 +1837,20 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   border-radius: 4px;
 }
 
-.proposed-hosted-rule-id-control {
-  display: grid;
-  gap: 10px;
-}
-
-.proposed-hosted-rule-id-input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 9px 10px;
+.rule-actions-content > .rule-action-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: calc(100% + 24px);
+  margin: -12px -12px 0;
+  padding: 12px 16px 14px;
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  line-height: 1.45;
+  background: var(--context-header);
+  border-bottom: 1px solid var(--line-strong);
 }
 
-.proposed-hosted-rule-id-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.proposed-hosted-rule-id-validation {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--success);
-  font-size: 0.68rem;
-  line-height: 16px;
-}
-
-.proposed-hosted-rule-id-validation.invalid {
-  color: var(--red);
-}
-
-.proposed-hosted-rule-id-validation .codicon {
-  flex: 0 0 12px;
-  width: 12px;
-  height: 12px;
-}
-
-.proposed-hosted-rule-id-meta .rationale-limit {
-  flex: 0 0 auto;
-  margin: 0;
+.rule-action-header > .detail-identity {
+  gap: 8px;
 }
 
 .action-options {
@@ -1945,25 +1913,6 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   color: var(--ink);
   font-size: 0.78rem;
   cursor: pointer;
-}
-
-.plan-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.plan-toggle.disabled {
-  color: var(--muted);
-  cursor: not-allowed;
-}
-
-.section-help {
-  margin: -2px 0 4px;
-  color: var(--muted);
-  font-size: 0.76rem;
-  line-height: 1.45;
 }
 
 .ai-evaluation-summary {

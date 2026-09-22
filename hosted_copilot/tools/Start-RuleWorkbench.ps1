@@ -81,74 +81,6 @@ foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySche
     }
 }
 
-function Find-AutomaticAssessmentRecoveryDirectory {
-    param(
-        [Parameter(Mandatory = $true)][string]$ManagedRoot,
-        [Parameter(Mandatory = $true)][string]$CurrentContractPath
-    )
-
-    if (-not (Test-Path -LiteralPath $ManagedRoot -PathType Container)) {
-        return $null
-    }
-    $currentContractHash = (Get-FileHash -LiteralPath $CurrentContractPath -Algorithm SHA256).Hash
-    foreach ($candidate in @(Get-ChildItem -LiteralPath $ManagedRoot -Directory | Sort-Object LastWriteTime -Descending)) {
-        $retainedContractPath = Join-Path $candidate.FullName 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-        if (-not (Test-Path -LiteralPath $retainedContractPath -PathType Leaf) -or (Get-FileHash -LiteralPath $retainedContractPath -Algorithm SHA256).Hash -cne $currentContractHash) {
-            continue
-        }
-        $reusableBatch = @(Get-ChildItem -LiteralPath $candidate.FullName -Directory | Where-Object {
-            (Test-Path -LiteralPath (Join-Path $_.FullName 'source-records.json') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $_.FullName 'response.json') -PathType Leaf)
-        } | Select-Object -First 1)
-        if ($reusableBatch.Count -eq 1) {
-            return $candidate.FullName
-        }
-    }
-    return $null
-}
-
-function Find-AutomaticReconciliationRecoveryDirectory {
-    param(
-        [Parameter(Mandatory = $true)][string]$ManagedRoot,
-        [Parameter(Mandatory = $true)][string]$Evaluator,
-        [Parameter(Mandatory = $true)][string]$Model,
-        [Parameter(Mandatory = $true)][string]$ReasoningEffort
-    )
-
-    if (-not (Test-Path -LiteralPath $ManagedRoot -PathType Container)) {
-        return $null
-    }
-    foreach ($candidate in @(Get-ChildItem -LiteralPath $ManagedRoot -Directory | Sort-Object LastWriteTime -Descending)) {
-        $configurationMatches = $false
-        $configurationPath = Join-Path $candidate.FullName 'reconciliation-run.json'
-        $baselinePath = Join-Path $candidate.FullName 'source-assessment-baseline.json'
-        try {
-            if (Test-Path -LiteralPath $configurationPath -PathType Leaf) {
-                $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json
-                $configurationMatches = [string]$configuration.evaluator -ceq $Evaluator -and [string]$configuration.model -ceq $Model -and [string]$configuration.reasoningEffort -ceq $ReasoningEffort
-            }
-            elseif (Test-Path -LiteralPath $baselinePath -PathType Leaf) {
-                $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
-                $configurationMatches = [string]$baseline.runConfiguration.evaluator -ceq $Evaluator -and [string]$baseline.runConfiguration.model -ceq $Model -and [string]$baseline.runConfiguration.reasoningEffort -ceq $ReasoningEffort
-            }
-        }
-        catch {
-            $configurationMatches = $false
-        }
-        if (-not $configurationMatches) {
-            continue
-        }
-        $reusableBatch = @(Get-ChildItem -LiteralPath (Join-Path $candidate.FullName 'batches') -Directory -ErrorAction SilentlyContinue | Where-Object {
-            (Test-Path -LiteralPath (Join-Path $_.FullName 'source-assessment-baseline.json') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $_.FullName 'assessment-reconciliation-draft.json') -PathType Leaf)
-        } | Select-Object -First 1)
-        if ($reusableBatch.Count -eq 1) {
-            return $candidate.FullName
-        }
-    }
-    return $null
-}
-
 if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
@@ -246,20 +178,6 @@ $shutdownConfig = [ordered]@{
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $resolvedDisplayPath = if ([string]::IsNullOrWhiteSpace($DisplayPath)) { $null } else { [IO.Path]::GetFullPath($DisplayPath) }
-if ($null -eq $resolvedDisplayPath -and $null -eq $resolvedAssessmentResumeDirectory) {
-    $assessmentRecoveryRoot = Join-Path ([IO.Path]::GetTempPath()) 'hosted-source-assessment'
-    $resolvedAssessmentResumeDirectory = Find-AutomaticAssessmentRecoveryDirectory -ManagedRoot $assessmentRecoveryRoot -CurrentContractPath (Join-Path $catalogRoot 'rule-assessments/source-assessment-v4.json')
-    if ($null -ne $resolvedAssessmentResumeDirectory) {
-        $assessmentRecoveryMode = 'AUTO'
-    }
-}
-if ($null -eq $resolvedDisplayPath -and $null -eq $resolvedReconciliationResumeDirectory) {
-    $reconciliationRecoveryRoot = Join-Path ([IO.Path]::GetTempPath()) 'hosted-assessment-reconciliation'
-    $resolvedReconciliationResumeDirectory = Find-AutomaticReconciliationRecoveryDirectory -ManagedRoot $reconciliationRecoveryRoot -Evaluator $EvaluatorCommand -Model $Model -ReasoningEffort $AssessmentReasoningEffort
-    if ($null -ne $resolvedReconciliationResumeDirectory) {
-        $reconciliationRecoveryMode = 'AUTO'
-    }
-}
 $assessmentResult = $null
 $workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
@@ -424,8 +342,6 @@ if ($OutputFormat -eq 'Text') {
     Write-ValidationSummary -Fields ([ordered]@{
         'Cache Directory' = $resolvedAssessmentCacheDirectory
         'Reconciliation Cache' = $resolvedReconciliationCacheDirectory
-        'Assessment Recovery' = $(if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { "$assessmentRecoveryMode`: $resolvedAssessmentResumeDirectory" })
-        'Reconciliation Recovery' = $(if ($null -eq $resolvedReconciliationResumeDirectory) { 'NONE' } else { "$reconciliationRecoveryMode`: $resolvedReconciliationResumeDirectory" })
     })
 }
 try {

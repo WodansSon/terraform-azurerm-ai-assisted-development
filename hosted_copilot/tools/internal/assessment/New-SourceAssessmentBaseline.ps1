@@ -106,15 +106,20 @@ $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $contra
 $hostedCatalogInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath $catalogSchemaPath
 $hostedCatalog = $hostedCatalogInput.Value
 $knownHostedRuleIds = @{}
-$hostedRulesByContributorSourceId = @{}
 foreach ($rule in @($hostedCatalog.rules)) {
     $knownHostedRuleIds[[string]$rule.id] = $true
-    foreach ($sourceId in @($rule.sourceIds)) {
-        if (-not $hostedRulesByContributorSourceId.ContainsKey([string]$sourceId)) {
-            $hostedRulesByContributorSourceId[[string]$sourceId] = [Collections.Generic.List[string]]::new()
-        }
-        $hostedRulesByContributorSourceId[[string]$sourceId].Add([string]$rule.id)
+}
+$canonicalMappingsBySource = @{}
+foreach ($mappingProperty in @($hostedCatalog.canonicalCandidateMappings.PSObject.Properties)) {
+    $mapping = $mappingProperty.Value
+    $sourceKey = [string]$mapping.sourceDefinitionId + [char]0 + [string]$mapping.sourceId
+    if (-not $canonicalMappingsBySource.ContainsKey($sourceKey)) {
+        $canonicalMappingsBySource[$sourceKey] = [Collections.Generic.List[object]]::new()
     }
+    $canonicalMappingsBySource[$sourceKey].Add([pscustomobject]@{
+        HostedRuleId = [string]$mappingProperty.Name
+        AssessmentId = if ($mapping.PSObject.Properties['assessmentId']) { [string]$mapping.assessmentId } else { $null }
+    })
 }
 $draftInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentDraftPath)) -SchemaPath $draftSchemaPath
 $draft = $draftInput.Value
@@ -220,9 +225,14 @@ foreach ($entry in $draftEntries) {
     if ($assessmentCardinalityBySourceDefinition[$sourceDefinitionId] -ceq 'exactly-one' -and @($entry.assessments).Count -ne 1) {
         throw "Assessment draft must contain exactly one assessment for $key"
     }
-    [string[]]$mappedHostedRuleIds = @()
-    if ($sourceDefinitionId -ceq 'contributor-guidance' -and $hostedRulesByContributorSourceId.ContainsKey($sourceId)) {
-        $mappedHostedRuleIds = @($hostedRulesByContributorSourceId[$sourceId] | Sort-Object -Unique)
+    $canonicalMappings = if ($canonicalMappingsBySource.ContainsKey($sourceDefinitionId + [char]0 + $sourceId)) {
+        @($canonicalMappingsBySource[$sourceDefinitionId + [char]0 + $sourceId])
+    }
+    else {
+        @()
+    }
+    if (@($canonicalMappings | Where-Object { $null -eq $_.AssessmentId }).Count -gt 0 -and @($entry.assessments).Count -ne 1) {
+        throw "Canonical source candidate is ambiguous without an assessmentId: $key"
     }
 
     $assessmentIds = @{}
@@ -266,6 +276,9 @@ foreach ($entry in $draftEntries) {
             }
             $relatedHostedRuleIds[$hostedRuleId] = $true
         }
+        [string[]]$mappedHostedRuleIds = @($canonicalMappings | Where-Object {
+            $null -eq $_.AssessmentId -or [string]$_.AssessmentId -ceq $assessmentId
+        } | ForEach-Object { [string]$_.HostedRuleId } | Sort-Object -Unique)
         $assessment | Add-Member -NotePropertyName mappedHostedRuleIds -NotePropertyValue $mappedHostedRuleIds
         $assessment | Add-Member -NotePropertyName assessmentProvenance -NotePropertyValue ([pscustomobject][ordered]@{
             originSchemaVersion = 4
@@ -277,6 +290,12 @@ foreach ($entry in $draftEntries) {
                 model = $Model
             }
         })
+    }
+    $unresolvedCanonicalMappings = @($canonicalMappings | Where-Object {
+        $null -ne $_.AssessmentId -and -not $assessmentIds.ContainsKey([string]$_.AssessmentId)
+    })
+    if ($unresolvedCanonicalMappings.Count -gt 0) {
+        throw "Canonical source candidate assessment was not produced for $key`: $([string]$unresolvedCanonicalMappings[0].AssessmentId)"
     }
     $entry | Add-Member -NotePropertyName transition -NotePropertyValue $sourceTransitionByKey[$key]
     $entry | Add-Member -NotePropertyName priorSourceEvidence -NotePropertyValue $priorSourceEvidenceByKey[$key]

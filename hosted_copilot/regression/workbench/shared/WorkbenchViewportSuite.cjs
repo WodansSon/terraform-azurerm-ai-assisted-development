@@ -141,148 +141,6 @@ async function assertRuleActionPreservesContext(page, width) {
   assert(result.selectionPreserved, `${width}px Rule Action: selected action and header badge diverged`);
 }
 
-async function assertPlanTogglePreservesContext(page, width) {
-  const before = await page.evaluate(() => {
-    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
-    const body = panel.querySelector(":scope > .assessment-content");
-    const control = body.querySelector("[data-plan-toggle]");
-    if (!control || control.checked) return { controlAvailable: false };
-    const bodyRect = body.getBoundingClientRect();
-    const controlRect = control.getBoundingClientRect();
-    const controlTop = body.scrollTop + controlRect.top - bodyRect.top;
-    body.scrollTop = Math.max(0, controlTop - (body.clientHeight - controlRect.height) / 2);
-    control.focus({ preventScroll: true });
-    body.dataset.planToggleContextProbe = "true";
-    return {
-      controlAvailable: true,
-      scrollTop: body.scrollTop,
-      headerHeight: panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height,
-    };
-  });
-
-  assert(before.controlAvailable, `${width}px Promotion Plan toggle: unchecked control is unavailable`);
-  await page.click("#candidate-sources-panel [data-plan-toggle]");
-
-  const result = await page.evaluate(({ scrollTop, headerHeight }) => {
-    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
-    const currentBody = panel.querySelector(":scope > .assessment-content");
-    const control = currentBody.querySelector("[data-plan-toggle]");
-    const bodyPreserved = currentBody.dataset.planToggleContextProbe === "true";
-    return {
-      bodyPreserved,
-      scrollPreserved: Math.abs(currentBody.scrollTop - scrollTop) < 0.1,
-      focusPreserved: document.activeElement === control,
-      selectionPreserved: control.checked,
-      headerPreserved: Math.abs(panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height - headerHeight) < 0.1,
-    };
-  }, before);
-
-  assert(result.bodyPreserved, `${width}px Promotion Plan toggle: Details body was replaced`);
-  assert(result.scrollPreserved, `${width}px Promotion Plan toggle: Details scroll position changed`);
-  assert(result.focusPreserved, `${width}px Promotion Plan toggle: checkbox lost focus`);
-  assert(result.selectionPreserved, `${width}px Promotion Plan toggle: checkbox selection was not retained`);
-  assert(result.headerPreserved, `${width}px Promotion Plan toggle: fixed header height changed`);
-
-  await page.click("#candidate-sources-panel [data-plan-toggle]");
-  const removed = await page.evaluate(({ scrollTop, headerHeight }) => {
-    const panel = document.querySelector("#candidate-sources-panel .assessment-panel");
-    const currentBody = panel.querySelector(":scope > .assessment-content");
-    const control = currentBody.querySelector("[data-plan-toggle]");
-    const result = {
-      bodyPreserved: currentBody.dataset.planToggleContextProbe === "true",
-      scrollPreserved: Math.abs(currentBody.scrollTop - scrollTop) < 0.1,
-      focusPreserved: document.activeElement === control,
-      selectionRemoved: !control.checked,
-      detailsPreserved: document.querySelector('[data-candidate-pane="details"]')?.getAttribute("aria-selected") === "true",
-      headerPreserved: Math.abs(panel.querySelector(":scope > .assessment-title").getBoundingClientRect().height - headerHeight) < 0.1,
-    };
-    delete currentBody.dataset.planToggleContextProbe;
-    return result;
-  }, before);
-
-  assert(removed.bodyPreserved, `${width}px Promotion Plan toggle removal: Details body was replaced`);
-  assert(removed.scrollPreserved, `${width}px Promotion Plan toggle removal: Details scroll position changed`);
-  assert(removed.focusPreserved, `${width}px Promotion Plan toggle removal: checkbox lost focus`);
-  assert(removed.selectionRemoved, `${width}px Promotion Plan toggle removal: checkbox remained selected`);
-  assert(removed.detailsPreserved, `${width}px Promotion Plan toggle removal: navigation left Details`);
-  assert(removed.headerPreserved, `${width}px Promotion Plan toggle removal: fixed header height changed`);
-
-  await page.evaluate(async () => {
-    const sessionId = localStorage.getItem("hosted-rule-workbench.active-session");
-    const database = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("hosted-rule-workbench");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    await new Promise((resolve, reject) => {
-      const request = database.transaction("sessions", "readonly").objectStore("sessions").get(sessionId);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    database.close();
-  });
-}
-
-async function assertPlanMembershipSynchronizesAcrossPanes(page, width) {
-  const before = await page.evaluate(() => {
-    const detailsBody = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
-    const detailsToggle = detailsBody.querySelector("[data-plan-toggle]");
-    const activeRow = document.querySelector("#candidate-list [data-candidate-key][aria-current=\"true\"]");
-    if (!detailsToggle || !activeRow || detailsToggle.checked) return { controlsAvailable: false };
-    detailsToggle.click();
-    return {
-      controlsAvailable: true,
-      candidateKey: activeRow.dataset.candidateKey,
-      detailsChecked: detailsToggle.checked,
-      treeChecked: activeRow.querySelector("[data-decision-key]").checked,
-    };
-  });
-
-  assert(before.controlsAvailable, `${width}px Membership synchronization: controls are unavailable`);
-  assert(before.detailsChecked && before.treeChecked, `${width}px Membership synchronization: Details check did not update the tree`);
-
-  await page.click('[data-candidate-pane="candidates"]');
-  await page.evaluate((candidateKey) => {
-    revealCandidateInTree(candidateKey);
-  }, before.candidateKey);
-
-  const openState = await page.evaluate((candidateKey) => {
-    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidateKey);
-    const ancestors = [];
-    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
-      if (ancestor.children.length) ancestors.push([ancestor.id, ancestor.expanded]);
-    }
-    return {
-      ancestors,
-    };
-  }, before.candidateKey);
-  await page.click(`#candidate-list [data-candidate-key="${before.candidateKey}"] [data-decision-key]`);
-
-  const treeResult = await page.evaluate((candidateKey) => {
-    const row = document.querySelector(`#candidate-list [data-candidate-key="${candidateKey}"]`);
-    const node = candidateHierarchicalView.model.nodes.find((item) => item.data?.candidate?.key === candidateKey);
-    const ancestors = [];
-    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
-      if (ancestor.children.length) ancestors.push([ancestor.id, ancestor.expanded]);
-    }
-    return {
-      unchecked: !row.querySelector("[data-decision-key]").checked,
-      selected: row.getAttribute("aria-current") === "true",
-      ancestors,
-    };
-  }, before.candidateKey);
-  assert(treeResult.unchecked, `${width}px Membership synchronization: tree checkbox remained checked`);
-  assert(treeResult.selected, `${width}px Membership synchronization: active tree selection changed`);
-  assert(JSON.stringify(treeResult.ancestors) === JSON.stringify(openState.ancestors), `${width}px Membership synchronization: tree disclosures collapsed`);
-
-  await page.click('[data-candidate-pane="details"]');
-  const detailsResult = await page.evaluate(() => ({
-    unchecked: !document.querySelector("#candidate-sources-panel [data-plan-toggle]").checked,
-    detailsActive: document.querySelector('[data-candidate-pane="details"]')?.getAttribute("aria-selected") === "true",
-  }));
-  assert(detailsResult.unchecked && detailsResult.detailsActive, `${width}px Membership synchronization: tree uncheck did not update Details`);
-}
-
 async function assertRationaleSaveLayout(page, width) {
   const result = await page.evaluate(() => {
     const heading = document.querySelector("#candidate-sources-panel .rationale-heading");
@@ -310,7 +168,7 @@ async function assertRationaleSaveLayout(page, width) {
     return {
       available: true,
       accessibleIconOnly: !button.textContent.trim()
-        && button.getAttribute("aria-label")?.startsWith("Save decision rationale")
+        && button.getAttribute("aria-label")?.startsWith("Save decision")
         && button.dataset.workbenchTooltip.startsWith("Save")
         && icon.querySelector("use")?.getAttribute("href")?.endsWith("#codicon-save"),
       toolbarVisualMatch: toolbarVisualMatch && buttonRect.width === 34 && buttonRect.height === 34,
@@ -848,12 +706,6 @@ async function runViewportSuite(page, baseUrl, browserDriver) {
     }, failures);
     await runViewportCheckpoint(page, browserDriver, width, "Rule Actions", async () => {
       await assertRuleActionPreservesContext(page, width);
-    }, failures);
-    await runViewportCheckpoint(page, browserDriver, width, "plan toggle", async () => {
-      await assertPlanTogglePreservesContext(page, width);
-    }, failures);
-    await runViewportCheckpoint(page, browserDriver, width, "plan membership synchronization", async () => {
-      await assertPlanMembershipSynchronizesAcrossPanes(page, width);
     }, failures);
     await runViewportCheckpoint(page, browserDriver, width, "Decision Rationale layout", async () => {
       await assertRationaleSaveLayout(page, width);

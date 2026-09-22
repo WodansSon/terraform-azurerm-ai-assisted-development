@@ -139,6 +139,7 @@ $display = [ordered]@{
         assessment = $assessment
         reviewState = 'recommended'
         recommendation = $recommendation
+        catalogMapping = [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
     })
     catalog = [ordered]@{
         contentSha256 = $hash
@@ -151,6 +152,7 @@ $display = [ordered]@{
                 provenance = @('inferred-maintainer-convention')
                 evidenceIds = @('implementation-contract')
                 implementationModels = @('legacy', 'typed', 'framework')
+                canonicalCandidate = [ordered]@{ sourceDefinitionId = 'interactive-toolkit'; sourceId = 'IMPL-EVID-001' }
                 placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' })
             },
             [ordered]@{
@@ -161,6 +163,7 @@ $display = [ordered]@{
                 provenance = @('inferred-maintainer-convention')
                 evidenceIds = @('implementation-contract')
                 implementationModels = @('legacy', 'typed', 'framework')
+                canonicalCandidate = [ordered]@{ sourceDefinitionId = 'interactive-toolkit'; sourceId = 'IMPL-EVID-002' }
                 placements = @()
                 retirementReason = 'Superseded by a more precise rule.'
                 lastPlacement = [ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' }
@@ -255,6 +258,11 @@ $approved = [ordered]@{
             provenance = @('local-safeguard')
             evidenceIds = @('implementation-contract')
             implementationModels = @('typed')
+        }
+        canonicalCandidate = [ordered]@{
+            sourceDefinitionId = 'maintainer-proposals'
+            sourceId = 'IMPL-TEST-901'
+            assessmentId = 'hosted-check'
         }
         placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Schema And State' })
         sourceRelationships = @([ordered]@{

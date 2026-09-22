@@ -197,9 +197,41 @@ if ($assessments.Count -eq 0) {
     throw 'Source assessment baseline contains no assessments to reconcile'
 }
 
+$catalogRuleIds = @($catalogRules.Keys)
+$mappingRuleIds = @($catalog.canonicalCandidateMappings.PSObject.Properties.Name)
+$missingMappingRuleIds = @($catalogRuleIds | Where-Object { $_ -notin $mappingRuleIds })
+$unknownMappingRuleIds = @($mappingRuleIds | Where-Object { -not $catalogRules.ContainsKey($_) })
+if ($missingMappingRuleIds.Count -gt 0 -or $unknownMappingRuleIds.Count -gt 0) {
+    throw 'Canonical candidate mappings must cover every catalog rule exactly'
+}
+$canonicalHostedRuleByAssessment = @{}
+$canonicalAssessmentByHostedRule = @{}
+foreach ($mappingProperty in @($catalog.canonicalCandidateMappings.PSObject.Properties)) {
+    $mapping = $mappingProperty.Value
+    $matchingAssessmentKeys = @($assessments.Keys | Where-Object {
+        $candidate = $assessments[$_].reference
+        [string]$candidate.sourceDefinitionId -ceq [string]$mapping.sourceDefinitionId -and
+            [string]$candidate.sourceId -ceq [string]$mapping.sourceId -and
+            (-not $mapping.PSObject.Properties['assessmentId'] -or [string]$candidate.assessmentId -ceq [string]$mapping.assessmentId)
+    })
+    if ($matchingAssessmentKeys.Count -gt 1) {
+        throw "Canonical source candidate resolves to more than one assessment: $($mappingProperty.Name)"
+    }
+    if ($matchingAssessmentKeys.Count -eq 0) {
+        continue
+    }
+    $assessmentKey = [string]$matchingAssessmentKeys[0]
+    if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
+        throw "Canonical source candidate is assigned to more than one catalog rule: $($mappingProperty.Name)"
+    }
+    $canonicalHostedRuleByAssessment[$assessmentKey] = [string]$mappingProperty.Name
+    $canonicalAssessmentByHostedRule[[string]$mappingProperty.Name] = $assessmentKey
+}
+
 $forcedExcludedDraftKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($recommendation in @($draft.recommendations)) {
     $containsUnclassifiedSource = $false
+    $containsCanonicalCandidate = $false
     foreach ($reference in @($recommendation.memberAssessmentRefs)) {
         $assessmentKey = Get-AssessmentKey -Reference $reference
         if (-not $assessments.ContainsKey($assessmentKey)) {
@@ -218,10 +250,12 @@ foreach ($recommendation in @($draft.recommendations)) {
         }
         if ($null -ne $sourceRecord -and $sourceRecord.PSObject.Properties['provenance'] -and [string]$sourceRecord.provenance -ceq 'unclassified') {
             $containsUnclassifiedSource = $true
-            break
+        }
+        if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
+            $containsCanonicalCandidate = $true
         }
     }
-    if (-not $containsUnclassifiedSource) {
+    if (-not $containsUnclassifiedSource -or $containsCanonicalCandidate) {
         continue
     }
 
@@ -277,6 +311,9 @@ foreach ($recommendation in @($draft.recommendations)) {
         }
         $membershipByAssessment[$assessmentKey] = $draftKey
     }
+    if ($memberKeys.Count -ne 1) {
+        throw "Recommendation $draftKey must contain exactly one assessment"
+    }
     $meaningCoverageKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($coverage in @($recommendation.memberMeaningCoverage)) {
         $coverageKey = Get-AssessmentKey -Reference $coverage.assessmentRef
@@ -297,20 +334,40 @@ foreach ($recommendation in @($draft.recommendations)) {
     $idFamily = if ($null -eq $recommendation.idFamily) { $null } else { [string]$recommendation.idFamily }
     $action = [string]$recommendation.recommendedAction
     $targetExists = $null -ne $targetHostedId -and $catalogRules.ContainsKey($targetHostedId)
-    if ($action -in @('update', 'no-change') -and -not $targetExists) {
+    $memberAssessmentKey = [string]@($memberKeys)[0]
+    $canonicalTargetHostedId = if ($canonicalHostedRuleByAssessment.ContainsKey($memberAssessmentKey)) { [string]$canonicalHostedRuleByAssessment[$memberAssessmentKey] } else { $null }
+    if ($action -in @('update', 'no-change', 'retire', 'restore') -and -not $targetExists) {
         throw "Recommendation $draftKey requires one exact existing Hosted target"
     }
-    if ($action -in @('update', 'no-change') -and $catalogRules.ContainsKey($targetHostedId) -and [string]$catalogRules[$targetHostedId].status -cne 'active') {
-        throw "Recommendation $draftKey cannot target retired Hosted rule $targetHostedId without an explicit Restore decision"
+    if ($null -ne $targetHostedId -and ($null -eq $canonicalTargetHostedId -or $targetHostedId -cne $canonicalTargetHostedId)) {
+        throw "Recommendation $draftKey can target only its catalog-owned canonical Hosted rule"
+    }
+    if ($action -in @('update', 'retire') -and [string]$catalogRules[$targetHostedId].status -cne 'active') {
+        throw "Recommendation $draftKey requires an active Hosted target"
+    }
+    if ($action -eq 'restore' -and [string]$catalogRules[$targetHostedId].status -cne 'retired') {
+        throw "Recommendation $draftKey requires a retired Hosted target"
     }
     if ($action -in @('add', 'exclude') -and ($null -ne $targetHostedId -or $null -eq $idFamily)) {
         throw "Recommendation $draftKey must use an allowlisted Hosted ID family without a target"
     }
-    if ($action -eq 'defer' -and (($null -eq $targetHostedId) -eq ($null -eq $idFamily))) {
-        throw "Deferred recommendation $draftKey must identify exactly one existing target or new Hosted ID family"
+    if ($action -in @('add', 'exclude') -and $null -ne $canonicalTargetHostedId) {
+        throw "Canonical recommendation $draftKey cannot use $action for an existing Hosted rule"
+    }
+    if ($action -eq 'defer') {
+        if (($null -ne $canonicalTargetHostedId -and ($targetHostedId -cne $canonicalTargetHostedId -or $null -ne $idFamily)) -or
+            ($null -eq $canonicalTargetHostedId -and ($null -ne $targetHostedId -or $null -eq $idFamily))) {
+            throw "Deferred recommendation $draftKey must preserve its canonical target or use one new Hosted ID family"
+        }
     }
     if ($null -ne $targetHostedId) {
-        $location = $catalogLocations[$targetHostedId]
+        $targetRule = $catalogRules[$targetHostedId]
+        $location = if ($catalogLocations.ContainsKey($targetHostedId)) {
+            $catalogLocations[$targetHostedId]
+        }
+        else {
+            [ordered]@{ category = [string]$targetRule.lastPlacement.surfaceId; placement = [string]$targetRule.lastPlacement.sectionHeading }
+        }
         $targetCategory = [string]$location.category
         $targetPlacement = [string]$location.placement
         if ($category -cne $targetCategory -or $placement -cne $targetPlacement) {
@@ -364,7 +421,7 @@ foreach ($coverage in @($draft.assessmentCoverage)) {
     }
     $recommendationAction = [string]$draftRecommendations[[string]$draftKeys[0]].recommendedAction
     $disposition = [string]$coverage.disposition
-    if (($disposition -ceq 'recommended' -and $recommendationAction -notin @('add', 'update', 'no-change')) -or
+    if (($disposition -ceq 'recommended' -and $recommendationAction -notin @('add', 'update', 'no-change', 'retire', 'restore')) -or
         ($disposition -ceq 'deferred' -and $recommendationAction -cne 'defer') -or
         ($disposition -ceq 'excluded' -and $recommendationAction -cne 'exclude')) {
         throw 'Assessment coverage disposition does not match its recommendation action'
@@ -482,8 +539,8 @@ foreach ($recommendation in $activeDraftRecommendations) {
         $idState = 'existing'
     }
     $recommendedText = [string]$recommendation.recommendedRuleText
-    if ([string]$recommendation.recommendedAction -ceq 'no-change' -and $recommendedText -cne $currentText) {
-        throw "No Change recommendation $draftKey must preserve the exact current Hosted rule text"
+    if ([string]$recommendation.recommendedAction -in @('no-change', 'restore') -and $recommendedText -cne $currentText) {
+        throw "No Change or Restore recommendation $draftKey must preserve the exact current Hosted rule text"
     }
     if ([string]$recommendation.recommendedAction -ceq 'update' -and $recommendedText -ceq $currentText) {
         throw "Update recommendation $draftKey must change the Hosted rule text"
@@ -516,14 +573,27 @@ foreach ($recommendation in $activeDraftRecommendations) {
         }
         $sourceProvenance = if ($sourceRecord.PSObject.Properties['provenance']) { [string]$sourceRecord.provenance } else { 'published-upstream-standard' }
         if ($sourceProvenance -ceq 'unclassified') {
-            if ([string]$recommendation.recommendedAction -cne 'exclude') {
+            if ([string]$recommendation.recommendedAction -ceq 'exclude') {
+                $null = $provenance.Add('local-safeguard')
+                if (-not $catalogEvidence.ContainsKey('hosted-architecture')) {
+                    throw "Recommendation $draftKey requires missing catalog evidence hosted-architecture"
+                }
+                $null = $evidenceIds.Add('hosted-architecture')
+            }
+            elseif ($null -ne $recommendation.targetHostedId -and $catalogRules.ContainsKey([string]$recommendation.targetHostedId)) {
+                $targetRule = $catalogRules[[string]$recommendation.targetHostedId]
+                foreach ($targetProvenance in @($targetRule.provenance)) {
+                    $null = $provenance.Add([string]$targetProvenance)
+                }
+                foreach ($targetEvidenceId in @($targetRule.evidenceIds)) {
+                    $null = $evidenceIds.Add([string]$targetEvidenceId)
+                }
+                $recommendation.needsReview = $true
+                $recommendation.rationale = ([string]$recommendation.rationale).TrimEnd() + ' The canonical source provenance is unclassified, so the mapped rule requires maintainer lifecycle review.'
+            }
+            else {
                 throw "Recommendation $draftKey contains unclassified source provenance without deterministic exclusion"
             }
-            $null = $provenance.Add('local-safeguard')
-            if (-not $catalogEvidence.ContainsKey('hosted-architecture')) {
-                throw "Recommendation $draftKey requires missing catalog evidence hosted-architecture"
-            }
-            $null = $evidenceIds.Add('hosted-architecture')
         }
         else {
             $null = $provenance.Add($sourceProvenance)
@@ -669,6 +739,19 @@ foreach ($entry in @($baseline.entries)) {
             assessment = $displayAssessment
             reviewState = [string]$coverage.disposition
             recommendation = $recommendation
+            catalogMapping = if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
+                $mappedHostedRuleId = [string]$canonicalHostedRuleByAssessment[$assessmentKey]
+                [ordered]@{
+                    state = [string]$catalogRules[$mappedHostedRuleId].status
+                    hostedRuleId = $mappedHostedRuleId
+                }
+            }
+            else {
+                [ordered]@{
+                    state = 'unmapped'
+                    hostedRuleId = $null
+                }
+            }
         }
         if ($conflictIdByDraftKey.ContainsKey($draftKey)) {
             $displayCandidate['conflictId'] = [string]$conflictIdByDraftKey[$draftKey]
@@ -701,6 +784,7 @@ $catalogProjection = @($catalog.rules | ForEach-Object {
         text = [string]$_.text
         provenance = @($_.provenance)
         evidenceIds = @($_.evidenceIds)
+        canonicalCandidate = $catalog.canonicalCandidateMappings.$hostedId
         placements = $placements.ToArray()
     }
     foreach ($propertyName in @('implementationModels', 'documentationGap', 'selectionFactors', 'selectionRationale')) {

@@ -90,6 +90,8 @@ async function run({ page, baseUrl, assert, playback }) {
   await row.locator(".candidate-tree-copy").click();
   await page.locator('#assessment-panel [data-rule-action="add"]').click();
   await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Playwright journey confirms the selected rule is ready for promotion.");
+  await page.locator("#assessment-panel [data-rationale-save]").click();
+  await page.evaluate(() => persistencePromise);
   await page.locator('[data-candidate-pane="candidates"]').click();
   await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${CSS.escape(key)}"]`)?.classList.contains("candidate-decoration-ready"), candidate.key);
   const ready = await snapshotDecoration(page, candidate.key);

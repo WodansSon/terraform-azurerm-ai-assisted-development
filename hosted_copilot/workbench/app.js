@@ -8,8 +8,6 @@ const SESSION_SCHEMA_VERSION = 4;
 const APPROVED_RULES_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
-const PROPOSED_HOSTED_RULE_ID_MAX_LENGTH = 32;
-const PROPOSED_HOSTED_RULE_ID_PATTERN = /^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$/;
 const WORKBENCH_TOOLTIP_DELAY_MS = 500;
 const PREVIEW_CONTEXT_LINE_COUNT = 2;
 const PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10;
@@ -83,7 +81,6 @@ let databasePromise;
 let persistencePromise = Promise.resolve();
 let toastTimer;
 let truncationTooltipFrame;
-let proposedHostedRuleIdValidationTimer;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
 let conflictHierarchicalView;
@@ -242,7 +239,6 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
-  elements["assessment-panel"].addEventListener("focusout", handleAssessmentFocusOut);
   [elements["assessment-panel"], elements["assessment-results-detail"]].forEach((panel) => {
     panel.addEventListener("click", handleDetailBackToTopClick);
     panel.addEventListener("scroll", handleDetailContentScroll, true);
@@ -547,10 +543,7 @@ function normalizeDisplayCandidates(display) {
     const hostedCategory = recommendation?.category
       || candidate.assessment.affectedSurfaces.find((surface) => ["repository", "implementation", "testing", "documentation"].includes(surface))
       || "repository";
-    const relatedHostedRuleIds = new Set([
-      ...(candidate.assessment.relatedHostedCoverage || []).map((coverage) => coverage.hostedRuleId),
-      ...(targetHostedRuleId ? [targetHostedRuleId] : [])
-    ]);
+    const mappedHostedRuleId = candidate.catalogMapping.hostedRuleId;
     const assessment = {
       ...candidate.assessment,
       status: "evaluated",
@@ -588,7 +581,8 @@ function normalizeDisplayCandidates(display) {
       priorDecision: null,
       recommendation,
       assessment,
-      relatedHostedRules: display.catalog.rules.filter((rule) => relatedHostedRuleIds.has(rule.id))
+      catalogMapping: candidate.catalogMapping,
+      mappedHostedRules: mappedHostedRuleId ? display.catalog.rules.filter((rule) => rule.id === mappedHostedRuleId) : []
     };
   });
 }
@@ -677,11 +671,7 @@ function getEffectiveHostedApplicability(candidate) {
 }
 
 function refreshEffectiveCandidates() {
-  state.candidates = state.assessedCandidates.filter((candidate) => getEffectiveHostedApplicability(candidate) && isPromotionOwner(candidate));
-}
-
-function isPromotionOwner(candidate) {
-  return candidate.recommendation.assessmentKeys[0] === candidate.key;
+  state.candidates = state.assessedCandidates.filter((candidate) => getEffectiveHostedApplicability(candidate));
 }
 
 function repairOverridePlanMembership() {
@@ -746,7 +736,7 @@ function getDecision(candidate) {
   return {
     ...saved,
     proposedText,
-    proposedHostedRuleId: String(saved.proposedHostedRuleId ?? defaults.proposedHostedRuleId),
+    proposedHostedRuleId: defaults.proposedHostedRuleId,
     inPlan: saved.inPlan,
     planMembershipSource: saved.planMembershipSource,
     bulkOperationId: saved.bulkOperationId,
@@ -755,43 +745,13 @@ function getDecision(candidate) {
   };
 }
 
-function getProposedHostedRuleIdValidation(candidate, value, decisions = state.session.decisions) {
-  const proposedHostedRuleId = String(value || "").trim();
-  if (!proposedHostedRuleId) return { valid: false, message: "Proposed Hosted Rule ID is required." };
-  if (proposedHostedRuleId.length > PROPOSED_HOSTED_RULE_ID_MAX_LENGTH) {
-    return { valid: false, message: `Proposed Hosted Rule ID must be ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters or fewer.` };
-  }
-  if (!PROPOSED_HOSTED_RULE_ID_PATTERN.test(proposedHostedRuleId)) {
-    return { valid: false, message: "Use a Hosted rule ID such as REVIEW-EVID-001." };
-  }
-  const targetHostedRuleId = candidate.assessment.targetHostedRuleId;
-  if ((state.bundle?.catalog?.rules || []).some((rule) => rule.id === proposedHostedRuleId) && proposedHostedRuleId !== targetHostedRuleId) {
-    return { valid: false, message: `${proposedHostedRuleId} is already assigned to an existing Hosted rule.` };
-  }
-  if (proposedHostedRuleId === targetHostedRuleId) return { valid: true, message: "Proposed Hosted Rule ID is valid." };
-  const collision = state.assessedCandidates.some((otherCandidate) => {
-    if (otherCandidate.key === candidate.key) return false;
-    const saved = decisions?.[otherCandidate.key];
-    const otherProposedHostedRuleId = saved?.sourceHash === otherCandidate.hash
-      ? saved.proposedHostedRuleId
-      : otherCandidate.assessment.proposedHostedRuleId;
-    return String(otherProposedHostedRuleId || "").trim() === proposedHostedRuleId;
-  });
-  if (collision) return { valid: false, message: `${proposedHostedRuleId} is already assigned to another proposed Hosted rule.` };
-  return { valid: true, message: "Proposed Hosted Rule ID is valid." };
-}
-
 function getEffectiveHostedRuleId(candidate) {
-  const decision = getDecision(candidate);
-  if (getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId).valid) return decision.proposedHostedRuleId.trim();
   return candidate.assessment.proposedHostedRuleId || candidate.assessment.targetHostedRuleId || candidate.assessment.assessmentId;
 }
 
 function getCatalogStatus(candidate) {
-  const activeRules = candidate.relatedHostedRules.filter((rule) => rule.status === "active");
-  const retiredRules = candidate.relatedHostedRules.filter((rule) => rule.status === "retired");
-  if (activeRules.length) return { key: "mapped", label: "Mapped", rules: activeRules };
-  if (retiredRules.length) return { key: "retired", label: "Retired", rules: retiredRules };
+  if (candidate.catalogMapping.state === "active") return { key: "mapped", label: "Mapped", rules: candidate.mappedHostedRules };
+  if (candidate.catalogMapping.state === "retired") return { key: "retired", label: "Retired", rules: candidate.mappedHostedRules };
   return { key: "unmapped", label: "Not Mapped", rules: [] };
 }
 
@@ -821,15 +781,12 @@ function renderMappedHostedRules(catalogStatus, includePlacements = false) {
 
 function getAllowedActions(candidate, proposedText = defaultDecision(candidate).proposedText) {
   const catalogStatus = getCatalogStatus(candidate).key;
-  if (candidate.state === "retired") {
-    return catalogStatus === "mapped" ? ["no-change", "retire", "defer"] : ["no-change", "exclude", "defer"];
-  }
   if (catalogStatus === "mapped") {
     const actions = ["no-change"];
     if (hasHostedTextChange(candidate, proposedText)) actions.push("update");
     return [...actions, "retire", "defer"];
   }
-  if (catalogStatus === "retired") return ["no-change", "add", "defer"];
+  if (catalogStatus === "retired") return ["no-change", "restore", "defer"];
   return ["no-change", "add", "exclude", "defer"];
 }
 
@@ -845,14 +802,14 @@ function hasHostedTextChange(candidate, proposedText) {
 function getDefaultPlanAction(candidate, recommendation) {
   const allowedActions = getAllowedActions(candidate, defaultDecision(candidate).proposedText);
   if (isPromotionAction(recommendation) && allowedActions.includes(recommendation)) return recommendation;
-  if (candidate.state === "retired" && allowedActions.includes("retire")) return "retire";
+  if (allowedActions.includes("restore")) return "restore";
   if (allowedActions.includes("update")) return "update";
   if (allowedActions.includes("add")) return "add";
   return "no-change";
 }
 
 function isPromotionAction(action) {
-  return ["add", "update", "retire"].includes(action);
+  return ["add", "update", "retire", "restore"].includes(action);
 }
 
 function getAssessment(candidate, decision) {
@@ -861,7 +818,7 @@ function getAssessment(candidate, decision) {
   const factors = assessment.selectionFactors;
   const valid = factors
     && FACTORS.every(([name]) => Number.isInteger(factors[name]) && factors[name] >= 0 && factors[name] <= 5)
-    && ["add", "update", "retire", "no-change", "exclude", "defer"].includes(assessment.recommendation)
+    && ["add", "update", "retire", "restore", "no-change", "exclude", "defer"].includes(assessment.recommendation)
     && Number.isInteger(assessment.guardedTokenDelta)
     && typeof assessment.hostedApplicable === "boolean"
     && Boolean(assessment.applicabilityRationale?.trim())
@@ -925,14 +882,7 @@ function saveDecision(candidate, decision) {
   persistSession();
   syncCandidateTreeRows();
   renderBulkActions();
-  syncAssessmentPlanToggle(candidate);
   renderDecisionOutputs();
-}
-
-function syncAssessmentPlanToggle(candidate) {
-  if (state.activeKey !== candidate.key) return;
-  const control = elements["assessment-panel"].querySelector("[data-plan-toggle]");
-  if (control) control.checked = getDecision(candidate).inPlan;
 }
 
 function clearCandidateSelection(candidate) {
@@ -1013,14 +963,14 @@ function getCandidateTokenValue(candidate, assessment) {
     return getAssessmentTokenValue(candidate, assessment, decision);
   }
   if (assessment.recommendation === "retire") return -estimateGuardedTokens(getCurrentHostedText(candidate));
-  if (["add", "update"].includes(assessment.recommendation)) return assessment.guardedTokenDelta;
+  if (["add", "update", "restore"].includes(assessment.recommendation)) return assessment.guardedTokenDelta;
   return estimateGuardedTokens(getCurrentHostedText(candidate));
 }
 
 function formatCandidateTokenValue(candidate, assessment) {
   const value = getCandidateTokenValue(candidate, assessment);
   if (getApplicabilityOverride(candidate)) return isPromotionAction(getDecision(candidate).action) ? formatSignedNumber(value) : formatNumber(value);
-  return ["add", "update", "retire"].includes(assessment.recommendation) ? formatSignedNumber(value) : formatNumber(value);
+  return ["add", "update", "retire", "restore"].includes(assessment.recommendation) ? formatSignedNumber(value) : formatNumber(value);
 }
 
 function renderAll(shouldRenderAssessment = true) {
@@ -2103,7 +2053,6 @@ function renderAssessment() {
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
   const displayId = getEffectiveHostedRuleId(candidate);
-  const proposedHostedRuleIdValidation = getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId);
 
   elements["assessment-panel"].innerHTML = `
     <div class="assessment-title">
@@ -2162,6 +2111,9 @@ function renderAssessment() {
       <div class="section-block rule-actions">
         <span class="section-label">Rule Actions:</span>
         <div class="rule-actions-content subcontext-container">
+          <div class="assessment-title rule-action-header">
+            <div class="source-line detail-identity"><span>RULE:</span><span>${escapeHtml(candidate.assessment.proposedHostedRuleId)}</span></div>
+          </div>
           <p class="section-help">${unchangedMappedRule ? "Current and proposed Hosted rule text are identical, so Update is unavailable." : "Choose one action. Hosted catalog status determines which actions are available."}</p>
           <span class="control-subtitle">Rule Action:</span>
           <div class="control-group action-plan-group">
@@ -2174,22 +2126,10 @@ function renderAssessment() {
                 </label>
               `).join("")}
             </fieldset>
-            <div class="proposed-hosted-rule-id-control" data-proposed-hosted-rule-id-control>
-              <label for="proposed-hosted-rule-id" class="control-subtitle">Proposed Hosted Rule ID:</label>
-              <input id="proposed-hosted-rule-id" class="proposed-hosted-rule-id-input" type="text" data-decision-field="proposedHostedRuleId" maxlength="${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH}" value="${escapeHtml(decision.proposedHostedRuleId)}" aria-invalid="${!proposedHostedRuleIdValidation.valid}" aria-describedby="proposed-hosted-rule-id-status proposed-hosted-rule-id-limit" ${candidate.assessment.targetHostedRuleId ? "readonly" : ""}>
-              <div class="proposed-hosted-rule-id-meta">
-                <span id="proposed-hosted-rule-id-status" class="proposed-hosted-rule-id-validation ${proposedHostedRuleIdValidation.valid ? "valid" : "invalid"}" role="status" aria-live="polite" data-validation-key="${escapeHtml(`${proposedHostedRuleIdValidation.valid}:${proposedHostedRuleIdValidation.message}`)}">${icon(proposedHostedRuleIdValidation.valid ? "check-compact" : "circle-slash-compact")}<span>${escapeHtml(proposedHostedRuleIdValidation.message)}</span></span>
-                <small class="rationale-limit" id="proposed-hosted-rule-id-limit">${decision.proposedHostedRuleId.length} / ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters</small>
-              </div>
-            </div>
-            <label class="plan-toggle clickable">
-              <input type="checkbox" data-plan-toggle ${decision.inPlan ? "checked" : ""}>
-              <span>Include this candidate in the promotion plan</span>
-            </label>
           </div>
           <div class="field-stack control-group rationale-control-group">
-            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision rationale and return to Promotion Plan" : "Save decision rationale"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save and return to Promotion Plan" : "Save decision rationale"}" ${decision.rationale.trim() ? "" : "disabled"}>${icon("save")}</button></div>
-            <label><textarea class="scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="Record why this action is appropriate.">${escapeHtml(decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
+            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" ${decision.action !== "no-change" && (decision.rationale.trim() || state.session.decisions[candidate.key]) ? "" : "disabled"}>${icon("save")}</button></div>
+            <label><textarea class="scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${decision.action === "no-change" ? "No rationale is required for No Change." : "Record why this action is appropriate."}" ${decision.action === "no-change" ? "disabled" : ""}>${escapeHtml(decision.action === "no-change" ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.action === "no-change" ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
           </div>
         </div>
       </div>
@@ -2256,72 +2196,40 @@ function handleAssessmentInput(event) {
   if (!candidate) return;
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
-    updateDecision(candidate, { action });
-    syncAssessmentActionControls(candidate);
-    return;
-  }
-  if (event.target.hasAttribute("data-plan-toggle")) {
-    if (event.target.checked) updateDecision(candidate, { inPlan: true });
-    else removePlanMembership(candidate);
+    if (action === "no-change") {
+      removeCandidateFromBulkOperations(candidate.key);
+      saveDecision(candidate, null);
+      renderAssessment();
+      return;
+    }
+    syncAssessmentActionControls(candidate, action);
+    const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
+    const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
+    if (rationale) {
+      rationale.disabled = false;
+      rationale.placeholder = "Record why this action is appropriate.";
+    }
+    if (save) save.disabled = !rationale?.value.trim();
     return;
   }
   if (event.target.dataset.decisionField) {
-    if (event.target.dataset.decisionField === "proposedHostedRuleId") {
-      const value = event.target.value.slice(0, PROPOSED_HOSTED_RULE_ID_MAX_LENGTH);
-      event.target.value = value;
-      updateProposedHostedRuleIdCounter(value.length);
-      clearTimeout(proposedHostedRuleIdValidationTimer);
-      proposedHostedRuleIdValidationTimer = setTimeout(() => commitProposedHostedRuleId(candidate, event.target, value), 300);
-      return;
-    }
     const value = event.target.dataset.decisionField === "rationale"
       ? event.target.value.slice(0, DECISION_RATIONALE_MAX_LENGTH)
       : event.target.value;
     event.target.value = value;
-    updateDecision(candidate, { [event.target.dataset.decisionField]: value });
     if (event.target.dataset.decisionField === "rationale") {
       const counter = elements["assessment-panel"].querySelector(".rationale-limit");
       if (counter) counter.textContent = `${value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
       const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
-      if (save) save.disabled = !value.trim();
+      if (save) {
+        const removesDecision = !value.trim() && Boolean(state.session.decisions[candidate.key]);
+        save.disabled = !value.trim() && !removesDecision;
+        save.setAttribute("aria-label", removesDecision ? "Remove saved decision" : "Save decision");
+        setWorkbenchTooltip(save, removesDecision ? "Remove saved decision" : "Save decision");
+      }
     }
-    if (event.target.dataset.decisionField === "proposedText") refreshAssessmentScores(candidate);
   }
 }
-
-function handleAssessmentFocusOut(event) {
-  if (event.target.dataset.decisionField !== "proposedHostedRuleId") return;
-  const candidate = getActiveCandidate();
-  if (!candidate) return;
-  clearTimeout(proposedHostedRuleIdValidationTimer);
-  commitProposedHostedRuleId(candidate, event.target, event.target.value);
-}
-
-function commitProposedHostedRuleId(candidate, field, value) {
-  if (!field.isConnected || state.activeKey !== candidate.key) return;
-  updateDecision(candidate, { proposedHostedRuleId: value });
-  updateProposedHostedRuleIdValidation(candidate, field, value);
-  const detailId = elements["assessment-panel"].querySelector(":scope > .assessment-title .detail-identity span:last-child");
-  if (detailId) detailId.textContent = getEffectiveHostedRuleId(candidate);
-}
-
-function updateProposedHostedRuleIdCounter(length) {
-  const counter = elements["assessment-panel"].querySelector("#proposed-hosted-rule-id-limit");
-  if (counter) counter.textContent = `${length} / ${PROPOSED_HOSTED_RULE_ID_MAX_LENGTH} characters`;
-}
-
-function updateProposedHostedRuleIdValidation(candidate, field, value) {
-  const validation = getProposedHostedRuleIdValidation(candidate, value);
-  const status = elements["assessment-panel"].querySelector("#proposed-hosted-rule-id-status");
-  field.setAttribute("aria-invalid", String(!validation.valid));
-  if (!status) return;
-  const validationKey = `${validation.valid}:${validation.message}`;
-  if (status.dataset.validationKey === validationKey) return;
-  status.dataset.validationKey = validationKey;
-  status.className = `proposed-hosted-rule-id-validation ${validation.valid ? "valid" : "invalid"}`;
-  status.innerHTML = `${icon(validation.valid ? "check-compact" : "circle-slash-compact")}<span>${escapeHtml(validation.message)}</span>`;
-}
-
 
 function handleDetailBackToTopClick(event) {
   const button = event.target.closest("[data-detail-back-to-top]");
@@ -2336,31 +2244,51 @@ function handleDetailContentScroll(event) {
   const button = content.parentElement?.querySelector(":scope > .assessment-title [data-detail-back-to-top]");
   if (button) button.disabled = content.scrollTop <= 1;
 }
-function syncAssessmentActionControls(candidate) {
-  const decision = getDecision(candidate);
+function syncAssessmentActionControls(candidate, action = getDecision(candidate).action) {
   elements["assessment-panel"].querySelectorAll("[data-rule-action]").forEach((control) => {
-    const selected = control.dataset.ruleAction === decision.action;
+    const selected = control.dataset.ruleAction === action;
     control.checked = selected;
     control.closest(".action-option")?.classList.toggle("selected", selected);
   });
   const badge = elements["assessment-panel"].querySelector(":scope > .assessment-title .decision-badge");
   if (badge) {
-    badge.className = `decision-badge ${decision.action}`;
-    badge.textContent = formatRecommendation(decision.action);
+    badge.className = `decision-badge ${action}`;
+    badge.textContent = formatRecommendation(action);
   }
-  const proposedHostedRuleIdControl = elements["assessment-panel"].querySelector("[data-proposed-hosted-rule-id-control]");
-  const proposedHostedRuleIdField = proposedHostedRuleIdControl?.querySelector('[data-decision-field="proposedHostedRuleId"]');
-  if (proposedHostedRuleIdField) updateProposedHostedRuleIdValidation(candidate, proposedHostedRuleIdField, proposedHostedRuleIdField.value);
   refreshAssessmentScores(candidate);
 }
 
 async function handleAssessmentClick(event) {
   if (!event.target.closest("[data-rationale-save]")) return;
   const candidate = getActiveCandidate();
-  if (!candidate || !getDecision(candidate).rationale.trim()) return;
+  if (!candidate) return;
+  const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]')?.value.trim() || "";
+  const savedDecision = state.session.decisions[candidate.key];
+  if (!rationale) {
+    if (!savedDecision) return;
+    removeCandidateFromBulkOperations(candidate.key);
+    saveDecision(candidate, null);
+    await persistencePromise;
+    renderAssessment();
+    showToast("Decision removed");
+    return;
+  }
+  const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
+  if (!action) return;
+  const current = getDecision(candidate);
+  const { assessment, ...maintainerDecision } = current;
+  removeCandidateFromBulkOperations(candidate.key);
+  saveDecision(candidate, {
+    ...maintainerDecision,
+    action,
+    rationale,
+    proposedHostedRuleId: candidate.assessment.proposedHostedRuleId,
+    ...createPlanMembership(isPromotionAction(action) ? "manual" : "none")
+  });
   const returnToPlan = state.rationaleReturnView === "plan";
   await persistencePromise;
-  showToast("Decision rationale saved");
+  renderAssessment();
+  showToast("Decision saved");
   if (returnToPlan) {
     state.rationaleReturnView = null;
     switchView("plan");
@@ -2466,13 +2394,11 @@ function getPlanReadiness(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   const actionRequired = !isPromotionAction(decision.action);
-  const proposedHostedRuleIdRequired = isPromotionAction(decision.action) && !getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId).valid;
   const rationaleRequired = !decision.rationale.trim();
   return {
     actionRequired,
-    proposedHostedRuleIdRequired,
-    ready: Boolean(assessment) && !actionRequired && !proposedHostedRuleIdRequired && !rationaleRequired,
-    label: actionRequired ? "Needs action" : proposedHostedRuleIdRequired ? "Needs valid rule ID" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
+    ready: Boolean(assessment) && !actionRequired && !rationaleRequired,
+    label: actionRequired ? "Needs action" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
   };
 }
 
@@ -2538,7 +2464,7 @@ function handlePlanRowKeyboardNavigation(event) {
 function getPlanTokenDelta(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
-  if (["add", "update"].includes(decision.action)) return assessment ? getAssessmentTokenValue(candidate, assessment, decision) : 0;
+  if (["add", "update", "restore"].includes(decision.action)) return assessment ? getAssessmentTokenValue(candidate, assessment, decision) : 0;
   if (decision.action !== "retire") return 0;
   const estimatedTokens = Math.ceil(getCurrentHostedText(candidate).length / 4);
   return -Math.ceil(estimatedTokens * 1.25);
@@ -2547,7 +2473,7 @@ function getPlanTokenDelta(candidate) {
 function getPlanAffectedSurfaces(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
-  if (["add", "update"].includes(decision.action)) return assessment?.affectedSurfaces || [];
+  if (["add", "update", "restore"].includes(decision.action)) return assessment?.affectedSurfaces || [];
   if (decision.action !== "retire") return [];
   const placementSurfaces = getCatalogStatus(candidate).rules
     .flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId));
@@ -2617,7 +2543,7 @@ function buildPreviewFiles(candidates) {
   const proposed = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action)).map((candidate) => {
     const decision = getDecision(candidate);
     const currentText = getCurrentHostedText(candidate);
-    const before = decision.action === "add" ? [] : splitDiffLines(currentText);
+    const before = ["add", "restore"].includes(decision.action) ? [] : splitDiffLines(currentText);
     const after = decision.action === "retire" ? [] : splitDiffLines(decision.proposedText);
     const hostedRuleId = decision.action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || getEffectiveHostedRuleId(candidate);
     return createPreviewFile(`rules/${hostedRuleId}.md`, candidate.title, before, after, false, candidate.sourceId, "proposed");
@@ -2674,6 +2600,7 @@ function buildApprovedMutation(candidate) {
   const placement = { surfaceId: recommendation.category, sectionHeading: recommendation.placement };
   let rule;
   let placements;
+  let canonicalCandidate;
   if (decision.action === "add") {
     rule = {
       id: getEffectiveHostedRuleId(candidate),
@@ -2687,6 +2614,11 @@ function buildApprovedMutation(candidate) {
       selectionRationale: assessment.rationale
     };
     placements = [placement];
+    canonicalCandidate = {
+      sourceDefinitionId: candidate.sourceType === "upstream" ? "contributor-guidance" : candidate.sourceType === "interactive" ? "interactive-toolkit" : "maintainer-proposals",
+      sourceId: candidate.sourceId,
+      assessmentId: candidate.assessment.assessmentId
+    };
   }
   else if (decision.action === "update") {
     rule = {
@@ -2701,6 +2633,7 @@ function buildApprovedMutation(candidate) {
     delete rule.retirementReason;
     delete rule.lastPlacement;
     placements = [placement];
+    canonicalCandidate = structuredClone(existingRule.canonicalCandidate);
   }
   else if (decision.action === "retire") {
     rule = {
@@ -2710,6 +2643,17 @@ function buildApprovedMutation(candidate) {
       lastPlacement: existingRule.placements[0]
     };
     placements = [];
+    canonicalCandidate = structuredClone(existingRule.canonicalCandidate);
+  }
+  else if (decision.action === "restore") {
+    rule = {
+      ...copyCatalogRule(existingRule),
+      status: "active"
+    };
+    delete rule.retirementReason;
+    delete rule.lastPlacement;
+    placements = [placement];
+    canonicalCandidate = structuredClone(existingRule.canonicalCandidate);
   }
   else {
     throw new Error(`Unsupported approved mutation action: ${decision.action}`);
@@ -2718,6 +2662,7 @@ function buildApprovedMutation(candidate) {
     action: decision.action,
     rationale: decision.rationale.trim(),
     rule,
+    canonicalCandidate,
     placements,
     sourceRelationships: structuredClone(recommendation.sourceRelationships)
   };
@@ -3140,7 +3085,6 @@ function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
   const reconciliationConflictCount = state.bundle?.reconciliation?.conflicts?.length || 0;
   const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
-  const invalidProposedHostedRuleIdCount = planCandidates.filter((candidate) => getPlanReadiness(candidate).proposedHostedRuleIdRequired).length;
   const missingRationaleCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
     return !getAssessment(candidate, decision) || !decision.rationale.trim();
@@ -3151,18 +3095,16 @@ function getPreviewReadiness() {
   if (reconciliationConflictCount) status = "reconciliation conflicts";
   else if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
-  else if (invalidProposedHostedRuleIdCount) status = "needs valid rule ID";
   else if (missingRationale) status = "needs rationale";
   else if (!approverName) status = "needs approver";
   return {
     planCandidates,
     approverName,
     missingActionCount,
-    invalidProposedHostedRuleIdCount,
     missingRationaleCount,
     reconciliationConflictCount,
     status,
-    ready: reconciliationConflictCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && invalidProposedHostedRuleIdCount === 0 && !missingRationale && Boolean(approverName)
+    ready: reconciliationConflictCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && !missingRationale && Boolean(approverName)
   };
 }
 
@@ -3171,7 +3113,6 @@ function renderApprovalRequirements(readiness) {
     ["Reconciliation conflicts", readiness.reconciliationConflictCount ? `${readiness.reconciliationConflictCount} unresolved` : "None", readiness.reconciliationConflictCount === 0],
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
-    ["Proposed rule IDs", readiness.invalidProposedHostedRuleIdCount ? `${readiness.invalidProposedHostedRuleIdCount} invalid` : "Valid", readiness.planCandidates.length > 0 && readiness.invalidProposedHostedRuleIdCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
     ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
   ];
@@ -3466,7 +3407,7 @@ function deserializeDraft(draft, candidates) {
       planMembershipSource: decision.selectionSource,
       bulkOperationId: decision.bulkOperationId,
       rationale: decision.rationale,
-      proposedHostedRuleId: decision.proposedHostedRuleId || "",
+      proposedHostedRuleId: candidatesByKey.get(key)?.assessment.proposedHostedRuleId || "",
       proposedText: decision.proposedText,
       sourceHash: decision.sourceContentSha256,
       updatedAt: decision.updatedAt
@@ -3563,7 +3504,7 @@ async function importDraft(event) {
     }
     for (const [key, decision] of Object.entries(draft.decisions)) {
       const candidate = state.assessedCandidates.find((item) => item.key === key);
-      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH || typeof decision.proposedHostedRuleId !== "string" || decision.proposedHostedRuleId.length > PROPOSED_HOSTED_RULE_ID_MAX_LENGTH || !getProposedHostedRuleIdValidation(candidate, decision.proposedHostedRuleId, draft.decisions).valid || (candidate.assessment.targetHostedRuleId && decision.proposedHostedRuleId !== candidate.assessment.targetHostedRuleId)) {
+      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || !getAllowedActions(candidate).includes(decision.action) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH || decision.proposedHostedRuleId !== candidate.assessment.proposedHostedRuleId) {
         throw new Error(`The draft decision for ${key} is invalid.`);
       }
     }

@@ -114,6 +114,22 @@ try {
     $catalogAddition = Invoke-Generator
     Add-TestResult -Name 'catalog-addition-origin' -Passed ($catalogAddition.exitCode -eq 0) -Detail $(if ($catalogAddition.exitCode -eq 0) { 'Catalog-native rule origin passes schema validation without changing output.' } else { $catalogAddition.output })
 
+    $missingMappingCatalog = $catalog | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $missingMappingCatalog.canonicalCandidateMappings.PSObject.Properties.Remove([string]$missingMappingCatalog.rules[0].id)
+    $missingMappingCatalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
+    $missingMapping = Invoke-Generator
+    Add-TestResult -Name 'canonical-mapping-complete' -Passed ($missingMapping.exitCode -ne 0 -and $missingMapping.output -like '*must cover every catalog rule exactly*') -Detail $(if ($missingMapping.exitCode -ne 0) { 'A catalog rule without canonical source ownership fails closed.' } else { 'Missing canonical source ownership was accepted.' })
+
+    $duplicateMappingCatalog = $catalog | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $firstRuleId = [string]$duplicateMappingCatalog.rules[0].id
+    $secondRuleId = [string]$duplicateMappingCatalog.rules[1].id
+    $duplicateMappingCatalog.canonicalCandidateMappings.$secondRuleId = $duplicateMappingCatalog.canonicalCandidateMappings.$firstRuleId
+    $duplicateMappingCatalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
+    $duplicateMapping = Invoke-Generator
+    Add-TestResult -Name 'canonical-mapping-one-to-one' -Passed ($duplicateMapping.exitCode -ne 0 -and $duplicateMapping.output -like '*assigned to more than one catalog rule*') -Detail $(if ($duplicateMapping.exitCode -ne 0) { 'A canonical source candidate cannot own multiple catalog rules.' } else { 'Duplicate canonical source ownership was accepted.' })
+
+    $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
+
     Write-TestProgress -Name 'write-boundaries' -Detail 'Checking read-only stale detection, explicit writes, and schema enforcement'
     $firstOutputPath = Join-Path $tempRoot ([string]$catalog.surfaces[0].outputPath)
     $beforeStaleHash = (Get-FileHash -LiteralPath $firstOutputPath -Algorithm SHA256).Hash

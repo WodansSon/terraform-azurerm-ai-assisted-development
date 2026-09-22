@@ -16,6 +16,7 @@ $catalogRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog'
 $reconciliationRoot = Join-Path $catalogRoot 'assessment-reconciliation'
 $builderPath = Join-Path $PSScriptRoot '../internal/reconciliation/New-WorkbenchDisplay.ps1'
 $runnerPath = Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
+$promptPath = Join-Path $PSScriptRoot '../assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
 $catalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
 $displaySchemaPath = Join-Path $reconciliationRoot 'workbench-display-v4.schema.json'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-assessment-reconciliation-test-' + [guid]::NewGuid().ToString('N'))
@@ -250,9 +251,16 @@ try {
     Add-TestResult -Name 'reconciliation-input-not-guidance-budget' -Passed $reconciliationInputUnbounded -Detail 'Reconciliation input size is not conflated with final Hosted guidance token-capacity enforcement.'
     $defaultProgressContract = $runnerContent -match '\[switch\]\$Quiet' -and
         $runnerContent -match 'if \(-not \$Quiet\)' -and
-        $runnerContent -match 'assessment-reconciliation/batch' -and
+        $runnerContent -match 'assessment-reconciliation \{0\}/\{1\}' -and
+        $runnerContent -match 'Write-Host \("  Assessments :' -and
         $runnerContent -notmatch '\$OutputFormat -eq ''Text'''
     Add-TestResult -Name 'reconciliation-progress-default' -Passed $defaultProgressContract -Detail 'Reconciliation reports evaluator and display-building activity by default regardless of result format, with an explicit quiet opt-out.'
+    Add-TestResult -Name 'reconciliation-bootstrap-throughput' -Passed ($runnerContent -match '\$reconciliationBootstrapBytesPerSecondPerWorker = 650' -and $runnerContent -match '-BootstrapBytesPerSecondPerWorker \$reconciliationBootstrapBytesPerSecondPerWorker') -Detail 'Reconciliation owns an explicit 650-byte-per-second-per-worker bootstrap estimate instead of inheriting the source-assessment default.'
+    $promptContent = Get-Content -LiteralPath $promptPath -Raw
+    $deferIdentityContract = $promptContent -match 'For `defer`, derive identity only from `mappedHostedRuleIds`' -and
+        $promptContent -match 'when no mapping exists, use `targetHostedId` null with one contract-allowlisted `idFamily`' -and
+        $promptContent -match 'Never select `targetHostedId` from `relatedHostedCoverage`'
+    Add-TestResult -Name 'defer-identity-prompt-contract' -Passed $deferIdentityContract -Detail 'The evaluator prompt derives defer identity only from canonical mappings and forbids promoting related coverage into a target.'
     $builderArrayBindingContract = $runnerContent -match '\$builderOutput = @\(& \$snapshotBuilderPath @builderParameters 2>&1\)' -and
         $runnerContent -notmatch 'pwsh -NoProfile -File \$snapshotBuilderPath'
     Add-TestResult -Name 'builder-array-binding' -Passed $builderArrayBindingContract -Detail 'Reconciliation invokes the snapshotted display builder in-process so InventoryPaths remains one array-valued parameter.'
@@ -271,12 +279,14 @@ try {
 
     $entries = @(
         (New-SourceEntry -SourceDefinitionId 'contributor-guidance' -SourceId 'guide-new-resource' -Title 'Contributor guidance' -HostedApplicable $true),
-        (New-SourceEntry -SourceDefinitionId 'interactive-toolkit' -SourceId 'IMPL-SCHEMA-901' -Title 'Interactive rule' -HostedApplicable $true),
+        (New-SourceEntry -SourceDefinitionId 'interactive-toolkit' -SourceId 'IMPL-EVID-001' -Title 'Interactive rule' -HostedApplicable $true),
         (New-SourceEntry -SourceDefinitionId 'maintainer-proposals' -SourceId 'DOCS-SOURCE-901' -Title 'Maintainer source rule' -HostedApplicable $false)
     )
+    $entries[1].assessments[0].mappedHostedRuleIds = @('IMPL-EVID-001')
+    $entries[0].assessments[0].relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'related'; rationale = 'Related evidence does not create canonical ownership.' })
     $records = [ordered]@{
         'contributor-guidance' = [ordered]@{ sourceId = 'guide-new-resource'; presence = 'present'; sourceLifecycle = 'active'; location = 'contributing/topics/new-resource.md'; contentSha256 = $contentSha256; content = 'Contributor source content.'; title = 'Contributor guidance'; repository = 'hashicorp/terraform-provider-azurerm'; resolvedCommit = 'a' * 40; referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('a' * 40)/contributing/topics/new-resource.md" }
-        'interactive-toolkit' = [ordered]@{ sourceId = 'IMPL-SCHEMA-901'; presence = 'present'; sourceLifecycle = 'active'; location = '.github/instructions/implementation-compliance-contract.instructions.md'; contentSha256 = $contentSha256; content = 'Interactive source content.'; title = 'Interactive rule'; contractPath = '.github/instructions/implementation-compliance-contract.instructions.md'; provenance = 'local-safeguard'; evidence = @(); sourceIds = @() }
+        'interactive-toolkit' = [ordered]@{ sourceId = 'IMPL-EVID-001'; presence = 'present'; sourceLifecycle = 'active'; location = '.github/instructions/implementation-compliance-contract.instructions.md'; contentSha256 = $contentSha256; content = 'Interactive source content.'; title = 'Interactive rule'; contractPath = '.github/instructions/implementation-compliance-contract.instructions.md'; provenance = 'local-safeguard'; evidence = @(); sourceIds = @() }
         'maintainer-proposals' = [ordered]@{ sourceId = 'DOCS-SOURCE-901'; presence = 'present'; sourceLifecycle = 'active'; location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'; contentSha256 = $contentSha256; content = 'Maintainer source content.'; title = 'Maintainer source rule'; surface = 'documentation'; ruleText = 'Document the source behavior.'; provenance = 'local-safeguard'; rationale = 'Fixture rationale.'; evidence = @() }
     }
     $inventoryPathList = [Collections.Generic.List[string]]::new()
@@ -365,6 +375,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ReasoningEffort
 )
 $baseline = Get-Content -LiteralPath $BaselinePath -Raw | ConvertFrom-Json -DateKind String
+$catalog = Get-Content -LiteralPath $CatalogPath -Raw | ConvertFrom-Json -DateKind String
 if ($env:RECONCILIATION_FAIL_ALL -eq '1') {
     throw 'Synthetic evaluator invocation during cache reuse.'
 }
@@ -379,21 +390,25 @@ foreach ($entry in @($baseline.entries)) {
             contentSha256 = [string]$entry.sourceRef.contentSha256
             assessmentId = [string]$assessment.assessmentId
         }
+        $mappedHostedRuleId = @($assessment.mappedHostedRuleIds)[0]
+        $mappedRule = if ([string]::IsNullOrWhiteSpace([string]$mappedHostedRuleId)) { $null } else { @($catalog.rules | Where-Object { [string]$_.id -ceq [string]$mappedHostedRuleId })[0] }
         $recommendation = [ordered]@{
             draftKey = $draftKey
-            recommendedAction = if ([bool]$assessment.hostedApplicable) { 'add' } else { 'exclude' }
-            targetHostedId = $null
-            idFamily = 'IMPL-SCHEMA'
+            recommendedAction = if ($null -ne $mappedRule) { 'no-change' } elseif ([bool]$assessment.hostedApplicable) { 'add' } else { 'exclude' }
+            targetHostedId = if ($null -ne $mappedRule) { [string]$mappedRule.id } else { $null }
+            idFamily = if ($null -ne $mappedRule) { $null } else { 'IMPL-SCHEMA' }
             title = [string]$assessment.title
-            recommendedRuleText = [string]$assessment.sourceMeaning
+            recommendedRuleText = if ($null -ne $mappedRule) { [string]$mappedRule.text } else { [string]$assessment.sourceMeaning }
             category = 'implementation'
-            placement = 'Schema And State'
+            placement = if ($null -ne $mappedRule) { 'Evidence And Implementation Model' } else { 'Schema And State' }
             rationale = [string]$assessment.selectionRationale
             needsReview = $false
             memberAssessmentRefs = @($reference)
             memberMeaningCoverage = @([ordered]@{ assessmentRef = $reference; rationale = 'The recommended rule text preserves this source meaning.' })
             relatedHostedCoverage = @()
-            implementationModels = @('legacy', 'typed', 'framework')
+        }
+        if ($null -eq $mappedRule) {
+            $recommendation.implementationModels = @('legacy', 'typed', 'framework')
         }
         $recommendations.Add($recommendation)
         $coverage.Add([ordered]@{
@@ -418,6 +433,20 @@ $draft = [ordered]@{
     $batchedDisplay = if ($batchedRun.ExitCode -eq 0) { Get-Content -LiteralPath $batchedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $batchedMergeValid = $batchedRun.ExitCode -eq 0 -and [int]$batchedResult.batchCount -eq 3 -and [int]$batchedResult.candidateCount -eq 3 -and [int]$batchedResult.recommendationCount -eq 3 -and @($batchedDisplay.candidates).Count -eq 3
     Add-TestResult -Name 'batched-reconciliation-merge' -Passed $batchedMergeValid -Detail $(if ($batchedMergeValid) { 'Three source-defined lane batches validate independently and merge into one exhaustive display with unique recommendation keys.' } else { $batchedRun.Output })
+    $alignedProgress = @($batchedRun.Progress | Where-Object { $_ -match '^\[(?:RUNNING|PASSED|BLOCKED)\]\s+assessment-reconciliation(?: \d+/\d+|/display)\s+:' })
+    $progressColonIndexes = @($alignedProgress | ForEach-Object { $_.IndexOf(' : ') })
+    Add-TestResult -Name 'reconciliation-progress-alignment' -Passed ($alignedProgress.Count -gt 0 -and @($progressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $progressColonIndexes[0] -gt 0) -Detail 'Reconciliation batch and display lifecycle rows align their detail separators to the shared 42-character name column.'
+
+    $undefinedEvaluatorPath = Join-Path $tempRoot 'undefined-reconciliation-evaluator.ps1'
+    $validWriteStatement = '[IO.File]::WriteAllText($OutputPath, (($draft | ConvertTo-Json -Depth 50) + "`n"), [Text.UTF8Encoding]::new($false))'
+    $undefinedWriteStatement = @'
+$json = $draft | ConvertTo-Json -Depth 50 -Compress
+$json = $json -replace '"implementationModels":\[[^\]]+\]', '"implementationModels":undefined'
+[IO.File]::WriteAllText($OutputPath, ($json + "`n"), [Text.UTF8Encoding]::new($false))
+'@
+    [IO.File]::WriteAllText($undefinedEvaluatorPath, $fakeEvaluator.Replace($validWriteStatement, $undefinedWriteStatement.Trim()), [Text.UTF8Encoding]::new($false))
+    $undefinedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $undefinedEvaluatorPath -Name 'undefined-json' -MaxRetries 0
+    Add-TestResult -Name 'invalid-json-diagnostic' -Passed ($undefinedRun.ExitCode -ne 0 -and $undefinedRun.ErrorMessage -like '*is not valid JSON: bare undefined is invalid; omit optional properties instead*BytePositionInLine*') -Detail 'A JavaScript undefined value in evaluator output is retained for diagnosis and rejected with the batch, invalid token, corrective action, and parser byte position.'
 
     $persistentCacheDirectory = Join-Path $tempRoot 'persistent-reconciliation-cache'
     $cacheSeedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-seed' -CacheDirectory $persistentCacheDirectory
@@ -431,8 +460,9 @@ $draft = [ordered]@{
     $cachedResult = if ($cachedRun.ExitCode -eq 0) { $cachedRun.Output | ConvertFrom-Json -DateKind String } else { $null }
     $persistentCacheValid = $cacheSeedRun.ExitCode -eq 0 -and $cachedRun.ExitCode -eq 0 -and
         [int]$cachedResult.cachedBatchCount -eq 3 -and [int]$cachedResult.evaluatedBatchCount -eq 0 -and
-        @($cachedRun.Progress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/cache*' }).Count -eq 3 -and
-        @($cachedRun.Progress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' }).Count -eq 0 -and
+        @($cachedRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+assessment-reconciliation \d+/3\s+:' }).Count -eq 0 -and
+        @($cachedRun.Progress | Where-Object { $_ -match '^\s*Batches\s+:\s+3 total \| 3 cached \| 0 recovered \| 0 pending$' }).Count -eq 1 -and
+        @($cachedRun.Progress | Where-Object { $_ -match '^\s*Estimated\s+:\s+00:00:00$' }).Count -eq 1 -and
         (Test-Path -LiteralPath $cachedRun.OutputPath -PathType Leaf)
     Add-TestResult -Name 'persistent-batch-cache-reuse' -Passed $persistentCacheValid -Detail $(if ($persistentCacheValid) { 'A second unchanged reconciliation revalidates every cached semantic batch, makes zero evaluator calls, and builds a fresh display output.' } else { "progress=$($cachedRun.Progress -join ' | '); output=$($cachedRun.Output)" })
 
@@ -453,10 +483,12 @@ $recommendations = [Collections.Generic.List[object]]::new()
     finally {
         Remove-Item Env:RECONCILIATION_FAIL_INTERACTIVE -ErrorAction SilentlyContinue
     }
-    $runningProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' })
-    $passedProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/batch*' })
-    $retryProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]RETRYING[]]*assessment-reconciliation/batch*' })
-    $failedProgress = @($failedRun.Progress | Where-Object { $_ -like '[[]FAILED[]]*assessment-reconciliation/batch*' })
+    $runningProgress = @($failedRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+assessment-reconciliation \d+/3\s+:' })
+    $passedProgress = @($failedRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+assessment-reconciliation \d+/3\s+:' })
+    $retryProgress = @($failedRun.Progress | Where-Object { $_ -match '^\[RETRYING\]\s+assessment-reconciliation \d+/3\s+:' })
+    $failedProgress = @($failedRun.Progress | Where-Object { $_ -match '^\[FAILED\]\s+assessment-reconciliation \d+/3\s+:' })
+    $estimatedProgress = @($passedProgress | Where-Object { $_ -match 'Total Elapsed \d{2}:\d{2}:\d{2} : \[Batch: \d{2}:\d{2}:\d{2}\] : \[Remaining: \d{2}:\d{2}:\d{2}\]' })
+    $errorProgress = @($failedRun.Progress | Where-Object { $_ -match '^\s{4}\[ERROR\] Batch 2/3:' })
     $retainedMatch = [regex]::Match($failedRun.ErrorMessage, 'run artifacts were retained at (?<path>.+)$')
     $retainedPath = if ($retainedMatch.Success) { $retainedMatch.Groups['path'].Value.Trim() } else { '' }
     $siblingArtifactsRetained = -not [string]::IsNullOrWhiteSpace($retainedPath) -and
@@ -474,10 +506,12 @@ $recommendations = [Collections.Generic.List[object]]::new()
     }
     $parallelFailureValid = $failedRun.ExitCode -ne 0 -and
         -not (Test-Path -LiteralPath $failedRun.OutputPath -PathType Leaf) -and
-        $runningProgress.Count -eq 4 -and
+        $runningProgress.Count -eq 3 -and
         $passedProgress.Count -eq 2 -and
         $retryProgress.Count -eq 1 -and
         $failedProgress.Count -eq 1 -and
+        $errorProgress.Count -eq 2 -and
+        $estimatedProgress.Count -eq 2 -and
         @($passedProgress | Where-Object { $_ -match '1/3|3/3' }).Count -eq 2 -and
         $failedRun.ErrorMessage -like '*batch 2 interactive-toolkit*' -and
         $failedRun.ErrorMessage -like '*Synthetic Interactive reconciliation failure*' -and
@@ -490,10 +524,10 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $recoveryValid = $null -ne $recoveredResult -and
         [int]$recoveredResult.reusedBatchCount -eq 2 -and
         [int]$recoveredResult.evaluatedBatchCount -eq 1 -and
-        @($recoveryProgress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/reuse*' }).Count -eq 2 -and
-        @($recoveryProgress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' }).Count -eq 1 -and
-        -not (Test-Path -LiteralPath $retainedPath -PathType Container)
-    Add-TestResult -Name 'retained-batch-recovery' -Passed $recoveryValid -Detail $(if ($recoveryValid) { 'Recovery revalidates two successful retained batches, evaluates only the missing batch, publishes the display, and removes the consumed managed run.' } else { "progress=$($recoveryProgress -join ' | '); output=$(if ($null -eq $recoveredRun) { 'not run' } else { $recoveredRun.Output })" })
+        @($recoveryProgress | Where-Object { $_ -match '^\[RUNNING\]\s+assessment-reconciliation \d+/3\s+:' }).Count -eq 1 -and
+        @($recoveryProgress | Where-Object { $_ -match '^\s*Batches\s+:\s+3 total \| 0 cached \| 2 recovered \| 1 pending$' }).Count -eq 1 -and
+        (Test-Path -LiteralPath $retainedPath -PathType Container)
+    Add-TestResult -Name 'retained-batch-recovery' -Passed $recoveryValid -Detail $(if ($recoveryValid) { 'Explicit recovery revalidates two successful retained batches, evaluates only the missing batch, and retains the supplied directory for maintainer inspection.' } else { "progress=$($recoveryProgress -join ' | '); output=$(if ($null -eq $recoveredRun) { 'not run' } else { $recoveredRun.Output })" })
     if (-not [string]::IsNullOrWhiteSpace($retainedPath) -and (Test-Path -LiteralPath $retainedPath -PathType Container)) {
         Remove-Item -LiteralPath $retainedPath -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -501,17 +535,20 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $contributorRef = Get-AssessmentRef -Entry $entries[0]
     $interactiveRef = Get-AssessmentRef -Entry $entries[1]
     $maintainerRef = Get-AssessmentRef -Entry $entries[2]
+    $catalogFixture = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json -DateKind String
+    $mappedRuleText = [string]@($catalogFixture.rules | Where-Object { [string]$_.id -ceq 'IMPL-EVID-001' })[0].text
     $draft = [ordered]@{
         '$schema' = 'assessment-reconciliation-draft.schema.json'
         schemaVersion = 1
         recommendations = @(
-            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'Two assessments describe one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef, $interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }, [ordered]@{ assessmentRef = $interactiveRef; rationale = 'The rule preserves the Interactive schema requirement.' }); relatedHostedCoverage = @(); implementationModels = @('legacy', 'typed', 'framework') },
-            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @() }
+            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'related'; rationale = 'The assessments are related but independently enforceable.'; assessmentRefs = @($contributorRef) }); implementationModels = @('legacy', 'typed', 'framework') },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Implementation Model'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @() },
+            [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @() }
         )
         assessmentCoverage = @(
             [ordered]@{ assessmentRef = $contributorRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
-            [ordered]@{ assessmentRef = $interactiveRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
-            [ordered]@{ assessmentRef = $maintainerRef; disposition = 'excluded'; rationale = 'Outside Hosted review scope.'; recommendationDraftKeys = @('recommendation-2') }
+            [ordered]@{ assessmentRef = $interactiveRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-2') },
+            [ordered]@{ assessmentRef = $maintainerRef; disposition = 'excluded'; rationale = 'Outside Hosted review scope.'; recommendationDraftKeys = @('recommendation-3') }
         )
     }
     Add-TestResult -Name 'reconciliation-response-schema' -Passed (Test-JsonInstance -Value $draft -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json')) -Detail 'The evaluator response has strict recommendations and exhaustive coverage.'
@@ -530,14 +567,18 @@ $recommendations = [Collections.Generic.List[object]]::new()
     Add-TestResult -Name 'display-schema' -Passed (Test-JsonInstance -Value $display -SchemaPath $displaySchemaPath) -Detail 'The producer emits the strict v4 display contract.'
     Add-TestResult -Name 'display-reported-hash' -Passed ([string]$firstResult.displaySha256 -ceq (Get-Sha256 -Path $firstRun.OutputPath)) -Detail 'The producer reports the exact display-byte hash.'
     Add-TestResult -Name 'complete-candidate-coverage' -Passed (@($display.candidates).Count -eq 3) -Detail 'Every assessment becomes one display candidate.'
+    $mappedCandidate = @($display.candidates | Where-Object { [string]$_.catalogMapping.state -ceq 'active' })
+    $relatedOnlyCandidate = @($display.candidates | Where-Object { [string]$_.source.id -ceq 'guide-new-resource' })[0]
+    $explicitMappingValid = $mappedCandidate.Count -eq 1 -and [string]$mappedCandidate[0].catalogMapping.hostedRuleId -ceq 'IMPL-EVID-001' -and [string]$relatedOnlyCandidate.catalogMapping.state -ceq 'unmapped' -and $null -eq $relatedOnlyCandidate.catalogMapping.hostedRuleId
+    Add-TestResult -Name 'explicit-catalog-mapping' -Passed $explicitMappingValid -Detail 'Catalog ownership produces one mapped canonical candidate while related-only coverage remains unmapped.'
     $recommended = @($display.candidates | Where-Object reviewState -eq 'recommended')
     $excluded = @($display.candidates | Where-Object reviewState -eq 'excluded')
-    Add-TestResult -Name 'recommendation-presentation' -Passed ($recommended.Count -eq 2 -and @($recommended | Where-Object { [string]$_.recommendation.ruleText -cne 'Validate imported schema behavior against the provider implementation.' }).Count -eq 0) -Detail 'Recommendation action, identity, wording, and membership remain available to the UI.'
+    Add-TestResult -Name 'recommendation-presentation' -Passed ($recommended.Count -eq 2 -and @($recommended | Where-Object { @($_.recommendation.assessmentKeys).Count -ne 1 }).Count -eq 0) -Detail 'Every source assessment retains its own recommendation action, identity, wording, and UI row.'
     $approvalMetadata = $recommended[0].recommendation
-    $approvalMetadataValid = (@($approvalMetadata.provenance | Sort-Object) -join ',') -ceq 'local-safeguard,published-upstream-standard' -and (@($approvalMetadata.evidenceIds | Sort-Object) -join ',') -ceq 'hosted-architecture,implementation-contract' -and (@($approvalMetadata.implementationModels | Sort-Object) -join ',') -ceq 'framework,legacy,typed' -and @($approvalMetadata.sourceRelationships).Count -eq 2
-    Add-TestResult -Name 'approval-metadata-derived' -Passed $approvalMetadataValid -Detail 'The producer derives registered evidence, source provenance, implementation model scope, and source relationships from exact recommendation members.'
+    $approvalMetadataValid = (@($approvalMetadata.provenance | Sort-Object) -join ',') -ceq 'published-upstream-standard' -and (@($approvalMetadata.evidenceIds | Sort-Object) -join ',') -ceq 'implementation-contract' -and (@($approvalMetadata.implementationModels | Sort-Object) -join ',') -ceq 'framework,legacy,typed' -and @($approvalMetadata.sourceRelationships).Count -eq 1
+    Add-TestResult -Name 'approval-metadata-derived' -Passed $approvalMetadataValid -Detail 'The producer derives registered evidence, source provenance, implementation model scope, and one source relationship from the candidate-local recommendation.'
     $projectedCatalogRule = @($display.catalog.rules | Where-Object { [string]$_.id -ceq 'IMPL-EVID-001' })[0]
-    $catalogMetadataValid = [string]$projectedCatalogRule.origin -ceq 'hosted-baseline-migration' -and @($projectedCatalogRule.provenance).Count -gt 0 -and @($projectedCatalogRule.evidenceIds).Count -gt 0 -and @($projectedCatalogRule.implementationModels).Count -gt 0
+    $catalogMetadataValid = [string]$projectedCatalogRule.origin -ceq 'hosted-baseline-migration' -and @($projectedCatalogRule.provenance).Count -gt 0 -and @($projectedCatalogRule.evidenceIds).Count -gt 0 -and @($projectedCatalogRule.implementationModels).Count -gt 0 -and [string]$projectedCatalogRule.canonicalCandidate.sourceDefinitionId -ceq 'interactive-toolkit' -and [string]$projectedCatalogRule.canonicalCandidate.sourceId -ceq 'IMPL-EVID-001'
     Add-TestResult -Name 'complete-catalog-rule-projection' -Passed $catalogMetadataValid -Detail 'Existing catalog rules retain the complete metadata required for Update, Retire, and Restore mutations.'
     Add-TestResult -Name 'excluded-candidate-visible' -Passed ($excluded.Count -eq 1 -and [string]$excluded[0].recommendation.action -ceq 'exclude' -and [string]$excluded[0].recommendation.hostedId -like 'DOCS-EX-*') -Detail 'Excluded assessments remain visible with contingent reconciliation-owned identity and metadata.'
     $obsoleteDisplayProperties = @(@('snapshots', 'acceptedSourceGeneration', 'stagedInventories', 'assessmentBaseline', 'recommendationOutput') | Where-Object { $display.PSObject.Properties[$_] })
@@ -561,7 +602,8 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $retiredRun = Invoke-DisplayBuilder -Draft $draft -Name 'retired' -AssessmentSetPath $retiredAssessmentSetPath -HostedCatalogPath $retiredCatalogPath
     $retiredDisplay = if ($retiredRun.ExitCode -eq 0) { Get-Content -LiteralPath $retiredRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $projectedTombstone = if ($null -ne $retiredDisplay) { @($retiredDisplay.catalog.rules | Where-Object { [string]$_.id -ceq $retiredId })[0] } else { $null }
-    $tombstoneValid = $retiredRun.ExitCode -eq 0 -and [string]$projectedTombstone.id -ceq $retiredId -and [string]$projectedTombstone.status -ceq 'retired' -and @($projectedTombstone.placements).Count -eq 0 -and [string]$projectedTombstone.retirementReason -ceq 'Superseded by a more precise rule.' -and [string]$projectedTombstone.lastPlacement.surfaceId -ceq [string]$lastPlacement.surfaceId -and [string]$projectedTombstone.lastPlacement.sectionHeading -ceq [string]$lastPlacement.sectionHeading
+    $retiredMappedCandidate = if ($null -ne $retiredDisplay) { @($retiredDisplay.candidates | Where-Object { [string]$_.catalogMapping.hostedRuleId -ceq $retiredId })[0] } else { $null }
+    $tombstoneValid = $retiredRun.ExitCode -eq 0 -and [string]$projectedTombstone.id -ceq $retiredId -and [string]$projectedTombstone.status -ceq 'retired' -and @($projectedTombstone.placements).Count -eq 0 -and [string]$projectedTombstone.retirementReason -ceq 'Superseded by a more precise rule.' -and [string]$projectedTombstone.lastPlacement.surfaceId -ceq [string]$lastPlacement.surfaceId -and [string]$projectedTombstone.lastPlacement.sectionHeading -ceq [string]$lastPlacement.sectionHeading -and [string]$retiredMappedCandidate.catalogMapping.state -ceq 'retired'
     Add-TestResult -Name 'retired-tombstone-projection' -Passed $tombstoneValid -Detail $(if ($tombstoneValid) { 'A retired rule retains its immutable ID, wording, reason, and last placement without an active placement.' } else { $retiredRun.Output })
 
     $activeUnplacedCatalog = Copy-JsonObject -Value $retiredCatalog
@@ -592,9 +634,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $missingCoverageRun = Invoke-DisplayBuilder -Draft $missingCoverage -Name 'missing-coverage'
     Add-TestResult -Name 'exhaustive-coverage-required' -Passed ($missingCoverageRun.ExitCode -ne 0 -and $missingCoverageRun.Output -like '*does not cover every assessment*') -Detail 'Reconciliation cannot omit an assessment.'
     $missingMeaningCoverage = Copy-JsonObject -Value $draft
-    $missingMeaningCoverage.recommendations[0].memberMeaningCoverage = @($missingMeaningCoverage.recommendations[0].memberMeaningCoverage | Select-Object -First 1)
+    $missingMeaningCoverage.recommendations[0].memberMeaningCoverage = @()
     $missingMeaningCoverageRun = Invoke-DisplayBuilder -Draft $missingMeaningCoverage -Name 'missing-meaning-coverage'
-    Add-TestResult -Name 'member-meaning-coverage-required' -Passed ($missingMeaningCoverageRun.ExitCode -ne 0 -and $missingMeaningCoverageRun.Output -like '*must explain how its rule text preserves every member meaning*') -Detail 'A grouped recommendation cannot reach Workbench without one meaning-preservation explanation per member assessment.'
+    Add-TestResult -Name 'member-meaning-coverage-required' -Passed ($missingMeaningCoverageRun.ExitCode -ne 0) -Detail 'A candidate-local recommendation cannot reach Workbench without its meaning-preservation explanation.'
     $duplicateMembership = Copy-JsonObject -Value $draft
     $secondRecommendation = Copy-JsonObject -Value $duplicateMembership.recommendations[0]
     $secondRecommendation.draftKey = 'recommendation-3'
@@ -602,41 +644,19 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $duplicateRun = Invoke-DisplayBuilder -Draft $duplicateMembership -Name 'duplicate-membership'
     Add-TestResult -Name 'duplicate-membership-rejected' -Passed ($duplicateRun.ExitCode -ne 0 -and $duplicateRun.Output -like '*more than one generated recommendation*') -Detail 'One assessment cannot belong to multiple recommendations.'
 
-    $duplicateTarget = Copy-JsonObject -Value $draft
-    $firstTargetRecommendation = $duplicateTarget.recommendations[0]
-    $firstTargetRecommendation.recommendedAction = 'update'
-    $firstTargetRecommendation.targetHostedId = 'IMPL-SCHEMA-001'
-    $firstTargetRecommendation.idFamily = $null
-    $firstTargetRecommendation.title = 'First competing schema update'
-    $firstTargetRecommendation.recommendedRuleText = 'First competing update for schema validation.'
-    $firstTargetRecommendation.memberAssessmentRefs = @($contributorRef)
-    $firstTargetRecommendation.memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The first update preserves the contributor meaning.' })
-    $firstTargetRecommendation.PSObject.Properties.Remove('implementationModels')
-    $secondTargetRecommendation = Copy-JsonObject -Value $firstTargetRecommendation
-    $secondTargetRecommendation.draftKey = 'recommendation-3'
-    $secondTargetRecommendation.title = 'Second competing schema update'
-    $secondTargetRecommendation.recommendedRuleText = 'Second competing update for schema validation.'
-    $secondTargetRecommendation.memberAssessmentRefs = @($interactiveRef)
-    $secondTargetRecommendation.memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The second update preserves the Interactive meaning.' })
-    $duplicateTarget.recommendations = @($firstTargetRecommendation, $duplicateTarget.recommendations[1], $secondTargetRecommendation)
-    $duplicateTarget.assessmentCoverage[0].recommendationDraftKeys = @('recommendation-1')
-    $duplicateTarget.assessmentCoverage[1].recommendationDraftKeys = @('recommendation-3')
-    $strictDuplicateTargetRun = Invoke-DisplayBuilder -Draft $duplicateTarget -Name 'duplicate-target-strict'
-    Add-TestResult -Name 'duplicate-target-strict-rejected' -Passed ($strictDuplicateTargetRun.ExitCode -ne 0 -and $strictDuplicateTargetRun.Output -like '*More than one recommendation owns Hosted ID IMPL-SCHEMA-001*') -Detail 'Strict batch validation rejects competing recommendations for one existing Hosted target.'
-    $blockedDuplicateTargetRun = Invoke-DisplayBuilder -Draft $duplicateTarget -Name 'duplicate-target-blocked' -AllowConflicts
-    $blockedDuplicateTargetResult = if ($blockedDuplicateTargetRun.ExitCode -eq 0) { $blockedDuplicateTargetRun.Output | ConvertFrom-Json -DateKind String } else { $null }
-    $blockedDuplicateTargetDisplay = if ($blockedDuplicateTargetRun.ExitCode -eq 0) { Get-Content -LiteralPath $blockedDuplicateTargetRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
-    $blockedConflict = if ($null -ne $blockedDuplicateTargetDisplay) { @($blockedDuplicateTargetDisplay.reconciliation.conflicts)[0] } else { $null }
-    $blockedDisplayValid = $blockedDuplicateTargetRun.ExitCode -eq 0 -and
-        [string]$blockedDuplicateTargetResult.status -ceq 'blocked' -and
-        [int]$blockedDuplicateTargetResult.conflictCount -eq 1 -and
-        [string]$blockedDuplicateTargetDisplay.reconciliation.status -ceq 'blocked' -and
-        @($blockedDuplicateTargetDisplay.candidates).Count -eq 3 -and
-        [string]$blockedConflict.targetHostedId -ceq 'IMPL-SCHEMA-001' -and
-        @($blockedConflict.recommendations).Count -eq 2 -and
-        @($blockedConflict.recommendations.memberAssessments).Count -eq 2 -and
-        @($blockedDuplicateTargetDisplay.candidates | Where-Object { $_.PSObject.Properties['conflictId'] -and [string]$_.conflictId -ceq 'duplicate-target:IMPL-SCHEMA-001' -and -not [string]::IsNullOrWhiteSpace([string]$_.conflictDraftKey) }).Count -eq 2
-    Add-TestResult -Name 'duplicate-target-blocked-display' -Passed $blockedDisplayValid -Detail $(if ($blockedDisplayValid) { 'Final display construction marks duplicate-target proposals as conflict candidates, preserves their assessment evidence, and emits unrelated valid candidates in a blocked display.' } else { $blockedDuplicateTargetRun.Output })
+    $groupedRecommendation = Copy-JsonObject -Value $draft
+    $groupedRecommendation.recommendations[0].memberAssessmentRefs = @($contributorRef, $interactiveRef)
+    $groupedRecommendation.recommendations[0].memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'Contributor meaning.' }, [ordered]@{ assessmentRef = $interactiveRef; rationale = 'Interactive meaning.' })
+    Add-TestResult -Name 'grouped-recommendation-schema-rejected' -Passed (-not (Test-JsonInstance -Value $groupedRecommendation -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json'))) -Detail 'Reconciliation cannot merge multiple source assessments into one recommendation or UI owner.'
+
+    $noncanonicalTarget = Copy-JsonObject -Value $draft
+    $noncanonicalTarget.recommendations[0].recommendedAction = 'update'
+    $noncanonicalTarget.recommendations[0].targetHostedId = 'IMPL-SCHEMA-001'
+    $noncanonicalTarget.recommendations[0].idFamily = $null
+    $noncanonicalTarget.recommendations[0].recommendedRuleText = 'A noncanonical candidate must not update an existing rule.'
+    $noncanonicalTarget.recommendations[0].PSObject.Properties.Remove('implementationModels')
+    $noncanonicalTargetRun = Invoke-DisplayBuilder -Draft $noncanonicalTarget -Name 'noncanonical-target'
+    Add-TestResult -Name 'noncanonical-target-rejected' -Passed ($noncanonicalTargetRun.ExitCode -ne 0 -and $noncanonicalTargetRun.Output -like '*can target only its catalog-owned canonical Hosted rule*') -Detail 'An unmapped supporting candidate cannot update, retire, or restore an existing Hosted rule.'
 
     $tamperedInventory = Get-Content -LiteralPath $inventoryPaths[1] -Raw | ConvertFrom-Json -DateKind String
     $tamperedInventory.collectedAt = '2026-09-16T13:00:00Z'
@@ -659,8 +679,8 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $unclassifiedRun = Invoke-DisplayBuilder -Draft $draft -Name 'unclassified' -AssessmentSetPath $unclassifiedAssessmentSetPath -InventoryPaths $unclassifiedInventoryPaths
     $unclassifiedDisplay = if ($unclassifiedRun.ExitCode -eq 0) { Get-Content -LiteralPath $unclassifiedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $unclassifiedCandidate = if ($null -ne $unclassifiedDisplay) { @($unclassifiedDisplay.candidates | Where-Object { [string]$_.source.provenance -ceq 'unclassified' })[0] } else { $null }
-    $unclassifiedExcluded = $unclassifiedRun.ExitCode -eq 0 -and [string]$unclassifiedCandidate.reviewState -ceq 'excluded' -and -not [bool]$unclassifiedCandidate.assessment.hostedApplicable -and [string]$unclassifiedCandidate.assessment.applicabilityRationale -like '*maintainer must contest this exclusion before promotion*' -and [string]$unclassifiedCandidate.recommendation.action -ceq 'exclude' -and $null -eq $unclassifiedCandidate.recommendation.targetHostedId -and [bool]$unclassifiedCandidate.recommendation.needsReview -and 'local-safeguard' -in @($unclassifiedCandidate.recommendation.provenance) -and 'hosted-architecture' -in @($unclassifiedCandidate.recommendation.evidenceIds)
-    Add-TestResult -Name 'unclassified-provenance-excluded' -Passed $unclassifiedExcluded -Detail $(if ($unclassifiedExcluded) { 'Unclassified source provenance defaults to an excluded assessment that requires a maintainer contest before promotion.' } else { $unclassifiedRun.Output })
+    $unclassifiedMapped = $unclassifiedRun.ExitCode -eq 0 -and [string]$unclassifiedCandidate.reviewState -ceq 'recommended' -and [bool]$unclassifiedCandidate.assessment.hostedApplicable -and [string]$unclassifiedCandidate.recommendation.action -ceq 'no-change' -and [string]$unclassifiedCandidate.recommendation.targetHostedId -ceq 'IMPL-EVID-001' -and [bool]$unclassifiedCandidate.recommendation.needsReview
+    Add-TestResult -Name 'unclassified-canonical-remains-mapped' -Passed $unclassifiedMapped -Detail $(if ($unclassifiedMapped) { 'Unclassified canonical source provenance keeps the existing mapping and requires explicit maintainer lifecycle review.' } else { $unclassifiedRun.Output })
 }
 catch {
     $issues.Add($_.Exception.Message)

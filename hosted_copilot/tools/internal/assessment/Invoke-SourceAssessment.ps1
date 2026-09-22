@@ -54,8 +54,12 @@ $ErrorActionPreference = 'Stop'
 
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../../modules/shared/SourceEvidenceValidation.psm1'
 Import-Module -Name $sourceEvidenceModulePath -Force
+$helpersModulePath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
+Import-Module -Name $helpersModulePath -Force
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+$sourceAssessmentBootstrapBytesPerSecondPerWorker = 500
+$sourceAssessmentStopwatch = [Diagnostics.Stopwatch]::StartNew()
 
 function Write-JsonAtomically {
     param(
@@ -424,9 +428,8 @@ $resolvedCacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
 if ($resolvedCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'CacheDirectory must be outside the repository root'
 }
-$resolvedResumeRunDirectory = $null
-if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
-    $resolvedResumeRunDirectory = [IO.Path]::GetFullPath($ResumeRunDirectory)
+$resolvedResumeRunDirectory = if ([string]::IsNullOrWhiteSpace($ResumeRunDirectory)) { $null } else { [IO.Path]::GetFullPath($ResumeRunDirectory) }
+if ($null -ne $resolvedResumeRunDirectory) {
     if ($resolvedResumeRunDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'ResumeRunDirectory must be outside the repository root'
     }
@@ -503,22 +506,26 @@ if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
     [IO.File]::WriteAllBytes($resolvedEvaluatorScriptPath, $evaluatorSnapshot.Bytes)
     $evaluatorIdentity = 'script:' + $evaluatorSnapshot.Sha256
 }
-
 $catalogJson = Get-Content -LiteralPath $resolvedCatalogPath -Raw
 if (-not (Test-Json -Json $catalogJson -SchemaFile $catalogSchemaPath -ErrorAction Stop)) {
     throw "Hosted catalog does not satisfy its schema: $resolvedCatalogPath"
 }
 $catalog = $catalogJson | ConvertFrom-Json
-$hostedRulesBySourceId = @{}
 $knownHostedRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($rule in @($catalog.rules)) {
     $null = $knownHostedRuleIds.Add([string]$rule.id)
-    foreach ($sourceId in @($rule.sourceIds)) {
-        if (-not $hostedRulesBySourceId.ContainsKey([string]$sourceId)) {
-            $hostedRulesBySourceId[[string]$sourceId] = [Collections.Generic.List[string]]::new()
-        }
-        $hostedRulesBySourceId[[string]$sourceId].Add([string]$rule.id)
+}
+$canonicalMappingsBySource = @{}
+foreach ($mappingProperty in @($catalog.canonicalCandidateMappings.PSObject.Properties)) {
+    $mapping = $mappingProperty.Value
+    $sourceKey = [string]$mapping.sourceDefinitionId + [char]0 + [string]$mapping.sourceId
+    if (-not $canonicalMappingsBySource.ContainsKey($sourceKey)) {
+        $canonicalMappingsBySource[$sourceKey] = [Collections.Generic.List[object]]::new()
     }
+    $canonicalMappingsBySource[$sourceKey].Add([pscustomobject]@{
+        HostedRuleId = [string]$mappingProperty.Name
+        AssessmentId = if ($mapping.PSObject.Properties['assessmentId']) { [string]$mapping.assessmentId } else { $null }
+    })
 }
 $lanes = [Collections.Generic.List[object]]::new()
 $snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
@@ -579,13 +586,13 @@ foreach ($inventoryPath in $InventoryPaths) {
     $projectionRecords = @(Get-SourceInventoryProjectionRecords -CurrentInventory $inventory -PriorInventory $priorInventory -RemovedAt $GeneratedAt)
     $packetRecords = @($projectionRecords | ForEach-Object {
         $record = $_
-        $mappedHostedRuleIds = [Collections.Generic.List[string]]::new()
-        if ($sourceDefinitionId -ceq 'contributor-guidance' -and $hostedRulesBySourceId.ContainsKey([string]$record.sourceId)) {
-            foreach ($hostedRuleId in $hostedRulesBySourceId[[string]$record.sourceId]) {
-                $mappedHostedRuleIds.Add($hostedRuleId)
-            }
+        $sourceKey = $sourceDefinitionId + [char]0 + [string]$record.sourceId
+        [string[]]$mappedHostedRuleIds = if ($canonicalMappingsBySource.ContainsKey($sourceKey)) {
+            @($canonicalMappingsBySource[$sourceKey] | ForEach-Object { $_.HostedRuleId } | Sort-Object -Unique)
         }
-        [string[]]$uniqueMappedIds = @($mappedHostedRuleIds | Sort-Object -Unique)
+        else {
+            @()
+        }
         $priorSourceEvidence = if ($null -eq $priorInventory) {
             $null
         }
@@ -600,7 +607,7 @@ foreach ($inventoryPath in $InventoryPaths) {
             }
             sourceRecord = $record
             priorSourceEvidence = $priorSourceEvidence
-            mappedHostedRuleIds = $uniqueMappedIds
+            mappedHostedRuleIds = $mappedHostedRuleIds
         }
     })
     $lanes.Add([ordered]@{
@@ -626,11 +633,14 @@ $cachedSourceCount = 0
 $recoveredSourceCount = 0
 $evaluatedSourceCount = 0
 $sourceCacheMetadata = @{}
-$retainedEntries = if ($null -ne $resolvedResumeRunDirectory) {
-    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
+$retainedEntries = if ($null -eq $resolvedResumeRunDirectory) {
+    @{}
 }
 else {
-    @{}
+    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
+}
+if ($null -ne $resolvedResumeRunDirectory -and $retainedEntries.Count -eq 0) {
+    throw 'Assessment recovery directory is incompatible with the current run. Rerun without -AssessmentResumeDirectory to use validated cache entries.'
 }
 $pendingLanes = [Collections.Generic.List[object]]::new()
 foreach ($lane in $orderedLanes) {
@@ -673,9 +683,6 @@ foreach ($lane in $orderedLanes) {
             records = $pendingRecords.ToArray()
         })
     }
-}
-if (($OutputFormat -eq 'Text' -or $ShowProgress) -and ($cachedSourceCount -gt 0 -or $recoveredSourceCount -gt 0)) {
-    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'source-assessment/reuse' -Detail ("{0} cached, {1} recovered, {2} require evaluation" -f $cachedSourceCount, $recoveredSourceCount, ($orderedLanes.records.Count - $cachedSourceCount - $recoveredSourceCount)) -NameWidth 42)
 }
 $batches = [Collections.Generic.List[object]]::new()
 $nextBatchNumber = 1
@@ -725,6 +732,23 @@ foreach ($lane in $pendingLanes) {
     }
 }
 
+if ($OutputFormat -eq 'Text' -or $ShowProgress) {
+    [long]$pendingPayloadBytes = 0
+    foreach ($batch in $batches) {
+        $pendingPayloadBytes += [long]$batch.payloadSizeBytes
+    }
+    $totalSourceCount = [int]$orderedLanes.records.Count
+    $pendingSourceCount = $totalSourceCount - $cachedSourceCount - $recoveredSourceCount
+    $initialEstimate = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes 0 -CompletedElapsedMilliseconds 0 -RemainingPayloadBytes $pendingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
+    Write-Host ''
+    Write-Host ("  Sources   : {0} total | {1} cached | {2} recovered | {3} pending" -f $totalSourceCount, $cachedSourceCount, $recoveredSourceCount, $pendingSourceCount)
+    Write-Host ("  Batches   : {0} pending" -f $batches.Count)
+    Write-Host ("  Workers   : {0}" -f $MaxParallelBatches)
+    Write-Host ("  Payload   : {0}" -f (Format-ByteSize -Bytes $pendingPayloadBytes))
+    Write-Host ("  Estimated : {0}" -f (Format-ElapsedDuration -Milliseconds $initialEstimate))
+    Write-Host ''
+}
+
 $evaluatorCommandPath = $null
 if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
     $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
@@ -741,6 +765,7 @@ try {
     $preparedBatches = [Collections.Generic.List[object]]::new()
     $batchById = @{}
     foreach ($batch in $batches) {
+        $batchNumber = $preparedBatches.Count + 1
         $batchId = [string]$batch.batchId
         $batchPacket = $batch.packet
         $batchDirectory = Join-Path $runDirectory $batchId
@@ -755,6 +780,8 @@ try {
         Copy-Item -LiteralPath $promptPath -Destination $batchPromptPath
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
         $prepared = [pscustomobject]@{
+            BatchNumber = $batchNumber
+            BatchCount = $batches.Count
             BatchId = $batchId
             Packet = $batchPacket
             PayloadSizeBytes = [int]$batch.payloadSizeBytes
@@ -772,6 +799,9 @@ try {
 
     $validatedResponses = @{}
     $failureByBatch = @{}
+    $completedBatchIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    [long]$completedPayloadBytes = 0
+    [long]$completedElapsedMilliseconds = 0
     $pendingBatches = @($preparedBatches)
     for ($attempt = 1; $attempt -le ($MaxRetries + 1) -and $pendingBatches.Count -gt 0; $attempt++) {
         if ($attempt -gt 1 -and $RetryDelayMilliseconds -gt 0) {
@@ -791,12 +821,18 @@ try {
             $batch = $_
             [pscustomobject]@{
                 Kind = 'started'
+                BatchNumber = [int]$batch.BatchNumber
+                BatchCount = [int]$batch.BatchCount
                 BatchId = [string]$batch.BatchId
                 SourceCount = @($batch.Packet.records).Count
                 PayloadSizeBytes = [int]$batch.PayloadSizeBytes
                 Attempt = $using:workerAttempt
                 AttemptCount = $using:workerAttemptCount
             }
+            $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+            $evaluatorOutput = @()
+            $evaluatorExitCode = 0
+            $failureKind = 'execution'
             try {
                 if ($null -ne $using:workerEvaluatorScriptPath) {
                     $evaluatorOutput = @(& pwsh -NoProfile -File $using:workerEvaluatorScriptPath -BatchPath $batch.BatchPath -CatalogPath $batch.CatalogPath -SchemaPath $batch.SchemaPath -PromptPath $batch.PromptPath -OutputPath $batch.ResponsePath -Model $using:workerModel -ReasoningEffort $using:workerReasoningEffort 2>&1)
@@ -806,14 +842,19 @@ try {
                 }
                 else {
                     $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $batch.AttemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
+                    $evaluatorExitCode = $LASTEXITCODE
+                    if ($evaluatorExitCode -ne 0) {
+                        $failureKind = 'copilot-exit'
+                        throw "Copilot evaluator exited with code $evaluatorExitCode"
                     }
                 }
                 [pscustomobject]@{
                     Kind = 'completed'
                     BatchId = [string]$batch.BatchId
                     Succeeded = $true
+                    ElapsedMilliseconds = [long]$stopwatch.ElapsedMilliseconds
+                    ExitCode = 0
+                    FailureKind = ''
                     Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
                     Error = ''
                 }
@@ -823,7 +864,10 @@ try {
                     Kind = 'completed'
                     BatchId = [string]$batch.BatchId
                     Succeeded = $false
-                    Output = @()
+                    ElapsedMilliseconds = [long]$stopwatch.ElapsedMilliseconds
+                    ExitCode = [int]$evaluatorExitCode
+                    FailureKind = $failureKind
+                    Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
                     Error = [string]$_.Exception.Message
                 }
             }
@@ -831,20 +875,16 @@ try {
             $workerResult = $_
             $batch = $batchById[[string]$workerResult.BatchId]
             if ([string]$workerResult.Kind -ceq 'started') {
-                if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-                    $progressName = if ([int]$workerResult.Attempt -eq 1) { "source-assessment/$($workerResult.BatchId)" } else { 'source-assessment retry' }
-                    $progressDetail = if ([int]$workerResult.Attempt -eq 1) {
-                        "{0} sources, {1} payload bytes" -f $workerResult.SourceCount, $workerResult.PayloadSizeBytes
-                    }
-                    else {
-                        "{0}; attempt {1}/{2}" -f $workerResult.BatchId, $workerResult.Attempt, $workerResult.AttemptCount
-                    }
-                    Write-Host (Format-ValidationStatusLine -Status 'running' -Name $progressName -Detail $progressDetail -NameWidth 42)
+                if (($OutputFormat -eq 'Text' -or $ShowProgress) -and [int]$workerResult.Attempt -eq 1) {
+                    Write-Host (Format-ValidationStatusLine -Status 'running' -Name "source-assessment $($workerResult.BatchNumber)/$($workerResult.BatchCount)" -Detail ("{0} ({1} sources)" -f $workerResult.BatchId, $workerResult.SourceCount) -NameWidth 42)
                 }
                 return
             }
             try {
                 if (-not [bool]$workerResult.Succeeded) {
+                    if ([string]$workerResult.FailureKind -ceq 'copilot-exit') {
+                        throw (Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode ([int]$workerResult.ExitCode) -Output @($workerResult.Output))
+                    }
                     throw [string]$workerResult.Error
                 }
                 if ($null -eq $resolvedEvaluatorScriptPath) {
@@ -886,17 +926,56 @@ try {
                 }
                 $response = $responseJson | ConvertFrom-Json
                 Assert-BatchResponse -Response $response -ExpectedRecords @($batch.Packet.records) -BatchId $batch.BatchId -AssessmentCardinality ([string]$batch.Packet.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
+                foreach ($entry in @($response.entries)) {
+                    $sourceKey = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
+                    $cacheMetadata = $sourceCacheMetadata[$sourceKey]
+                    Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
+                        schemaVersion = 1
+                        kind = 'hosted-source-assessment-source-cache'
+                        cacheKey = $cacheMetadata.Key
+                        identity = $cacheMetadata.Identity
+                        entry = $entry
+                    })
+                }
                 $validatedResponses[$batch.BatchId] = $response
                 $failureByBatch.Remove($batch.BatchId)
                 $evaluatedBatchCount++
+                $null = $completedBatchIds.Add([string]$batch.BatchId)
+                $completedPayloadBytes += [long]$batch.PayloadSizeBytes
+                $completedElapsedMilliseconds += [long]$workerResult.ElapsedMilliseconds
+                [long]$remainingPayloadBytes = 0
+                foreach ($remainingBatch in @($preparedBatches | Where-Object { -not $completedBatchIds.Contains([string]$_.BatchId) })) {
+                    $remainingPayloadBytes += [long]$remainingBatch.PayloadSizeBytes
+                }
+                $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
                 if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-                    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment/$($batch.BatchId)" -Detail ("evaluated; {0} sources, {1} payload bytes" -f @($batch.Packet.records).Count, $batch.PayloadSizeBytes) -NameWidth 42)
+                    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment $($batch.BatchNumber)/$($batch.BatchCount)" -Detail ("Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)) -NameWidth 42)
                 }
             }
             catch {
                 Remove-Item -LiteralPath $batch.ResponsePath -Force -ErrorAction SilentlyContinue
                 $failureByBatch[$batch.BatchId] = [string]$_.Exception.Message
                 $retryBatches.Add($batch)
+                if ($OutputFormat -eq 'Text' -or $ShowProgress) {
+                    foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Label ("[ERROR] Batch {0}/{1}:" -f $batch.BatchNumber, $batch.BatchCount) -Message ([string]$_.Exception.Message))) {
+                        Write-Host $diagnosticLine
+                    }
+                    $completedPayloadBytes += [long]$batch.PayloadSizeBytes
+                    $completedElapsedMilliseconds += [long]$workerResult.ElapsedMilliseconds
+                    [long]$remainingPayloadBytes = 0
+                    foreach ($remainingBatch in @($preparedBatches | Where-Object { -not $completedBatchIds.Contains([string]$_.BatchId) })) {
+                        $remainingPayloadBytes += [long]$remainingBatch.PayloadSizeBytes
+                    }
+                    $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
+                    $failureStatus = if ($attempt -le $MaxRetries) { 'retrying' } else { 'failed' }
+                    $failureDetail = if ($attempt -le $MaxRetries) {
+                        "Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)
+                    }
+                    else {
+                        "Total Elapsed {0} : [Batch: {1}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds))
+                    }
+                    Write-Host (Format-ValidationStatusLine -Status $failureStatus -Name "source-assessment $($batch.BatchNumber)/$($batch.BatchCount)" -Detail $failureDetail -NameWidth 42)
+                }
             }
         }
         $pendingBatches = @($retryBatches)
@@ -909,15 +988,6 @@ try {
     foreach ($batch in $preparedBatches) {
         $response = $validatedResponses[$batch.BatchId]
         foreach ($entry in @($response.entries)) {
-            $sourceKey = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
-            $cacheMetadata = $sourceCacheMetadata[$sourceKey]
-            Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
-                schemaVersion = 1
-                kind = 'hosted-source-assessment-source-cache'
-                cacheKey = $cacheMetadata.Key
-                identity = $cacheMetadata.Identity
-                entry = $entry
-            })
             $draftEntries.Add($entry)
             $evaluatedSourceCount++
         }
@@ -961,9 +1031,6 @@ catch {
 finally {
     if ($succeeded -and (Test-Path -LiteralPath $runDirectory -PathType Container)) {
         Remove-Item -LiteralPath $runDirectory -Recurse -Force
-    }
-    if ($succeeded -and $null -ne $resolvedResumeRunDirectory -and $resolvedResumeRunDirectory.StartsWith($managedRunRootPrefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolvedResumeRunDirectory -PathType Container)) {
-        Remove-Item -LiteralPath $resolvedResumeRunDirectory -Recurse -Force
     }
 }
 

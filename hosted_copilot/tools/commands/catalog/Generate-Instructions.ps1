@@ -80,6 +80,26 @@ foreach ($rule in @($catalog.rules)) {
     $rulesById[[string]$rule.id] = $rule
 }
 
+$mappingRuleIds = @($catalog.canonicalCandidateMappings.PSObject.Properties.Name)
+$missingMappingRuleIds = @($rulesById.Keys | Where-Object { $_ -notin $mappingRuleIds } | Sort-Object)
+$unknownMappingRuleIds = @($mappingRuleIds | Where-Object { -not $rulesById.ContainsKey($_) } | Sort-Object)
+if ($missingMappingRuleIds.Count -gt 0 -or $unknownMappingRuleIds.Count -gt 0) {
+    throw "Canonical candidate mappings must cover every catalog rule exactly: missing=$($missingMappingRuleIds -join ', '); unknown=$($unknownMappingRuleIds -join ', ')"
+}
+$canonicalCandidateOwners = @{}
+foreach ($ruleId in $mappingRuleIds) {
+    $mapping = $catalog.canonicalCandidateMappings.$ruleId
+    $candidateKey = @(
+        [string]$mapping.sourceDefinitionId,
+        [string]$mapping.sourceId,
+        $(if ($mapping.PSObject.Properties['assessmentId']) { [string]$mapping.assessmentId } else { '' })
+    ) -join [char]0
+    if ($canonicalCandidateOwners.ContainsKey($candidateKey)) {
+        throw "Canonical source candidate is assigned to more than one catalog rule: $($canonicalCandidateOwners[$candidateKey]), $ruleId"
+    }
+    $canonicalCandidateOwners[$candidateKey] = $ruleId
+}
+
 $usedRuleIds = New-Object 'System.Collections.Generic.List[string]'
 $outputs = New-Object 'System.Collections.Generic.List[object]'
 if ($OutputFormat -eq 'Text') {

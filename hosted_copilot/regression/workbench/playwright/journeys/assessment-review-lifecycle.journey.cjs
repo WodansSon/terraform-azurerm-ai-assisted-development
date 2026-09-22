@@ -36,7 +36,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const candidateTitle = "Excluded assessment alpha";
   const initialHostedId = "REVIEW-EXCL-001";
-  const selectedHostedId = "REVIEW-PARITY-001";
+  const selectedHostedId = initialHostedId;
   const initialRationale = "Phase 0 confirms this excluded assessment belongs in Hosted review.";
   const updatedRationale = "Phase 0 confirms the persisted override remains required for Hosted review.";
   const decisionRationale = "Promote the contested assessment as deterministic Hosted regression coverage.";
@@ -98,16 +98,13 @@ async function run({ page, baseUrl, assert, playback }) {
     await playback.show(page, "Decision capture · synchronized Candidate, Assessment, Plan, and capacity state");
     const candidateRow = await openCandidate(page, initialHostedId);
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
-    const proposedId = page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]');
-    await proposedId.fill(selectedHostedId);
-    await page.waitForTimeout(350);
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill(decisionRationale);
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Rule Action selection did not remain synchronized in Details");
-    assert(await proposedId.inputValue() === selectedHostedId, "Proposed Hosted rule ID was not retained");
+    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === selectedHostedId, "Generated Hosted rule ID was not retained");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === decisionRationale, "Decision rationale was not retained");
-    assert(await page.locator("#assessment-panel [data-plan-toggle]").isChecked(), "Override-owned plan membership was not synchronized in Details");
+    assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan && getDecision(getActiveCandidate()).planMembershipSource === "manual"), "Saved promotion action did not create manual plan membership");
 
     await page.locator('[data-candidate-pane="candidates"]').click();
     await page.locator("#search-input").fill(candidateTitle);
