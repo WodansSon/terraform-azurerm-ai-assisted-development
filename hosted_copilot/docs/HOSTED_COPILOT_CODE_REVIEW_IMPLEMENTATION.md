@@ -399,17 +399,23 @@ The static proof-of-concept interface lives beneath `hosted_copilot/workbench/`.
 pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
 ```
 
-By default, the launcher collects the three source inventories, assesses their source-local meanings, reconciles them into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid `workbench-display.json`. It reports the server as ready at `http://127.0.0.1:43143/` only after those phases complete. Each phase reports progress so assessment and reconciliation cannot look like a hung launch.
+The normal command refreshes Workbench assets, validates the durable `%LOCALAPPDATA%\hosted-workbench\site\workbench-display.json`, and serves it at `http://127.0.0.1:43143/`. It does not collect, assess, or reconcile sources. On a new machine or whenever the maintainer intentionally requests fresh semantic data, run:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild
+```
+
+An explicit rebuild collects the three source inventories, assesses their source-local meanings, reconciles them into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid display. Each phase reports progress. If any phase fails, the launcher preserves the prior validated display.
 
 Source assessment emits only independently enforceable meanings from each source record; it does not propose Hosted rule wording. Reconciliation exclusively combines equivalent or complementary meanings into one or two compact sentences. Every recommendation must explain how its final rule text preserves each member assessment meaning, and trusted display construction rejects missing, duplicate, or non-member coverage.
 
-Validated assessments are cached per source record under `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, and validated reconciliation results are cached per source-defined batch under `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`. Unchanged records and batches are revalidated and reused, while changed identities return only affected work to evaluation. Source assessment and reconciliation each evaluate up to three isolated cache misses concurrently by default, validate results in the parent process, merge them deterministically, and preserve complete coverage before staging the display. The staged `workbench-display.json` is deleted and rebuilt on every normal launch; it is never used as cache or freshness evidence.
+Validated assessments are cached per source record under `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, and validated reconciliation results are cached per source-defined batch under `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`. During explicit rebuilds, unchanged records and batches are revalidated and reused, while changed identities return only affected work to evaluation. Source assessment and reconciliation each evaluate up to three isolated cache misses concurrently by default, validate results in the parent process, merge them deterministically, and preserve complete coverage before publishing the display. The durable display is presentation state rather than semantic cache evidence.
 
-Every failed evaluator attempt is retained with its validation reason before retry. Duplicate recommendations that claim one existing Hosted target remain strict batch-validation failures. A complete final merge quarantines them as explicit conflict groups in a blocked display, keeps unaffected candidates reviewable, and prevents approval or catalog mutation.
+Every failed evaluator attempt is retained with its validation reason before retry. Duplicate recommendations that claim one existing Hosted target remain strict batch- and final-validation failures. Related coverage cannot establish ownership. When bounded retries cannot produce unique catalog-owned targets, fail before Workbench launch rather than publishing a partially valid or blocked display.
 
-A normal launch automatically discovers the newest compatible toolkit-managed failed assessment and reconciliation runs, revalidates their retained artifacts, reuses valid work, and reports whether recovery is automatic, explicit, or unavailable. Successful runs remove their temporary artifacts. Successful recovery removes only a toolkit-managed retained run, malformed cache entries are removed when read, and caches or recovery directories outside the repository are never treated as source files.
+An explicit rebuild automatically discovers the newest compatible toolkit-managed failed assessment and reconciliation runs, revalidates their retained artifacts, reuses valid work, and reports whether recovery is automatic, explicit, or unavailable. Successful runs remove their temporary artifacts. Successful recovery removes only a toolkit-managed retained run, malformed cache entries are removed when read, and caches or recovery directories outside the repository are never treated as source files.
 
-Use `-AssessmentCacheDirectory`, `-ReconciliationCacheDirectory`, `-AssessmentResumeDirectory`, `-ReconciliationResumeDirectory`, or `-MaxParallelBatches` only to override defaults for diagnosis or controlled execution. Use `-DisplayPath` to stage a prebuilt schema-valid display without collecting or assessing sources. `-StageOnly` validates staging without starting the server, and `-NoLaunch` keeps the launcher from opening the browser automatically.
+Use `-AssessmentCacheDirectory`, `-ReconciliationCacheDirectory`, `-AssessmentResumeDirectory`, `-ReconciliationResumeDirectory`, or `-MaxParallelBatches` only to override rebuild defaults for diagnosis or controlled execution. `-StageOnly` validates the selected reuse or rebuild operation without starting the server, and `-NoLaunch` keeps the launcher from opening the browser automatically.
 
 Static content accepts only `GET` and `HEAD`. The sole process-lifecycle exception is a per-launch-token-authenticated `POST /shutdown` used by **Close Workbench**. It stops the local server and grants no repository-write authority. The stable origin preserves browser storage across launches.
 
@@ -438,26 +444,26 @@ Add an automatic durable reconciliation cache so a successful launch does not re
 - Discover and use the cache automatically during the normal one-command launch; do not require another maintainer switch.
 - Keep failed-run recovery separate from successful-run caching, and define bounded cleanup for obsolete cache entries without deleting valid current entries.
 
-##### Blocked Reconciliation Displays
+##### Ownership Validation And Conflict-View Removal
 
-Reconciliation preserves diagnostic evidence and distinguishes correctable evaluator errors from semantic conflicts that require maintainer judgment.
+Reconciliation preserves diagnostic evidence, but ownership repair is not a maintainer Workbench task.
 
-- Retain every invalid batch draft under an attempt-specific path with its validation failure; do not delete the evidence needed to diagnose or adjudicate it.
-- Retry malformed output, invented related coverage, and other recommendations that are not backed by their member assessments, while preserving both failed attempts when retries are exhausted.
-- Treat multiple recommendations claiming the same existing Hosted rule ID as a blocked semantic conflict rather than automatically selecting wording, merging rules, or assigning a new ID.
-- Show each conflicting recommendation, member assessment, proposed wording, existing target, related coverage, and validation reason in Workbench.
-- When unresolved semantic conflicts remain, build and launch a schema-valid blocked review display containing valid candidates and explicit conflict groups instead of failing before the UI starts.
-- Present the blocked state as an assertive error MessageBar with a concise uppercase title, actionable body, **Review Conflicts** command, and dismiss control. Dismissal hides only the message; it does not alter conflict state or approval blocking, and the message returns when the Workbench reloads.
-- Show `git-branch-conflicts` with the unresolved count in the Promotion Plan heading and replace the activity-rail Promotion Plan glyph with `git-pull-request-error` while reconciliation is blocked.
-- Disable promotion approval and catalog mutation while the display contains unresolved conflicts.
+- Retain every invalid batch draft under an attempt-specific path with its validation failure; do not delete evidence needed to diagnose evaluator output.
+- Retry malformed output, invented related coverage, duplicate targets, and other recommendations that are not backed by their member assessments, while preserving failed attempts when retries are exhausted.
+- Require canonical catalog mappings to be the only authority for existing Hosted targets. Related coverage and semantic similarity must never create a target.
+- Reject a final corpus containing duplicate target ownership or a recommendation whose target disagrees with its canonical mapping.
+- Fail launch after bounded retries when ownership remains invalid. Do not emit blocked display status or conflict groups.
+- Remove the conflict MessageBar, **Review Conflicts** command, Conflicts tab and panes, conflict activity and plan indicators, conflict-specific approval gating, `AllowConflicts` builder path, conflict display schema, conflict icon dependency, and `WB-UX-CONFLICT-001` regression coverage.
 
-##### Next Implementation Step: Maintainer Conflict Adjudication
+##### Next Implementation Step: Advisory Consolidation Proposals
 
-- Add a GitHub-style conflict view where an authenticated maintainer can merge recommendations, keep one and defer or exclude another, or split a distinct rule into a new tentative ID.
-- Require an explicit resolution rationale and preserve the competing recommendations and member assessments as immutable audit evidence.
-- Bind each resolution to the member source-content hashes, assessment identities, competing recommendation content, existing Hosted target, and catalog fingerprint.
-- Invalidate a resolution when a bound input changes; remove the conflict when recomputation no longer collides, or return it as unresolved when the collision remains.
-- Enable approval only after every conflict has an explicit current resolution and the resolved full-corpus draft passes the trusted builder.
+Restore cross-assessment optimization without weakening identity ownership.
+
+- Compare each assessment with the complete Hosted catalog and enumerate every materially equivalent, overlapping, extending, narrowing, conflicting, or otherwise related rule as structured related-rule evidence.
+- Keep `existingCoverage` as aggregate completeness and render the structured evidence as **Related Rules** so maintainers can identify redundant catalog guidance and token waste.
+- Emit consolidation proposals separately from ordinary candidate recommendations. Each proposal uses one new collision-free Hosted ID, merged wording, member assessment identities, existing rules proposed for retirement, per-member meaning coverage, source relationships, and before-and-after token totals.
+- Keep every proposal pending until a maintainer accepts it, splits its members, edits the proposal, or keeps the current rules unchanged.
+- Apply an accepted consolidation atomically by adding the new rule, retiring only selected existing rules, and preserving all approved evidence and source relationships. Never overwrite an existing Hosted rule ID or classify absorbed candidates as excluded.
 
 The Workbench supports laptop and desktop browsers only. At viewport widths below `768px`, or when the browser identifies as mobile, display the unsupported-device screen with the approved yellow JSON-braces product lockup and no `HR` mark, and do not load the candidate bundle or initialize IndexedDB. Do not maintain a separate responsive handset workflow for rule assessment or promotion.
 
@@ -495,11 +501,11 @@ Treat authoritative catalog status as persistent rule identity in every Candidat
 
 An authenticated Hosted CODEOWNER can add a source-bound provisional override to an AI-excluded result with a required rationale. Place icon-only Apply Override and Cancel Override controls on the Override Rationale label row above the textarea, with Apply first using `git-stash-apply` and Cancel rightmost using `close`; preserve accessible names, Workbench tooltips, and disabled Apply state until rationale exists. Applying the override removes the row from active Assessment Results, adds it to Overrides and the promotion plan with `No Change` still selected, and retains the original AI exclusion plus override record in the local draft. Explicit Undo and Remove Override atomically remove both the decision and provisional override, return the candidate to active Assessment Results, and clear stale selections. Carry the audit record and plan-membership provenance through draft schema version 4; the final approved-rules file contains only the resulting catalog mutation and source relationships. Treat this as trusted maintainer discretion; do not describe it as unbypassable multi-party enforcement.
 
-Rule Actions is mutually exclusive: unmapped candidates allow no change, add, exclude, or defer; mapped candidates allow no change, update, retire, or defer; source-retired and retired-mapping cases use their narrower applicable subsets. Choosing an action updates the active controls and dependent outputs without replacing the Details body, changing its scroll position, or dropping focus from the selected radio.
+Rule Actions is mutually exclusive: unmapped candidates allow no change, add, exclude, or defer; mapped candidates allow no change, update, retire, or defer; source-retired and retired-mapping cases use their narrower applicable subsets. Show the generated identity as a non-editable `RULE: <HOSTED_ID>` header. A non-default action and Decision Rationale remain staged until the maintainer activates **Save decision**; saving a promotion action also enters it into the promotion plan. Choosing `No Change` immediately clears the saved decision, disables Decision Rationale, and preserves the Details scroll position and selected-radio focus.
 
-Every reconciliation recommendation carries the complete proposed Hosted rule identity, wording, category, placement, provenance, evidence, and source relationships. `targetHostedRuleId` separately identifies the existing catalog rule when one exists. Show the proposed Hosted rule ID inside the grouped Rule Actions controls for every candidate. Keep it editable when no target exists; for mapped updates, retirements, deferrals, and no-change proposals, display the assigned ID read-only and equal to the existing target because the approval contract does not define rename semantics. Limit editable IDs to 32 characters and require the catalog rule-ID format. Reject active or retired catalog collisions except for the candidate's exact target, and reject IDs reserved by any other proposed recommendation or maintainer decision. Persist the value in resumable drafts and use it as the resulting candidate identity in the tree, fixed Details header, Promotion Plan, Preview, and approved mutation without changing the source-bound candidate key. Keep invalid editable text available, show a red compact circle-slash and the specific reason, and block approval readiness until corrected. Show a green compact check and **Proposed Hosted Rule ID is valid.** when valid. Put that status and the live character count on one metadata row below the input, update the count immediately, debounce validation for 300 milliseconds, validate immediately on blur, and do not rebuild unchanged status content while the maintainer types.
+Every reconciliation recommendation carries the complete generated Hosted rule identity, wording, category, placement, provenance, evidence, and source relationships. `targetHostedRuleId` separately identifies the existing catalog rule when one exists. The trusted display builder assigns collision-free IDs to additions and requires mapped updates, retirements, deferrals, and no-change proposals to retain their canonical target identity. Maintainers do not allocate or rename Hosted IDs in the Workbench. Persist the generated value in resumable drafts and use it unchanged as the resulting candidate identity in the tree, fixed Details header, Rule Actions header, Promotion Plan, Preview, and approved mutation without changing the source-bound candidate key.
 
-Checking and unchecking promotion-plan inclusion have the same in-place scroll and focus guarantee. Unchecking removes only plan membership and preserves the current Details pane, selected candidate, Rule Action, rationale, source-tree expansion, and provisional override. Rule Action never changes plan membership implicitly. Every candidate uses the same checkbox flow, and a selected `No Change` item remains in the plan as **Needs action** until the maintainer explicitly chooses Add, Update, or Retire.
+Eligible-tree checkboxes and Bulk Actions remain shortcuts for plan membership and preserve tree context. The Details pane does not repeat a promotion-plan checkbox: saving a promotion action implies manual membership, and choosing `No Change` removes the saved action and membership. Every Rule Action transition preserves the active Details scroll owner and selected-control focus.
 
 Bulk Actions requires an authenticated Hosted CODEOWNER. Each Add operation skips candidates with an existing manual decision, selects the evaluated Add or Update recommendation, and generates a deterministic rationale that clearly attributes the decision to bulk acceptance of AI guidance. Record the authenticated actor, timestamp, query, candidate keys, and source-content hashes on the operation. Subsequent individual edits promote that candidate to manual ownership; Undo removes only unchanged decisions still owned by the operation.
 
@@ -507,7 +513,7 @@ Bulk Add and Bulk Undo synchronize existing Candidate Sources rows in place rath
 
 Use the complete available width for each Candidate Sources replacement view; do not compress Candidates and Details beside each other or introduce a breakpoint-specific split. Style outer workspace tabs and nested pane tabs as uppercase text-only tabs on the editor background with an active bottom-edge indicator; do not add decorative tab icons or make unused strip space look like another tab. Candidate Sources and Assessment Results share one sortable-header treatment: Candidate is left-aligned, remaining columns are centered, and every active chevron sits immediately beside its label without shifting or overlapping it. All data headers use the product theme surface and line tokens. Status capsules share one height, padding, border radius, semibold type treatment, and Title Case labels while retaining semantic colors. Summary and hierarchy counts use labeled VS Code-blue badges with white semibold text. Section titles use one uppercase `14px` semibold style with a trailing colon; subordinate field and factor labels use one white `14px` semibold Title Case style with a trailing colon. Summary headings place the title on the left and status capsule on the right. Any text visually truncated with an ellipsis exposes its complete current text through the shared Workbench tooltip without adding a static-content tab stop.
 
-Use one shared subcontext-container treatment for mapped Hosted rules, AI evaluation, AI adjudication rationale, related Hosted coverage, scoring guidance, and grouped Rule Actions controls. Keep explanatory copy consistent inside those containers. Place labels outside their owned container. Group the status-constrained radio choices with their dependent promotion-plan checkbox, then keep Decision Rationale as a separate labeled control. Place its icon-only Save command at the far right of the label row using the shared title-bar toolbar treatment; preserve its tooltip, accessible name, plan-return wording, and normal arrow cursor while disabled. Align the Save glyph's bottom edge with the label text without changing the toolbar hit target. Limit rationale to 500 characters, show a live character count, disable textarea resizing, and scroll vertically on overflow.
+Use one shared subcontext-container treatment for mapped Hosted rules, AI evaluation, AI adjudication rationale, related-rule evidence, scoring guidance, and grouped Rule Actions controls. Keep explanatory copy consistent inside those containers. Place labels outside their owned container. Render the immutable rule identity as the flush blue header of Rule Actions, group the status-constrained radio choices beneath it, then keep Decision Rationale as a separate labeled control. Place its icon-only Save command at the far right of the label row using the shared title-bar toolbar treatment; preserve its tooltip, accessible name, plan-return wording, and normal arrow cursor while disabled. Align the Save glyph's bottom edge with the label text without changing the toolbar hit target. Limit rationale to 500 characters, show a live character count, disable textarea resizing, and scroll vertically on overflow.
 
 Assessment scoring guidance must explain how to interpret the model rather than only map numbers to adjectives. Present a single-column legend explaining the zero-through-five scale, positive Rule Value direction, negative Review Risk direction, and the special meaning of Existing Coverage. Render factor names with the shared subordinate-label style. Use non-interactive status capsules for **Adds to Impact** and **Reduces Impact**. Color Review Risk meter fills and their terminal numeric labels with the same global semantic token: zero through two use success green, three uses cautionary gold, and four through five use high-risk red. Keep each number vertically centered immediately after its meter. Do not display the former impact-per-100-tokens heading metric; token cost remains in the score strip and capacity view.
 
@@ -521,7 +527,7 @@ The interface must provide these views as one process:
 - A CODEOWNER-only **Bulk Actions** menu scoped to current search results that can accept recommended Add candidates, recommended Update candidates, or both groups as complete attributed decisions while preserving existing manual decisions
 - An assessment workspace with the full source rule, exact mapped Hosted rule evidence, status-constrained Rule Actions, always-visible read-only AI recommendation, impact, cost, factor judgments, rationale, related Hosted coverage, complete proposed wording and identity for every candidate, and editable maintainer rationale
 - A promotion-plan panel containing only proposed adds, updates, and retirements
-- Live impact, token delta, guarded usage, remaining capacity, utilization, conflicts, and dependency totals
+- Live impact, token delta, guarded usage, remaining capacity, utilization, and dependency totals
 - A staged preview that renders every selected rule action as a unified red/green line diff against its singular semantic Hosted target, compares changed selection-payload fragments side by side against default Workbench state, and keeps the complete raw JSON available in a collapsed disclosure
 - A Preview approval summary containing manual attribution, readiness state, selection-payload hash, and **Approve & Export** action
 
@@ -552,7 +558,6 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-PREVIEW-010`: Changed-file summary pairs colored totals with a five-cell diffstat.
 - `WB-UX-PREVIEW-011`: File-level line expansion remains reversible after any inline context expansion.
 - `WB-UX-PREVIEW-012`: Changed-file tree navigation preserves chevron-owned file-card disclosure state.
-- `WB-UX-CONFLICT-001`: Blocked reconciliation uses an actionable error MessageBar whose dismissal does not weaken authoritative approval blocking.
 - `WB-UX-STICKY-001`: Candidate tree preserves sticky source, category, and column context.
 - `WB-UX-STICKY-002`: Collapsed candidate branches do not paint stale sticky content.
 - `WB-UX-STICKY-003`: Candidate rows settle below stable sticky ancestry.
@@ -570,13 +575,13 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-CONTRIBUTOR-002`: Contributor document requirements are independent rule candidates.
 - `WB-UX-CONTRIBUTOR-003`: Update preview and payload use one semantic Hosted target.
 - `WB-UX-IDENTITY-001`: Add candidates retain one proposed Hosted rule identity across views and exports.
-- `WB-UX-IDENTITY-002`: Proposed Hosted rule identity validation blocks colliding Add decisions.
-- `WB-UX-IDENTITY-003`: Proposed Hosted rule identity feedback remains stable at the supported viewport boundary.
+- `WB-UX-IDENTITY-002`: Trusted display construction assigns collision-free identities before Workbench load.
+- `WB-UX-IDENTITY-003`: Rule Actions exposes generated identity as immutable evidence without an editable ID control.
 - `WB-UX-IDENTITY-004`: Mapped candidates expose and export their resulting Hosted identity.
 - `WB-UX-SEARCH-001`: Candidate search preserves the tree and navigates to the best match.
 - `WB-UX-ASSESSMENT-001`: Assessment Results supports search, sorting, evidence selection, and return navigation.
 - `WB-UX-OVERRIDE-001`: Applicability overrides apply, edit, persist, and remove through real controls.
-- `WB-UX-DECISION-001`: Decision controls persist action, proposed identity, rationale, and plan membership.
+- `WB-UX-DECISION-001`: Save decision atomically persists action, generated identity, rationale, and plan membership.
 - `WB-UX-CAPACITY-001`: Plan decisions project exact guarded tokens and headroom from fixture baselines.
 - `WB-UX-SYNC-001`: Candidate edits synchronize Candidate Sources, Assessment Results, and Promotion Plan.
 - `WB-UX-BACKTOTOP-001`: Details back-to-top follows real scroll state and returns to its disabled state.
@@ -596,8 +601,8 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-ZOOM-003`: Browser zoom preserves usable Workbench layout through 200 percent.
 - `WB-UX-VIEWPORT-001`: Mobile rejection and contained viewport scrolling work at every boundary.
 - `WB-UX-VIEWPORT-002`: Rule Action changes preserve Details context.
-- `WB-UX-VIEWPORT-003`: Promotion Plan toggles preserve Details context.
-- `WB-UX-VIEWPORT-004`: Plan membership synchronizes across Candidate panes.
+- `WB-UX-VIEWPORT-003`: No Change preserves Details scroll position and selected-control focus.
+- `WB-UX-VIEWPORT-004`: No Change preserves app-shell geometry while disabling Decision Rationale.
 - `WB-UX-VIEWPORT-005`: Decision Rationale save layout remains accessible and contained.
 - `WB-UX-VIEWPORT-006`: Overrides decorations remain consistent at every supported viewport.
 - `WB-UX-VIEWPORT-007`: Bulk Actions preserve ownership, disclosures, and tree identity.

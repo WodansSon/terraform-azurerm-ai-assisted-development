@@ -139,6 +139,42 @@ async function assertRuleActionPreservesContext(page, width) {
   assert(result.scrollPreserved, `${width}px Rule Action ${before.action}: Details scroll position changed from ${result.scrollTopBefore}/${before.scrollHeight}/${before.clientHeight} to ${result.scrollTopAfter}/${result.scrollHeightAfter}/${result.clientHeightAfter}`);
   assert(result.focusPreserved, `${width}px Rule Action: selected radio lost focus`);
   assert(result.selectionPreserved, `${width}px Rule Action: selected action and header badge diverged`);
+
+  const noChangeBefore = await page.evaluate(() => {
+    const shell = document.querySelector(".app-shell");
+    const body = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
+    const control = document.querySelector('.action-options [data-rule-action="no-change"]');
+    const bodyRect = body.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    const controlTop = body.scrollTop + controlRect.top - bodyRect.top;
+    body.scrollTop = Math.max(0, controlTop - (body.clientHeight - controlRect.height) / 2);
+    control.focus({ preventScroll: true });
+    return {
+      detailScrollTop: body.scrollTop,
+      shellScrollTop: shell.scrollTop,
+      shellScrollLeft: shell.scrollLeft,
+    };
+  });
+
+  await page.click('.action-options [data-rule-action="no-change"]');
+
+  const noChangeAfter = await page.evaluate(() => {
+    const shell = document.querySelector(".app-shell");
+    const body = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
+    const control = document.querySelector('.action-options [data-rule-action="no-change"]');
+    return {
+      detailScrollTop: body.scrollTop,
+      shellScrollTop: shell.scrollTop,
+      shellScrollLeft: shell.scrollLeft,
+      focused: document.activeElement === control,
+      rationaleDisabled: document.querySelector('[data-decision-field="rationale"]').disabled,
+    };
+  });
+
+  assert(Math.abs(noChangeAfter.detailScrollTop - noChangeBefore.detailScrollTop) < 0.1, `${width}px No Change: Details scroll position changed from ${noChangeBefore.detailScrollTop} to ${noChangeAfter.detailScrollTop}`);
+  assert(noChangeAfter.shellScrollTop === noChangeBefore.shellScrollTop && noChangeAfter.shellScrollLeft === noChangeBefore.shellScrollLeft, `${width}px No Change: app shell scroll position changed`);
+  assert(noChangeAfter.focused, `${width}px No Change: selected radio lost focus`);
+  assert(noChangeAfter.rationaleDisabled, `${width}px No Change: Decision Rationale remained enabled`);
 }
 
 async function assertRationaleSaveLayout(page, width) {

@@ -2197,9 +2197,19 @@ function handleAssessmentInput(event) {
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
     if (action === "no-change") {
+      const detailContent = elements["assessment-panel"].querySelector(":scope > .assessment-content");
+      const shell = document.querySelector(".app-shell");
+      const detailScrollTop = detailContent?.scrollTop || 0;
+      const shellScrollTop = shell?.scrollTop || 0;
+      const shellScrollLeft = shell?.scrollLeft || 0;
       removeCandidateFromBulkOperations(candidate.key);
       saveDecision(candidate, null);
       renderAssessment();
+      const replacement = elements["assessment-panel"].querySelector(":scope > .assessment-content");
+      if (replacement) replacement.scrollTop = detailScrollTop;
+      shell?.scrollTo({ top: shellScrollTop, left: shellScrollLeft, behavior: "instant" });
+      elements["assessment-panel"].querySelector('[data-rule-action="no-change"]')?.focus({ preventScroll: true });
+      shell?.scrollTo({ top: shellScrollTop, left: shellScrollLeft, behavior: "instant" });
       return;
     }
     syncAssessmentActionControls(candidate, action);

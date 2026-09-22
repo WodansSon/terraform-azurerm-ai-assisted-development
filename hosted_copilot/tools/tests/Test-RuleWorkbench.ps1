@@ -685,24 +685,25 @@ try {
     if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('external-staging-valid', 'source-display-read-only', 'loopback-read-only-server')) {
         $siteDirectory = Join-Path $tempRoot 'site'
         $stageCacheDirectory = Join-Path $tempRoot 'assessment-cache'
+        $null = New-Item -ItemType Directory -Path $siteDirectory -Force
+        Copy-Item -LiteralPath $displayPath -Destination (Join-Path $siteDirectory 'workbench-display.json')
         $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
         Start-TestResult -Name 'external-staging-valid'
-        $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -DisplayPath $displayPath -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
         $stageExitCode = $LASTEXITCODE
         $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
         $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
         $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-        Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The launcher stages all static assets, reports v4 display candidates, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
-        Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Workbench staging does not modify its source display.'
+        Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The normal launcher refreshes static assets, reuses the validated staged display, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
+        Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Display-only Workbench startup does not modify the validated display source used to seed the site.'
     }
 
     if (Test-ShouldRun -Name 'launcher-failure-summary') {
-        $missingDisplayPath = Join-Path $tempRoot 'missing-workbench-display.json'
         $failureSiteDirectory = Join-Path $tempRoot 'failure-site'
-        $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -DisplayPath $missingDisplayPath -StageOnly -NoLaunch -OutputFormat Text 2>&1)
+        $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -StageOnly -NoLaunch -OutputFormat Text 2>&1)
         $failureExitCode = $LASTEXITCODE
         $failureText = ($failureOutput | Out-String)
-        $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 1' -and $failureText -match 'Passed\s+: 0' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+FAILED\s+PREBUILT DISPLAY STAGING' -and $failureText -match 'FAILURES[\s\S]+- PREBUILT DISPLAY STAGING: DisplayPath was not found:' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
+        $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 1' -and $failureText -match 'Passed\s+: 0' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+FAILED\s+EXISTING DISPLAY VALIDATION' -and $failureText -match 'FAILURES[\s\S]+- EXISTING DISPLAY VALIDATION: No staged Workbench display was found.*-Rebuild' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
         Add-TestResult -Name 'launcher-failure-summary' -Passed $launcherFailureSummaryValid -Detail 'Startup failures report opening context, closing stage counts, a stage table, and failures without a raw PowerShell stack trace.'
     }
 
@@ -1198,9 +1199,12 @@ try {
         $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
         $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
         $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and
-        $launcherContent -match 'DisplayPath does not satisfy the Workbench display schema'
-    $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory' -and $launcherContent -match 'Remove-Item -LiteralPath \$stagedDisplayPath -Force -ErrorAction SilentlyContinue'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches recover through independently validated assessment and reconciliation caches without scanning temporary run directories; explicit resume paths remain optional legacy overrides.'
+        $launcherContent -match '\[switch\]\$Rebuild' -and
+        $launcherContent -match 'if \(\$Rebuild\)' -and
+        $launcherContent -match 'No staged Workbench display was found.*-Rebuild' -and
+        $launcherContent -notmatch '\$DisplayPath|Remove-Item -LiteralPath \$stagedDisplayPath'
+    $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "SiteDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/site'\)" -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches reuse the durable validated display, while explicit -Rebuild runs independently cached assessment and reconciliation and publishes only after validation.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown'
@@ -1229,10 +1233,12 @@ try {
     $shutdownPort = ([Net.IPEndPoint]$portProbe.LocalEndpoint).Port
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
+    $null = New-Item -ItemType Directory -Path $shutdownSiteDirectory -Force
+    Copy-Item -LiteralPath $displayPath -Destination (Join-Path $shutdownSiteDirectory 'workbench-display.json')
     $serverJob = Start-Job -ScriptBlock {
-        param($LauncherPath, $SiteDirectory, $FixtureDisplayPath, $Port)
-        & pwsh -NoProfile -File $LauncherPath -SiteDirectory $SiteDirectory -DisplayPath $FixtureDisplayPath -Port $Port -NoLaunch -OutputFormat Json
-    } -ArgumentList $launcherPath, $shutdownSiteDirectory, $displayPath, $shutdownPort
+        param($LauncherPath, $SiteDirectory, $Port)
+        & pwsh -NoProfile -File $LauncherPath -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -OutputFormat Json
+    } -ArgumentList $launcherPath, $shutdownSiteDirectory, $shutdownPort
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
@@ -1352,7 +1358,7 @@ try {
     if (Test-ShouldRun -Name 'repository-staging-rejected') {
         $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
         Start-TestResult -Name 'repository-staging-rejected'
-        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -DisplayPath $displayPath -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
         $repositoryStagingRejected = $LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $repositorySiteDirectory)
         Add-TestResult -Name 'repository-staging-rejected' -Passed $repositoryStagingRejected -Detail 'The launcher rejects generated staging output inside the source repository.'
     }

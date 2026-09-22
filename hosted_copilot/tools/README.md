@@ -10,12 +10,15 @@ Files beneath `internal/`, `modules/`, and `tests/` are implementation or valida
 | --- | --- |
 | Validate the complete Hosted Toolkit | `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1` |
 | Launch the Hosted Rule Workbench | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1` |
+| Rebuild semantic Workbench data | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild` |
 | Plan or install the Hosted payload | `pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1` |
 | Run or resume a controlled Hosted review | `pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory <provider-fork> -CaseId <case-id>` |
 
 Review the command help before supplying operation-specific parameters. Installation defaults to a dry run.
 
-The normal Workbench command automatically reuses validated per-source assessments from `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, validated source-defined reconciliation batches from `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`, and compatible toolkit-managed artifacts from failed runs. Only changed semantic identities return to model evaluation. Every normal launch deletes and rebuilds the staged `workbench-display.json`; the display is never cache state. Reconciliation runs up to three cache misses concurrently, merges all cached, recovered, and evaluated results deterministically, and reports progress during startup. Failed evaluator attempts retain their draft and validation reason. When the complete merge contains competing recommendations for one existing Hosted target, Workbench launches with unaffected candidates and explicit conflict groups, reports reconciliation as blocked, and disables approval. Restart with the same normal command after a failure; use cache, recovery, or concurrency parameters only for diagnostic or controlled overrides. Cache entries persist across successful runs, and temporary or recovered run artifacts are removed only after successful completion.
+The normal Workbench command refreshes static UI assets, validates `%LOCALAPPDATA%\hosted-workbench\site\workbench-display.json`, and serves that last good display. It never runs source collection, assessment, or reconciliation. If no validated display exists yet, the command fails with an explicit instruction to run `-Rebuild`.
+
+`-Rebuild` is the only normal operation that performs semantic work. It reuses validated per-source assessments from `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, validated source-defined reconciliation batches from `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`, and compatible toolkit-managed artifacts from failed runs. Only changed semantic identities return to model evaluation. Reconciliation runs up to three cache misses concurrently, merges all cached, recovered, and evaluated results deterministically, and reports progress. Failed evaluator attempts retain their draft and validation reason. A successful rebuild schema-validates the new display before atomically replacing the last good display; collection, assessment, reconciliation, or validation failure leaves the previous display untouched. Cache, recovery, and concurrency parameters are diagnostic or controlled rebuild overrides, not UI-restart requirements.
 
 ## Catalog Maintenance
 

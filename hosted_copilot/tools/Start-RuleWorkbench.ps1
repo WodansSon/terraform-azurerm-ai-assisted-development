@@ -6,9 +6,7 @@ param(
     [ValidateRange(1, 2147483647)]
     [int]$OwnerProcessId,
 
-    [string]$SiteDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'hosted-rule-workbench/site'),
-
-    [string]$DisplayPath,
+    [string]$SiteDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/site'),
 
     [string]$InventoryDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/inventories'),
 
@@ -32,6 +30,8 @@ param(
     [int]$MaxParallelBatches = 3,
 
     [string]$EvaluatorCommand = 'copilot',
+
+    [switch]$Rebuild,
 
     [switch]$StageOnly,
 
@@ -177,7 +177,6 @@ $shutdownConfig = [ordered]@{
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
-$resolvedDisplayPath = if ([string]::IsNullOrWhiteSpace($DisplayPath)) { $null } else { [IO.Path]::GetFullPath($DisplayPath) }
 $assessmentResult = $null
 $workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
@@ -209,8 +208,7 @@ function Copy-FileAtomically {
 }
 
 function Update-StagedDisplay {
-    if ($null -eq $resolvedDisplayPath) {
-        Remove-Item -LiteralPath $stagedDisplayPath -Force -ErrorAction SilentlyContinue
+    if ($Rebuild) {
         $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
         $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
         $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
@@ -305,6 +303,10 @@ function Update-StagedDisplay {
             if ($LASTEXITCODE -ne 0) {
                 throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
+            $reconciledDisplayContent = Get-Content -LiteralPath $reconciledDisplayPath -Raw
+            if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+                throw 'Reconciled Workbench display does not satisfy its schema'
+            }
             Copy-FileAtomically -SourcePath $reconciledDisplayPath -DestinationPath $stagedDisplayPath
             Complete-WorkbenchStage -Name $workbenchPhase
             foreach ($inventoryPath in $currentInventoryPaths) {
@@ -316,15 +318,10 @@ function Update-StagedDisplay {
         }
     }
     else {
-        $script:workbenchPhase = 'PREBUILT DISPLAY STAGING'
-        if (-not (Test-Path -LiteralPath $resolvedDisplayPath -PathType Leaf)) {
-            throw "DisplayPath was not found: $resolvedDisplayPath"
+        $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
+        if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf)) {
+            throw "No staged Workbench display was found at $stagedDisplayPath. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
         }
-        $displayContent = Get-Content -LiteralPath $resolvedDisplayPath -Raw
-        if (-not ($displayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
-            throw 'DisplayPath does not satisfy the Workbench display schema'
-        }
-        [IO.File]::WriteAllText($stagedDisplayPath, $displayContent.TrimEnd() + "`n", [Text.UTF8Encoding]::new($false))
         Complete-WorkbenchStage -Name $workbenchPhase
     }
 
@@ -419,7 +416,7 @@ if ($StageOnly) {
             Failed = 0
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
+            Assessment = $(if ($Rebuild) { 'COMPLETED ABOVE' } else { 'REUSED STAGED DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
@@ -500,7 +497,7 @@ try {
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
+            Assessment = $(if ($Rebuild) { 'COMPLETED ABOVE' } else { 'REUSED STAGED DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })

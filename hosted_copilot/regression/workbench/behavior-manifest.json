@@ -201,12 +201,12 @@
     },
     {
       "id": "WB-UX-IDENTITY-002",
-      "title": "Proposed Hosted rule identity validation blocks colliding Add decisions",
+      "title": "Trusted display construction assigns collision-free identities before Workbench load",
       "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
     },
     {
       "id": "WB-UX-IDENTITY-003",
-      "title": "Proposed Hosted rule identity feedback remains stable at the supported viewport boundary",
+      "title": "Rule Actions exposes generated identity without an editable ID control",
       "journey": "playwright/journeys/contributor-rule-candidates.journey.cjs"
     },
     {
@@ -231,7 +231,7 @@
     },
     {
       "id": "WB-UX-DECISION-001",
-      "title": "Decision controls persist action, proposed identity, rationale, and plan membership",
+      "title": "Save decision atomically persists action, generated identity, rationale, and plan membership",
       "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
     },
     {
@@ -331,12 +331,12 @@
     },
     {
       "id": "WB-UX-VIEWPORT-003",
-      "title": "Promotion Plan toggles preserve Details context",
+      "title": "No Change preserves Details scroll position and selected-control focus",
       "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
     },
     {
       "id": "WB-UX-VIEWPORT-004",
-      "title": "Plan membership synchronizes across Candidate panes",
+      "title": "No Change preserves app-shell geometry while disabling Decision Rationale",
       "journey": "playwright/journeys/viewport-behaviors.journey.cjs"
     },
     {
