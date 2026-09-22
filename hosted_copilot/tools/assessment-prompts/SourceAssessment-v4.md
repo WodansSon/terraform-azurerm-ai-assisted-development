@@ -10,7 +10,7 @@ For every supplied source record:
 
 1. Preserve its exact `sourceRef`.
 2. Follow the batch's `assessmentCardinality`. For `exactly-one`, return exactly one assessment for every source record. For `zero-to-many`, decompose the source into zero or more independently enforceable meanings and use an empty `assessments` array when none exists.
-3. For each meaning, provide an assessment ID unique within that source entry, a concise title and source meaning, an impact description, Hosted applicability and rationale, assessment confidence, non-default selection factors and rationale, affected surfaces, complete source-local proposed wording, semantic relationships to related Hosted rules, and scored existing coverage from 0 through 5.
+3. For each meaning, provide an assessment ID unique within that source entry, a concise title and source meaning, an impact description, Hosted applicability and rationale, assessment confidence, non-default selection factors and rationale, affected surfaces, semantic relationships to related Hosted rules, and scored existing coverage from 0 through 5.
 4. Set `assessmentConfidence.level` to `low`, `medium`, or `high` based on certainty in the source decomposition, Hosted applicability, and coverage relationships. Explain the rating in `rationale`. List each concrete unresolved ambiguity in `uncertainties`; low and medium confidence require at least one uncertainty.
 5. Set `semanticReassessment` for every returned assessment when `priorSourceEvidence` is non-null, and bind `priorContentSha256` to its exact `sourceRef.contentSha256`. Set it to `null` when no prior source evidence was supplied.
 
@@ -23,6 +23,7 @@ For every supplied source record:
 - Treat `assessmentConfidence` as advisory evidence. It must not choose or suppress a proposal, promotion action, mapping, or acceptance decision.
 - Keep `assessmentConfidence` distinct from `selectionFactors.evidenceStrength`: confidence describes evaluator certainty, while evidence strength describes the quality of the supplied source evidence.
 - Do not choose a final Hosted rule ID, proposal grouping, condensed global wording, promotion recommendation, promotion action, or token delta.
+- Do not propose Hosted rule wording. Describe only the independently enforceable meaning present in the current source record; reconciliation exclusively combines meanings and authors proposed Hosted wording.
 - Do not infer retirement from source removal or source drift.
 - Do not emit `mappedHostedRuleIds`; trusted orchestration derives accepted mappings from canonical catalog relationships after validating evaluator output.
 - Do not emit `assessmentProvenance`; trusted orchestration records the evaluator identity, model, and assessment time after validating the response.

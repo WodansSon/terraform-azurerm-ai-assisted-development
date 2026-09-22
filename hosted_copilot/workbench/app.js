@@ -63,12 +63,15 @@ const state = {
   assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
+  conflictPane: "conflicts",
+  conflictActiveId: null,
   rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
   queries: {
     "candidate-sources": "",
-    "assessment-results": ""
+    "assessment-results": "",
+    conflicts: ""
   },
   candidateSorts: {},
   assessmentSorts: {},
@@ -83,12 +86,14 @@ let truncationTooltipFrame;
 let proposedHostedRuleIdValidationTimer;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
+let conflictHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [] };
 const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS));
 let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
+const conflictExpansionState = new Map();
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
@@ -135,14 +140,14 @@ function captureElements() {
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
     "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count", "plan-conflict-indicator", "plan-conflict-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
-    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
+    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "conflicts-tab", "conflict-tab-count", "conflicts-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "conflict-list", "conflict-sticky-stack", "conflict-list-panel", "conflict-detail",
     "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code",
     "preview-review-toolbar",
     "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
-    "approve-export-button", "reconciliation-conflict-banner", "reconciliation-conflict-title", "reconciliation-conflict-detail", "workspace", "toast", "toast-message", "toast-close"
+    "approve-export-button", "reconciliation-conflict-banner", "reconciliation-conflict-title", "reconciliation-conflict-detail", "review-conflicts-button", "dismiss-conflict-message", "workspace", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -159,6 +164,8 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
+  elements["review-conflicts-button"].addEventListener("click", openConflictWorkspace);
+  elements["dismiss-conflict-message"].addEventListener("click", () => { elements["reconciliation-conflict-banner"].hidden = true; });
   elements["plan-bulk-undo"].addEventListener("click", () => undoBulkOperation(getLatestBulkOperation()?.id));
   elements["close-button"].addEventListener("click", closeWorkbench);
   elements["export-button"].addEventListener("click", () => {
@@ -180,6 +187,9 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-assessment-pane]").forEach((button) => {
     button.addEventListener("click", () => showAssessmentPane(button.dataset.assessmentPane));
+  });
+  document.querySelectorAll("[data-conflict-pane]").forEach((button) => {
+    button.addEventListener("click", () => showConflictPane(button.dataset.conflictPane));
   });
   elements["candidate-list"].addEventListener("click", (event) => {
     const sortButton = event.target.closest("[data-candidate-sort]");
@@ -218,6 +228,15 @@ function bindEvents() {
   elements["assessment-results-list"].addEventListener("keydown", (event) => {
     if (event.target.closest("button, input, a, label")) return;
     handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
+  });
+  elements["conflict-list"].addEventListener("click", (event) => {
+    const row = event.target.closest("[data-conflict-id]");
+    if (!row) return;
+    selectConflict(row.dataset.conflictId);
+    showConflictPane("details");
+  });
+  elements["conflict-list"].addEventListener("keydown", (event) => {
+    handleRowKeyboardNavigation(event, elements["conflict-list"], "conflictId", selectConflict, () => showConflictPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
@@ -500,14 +519,23 @@ function renderReconciliationState() {
   elements.workspace.classList.toggle("has-reconciliation-conflicts", blocked);
   elements["promotion-plan-stage"].classList.toggle("reconciliation-blocked", blocked);
   elements["reconciliation-conflict-banner"].hidden = !blocked;
+  elements["conflicts-tab"].hidden = !blocked;
+  elements["conflict-tab-count"].textContent = blocked ? formatNumber(conflicts.length) : "";
   elements["promotion-plan-stage-icon"].setAttribute("href", `icons/codicons/sprite.svg#codicon-${blocked ? "git-pull-request-error" : "new-session"}`);
   elements["plan-conflict-indicator"].hidden = !blocked;
   elements["plan-conflict-count"].textContent = blocked ? formatCountLabel(conflicts.length, "Conflict") : "";
   setWorkbenchTooltip(elements["plan-conflict-indicator"], blocked ? `${formatCountLabel(conflicts.length, "Unresolved conflict")} block approval` : "");
   if (!blocked) return;
-  const targets = conflicts.map((conflict) => conflict.targetHostedId);
-  elements["reconciliation-conflict-title"].textContent = `${formatCountLabel(conflicts.length, "Reconciliation conflict")} require maintainer review`;
-  elements["reconciliation-conflict-detail"].textContent = `${targets.join(", ")}. Approval remains blocked until every conflict is resolved and the full proposal is revalidated.`;
+  const conflictLabel = conflicts.length === 1 ? "1 reconciliation conflict requires" : `${formatNumber(conflicts.length)} reconciliation conflicts require`;
+  elements["reconciliation-conflict-title"].textContent = `${conflictLabel} maintainer review`.toUpperCase();
+  elements["reconciliation-conflict-detail"].textContent = "Approval is blocked until every conflict is resolved and the proposal is revalidated.";
+}
+
+function openConflictWorkspace() {
+  switchView("catalog");
+  renderConflicts();
+  setWorkspaceTab("conflicts");
+  showConflictPane("conflicts");
 }
 
 function normalizeDisplayCandidates(display) {
@@ -534,7 +562,7 @@ function normalizeDisplayCandidates(display) {
       recommendation: recommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
       proposedHostedRuleId,
       targetHostedRuleId,
-      proposedText: recommendation?.ruleText || candidate.assessment.sourceLocalProposedText,
+      proposedText: recommendation.ruleText,
       hostedCategory,
       guardedTokenDelta: recommendation?.guardedTokenDelta || 0
     };
@@ -1002,6 +1030,7 @@ function renderAll(shouldRenderAssessment = true) {
   renderCandidateList();
   if (shouldRenderAssessment) renderAssessment();
   renderAssessmentResults();
+  renderConflicts();
   renderPlan();
   renderCapacity();
   renderPreview();
@@ -1547,28 +1576,44 @@ function buildAssessmentTreeNodes() {
     const candidates = filtered.filter((candidate) => candidate.sourceType === sourceType);
     if (!candidates.length) return null;
     const sourceId = `assessment:source:${sourceType}`;
-    const sectionKey = `assessment:${sourceType}`;
     return {
       id: sourceId,
       kind: "source",
       rowHeight: 40,
       expanded: getAssessmentExpansion(sourceId, Boolean(state.queries["assessment-results"])),
       data: { label, sourceType, candidates },
-      children: [{
-        id: `assessment:header:${sourceType}`,
-        kind: "header",
-        rowHeight: 40,
-        expanded: true,
-        data: { sectionKey },
-        children: sortAssessmentCandidates(candidates, getAssessmentSort(sectionKey)).map((candidate) => ({
-          id: `assessment:leaf:${candidate.key}`,
-          kind: "leaf",
-          rowHeight: 40,
-          stickyEligible: false,
-          expanded: false,
-          data: { candidate }
-        }))
-      }]
+      children: Object.entries(candidates.reduce((groups, candidate) => {
+        const category = candidate.assessment.hostedCategory;
+        (groups[category] ||= []).push(candidate);
+        return groups;
+      }, {}))
+        .sort(([left], [right]) => formatHostedCategory(left).localeCompare(formatHostedCategory(right)))
+        .map(([category, members]) => {
+          const categoryId = `assessment:category:${sourceType}:${category}`;
+          const sectionKey = `assessment:${sourceType}:${category}`;
+          return {
+            id: categoryId,
+            kind: "category",
+            rowHeight: 40,
+            expanded: getAssessmentExpansion(categoryId, Boolean(state.queries["assessment-results"])),
+            data: { label: formatHostedCategory(category), candidates: members },
+            children: [{
+              id: `assessment:header:${sourceType}:${category}`,
+              kind: "header",
+              rowHeight: 40,
+              expanded: true,
+              data: { sectionKey },
+              children: sortAssessmentCandidates(members, getAssessmentSort(sectionKey)).map((candidate) => ({
+                id: `assessment:leaf:${candidate.key}`,
+                kind: "leaf",
+                rowHeight: 40,
+                stickyEligible: false,
+                expanded: false,
+                data: { candidate }
+              }))
+            }]
+          };
+        })
     };
   }).filter(Boolean);
 }
@@ -1580,6 +1625,14 @@ function renderAssessmentHierarchyRow(node) {
     return elementFromHtml(`
       <button class="hierarchical-parent-row candidate-source-row clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}">
         ${icon("folder")}${renderSourceSummaryLabel(sourceType, label)}<span class="status-badge neutral count-badge type-compact">${formatNumber(candidates.length)} Excluded</span>
+      </button>
+    `);
+  }
+  if (node.kind === "category") {
+    const { candidates, label } = node.data;
+    return elementFromHtml(`
+      <button class="hierarchical-parent-row candidate-folder-row clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}">
+        ${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong></span><span class="status-badge neutral count-badge type-compact">${formatCountLabel(candidates.length, "Excluded")}</span>
       </button>
     `);
   }
@@ -1627,7 +1680,6 @@ function renderAssessmentResultsHeader(sectionKey) {
   const columns = [
     ["candidate", "Candidate", "Candidate", "Source rule ID and title."],
     ["state", "State", "Source State", "Lifecycle state relative to the source baseline."],
-    ["category", "Category", "Category", "AI-assigned Hosted category."],
     ["recommendation", "Recommendation", "Recommendation", "AI-recommended action for maintainer review."],
     ["override", "Override", "Override", "Maintainer override state."]
   ];
@@ -1679,8 +1731,157 @@ function renderAssessmentResultRow(candidate) {
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="assessment-result-category">${escapeHtml(formatHostedCategory(assessment.hostedCategory))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
+      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
+  `;
+}
+
+function getFilteredConflicts() {
+  const query = state.queries.conflicts.trim().toLowerCase();
+  const conflicts = state.bundle?.reconciliation?.conflicts || [];
+  if (!query) return conflicts;
+  return conflicts.filter((conflict) => [
+    conflict.targetHostedId,
+    conflict.existingRuleText,
+    conflict.validationError,
+    ...conflict.recommendations.flatMap((recommendation) => [recommendation.title, recommendation.ruleText, recommendation.category, recommendation.placement])
+  ].some((value) => String(value || "").toLowerCase().includes(query)));
+}
+
+function getConflictExpansion(nodeId, expandedByDefault = false) {
+  return conflictExpansionState.has(nodeId) ? conflictExpansionState.get(nodeId) : expandedByDefault;
+}
+
+function buildConflictTreeNodes() {
+  const conflicts = getFilteredConflicts();
+  return ["documentation", "implementation", "testing"].map((category) => {
+    const categoryConflicts = conflicts.filter((conflict) => conflict.recommendations[0].category === category);
+    if (!categoryConflicts.length) return null;
+    const categoryId = `conflict:category:${category}`;
+    return {
+      id: categoryId,
+      kind: "category",
+      rowHeight: 40,
+      expanded: getConflictExpansion(categoryId, Boolean(state.queries.conflicts)),
+      data: { label: formatHostedCategory(category), conflicts: categoryConflicts },
+      children: Object.entries(categoryConflicts.reduce((groups, conflict) => {
+        const placement = conflict.recommendations[0].placement;
+        (groups[placement] ||= []).push(conflict);
+        return groups;
+      }, {}))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([placement, placementConflicts]) => {
+          const placementId = `conflict:placement:${category}:${placement}`;
+          return {
+            id: placementId,
+            kind: "placement",
+            rowHeight: 40,
+            expanded: getConflictExpansion(placementId, Boolean(state.queries.conflicts)),
+            data: { label: placement, conflicts: placementConflicts },
+            children: [{
+              id: `conflict:header:${category}:${placement}`,
+              kind: "header",
+              rowHeight: 40,
+              expanded: true,
+              data: {},
+              children: placementConflicts.map((conflict) => ({
+                id: `conflict:leaf:${conflict.id}`,
+                kind: "leaf",
+                rowHeight: 40,
+                stickyEligible: false,
+                expanded: false,
+                data: { conflict }
+              }))
+            }]
+          };
+        })
+    };
+  }).filter(Boolean);
+}
+
+function renderConflictHierarchyRow(node) {
+  if (node.kind === "header") return elementFromHtml('<div class="conflict-results-header"><span>Hosted Rule</span><span>Proposals</span></div>');
+  if (node.kind === "leaf") {
+    const conflict = node.data.conflict;
+    return elementFromHtml(`
+      <div class="conflict-result-row clickable ${conflict.id === state.conflictActiveId ? "active" : ""}" role="button" tabindex="0" data-conflict-id="${escapeHtml(conflict.id)}" ${conflict.id === state.conflictActiveId ? 'aria-current="true"' : ""}>
+        <span class="candidate-tree-copy"><strong>${escapeHtml(conflict.targetHostedId)}</strong><small>${escapeHtml(conflict.validationError)}</small></span>
+        <span class="status-badge error type-compact">${formatNumber(conflict.recommendations.length)} Competing</span>
+      </div>
+    `);
+  }
+  const { conflicts, label } = node.data;
+  return elementFromHtml(`
+    <button class="hierarchical-parent-row ${node.kind === "category" ? "candidate-source-row" : "candidate-folder-row"} clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}">
+      ${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong></span><span class="status-badge ${node.kind === "category" ? "error" : "neutral"} count-badge type-compact">${formatCountLabel(conflicts.length, "Conflict")}</span>
+    </button>
+  `);
+}
+
+function ensureConflictHierarchicalView() {
+  if (conflictHierarchicalView) return conflictHierarchicalView;
+  conflictHierarchicalView = new WorkbenchHierarchicalView.HierarchicalView({
+    viewport: elements["conflict-list"],
+    stickyContainer: elements["conflict-sticky-stack"],
+    adapter: {
+      accumulateRoots: true,
+      buildNodes: buildConflictTreeNodes,
+      getInput: () => state.bundle?.reconciliation?.conflicts || [],
+      renderRow: renderConflictHierarchyRow,
+      onExpandedChange: (node, expanded) => conflictExpansionState.set(node.id, expanded)
+    }
+  });
+  return conflictHierarchicalView;
+}
+
+function renderConflicts() {
+  const conflicts = state.bundle?.reconciliation?.conflicts || [];
+  if (!conflicts.length || !getFilteredConflicts().length) {
+    conflictHierarchicalView?.destroy();
+    conflictHierarchicalView = null;
+    elements["conflict-sticky-stack"].hidden = true;
+    elements["conflict-list"].innerHTML = `<div class="empty-state compact"><h3>${conflicts.length ? "No Matching Conflicts" : "No Reconciliation Conflicts"}</h3><p>${conflicts.length ? "No conflicts match the current search." : "The current reconciliation is ready for maintainer review."}</p></div>`;
+  }
+  else {
+    ensureConflictHierarchicalView().setInput(conflicts);
+  }
+  renderConflictDetail();
+}
+
+function selectConflict(id) {
+  state.conflictActiveId = id;
+  elements["conflict-list"].querySelectorAll("[data-conflict-id]").forEach((row) => {
+    const active = row.dataset.conflictId === id;
+    row.classList.toggle("active", active);
+    row.toggleAttribute("aria-current", active);
+  });
+  renderConflictDetail();
+  refreshPresentation();
+}
+
+function renderConflictDetail() {
+  const conflict = (state.bundle?.reconciliation?.conflicts || []).find((item) => item.id === state.conflictActiveId);
+  if (!conflict) {
+    elements["conflict-detail"].innerHTML = `<div class="empty-state">${icon("git-branch-conflicts")}<h2>Select a Conflict</h2><p>The existing Hosted rule and its competing recommendations will appear here.</p></div>`;
+    return;
+  }
+  elements["conflict-detail"].innerHTML = `
+    <div class="detail-header"><div><span class="detail-identity">Reconciliation conflict</span><h2 class="detail-rule-title">${escapeHtml(conflict.targetHostedId)}</h2></div><span class="status-badge error">${formatCountLabel(conflict.recommendations.length, "Competing recommendation")}</span></div>
+    <div class="section-block"><span class="section-label">Existing Hosted Rule:</span><p>${escapeHtml(conflict.existingRuleText)}</p></div>
+    <div class="section-block"><span class="section-label">Validation Error:</span><p>${escapeHtml(conflict.validationError)}</p></div>
+    <div class="section-block"><span class="section-label">Competing Recommendations:</span><div class="conflict-recommendations">${conflict.recommendations.map((recommendation, index) => `
+      <section class="conflict-recommendation subcontext-container">
+        <div class="conflict-recommendation-heading"><strong>${index + 1}. ${escapeHtml(recommendation.title)}</strong><span class="recommendation-badge ${escapeHtml(recommendation.action)}">${escapeHtml(formatRecommendation(recommendation.action))}</span></div>
+        <p>${escapeHtml(recommendation.ruleText)}</p>
+        <div class="conflict-recommendation-meta"><span>${escapeHtml(formatHostedCategory(recommendation.category))}</span><span>${escapeHtml(recommendation.placement)}</span><span>${formatCountLabel(recommendation.memberAssessments.length, "Assessment")}</span></div>
+        <p>${escapeHtml(recommendation.rationale)}</p>
+        <details class="conflict-evidence"><summary class="clickable">Review member evidence</summary>${recommendation.memberAssessments.map((assessment) => {
+          const meaningCoverage = recommendation.memberMeaningCoverage.find((coverage) => coverage.assessmentKey === assessment.key);
+          const relatedCoverage = assessment.relatedHostedCoverage.map((coverage) => `${coverage.hostedRuleId}: ${coverage.rationale}`).join(" ");
+          return `<div class="conflict-member"><strong>${escapeHtml(assessment.sourceId)} — ${escapeHtml(assessment.title)}</strong><p>${escapeHtml(assessment.sourceMeaning)}</p><p>${escapeHtml(meaningCoverage?.rationale || "")}</p>${relatedCoverage ? `<p>${escapeHtml(relatedCoverage)}</p>` : ""}</div>`;
+        }).join("")}</details>
+      </section>
+    `).join("")}</div></div>
   `;
 }
 
@@ -2201,7 +2402,7 @@ function renderPlan() {
     return `
       <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(displayId)} candidate">
         <td class="plan-candidate"><span class="candidate-link">${escapeHtml(displayId)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
-        <td class="plan-source">${escapeHtml(formatTitleCase(candidate.sourceLabel))}</td>
+        <td class="plan-source"><span class="status-badge neutral plan-source-pill type-compact">${escapeHtml(formatTitleCase(candidate.sourceLabel))}</span></td>
         <td class="plan-type"><span class="status-badge neutral plan-membership-badge">${escapeHtml(formatTitleCase(decision.planMembershipSource))}</span></td>
         <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
         <td class="mono">${impact}</td>
@@ -3094,9 +3295,13 @@ function updateFilter(value) {
     renderBulkActions();
     navigateCandidateSearch();
   }
-  else {
+  else if (state.workspaceTab === "assessment-results") {
     state.assessmentActiveKey = null;
     renderAssessmentResults();
+  }
+  else {
+    state.conflictActiveId = null;
+    renderConflicts();
   }
   refreshPresentation();
 }
@@ -3144,8 +3349,23 @@ function showAssessmentPane(pane) {
   if (!detailsActive) assessmentHierarchicalView?.refreshLayout();
 }
 
+function showConflictPane(pane) {
+  const activePane = pane === "details" ? "details" : "conflicts";
+  state.conflictPane = activePane;
+  const detailsActive = activePane === "details";
+  elements["conflict-list-panel"].hidden = detailsActive;
+  elements["conflict-detail"].hidden = !detailsActive;
+  document.querySelectorAll("[data-conflict-pane]").forEach((button) => {
+    const active = button.dataset.conflictPane === activePane;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  if (!detailsActive) conflictHierarchicalView?.refreshLayout();
+}
+
 function setWorkspaceTab(tab) {
-  if (!['candidate-sources', 'assessment-results'].includes(tab)) return;
+  if (!["candidate-sources", "assessment-results", "conflicts"].includes(tab)) return;
+  if (tab === "conflicts" && !(state.bundle?.reconciliation?.conflicts || []).length) return;
   dismissNotification();
   state.workspaceTab = tab;
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
@@ -3157,12 +3377,16 @@ function setWorkspaceTab(tab) {
   elements["candidate-sources-panel"].hidden = tab !== "candidate-sources";
   elements["assessment-results-panel"].classList.toggle("active", tab === "assessment-results");
   elements["assessment-results-panel"].hidden = tab !== "assessment-results";
+  elements["conflicts-panel"].classList.toggle("active", tab === "conflicts");
+  elements["conflicts-panel"].hidden = tab !== "conflicts";
   elements["search-input"].value = state.queries[tab];
   elements["search-input"].placeholder = tab === "candidate-sources"
     ? "Search sources, categories, or rules"
-    : "Search excluded assessment results";
+    : tab === "assessment-results" ? "Search excluded assessment results" : "Search reconciliation conflicts";
+  elements["search-input"].setAttribute("aria-label", elements["search-input"].placeholder);
   if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
-  else assessmentHierarchicalView?.refreshLayout();
+  else if (tab === "assessment-results") assessmentHierarchicalView?.refreshLayout();
+  else conflictHierarchicalView?.refreshLayout();
   refreshPresentation();
 }
 

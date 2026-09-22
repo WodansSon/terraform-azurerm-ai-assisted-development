@@ -191,44 +191,19 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(await page.locator('#candidate-list [data-node-id="candidate:source:overrides"]').count() === 0, "Overrides probe did not restore the candidate tree");
 
   const categoryProbe = await page.evaluate(() => {
-    const candidate = state.assessedCandidates[0];
-    const fixture = document.createElement("div");
-    fixture.id = "assessment-category-tooltip-probe";
-    fixture.className = "type-ui";
-    fixture.style.width = "760px";
-    fixture.innerHTML = renderAssessmentResultRow({
-      ...candidate,
-      assessment: { ...candidate.assessment, hostedCategory: "review-classification-and-evidence" }
-    });
-    document.querySelector(".app-shell").appendChild(fixture);
-    syncTruncationTooltips();
-    const category = fixture.querySelector(".assessment-result-category");
-    const style = getComputedStyle(category);
+    const tree = buildAssessmentTreeNodes();
+    const row = elementFromHtml(renderAssessmentResultRow(state.assessedCandidates.find((candidate) => !candidate.assessment.hostedApplicable)));
+    const header = elementFromHtml(renderAssessmentResultsHeader("assessment:probe"));
     return {
-      text: category.textContent.trim(),
-      height: category.getBoundingClientRect().height,
-      lineHeight: parseFloat(style.lineHeight),
-      scrollWidth: category.scrollWidth,
-      clientWidth: category.clientWidth,
-      singleLine: category.getBoundingClientRect().height <= parseFloat(style.lineHeight) + 0.1,
-      truncated: category.scrollWidth > category.clientWidth,
-      ellipsis: style.textOverflow === "ellipsis" && style.whiteSpace === "nowrap",
-      tooltipOwner: category.hasAttribute("data-truncation-tooltip")
+      categoriesAreFolders: tree.every((source) => source.children.every((category) => category.kind === "category")),
+      categoryLabels: [...new Set(tree.flatMap((source) => source.children.map((category) => category.data.label)))].sort(),
+      leafCategoryCount: row.querySelectorAll(".assessment-result-category").length,
+      leafSummaryColumns: row.querySelector(".assessment-result-summary").children.length,
+      headerLabels: [...header.querySelectorAll(".sort-label")].map((label) => label.textContent.trim())
     };
   });
-  assert(categoryProbe.text === "Review classification & evidence", "Assessment category fixture does not contain the full display value");
-  assert(categoryProbe.singleLine && categoryProbe.truncated && categoryProbe.ellipsis && categoryProbe.tooltipOwner, `Assessment category does not truncate to one line with shared tooltip ownership (${JSON.stringify(categoryProbe)})`);
-  const category = page.locator("#assessment-category-tooltip-probe .assessment-result-category");
-  await hoverForWorkbenchTooltip(page, category);
-  const categoryTooltip = await page.locator("#status-surface-tooltip").evaluate((tooltip) => ({
-    visible: tooltip.classList.contains("visible") && tooltip.getAttribute("aria-hidden") === "false",
-    text: tooltip.textContent.trim()
-  }));
-  assert(categoryTooltip.visible && categoryTooltip.text === categoryProbe.text, "Assessment category tooltip does not show its full text after the 500ms delay");
-  await page.evaluate(() => {
-    hideStatusTooltip();
-    document.querySelector("#assessment-category-tooltip-probe")?.remove();
-  });
+  assert(categoryProbe.categoriesAreFolders && categoryProbe.categoryLabels.length > 0 && categoryProbe.categoryLabels.every((label) => ["Documentation", "Implementation", "Testing"].includes(label)), `Assessment categories are not represented as folders (${JSON.stringify(categoryProbe)})`);
+  assert(categoryProbe.leafCategoryCount === 0 && categoryProbe.leafSummaryColumns === 3 && JSON.stringify(categoryProbe.headerLabels) === JSON.stringify(["Candidate", "State", "Recommendation", "Override"]), `Assessment leaf rows repeat category instead of inheriting it from their folder (${JSON.stringify(categoryProbe)})`);
 
   const overrideWorkflow = await page.evaluate(() => {
     const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.assessedCandidates[0];

@@ -60,8 +60,11 @@ async function run({ page, baseUrl, assert, playback }) {
     state.assessedCandidates.push(probe);
     state.assessmentActiveKey = probe.key;
     const sourceNodeId = `assessment:source:${probe.sourceType}`;
+    const categoryNodeId = `assessment:category:${probe.sourceType}:${probe.assessment.hostedCategory}`;
     const previousSourceExpansion = assessmentExpansionState.has(sourceNodeId) ? assessmentExpansionState.get(sourceNodeId) : null;
+    const previousCategoryExpansion = assessmentExpansionState.has(categoryNodeId) ? assessmentExpansionState.get(categoryNodeId) : null;
     assessmentExpansionState.set(sourceNodeId, true);
+    assessmentExpansionState.set(categoryNodeId, true);
     renderAssessmentResults();
     const row = document.querySelector(`[data-assessment-key="${CSS.escape(probe.key)}"]`);
     const detail = document.querySelector("#assessment-results-detail");
@@ -81,6 +84,8 @@ async function run({ page, baseUrl, assert, playback }) {
     state.assessmentActiveKey = null;
     if (previousSourceExpansion === null) assessmentExpansionState.delete(sourceNodeId);
     else assessmentExpansionState.set(sourceNodeId, previousSourceExpansion);
+    if (previousCategoryExpansion === null) assessmentExpansionState.delete(categoryNodeId);
+    else assessmentExpansionState.set(categoryNodeId, previousCategoryExpansion);
     renderAssessmentResults();
     return result;
   });

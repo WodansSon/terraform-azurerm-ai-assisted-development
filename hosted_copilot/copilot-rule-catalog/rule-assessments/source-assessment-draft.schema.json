@@ -189,7 +189,7 @@
     "assessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["assessmentId", "title", "sourceMeaning", "impactDescription", "hostedApplicable", "applicabilityRationale", "assessmentConfidence", "selectionFactors", "selectionRationale", "affectedSurfaces", "sourceLocalProposedText", "relatedHostedCoverage", "existingCoverage", "semanticReassessment"],
+      "required": ["assessmentId", "title", "sourceMeaning", "impactDescription", "hostedApplicable", "applicabilityRationale", "assessmentConfidence", "selectionFactors", "selectionRationale", "affectedSurfaces", "relatedHostedCoverage", "existingCoverage", "semanticReassessment"],
       "properties": {
         "assessmentId": {
           "type": "string",
@@ -230,10 +230,6 @@
           "items": {
             "enum": ["repository", "implementation", "testing", "documentation", "review-skill"]
           }
-        },
-        "sourceLocalProposedText": {
-          "type": "string",
-          "minLength": 1
         },
         "relatedHostedCoverage": {
           "type": "array",

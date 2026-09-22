@@ -28,6 +28,9 @@ param(
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
 
+    [ValidateRange(1, 8)]
+    [int]$MaxParallelBatches = 3,
+
     [ValidateRange(0, 60000)]
     [int]$RetryDelayMilliseconds = 1000,
 
@@ -722,10 +725,21 @@ foreach ($lane in $pendingLanes) {
     }
 }
 
+$evaluatorCommandPath = $null
+if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
+    $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        throw "Evaluator command was not found: $EvaluatorCommand"
+    }
+    $evaluatorCommandPath = $command.Source
+}
+
 $evaluatedBatchCount = 0
 $succeeded = $false
 try {
     $null = New-Item -ItemType Directory -Path $runDirectory -Force
+    $preparedBatches = [Collections.Generic.List[object]]::new()
+    $batchById = @{}
     foreach ($batch in $batches) {
         $batchId = [string]$batch.batchId
         $batchPacket = $batch.packet
@@ -740,32 +754,102 @@ try {
         Copy-Item -LiteralPath $draftSchemaPath -Destination $schemaPath
         Copy-Item -LiteralPath $promptPath -Destination $batchPromptPath
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
-
-        if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-            Write-Host (Format-ValidationStatusLine -Status 'running' -Name "source-assessment/$batchId" -Detail ("{0} sources, {1} payload bytes" -f @($batchPacket.records).Count, $batch.payloadSizeBytes) -NameWidth 42)
+        $prepared = [pscustomobject]@{
+            BatchId = $batchId
+            Packet = $batchPacket
+            PayloadSizeBytes = [int]$batch.payloadSizeBytes
+            Directory = $batchDirectory
+            BatchPath = $batchPath
+            CatalogPath = $catalogPath
+            SchemaPath = $schemaPath
+            PromptPath = $batchPromptPath
+            ResponsePath = $responsePath
+            AttemptPrompt = New-EvaluatorAttemptPrompt -SourceCount @($batchPacket.records).Count
         }
-        $response = $null
-        $lastError = $null
-        for ($attempt = 1; $attempt -le ($MaxRetries + 1); $attempt++) {
+        $preparedBatches.Add($prepared)
+        $batchById[$batchId] = $prepared
+    }
+
+    $validatedResponses = @{}
+    $failureByBatch = @{}
+    $pendingBatches = @($preparedBatches)
+    for ($attempt = 1; $attempt -le ($MaxRetries + 1) -and $pendingBatches.Count -gt 0; $attempt++) {
+        if ($attempt -gt 1 -and $RetryDelayMilliseconds -gt 0) {
+            $delayMilliseconds = Get-SourceEvidenceRetryDelayMilliseconds -Attempt ($attempt - 1) -BaseDelayMilliseconds $RetryDelayMilliseconds
+            if ($delayMilliseconds -gt 0) {
+                Start-Sleep -Milliseconds $delayMilliseconds
+            }
+        }
+        $retryBatches = [Collections.Generic.List[object]]::new()
+        $workerEvaluatorScriptPath = $resolvedEvaluatorScriptPath
+        $workerEvaluatorCommandPath = $evaluatorCommandPath
+        $workerModel = $Model
+        $workerReasoningEffort = $ReasoningEffort
+        $workerAttempt = $attempt
+        $workerAttemptCount = $MaxRetries + 1
+        $pendingBatches | ForEach-Object -Parallel {
+            $batch = $_
+            [pscustomobject]@{
+                Kind = 'started'
+                BatchId = [string]$batch.BatchId
+                SourceCount = @($batch.Packet.records).Count
+                PayloadSizeBytes = [int]$batch.PayloadSizeBytes
+                Attempt = $using:workerAttempt
+                AttemptCount = $using:workerAttemptCount
+            }
             try {
-                if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
-                    $evaluatorOutput = @(& pwsh -NoProfile -File $resolvedEvaluatorScriptPath -BatchPath $batchPath -CatalogPath $catalogPath -SchemaPath $schemaPath -PromptPath $batchPromptPath -OutputPath $responsePath -Model $Model -ReasoningEffort $ReasoningEffort 2>&1)
+                if ($null -ne $using:workerEvaluatorScriptPath) {
+                    $evaluatorOutput = @(& pwsh -NoProfile -File $using:workerEvaluatorScriptPath -BatchPath $batch.BatchPath -CatalogPath $batch.CatalogPath -SchemaPath $batch.SchemaPath -PromptPath $batch.PromptPath -OutputPath $batch.ResponsePath -Model $using:workerModel -ReasoningEffort $using:workerReasoningEffort 2>&1)
                     if ($LASTEXITCODE -ne 0) {
                         throw "Evaluator script failed: $(($evaluatorOutput | Out-String).Trim())"
                     }
                 }
                 else {
-                    $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
-                    if ($null -eq $command) {
-                        throw "Evaluator command was not found: $EvaluatorCommand"
-                    }
-                    $attemptPrompt = New-EvaluatorAttemptPrompt -SourceCount @($batchPacket.records).Count
-                    $evaluatorOutput = @(& $command.Source -C $batchDirectory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $Model --effort $ReasoningEffort --available-tools=view --output-format json 2>&1)
+                    $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $batch.AttemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
                     if ($LASTEXITCODE -ne 0) {
                         throw "Copilot evaluator failed: $(($evaluatorOutput | Out-String).Trim())"
                     }
+                }
+                [pscustomobject]@{
+                    Kind = 'completed'
+                    BatchId = [string]$batch.BatchId
+                    Succeeded = $true
+                    Output = @($evaluatorOutput | ForEach-Object { [string]$_ })
+                    Error = ''
+                }
+            }
+            catch {
+                [pscustomobject]@{
+                    Kind = 'completed'
+                    BatchId = [string]$batch.BatchId
+                    Succeeded = $false
+                    Output = @()
+                    Error = [string]$_.Exception.Message
+                }
+            }
+        } -ThrottleLimit $MaxParallelBatches | ForEach-Object {
+            $workerResult = $_
+            $batch = $batchById[[string]$workerResult.BatchId]
+            if ([string]$workerResult.Kind -ceq 'started') {
+                if ($OutputFormat -eq 'Text' -or $ShowProgress) {
+                    $progressName = if ([int]$workerResult.Attempt -eq 1) { "source-assessment/$($workerResult.BatchId)" } else { 'source-assessment retry' }
+                    $progressDetail = if ([int]$workerResult.Attempt -eq 1) {
+                        "{0} sources, {1} payload bytes" -f $workerResult.SourceCount, $workerResult.PayloadSizeBytes
+                    }
+                    else {
+                        "{0}; attempt {1}/{2}" -f $workerResult.BatchId, $workerResult.Attempt, $workerResult.AttemptCount
+                    }
+                    Write-Host (Format-ValidationStatusLine -Status 'running' -Name $progressName -Detail $progressDetail -NameWidth 42)
+                }
+                return
+            }
+            try {
+                if (-not [bool]$workerResult.Succeeded) {
+                    throw [string]$workerResult.Error
+                }
+                if ($null -eq $resolvedEvaluatorScriptPath) {
                     $assistantMessages = [Collections.Generic.List[object]]::new()
-                    foreach ($eventLine in $evaluatorOutput) {
+                    foreach ($eventLine in @($workerResult.Output)) {
                         $eventText = ([string]$eventLine).Trim()
                         if ([string]::IsNullOrWhiteSpace($eventText)) {
                             continue
@@ -788,39 +872,42 @@ try {
                         throw "Copilot evaluator used model $($assistantMessage.model) instead of $Model"
                     }
                     $evaluatorJson = Get-EvaluatorJson -Content ([string]$assistantMessage.content)
-                    [IO.File]::WriteAllText($responsePath, $evaluatorJson + "`n", [Text.UTF8Encoding]::new($false))
+                    [IO.File]::WriteAllText($batch.ResponsePath, $evaluatorJson + "`n", [Text.UTF8Encoding]::new($false))
                 }
-
-                $responseJson = Get-Content -LiteralPath $responsePath -Raw
+                $responseJson = Get-Content -LiteralPath $batch.ResponsePath -Raw
                 try {
                     $validResponse = Test-Json -Json $responseJson -SchemaFile $draftSchemaPath -ErrorAction Stop
                 }
                 catch {
-                    throw "Evaluator response does not satisfy the source assessment draft: $batchId"
+                    throw "Evaluator response does not satisfy the source assessment draft: $($batch.BatchId)"
                 }
                 if (-not $validResponse) {
-                    throw "Evaluator response does not satisfy the source assessment draft: $batchId"
+                    throw "Evaluator response does not satisfy the source assessment draft: $($batch.BatchId)"
                 }
                 $response = $responseJson | ConvertFrom-Json
-                Assert-BatchResponse -Response $response -ExpectedRecords @($batchPacket.records) -BatchId $batchId -AssessmentCardinality ([string]$batchPacket.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
+                Assert-BatchResponse -Response $response -ExpectedRecords @($batch.Packet.records) -BatchId $batch.BatchId -AssessmentCardinality ([string]$batch.Packet.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
+                $validatedResponses[$batch.BatchId] = $response
+                $failureByBatch.Remove($batch.BatchId)
                 $evaluatedBatchCount++
-                $lastError = $null
-                break
-            }
-            catch {
-                $lastError = $_
-                Remove-Item -LiteralPath $responsePath -Force -ErrorAction SilentlyContinue
-                if ($attempt -le $MaxRetries) {
-                    $delayMilliseconds = Get-SourceEvidenceRetryDelayMilliseconds -Attempt $attempt -BaseDelayMilliseconds $RetryDelayMilliseconds
-                    if ($delayMilliseconds -gt 0) {
-                        Start-Sleep -Milliseconds $delayMilliseconds
-                    }
+                if ($OutputFormat -eq 'Text' -or $ShowProgress) {
+                    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment/$($batch.BatchId)" -Detail ("evaluated; {0} sources, {1} payload bytes" -f @($batch.Packet.records).Count, $batch.PayloadSizeBytes) -NameWidth 42)
                 }
             }
+            catch {
+                Remove-Item -LiteralPath $batch.ResponsePath -Force -ErrorAction SilentlyContinue
+                $failureByBatch[$batch.BatchId] = [string]$_.Exception.Message
+                $retryBatches.Add($batch)
+            }
         }
-        if ($null -ne $lastError) {
-            throw "Source assessment $batchId failed after $($MaxRetries + 1) attempts: $($lastError.Exception.Message)"
-        }
+        $pendingBatches = @($retryBatches)
+    }
+    if ($pendingBatches.Count -gt 0) {
+        $failedBatch = @($preparedBatches | Where-Object { $failureByBatch.ContainsKey($_.BatchId) })[0]
+        throw "Source assessment $($failedBatch.BatchId) failed after $($MaxRetries + 1) attempts: $($failureByBatch[$failedBatch.BatchId])"
+    }
+
+    foreach ($batch in $preparedBatches) {
+        $response = $validatedResponses[$batch.BatchId]
         foreach ($entry in @($response.entries)) {
             $sourceKey = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
             $cacheMetadata = $sourceCacheMetadata[$sourceKey]
@@ -833,9 +920,6 @@ try {
             })
             $draftEntries.Add($entry)
             $evaluatedSourceCount++
-        }
-        if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-            Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment/$batchId" -Detail ("evaluated; {0} sources, {1} payload bytes" -f @($batchPacket.records).Count, $batch.payloadSizeBytes) -NameWidth 42)
         }
     }
 

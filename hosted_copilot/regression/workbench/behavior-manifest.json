@@ -110,6 +110,11 @@
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
+      "id": "WB-UX-CONFLICT-001",
+      "title": "Blocked reconciliation uses an actionable error MessageBar without weakening approval blocking",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
       "id": "WB-UX-STICKY-001",
       "title": "Candidate tree preserves sticky source category and column context",
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"

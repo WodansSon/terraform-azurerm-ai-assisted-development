@@ -321,7 +321,10 @@ async function run({ page, baseUrl, assert, playback }) {
     const source = assessmentHierarchicalView.model.roots.find((node) => node.children.length);
     if (!source.expanded) document.querySelector(`#assessment-results-list [data-node-id="${CSS.escape(source.id)}"]`)?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const header = source.children.find((node) => node.kind === "header");
+    const category = source.children.find((node) => node.kind === "category");
+    if (!category.expanded) document.querySelector(`#assessment-results-list [data-node-id="${CSS.escape(category.id)}"]`)?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const header = category.children.find((node) => node.kind === "header");
     const inspect = () => {
       const modelAligned = assessmentHierarchicalView.model.nodes
         .filter((node) => node.kind === "leaf")

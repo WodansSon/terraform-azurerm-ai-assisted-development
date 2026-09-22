@@ -45,6 +45,7 @@ async function run({ page, baseUrl, assert, playback }) {
     await playback.show(page, "Assessment Results · search, sort, details, and return");
     await page.locator('[data-workspace-tab="assessment-results"]').click();
     await page.locator('#assessment-results-list [data-node-id="assessment:source:interactive"]').click();
+    await page.locator('#assessment-results-list [data-node-id^="assessment:category:interactive:"]').first().click();
     const initialOrder = await page.locator("#assessment-results-list [data-assessment-key] .candidate-tree-copy strong").allTextContents();
     assert(initialOrder.join("|") === "REVIEW-EXCL-001|REVIEW-EXCL-002", `Assessment Results initial order is incorrect: ${initialOrder.join("|")}`);
     await page.locator('#assessment-results-list [data-assessment-sort="candidate"]').click();

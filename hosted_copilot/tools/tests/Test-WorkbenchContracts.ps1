@@ -91,7 +91,6 @@ $assessment = [ordered]@{
     selectionRationale = 'The behavior is broadly useful and directly reviewable.'
     confidence = [ordered]@{ level = 'high'; rationale = 'The source is explicit.'; uncertainties = @() }
     affectedSurfaces = @('implementation')
-    sourceLocalProposedText = 'Validate the rule deterministically.'
     existingCoverage = [ordered]@{ score = 0; rationale = 'The catalog does not cover the rule.' }
     relatedHostedCoverage = @()
     evaluatedAt = $timestamp
@@ -108,6 +107,7 @@ $recommendation = [ordered]@{
     rationale = 'The complete source meaning is not covered.'
     needsReview = $false
     assessmentKeys = @('maintainer:IMPL-TEST-901:validate-rule')
+    memberMeaningCoverage = @([ordered]@{ assessmentKey = 'maintainer:IMPL-TEST-901:validate-rule'; rationale = 'The recommendation preserves the fixture assessment meaning.' })
     guardedTokenDelta = 12
     provenance = @('local-safeguard')
     evidenceIds = @('implementation-contract', 'hosted-architecture')

@@ -14,6 +14,8 @@ param(
 
     [string]$AssessmentCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/assessment-cache'),
 
+    [string]$ReconciliationCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
+
     [string]$AssessmentResumeDirectory,
 
     [string]$ReconciliationResumeDirectory,
@@ -57,6 +59,7 @@ $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
+$resolvedReconciliationCacheDirectory = [IO.Path]::GetFullPath($ReconciliationCacheDirectory)
 $resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
 $resolvedReconciliationResumeDirectory = if ([string]::IsNullOrWhiteSpace($ReconciliationResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($ReconciliationResumeDirectory) }
 $assessmentRecoveryMode = if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
@@ -67,6 +70,9 @@ if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::Ord
 }
 if ($resolvedAssessmentCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'AssessmentCacheDirectory must be outside the source repository'
+}
+if ($resolvedReconciliationCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ReconciliationCacheDirectory must be outside the source repository'
 }
 
 foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $guidanceCapacityPath)) {
@@ -286,6 +292,7 @@ function Copy-FileAtomically {
 
 function Update-StagedDisplay {
     if ($null -eq $resolvedDisplayPath) {
+        Remove-Item -LiteralPath $stagedDisplayPath -Force -ErrorAction SilentlyContinue
         $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
         $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
         $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
@@ -329,6 +336,7 @@ function Update-StagedDisplay {
                 Model = $Model
                 ReasoningEffort = $AssessmentReasoningEffort
                 MaxRetries = $MaxRetries
+                MaxParallelBatches = $MaxParallelBatches
                 CacheDirectory = $resolvedAssessmentCacheDirectory
                 ShowProgress = $OutputFormat -eq 'Text'
                 OutputFormat = 'Json'
@@ -357,17 +365,19 @@ function Update-StagedDisplay {
                 Write-Host '[RUNNING]  assessment-reconciliation   : Consolidating assessments into the Workbench display'
             }
             $script:workbenchPhase = 'ASSESSMENT RECONCILIATION'
+            $reconciledDisplayPath = Join-Path $runDirectory 'workbench-display.json'
             $reconciliationParameters = @{
                 RepositoryRoot = $repositoryRoot
                 AssessmentBaselinePath = $assessmentSetPath
                 InventoryPaths = $currentInventoryPaths.ToArray()
                 GuidanceCapacityPath = $capacityPath
-                OutputPath = $stagedDisplayPath
+                OutputPath = $reconciledDisplayPath
                 EvaluatorCommand = $EvaluatorCommand
                 Model = $Model
                 ReasoningEffort = $AssessmentReasoningEffort
                 MaxRetries = $MaxRetries
                 MaxParallelBatches = $MaxParallelBatches
+                CacheDirectory = $resolvedReconciliationCacheDirectory
                 OutputFormat = 'Json'
             }
             if ($null -ne $resolvedReconciliationResumeDirectory) {
@@ -377,6 +387,7 @@ function Update-StagedDisplay {
             if ($LASTEXITCODE -ne 0) {
                 throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
+            Copy-FileAtomically -SourcePath $reconciledDisplayPath -DestinationPath $stagedDisplayPath
             Complete-WorkbenchStage -Name $workbenchPhase
             foreach ($inventoryPath in $currentInventoryPaths) {
                 Copy-FileAtomically -SourcePath $inventoryPath -DestinationPath (Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) ([IO.Path]::GetFileName($inventoryPath)))
@@ -412,6 +423,7 @@ if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted Rule Workbench'
     Write-ValidationSummary -Fields ([ordered]@{
         'Cache Directory' = $resolvedAssessmentCacheDirectory
+        'Reconciliation Cache' = $resolvedReconciliationCacheDirectory
         'Assessment Recovery' = $(if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { "$assessmentRecoveryMode`: $resolvedAssessmentResumeDirectory" })
         'Reconciliation Recovery' = $(if ($null -eq $resolvedReconciliationResumeDirectory) { 'NONE' } else { "$reconciliationRecoveryMode`: $resolvedReconciliationResumeDirectory" })
     })
@@ -426,6 +438,7 @@ catch {
         phase = $workbenchPhase
         error = $failureMessage
         assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
+        reconciliationCacheDirectory = $resolvedReconciliationCacheDirectory
         assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
         reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
         assessmentRecoveryMode = $assessmentRecoveryMode
@@ -459,6 +472,7 @@ $result = [ordered]@{
     siteDirectory = $resolvedSiteDirectory
     displayPath = $stagedDisplayPath
     assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
+    reconciliationCacheDirectory = $resolvedReconciliationCacheDirectory
     assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
     reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
     assessmentRecoveryMode = $assessmentRecoveryMode
@@ -491,6 +505,7 @@ if ($StageOnly) {
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
+            'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
             Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })
@@ -571,6 +586,7 @@ try {
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
             Assessment = $(if ($null -eq $resolvedDisplayPath) { 'COMPLETED ABOVE' } else { 'PREBUILT DISPLAY' })
             'Assessment Cache' = $result.assessmentCacheDirectory
+            'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
             Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })

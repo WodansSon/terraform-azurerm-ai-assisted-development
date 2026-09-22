@@ -12,7 +12,8 @@ const behaviorIds = [
   "WB-UX-PREVIEW-009",
   "WB-UX-PREVIEW-010",
   "WB-UX-PREVIEW-011",
-  "WB-UX-PREVIEW-012"
+  "WB-UX-PREVIEW-012",
+  "WB-UX-CONFLICT-001"
 ];
 
 async function run({ page, baseUrl, assert }) {
@@ -307,18 +308,57 @@ async function run({ page, baseUrl, assert }) {
 
   const blockedReconciliation = await page.evaluate(() => {
     const originalReconciliation = structuredClone(state.bundle.reconciliation);
+    const createConflict = (targetHostedId, category, placement, sequence) => {
+      const key = `${targetHostedId}:assessment`;
+      const memberAssessment = {
+        key,
+        sourceDefinitionId: "maintainer-proposals",
+        sourceId: targetHostedId,
+        contentSha256: "a".repeat(64),
+        assessmentId: "A1",
+        title: `Review ${targetHostedId}`,
+        sourceMeaning: `Preserve the complete meaning of ${targetHostedId}.`,
+        impactDescription: `Missing ${targetHostedId} can produce an incorrect review.`,
+        relatedHostedCoverage: []
+      };
+      const recommendation = (draftKey, action) => ({
+        draftKey,
+        action,
+        title: `${formatRecommendation(action)} ${targetHostedId}`,
+        ruleText: `Review ${targetHostedId} using the complete source meaning.`,
+        category,
+        placement,
+        rationale: `This recommendation claims ${targetHostedId}.`,
+        needsReview: true,
+        memberAssessments: [memberAssessment],
+        memberMeaningCoverage: [{ assessmentKey: key, rationale: `The recommendation preserves ${targetHostedId}.` }]
+      });
+      return {
+        id: `duplicate-target:${targetHostedId}`,
+        kind: "duplicate-target-ownership",
+        targetHostedId,
+        existingRuleText: `Existing ${targetHostedId} text.`,
+        validationError: `More than one recommendation owns Hosted ID ${targetHostedId}`,
+        recommendations: [recommendation(`recommendation-${sequence * 2 - 1}`, "update"), recommendation(`recommendation-${sequence * 2}`, "no-change")]
+      };
+    };
+    const conflicts = [
+      ...Array.from({ length: 5 }, (_, index) => createConflict(`DOCS-ARG-${String(index + 1).padStart(3, "0")}`, "documentation", "Argument Accuracy", index + 1)),
+      ...Array.from({ length: 11 }, (_, index) => createConflict(`IMPL-WF-${String(index + 1).padStart(3, "0")}`, "implementation", "Schema And State", index + 6)),
+      ...Array.from({ length: 4 }, (_, index) => createConflict(`TEST-WF-${String(index + 1).padStart(3, "0")}`, "testing", "Evidence And Lifecycle", index + 17))
+    ];
     state.bundle.reconciliation = {
       status: "blocked",
-      conflicts: [
-        { targetHostedId: "DOCS-ARG-001" },
-        { targetHostedId: "IMPL-WF-001A" }
-      ]
+      conflicts
     };
     renderReconciliationState();
     renderPreview();
     const readiness = getPreviewReadiness();
     const result = {
       bannerVisible: !document.querySelector("#reconciliation-conflict-banner").hidden,
+      bannerRole: document.querySelector("#reconciliation-conflict-banner").getAttribute("role"),
+      actionIcon: document.querySelector("#review-conflicts-button .codicon use").getAttribute("href"),
+      standaloneIcon: Boolean(document.querySelector("#reconciliation-conflict-banner > .codicon")),
       workspaceBlocked: document.querySelector("#workspace").classList.contains("has-reconciliation-conflicts"),
       title: document.querySelector("#reconciliation-conflict-title").textContent,
       detail: document.querySelector("#reconciliation-conflict-detail").textContent,
@@ -333,18 +373,64 @@ async function run({ page, baseUrl, assert }) {
       status: readiness.status,
       ready: readiness.ready
     };
-    state.bundle.reconciliation = originalReconciliation;
-    renderReconciliationState();
-    renderPreview();
-    result.readyStageIcon = document.querySelector("#promotion-plan-stage-icon").getAttribute("href");
-    result.readyPlanIndicatorHidden = document.querySelector("#plan-conflict-indicator").hidden;
+    globalThis.__blockedReconciliationSnapshot = originalReconciliation;
     return result;
   });
-  assert(blockedReconciliation.bannerVisible && blockedReconciliation.workspaceBlocked && blockedReconciliation.title === "2 Reconciliation conflicts require maintainer review", "Blocked reconciliation does not render its persistent Workbench warning state");
-  assert(blockedReconciliation.detail.includes("DOCS-ARG-001, IMPL-WF-001A") && blockedReconciliation.detail.includes("Approval remains blocked"), "Blocked reconciliation banner does not identify conflicting targets and approval impact");
-  assert(blockedReconciliation.stageBlocked && blockedReconciliation.stageIcon.endsWith("#codicon-git-pull-request-error") && blockedReconciliation.planIndicatorVisible && blockedReconciliation.planIndicatorIcon.endsWith("#codicon-git-branch-conflicts") && blockedReconciliation.planIndicatorText === "2 Conflicts", `Promotion Plan does not expose both blocked conflict icons (${JSON.stringify(blockedReconciliation)})`);
-  assert(blockedReconciliation.readyStageIcon.endsWith("#codicon-new-session") && blockedReconciliation.readyPlanIndicatorHidden, "Promotion Plan conflict icons do not clear with reconciliation state");
-  assert(blockedReconciliation.approvalDisabled && blockedReconciliation.requirement === "Reconciliation conflicts 2 unresolved" && blockedReconciliation.conflictCount === 2 && blockedReconciliation.status === "reconciliation conflicts" && !blockedReconciliation.ready, `Unresolved reconciliation conflicts do not block the authoritative approval readiness path (${JSON.stringify(blockedReconciliation)})`);
+  assert(blockedReconciliation.bannerVisible && blockedReconciliation.bannerRole === "alert" && blockedReconciliation.actionIcon.endsWith("#codicon-git-branch-conflicts") && !blockedReconciliation.standaloneIcon && blockedReconciliation.workspaceBlocked && blockedReconciliation.title === "20 RECONCILIATION CONFLICTS REQUIRE MAINTAINER REVIEW", "Blocked reconciliation does not render its persistent error MessageBar state");
+  assert(blockedReconciliation.detail === "Approval is blocked until every conflict is resolved and the proposal is revalidated.", "Blocked reconciliation MessageBar does not provide concise actionable context");
+  assert(blockedReconciliation.stageBlocked && blockedReconciliation.stageIcon.endsWith("#codicon-git-pull-request-error") && blockedReconciliation.planIndicatorVisible && blockedReconciliation.planIndicatorIcon.endsWith("#codicon-git-branch-conflicts") && blockedReconciliation.planIndicatorText === "20 Conflicts", `Promotion Plan does not expose both blocked conflict icons (${JSON.stringify(blockedReconciliation)})`);
+  assert(blockedReconciliation.approvalDisabled && blockedReconciliation.requirement === "Reconciliation conflicts 20 unresolved" && blockedReconciliation.conflictCount === 20 && blockedReconciliation.status === "reconciliation conflicts" && !blockedReconciliation.ready, `Unresolved reconciliation conflicts do not block the authoritative approval readiness path (${JSON.stringify(blockedReconciliation)})`);
+
+  assert((await page.locator("#review-conflicts-button").textContent()).trim() === "Review Conflicts", "Conflict review action does not use the approved Title Case label");
+  await page.locator("#review-conflicts-button").click();
+  const conflictWorkspace = await page.evaluate(() => ({
+    catalogActive: document.querySelector("#catalog-view").classList.contains("active"),
+    conflictTabSelected: document.querySelector("#conflicts-tab").getAttribute("aria-selected") === "true",
+    conflictPanelVisible: !document.querySelector("#conflicts-panel").hidden,
+    conflictListSelected: document.querySelector("#conflict-pane-conflicts").getAttribute("aria-selected") === "true",
+    categories: [...document.querySelectorAll('#conflict-list [data-node-id^="conflict:category:"]')].map((row) => ({
+      label: row.querySelector("strong")?.textContent,
+      count: row.querySelector(".count-badge")?.textContent
+    })),
+    tabCount: document.querySelector("#conflict-tab-count").textContent,
+    overflowY: getComputedStyle(document.querySelector("#conflict-list")).overflowY
+  }));
+  assert(conflictWorkspace.catalogActive && conflictWorkspace.conflictTabSelected && conflictWorkspace.conflictPanelVisible && conflictWorkspace.conflictListSelected && JSON.stringify(conflictWorkspace.categories) === JSON.stringify([{ label: "Documentation", count: "5 Conflicts" }, { label: "Implementation", count: "11 Conflicts" }, { label: "Testing", count: "4 Conflicts" }]) && conflictWorkspace.tabCount === "20" && conflictWorkspace.overflowY === "auto", `Review conflicts does not route to the complete Conflicts workspace (${JSON.stringify(conflictWorkspace)})`);
+  await page.locator('#conflict-list [data-node-id="conflict:category:implementation"]').click();
+  await page.locator('#conflict-list [data-node-id="conflict:placement:implementation:Schema And State"]').click();
+  const conflictList = await page.evaluate(() => ({
+    rowCount: document.querySelectorAll("#conflict-list [data-conflict-id]").length,
+    scrollable: document.querySelector("#conflict-list").scrollHeight > document.querySelector("#conflict-list").clientHeight
+  }));
+  assert(conflictList.rowCount === 11 && conflictList.scrollable, `Expanded conflicts do not use a complete contained scroll surface (${JSON.stringify(conflictList)})`);
+  await page.locator("#conflict-list [data-conflict-id]").first().click();
+  const conflictDetail = await page.evaluate(() => ({
+    detailsSelected: document.querySelector("#conflict-pane-details").getAttribute("aria-selected") === "true",
+    detailVisible: !document.querySelector("#conflict-detail").hidden,
+    title: document.querySelector("#conflict-detail .detail-rule-title")?.textContent,
+    recommendations: document.querySelectorAll("#conflict-detail .conflict-recommendation").length
+  }));
+  assert(conflictDetail.detailsSelected && conflictDetail.detailVisible && conflictDetail.title === "IMPL-WF-001" && conflictDetail.recommendations === 2, `Conflict Details does not expose all competing recommendations (${JSON.stringify(conflictDetail)})`);
+  await page.locator("#dismiss-conflict-message").click();
+  const dismissedReconciliation = await page.evaluate(() => ({
+    bannerHidden: document.querySelector("#reconciliation-conflict-banner").hidden,
+    conflictCount: getPreviewReadiness().reconciliationConflictCount,
+    approvalDisabled: document.querySelector("#approve-export-button").disabled
+  }));
+  assert(dismissedReconciliation.bannerHidden && dismissedReconciliation.conflictCount === 20 && dismissedReconciliation.approvalDisabled, "Dismissing the MessageBar changes authoritative reconciliation blocking");
+
+  const readyReconciliation = await page.evaluate(() => {
+    state.bundle.reconciliation = globalThis.__blockedReconciliationSnapshot;
+    delete globalThis.__blockedReconciliationSnapshot;
+    renderReconciliationState();
+    renderPreview();
+    switchView("preview");
+    return {
+      stageIcon: document.querySelector("#promotion-plan-stage-icon").getAttribute("href"),
+      planIndicatorHidden: document.querySelector("#plan-conflict-indicator").hidden
+    };
+  });
+  assert(readyReconciliation.stageIcon.endsWith("#codicon-new-session") && readyReconciliation.planIndicatorHidden, "Promotion Plan conflict icons do not clear with reconciliation state");
 
   await page.setViewportSize({ width: 768, height: 900 });
   const narrow = await page.evaluate(() => {

@@ -101,7 +101,6 @@ function New-Assessment {
         selectionFactors = [ordered]@{ severity = 3; frequency = 3; breadth = 3; hostedDetectability = 3; evidenceStrength = 4; falsePositiveRisk = 1; redundancy = 1 }
         selectionRationale = 'Fixture selection rationale.'
         affectedSurfaces = @('implementation')
-        sourceLocalProposedText = 'Validate the fixture behavior.'
         mappedHostedRuleIds = @()
         relatedHostedCoverage = @()
         existingCoverage = [ordered]@{ score = 0; rationale = 'No existing coverage.' }
@@ -181,7 +180,8 @@ function Invoke-ReconciliationRunner {
         [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
         [Parameter(Mandatory = $true)][string]$Name,
         [int]$MaxRetries = 0,
-        [string]$ResumeRunDirectory
+        [string]$ResumeRunDirectory,
+        [string]$CacheDirectory
     )
 
     $outputPath = Join-Path $tempRoot "$Name-display.json"
@@ -196,6 +196,7 @@ function Invoke-ReconciliationRunner {
         ReasoningEffort = 'high'
         MaxRetries = $MaxRetries
         RetryDelayMilliseconds = 0
+        CacheDirectory = if ([string]::IsNullOrWhiteSpace($CacheDirectory)) { Join-Path $tempRoot "$Name-cache" } else { $CacheDirectory }
         GeneratedAt = $generatedAt
         OutputFormat = 'Json'
     }
@@ -364,6 +365,9 @@ param(
     [Parameter(Mandatory = $true)][string]$ReasoningEffort
 )
 $baseline = Get-Content -LiteralPath $BaselinePath -Raw | ConvertFrom-Json -DateKind String
+if ($env:RECONCILIATION_FAIL_ALL -eq '1') {
+    throw 'Synthetic evaluator invocation during cache reuse.'
+}
 $recommendations = [Collections.Generic.List[object]]::new()
 $coverage = [Collections.Generic.List[object]]::new()
 foreach ($entry in @($baseline.entries)) {
@@ -381,12 +385,13 @@ foreach ($entry in @($baseline.entries)) {
             targetHostedId = $null
             idFamily = 'IMPL-SCHEMA'
             title = [string]$assessment.title
-            recommendedRuleText = [string]$assessment.sourceLocalProposedText
+            recommendedRuleText = [string]$assessment.sourceMeaning
             category = 'implementation'
             placement = 'Schema And State'
             rationale = [string]$assessment.selectionRationale
             needsReview = $false
             memberAssessmentRefs = @($reference)
+            memberMeaningCoverage = @([ordered]@{ assessmentRef = $reference; rationale = 'The recommended rule text preserves this source meaning.' })
             relatedHostedCoverage = @()
             implementationModels = @('legacy', 'typed', 'framework')
         }
@@ -413,6 +418,23 @@ $draft = [ordered]@{
     $batchedDisplay = if ($batchedRun.ExitCode -eq 0) { Get-Content -LiteralPath $batchedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $batchedMergeValid = $batchedRun.ExitCode -eq 0 -and [int]$batchedResult.batchCount -eq 3 -and [int]$batchedResult.candidateCount -eq 3 -and [int]$batchedResult.recommendationCount -eq 3 -and @($batchedDisplay.candidates).Count -eq 3
     Add-TestResult -Name 'batched-reconciliation-merge' -Passed $batchedMergeValid -Detail $(if ($batchedMergeValid) { 'Three source-defined lane batches validate independently and merge into one exhaustive display with unique recommendation keys.' } else { $batchedRun.Output })
+
+    $persistentCacheDirectory = Join-Path $tempRoot 'persistent-reconciliation-cache'
+    $cacheSeedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-seed' -CacheDirectory $persistentCacheDirectory
+    $env:RECONCILIATION_FAIL_ALL = '1'
+    try {
+        $cachedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-reuse' -CacheDirectory $persistentCacheDirectory
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_FAIL_ALL -ErrorAction SilentlyContinue
+    }
+    $cachedResult = if ($cachedRun.ExitCode -eq 0) { $cachedRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $persistentCacheValid = $cacheSeedRun.ExitCode -eq 0 -and $cachedRun.ExitCode -eq 0 -and
+        [int]$cachedResult.cachedBatchCount -eq 3 -and [int]$cachedResult.evaluatedBatchCount -eq 0 -and
+        @($cachedRun.Progress | Where-Object { $_ -like '[[]PASSED[]]*assessment-reconciliation/cache*' }).Count -eq 3 -and
+        @($cachedRun.Progress | Where-Object { $_ -like '[[]RUNNING[]]*assessment-reconciliation/batch*' }).Count -eq 0 -and
+        (Test-Path -LiteralPath $cachedRun.OutputPath -PathType Leaf)
+    Add-TestResult -Name 'persistent-batch-cache-reuse' -Passed $persistentCacheValid -Detail $(if ($persistentCacheValid) { 'A second unchanged reconciliation revalidates every cached semantic batch, makes zero evaluator calls, and builds a fresh display output.' } else { "progress=$($cachedRun.Progress -join ' | '); output=$($cachedRun.Output)" })
 
     $failingEvaluatorPath = Join-Path $tempRoot 'failing-reconciliation-evaluator.ps1'
     $failureGuard = @'
@@ -483,8 +505,8 @@ $recommendations = [Collections.Generic.List[object]]::new()
         '$schema' = 'assessment-reconciliation-draft.schema.json'
         schemaVersion = 1
         recommendations = @(
-            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'Two assessments describe one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef, $interactiveRef); relatedHostedCoverage = @(); implementationModels = @('legacy', 'typed', 'framework') },
-            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); relatedHostedCoverage = @() }
+            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'Two assessments describe one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef, $interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }, [ordered]@{ assessmentRef = $interactiveRef; rationale = 'The rule preserves the Interactive schema requirement.' }); relatedHostedCoverage = @(); implementationModels = @('legacy', 'typed', 'framework') },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @() }
         )
         assessmentCoverage = @(
             [ordered]@{ assessmentRef = $contributorRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
@@ -569,6 +591,10 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $missingCoverage.assessmentCoverage = @($missingCoverage.assessmentCoverage | Select-Object -First 2)
     $missingCoverageRun = Invoke-DisplayBuilder -Draft $missingCoverage -Name 'missing-coverage'
     Add-TestResult -Name 'exhaustive-coverage-required' -Passed ($missingCoverageRun.ExitCode -ne 0 -and $missingCoverageRun.Output -like '*does not cover every assessment*') -Detail 'Reconciliation cannot omit an assessment.'
+    $missingMeaningCoverage = Copy-JsonObject -Value $draft
+    $missingMeaningCoverage.recommendations[0].memberMeaningCoverage = @($missingMeaningCoverage.recommendations[0].memberMeaningCoverage | Select-Object -First 1)
+    $missingMeaningCoverageRun = Invoke-DisplayBuilder -Draft $missingMeaningCoverage -Name 'missing-meaning-coverage'
+    Add-TestResult -Name 'member-meaning-coverage-required' -Passed ($missingMeaningCoverageRun.ExitCode -ne 0 -and $missingMeaningCoverageRun.Output -like '*must explain how its rule text preserves every member meaning*') -Detail 'A grouped recommendation cannot reach Workbench without one meaning-preservation explanation per member assessment.'
     $duplicateMembership = Copy-JsonObject -Value $draft
     $secondRecommendation = Copy-JsonObject -Value $duplicateMembership.recommendations[0]
     $secondRecommendation.draftKey = 'recommendation-3'
@@ -584,12 +610,14 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $firstTargetRecommendation.title = 'First competing schema update'
     $firstTargetRecommendation.recommendedRuleText = 'First competing update for schema validation.'
     $firstTargetRecommendation.memberAssessmentRefs = @($contributorRef)
+    $firstTargetRecommendation.memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The first update preserves the contributor meaning.' })
     $firstTargetRecommendation.PSObject.Properties.Remove('implementationModels')
     $secondTargetRecommendation = Copy-JsonObject -Value $firstTargetRecommendation
     $secondTargetRecommendation.draftKey = 'recommendation-3'
     $secondTargetRecommendation.title = 'Second competing schema update'
     $secondTargetRecommendation.recommendedRuleText = 'Second competing update for schema validation.'
     $secondTargetRecommendation.memberAssessmentRefs = @($interactiveRef)
+    $secondTargetRecommendation.memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The second update preserves the Interactive meaning.' })
     $duplicateTarget.recommendations = @($firstTargetRecommendation, $duplicateTarget.recommendations[1], $secondTargetRecommendation)
     $duplicateTarget.assessmentCoverage[0].recommendationDraftKeys = @('recommendation-1')
     $duplicateTarget.assessmentCoverage[1].recommendationDraftKeys = @('recommendation-3')

@@ -25,6 +25,7 @@ For the complete input corpus:
 - For `no-change`, preserve the exact current Hosted rule text; for `update`, provide text that differs from the current Hosted rule text.
 - For an implementation `add` or `exclude`, select every implementation model the proposed rule governs in `implementationModels`; omit that property for all other recommendations.
 - Write one or two complete condensed sentences in `recommendedRuleText`.
+- For every `memberAssessmentRefs` entry, add exactly one `memberMeaningCoverage` entry explaining how `recommendedRuleText` preserves that assessment's `sourceMeaning`.
 - Preserve complete assessment membership and related Hosted coverage references.
 - Use snapshot-local `draftKey` values only to connect recommendations to assessment coverage.
 
@@ -38,6 +39,7 @@ For the complete input corpus:
 - Do not recommend Retire or Restore.
 - Do not allocate numeric Hosted ID suffixes.
 - Do not silently merge ambiguous meanings.
+- Do not copy one member's wording as the grouped recommendation unless it preserves every member meaning, as demonstrated by complete `memberMeaningCoverage`.
 - Do not omit, duplicate, or fabricate assessments, source references, catalog IDs, or coverage relationships.
 - Do not change source text or treat generated wording as accepted catalog state.
 

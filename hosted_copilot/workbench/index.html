@@ -68,11 +68,19 @@
     </aside>
 
     <main class="workspace" id="workspace">
-      <section class="reconciliation-conflict-banner" id="reconciliation-conflict-banner" role="status" hidden>
-        <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-warning"></use></svg>
+      <section class="reconciliation-conflict-banner" id="reconciliation-conflict-banner" role="alert" aria-live="assertive" aria-labelledby="reconciliation-conflict-title" aria-describedby="reconciliation-conflict-detail" hidden>
         <div>
           <strong id="reconciliation-conflict-title">Reconciliation conflicts require maintainer review</strong>
           <p id="reconciliation-conflict-detail"></p>
+        </div>
+        <div class="reconciliation-conflict-actions">
+          <button class="button reconciliation-conflict-action clickable" id="review-conflicts-button" type="button">
+            <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-conflicts"></use></svg>
+            <span>Review Conflicts</span>
+          </button>
+          <button class="titlebar-icon reconciliation-conflict-dismiss clickable" id="dismiss-conflict-message" type="button" aria-label="Dismiss conflict message" data-workbench-tooltip="Dismiss">
+            <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg>
+          </button>
         </div>
       </section>
       <section class="view active" id="catalog-view" data-view-panel="catalog">
@@ -87,6 +95,7 @@
         <div class="workspace-tabs" role="tablist" aria-label="Candidate workspace views">
           <button class="workspace-tab active clickable" id="candidate-sources-tab" type="button" role="tab" aria-selected="true" aria-controls="candidate-sources-panel" data-workspace-tab="candidate-sources">Candidate Sources</button>
           <button class="workspace-tab clickable" id="assessment-results-tab" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-panel" data-workspace-tab="assessment-results">Assessment Results</button>
+          <button class="workspace-tab clickable" id="conflicts-tab" type="button" role="tab" aria-selected="false" aria-controls="conflicts-panel" data-workspace-tab="conflicts" hidden>Conflicts<span class="status-badge error count-badge type-compact conflict-tab-count" id="conflict-tab-count"></span></button>
         </div>
 
         <div class="workspace-tab-panel active" id="candidate-sources-panel" role="tabpanel" aria-labelledby="candidate-sources-tab">
@@ -153,6 +162,34 @@
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist"></use></svg>
                 <h2>Select an Assessment Result</h2>
                 <p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="workspace-tab-panel" id="conflicts-panel" role="tabpanel" aria-labelledby="conflicts-tab" hidden>
+          <div class="candidate-pane-switch" role="tablist" aria-label="Conflict workspace">
+            <button class="candidate-pane-tab active clickable" id="conflict-pane-conflicts" type="button" role="tab" aria-selected="true" aria-controls="conflict-list-panel" data-conflict-pane="conflicts">
+              <span>Conflicts</span>
+            </button>
+            <button class="candidate-pane-tab clickable" id="conflict-pane-details" type="button" role="tab" aria-selected="false" aria-controls="conflict-detail" data-conflict-pane="details">
+              <span>Details</span>
+            </button>
+          </div>
+          <div class="catalog-layout">
+            <section class="candidate-panel" id="conflict-list-panel" role="tabpanel" aria-labelledby="conflict-pane-conflicts conflict-heading">
+              <div class="panel-heading">
+                <h2 id="conflict-heading">Reconciliation Conflicts:</h2>
+              </div>
+              <div class="hierarchical-view-sticky-stack type-ui" id="conflict-sticky-stack" hidden></div>
+              <div class="candidate-list scroll-surface type-ui" id="conflict-list"></div>
+            </section>
+
+            <section class="assessment-panel scroll-surface" id="conflict-detail" role="tabpanel" aria-labelledby="conflict-pane-details" aria-live="polite" hidden>
+              <div class="empty-state">
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-branch-conflicts"></use></svg>
+                <h2>Select a Conflict</h2>
+                <p>The existing Hosted rule and its competing recommendations will appear here.</p>
               </div>
             </section>
           </div>

@@ -92,10 +92,19 @@
         "rationale": { "type": "string", "minLength": 1 }
       }
     },
+    "memberMeaningCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentKey", "rationale"],
+      "properties": {
+        "assessmentKey": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
     "conflictAssessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "sourceDefinitionId", "sourceId", "contentSha256", "assessmentId", "title", "sourceMeaning", "impactDescription", "sourceLocalProposedText", "relatedHostedCoverage"],
+      "required": ["key", "sourceDefinitionId", "sourceId", "contentSha256", "assessmentId", "title", "sourceMeaning", "impactDescription", "relatedHostedCoverage"],
       "properties": {
         "key": { "type": "string", "minLength": 1 },
         "sourceDefinitionId": { "enum": ["contributor-guidance", "interactive-toolkit", "maintainer-proposals"] },
@@ -105,14 +114,13 @@
         "title": { "type": "string", "minLength": 1 },
         "sourceMeaning": { "type": "string", "minLength": 1 },
         "impactDescription": { "type": "string", "minLength": 1 },
-        "sourceLocalProposedText": { "type": "string", "minLength": 1 },
         "relatedHostedCoverage": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedCoverage" } }
       }
     },
     "conflictRecommendation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["draftKey", "action", "title", "ruleText", "category", "placement", "rationale", "needsReview", "memberAssessments"],
+      "required": ["draftKey", "action", "title", "ruleText", "category", "placement", "rationale", "needsReview", "memberAssessments", "memberMeaningCoverage"],
       "properties": {
         "draftKey": { "type": "string", "pattern": "^recommendation-[1-9][0-9]*$" },
         "action": { "enum": ["update", "no-change", "defer"] },
@@ -122,7 +130,8 @@
         "placement": { "type": "string", "minLength": 1 },
         "rationale": { "type": "string", "minLength": 1 },
         "needsReview": { "type": "boolean" },
-        "memberAssessments": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/conflictAssessment" } }
+        "memberAssessments": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/conflictAssessment" } },
+        "memberMeaningCoverage": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/memberMeaningCoverage" } }
       }
     },
     "reconciliationConflict": {
@@ -157,7 +166,7 @@
     "assessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "sourceMeaning", "impactDescription", "hostedApplicable", "applicabilityRationale", "selectionFactors", "selectionRationale", "confidence", "affectedSurfaces", "sourceLocalProposedText", "existingCoverage", "relatedHostedCoverage"],
+      "required": ["id", "title", "sourceMeaning", "impactDescription", "hostedApplicable", "applicabilityRationale", "selectionFactors", "selectionRationale", "confidence", "affectedSurfaces", "existingCoverage", "relatedHostedCoverage"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
         "title": { "type": "string", "minLength": 1 },
@@ -169,7 +178,6 @@
         "selectionRationale": { "type": "string", "minLength": 1 },
         "confidence": { "$ref": "#/$defs/confidence" },
         "affectedSurfaces": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/surface" } },
-        "sourceLocalProposedText": { "type": "string", "minLength": 1 },
         "existingCoverage": { "$ref": "#/$defs/coverage" },
         "relatedHostedCoverage": { "type": "array", "items": { "$ref": "#/$defs/relatedHostedCoverage" } },
         "evaluatedAt": { "type": "string", "format": "date-time" },
@@ -179,7 +187,7 @@
     "recommendation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["action", "hostedId", "idState", "targetHostedId", "ruleText", "category", "placement", "rationale", "needsReview", "assessmentKeys", "guardedTokenDelta", "provenance", "evidenceIds", "sourceRelationships"],
+      "required": ["action", "hostedId", "idState", "targetHostedId", "ruleText", "category", "placement", "rationale", "needsReview", "assessmentKeys", "memberMeaningCoverage", "guardedTokenDelta", "provenance", "evidenceIds", "sourceRelationships"],
       "properties": {
         "action": { "enum": ["add", "update", "no-change", "defer", "exclude"] },
         "hostedId": { "$ref": "#/$defs/hostedId" },
@@ -191,6 +199,7 @@
         "rationale": { "type": "string", "minLength": 1 },
         "needsReview": { "type": "boolean" },
         "assessmentKeys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "memberMeaningCoverage": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/memberMeaningCoverage" } },
         "guardedTokenDelta": { "type": "integer" },
         "provenance": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["published-upstream-standard", "confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"] } },
         "evidenceIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },

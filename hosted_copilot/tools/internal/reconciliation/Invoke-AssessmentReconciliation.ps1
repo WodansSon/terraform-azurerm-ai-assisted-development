@@ -26,6 +26,8 @@ param(
 
     [string]$ResumeRunDirectory,
 
+    [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
+
     [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
@@ -106,6 +108,26 @@ function Get-ReconciliationBaselineIdentityJson {
     return $baseline | ConvertTo-Json -Depth 100 -Compress
 }
 
+function Write-JsonAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Value
+    )
+
+    $directory = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $directory -Force
+    }
+    $temporaryPath = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [IO.File]::WriteAllText($temporaryPath, (($Value | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
+        [IO.File]::Move($temporaryPath, $Path, $true)
+    }
+    finally {
+        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Save-ReconciliationAttemptFailure {
     param(
         [Parameter(Mandatory = $true)][object]$Batch,
@@ -179,6 +201,10 @@ $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
 $repositoryPrefix = $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar
 if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Hosted rule change recommendation output must be outside the repository root'
+}
+$resolvedCacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
+if ($resolvedCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'CacheDirectory must be outside the repository root'
 }
 $resolvedResumeRunDirectory = if ([string]::IsNullOrWhiteSpace($ResumeRunDirectory)) { $null } else { [IO.Path]::GetFullPath($ResumeRunDirectory) }
 if ($null -ne $resolvedResumeRunDirectory) {
@@ -303,22 +329,78 @@ try {
         [IO.File]::WriteAllBytes($batchPromptPath, [IO.File]::ReadAllBytes($promptPath))
     }
 
-    $evaluatorCommandPath = $null
-    if ($null -eq $resolvedEvaluatorScriptPath) {
-        $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
-        if ($null -eq $command) {
-            throw "Evaluator command was not found: $EvaluatorCommand"
-        }
-        $evaluatorCommandPath = $command.Source
-    }
-
     $batchByNumber = @{}
     foreach ($batch in $reconciliationBatches) {
         $batchByNumber[[int]$batch.Number] = $batch
     }
     $validatedDrafts = @{}
     $batchErrors = @{}
+    $cachedBatchCount = 0
     $reusedBatchCount = 0
+    $cacheMetadataByBatch = @{}
+    foreach ($batch in $reconciliationBatches) {
+        $cacheIdentity = [ordered]@{
+            schemaVersion = 1
+            sourceDefinitionId = [string]$batch.SourceDefinitionId
+            baselineIdentitySha256 = Get-Sha256 -Content (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath)
+            hostedCatalogSha256 = Get-Sha256 -Path $snapshotCatalogPath
+            reconciliationContractSha256 = Get-Sha256 -Path $snapshotContractPath
+            draftSchemaSha256 = Get-Sha256 -Path $draftSchemaPath
+            promptSha256 = Get-Sha256 -Path $promptPath
+            evaluator = $evaluatorIdentity
+            model = $Model
+            reasoningEffort = $ReasoningEffort
+        }
+        $cacheKey = Get-Sha256 -Content ($cacheIdentity | ConvertTo-Json -Compress)
+        $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
+        $cacheMetadataByBatch[[int]$batch.Number] = [pscustomobject]@{ Identity = $cacheIdentity; Key = $cacheKey; Path = $cachePath }
+        if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
+            continue
+        }
+
+        $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
+        $batchDisplayPath = Join-Path $batch.Directory 'workbench-display.json'
+        try {
+            $cacheEntry = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -DateKind String
+            $actualProperties = @($cacheEntry.PSObject.Properties.Name | Sort-Object)
+            if (Compare-Object -ReferenceObject @('cacheKey', 'draft', 'identity', 'kind', 'schemaVersion') -DifferenceObject $actualProperties) {
+                throw 'cached reconciliation entry has an unexpected property set'
+            }
+            if ([int]$cacheEntry.schemaVersion -ne 1 -or [string]$cacheEntry.kind -cne 'hosted-assessment-reconciliation-batch-cache' -or [string]$cacheEntry.cacheKey -cne $cacheKey -or
+                ($cacheEntry.identity | ConvertTo-Json -Compress) -cne ($cacheIdentity | ConvertTo-Json -Compress)) {
+                throw 'cached reconciliation identity does not match'
+            }
+            [IO.File]::WriteAllText($batchResponsePath, (($cacheEntry.draft | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
+            if (-not ((Get-Content -LiteralPath $batchResponsePath -Raw) | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
+                throw 'cached reconciliation draft does not satisfy its schema'
+            }
+            $batchBuilderParameters = @{
+                RepositoryRoot = $runRepositoryRoot
+                AssessmentBaselinePath = $batch.BaselinePath
+                InventoryPaths = $snapshotInventoryPaths.ToArray()
+                ReconciliationDraftPath = $batchResponsePath
+                GuidanceCapacityPath = $snapshotGuidanceCapacityPath
+                OutputPath = $batchDisplayPath
+                HostedCatalogPath = $snapshotCatalogPath
+                ReconciliationContractPath = $snapshotContractPath
+                GeneratedAt = $GeneratedAt
+                OutputFormat = 'Json'
+            }
+            $null = @(& $snapshotBuilderPath @batchBuilderParameters 2>&1)
+            $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
+            $cachedBatchCount++
+            $reusedBatchCount++
+            if (-not $Quiet) {
+                Write-Host ("[PASSED]   assessment-reconciliation/cache : {0}/{1} {2}; cached batch revalidated" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId)
+            }
+        }
+        catch {
+            Remove-Item -LiteralPath $cachePath, $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
+            if (-not $Quiet) {
+                Write-Host ("[SKIPPED]  assessment-reconciliation/cache : {0}/{1} {2}; {3}" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId, $_.Exception.Message)
+            }
+        }
+    }
     if ($null -ne $resolvedResumeRunDirectory) {
         $retainedConfigurationPath = Join-Path $resolvedResumeRunDirectory 'reconciliation-run.json'
         $retainedBaselinePath = Join-Path $resolvedResumeRunDirectory 'source-assessment-baseline.json'
@@ -340,6 +422,9 @@ try {
         }
 
         foreach ($batch in $reconciliationBatches) {
+            if ($validatedDrafts.ContainsKey([int]$batch.Number)) {
+                continue
+            }
             $retainedBatchDirectory = Join-Path $resolvedResumeRunDirectory ('batches/batch-{0:D3}' -f $batch.Number)
             $retainedBaselinePath = Join-Path $retainedBatchDirectory 'source-assessment-baseline.json'
             $retainedResponsePath = Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.json'
@@ -374,6 +459,14 @@ try {
                 }
                 $null = @(& $snapshotBuilderPath @batchBuilderParameters 2>&1)
                 $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
+                $cacheMetadata = $cacheMetadataByBatch[[int]$batch.Number]
+                Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
+                    schemaVersion = 1
+                    kind = 'hosted-assessment-reconciliation-batch-cache'
+                    cacheKey = $cacheMetadata.Key
+                    identity = $cacheMetadata.Identity
+                    draft = $validatedDrafts[[int]$batch.Number]
+                })
                 $reusedBatchCount++
                 if (-not $Quiet) {
                     Write-Host ("[PASSED]   assessment-reconciliation/reuse : {0}/{1} {2}; retained batch revalidated" -f $batch.Number, $reconciliationBatches.Count, $batch.SourceDefinitionId)
@@ -388,6 +481,14 @@ try {
         }
     }
     $pendingBatches = @($reconciliationBatches | Where-Object { -not $validatedDrafts.ContainsKey([int]$_.Number) })
+    $evaluatorCommandPath = $null
+    if ($pendingBatches.Count -gt 0 -and $null -eq $resolvedEvaluatorScriptPath) {
+        $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
+        if ($null -eq $command) {
+            throw "Evaluator command was not found: $EvaluatorCommand"
+        }
+        $evaluatorCommandPath = $command.Source
+    }
     for ($attempt = 1; $attempt -le ($MaxRetries + 1) -and $pendingBatches.Count -gt 0; $attempt++) {
         if ($attempt -gt 1 -and $RetryDelayMilliseconds -gt 0) {
             Start-Sleep -Milliseconds ([int][Math]::Min(60000, $RetryDelayMilliseconds * [Math]::Pow(2, $attempt - 2)))
@@ -508,6 +609,14 @@ try {
                     throw "Batch reconciliation validation failed: $($_.Exception.Message)"
                 }
                 $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
+                $cacheMetadata = $cacheMetadataByBatch[[int]$batch.Number]
+                Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
+                    schemaVersion = 1
+                    kind = 'hosted-assessment-reconciliation-batch-cache'
+                    cacheKey = $cacheMetadata.Key
+                    identity = $cacheMetadata.Identity
+                    draft = $validatedDrafts[[int]$batch.Number]
+                })
                 $batchErrors.Remove([int]$batch.Number)
                 if (-not $Quiet) {
                     Write-Host ("[PASSED]   assessment-reconciliation/batch : {0}/{1} validated; {2} recommendations" -f $batch.Number, $reconciliationBatches.Count, @($validatedDrafts[[int]$batch.Number].recommendations).Count)
@@ -615,12 +724,14 @@ $result = [ordered]@{
     status = [string]$builderResult.status
     outputPath = $resolvedOutputPath
     batchCount = $reconciliationBatches.Count
+    cachedBatchCount = $cachedBatchCount
     reusedBatchCount = $reusedBatchCount
     evaluatedBatchCount = $reconciliationBatches.Count - $reusedBatchCount
     candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
     conflictCount = [int]$builderResult.conflictCount
     evaluator = $evaluatorIdentity
+    cacheDirectory = $resolvedCacheDirectory
     displaySha256 = [string]$builderResult.displaySha256
 }
 if ($OutputFormat -eq 'Json') {

@@ -277,6 +277,19 @@ foreach ($recommendation in @($draft.recommendations)) {
         }
         $membershipByAssessment[$assessmentKey] = $draftKey
     }
+    $meaningCoverageKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($coverage in @($recommendation.memberMeaningCoverage)) {
+        $coverageKey = Get-AssessmentKey -Reference $coverage.assessmentRef
+        if (-not $memberKeys.Contains($coverageKey)) {
+            throw "Recommendation $draftKey meaning coverage references a non-member assessment"
+        }
+        if (-not $meaningCoverageKeys.Add($coverageKey)) {
+            throw "Recommendation $draftKey repeats member meaning coverage"
+        }
+    }
+    if ($meaningCoverageKeys.Count -ne $memberKeys.Count) {
+        throw "Recommendation $draftKey must explain how its rule text preserves every member meaning"
+    }
 
     $category = [string]$recommendation.category
     $placement = [string]$recommendation.placement
@@ -395,7 +408,6 @@ foreach ($targetGroup in $duplicateTargetGroups) {
                 title = [string]$member.title
                 sourceMeaning = [string]$member.sourceMeaning
                 impactDescription = [string]$member.impactDescription
-                sourceLocalProposedText = [string]$member.sourceLocalProposedText
                 relatedHostedCoverage = @($member.relatedHostedCoverage | ForEach-Object {
                     [ordered]@{
                         hostedRuleId = [string]$_.hostedRuleId
@@ -415,6 +427,12 @@ foreach ($targetGroup in $duplicateTargetGroups) {
             rationale = [string]$recommendation.rationale
             needsReview = $true
             memberAssessments = $memberAssessments.ToArray()
+            memberMeaningCoverage = @($recommendation.memberMeaningCoverage | ForEach-Object {
+                [ordered]@{
+                    assessmentKey = Get-DisplayAssessmentKey -Reference $_.assessmentRef
+                    rationale = [string]$_.rationale
+                }
+            } | Sort-Object -Property assessmentKey)
         })
     }
     $reconciliationConflicts.Add([ordered]@{
@@ -547,6 +565,12 @@ foreach ($recommendation in $activeDraftRecommendations) {
         rationale = [string]$recommendation.rationale
         needsReview = [bool]$recommendation.needsReview
         assessmentKeys = @($recommendation.memberAssessmentRefs | ForEach-Object { Get-DisplayAssessmentKey -Reference $_ } | Sort-Object -CaseSensitive)
+        memberMeaningCoverage = @($recommendation.memberMeaningCoverage | ForEach-Object {
+            [ordered]@{
+                assessmentKey = Get-DisplayAssessmentKey -Reference $_.assessmentRef
+                rationale = [string]$_.rationale
+            }
+        } | Sort-Object -Property assessmentKey)
         guardedTokenDelta = (Get-GuardedTokens -Text $recommendedText) - (Get-GuardedTokens -Text $currentText)
         provenance = @($provenance | Sort-Object -CaseSensitive)
         evidenceIds = @($evidenceIds | Sort-Object -CaseSensitive)
@@ -632,7 +656,6 @@ foreach ($entry in @($baseline.entries)) {
             selectionRationale = [string]$assessment.selectionRationale
             confidence = $assessment.assessmentConfidence
             affectedSurfaces = @($assessment.affectedSurfaces)
-            sourceLocalProposedText = [string]$assessment.sourceLocalProposedText
             existingCoverage = $assessment.existingCoverage
             relatedHostedCoverage = @($assessment.relatedHostedCoverage)
             evaluatedAt = [string]$assessment.assessmentProvenance.assessedAt
