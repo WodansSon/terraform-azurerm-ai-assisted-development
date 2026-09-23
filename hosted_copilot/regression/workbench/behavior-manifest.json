@@ -50,6 +50,11 @@
       "journey": "playwright/journeys/candidate-decorations.journey.cjs"
     },
     {
+      "id": "WB-UX-TREE-010",
+      "title": "Cold sprite loading paints persisted root decorations before folder expansion",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
       "id": "WB-UX-PREVIEW-001",
       "title": "Promotion Preview renders all review artifacts in one continuous changed-file document",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
@@ -112,11 +117,6 @@
     {
       "id": "WB-UX-PREVIEW-013",
       "title": "Large reviews virtualize off-screen diff bodies while preserving navigation and scroll geometry",
-      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
-    },
-    {
-      "id": "WB-UX-CONFLICT-001",
-      "title": "Blocked reconciliation uses an actionable error MessageBar without weakening approval blocking",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {

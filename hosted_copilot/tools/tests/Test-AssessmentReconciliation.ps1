@@ -142,8 +142,7 @@ function Invoke-DisplayBuilder {
         [Parameter(Mandatory = $true)][string]$Name,
         [string]$AssessmentSetPath = $script:assessmentSetPath,
         [string]$HostedCatalogPath = $script:catalogPath,
-        [string[]]$InventoryPaths = $script:inventoryPaths,
-        [switch]$AllowConflicts
+        [string[]]$InventoryPaths = $script:inventoryPaths
     )
 
     $draftPath = Join-Path $tempRoot "$Name-reconciliation.json"
@@ -160,9 +159,6 @@ function Invoke-DisplayBuilder {
             HostedCatalogPath = $HostedCatalogPath
             GeneratedAt = $generatedAt
             OutputFormat = 'Json'
-        }
-        if ($AllowConflicts) {
-            $parameters.AllowConflicts = $true
         }
         $output = @(& $builderPath @parameters 2>&1)
         $exitCode = 0
@@ -567,6 +563,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
     Add-TestResult -Name 'display-schema' -Passed (Test-JsonInstance -Value $display -SchemaPath $displaySchemaPath) -Detail 'The producer emits the strict v4 display contract.'
     Add-TestResult -Name 'display-reported-hash' -Passed ([string]$firstResult.displaySha256 -ceq (Get-Sha256 -Path $firstRun.OutputPath)) -Detail 'The producer reports the exact display-byte hash.'
     Add-TestResult -Name 'complete-candidate-coverage' -Passed (@($display.candidates).Count -eq 3) -Detail 'Every assessment becomes one display candidate.'
+    $contributorSource = @($display.candidates | Where-Object { [string]$_.source.lane -ceq 'contributor' })[0].source
+    $contributorProvenanceValid = [string]$contributorSource.revision.repository -ceq 'hashicorp/terraform-provider-azurerm' -and [string]$contributorSource.revision.configuredRef -ceq 'main' -and [string]$contributorSource.revision.resolvedCommit -ceq ('a' * 40)
+    Add-TestResult -Name 'contributor-provenance-projected' -Passed $contributorProvenanceValid -Detail 'Contributor display candidates retain the source-definition repository, configured ref, and immutable commit required by both provenance pills.'
     $mappedCandidate = @($display.candidates | Where-Object { [string]$_.catalogMapping.state -ceq 'active' })
     $relatedOnlyCandidate = @($display.candidates | Where-Object { [string]$_.source.id -ceq 'guide-new-resource' })[0]
     $explicitMappingValid = $mappedCandidate.Count -eq 1 -and [string]$mappedCandidate[0].catalogMapping.hostedRuleId -ceq 'IMPL-EVID-001' -and [string]$relatedOnlyCandidate.catalogMapping.state -ceq 'unmapped' -and $null -eq $relatedOnlyCandidate.catalogMapping.hostedRuleId

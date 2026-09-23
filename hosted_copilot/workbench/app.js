@@ -69,15 +69,12 @@ const state = {
   assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
-  conflictPane: "conflicts",
-  conflictActiveId: null,
   rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
   queries: {
     "candidate-sources": "",
-    "assessment-results": "",
-    conflicts: ""
+    "assessment-results": ""
   },
   candidateSorts: {},
   assessmentSorts: {},
@@ -91,7 +88,6 @@ let toastTimer;
 let truncationTooltipFrame;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
-let conflictHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [] };
 let previewBodyVirtualizer;
 let previewVirtualizationResizeTimer;
@@ -100,7 +96,6 @@ let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
-const conflictExpansionState = new Map();
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
@@ -145,16 +140,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 function captureElements() {
   for (const id of [
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
-    "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count", "plan-conflict-indicator", "plan-conflict-count",
+    "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
-    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "conflicts-tab", "conflict-tab-count", "conflicts-panel",
+    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "conflict-list", "conflict-sticky-stack", "conflict-list-panel", "conflict-detail",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
     "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code",
     "preview-review-toolbar",
     "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
-    "approve-export-button", "reconciliation-conflict-banner", "reconciliation-conflict-title", "reconciliation-conflict-detail", "review-conflicts-button", "dismiss-conflict-message", "workspace", "toast", "toast-message", "toast-close"
+    "approve-export-button", "workspace", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
   }
@@ -171,8 +166,6 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
-  elements["review-conflicts-button"].addEventListener("click", openConflictWorkspace);
-  elements["dismiss-conflict-message"].addEventListener("click", () => { elements["reconciliation-conflict-banner"].hidden = true; });
   elements["plan-bulk-undo"].addEventListener("click", () => undoBulkOperation(getLatestBulkOperation()?.id));
   elements["close-button"].addEventListener("click", closeWorkbench);
   elements["export-button"].addEventListener("click", () => {
@@ -194,9 +187,6 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-assessment-pane]").forEach((button) => {
     button.addEventListener("click", () => showAssessmentPane(button.dataset.assessmentPane));
-  });
-  document.querySelectorAll("[data-conflict-pane]").forEach((button) => {
-    button.addEventListener("click", () => showConflictPane(button.dataset.conflictPane));
   });
   elements["candidate-list"].addEventListener("click", (event) => {
     const sortButton = event.target.closest("[data-candidate-sort]");
@@ -235,15 +225,6 @@ function bindEvents() {
   elements["assessment-results-list"].addEventListener("keydown", (event) => {
     if (event.target.closest("button, input, a, label")) return;
     handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
-  });
-  elements["conflict-list"].addEventListener("click", (event) => {
-    const row = event.target.closest("[data-conflict-id]");
-    if (!row) return;
-    selectConflict(row.dataset.conflictId);
-    showConflictPane("details");
-  });
-  elements["conflict-list"].addEventListener("keydown", (event) => {
-    handleRowKeyboardNavigation(event, elements["conflict-list"], "conflictId", selectConflict, () => showConflictPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
@@ -425,15 +406,63 @@ function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, a
   target.scrollIntoView({ block: "nearest" });
 }
 
+async function waitForIconSymbol(path, symbol) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const probe = document.createElementNS(namespace, "svg");
+  const use = document.createElementNS(namespace, "use");
+  probe.setAttribute("width", "16");
+  probe.setAttribute("height", "16");
+  probe.style.cssText = "position:fixed;left:-32px;top:-32px;opacity:0;pointer-events:none";
+  use.setAttribute("href", `${path}#${symbol}`);
+  probe.appendChild(use);
+  document.body.appendChild(probe);
+  try {
+    const deadline = performance.now() + 5000;
+    while (performance.now() < deadline) {
+      const bounds = use.getBBox();
+      if (bounds.width > 0 && bounds.height > 0) return;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    throw new Error(`Icon symbol did not paint: ${symbol}`);
+  } finally {
+    probe.remove();
+  }
+}
+
+async function preloadIconSprites() {
+  const sprites = [
+    ["icons/codicons/sprite.svg", "codicon-diff-modified"],
+    ["icons/octicons/sprite.svg", "octicon-shield-check-16"]
+  ];
+  const responses = await Promise.all(sprites.map(([path]) => fetch(path)));
+  const failed = responses.find((response) => !response.ok);
+  if (failed) throw new Error(`Icon sprite request failed with ${failed.status}`);
+  await Promise.all(responses.map((response) => response.arrayBuffer()));
+  await Promise.all(sprites.map(([path, symbol]) => waitForIconSymbol(path, symbol)));
+}
+
+async function waitForCandidateDecorationPaint() {
+  const deadline = performance.now() + 5000;
+  while (performance.now() < deadline) {
+    const uses = [...elements["candidate-list"].querySelectorAll(".candidate-parent-decoration-icon:not([hidden]) use, .candidate-decoration-icon:not([hidden]) use")];
+    if (uses.every((use) => {
+      const bounds = use.getBBox();
+      return bounds.width > 0 && bounds.height > 0;
+    })) return;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  throw new Error("Candidate decoration icons did not paint");
+}
+
 async function loadBundle() {
   setSaveIndicator("Loading display");
   try {
+    await preloadIconSprites();
     const response = await fetch("workbench-display.json", { cache: "no-store" });
     if (!response.ok) throw new Error(`Display request failed with ${response.status}`);
     const display = await response.json();
     validateDisplay(display);
     state.bundle = display;
-    renderReconciliationState();
     const discoveredCandidates = normalizeDisplayCandidates(display);
     const sessionId = getSessionId(display);
     const existing = await readSession(sessionId);
@@ -467,6 +496,8 @@ async function loadBundle() {
     renderAll();
     showCandidatePane("candidates");
     showAssessmentPane("assessments");
+    await waitForCandidateDecorationPaint();
+    elements.workspace.classList.remove("icon-paint-pending");
     showToast("Workbench draft loaded");
   } catch (error) {
     renderFatalError(error);
@@ -512,37 +543,9 @@ function validateDisplay(display) {
   if (!display.guidanceCapacity || display.guidanceCapacity.reportCount !== 8) {
     throw new Error("The Workbench display does not contain all guidance capacity reports.");
   }
-  if (!display.reconciliation || !["ready", "blocked"].includes(display.reconciliation.status) || !Array.isArray(display.reconciliation.conflicts)) {
+  if (!display.reconciliation || display.reconciliation.status !== "ready") {
     throw new Error("The Workbench display does not contain reconciliation status.");
   }
-  if ((display.reconciliation.status === "ready") !== (display.reconciliation.conflicts.length === 0)) {
-    throw new Error("The Workbench display reconciliation status does not match its conflicts.");
-  }
-}
-
-function renderReconciliationState() {
-  const conflicts = state.bundle?.reconciliation?.conflicts || [];
-  const blocked = conflicts.length > 0;
-  elements.workspace.classList.toggle("has-reconciliation-conflicts", blocked);
-  elements["promotion-plan-stage"].classList.toggle("reconciliation-blocked", blocked);
-  elements["reconciliation-conflict-banner"].hidden = !blocked;
-  elements["conflicts-tab"].hidden = !blocked;
-  elements["conflict-tab-count"].textContent = blocked ? formatNumber(conflicts.length) : "";
-  elements["promotion-plan-stage-icon"].setAttribute("href", `icons/codicons/sprite.svg#codicon-${blocked ? "git-pull-request-error" : "new-session"}`);
-  elements["plan-conflict-indicator"].hidden = !blocked;
-  elements["plan-conflict-count"].textContent = blocked ? formatCountLabel(conflicts.length, "Conflict") : "";
-  setWorkbenchTooltip(elements["plan-conflict-indicator"], blocked ? `${formatCountLabel(conflicts.length, "Unresolved conflict")} block approval` : "");
-  if (!blocked) return;
-  const conflictLabel = conflicts.length === 1 ? "1 reconciliation conflict requires" : `${formatNumber(conflicts.length)} reconciliation conflicts require`;
-  elements["reconciliation-conflict-title"].textContent = `${conflictLabel} maintainer review`.toUpperCase();
-  elements["reconciliation-conflict-detail"].textContent = "Approval is blocked until every conflict is resolved and the proposal is revalidated.";
-}
-
-function openConflictWorkspace() {
-  switchView("catalog");
-  renderConflicts();
-  setWorkspaceTab("conflicts");
-  showConflictPane("conflicts");
 }
 
 function normalizeDisplayCandidates(display) {
@@ -1002,7 +1005,6 @@ function renderAll(shouldRenderAssessment = true) {
   renderCandidateList();
   if (shouldRenderAssessment) renderAssessment();
   renderAssessmentResults();
-  renderConflicts();
   renderPlan();
   renderCapacity();
   renderPreview();
@@ -1463,7 +1465,9 @@ function groupCandidatesBySource(candidates) {
 function renderSourceSummaryLabel(sourceType, label, decoration) {
   const revision = state.assessedCandidates.find((candidate) => candidate.sourceType === "upstream")?.revision;
   const shortCommit = revision?.resolvedCommit?.slice(0, 8);
-  const provenanceLabel = revision?.repository && shortCommit ? `${revision.repository}@${shortCommit}` : "";
+  const provenanceLabel = revision?.repository && revision?.configuredRef && shortCommit
+    ? `${revision.repository} · ${revision.configuredRef}@${shortCommit}`
+    : "";
   const provenance = sourceType === "upstream" && provenanceLabel
     ? `<span class="source-provenance-pill type-compact" data-workbench-tooltip="${escapeHtml(provenanceLabel)}">${escapeHtml(provenanceLabel)}</span>`
     : "";
@@ -1705,155 +1709,6 @@ function renderAssessmentResultRow(candidate) {
       <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
       <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
-  `;
-}
-
-function getFilteredConflicts() {
-  const query = state.queries.conflicts.trim().toLowerCase();
-  const conflicts = state.bundle?.reconciliation?.conflicts || [];
-  if (!query) return conflicts;
-  return conflicts.filter((conflict) => [
-    conflict.targetHostedId,
-    conflict.existingRuleText,
-    conflict.validationError,
-    ...conflict.recommendations.flatMap((recommendation) => [recommendation.title, recommendation.ruleText, recommendation.category, recommendation.placement])
-  ].some((value) => String(value || "").toLowerCase().includes(query)));
-}
-
-function getConflictExpansion(nodeId, expandedByDefault = false) {
-  return conflictExpansionState.has(nodeId) ? conflictExpansionState.get(nodeId) : expandedByDefault;
-}
-
-function buildConflictTreeNodes() {
-  const conflicts = getFilteredConflicts();
-  return ["documentation", "implementation", "testing"].map((category) => {
-    const categoryConflicts = conflicts.filter((conflict) => conflict.recommendations[0].category === category);
-    if (!categoryConflicts.length) return null;
-    const categoryId = `conflict:category:${category}`;
-    return {
-      id: categoryId,
-      kind: "category",
-      rowHeight: 40,
-      expanded: getConflictExpansion(categoryId, Boolean(state.queries.conflicts)),
-      data: { label: formatHostedCategory(category), conflicts: categoryConflicts },
-      children: Object.entries(categoryConflicts.reduce((groups, conflict) => {
-        const placement = conflict.recommendations[0].placement;
-        (groups[placement] ||= []).push(conflict);
-        return groups;
-      }, {}))
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([placement, placementConflicts]) => {
-          const placementId = `conflict:placement:${category}:${placement}`;
-          return {
-            id: placementId,
-            kind: "placement",
-            rowHeight: 40,
-            expanded: getConflictExpansion(placementId, Boolean(state.queries.conflicts)),
-            data: { label: placement, conflicts: placementConflicts },
-            children: [{
-              id: `conflict:header:${category}:${placement}`,
-              kind: "header",
-              rowHeight: 40,
-              expanded: true,
-              data: {},
-              children: placementConflicts.map((conflict) => ({
-                id: `conflict:leaf:${conflict.id}`,
-                kind: "leaf",
-                rowHeight: 40,
-                stickyEligible: false,
-                expanded: false,
-                data: { conflict }
-              }))
-            }]
-          };
-        })
-    };
-  }).filter(Boolean);
-}
-
-function renderConflictHierarchyRow(node) {
-  if (node.kind === "header") return elementFromHtml('<div class="conflict-results-header"><span>Hosted Rule</span><span>Proposals</span></div>');
-  if (node.kind === "leaf") {
-    const conflict = node.data.conflict;
-    return elementFromHtml(`
-      <div class="conflict-result-row clickable ${conflict.id === state.conflictActiveId ? "active" : ""}" role="button" tabindex="0" data-conflict-id="${escapeHtml(conflict.id)}" ${conflict.id === state.conflictActiveId ? 'aria-current="true"' : ""}>
-        <span class="candidate-tree-copy"><strong>${escapeHtml(conflict.targetHostedId)}</strong><small>${escapeHtml(conflict.validationError)}</small></span>
-        <span class="status-badge error type-compact">${formatNumber(conflict.recommendations.length)} Competing</span>
-      </div>
-    `);
-  }
-  const { conflicts, label } = node.data;
-  return elementFromHtml(`
-    <button class="hierarchical-parent-row ${node.kind === "category" ? "candidate-source-row" : "candidate-folder-row"} clickable" type="button" data-hierarchical-toggle aria-expanded="${node.expanded}">
-      ${icon("folder")}<span class="candidate-parent-label"><strong>${escapeHtml(label)}</strong></span><span class="status-badge ${node.kind === "category" ? "error" : "neutral"} count-badge type-compact">${formatCountLabel(conflicts.length, "Conflict")}</span>
-    </button>
-  `);
-}
-
-function ensureConflictHierarchicalView() {
-  if (conflictHierarchicalView) return conflictHierarchicalView;
-  conflictHierarchicalView = new WorkbenchHierarchicalView.HierarchicalView({
-    viewport: elements["conflict-list"],
-    stickyContainer: elements["conflict-sticky-stack"],
-    adapter: {
-      accumulateRoots: true,
-      buildNodes: buildConflictTreeNodes,
-      getInput: () => state.bundle?.reconciliation?.conflicts || [],
-      renderRow: renderConflictHierarchyRow,
-      onExpandedChange: (node, expanded) => conflictExpansionState.set(node.id, expanded)
-    }
-  });
-  return conflictHierarchicalView;
-}
-
-function renderConflicts() {
-  const conflicts = state.bundle?.reconciliation?.conflicts || [];
-  if (!conflicts.length || !getFilteredConflicts().length) {
-    conflictHierarchicalView?.destroy();
-    conflictHierarchicalView = null;
-    elements["conflict-sticky-stack"].hidden = true;
-    elements["conflict-list"].innerHTML = `<div class="empty-state compact"><h3>${conflicts.length ? "No Matching Conflicts" : "No Reconciliation Conflicts"}</h3><p>${conflicts.length ? "No conflicts match the current search." : "The current reconciliation is ready for maintainer review."}</p></div>`;
-  }
-  else {
-    ensureConflictHierarchicalView().setInput(conflicts);
-  }
-  renderConflictDetail();
-}
-
-function selectConflict(id) {
-  state.conflictActiveId = id;
-  elements["conflict-list"].querySelectorAll("[data-conflict-id]").forEach((row) => {
-    const active = row.dataset.conflictId === id;
-    row.classList.toggle("active", active);
-    row.toggleAttribute("aria-current", active);
-  });
-  renderConflictDetail();
-  refreshPresentation();
-}
-
-function renderConflictDetail() {
-  const conflict = (state.bundle?.reconciliation?.conflicts || []).find((item) => item.id === state.conflictActiveId);
-  if (!conflict) {
-    elements["conflict-detail"].innerHTML = `<div class="empty-state">${icon("git-branch-conflicts")}<h2>Select a Conflict</h2><p>The existing Hosted rule and its competing recommendations will appear here.</p></div>`;
-    return;
-  }
-  elements["conflict-detail"].innerHTML = `
-    <div class="detail-header"><div><span class="detail-identity">Reconciliation conflict</span><h2 class="detail-rule-title">${escapeHtml(conflict.targetHostedId)}</h2></div><span class="status-badge error">${formatCountLabel(conflict.recommendations.length, "Competing recommendation")}</span></div>
-    <div class="section-block"><span class="section-label">Existing Hosted Rule:</span><p>${escapeHtml(conflict.existingRuleText)}</p></div>
-    <div class="section-block"><span class="section-label">Validation Error:</span><p>${escapeHtml(conflict.validationError)}</p></div>
-    <div class="section-block"><span class="section-label">Competing Recommendations:</span><div class="conflict-recommendations">${conflict.recommendations.map((recommendation, index) => `
-      <section class="conflict-recommendation subcontext-container">
-        <div class="conflict-recommendation-heading"><strong>${index + 1}. ${escapeHtml(recommendation.title)}</strong><span class="recommendation-badge ${escapeHtml(recommendation.action)}">${escapeHtml(formatRecommendation(recommendation.action))}</span></div>
-        <p>${escapeHtml(recommendation.ruleText)}</p>
-        <div class="conflict-recommendation-meta"><span>${escapeHtml(formatHostedCategory(recommendation.category))}</span><span>${escapeHtml(recommendation.placement)}</span><span>${formatCountLabel(recommendation.memberAssessments.length, "Assessment")}</span></div>
-        <p>${escapeHtml(recommendation.rationale)}</p>
-        <details class="conflict-evidence"><summary class="clickable">Review member evidence</summary>${recommendation.memberAssessments.map((assessment) => {
-          const meaningCoverage = recommendation.memberMeaningCoverage.find((coverage) => coverage.assessmentKey === assessment.key);
-          const relatedCoverage = assessment.relatedHostedCoverage.map((coverage) => `${coverage.hostedRuleId}: ${coverage.rationale}`).join(" ");
-          return `<div class="conflict-member"><strong>${escapeHtml(assessment.sourceId)} — ${escapeHtml(assessment.title)}</strong><p>${escapeHtml(assessment.sourceMeaning)}</p><p>${escapeHtml(meaningCoverage?.rationale || "")}</p>${relatedCoverage ? `<p>${escapeHtml(relatedCoverage)}</p>` : ""}</div>`;
-        }).join("")}</details>
-      </section>
-    `).join("")}</div></div>
   `;
 }
 
@@ -3242,7 +3097,6 @@ function diffTextLines(beforeText, afterText) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
-  const reconciliationConflictCount = state.bundle?.reconciliation?.conflicts?.length || 0;
   const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
   const missingRationaleCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
@@ -3251,8 +3105,7 @@ function getPreviewReadiness() {
   const missingRationale = missingRationaleCount > 0;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
-  if (reconciliationConflictCount) status = "reconciliation conflicts";
-  else if (planCandidates.length === 0) status = "no actions";
+  if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
   else if (missingRationale) status = "needs rationale";
   else if (!approverName) status = "needs approver";
@@ -3261,15 +3114,13 @@ function getPreviewReadiness() {
     approverName,
     missingActionCount,
     missingRationaleCount,
-    reconciliationConflictCount,
     status,
-    ready: reconciliationConflictCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && !missingRationale && Boolean(approverName)
+    ready: planCandidates.length > 0 && missingActionCount === 0 && !missingRationale && Boolean(approverName)
   };
 }
 
 function renderApprovalRequirements(readiness) {
   const requirements = [
-    ["Reconciliation conflicts", readiness.reconciliationConflictCount ? `${readiness.reconciliationConflictCount} unresolved` : "None", readiness.reconciliationConflictCount === 0],
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
@@ -3399,10 +3250,6 @@ function updateFilter(value) {
     state.assessmentActiveKey = null;
     renderAssessmentResults();
   }
-  else {
-    state.conflictActiveId = null;
-    renderConflicts();
-  }
   refreshPresentation();
 }
 
@@ -3449,23 +3296,8 @@ function showAssessmentPane(pane) {
   if (!detailsActive) assessmentHierarchicalView?.refreshLayout();
 }
 
-function showConflictPane(pane) {
-  const activePane = pane === "details" ? "details" : "conflicts";
-  state.conflictPane = activePane;
-  const detailsActive = activePane === "details";
-  elements["conflict-list-panel"].hidden = detailsActive;
-  elements["conflict-detail"].hidden = !detailsActive;
-  document.querySelectorAll("[data-conflict-pane]").forEach((button) => {
-    const active = button.dataset.conflictPane === activePane;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-  });
-  if (!detailsActive) conflictHierarchicalView?.refreshLayout();
-}
-
 function setWorkspaceTab(tab) {
-  if (!["candidate-sources", "assessment-results", "conflicts"].includes(tab)) return;
-  if (tab === "conflicts" && !(state.bundle?.reconciliation?.conflicts || []).length) return;
+  if (!["candidate-sources", "assessment-results"].includes(tab)) return;
   dismissNotification();
   state.workspaceTab = tab;
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
@@ -3477,16 +3309,13 @@ function setWorkspaceTab(tab) {
   elements["candidate-sources-panel"].hidden = tab !== "candidate-sources";
   elements["assessment-results-panel"].classList.toggle("active", tab === "assessment-results");
   elements["assessment-results-panel"].hidden = tab !== "assessment-results";
-  elements["conflicts-panel"].classList.toggle("active", tab === "conflicts");
-  elements["conflicts-panel"].hidden = tab !== "conflicts";
   elements["search-input"].value = state.queries[tab];
   elements["search-input"].placeholder = tab === "candidate-sources"
     ? "Search sources, categories, or rules"
-    : tab === "assessment-results" ? "Search excluded assessment results" : "Search reconciliation conflicts";
+    : "Search excluded assessment results";
   elements["search-input"].setAttribute("aria-label", elements["search-input"].placeholder);
   if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
-  else if (tab === "assessment-results") assessmentHierarchicalView?.refreshLayout();
-  else conflictHierarchicalView?.refreshLayout();
+  else assessmentHierarchicalView?.refreshLayout();
   refreshPresentation();
 }
 
@@ -3618,7 +3447,7 @@ function handleApproverInput(event) {
 function approveAndExport() {
   const readiness = getPreviewReadiness();
   if (!readiness.ready) {
-    showToast(readiness.reconciliationConflictCount ? "Resolve all reconciliation conflicts before approval." : "Complete the selected rule rationale and approver name before exporting.", true);
+    showToast("Complete the selected rule rationale and approver name before exporting.", true);
     return;
   }
   elements["approve-export-button"].disabled = true;
@@ -3741,6 +3570,7 @@ function setSaveIndicator(text) {
 }
 
 function renderFatalError(error) {
+  elements.workspace.classList.remove("icon-paint-pending");
   elements["candidate-list"].innerHTML = "";
   elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench Could Not Load</h2><p>${escapeHtml(error.message)}</p></div>`;
   setSaveIndicator("Bundle unavailable");

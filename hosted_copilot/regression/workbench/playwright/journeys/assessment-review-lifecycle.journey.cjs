@@ -6,7 +6,8 @@ const behaviorIds = [
   "WB-UX-DECISION-001",
   "WB-UX-CAPACITY-001",
   "WB-UX-SYNC-001",
-  "WB-UX-BACKTOTOP-001"
+  "WB-UX-BACKTOTOP-001",
+  "WB-UX-TREE-010"
 ];
 
 async function openAssessmentResult(page, query) {
@@ -79,6 +80,62 @@ async function run({ page, baseUrl, assert, playback }) {
     await overriddenRow.waitFor({ state: "visible" });
     assert(await overriddenRow.locator("[data-decision-key]").isChecked(), "Applied override did not add the candidate to the Promotion Plan");
     assert((await page.locator('#candidate-list [data-node-id="candidate:source:overrides"]').count()) === 1, "Applied override did not create the Overrides view");
+
+    const contributorProbe = await page.evaluate(async () => {
+      const candidate = state.candidates.find((item) => item.sourceType === "upstream" && !getDecision(item).inPlan && getAllowedActions(item).some((action) => isPromotionAction(action)));
+      const decision = defaultDecision(candidate);
+      const action = getAllowedActions(candidate, decision.proposedText).find((item) => isPromotionAction(item));
+      const originalDecision = state.session.decisions[candidate.key] ? structuredClone(state.session.decisions[candidate.key]) : null;
+      saveDecision(candidate, {
+        ...decision,
+        action,
+        rationale: "Cold-start regression verifies persisted contributor decoration paint.",
+        ...createPlanMembership("manual")
+      });
+      await persistencePromise;
+      return { key: candidate.key, originalDecision };
+    });
+    await page.route("**/icons/*/sprite.svg", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.continue();
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(50);
+    const gatedBeforeSprites = await page.evaluate(() => Number(document.querySelector("#catalog-count")?.textContent) === 0
+      && document.querySelector("#workspace")?.classList.contains("icon-paint-pending")
+      && !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]')
+      && !document.querySelector('#candidate-list [data-node-id="candidate:source:upstream"]'));
+    assert(gatedBeforeSprites, "Candidate roots rendered before cold icon sprites were ready");
+    await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0 && !document.querySelector("#workspace")?.classList.contains("icon-paint-pending"));
+    const coldDecorations = await page.evaluate(() => ["candidate:source:overrides", "candidate:source:upstream"].map((id) => {
+      const row = document.querySelector(`#candidate-list [data-node-id="${id}"]`);
+      const icon = row?.querySelector(".candidate-parent-decoration-icon");
+      const bounds = icon?.querySelector("use")?.getBBox();
+      return {
+        id,
+        status: row?.dataset.selectionStatus || null,
+        iconHidden: icon?.hasAttribute("hidden") ?? true,
+        width: bounds?.width || 0,
+        height: bounds?.height || 0
+      };
+    }));
+    assert(coldDecorations.every((item) => item.status && !item.iconHidden && item.width > 0 && item.height > 0), `Cold-start decorations were not painted before expansion: ${JSON.stringify(coldDecorations)}`);
+    await page.unroute("**/icons/*/sprite.svg");
+    await page.evaluate(async ({ key, originalDecision }) => {
+      globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = {
+        status: "validated",
+        login: "fixture-codeowner",
+        isCodeOwner: true,
+        reason: null
+      };
+      autofillApproverName();
+      if (originalDecision) state.session.decisions[key] = originalDecision;
+      else delete state.session.decisions[key];
+      state.session.updatedAt = toUtcTimestamp();
+      await persistSession();
+      refreshEffectiveCandidates();
+      renderAll();
+    }, contributorProbe);
 
     await openAssessmentResult(page, candidateTitle);
     await page.locator("[data-override-edit]").click();

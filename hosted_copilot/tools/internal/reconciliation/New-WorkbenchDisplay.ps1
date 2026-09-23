@@ -24,9 +24,7 @@ param(
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text',
-
-    [switch]$AllowConflicts
+    [string]$OutputFormat = 'Text'
 )
 
 Set-StrictMode -Version Latest
@@ -118,6 +116,7 @@ if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256) {
 
 $inventoryRecords = @{}
 $inventoryHashes = [ordered]@{}
+$inventoryRevisions = @{}
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
 foreach ($inventoryPath in $InventoryPaths) {
     $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Source inventory'
@@ -131,6 +130,7 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     Assert-SourceInventoryIntegrity -Inventory $inventory
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
+    $inventoryRevisions[$sourceDefinitionId] = $inventory.collection.sourceRevision
     foreach ($record in @($inventory.records)) {
         $sourceKey = $sourceDefinitionId + [char]0 + [string]$record.sourceId
         if ($inventoryRecords.ContainsKey($sourceKey)) {
@@ -438,68 +438,8 @@ $duplicateTargetGroups = @($orderedDraftRecommendations |
     Group-Object -Property { [string]$_.targetHostedId } |
     Where-Object { $_.Count -gt 1 } |
     Sort-Object -Property Name)
-if ($duplicateTargetGroups.Count -gt 0 -and -not $AllowConflicts) {
+if ($duplicateTargetGroups.Count -gt 0) {
     throw "More than one recommendation owns Hosted ID $($duplicateTargetGroups[0].Name)"
-}
-$conflictDraftKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-$conflictIdByDraftKey = @{}
-$reconciliationConflicts = [Collections.Generic.List[object]]::new()
-foreach ($targetGroup in $duplicateTargetGroups) {
-    $targetHostedId = [string]$targetGroup.Name
-    $conflictId = "duplicate-target:$targetHostedId"
-    $conflictRecommendations = [Collections.Generic.List[object]]::new()
-    foreach ($recommendation in @($targetGroup.Group | Sort-Object -Property draftKey)) {
-        $draftKey = [string]$recommendation.draftKey
-        $null = $conflictDraftKeys.Add($draftKey)
-        $conflictIdByDraftKey[$draftKey] = $conflictId
-        $memberAssessments = [Collections.Generic.List[object]]::new()
-        foreach ($reference in @($recommendation.memberAssessmentRefs)) {
-            $assessmentKey = Get-AssessmentKey -Reference $reference
-            $member = $assessments[$assessmentKey].assessment
-            $memberAssessments.Add([ordered]@{
-                key = Get-DisplayAssessmentKey -Reference $reference
-                sourceDefinitionId = [string]$reference.sourceDefinitionId
-                sourceId = [string]$reference.sourceId
-                contentSha256 = [string]$reference.contentSha256
-                assessmentId = [string]$reference.assessmentId
-                title = [string]$member.title
-                sourceMeaning = [string]$member.sourceMeaning
-                impactDescription = [string]$member.impactDescription
-                relatedHostedCoverage = @($member.relatedHostedCoverage | ForEach-Object {
-                    [ordered]@{
-                        hostedRuleId = [string]$_.hostedRuleId
-                        relationship = [string]$_.relationship
-                        rationale = [string]$_.rationale
-                    }
-                })
-            })
-        }
-        $conflictRecommendations.Add([ordered]@{
-            draftKey = $draftKey
-            action = [string]$recommendation.recommendedAction
-            title = [string]$recommendation.title
-            ruleText = [string]$recommendation.recommendedRuleText
-            category = [string]$recommendation.category
-            placement = [string]$recommendation.placement
-            rationale = [string]$recommendation.rationale
-            needsReview = $true
-            memberAssessments = $memberAssessments.ToArray()
-            memberMeaningCoverage = @($recommendation.memberMeaningCoverage | ForEach-Object {
-                [ordered]@{
-                    assessmentKey = Get-DisplayAssessmentKey -Reference $_.assessmentRef
-                    rationale = [string]$_.rationale
-                }
-            } | Sort-Object -Property assessmentKey)
-        })
-    }
-    $reconciliationConflicts.Add([ordered]@{
-        id = $conflictId
-        kind = 'duplicate-target-ownership'
-        targetHostedId = $targetHostedId
-        existingRuleText = [string]$catalogRules[$targetHostedId].text
-        validationError = "More than one recommendation owns Hosted ID $targetHostedId"
-        recommendations = $conflictRecommendations.ToArray()
-    })
 }
 $activeDraftRecommendations = $orderedDraftRecommendations
 $hostedIdByDraftKey = @{}
@@ -522,7 +462,7 @@ foreach ($recommendation in $activeDraftRecommendations) {
     if (-not $occupiedHostedIds.Add($hostedId) -and $null -eq $recommendation.targetHostedId) {
         throw "Hosted ID allocation produced a duplicate ID: $hostedId"
     }
-    if ($hostedIdByDraftKey.Values -contains $hostedId -and -not ($AllowConflicts -and $conflictDraftKeys.Contains($draftKey))) {
+    if ($hostedIdByDraftKey.Values -contains $hostedId) {
         throw "More than one recommendation owns Hosted ID $hostedId"
     }
     $hostedIdByDraftKey[$draftKey] = $hostedId
@@ -700,7 +640,12 @@ foreach ($entry in @($baseline.entries)) {
         $displaySource['sourceIds'] = @($sourceRecord.sourceIds)
     }
     if ($sourceRecord.PSObject.Properties['resolvedCommit']) {
-        $displaySource['revision'] = [ordered]@{ resolvedCommit = [string]$sourceRecord.resolvedCommit }
+        $revision = [ordered]@{ resolvedCommit = [string]$sourceRecord.resolvedCommit }
+        if ($sourceDefinitionId -ceq 'contributor-guidance') {
+            $revision['repository'] = [string]$sourceRecord.repository
+            $revision['configuredRef'] = [string]$inventoryRevisions[$sourceDefinitionId].configuredRef
+        }
+        $displaySource['revision'] = $revision
     }
 
     foreach ($assessment in @($entry.assessments)) {
@@ -753,10 +698,6 @@ foreach ($entry in @($baseline.entries)) {
                 }
             }
         }
-        if ($conflictIdByDraftKey.ContainsKey($draftKey)) {
-            $displayCandidate['conflictId'] = [string]$conflictIdByDraftKey[$draftKey]
-            $displayCandidate['conflictDraftKey'] = $draftKey
-        }
         $candidates.Add($displayCandidate)
     }
 }
@@ -807,8 +748,7 @@ $display = [ordered]@{
     readOnly = $true
     inputFingerprint = $inputFingerprint
     reconciliation = [ordered]@{
-        status = if ($reconciliationConflicts.Count -gt 0) { 'blocked' } else { 'ready' }
-        conflicts = $reconciliationConflicts.ToArray()
+        status = 'ready'
     }
     candidates = @($candidates | Sort-Object -Property @{ Expression = { [string]$_.source.lane + [char]0 + [string]$_.source.id + [char]0 + [string]$_.assessment.id } })
     catalog = [ordered]@{
@@ -827,18 +767,17 @@ if (-not $displayValid) {
 $outputSnapshot = Write-JsonSnapshot -Path $resolvedOutputPath -Value $display
 
 $result = [ordered]@{
-    status = if ($reconciliationConflicts.Count -gt 0) { 'blocked' } else { 'passed' }
+    status = 'passed'
     outputPath = $resolvedOutputPath
     candidateCount = $display.candidates.Count
     recommendationCount = $recommendationsByDraftKey.Count
-    conflictCount = $reconciliationConflicts.Count
     displaySha256 = $outputSnapshot.Sha256
 }
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Workbench display generated with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations, $($result.conflictCount) conflicts"
+    Write-Output "Workbench display generated with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations"
     Write-Output "Output: $($result.outputPath)"
     Write-Output "Display SHA-256: $($result.displaySha256)"
 }

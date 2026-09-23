@@ -453,7 +453,7 @@ Reconciliation preserves diagnostic evidence, but ownership repair is not a main
 - Require canonical catalog mappings to be the only authority for existing Hosted targets. Related coverage and semantic similarity must never create a target.
 - Reject a final corpus containing duplicate target ownership or a recommendation whose target disagrees with its canonical mapping.
 - Fail launch after bounded retries when ownership remains invalid. Do not emit blocked display status or conflict groups.
-- Remove the conflict MessageBar, **Review Conflicts** command, Conflicts tab and panes, conflict activity and plan indicators, conflict-specific approval gating, `AllowConflicts` builder path, conflict display schema, conflict icon dependency, and `WB-UX-CONFLICT-001` regression coverage.
+- Remove the conflict MessageBar, **Review Conflicts** command, Conflicts tab and panes, conflict activity and plan indicators, conflict-specific approval gating, `AllowConflicts` builder path, conflict display schema, and `WB-UX-CONFLICT-001` regression coverage. Retain the pinned conflict icons in the general-purpose local icon inventory without a runtime dependency.
 
 ##### Next Implementation Step: Advisory Consolidation Proposals
 
@@ -554,6 +554,7 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-TREE-007`: Assessment categories truncate to one line with delayed full-text tooltips.
 - `WB-UX-TREE-008`: Contested status routes directly to the matching Maintainer Override details section without inline expansion.
 - `WB-UX-TREE-009`: Assessment Details distinguishes original AI outcome, override inclusion, and catalog status without overflow.
+- `WB-UX-TREE-010`: Cold sprite loading paints persisted Overrides and Contributor Guidance root decorations before folder expansion.
 - `WB-UX-PREVIEW-001`: Promotion Preview renders all review artifacts in one continuous changed-file document.
 - `WB-UX-PREVIEW-002`: Review artifact folders disclose independently while file-tree items navigate to their corresponding diff cards without changing disclosure.
 - `WB-UX-PREVIEW-003`: Split files use authenticated sticky headers, status-aware tree icons, independent Viewed and disclosure state, and uniform GitHub spacing.

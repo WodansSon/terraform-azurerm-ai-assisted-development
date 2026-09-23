@@ -779,7 +779,6 @@ try {
         ReconciliationContractPath = $snapshotContractPath
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
-        AllowConflicts = $true
     }
     try {
         $builderOutput = @(& $snapshotBuilderPath @builderParameters 2>&1)
@@ -789,12 +788,7 @@ try {
     }
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
     if (-not $Quiet) {
-        if ([string]$builderResult.status -ceq 'blocked') {
-            Write-Host (Format-ValidationStatusLine -Status 'blocked' -Name 'assessment-reconciliation/display' -Detail ("Workbench display built with {0} unresolved conflicts" -f [int]$builderResult.conflictCount) -NameWidth 42)
-        }
-        else {
-            Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail 'Workbench display built' -NameWidth 42)
-        }
+        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail 'Workbench display built' -NameWidth 42)
     }
     $succeeded = $true
 }
@@ -816,7 +810,6 @@ $result = [ordered]@{
     evaluatedBatchCount = $reconciliationBatches.Count - $reusedBatchCount
     candidateCount = [int]$builderResult.candidateCount
     recommendationCount = [int]$builderResult.recommendationCount
-    conflictCount = [int]$builderResult.conflictCount
     evaluator = $evaluatorIdentity
     cacheDirectory = $resolvedCacheDirectory
     displaySha256 = [string]$builderResult.displaySha256
@@ -825,7 +818,7 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5
 }
 else {
-    Write-Output "Assessment reconciliation completed with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations, $($result.conflictCount) conflicts"
+    Write-Output "Assessment reconciliation completed with status $($result.status): $($result.candidateCount) candidates, $($result.recommendationCount) recommendations"
     Write-Output "Output: $($result.outputPath)"
     Write-Output "Display SHA-256: $($result.displaySha256)"
 }

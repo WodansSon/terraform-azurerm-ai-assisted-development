@@ -121,7 +121,7 @@ $display = [ordered]@{
     generatedAt = $timestamp
     readOnly = $true
     inputFingerprint = $hash
-    reconciliation = [ordered]@{ status = 'ready'; conflicts = @() }
+    reconciliation = [ordered]@{ status = 'ready' }
     candidates = @([ordered]@{
         source = [ordered]@{
             lane = 'maintainer'

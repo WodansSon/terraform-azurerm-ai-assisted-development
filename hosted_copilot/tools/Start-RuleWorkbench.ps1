@@ -394,7 +394,6 @@ $result = [ordered]@{
     evaluatedCandidateCount = $stagedCandidates.Count
     ruleCandidateCount = $stagedCandidates.Count
     reconciliationStatus = [string]$stagedDisplay.reconciliation.status
-    reconciliationConflictCount = @($stagedDisplay.reconciliation.conflicts).Count
     capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
     readOnly = $true
@@ -421,7 +420,7 @@ if ($StageOnly) {
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
-            Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })
+            Reconciliation = 'READY'
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -502,7 +501,7 @@ try {
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
-            Reconciliation = $(if ($result.reconciliationStatus -ceq 'blocked') { "BLOCKED ($($result.reconciliationConflictCount) conflicts)" } else { 'READY' })
+            Reconciliation = 'READY'
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $resolvedSiteDirectory
             'Repository Writes' = 'DISABLED'

@@ -517,8 +517,7 @@ h3 {
   align-items: stretch;
 }
 
-#assessment-results-panel .catalog-layout,
-#conflicts-panel .catalog-layout {
+#assessment-results-panel .catalog-layout {
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
@@ -819,15 +818,13 @@ button.assessment-override-pill {
 
 #candidate-panel > .panel-heading,
 #assessment-results-list-panel > .panel-heading,
-#conflict-list-panel > .panel-heading,
 #plan-view > .page-heading,
 #preview-view > .page-heading {
   box-sizing: border-box;
   min-height: 48px;
 }
 
-.plan-heading-controls,
-.plan-conflict-indicator {
+.plan-heading-controls {
   display: flex;
   align-items: center;
 }
@@ -836,24 +833,8 @@ button.assessment-override-pill {
   gap: 4px;
 }
 
-.plan-conflict-indicator {
-  height: 26px;
-  gap: 5px;
-  padding: 0 7px;
-  color: var(--warning-foreground);
-  background: var(--warning-action-background);
-  border: 1px solid var(--warning-action-border);
-  border-radius: 4px;
-}
-
-.stage-link.reconciliation-blocked,
-.stage-link.reconciliation-blocked:hover {
-  color: var(--error-foreground);
-}
-
 #candidate-panel > .panel-heading,
-#assessment-results-list-panel > .panel-heading,
-#conflict-list-panel > .panel-heading {
+#assessment-results-list-panel > .panel-heading {
   padding: 12px 14px;
 }
 
@@ -866,8 +847,7 @@ button.assessment-override-pill {
 }
 
 #candidate-panel,
-#assessment-results-list-panel,
-#conflict-list-panel {
+#assessment-results-list-panel {
   position: relative;
 }
 
@@ -981,7 +961,6 @@ button.assessment-override-pill {
 
 #candidate-panel > .panel-heading h2,
 #assessment-results-list-panel > .panel-heading h2,
-#conflict-list-panel > .panel-heading h2,
 #plan-view > .page-heading h2,
 #preview-view > .page-heading h2 {
   font-size: 16px !important;
@@ -2523,79 +2502,6 @@ p.subcontext-container {
   white-space: nowrap;
 }
 
-.conflict-results-header,
-.conflict-result-row {
-  box-sizing: border-box;
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(280px, 640px) 120px;
-  justify-content: start;
-  align-items: center;
-  gap: 12px;
-  padding-inline: 52px 12px;
-}
-
-.conflict-results-header {
-  height: 40px;
-  color: var(--muted);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  font-size: 0.59rem;
-  text-transform: uppercase;
-}
-
-.conflict-result-row {
-  min-height: 40px;
-  color: var(--text);
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-}
-
-.conflict-result-row:hover,
-.conflict-result-row.active {
-  background: var(--accent-soft);
-}
-
-.conflict-result-row.active {
-  box-shadow: 3px 0 0 var(--error-foreground) inset;
-}
-
-.conflict-result-row > .status-badge {
-  justify-self: center;
-}
-
-.conflict-recommendations,
-.conflict-evidence {
-  display: grid;
-  gap: 10px;
-}
-
-.conflict-recommendation {
-  padding: 12px;
-}
-
-.conflict-recommendation-heading,
-.conflict-recommendation-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.conflict-recommendation-heading {
-  justify-content: space-between;
-}
-
-.conflict-recommendation-meta,
-.conflict-member {
-  color: var(--muted);
-}
-
-.conflict-member {
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-}
-
 .plan-table th:last-child {
   text-align: left;
 }
@@ -3410,22 +3316,19 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  #assessment-results-panel.workspace-tab-panel.active,
-  #conflicts-panel.workspace-tab-panel.active {
+  #assessment-results-panel.workspace-tab-panel.active {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
   }
 
   #candidate-sources-panel > .catalog-layout,
-  #assessment-results-panel > .catalog-layout,
-  #conflicts-panel > .catalog-layout {
+  #assessment-results-panel > .catalog-layout {
     height: 100%;
     min-height: 0;
   }
 
   #candidate-sources-panel .candidate-panel,
-  #assessment-results-panel .candidate-panel,
-  #conflicts-panel .candidate-panel {
+  #assessment-results-panel .candidate-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     height: 100%;
@@ -3433,8 +3336,7 @@ html.theme-hosted-dark body .preview-raw-payload > summary > span {
   }
 
   #candidate-sources-panel .candidate-list,
-  #assessment-results-panel .candidate-list,
-  #conflicts-panel .candidate-list {
+  #assessment-results-panel .candidate-list {
     height: 100%;
     min-height: 0;
     max-height: none;
@@ -3906,79 +3808,8 @@ html.theme-hosted-dark body .stage-count-badge {
   background: var(--paper);
 }
 
-.workspace.has-reconciliation-conflicts {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-}
-
-.workspace.has-reconciliation-conflicts > .view.active {
-  min-height: 0;
-}
-
-.reconciliation-conflict-banner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: start;
-  padding: 10px 12px;
-  color: #ffffff;
-  background: var(--error-background);
-  border: 1px solid var(--error-border);
-  border-radius: 10px;
-}
-
-.reconciliation-conflict-banner strong,
-.reconciliation-conflict-banner p {
-  margin: 0;
-}
-
-.reconciliation-conflict-banner p {
-  margin-top: 3px;
-  color: #ffffff;
-}
-
-#reconciliation-conflict-title {
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.reconciliation-conflict-actions {
-  display: flex;
-  gap: 4px;
-  align-self: center;
-  align-items: center;
-}
-
-.reconciliation-conflict-action {
-  min-height: 28px;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.45);
-}
-
-.reconciliation-conflict-action > .codicon {
-  color: #ffffff;
-}
-
-.reconciliation-conflict-action:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.7);
-}
-
-.reconciliation-conflict-dismiss {
-  color: #ffffff;
-}
-
-@media (max-width: 900px) {
-  .reconciliation-conflict-banner {
-    grid-template-columns: 20px minmax(0, 1fr);
-  }
-
-  .reconciliation-conflict-actions {
-    grid-column: 2;
-    justify-self: start;
-  }
+.workspace.icon-paint-pending {
+  visibility: hidden;
 }
 
 .ide-statusbar {

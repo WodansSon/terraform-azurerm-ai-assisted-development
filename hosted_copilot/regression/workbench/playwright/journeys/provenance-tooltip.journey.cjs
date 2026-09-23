@@ -5,6 +5,26 @@ const behaviorIds = ["WB-UX-PROVENANCE-001", "WB-UX-PROVENANCE-002"];
 async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
   await playback.show(page, "Provenance tooltip · 768px viewport");
+  const roots = await page.evaluate(() => {
+    const revision = state.assessedCandidates.find((candidate) => candidate.sourceType === "upstream")?.revision;
+    const expected = `${revision.repository} · ${revision.configuredRef}@${revision.resolvedCommit.slice(0, 8)}`;
+    const candidate = document.querySelector('#candidate-list [data-node-id="candidate:source:upstream"] .source-provenance-pill')?.textContent.trim();
+    const originalAssessedCandidates = state.assessedCandidates;
+    if (!originalAssessedCandidates.some((item) => item.sourceType === "upstream" && !item.assessment.hostedApplicable)) {
+      const excludedContributor = structuredClone(originalAssessedCandidates.find((item) => item.sourceType === "upstream"));
+      excludedContributor.key = `${excludedContributor.key}:provenance-root-probe`;
+      excludedContributor.assessment.hostedApplicable = false;
+      state.assessedCandidates = [...originalAssessedCandidates, excludedContributor];
+      renderAssessmentResults();
+    }
+    setWorkspaceTab("assessment-results");
+    const assessment = document.querySelector('#assessment-results-list [data-node-id="assessment:source:upstream"] .source-provenance-pill')?.textContent.trim();
+    state.assessedCandidates = originalAssessedCandidates;
+    renderAssessmentResults();
+    setWorkspaceTab("candidate-sources");
+    return { expected, candidate, assessment };
+  });
+  assert(roots.candidate === roots.expected && roots.assessment === roots.expected, `real Contributor Guidance roots lost provenance: ${JSON.stringify(roots)}`);
   await page.evaluate(() => {
     const probe = document.createElement("div");
     probe.id = "source-provenance-tooltip-probe";
@@ -23,7 +43,7 @@ async function run({ page, baseUrl, assert, playback }) {
     tooltip: node.dataset.workbenchTooltip,
     title: node.getAttribute("title")
   }));
-  assert(contract.text === contract.tooltip && /^[^@]+@[0-9a-f]{8}$/.test(contract.text), "tooltip does not retain the complete concise short-SHA provenance");
+  assert(contract.text === contract.tooltip && /^[^·]+ · [^@]+@[0-9a-f]{8}$/.test(contract.text), "tooltip does not retain repository, ref, and concise short-SHA provenance");
   assert(contract.title === null && !contract.text.startsWith("Contributor guidance source:"), "native or redundant provenance tooltip text remains active");
 
   const enterAt = async (entryX) => {

@@ -33,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - Restored toolkit isolation by distinguishing the Hosted deployment `.github` tree from root Interactive runtime, sourcing installed files only from `hosted_copilot`, and replacing normal Hosted validation reads of live Interactive manifests and catalogs with Hosted-owned checks and synthetic intake fixtures.
+- Removed the unreachable blocked-reconciliation Workbench UI, payload schema, builder bypass, approval gate, and regression path now that duplicate target ownership fails before display publication; retained the conflict icons in the local icon inventory.
+- Restored Contributor Guidance provenance pills by projecting the source repository, configured ref, and immutable commit into the v4 display and validating both real Workbench roots.
+- Prevented cold server starts from revealing persisted candidate trees before their external icon symbols paint, so Overrides and Contributor Guidance decorations no longer require folder expansion to appear.
 - Scoped Workbench npm auditing to the Hosted lockfile, reported installed packages as current when they match the audited lock, and skipped redundant reinstalls without changing remediation behavior for stale or vulnerable graphs.
 - Hardened release boundaries by rejecting linked-path installer escapes, blocking loopback DNS rebinding, constraining review cleanup to tool-owned branch namespaces, scanning deployable files for recognizable credentials and private keys, integrity-locking Node validation dependencies, and delegating pre-install audit and explicit staged remediation to the shared repository validator with failures at every severity.
 - Kept required CI deterministic by moving live Hosted upstream-source drift detection to the explicit maintainer audit while continuing to validate the committed source catalog and pinned baseline.
