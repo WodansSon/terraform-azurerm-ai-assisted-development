@@ -31,7 +31,7 @@ $parserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/Maintaine
 $v4ParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV4.psm1'
 $interactiveParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/InteractiveToolkitV2.psm1'
 $contributorParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/ContributorGuidanceV2.psm1'
-$maintainerRoot = Join-Path $catalogRoot 'maintainer-rules'
+$maintainerRoot = Join-Path $PSScriptRoot '../../authored-rules/proposals'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
 
@@ -385,17 +385,18 @@ try {
     $mutatedSourceContent = $snapshotSourceContent.Replace('Preserve original source bytes.', 'Use mutated source bytes.')
     [IO.File]::WriteAllText($snapshotSourcePath, $snapshotSourceContent, [Text.UTF8Encoding]::new($false))
     $snapshotMutationMarkerPath = Join-Path $fixtureRoot 'snapshot-mutation.marker'
-    $snapshotParserContent = Get-Content -LiteralPath $parserModulePath -Raw
+    $snapshotParserContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../modules/source-parsers/AuthoredRules.psm1') -Raw
     $snapshotParserContent = $snapshotParserContent.Replace(
-        '        $content = [IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n").Replace("`r", "`n")',
+        '        try {',
         @'
         if ($RepositoryRoot -like '*hosted-source-inventory-snapshot-*' -and -not (Test-Path -LiteralPath $env:SOURCE_INVENTORY_MUTATION_MARKER)) {
             [IO.File]::WriteAllText($env:SOURCE_INVENTORY_MUTATE_PATH, $env:SOURCE_INVENTORY_MUTATED_CONTENT, [Text.UTF8Encoding]::new($false))
             [IO.File]::WriteAllText($env:SOURCE_INVENTORY_MUTATION_MARKER, 'mutated', [Text.UTF8Encoding]::new($false))
         }
-        $content = [IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n").Replace("`r", "`n")
+        try {
 '@.TrimEnd())
-    [IO.File]::WriteAllText((Join-Path $snapshotParserRoot 'MaintainerProposalsV2.psm1'), $snapshotParserContent, [Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath $parserModulePath -Destination (Join-Path $snapshotParserRoot 'MaintainerProposalsV2.psm1')
+    [IO.File]::WriteAllText((Join-Path $snapshotParserRoot 'AuthoredRules.psm1'), $snapshotParserContent, [Text.UTF8Encoding]::new($false))
     $snapshotSourceSha256 = (Get-FileHash -LiteralPath $snapshotSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
     $snapshotRevisionIdentity = 'fixtures/rules/implementation.rules.md' + [char]0 + $snapshotSourceSha256 + [char]0
     $expectedSnapshotWorktreeSha256 = Get-StringSha256 -Value $snapshotRevisionIdentity
@@ -432,7 +433,7 @@ try {
         schemaVersion = 1
         id = 'maintainer-proposals'
         displayName = 'Maintainer Proposals'
-        root = [ordered]@{ kind = 'repository'; path = 'hosted_copilot/copilot-rule-catalog/maintainer-rules' }
+        root = [ordered]@{ kind = 'repository'; path = 'hosted_copilot/authored-rules/proposals' }
         files = @('**/*.rules.md')
         exclude = @('implementation.rules.md')
         parser = 'maintainer-proposals-v2'

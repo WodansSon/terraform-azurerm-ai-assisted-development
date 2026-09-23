@@ -323,6 +323,7 @@ function New-WorkbenchDisplayFixture {
         candidates = $candidates.ToArray()
         catalog = [ordered]@{
             contentSha256 = 'b' * 64
+            protectedRulesContentSha256 = 'c' * 64
             rules = @($Fixture.hostedRules | ForEach-Object {
                 $projectedRule = [ordered]@{
                     id = [string]$_.id
@@ -339,6 +340,7 @@ function New-WorkbenchDisplayFixture {
                 if ($_.PSObject.Properties['lastPlacement']) { $projectedRule['lastPlacement'] = $_.lastPlacement }
                 $projectedRule
             })
+            protectedRules = @($Fixture.protectedRules)
         }
         guidanceCapacity = $Fixture.guidanceCapacity
     }
@@ -487,6 +489,19 @@ try {
             [ordered]@{ id = 'IMPL-PATCH-001'; status = 'active'; text = 'If PATCH preserves omitted properties, removal must send an explicit clearing value.'; placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Azure API Semantics' }) },
             [ordered]@{ id = 'DOCS-IMP-002'; status = 'active'; text = 'Resource documentation must include a shell-fenced Terraform import command.'; placements = @([ordered]@{ surfaceId = 'documentation'; sectionHeading = 'Examples And Imports' }) }
         )
+        protectedRules = @([ordered]@{
+            id = 'IMPL-WF-000'
+            status = 'protected'
+            surfaceId = 'implementation'
+            title = 'Classify AzureRM implementation resource types'
+            text = 'Classify implementation code as legacy, typed, or framework before applying resource-type-specific rules. Legacy implementations use function-built `*pluginsdk.Resource` values and `*pluginsdk.ResourceData` callbacks. Typed implementations use receiver-based `internal/sdk` resource or data-source contracts. Framework implementations use Terraform Plugin Framework interfaces and request/response types, including list resources, ephemeral resources, and provider-defined functions. Preserve the existing resource type unless the change explicitly migrates it.'
+            provenance = 'confirmed-maintainer-convention'
+            protectionReason = 'Required first-party instruction infrastructure.'
+            impact = 100
+            guardedTokens = 150
+            sourcePath = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
+            contentSha256 = 'f' * 64
+        })
         upstreamCandidates = @(
             [ordered]@{
                 id = 'guide-new-resource'
@@ -634,35 +649,36 @@ try {
     $maintainerAssessment.proposedHostedRuleId = 'DOCS-CAND-001'
     $maintainerAssessment.proposedText = 'Flag documentation that omits a required maintainer convention.'
     $excludedAssessmentAlpha = $fixture.interactiveCandidates[0].assessments[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-    $excludedAssessmentAlpha.assessmentId = 'REVIEW-EXCL-001'
+    $excludedAssessmentAlpha.assessmentId = 'IMPL-EXCL-001'
     $excludedAssessmentAlpha.title = 'Excluded assessment alpha'
     $excludedAssessmentAlpha.hostedApplicable = $false
     $excludedAssessmentAlpha.applicabilityRationale = 'The source behavior is outside the current Hosted review boundary.'
     $excludedAssessmentAlpha.recommendation = 'exclude'
-    $excludedAssessmentAlpha.proposedHostedRuleId = 'REVIEW-EXCL-001'
+    $excludedAssessmentAlpha.proposedHostedRuleId = 'IMPL-EXCL-001'
+    $excludedAssessmentAlpha.hostedCategory = 'implementation'
     $excludedAssessmentAlpha.sourceContentSha256 = '3' * 64
     $excludedAssessmentAlpha.summary = 'Excluded behavior remains available for maintainer audit.'
     $excludedAssessmentAlpha.impactDescription = 'The assessment is preserved without entering Candidate Sources.'
     $excludedAssessmentAlpha.currentHostedCoverage = 'No Hosted rule is required for this excluded behavior.'
-    $excludedAssessmentAlpha.affectedSurfaces = @('testing')
+    $excludedAssessmentAlpha.affectedSurfaces = @('implementation')
     $excludedAssessmentAlpha.guardedTokenDelta = 0
     $excludedAssessmentAlpha.proposedText = 'Review the excluded behavior only when a maintainer explicitly contests the applicability decision.'
     $excludedAssessmentAlpha.selectionRationale = 'The evidence is complete, but the behavior is outside the current Hosted review boundary.'
     $excludedAssessmentBravo = $excludedAssessmentAlpha | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-    $excludedAssessmentBravo.assessmentId = 'REVIEW-EXCL-002'
+    $excludedAssessmentBravo.assessmentId = 'IMPL-EXCL-002'
     $excludedAssessmentBravo.title = 'Excluded assessment bravo'
-    $excludedAssessmentBravo.proposedHostedRuleId = 'REVIEW-EXCL-002'
+    $excludedAssessmentBravo.proposedHostedRuleId = 'IMPL-EXCL-002'
     $excludedAssessmentBravo.sourceContentSha256 = '4' * 64
     $excludedAssessmentBravo.applicabilityRationale = 'This second excluded result provides deterministic sorting evidence.'
     $excludedAssessmentBravo.proposedText = 'Keep the second excluded assessment available for deterministic audit ordering.'
     $excludedInteractiveAlpha = $fixture.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-    $excludedInteractiveAlpha.id = 'REVIEW-EXCL-001'
+    $excludedInteractiveAlpha.id = 'IMPL-EXCL-001'
     $excludedInteractiveAlpha.title = 'Excluded assessment alpha'
     $excludedInteractiveAlpha.contentSha256 = '3' * 64
     $excludedInteractiveAlpha.ruleText = 'Review excluded behavior after a maintainer records an explicit override rationale.'
     $excludedInteractiveAlpha.assessments = @($excludedAssessmentAlpha)
     $excludedInteractiveBravo = $fixture.interactiveCandidates[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-    $excludedInteractiveBravo.id = 'REVIEW-EXCL-002'
+    $excludedInteractiveBravo.id = 'IMPL-EXCL-002'
     $excludedInteractiveBravo.title = 'Excluded assessment bravo'
     $excludedInteractiveBravo.contentSha256 = '4' * 64
     $excludedInteractiveBravo.ruleText = 'Keep a second excluded behavior available for deterministic assessment sorting.'
@@ -671,7 +687,7 @@ try {
     $fixture.maintainerCandidates = @([ordered]@{
         id = 'DOCS-MAINT-001'
         title = 'Maintainer proposal'
-        sourcePath = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'
+        sourcePath = 'hosted_copilot/authored-rules/proposals/documentation.rules.md'
         surface = 'documentation'
         sourceStatus = 'active'
         contentSha256 = 'f' * 64
@@ -948,7 +964,7 @@ try {
 
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.plan-table \.candidate-link\s*\{[^}]*font-size:\s*var\(--font-size-ui\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-ui\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy strong, \.plan-table \.candidate-link\)\s*\{[^}]*color:\s*var\(--accent-bright\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy small, \.plan-candidate-title\)\s*\{[^}]*color:\s*var\(--ink\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*400 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
-    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 3) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 2) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
+    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 4) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 3) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
     Add-TestResult -Name 'component-typography-consistency' -Passed $componentConsistencyValid -Detail 'Candidate Sources, Assessment Results, and Promotion Plan share one 14/20 blue-ID and neutral-title hierarchy; semantic pills remain semibold inside compact surfaces, and Preview section labels retain one heading treatment.'
 
     $scrollbarThemeValid = $stylesContent -match '@property --workbench-scrollbar-thumb' -and $stylesContent -match '\.scroll-surface\s*\{[^}]*scrollbar-color:\s*var\(--workbench-scrollbar-thumb\) var\(--scrollbar-track\);[^}]*transition:\s*--workbench-scrollbar-thumb 360ms ease-out' -and $stylesContent -match '\.scroll-surface:is\(:hover, :focus-within\)\s*\{[^}]*transition-duration:\s*180ms' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*0' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-button' -and $stylesContent -match '--scrollbar-track: transparent' -and $indexContent -match 'candidate-list scroll-surface type-ui'

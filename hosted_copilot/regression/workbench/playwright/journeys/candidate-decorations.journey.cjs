@@ -64,9 +64,10 @@ async function run({ page, baseUrl, assert, playback }) {
   const addedColor = await getCssTokenColor(page, "--added-resource");
   const modifiedColor = await getCssTokenColor(page, "--modified-resource");
 
-  const noOverridesInitially = await page.evaluate(() => !candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
-    && !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]'));
-  assert(noOverridesInitially, "an Overrides hierarchy exists without a provisional override");
+  const protectedOnlyInitially = await page.evaluate(() => candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
+    && state.candidates.filter((candidate) => getApplicabilityOverride(candidate)).length === 0
+    && state.protectedRules.length > 0);
+  assert(protectedOnlyInitially, "the initial Overrides hierarchy is not protected-only");
 
   const candidate = await page.evaluate(() => {
     const item = getBulkActionCandidates("add").find((candidate) => candidate.sourceType === "interactive");
@@ -190,7 +191,9 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(overrides.readyValid, "Overrides root and leaf do not share ready decoration");
   assert(overrides.pillPresentationValid, "Contested status pill contains non-text content or is not centered");
   assert(overrides.sortHeaderValid, "Override sort header does not retain its sort chevron");
-  assert(await page.locator('#candidate-list [data-node-id="candidate:source:overrides"]').count() === 0, "Overrides probe did not restore the candidate tree");
+  const protectedOnlyRestored = await page.evaluate(() => state.candidates.filter((candidate) => getApplicabilityOverride(candidate)).length === 0
+    && state.protectedRules.length > 0);
+  assert(protectedOnlyRestored, "Overrides probe did not restore the protected-only candidate tree");
 
   const categoryProbe = await page.evaluate(() => {
     const tree = buildAssessmentTreeNodes();

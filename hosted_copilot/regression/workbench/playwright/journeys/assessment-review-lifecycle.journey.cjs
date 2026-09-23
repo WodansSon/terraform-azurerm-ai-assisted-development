@@ -4,6 +4,7 @@ const behaviorIds = [
   "WB-UX-ASSESSMENT-001",
   "WB-UX-OVERRIDE-001",
   "WB-UX-DECISION-001",
+  "WB-UX-DECISION-002",
   "WB-UX-CAPACITY-001",
   "WB-UX-SYNC-001",
   "WB-UX-BACKTOTOP-001",
@@ -36,7 +37,7 @@ async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const candidateTitle = "Excluded assessment alpha";
-  const initialHostedId = "REVIEW-EXCL-001";
+  const initialHostedId = "IMPL-EXCL-001";
   const selectedHostedId = initialHostedId;
   const initialRationale = "Phase 0 confirms this excluded assessment belongs in Hosted review.";
   const updatedRationale = "Phase 0 confirms the persisted override remains required for Hosted review.";
@@ -48,10 +49,10 @@ async function run({ page, baseUrl, assert, playback }) {
     await page.locator('#assessment-results-list [data-node-id="assessment:source:interactive"]').click();
     await page.locator('#assessment-results-list [data-node-id^="assessment:category:interactive:"]').first().click();
     const initialOrder = await page.locator("#assessment-results-list [data-assessment-key] .candidate-tree-copy strong").allTextContents();
-    assert(initialOrder.join("|") === "REVIEW-EXCL-001|REVIEW-EXCL-002", `Assessment Results initial order is incorrect: ${initialOrder.join("|")}`);
+    assert(initialOrder.join("|") === "IMPL-EXCL-001|IMPL-EXCL-002", `Assessment Results initial order is incorrect: ${initialOrder.join("|")}`);
     await page.locator('#assessment-results-list [data-assessment-sort="candidate"]').click();
     const descendingOrder = await page.locator("#assessment-results-list [data-assessment-key] .candidate-tree-copy strong").allTextContents();
-    assert(descendingOrder.join("|") === "REVIEW-EXCL-002|REVIEW-EXCL-001", `Assessment Results sort did not reverse the fixture order: ${descendingOrder.join("|")}`);
+    assert(descendingOrder.join("|") === "IMPL-EXCL-002|IMPL-EXCL-001", `Assessment Results sort did not reverse the fixture order: ${descendingOrder.join("|")}`);
 
     await page.locator("#search-input").fill(candidateTitle);
     const assessmentRows = page.locator("#assessment-results-list [data-assessment-key]");
@@ -154,7 +155,13 @@ async function run({ page, baseUrl, assert, playback }) {
 
     await playback.show(page, "Decision capture · synchronized Candidate, Assessment, Plan, and capacity state");
     const candidateRow = await openCandidate(page, initialHostedId);
+    const initialModelControls = page.locator('#assessment-panel [data-implementation-model]');
+    assert(await initialModelControls.count() === 3, "Overridden implementation candidate does not use the shared resource-type controls");
+    assert(await initialModelControls.nth(0).isChecked() && await initialModelControls.nth(1).isChecked() && !await initialModelControls.nth(2).isChecked(), "Unmapped implementation candidate does not default to Legacy and Typed only");
+    assert(await initialModelControls.nth(0).isDisabled(), "Resource-type controls are enabled before Add or Update is selected");
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
+    assert(!await initialModelControls.nth(0).isDisabled() && !await initialModelControls.nth(2).isDisabled(), "Add did not enable the shared resource-type controls");
+    await initialModelControls.nth(2).check();
     const stagedAddScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
     assert(stagedAddScores[1] === "+32" && stagedAddScores[2] === "4,808", `Staged Add did not project its exact token delta against global plan headroom: ${JSON.stringify(stagedAddScores)}`);
     await page.locator('#assessment-panel [data-rule-action="defer"]').click();
@@ -164,13 +171,19 @@ async function run({ page, baseUrl, assert, playback }) {
     const stagedNoChangeScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
     assert(stagedNoChangeScores[1] === "0" && stagedNoChangeScores[2] === "4,840", `No Change did not restore zero token delta and global plan headroom: ${JSON.stringify(stagedNoChangeScores)}`);
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
+    await initialModelControls.nth(2).check();
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill(decisionRationale);
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Rule Action selection did not remain synchronized in Details");
     assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === selectedHostedId, "Generated Hosted rule ID was not retained");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === decisionRationale, "Decision rationale was not retained");
+    const savedImplementationModels = await page.evaluate(() => getDecision(getActiveCandidate()).implementationModels);
+    assert(savedImplementationModels.join(",") === "legacy,typed,framework", `Maintainer resource-type selections were not retained in the saved decision: ${JSON.stringify(savedImplementationModels)}`);
     assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan && getDecision(getActiveCandidate()).planMembershipSource === "manual"), "Saved promotion action did not create manual plan membership");
+
+    const approvedModels = await page.evaluate(() => buildApprovedRules().mutations.find((mutation) => mutation.rule.id === "IMPL-EXCL-001")?.rule.implementationModels);
+    assert(approvedModels?.join(",") === "legacy,typed,framework", "Overridden implementation candidate did not serialize maintainer resource types into Approved Rules");
 
     await page.locator('[data-candidate-pane="candidates"]').click();
     await page.locator("#search-input").fill(candidateTitle);

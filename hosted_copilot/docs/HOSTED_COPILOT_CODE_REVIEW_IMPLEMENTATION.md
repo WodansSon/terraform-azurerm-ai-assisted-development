@@ -216,11 +216,13 @@ Review all three candidate channels on their own terms:
 
 Author Maintainer Proposals in these source-only files:
 
-- `hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md`
-- `hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md`
-- `hosted_copilot/copilot-rule-catalog/maintainer-rules/testing.rules.md`
+- `hosted_copilot/authored-rules/proposals/documentation.rules.md`
+- `hosted_copilot/authored-rules/proposals/implementation.rules.md`
+- `hosted_copilot/authored-rules/proposals/testing.rules.md`
 
 Each rule uses an instruction-style `### RULE-ID: Title` heading followed by exactly one `Rule`, `Provenance`, and `Rationale` bullet. `Status` is optional and defaults to `active`; use `retired` only after the rule maps to a Hosted catalog record. Documentation IDs start with `DOCS-`, implementation IDs with `IMPL-`, and testing IDs with `TEST-`. Allowed provenance values are `confirmed-maintainer-convention`, `inferred-maintainer-convention`, and `local-safeguard`.
+
+Author protected rules with the same heading and three required bullets under `hosted_copilot/authored-rules/protected/`. The source directory supplies immutable protected status; maintainers do not add lifecycle, impact, placement, or presentation fields. `Generate-ProtectedRules.ps1` produces `copilot-rule-catalog/protected-rules.json`, and that generated projection must never be edited directly.
 
 The initial Interactive intake audit must classify all 349 currently active rules. The three directly applicable contract families currently contain 158 rules: 102 documentation rules, 36 implementation rules, and 20 testing rules. Fifty-three IDs overlap the current Hosted catalog, leaving 105 direct candidates before semantic equivalence review. These counts describe the initial baseline and must not become hard-coded future limits.
 
@@ -579,6 +581,9 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-STICKY-009`: Assessment Results preserves contained 40px leaves through sorting.
 - `WB-UX-STICKY-010`: Sticky child handoffs reuse a bounded prewarmed renderer pool.
 - `WB-UX-STICKY-011`: Candidate Sources parents start collapsed, including Overrides.
+- `WB-UX-PROTECTED-001`: Protected rules render as locked immutable rows under Overrides.
+- `WB-UX-PROTECTED-002`: Protected rule details remain read-only and preserve authored provenance and source identity.
+- `WB-UX-PROTECTED-003`: Protected rules coexist with applicability overrides in the existing sticky hierarchy.
 - `WB-UX-PROVENANCE-001`: Contributor provenance tooltip retains concise complete text.
 - `WB-UX-PROVENANCE-002`: Contributor provenance tooltip anchors and clamps inside the viewport.
 - `WB-UX-CONTRIBUTOR-001`: Contributor documents are non-actionable candidate parents.
@@ -592,6 +597,7 @@ Treat these IDs as the stable executable contract for the first Playwright journ
 - `WB-UX-ASSESSMENT-001`: Assessment Results supports search, sorting, evidence selection, and return navigation.
 - `WB-UX-OVERRIDE-001`: Applicability overrides apply, edit, persist, and remove through real controls.
 - `WB-UX-DECISION-001`: Save decision atomically persists action, generated identity, rationale, and plan membership.
+- `WB-UX-DECISION-002`: Implementation decisions preserve maintainer-selected resource types through Approved Rules.
 - `WB-UX-CAPACITY-001`: Plan decisions project exact guarded tokens and headroom from fixture baselines.
 - `WB-UX-SYNC-001`: Candidate edits synchronize Candidate Sources, Assessment Results, and Promotion Plan.
 - `WB-UX-BACKTOTOP-001`: Details back-to-top follows real scroll state and returns to its disabled state.

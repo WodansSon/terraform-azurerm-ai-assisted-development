@@ -46,7 +46,7 @@ $reviewResultValidatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.p
 $hostedReviewWorkflowTestPath = Join-Path $PSScriptRoot 'tests/Test-HostedReviewWorkflow.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
-$maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "copilot-rule-catalog/maintainer-rules/$_" }
+$maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "authored-rules/proposals/$_" }
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'commands/catalog/Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'tests/Test-InstructionGeneration.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
@@ -683,7 +683,7 @@ if ($runtimeStarted) {
         if ($missingMaintainerRulePaths.Count -gt 0) {
             throw "Maintainer rule sources are missing: $($missingMaintainerRulePaths -join ', ')"
         }
-        $deployedMaintainerRulePaths = @($manifestConfig.files | Where-Object { $_ -like 'copilot-rule-catalog/maintainer-rules/*' })
+        $deployedMaintainerRulePaths = @($manifestConfig.files | Where-Object { $_ -like 'authored-rules/proposals/*' })
         if ($deployedMaintainerRulePaths.Count -gt 0) {
             throw "Maintainer rule sources must not be deployed: $($deployedMaintainerRulePaths -join ', ')"
         }

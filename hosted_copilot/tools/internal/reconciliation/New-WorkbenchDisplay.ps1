@@ -19,6 +19,8 @@ param(
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
+    [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
+
     [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'),
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
@@ -104,11 +106,13 @@ $catalogRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-ca
 $baselineInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentBaselinePath)) -SchemaPath (Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json') -Name 'Source assessment baseline'
 $draftInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReconciliationDraftPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -Name 'Assessment reconciliation draft'
 $catalogInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Name 'Hosted instruction catalog'
+$protectedRulesInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ProtectedRulesPath)) -SchemaPath (Join-Path $catalogRoot 'protected-rules.schema.json') -Name 'Protected rules catalog'
 $contractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReconciliationContractPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-contract.schema.json') -Name 'Assessment reconciliation contract'
 $guidanceCapacityInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -SchemaPath (Join-Path $catalogRoot 'guidance-capacity.schema.json') -Name 'Guidance capacity'
 $baseline = $baselineInput.Value
 $draft = $draftInput.Value
 $catalog = $catalogInput.Value
+$protectedRules = $protectedRulesInput.Value
 $contract = $contractInput.Value
 if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256) {
     throw 'Source assessment set does not bind the supplied Hosted catalog'
@@ -154,6 +158,30 @@ foreach ($evidence in @($catalog.evidence)) {
 foreach ($rule in @($catalog.rules)) {
     $catalogRules[[string]$rule.id] = $rule
     $null = $occupiedHostedIds.Add([string]$rule.id)
+}
+$protectedRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($rule in @($protectedRules.rules)) {
+    $protectedId = [string]$rule.id
+    if (-not $protectedRuleIds.Add($protectedId)) {
+        throw "Protected rules catalog contains duplicate rule ID: $protectedId"
+    }
+    if (-not $occupiedHostedIds.Add($protectedId)) {
+        throw "Protected rule ID collides with lifecycle-managed catalog rule: $protectedId"
+    }
+    $surface = @($catalog.surfaces | Where-Object { [string]$_.id -ceq [string]$rule.surfaceId })
+    if ($surface.Count -ne 1) {
+        throw "Protected rule $protectedId references an unknown surface: $($rule.surfaceId)"
+    }
+}
+foreach ($rule in @($catalog.rules | Where-Object { $_.PSObject.Properties['supersededBy'] })) {
+    $supersededBy = [string]$rule.supersededBy
+    $protectedSuccessor = @($protectedRules.rules | Where-Object { [string]$_.id -ceq $supersededBy })
+    if ([string]$rule.status -cne 'retired' -or $protectedSuccessor.Count -ne 1) {
+        throw "Catalog rule $($rule.id) has invalid protected successor $supersededBy"
+    }
+    if ([string]$rule.lastPlacement.surfaceId -cne [string]$protectedSuccessor[0].surfaceId) {
+        throw "Catalog rule $($rule.id) and protected successor $supersededBy must share a surface"
+    }
 }
 foreach ($surface in @($catalog.surfaces)) {
     foreach ($section in @($surface.sections)) {
@@ -687,7 +715,7 @@ foreach ($entry in @($baseline.entries)) {
             catalogMapping = if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
                 $mappedHostedRuleId = [string]$canonicalHostedRuleByAssessment[$assessmentKey]
                 [ordered]@{
-                    state = [string]$catalogRules[$mappedHostedRuleId].status
+                    state = if ($catalogRules[$mappedHostedRuleId].PSObject.Properties['supersededBy']) { 'superseded' } else { [string]$catalogRules[$mappedHostedRuleId].status }
                     hostedRuleId = $mappedHostedRuleId
                 }
             }
@@ -704,6 +732,7 @@ foreach ($entry in @($baseline.entries)) {
 
 $fingerprintBuilder = [Text.StringBuilder]::new()
 $null = $fingerprintBuilder.Append($catalogInput.Snapshot.Sha256).Append([char]0)
+$null = $fingerprintBuilder.Append($protectedRulesInput.Snapshot.Sha256).Append([char]0)
 foreach ($inventoryHash in $inventoryHashes.GetEnumerator()) {
     $null = $fingerprintBuilder.Append([string]$inventoryHash.Key).Append([char]0).Append([string]$inventoryHash.Value).Append([char]0)
 }
@@ -728,7 +757,7 @@ $catalogProjection = @($catalog.rules | ForEach-Object {
         canonicalCandidate = $catalog.canonicalCandidateMappings.$hostedId
         placements = $placements.ToArray()
     }
-    foreach ($propertyName in @('implementationModels', 'documentationGap', 'selectionFactors', 'selectionRationale')) {
+    foreach ($propertyName in @('implementationModels', 'documentationGap', 'selectionFactors', 'selectionRationale', 'supersededBy')) {
         if ($_.PSObject.Properties[$propertyName]) {
             $projectedRule[$propertyName] = $_.$propertyName
         }
@@ -738,6 +767,21 @@ $catalogProjection = @($catalog.rules | ForEach-Object {
         $projectedRule['lastPlacement'] = $_.lastPlacement
     }
     $projectedRule
+})
+$protectedRulesProjection = @($protectedRules.rules | ForEach-Object {
+    [ordered]@{
+        id = [string]$_.id
+        status = 'protected'
+        surfaceId = [string]$_.surfaceId
+        title = [string]$_.title
+        text = [string]$_.text
+        provenance = [string]$_.provenance
+        protectionReason = [string]$_.protectionReason
+        impact = 100
+        guardedTokens = Get-GuardedTokens -Text ([string]$_.text)
+        sourcePath = [string]$_.sourcePath
+        contentSha256 = [string]$_.contentSha256
+    }
 })
 
 $display = [ordered]@{
@@ -753,7 +797,9 @@ $display = [ordered]@{
     candidates = @($candidates | Sort-Object -Property @{ Expression = { [string]$_.source.lane + [char]0 + [string]$_.source.id + [char]0 + [string]$_.assessment.id } })
     catalog = [ordered]@{
         contentSha256 = $catalogInput.Snapshot.Sha256
+        protectedRulesContentSha256 = $protectedRulesInput.Snapshot.Sha256
         rules = $catalogProjection
+        protectedRules = $protectedRulesProjection
     }
     guidanceCapacity = $guidanceCapacityInput.Value
 }

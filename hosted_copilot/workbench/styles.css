@@ -1443,6 +1443,12 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   border-color: #d85d65;
 }
 
+.catalog-status.protected {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: #3fae78;
+}
+
 .catalog-status-heading {
   display: flex;
   align-items: center;
@@ -1490,6 +1496,53 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 .candidate-state.deferred {
   background: #493812;
   border-color: #d69d13;
+}
+
+.candidate-lifecycle.required,
+.candidate-state.required {
+  background: #352d5c;
+  border-color: #8f78d8;
+}
+
+.recommendation-badge.immutable {
+  background: #173f5c;
+  border-color: #4ba3d3;
+}
+
+.protected-rule-row > .codicon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  flex: 0 0 16px;
+}
+
+.protected-rule-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  color: var(--ink);
+  background: var(--blue-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.protected-rule-notice svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--accent);
+  flex: 0 0 18px;
+}
+
+.protected-rule-notice strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.protected-rule-notice p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .candidate-row {
@@ -1560,6 +1613,11 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 }
 
 .catalog-status.unmapped {
+.catalog-status.superseded {
+  color: #c6d4ff;
+  background: var(--blue-soft);
+  border-color: #7f91c4;
+}
   color: var(--muted);
   background: var(--surface-quiet);
   border-color: var(--line-strong);
@@ -1845,6 +1903,31 @@ html.theme-hosted-dark :is(.status-badge, .candidate-state, .candidate-lifecycle
   margin: 0;
   padding: 2px 0 4px;
   border: 0;
+}
+
+.implementation-model-options {
+  position: relative;
+  top: 1px;
+}
+
+.implementation-model-option input[type="checkbox"] {
+  position: static;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  opacity: 1;
+  appearance: auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.implementation-model-option input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
+.implementation-model-option:has(input:disabled) {
+  color: var(--muted);
+  cursor: default;
 }
 
 .action-option,

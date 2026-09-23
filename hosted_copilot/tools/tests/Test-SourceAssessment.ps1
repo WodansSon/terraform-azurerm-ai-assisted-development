@@ -351,7 +351,7 @@ try {
         sourceId = 'IMPL-TEST-001'
         presence = 'present'
         sourceLifecycle = 'active'
-        location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md'
+        location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
         contentSha256 = Get-StringSha256 -Value 'First source record.'
         content = 'First source record.'
         title = 'First source record'
@@ -365,7 +365,7 @@ try {
         sourceId = 'IMPL-TEST-002'
         presence = 'present'
         sourceLifecycle = 'active'
-        location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md'
+        location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
         contentSha256 = Get-StringSha256 -Value 'Second source record.'
         content = 'Second source record.'
         title = 'Second source record'
@@ -703,7 +703,7 @@ if ($null -ne $timingStem) {
                 sourceId = $sourceId
                 presence = 'present'
                 sourceLifecycle = 'active'
-                location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md'
+                location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
                 contentSha256 = Get-StringSha256 -Value $content
                 content = $content
                 title = "Runner source record $_"

@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Defined concrete import, interface, registration, and callback signals for classifying legacy, typed, and framework-native AzureRM implementations before applying model-specific review rules.
 - Replaced the multi-command paired-review interface and ad hoc AI adjudication with one resumable local `Invoke-HostedReview.ps1` workflow that exits while GitHub reviews are pending, guides maintainer adjudication, validates multi-rule findings, and requires explicit cleanup approval.
 - Reworked repository-wide review instructions and the review skill to define explicit review identity, task, evidence, trust boundaries, and actionable inline output while correlating implementation, acceptance-test, and documentation changes across the shared provider contract.
 - Made the normalized catalog authoritative for generated path-specific guidance, applicability, provenance, and active-rule rendering, with direct source deployment and exact installed-file tracking.

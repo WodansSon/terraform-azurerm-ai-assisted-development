@@ -138,15 +138,17 @@ async function run({ page, baseUrl, assert, playback }) {
   await page.evaluate((candidateKey) => {
     selectCandidate(candidateKey);
     showCandidatePane("details");
-    const candidate = state.candidates.find((item) => item.key === candidateKey);
-    updateDecision(candidate, {
-      action: "update",
-      inPlan: true,
-      rationale: "The mapped Hosted rule should adopt the complete proposed wording."
-    });
-    syncAssessmentActionControls(candidate);
   }, structure.updateCandidate);
   const mappedIdentityReadout = page.locator("#assessment-panel .rule-action-header .detail-identity span:last-child");
+  const mappedModelControls = page.locator('#assessment-panel [data-implementation-model]');
+  assert(await mappedModelControls.count() === 3 && await mappedModelControls.nth(0).isChecked() && await mappedModelControls.nth(1).isChecked() && await mappedModelControls.nth(2).isChecked(), "Mapped implementation candidate did not inherit catalog resource types");
+  assert(await mappedModelControls.nth(0).isDisabled(), "Mapped resource types are editable before Update is selected");
+  await page.locator('#assessment-panel [data-rule-action="update"]').click();
+  assert(!await mappedModelControls.nth(0).isDisabled(), "Update did not enable mapped resource-type controls");
+  await mappedModelControls.nth(2).uncheck();
+  await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("The mapped Hosted rule should adopt the complete proposed wording.");
+  await page.locator("#assessment-panel [data-rationale-save]").click();
+  await page.evaluate(() => persistencePromise);
   const mappedIdentity = await page.evaluate((candidateKey) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
     const mutation = buildApprovedRules().mutations.find((item) => item.rule.id === candidate.assessment.targetHostedRuleId);
@@ -165,6 +167,7 @@ async function run({ page, baseUrl, assert, playback }) {
   }, structure.updateCandidate);
   assert(await mappedIdentityReadout.innerText() === "IMPL-PATCH-001", "mapped update does not expose its generated proposal identity as the immutable target ID");
   assert(mappedIdentity.mutation.action === "update" && mappedIdentity.mutation.rule.id === "IMPL-PATCH-001", "mapped Update mutation does not preserve the existing Hosted identity");
+  assert(mappedIdentity.mutation.rule.implementationModels.join(",") === "legacy,typed", "mapped Update mutation does not preserve the maintainer-selected resource types");
   assert(mappedIdentity.readiness.ready, "mapped update proposal identity does not satisfy plan readiness when another assessment references the same target");
 
   await page.evaluate(async (candidateKey) => {

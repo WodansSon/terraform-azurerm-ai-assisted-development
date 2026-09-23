@@ -2,6 +2,10 @@
 param(
     [string]$CatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
+    [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
+
+    [string]$ProtectedRulesSourceRoot = (Join-Path $PSScriptRoot '../../../authored-rules/protected'),
+
     [string]$HostedRoot = (Join-Path $PSScriptRoot '../../..'),
 
     [switch]$Write,
@@ -14,10 +18,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
+$protectedRulesParserPath = Join-Path $PSScriptRoot '../../modules/source-parsers/ProtectedRules.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+Import-Module -Name $protectedRulesParserPath -Force
 
 $resolvedCatalogPath = [IO.Path]::GetFullPath($CatalogPath)
+$resolvedProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
+$resolvedProtectedRulesSourceRoot = [IO.Path]::GetFullPath($ProtectedRulesSourceRoot)
 $resolvedHostedRoot = [IO.Path]::GetFullPath($HostedRoot)
+$resolvedRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $resolvedHostedRoot '..'))
 
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted instruction generation'
@@ -26,6 +35,9 @@ if ($OutputFormat -eq 'Text') {
 
 if (-not (Test-Path -LiteralPath $resolvedCatalogPath -PathType Leaf)) {
     throw "Instruction catalog was not found: $resolvedCatalogPath"
+}
+if (-not (Test-Path -LiteralPath $resolvedProtectedRulesPath -PathType Leaf)) {
+    throw "Protected rules catalog was not found: $resolvedProtectedRulesPath"
 }
 
 $catalogContent = Get-Content -LiteralPath $resolvedCatalogPath -Raw
@@ -41,6 +53,21 @@ if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
 
 if (-not ($catalogContent | Test-Json -SchemaFile $schemaPath)) {
     throw 'Instruction catalog schema validation failed'
+}
+
+$protectedRulesContent = Get-Content -LiteralPath $resolvedProtectedRulesPath -Raw
+$protectedRules = Get-ProtectedRulesCatalog -SourceRoot $resolvedProtectedRulesSourceRoot -RepositoryRoot $resolvedRepositoryRoot
+$expectedProtectedRulesContent = ConvertTo-ProtectedRulesJson -Catalog $protectedRules
+if ($protectedRulesContent -cne $expectedProtectedRulesContent) {
+    throw 'Generated protected rules are stale; rerun Generate-ProtectedRules.ps1 -Write after reviewing the Markdown sources'
+}
+$protectedSchemaName = [string]$protectedRules.'$schema'
+$protectedSchemaPath = Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) $protectedSchemaName
+if (-not (Test-Path -LiteralPath $protectedSchemaPath -PathType Leaf)) {
+    throw "Protected rules schema was not found: $protectedSchemaPath"
+}
+if (-not ($protectedRulesContent | Test-Json -SchemaFile $protectedSchemaPath -ErrorAction SilentlyContinue)) {
+    throw 'Protected rules schema validation failed'
 }
 
 $sourceIds = @($catalog.sources | ForEach-Object { [string]$_.id })
@@ -80,6 +107,30 @@ foreach ($rule in @($catalog.rules)) {
     $rulesById[[string]$rule.id] = $rule
 }
 
+$protectedRulesById = @{}
+foreach ($protectedRule in @($protectedRules.rules)) {
+    $id = [string]$protectedRule.id
+    if ($protectedRulesById.ContainsKey($id)) {
+        throw "Protected rules catalog contains duplicate rule ID: $id"
+    }
+    if ($rulesById.ContainsKey($id)) {
+        throw "Rule ID is defined by both lifecycle and protected sources: $id"
+    }
+    $protectedRulesById[$id] = $protectedRule
+}
+foreach ($rule in @($catalog.rules | Where-Object { $_.PSObject.Properties['supersededBy'] })) {
+    $supersededBy = [string]$rule.supersededBy
+    if ([string]$rule.status -cne 'retired') {
+        throw "Only retired rules can declare supersededBy: $($rule.id)"
+    }
+    if (-not $protectedRulesById.ContainsKey($supersededBy)) {
+        throw "Retired rule $($rule.id) references unknown protected successor: $supersededBy"
+    }
+    if ([string]$rule.lastPlacement.surfaceId -cne [string]$protectedRulesById[$supersededBy].surfaceId) {
+        throw "Retired rule $($rule.id) and protected successor $supersededBy must share a surface"
+    }
+}
+
 $mappingRuleIds = @($catalog.canonicalCandidateMappings.PSObject.Properties.Name)
 $missingMappingRuleIds = @($rulesById.Keys | Where-Object { $_ -notin $mappingRuleIds } | Sort-Object)
 $unknownMappingRuleIds = @($mappingRuleIds | Where-Object { -not $rulesById.ContainsKey($_) } | Sort-Object)
@@ -101,6 +152,7 @@ foreach ($ruleId in $mappingRuleIds) {
 }
 
 $usedRuleIds = New-Object 'System.Collections.Generic.List[string]'
+$usedProtectedRuleIds = New-Object 'System.Collections.Generic.List[string]'
 $outputs = New-Object 'System.Collections.Generic.List[object]'
 if ($OutputFormat -eq 'Text') {
     Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'surface-rendering' -Detail 'Rendering and comparing every Hosted instruction surface')
@@ -112,13 +164,28 @@ foreach ($surface in @($catalog.surfaces)) {
     $lines.Add("applyTo: `"$($surface.applyTo)`"")
     $lines.Add('---')
     $lines.Add('')
-    $lines.Add("# $($surface.title):")
+    $lines.Add("# $($surface.title)")
     $lines.Add('')
     $lines.Add([string]$surface.introduction)
 
+    $surfaceProtectedRules = @($protectedRules.rules | Where-Object { [string]$_.surfaceId -ceq [string]$surface.id } | Sort-Object -Property id)
+    if ($surfaceProtectedRules.Count -gt 0) {
+        $lines.Add('')
+        $lines.Add('## Protected Rules')
+        $lines.Add('')
+        foreach ($rule in $surfaceProtectedRules) {
+            $id = [string]$rule.id
+            if ($usedProtectedRuleIds.Contains($id)) {
+                throw "Protected rule ID is rendered more than once: $id"
+            }
+            $usedProtectedRuleIds.Add($id)
+            $lines.Add("- ``[$id]`` $($rule.text)")
+        }
+    }
+
     foreach ($section in @($surface.sections)) {
         $lines.Add('')
-        $lines.Add("## $($section.heading):")
+        $lines.Add("## $($section.heading)")
         $lines.Add('')
         foreach ($ruleId in @($section.ruleIds)) {
             $id = [string]$ruleId
@@ -140,6 +207,12 @@ foreach ($surface in @($catalog.surfaces)) {
                 ''
             }
             $lines.Add("- ``[$id]``$implementationModelScope $($rule.text)")
+            if ($null -ne $rule.PSObject.Properties['context']) {
+                $lines.Add("  - $($rule.context.heading):")
+                foreach ($item in @($rule.context.items)) {
+                    $lines.Add("    - ``$($item.label)``: $($item.text)")
+                }
+            }
         }
     }
 
@@ -180,9 +253,14 @@ foreach ($surface in @($catalog.surfaces)) {
 }
 
 $activeRuleIds = @($catalog.rules | Where-Object status -eq 'active' | ForEach-Object { [string]$_.id } | Sort-Object)
+$lifecycleActiveRuleIds = @($activeRuleIds)
 $unusedActiveRuleIds = @($activeRuleIds | Where-Object { -not $usedRuleIds.Contains($_) })
 if ($unusedActiveRuleIds.Count -gt 0) {
     throw "Active rules are not rendered: $($unusedActiveRuleIds -join ', ')"
+}
+$unusedProtectedRuleIds = @($protectedRulesById.Keys | Where-Object { -not $usedProtectedRuleIds.Contains($_) })
+if ($unusedProtectedRuleIds.Count -gt 0) {
+    throw "Protected rules are not rendered: $($unusedProtectedRuleIds -join ', ')"
 }
 
 $staleOutputs = @($outputs | Where-Object status -eq 'stale')
@@ -190,7 +268,9 @@ $result = [ordered]@{
     success = $staleOutputs.Count -eq 0
     mode = if ($Write) { 'write' } else { 'check' }
     catalogPath = $resolvedCatalogPath
-    activeRuleCount = $activeRuleIds.Count
+    protectedRulesPath = $resolvedProtectedRulesPath
+    activeRuleCount = $lifecycleActiveRuleIds.Count
+    protectedRuleCount = $protectedRulesById.Count
     retiredRuleCount = @($catalog.rules | Where-Object status -eq 'retired').Count
     outputs = $outputs.ToArray()
 }
@@ -204,6 +284,7 @@ else {
         Status = $(if ($result.success) { 'PASSED' } else { 'FAILED' })
         Mode = $result.mode.ToUpperInvariant()
         'Active Rules' = $result.activeRuleCount
+        'Protected Rules' = $result.protectedRuleCount
         'Retired Rules' = $result.retiredRuleCount
         Outputs = $outputs.Count
         Stale = $staleOutputs.Count

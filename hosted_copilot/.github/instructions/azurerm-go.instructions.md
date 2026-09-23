@@ -3,21 +3,24 @@ description: "Review Terraform AzureRM provider Go implementation for Azure API,
 applyTo: "internal/**/*.go"
 ---
 
-# AzureRM Go Review Rules:
+# AzureRM Go Review Rules
 
-Apply these rules only when changed lines introduce or expose an actionable defect. Classify the target as legacy untyped Plugin SDK, typed `internal/sdk`, or framework-native before applying model-specific rules. Maintain the existing model unless the change is an explicit migration, and verify Azure API claims against generated SDK models.
+Apply these rules only when changed lines introduce or expose an actionable defect. Verify Azure API claims against generated SDK models and the selected API version.
 
-## Evidence And Implementation Model:
+## Protected Rules
+
+- `[IMPL-WF-000]` Classify implementation code as legacy, typed, or framework before applying resource-type-specific rules or suggesting changes. Legacy implementations use untyped Plugin SDK patterns with function-built `*pluginsdk.Resource` values and `*pluginsdk.ResourceData` callbacks. Typed implementations use receiver-based `internal/sdk` resource or data-source contracts. Framework implementations use Terraform Plugin Framework interfaces and request/response types, including list resources, ephemeral resources, and provider-defined functions. Use typed patterns for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces. Preserve the existing resource type unless the change explicitly migrates it.
+
+## Evidence And Resource Type
 
 - `[IMPL-EVID-001]` [legacy, typed, framework] Do not infer Azure field types, required properties, enum values, or PATCH semantics. Verify them against generated SDK models and the selected API version.
-- `[IMPL-WF-001A]` [legacy, typed, framework] Classify implementation code as legacy untyped Plugin SDK, typed `internal/sdk`, or framework-native before suggesting changes. Maintain the existing model unless the task is an explicit migration; use typed for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces.
 
-## Create And Import Behavior:
+## Create And Import Behavior
 
 - `[IMPL-WF-002B]` [legacy, typed] A create-time import-as-exists check must honor `SkipImportCheckOnCreateAndAllowOverwritingExistingResources`; when the feature is enabled, existing remote resources must not trigger `ImportAsExistsError`.
 - `[IMPL-WF-002C]` [legacy, typed] When Resource Identity is supported, callback-based create flows must set both the resource ID and identity before returning. Do not defer required identity population until Read.
 
-## Schema And State:
+## Schema And State
 
 - `[IMPL-SCHEMA-001]` [legacy, typed, framework] Required, optional, computed, ForceNew, defaults, conflicts, and validation must match actual API and lifecycle behavior. Flag schema declarations that permit invalid requests, reject valid configuration, or cannot round-trip state.
 - `[IMPL-SCHEMA-004]` [legacy, typed] Prefer generated SDK `PossibleValuesFor...()` helpers for enum validation when they represent the accepted set. A narrower validator requires service-specific evidence.
@@ -28,11 +31,11 @@ Apply these rules only when changed lines introduce or expose an actionable defe
 - `[IMPL-SCHEMA-013]` [legacy, typed] `CustomizeDiff` validation for optional or unknown values must inspect `GetRawConfig()`, distinguish null from configured zero values, and check `IsKnown()` before traversing collections.
 - `[IMPL-SCHEMA-017]` [legacy, typed] Write-only attributes must use symmetric schema relationships and a positive version trigger so secret rotation is intentional, state-safe, and not driven by perpetual unknown values.
 
-## Azure Update Semantics:
+## Azure Update Semantics
 
 - `[IMPL-PATCH-001]` [legacy, typed] If Azure PATCH preserves omitted properties, removing Terraform configuration must expand an explicit disabled, empty, or sentinel value that clears the remote feature. Returning `nil` is a defect when SDK serialization would omit the field and preserve stale Azure state.
 
-## Errors:
+## Errors
 
 - `[IMPL-ERR-001]` [legacy, typed, framework] Provider errors must be lowercase, add the operation and resource context needed to diagnose the failure, wrap field names and values in backticks, avoid contractions and terminal punctuation, and use `%+v` for underlying errors. Use `errors.New(...)` for static messages that do not wrap an error or require formatting; use `fmt.Errorf(...)` only when formatting values or wrapping context.
 - `[IMPL-ERR-002]` [legacy, typed, framework] Return already comprehensive typed resource ID parser errors directly. Wrap them only when the additional context materially improves diagnosis.

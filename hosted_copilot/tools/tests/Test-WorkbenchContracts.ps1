@@ -127,7 +127,7 @@ $display = [ordered]@{
             lane = 'maintainer'
             id = 'IMPL-TEST-901'
             title = 'Validate rule'
-            location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/implementation.rules.md'
+            location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
             text = 'Validate the rule deterministically.'
             contentSha256 = $hash
             surface = 'implementation'
@@ -143,6 +143,7 @@ $display = [ordered]@{
     })
     catalog = [ordered]@{
         contentSha256 = $hash
+        protectedRulesContentSha256 = $hash
         rules = @(
             [ordered]@{
                 id = 'IMPL-EVID-001'
@@ -153,7 +154,7 @@ $display = [ordered]@{
                 evidenceIds = @('implementation-contract')
                 implementationModels = @('legacy', 'typed', 'framework')
                 canonicalCandidate = [ordered]@{ sourceDefinitionId = 'interactive-toolkit'; sourceId = 'IMPL-EVID-001' }
-                placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' })
+                placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Resource Type' })
             },
             [ordered]@{
                 id = 'IMPL-EVID-002'
@@ -166,9 +167,22 @@ $display = [ordered]@{
                 canonicalCandidate = [ordered]@{ sourceDefinitionId = 'interactive-toolkit'; sourceId = 'IMPL-EVID-002' }
                 placements = @()
                 retirementReason = 'Superseded by a more precise rule.'
-                lastPlacement = [ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' }
+                lastPlacement = [ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Resource Type' }
             }
         )
+        protectedRules = @([ordered]@{
+            id = 'IMPL-WF-000'
+            status = 'protected'
+            surfaceId = 'implementation'
+            title = 'Classify AzureRM implementation resource types'
+            text = 'Classify implementation code before applying resource-type-specific rules.'
+            provenance = 'confirmed-maintainer-convention'
+            protectionReason = 'Required first-party instruction infrastructure.'
+            impact = 100
+            guardedTokens = 24
+            sourcePath = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
+            contentSha256 = $hash
+        })
     }
     guidanceCapacity = [ordered]@{
         status = 'passed'
@@ -185,13 +199,13 @@ $activeRuleWithoutPlacement = Copy-JsonValue -Value $display
 $activeRuleWithoutPlacement.catalog.rules[0].placements = @()
 Add-TestResult -Name 'active-rule-placement-required' -Passed (-not (Test-JsonInstance -Value $activeRuleWithoutPlacement -SchemaPath $displaySchemaPath)) -Detail 'Every active catalog rule requires one or more display placements.'
 $retiredRuleWithPlacement = Copy-JsonValue -Value $display
-$retiredRuleWithPlacement.catalog.rules[1].placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' })
+$retiredRuleWithPlacement.catalog.rules[1].placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Resource Type' })
 Add-TestResult -Name 'retired-rule-placement-rejected' -Passed (-not (Test-JsonInstance -Value $retiredRuleWithPlacement -SchemaPath $displaySchemaPath)) -Detail 'Retired catalog rules remain visible as history but cannot appear in an active surface.'
 $retiredRuleWithoutHistory = Copy-JsonValue -Value $display
 $retiredRuleWithoutHistory.catalog.rules[1].PSObject.Properties.Remove('lastPlacement')
 Add-TestResult -Name 'retired-rule-history-required' -Passed (-not (Test-JsonInstance -Value $retiredRuleWithoutHistory -SchemaPath $displaySchemaPath)) -Detail 'A retired rule retains its last rendered location for Workbench history and Restore.'
 $activeRuleWithHistory = Copy-JsonValue -Value $display
-$activeRuleWithHistory.catalog.rules[0] | Add-Member -NotePropertyName lastPlacement -NotePropertyValue ([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Implementation Model' })
+$activeRuleWithHistory.catalog.rules[0] | Add-Member -NotePropertyName lastPlacement -NotePropertyValue ([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Evidence And Resource Type' })
 Add-TestResult -Name 'active-rule-history-rejected' -Passed (-not (Test-JsonInstance -Value $activeRuleWithHistory -SchemaPath $displaySchemaPath)) -Detail 'An active rule uses current surface placement and cannot carry stale retirement placement.'
 $displayWithGeneration = Copy-JsonValue -Value $display
 $displayWithGeneration | Add-Member -NotePropertyName acceptedSourceGeneration -NotePropertyValue ([ordered]@{})
@@ -223,6 +237,7 @@ $draft = [ordered]@{
             rationale = ''
             proposedHostedRuleId = $null
             proposedText = ''
+            implementationModels = @('legacy', 'typed')
             sourceContentSha256 = $hash
             updatedAt = $timestamp
         }

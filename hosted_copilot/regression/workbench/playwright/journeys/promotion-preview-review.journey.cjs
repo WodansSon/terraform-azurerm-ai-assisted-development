@@ -289,7 +289,7 @@ async function run({ page, baseUrl, assert }) {
   assert(raw.controls.some((control) => control.label === "Expand Up" && control.icon.endsWith("#octicon-fold-up-16")), "Raw review does not use the local Fold Up Octicon");
   const expectedControlIcons = { "Expand Up": "#octicon-fold-up-16", "Expand All": "#octicon-unfold-16", "Expand Down": "#octicon-fold-down-16" };
   assert(raw.controls.every((control) => control.icon.endsWith(expectedControlIcons[control.label])), "Raw review does not use the correct local Octicon for each available expansion direction");
-  assert(raw.linesToggle.label === "Expand all lines: RAW APPROVED RULES/approved-rules.json" && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Raw review does not start with the file-level Expand all lines override");
+  assert(raw.linesToggle.label === "Expand all lines: APPROVED RULES/approved-rules.json" && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Approved Rules review does not start with the file-level Expand all lines override");
 
   const directionalExpansion = await page.evaluate(async () => {
     const file = document.querySelector(".preview-raw-payload [data-preview-file-path]");
@@ -318,7 +318,7 @@ async function run({ page, baseUrl, assert }) {
     };
   });
   assert(directionalExpansion.before - directionalExpansion.expanded.remaining === Math.min(10, directionalExpansion.before), "Fold Up does not reveal the expected directional line count");
-  assert(directionalExpansion.expanded.label === "Collapse all lines: RAW APPROVED RULES/approved-rules.json" && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
+  assert(directionalExpansion.expanded.label === "Collapse all lines: APPROVED RULES/approved-rules.json" && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
   assert(directionalExpansion.restored.gaps === raw.gapCount && directionalExpansion.restored.label === raw.linesToggle.label && directionalExpansion.restored.pressed === "false" && directionalExpansion.restored.icon.endsWith("#octicon-unfold-16"), "File-level Collapse all lines does not restore the canonical compact view and Expand all lines state");
 
   await page.locator("#preview-review-toggle").click();

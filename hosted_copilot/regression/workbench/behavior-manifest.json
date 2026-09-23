@@ -175,6 +175,21 @@
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"
     },
     {
+      "id": "WB-UX-PROTECTED-001",
+      "title": "Protected rules render as locked immutable rows under Overrides",
+      "journey": "playwright/journeys/protected-rules.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PROTECTED-002",
+      "title": "Protected rule details remain read-only and preserve catalog definitions",
+      "journey": "playwright/journeys/protected-rules.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PROTECTED-003",
+      "title": "Protected rules coexist with applicability overrides in the existing sticky hierarchy",
+      "journey": "playwright/journeys/protected-rules.journey.cjs"
+    },
+    {
       "id": "WB-UX-PROVENANCE-001",
       "title": "Contributor provenance tooltip retains concise complete text",
       "journey": "playwright/journeys/provenance-tooltip.journey.cjs"
@@ -237,6 +252,11 @@
     {
       "id": "WB-UX-DECISION-001",
       "title": "Save decision atomically persists action, generated identity, rationale, and plan membership",
+      "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
+    },
+    {
+      "id": "WB-UX-DECISION-002",
+      "title": "Implementation decisions preserve maintainer-selected resource types through Approved Rules",
       "journey": "playwright/journeys/assessment-review-lifecycle.journey.cjs"
     },
     {

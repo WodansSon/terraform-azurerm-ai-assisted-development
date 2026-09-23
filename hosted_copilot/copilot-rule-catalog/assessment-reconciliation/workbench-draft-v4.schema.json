@@ -43,6 +43,11 @@
         "rationale": { "type": "string", "maxLength": 500 },
         "proposedHostedRuleId": { "oneOf": [{ "$ref": "#/$defs/hostedId" }, { "type": "null" }] },
         "proposedText": { "type": "string" },
+        "implementationModels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["legacy", "typed", "framework"] }
+        },
         "sourceContentSha256": { "$ref": "#/$defs/sha256" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

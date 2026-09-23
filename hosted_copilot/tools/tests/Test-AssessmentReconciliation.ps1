@@ -283,7 +283,7 @@ try {
     $records = [ordered]@{
         'contributor-guidance' = [ordered]@{ sourceId = 'guide-new-resource'; presence = 'present'; sourceLifecycle = 'active'; location = 'contributing/topics/new-resource.md'; contentSha256 = $contentSha256; content = 'Contributor source content.'; title = 'Contributor guidance'; repository = 'hashicorp/terraform-provider-azurerm'; resolvedCommit = 'a' * 40; referenceUrl = "https://github.com/hashicorp/terraform-provider-azurerm/blob/$('a' * 40)/contributing/topics/new-resource.md" }
         'interactive-toolkit' = [ordered]@{ sourceId = 'IMPL-EVID-001'; presence = 'present'; sourceLifecycle = 'active'; location = '.github/instructions/implementation-compliance-contract.instructions.md'; contentSha256 = $contentSha256; content = 'Interactive source content.'; title = 'Interactive rule'; contractPath = '.github/instructions/implementation-compliance-contract.instructions.md'; provenance = 'local-safeguard'; evidence = @(); sourceIds = @() }
-        'maintainer-proposals' = [ordered]@{ sourceId = 'DOCS-SOURCE-901'; presence = 'present'; sourceLifecycle = 'active'; location = 'hosted_copilot/copilot-rule-catalog/maintainer-rules/documentation.rules.md'; contentSha256 = $contentSha256; content = 'Maintainer source content.'; title = 'Maintainer source rule'; surface = 'documentation'; ruleText = 'Document the source behavior.'; provenance = 'local-safeguard'; rationale = 'Fixture rationale.'; evidence = @() }
+        'maintainer-proposals' = [ordered]@{ sourceId = 'DOCS-SOURCE-901'; presence = 'present'; sourceLifecycle = 'active'; location = 'hosted_copilot/authored-rules/proposals/documentation.rules.md'; contentSha256 = $contentSha256; content = 'Maintainer source content.'; title = 'Maintainer source rule'; surface = 'documentation'; ruleText = 'Document the source behavior.'; provenance = 'local-safeguard'; rationale = 'Fixture rationale.'; evidence = @() }
     }
     $inventoryPathList = [Collections.Generic.List[string]]::new()
     $inventoryHashes = [ordered]@{}
@@ -396,7 +396,7 @@ foreach ($entry in @($baseline.entries)) {
             title = [string]$assessment.title
             recommendedRuleText = if ($null -ne $mappedRule) { [string]$mappedRule.text } else { [string]$assessment.sourceMeaning }
             category = 'implementation'
-            placement = if ($null -ne $mappedRule) { 'Evidence And Implementation Model' } else { 'Schema And State' }
+            placement = if ($null -ne $mappedRule) { 'Evidence And Resource Type' } else { 'Schema And State' }
             rationale = [string]$assessment.selectionRationale
             needsReview = $false
             memberAssessmentRefs = @($reference)
@@ -538,7 +538,7 @@ $recommendations = [Collections.Generic.List[object]]::new()
         schemaVersion = 1
         recommendations = @(
             [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'related'; rationale = 'The assessments are related but independently enforceable.'; assessmentRefs = @($contributorRef) }); implementationModels = @('legacy', 'typed', 'framework') },
-            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Implementation Model'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @() },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Resource Type'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @() },
             [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @() }
         )
         assessmentCoverage = @(
@@ -588,6 +588,10 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $retiredCatalog = Copy-JsonObject -Value (Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json -DateKind String)
     $surface = $retiredCatalog.surfaces[0]
     $section = $surface.sections[0]
+    $companionSection = @($surface.sections | Where-Object { @($_.ruleIds).Count -gt 1 })[0]
+    $companionId = [string]$companionSection.ruleIds[0]
+    $companionSection.ruleIds = @($companionSection.ruleIds | Where-Object { [string]$_ -cne $companionId })
+    $section.ruleIds = @($section.ruleIds) + @($companionId)
     $retiredId = [string]$section.ruleIds[0]
     $retiredRule = @($retiredCatalog.rules | Where-Object { [string]$_.id -ceq $retiredId })[0]
     $lastPlacement = [ordered]@{ surfaceId = [string]$surface.id; sectionHeading = [string]$section.heading }

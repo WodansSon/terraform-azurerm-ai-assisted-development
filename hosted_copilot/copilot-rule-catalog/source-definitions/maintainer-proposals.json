@@ -5,7 +5,7 @@
   "displayName": "Maintainer Proposals",
   "root": {
     "kind": "repository",
-    "path": "hosted_copilot/copilot-rule-catalog/maintainer-rules"
+    "path": "hosted_copilot/authored-rules/proposals"
   },
   "files": [
     "**/*.rules.md"

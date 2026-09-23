@@ -249,8 +249,9 @@ async function assertOverridesDecoration(page, width) {
     const sessionSnapshot = structuredClone(state.session);
     const candidate = state.assessedCandidates.find((item) => !item.assessment.hostedApplicable) || state.candidates[0];
     const assessment = getAssessment(candidate, getDecision(candidate));
-    const noOverridesInitially = !candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
-      && !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]');
+    const protectedOnlyInitially = candidateHierarchicalView.model.nodesById.has("candidate:source:overrides")
+      && state.candidates.filter((item) => getApplicabilityOverride(item)).length === 0
+      && state.protectedRules.length > 0;
     const resolveColor = (token) => {
       const probe = document.createElement("span");
       probe.style.color = `var(${token})`;
@@ -302,7 +303,7 @@ async function assertOverridesDecoration(page, width) {
         && [summary.querySelector(".candidate-parent-label > strong"), summary.querySelector(".candidate-parent-decoration-icon"), row.querySelector(".candidate-tree-copy strong"), row.querySelector(".candidate-decoration-icon")]
           .every((node) => getComputedStyle(node).color === readyColor);
 
-      return { noOverridesInitially, needsInputValid, readyValid };
+      return { protectedOnlyInitially, needsInputValid, readyValid };
     } finally {
       state.session = sessionSnapshot;
       refreshEffectiveCandidates();
@@ -310,10 +311,11 @@ async function assertOverridesDecoration(page, width) {
     }
   });
 
-  assert(result.noOverridesInitially, `${width}px Overrides decorations: an Overrides hierarchy exists without a provisional override`);
+  assert(result.protectedOnlyInitially, `${width}px Overrides decorations: the initial Overrides hierarchy is not protected-only`);
   assert(result.needsInputValid, `${width}px Overrides decorations: needs-input state or singular description is incorrect`);
   assert(result.readyValid, `${width}px Overrides decorations: ready state did not color the root label, icon, and leaf consistently`);
-  const cleanedUp = await page.evaluate(() => !document.querySelector('#candidate-list [data-node-id="candidate:source:overrides"]'));
+  const cleanedUp = await page.evaluate(() => state.candidates.filter((candidate) => getApplicabilityOverride(candidate)).length === 0
+    && state.protectedRules.length > 0);
   assert(cleanedUp, `${width}px Overrides decorations: regression probe did not restore the candidate tree`);
 }
 

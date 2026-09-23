@@ -11,6 +11,7 @@
     "hosted_copilot/tools/internal/collection/New-SourceInventory.ps1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1",
+    "hosted_copilot/tools/modules/source-parsers/AuthoredRules.psm1",
     "hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV2.psm1"
   ]
 }

@@ -12,11 +12,16 @@ Import-Module -Name $validationOutputModulePath -Force
 
 $hostedRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $generatorPath = Join-Path $PSScriptRoot '../commands/catalog/Generate-Instructions.ps1'
+$protectedGeneratorPath = Join-Path $PSScriptRoot '../commands/catalog/Generate-ProtectedRules.ps1'
 $sourceCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
 $sourceSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
+$sourceProtectedRulesPath = Join-Path $hostedRoot 'copilot-rule-catalog/protected-rules.json'
+$sourceProtectedRulesSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/protected-rules.schema.json'
+$sourceProtectedRulesRoot = Join-Path $hostedRoot 'authored-rules/protected'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-instruction-generation-{0}" -f [Guid]::NewGuid().ToString('N'))
+$tempHostedRoot = Join-Path $tempRoot 'hosted_copilot'
 
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted instruction generation'
@@ -61,8 +66,10 @@ function Invoke-Generator {
     $arguments = @(
         '-NoProfile',
         '-File', $generatorPath,
-        '-CatalogPath', (Join-Path $tempRoot 'copilot-rule-catalog/instruction-catalog.json'),
-        '-HostedRoot', $tempRoot,
+        '-CatalogPath', (Join-Path $tempHostedRoot 'copilot-rule-catalog/instruction-catalog.json'),
+        '-ProtectedRulesPath', (Join-Path $tempHostedRoot 'copilot-rule-catalog/protected-rules.json'),
+        '-ProtectedRulesSourceRoot', (Join-Path $tempHostedRoot 'authored-rules/protected'),
+        '-HostedRoot', $tempHostedRoot,
         '-OutputFormat', 'Json'
     )
     if ($Write) {
@@ -80,17 +87,40 @@ function Invoke-Generator {
     }
 }
 
+function Invoke-ProtectedGenerator {
+    $arguments = @(
+        '-NoProfile',
+        '-File', $protectedGeneratorPath,
+        '-SourceRoot', (Join-Path $tempHostedRoot 'authored-rules/protected'),
+        '-RepositoryRoot', $tempRoot,
+        '-OutputPath', (Join-Path $tempHostedRoot 'copilot-rule-catalog/protected-rules.json'),
+        '-Write',
+        '-OutputFormat', 'Json'
+    )
+    $global:LASTEXITCODE = 0
+    $output = @(& pwsh @arguments 2>&1)
+    $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $global:LASTEXITCODE = 0
+    return [pscustomobject]@{ exitCode = $exitCode; output = ($output | Out-String).Trim() }
+}
+
 try {
     Write-TestProgress -Name 'fixture-preparation' -Detail 'Staging the catalog, schema, and generated instruction files'
-    $catalogDirectory = Join-Path $tempRoot 'copilot-rule-catalog'
+    $catalogDirectory = Join-Path $tempHostedRoot 'copilot-rule-catalog'
     New-Item -ItemType Directory -Path $catalogDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.json')
     Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.schema.json')
+    Copy-Item -LiteralPath $sourceProtectedRulesPath -Destination (Join-Path $catalogDirectory 'protected-rules.json')
+    Copy-Item -LiteralPath $sourceProtectedRulesSchemaPath -Destination (Join-Path $catalogDirectory 'protected-rules.schema.json')
+    $tempProtectedRulesRoot = Join-Path $tempHostedRoot 'authored-rules/protected'
+    New-Item -ItemType Directory -Path $tempProtectedRulesRoot -Force | Out-Null
+    Copy-Item -Path (Join-Path $sourceProtectedRulesRoot '*.rules.md') -Destination $tempProtectedRulesRoot
 
     $catalog = Get-Content -LiteralPath $sourceCatalogPath -Raw | ConvertFrom-Json
+    $protectedRules = Get-Content -LiteralPath $sourceProtectedRulesPath -Raw | ConvertFrom-Json
     foreach ($surface in @($catalog.surfaces)) {
         $sourcePath = Join-Path $hostedRoot ([string]$surface.outputPath)
-        $targetPath = Join-Path $tempRoot ([string]$surface.outputPath)
+        $targetPath = Join-Path $tempHostedRoot ([string]$surface.outputPath)
         New-Item -ItemType Directory -Path (Split-Path -Parent $targetPath) -Force | Out-Null
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath
     }
@@ -99,16 +129,23 @@ try {
     $baseline = Invoke-Generator
     Add-TestResult -Name 'baseline-freshness' -Passed ($baseline.exitCode -eq 0) -Detail $(if ($baseline.exitCode -eq 0) { 'Current catalog reproduces all committed instruction files.' } else { $baseline.output })
 
-    $implementationOutputPath = Join-Path $tempRoot ([string]$catalog.surfaces[0].outputPath)
+    $implementationOutputPath = Join-Path $tempHostedRoot ([string]$catalog.surfaces[0].outputPath)
     $implementationOutput = Get-Content -LiteralPath $implementationOutputPath -Raw
     $modelRenderingPassed = $implementationOutput.Contains('- `[IMPL-WF-002B]` [legacy, typed]') -and
         $implementationOutput.Contains('- `[IMPL-SCHEMA-008]` [legacy, typed]') -and
         $implementationOutput.Contains('- `[IMPL-PATCH-001]` [legacy, typed]') -and
-        $implementationOutput.Contains('- `[IMPL-SCHEMA-007]` [legacy, typed, framework]')
+        $implementationOutput.Contains('- `[IMPL-SCHEMA-007]` [legacy, typed, framework]') -and
+        $implementationOutput.Contains('- `[IMPL-WF-000]` Classify implementation code as legacy, typed, or framework before applying resource-type-specific rules or suggesting changes.') -and
+        $implementationOutput.Contains('Use typed patterns for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces.') -and
+        -not $implementationOutput.Contains('- `[IMPL-WF-001A]`') -and
+        $implementationOutput.Contains('## Protected Rules') -and
+        $implementationOutput.Contains('## Evidence And Resource Type') -and
+        -not $implementationOutput.Contains('# AzureRM Go Review Rules:')
     Add-TestResult -Name 'implementation-model-rendering' -Passed $modelRenderingPassed -Detail $(if ($modelRenderingPassed) { 'Generated implementation rules preserve model-specific applicability.' } else { 'Generated implementation model markers are missing or incorrect.' })
 
     Write-TestProgress -Name 'catalog-behavior' -Detail 'Validating model applicability and catalog-native rule origins'
     $tempCatalogPath = Join-Path $catalogDirectory 'instruction-catalog.json'
+    $tempProtectedRulesPath = Join-Path $catalogDirectory 'protected-rules.json'
     $catalog.rules[0].origin = 'hosted-catalog-addition'
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
     $catalogAddition = Invoke-Generator
@@ -128,10 +165,25 @@ try {
     $duplicateMapping = Invoke-Generator
     Add-TestResult -Name 'canonical-mapping-one-to-one' -Passed ($duplicateMapping.exitCode -ne 0 -and $duplicateMapping.output -like '*assigned to more than one catalog rule*') -Detail $(if ($duplicateMapping.exitCode -ne 0) { 'A canonical source candidate cannot own multiple catalog rules.' } else { 'Duplicate canonical source ownership was accepted.' })
 
+    $implementationCatalogRuleId = [string]$catalog.surfaces[0].sections[0].ruleIds[0]
+    $tempProtectedImplementationPath = Join-Path $tempProtectedRulesRoot 'implementation.rules.md'
+    $protectedImplementationContent = [IO.File]::ReadAllText($tempProtectedImplementationPath)
+    [IO.File]::WriteAllText($tempProtectedImplementationPath, $protectedImplementationContent.Replace('### IMPL-WF-000:', "### $implementationCatalogRuleId`:") , [Text.UTF8Encoding]::new($false))
+    $collidingProjection = Invoke-ProtectedGenerator
+    $protectedCollision = if ($collidingProjection.exitCode -eq 0) { Invoke-Generator } else { $collidingProjection }
+    Add-TestResult -Name 'protected-rule-id-collision' -Passed ($protectedCollision.exitCode -ne 0 -and $protectedCollision.output -like '*defined by both lifecycle and protected sources*') -Detail $(if ($protectedCollision.exitCode -ne 0) { 'Protected rule IDs cannot collide with lifecycle-managed catalog rules.' } else { 'A protected rule reused a lifecycle-managed rule ID.' })
+
+    [IO.File]::WriteAllText($tempProtectedImplementationPath, $protectedImplementationContent, [Text.UTF8Encoding]::new($false))
+    $restoredProjection = Invoke-ProtectedGenerator
+    if ($restoredProjection.exitCode -ne 0) {
+        throw $restoredProjection.output
+    }
+    Add-TestResult -Name 'protected-rule-impact' -Passed ([int]$protectedRules.rules[0].impact -eq 100) -Detail 'Protected source compilation fixes impact at 100 without requiring an authored field.'
+
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
 
     Write-TestProgress -Name 'write-boundaries' -Detail 'Checking read-only stale detection, explicit writes, and schema enforcement'
-    $firstOutputPath = Join-Path $tempRoot ([string]$catalog.surfaces[0].outputPath)
+    $firstOutputPath = Join-Path $tempHostedRoot ([string]$catalog.surfaces[0].outputPath)
     $beforeStaleHash = (Get-FileHash -LiteralPath $firstOutputPath -Algorithm SHA256).Hash
     $catalog.rules[0].text = "$($catalog.rules[0].text) Regression probe."
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM

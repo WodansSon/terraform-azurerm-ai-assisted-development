@@ -16,6 +16,8 @@ param(
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
+    [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
+
     [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'),
 
     [string]$BuilderPath = (Join-Path $PSScriptRoot 'New-WorkbenchDisplay.ps1'),
@@ -249,13 +251,14 @@ if ($null -ne $resolvedResumeRunDirectory) {
 
 $resolvedBaselinePath = [IO.Path]::GetFullPath($AssessmentBaselinePath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
+$resolvedProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($ReconciliationContractPath)
 $resolvedBuilderPath = [IO.Path]::GetFullPath($BuilderPath)
 $canonicalBuilderPath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'))
 if ($resolvedBuilderPath -cne $canonicalBuilderPath) {
     throw 'BuilderPath must identify the canonical contract-owned recommendation builder'
 }
-foreach ($requiredPath in @($resolvedBaselinePath, $resolvedCatalogPath, $resolvedContractPath, $resolvedBuilderPath)) {
+foreach ($requiredPath in @($resolvedBaselinePath, $resolvedCatalogPath, $resolvedProtectedRulesPath, $resolvedContractPath, $resolvedBuilderPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required assessment reconciliation input was not found: $requiredPath"
     }
@@ -281,6 +284,10 @@ $snapshotBaselinePath = Join-Path $runDirectory 'source-assessment-baseline.json
 $baselineSnapshot = Copy-InputSnapshot -SourcePath $resolvedBaselinePath -DestinationPath $snapshotBaselinePath
 $snapshotCatalogPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json'
 $catalogSnapshot = Copy-InputSnapshot -SourcePath $resolvedCatalogPath -DestinationPath $snapshotCatalogPath
+$snapshotProtectedRulesPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json'
+$protectedRulesSnapshot = Copy-InputSnapshot -SourcePath $resolvedProtectedRulesPath -DestinationPath $snapshotProtectedRulesPath
+$snapshotProtectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
+$null = Copy-InputSnapshot -SourcePath (Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) 'protected-rules.schema.json') -DestinationPath $snapshotProtectedRulesSchemaPath
 $snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)
@@ -294,6 +301,7 @@ $null = Copy-InputSnapshot -SourcePath ([IO.Path]::GetFullPath($GuidanceCapacity
 
 $baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
 $contractSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json'
 $promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
@@ -302,6 +310,9 @@ if (-not ($baselineSnapshot.Content | Test-Json -SchemaFile $baselineSchemaPath 
 }
 if (-not ($catalogSnapshot.Content | Test-Json -SchemaFile $catalogSchemaPath -ErrorAction Stop)) {
     throw 'Hosted instruction catalog does not satisfy its schema'
+}
+if (-not ($protectedRulesSnapshot.Content | Test-Json -SchemaFile $protectedRulesSchemaPath -ErrorAction Stop)) {
+    throw 'Protected rules catalog does not satisfy its schema'
 }
 if (-not ($contractSnapshot.Content | Test-Json -SchemaFile $contractSchemaPath -ErrorAction Stop)) {
     throw 'Assessment reconciliation contract does not satisfy its schema'
@@ -486,6 +497,7 @@ try {
                     GuidanceCapacityPath = $snapshotGuidanceCapacityPath
                     OutputPath = $batchDisplayPath
                     HostedCatalogPath = $snapshotCatalogPath
+                    ProtectedRulesPath = $snapshotProtectedRulesPath
                     ReconciliationContractPath = $snapshotContractPath
                     GeneratedAt = $GeneratedAt
                     OutputFormat = 'Json'
@@ -776,6 +788,7 @@ try {
         GuidanceCapacityPath = $snapshotGuidanceCapacityPath
         OutputPath = $resolvedOutputPath
         HostedCatalogPath = $snapshotCatalogPath
+        ProtectedRulesPath = $snapshotProtectedRulesPath
         ReconciliationContractPath = $snapshotContractPath
         GeneratedAt = $GeneratedAt
         OutputFormat = 'Json'
