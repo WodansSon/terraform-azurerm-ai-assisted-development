@@ -15,11 +15,19 @@ const PREVIEW_TREE_DEFAULT_WIDTH = 380;
 const PREVIEW_TREE_MIN_WIDTH = 296;
 const PREVIEW_TREE_MAX_WIDTH = 520;
 const PREVIEW_TREE_KEYBOARD_STEP = 16;
+const PREVIEW_VIRTUALIZATION_BUFFER_VIEWPORTS = 2;
 const PREVIEW_SCOPE_LABELS = {
   proposed: "Proposed changes",
   payload: "Payload changes",
   raw: "Raw approved rules"
 };
+const GUIDANCE_CAPACITY_BUCKETS = [
+  { reportName: "repository", label: "Repository-wide Guidance", surface: "repository" },
+  { reportName: "go", label: "Implementation Instructions", surface: "implementation" },
+  { reportName: "test", label: "Testing Supplement", surface: "testing" },
+  { reportName: "documentation", label: "Documentation Instructions", surface: "documentation" },
+  { reportName: "skill", label: "Review Skill", surface: "review-skill" }
+];
 const FACTORS = [
   ["severity", "Severity", "Harm caused when this defect is missed", "value"],
   ["frequency", "Frequency", "How often this defect appears in provider changes", "value"],
@@ -85,6 +93,8 @@ let candidateHierarchicalView;
 let assessmentHierarchicalView;
 let conflictHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [] };
+let previewBodyVirtualizer;
+let previewVirtualizationResizeTimer;
 const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS));
 let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
@@ -293,6 +303,7 @@ function bindEvents() {
     candidateHierarchicalView?.refreshLayout();
     assessmentHierarchicalView?.refreshLayout();
     setPreviewTreeWidth(Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow")));
+    schedulePreviewBodyVirtualizerRefresh();
   });
 }
 
@@ -956,6 +967,17 @@ function getAssessmentTokenValue(candidate, assessment, decision = getDecision(c
   return estimateGuardedTokens(decision.proposedText || candidate.text);
 }
 
+function getActionTokenDelta(candidate, action, decision = getDecision(candidate)) {
+  if (!isPromotionAction(action)) return 0;
+  if (action === "retire") return -estimateGuardedTokens(getCurrentHostedText(candidate));
+  const assessment = getAssessment(candidate, decision);
+  if (!assessment) return 0;
+  if (assessment.guardedTokenDelta !== 0) return assessment.guardedTokenDelta;
+  const proposedTokens = estimateGuardedTokens(decision.proposedText || assessment.proposedText || candidate.text);
+  if (action === "update") return proposedTokens - estimateGuardedTokens(getCurrentHostedText(candidate));
+  return proposedTokens;
+}
+
 function getCandidateTokenValue(candidate, assessment) {
   const decision = getDecision(candidate);
   if (getApplicabilityOverride(candidate)) {
@@ -1014,11 +1036,11 @@ function renderTarget() {
 
 function renderMetrics() {
   const excludedCount = getActiveExcludedCandidates().length;
-  const combined = getCapacityReports().find((report) => report.name === "test-combined");
+  const capacity = getGuidanceCapacityProjection();
   elements["status-excluded"].textContent = formatNumber(excludedCount);
   elements["status-mapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length);
   elements["status-unmapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length);
-  elements["status-headroom"].textContent = formatNumber(combined.budgetHeadroomTokens);
+  elements["status-headroom"].textContent = formatNumber(capacity.projectedHeadroomTokens);
 }
 
 function getFilteredCandidates() {
@@ -2046,9 +2068,8 @@ function renderAssessment() {
     return;
   }
   const impact = assessment ? calculateImpact(assessment.factors) : null;
-  const draftCost = getAssessmentTokenValue(candidate, assessment, decision);
-  const combined = getCapacityReports().find((report) => report.name === "test-combined");
-  const projectedHeadroom = combined.budgetHeadroomTokens - draftCost;
+  const draftCost = getActionTokenDelta(candidate, decision.action, decision);
+  const projectedHeadroom = getAssessmentProjectedHeadroom(candidate, decision.action, decision);
   const catalogStatus = getCatalogStatus(candidate);
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
@@ -2092,7 +2113,7 @@ function renderAssessment() {
         </div>
         <div class="score-strip">
           <div class="score-item impact"><span>Priority score</span><strong>${impact}</strong></div>
-          <div class="score-item cost"><span>Token cost</span><strong>${formatCandidateTokenValue(candidate, assessment)}</strong></div>
+          <div class="score-item cost"><span>Token cost</span><strong>${draftCost === 0 ? "0" : formatSignedNumber(draftCost)}</strong></div>
           <div class="score-item efficiency"><span>Headroom after</span><strong>${formatNumber(projectedHeadroom)}</strong></div>
         </div>
         ${renderPriorityAssessment(assessment)}
@@ -2197,29 +2218,15 @@ function handleAssessmentInput(event) {
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
     if (action === "no-change") {
-      const detailContent = elements["assessment-panel"].querySelector(":scope > .assessment-content");
-      const shell = document.querySelector(".app-shell");
-      const detailScrollTop = detailContent?.scrollTop || 0;
-      const shellScrollTop = shell?.scrollTop || 0;
-      const shellScrollLeft = shell?.scrollLeft || 0;
       removeCandidateFromBulkOperations(candidate.key);
       saveDecision(candidate, null);
-      renderAssessment();
-      const replacement = elements["assessment-panel"].querySelector(":scope > .assessment-content");
-      if (replacement) replacement.scrollTop = detailScrollTop;
-      shell?.scrollTo({ top: shellScrollTop, left: shellScrollLeft, behavior: "instant" });
-      elements["assessment-panel"].querySelector('[data-rule-action="no-change"]')?.focus({ preventScroll: true });
-      shell?.scrollTo({ top: shellScrollTop, left: shellScrollLeft, behavior: "instant" });
+      syncAssessmentActionControls(candidate, action);
+      syncAssessmentRationaleControls(action);
+      event.target.focus({ preventScroll: true });
       return;
     }
     syncAssessmentActionControls(candidate, action);
-    const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
-    const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
-    if (rationale) {
-      rationale.disabled = false;
-      rationale.placeholder = "Record why this action is appropriate.";
-    }
-    if (save) save.disabled = !rationale?.value.trim();
+    syncAssessmentRationaleControls(action);
     return;
   }
   if (event.target.dataset.decisionField) {
@@ -2265,7 +2272,20 @@ function syncAssessmentActionControls(candidate, action = getDecision(candidate)
     badge.className = `decision-badge ${action}`;
     badge.textContent = formatRecommendation(action);
   }
-  refreshAssessmentScores(candidate);
+  refreshAssessmentScores(candidate, action);
+}
+
+function syncAssessmentRationaleControls(action) {
+  const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
+  const limit = elements["assessment-panel"].querySelector(".rationale-limit");
+  const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
+  if (!rationale) return;
+  const noChange = action === "no-change";
+  if (noChange) rationale.value = "";
+  rationale.disabled = noChange;
+  rationale.placeholder = noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
+  if (limit) limit.textContent = `${noChange ? 0 : rationale.value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
+  if (save) save.disabled = noChange || !rationale.value.trim();
 }
 
 async function handleAssessmentClick(event) {
@@ -2305,17 +2325,16 @@ async function handleAssessmentClick(event) {
   }
 }
 
-function refreshAssessmentScores(candidate) {
+function refreshAssessmentScores(candidate, action = getDecision(candidate).action) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   const impact = calculateImpact(assessment.factors);
-  const cost = getAssessmentTokenValue(candidate, assessment, decision);
-  const combined = getCapacityReports().find((report) => report.name === "test-combined");
+  const cost = getActionTokenDelta(candidate, action, decision);
   const scoreValues = elements["assessment-panel"].querySelectorAll(".score-item strong");
   if (scoreValues.length === 3) {
     scoreValues[0].textContent = impact;
-    scoreValues[1].textContent = formatCandidateTokenValue(candidate, assessment);
-    scoreValues[2].textContent = formatNumber(combined.budgetHeadroomTokens - cost);
+    scoreValues[1].textContent = cost === 0 ? "0" : formatSignedNumber(cost);
+    scoreValues[2].textContent = formatNumber(getAssessmentProjectedHeadroom(candidate, action, decision));
   }
 }
 
@@ -2413,11 +2432,6 @@ function getPlanReadiness(candidate) {
 }
 
 function getPlanTokenValue(candidate) {
-  const decision = getDecision(candidate);
-  const assessment = getAssessment(candidate, decision);
-  if (!isPromotionAction(decision.action) && getApplicabilityOverride(candidate) && assessment) {
-    return getAssessmentTokenValue(candidate, assessment, decision);
-  }
   return getPlanTokenDelta(candidate);
 }
 
@@ -2473,47 +2487,101 @@ function handlePlanRowKeyboardNavigation(event) {
 
 function getPlanTokenDelta(candidate) {
   const decision = getDecision(candidate);
-  const assessment = getAssessment(candidate, decision);
-  if (["add", "update", "restore"].includes(decision.action)) return assessment ? getAssessmentTokenValue(candidate, assessment, decision) : 0;
-  if (decision.action !== "retire") return 0;
-  const estimatedTokens = Math.ceil(getCurrentHostedText(candidate).length / 4);
-  return -Math.ceil(estimatedTokens * 1.25);
+  return getActionTokenDelta(candidate, decision.action, decision);
 }
 
-function getPlanAffectedSurfaces(candidate) {
-  const decision = getDecision(candidate);
+function getActionAffectedSurfaces(candidate, action, decision = getDecision(candidate)) {
   const assessment = getAssessment(candidate, decision);
-  if (["add", "update", "restore"].includes(decision.action)) return assessment?.affectedSurfaces || [];
-  if (decision.action !== "retire") return [];
+  if (["add", "update", "restore"].includes(action)) return assessment?.affectedSurfaces || [];
+  if (action !== "retire") return [];
   const placementSurfaces = getCatalogStatus(candidate).rules
     .flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId));
   return placementSurfaces.length ? placementSurfaces : assessment?.affectedSurfaces || [];
 }
 
+function getPlanAffectedSurfaces(candidate) {
+  const decision = getDecision(candidate);
+  return getActionAffectedSurfaces(candidate, decision.action, decision);
+}
+
+function getAssessmentProjectedHeadroom(candidate, action, decision = getDecision(candidate)) {
+  const capacity = getGuidanceCapacityProjection();
+  const savedContribution = decision.inPlan
+    ? getPlanTokenDelta(candidate) * getActionCapacityBucketNames(candidate, decision.action, decision).length
+    : 0;
+  const stagedContribution = getActionTokenDelta(candidate, action, decision) * getActionCapacityBucketNames(candidate, action, decision).length;
+  return capacity.projectedHeadroomTokens + savedContribution - stagedContribution;
+}
+
 function renderCapacity() {
-  const reports = getCapacityReports().filter((report) => report.kind === "combined");
-  const draftCost = getPlanCandidates().reduce((sum, candidate) => sum + getPlanTokenValue(candidate), 0);
+  const capacity = getGuidanceCapacityProjection();
   elements["capacity-panel"].innerHTML = `
     <p class="eyebrow">Plan projection</p>
-    <h3>Guidance capacity</h3>
-    ${reports.map((report) => {
-      const tokenDelta = getProjectedCapacityDelta(report);
-      const projectedGuardedTokens = Math.max(0, report.guardedTokens + tokenDelta);
-      const projectedHeadroomTokens = report.budgetTokens - projectedGuardedTokens;
-      const utilizationPercent = Math.round((projectedGuardedTokens / report.budgetTokens) * 10000) / 100;
-      const percent = Math.min(100, utilizationPercent);
-      const fillClass = percent > 85 ? "danger" : percent > 65 ? "warning" : "";
-      return `
-        <div class="capacity-group">
-          <div class="capacity-line"><span>${escapeHtml(report.name)}</span><strong>${formatNumber(projectedHeadroomTokens)} free</strong></div>
-          <progress class="capacity-progress ${fillClass}" max="100" value="${percent}">${percent}%</progress>
-          <div class="capacity-line"><span>${formatNumber(projectedGuardedTokens)} guarded</span><span>${utilizationPercent}%</span></div>
-        </div>
-      `;
-    }).join("")}
-    <div class="score-item"><span>Draft item estimate</span><strong>${formatNumber(draftCost)} tokens</strong></div>
-    <p class="capacity-footnote">Projected from the current baseline and selected plan. Exact post-render capacity is produced during staged promotion preview.</p>
+    <h3>Guidance Capacity</h3>
+    ${renderCapacityGroup("Overall Hosted Guidance", capacity.currentGuardedTokens, capacity.draftDeltaTokens, capacity.budgetTokens, true)}
+    <div class="score-item"><span>Draft item estimate</span><strong>${formatNumber(capacity.draftDeltaTokens)} tokens</strong></div>
+    <span class="control-subtitle guidance-capacity-buckets">Bucket Limits:</span>
+    ${capacity.buckets.map((bucket) => renderCapacityGroup(bucket.label, bucket.currentGuardedTokens, bucket.draftDeltaTokens, bucket.budgetTokens)).join("")}
+    <p class="capacity-footnote">Projected guarded-token usage. Each guidance file counts once toward the 25,000-token total and must also remain within its own bucket limit.</p>
   `;
+}
+
+function renderCapacityGroup(label, currentGuardedTokens, draftDeltaTokens, budgetTokens, overall = false) {
+  const projectedGuardedTokens = Math.max(0, currentGuardedTokens + draftDeltaTokens);
+  const projectedHeadroomTokens = budgetTokens - projectedGuardedTokens;
+  const utilizationPercent = Math.round((projectedGuardedTokens / budgetTokens) * 10000) / 100;
+  const percent = Math.min(100, utilizationPercent);
+  const fillClass = percent > 85 ? "danger" : percent > 65 ? "warning" : "";
+  const operator = draftDeltaTokens < 0 ? "&minus;" : "+";
+  const projectedLabel = `${formatNumber(projectedGuardedTokens)} projected of ${formatNumber(budgetTokens)}`;
+  return `
+    <div class="capacity-group${overall ? " capacity-overall" : ""}" data-workbench-tooltip="${escapeHtml(projectedLabel)}">
+      <div class="capacity-line"><strong class="capacity-label">${escapeHtml(label)}</strong><strong>${formatNumber(projectedHeadroomTokens)} free</strong></div>
+      <progress class="capacity-progress ${fillClass}" max="100" value="${percent}" tabindex="0" aria-label="${escapeHtml(projectedLabel)}">${percent}%</progress>
+      <div class="capacity-line"><span>${formatNumber(currentGuardedTokens)} current ${operator} ${formatNumber(Math.abs(draftDeltaTokens))} draft</span><span>${utilizationPercent}%</span></div>
+    </div>
+  `;
+}
+
+function getActionCapacityBucketNames(candidate, action, decision = getDecision(candidate)) {
+  if (!isPromotionAction(action)) return [];
+  const surfaces = action === "retire"
+    ? getCatalogStatus(candidate).rules.flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId))
+    : [candidate.recommendation?.category || getAssessment(candidate, decision)?.category];
+  const reportNamesBySurface = Object.fromEntries(GUIDANCE_CAPACITY_BUCKETS.map((bucket) => [bucket.surface, bucket.reportName]));
+  return [...new Set(surfaces.map((surface) => reportNamesBySurface[surface]).filter(Boolean))];
+}
+
+function getGuidanceCapacityProjection() {
+  const reportsByName = Object.fromEntries(getCapacityReports().filter((report) => report.kind === "file").map((report) => [report.name, report]));
+  const deltasByName = Object.fromEntries(GUIDANCE_CAPACITY_BUCKETS.map((bucket) => [bucket.reportName, 0]));
+  getPlanCandidates().forEach((candidate) => {
+    const decision = getDecision(candidate);
+    const tokenDelta = getPlanTokenDelta(candidate);
+    getActionCapacityBucketNames(candidate, decision.action, decision).forEach((reportName) => {
+      deltasByName[reportName] += tokenDelta;
+    });
+  });
+  const buckets = GUIDANCE_CAPACITY_BUCKETS.map((bucket) => {
+    const report = reportsByName[bucket.reportName];
+    return {
+      ...bucket,
+      currentGuardedTokens: report.guardedTokens,
+      draftDeltaTokens: deltasByName[bucket.reportName],
+      budgetTokens: report.budgetTokens
+    };
+  });
+  const currentGuardedTokens = buckets.reduce((sum, bucket) => sum + bucket.currentGuardedTokens, 0);
+  const draftDeltaTokens = buckets.reduce((sum, bucket) => sum + bucket.draftDeltaTokens, 0);
+  const budgetTokens = buckets.reduce((sum, bucket) => sum + bucket.budgetTokens, 0);
+  return {
+    buckets,
+    currentGuardedTokens,
+    draftDeltaTokens,
+    budgetTokens,
+    projectedGuardedTokens: currentGuardedTokens + draftDeltaTokens,
+    projectedHeadroomTokens: budgetTokens - currentGuardedTokens - draftDeltaTokens
+  };
 }
 
 function getProjectedCapacityDelta(report) {
@@ -2529,12 +2597,16 @@ function getProjectedCapacityDelta(report) {
 }
 
 function renderPreview() {
+  disconnectPreviewBodyVirtualizer();
   const readiness = getPreviewReadiness();
   const planCandidates = readiness.planCandidates;
   const ready = readiness.ready;
   elements["approval-badge"].className = `status-badge ${ready ? "success" : "warning"}`;
   elements["approval-badge"].textContent = ready ? "Ready to export" : "Not ready";
   elements["preview-status"].textContent = ready ? "Ready" : "Draft";
+  const previewStatus = elements["preview-status"].closest(".status-item");
+  previewStatus.classList.toggle("preview-ready", ready);
+  previewStatus.classList.toggle("preview-draft", !ready);
   if (elements["approver-name"].value !== state.session.approverName) {
     elements["approver-name"].value = state.session.approverName || "";
   }
@@ -2547,6 +2619,7 @@ function renderPreview() {
   elements["raw-payload-empty"].hidden = true;
   elements["preview-review-popover"].hidden = true;
   renderPreviewReview();
+  initializePreviewBodyVirtualizer();
 }
 
 function buildPreviewFiles(candidates) {
@@ -2776,6 +2849,79 @@ function renderPreviewFile(file) {
   `;
 }
 
+function hydratePreviewFileBody(file) {
+  const body = file.querySelector(".preview-file-body");
+  const entry = previewBodyVirtualizer?.cache.get(file.dataset.previewFilePath);
+  if (!body || !entry || body.dataset.previewVirtualized !== "true") return;
+  body.innerHTML = entry.html;
+  body.style.height = "";
+  delete body.dataset.previewVirtualized;
+  body.removeAttribute("aria-hidden");
+}
+
+function virtualizePreviewFileBody(file) {
+  const body = file.querySelector(".preview-file-body");
+  const entry = previewBodyVirtualizer?.cache.get(file.dataset.previewFilePath);
+  if (!body || !entry || body.dataset.previewVirtualized === "true") return;
+  if (!body.hidden) {
+    entry.html = body.innerHTML;
+    entry.height = body.getBoundingClientRect().height;
+  }
+  body.replaceChildren();
+  body.style.height = `${entry.height}px`;
+  body.dataset.previewVirtualized = "true";
+  body.setAttribute("aria-hidden", "true");
+}
+
+function disconnectPreviewBodyVirtualizer(hydrate = false) {
+  clearTimeout(previewVirtualizationResizeTimer);
+  if (!previewBodyVirtualizer) return;
+  previewBodyVirtualizer.observer.disconnect();
+  if (hydrate) previewBodyVirtualizer.files.forEach(hydratePreviewFileBody);
+  previewBodyVirtualizer = null;
+}
+
+function initializePreviewBodyVirtualizer() {
+  disconnectPreviewBodyVirtualizer();
+  const scroller = elements["preview-code"];
+  const files = [...scroller.querySelectorAll("[data-preview-file-path]")];
+  if (!files.length || typeof IntersectionObserver !== "function") return;
+  const cache = new Map(files.map((file) => {
+    const body = file.querySelector(".preview-file-body");
+    return [file.dataset.previewFilePath, { html: body.innerHTML, height: body.getBoundingClientRect().height }];
+  }));
+  const margin = scroller.clientHeight * PREVIEW_VIRTUALIZATION_BUFFER_VIEWPORTS;
+  const viewport = scroller.getBoundingClientRect();
+  previewBodyVirtualizer = { cache, files, observer: null };
+  files.forEach((file) => {
+    const rect = file.getBoundingClientRect();
+    if (rect.bottom < viewport.top - margin || rect.top > viewport.bottom + margin) virtualizePreviewFileBody(file);
+  });
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      const body = entry.target.querySelector(".preview-file-body");
+      if (entry.isIntersecting && !body.hidden) hydratePreviewFileBody(entry.target);
+      else if (!entry.isIntersecting) virtualizePreviewFileBody(entry.target);
+    });
+  }, { root: scroller, rootMargin: `${margin}px 0px` });
+  previewBodyVirtualizer.observer = observer;
+  files.forEach((file) => observer.observe(file));
+}
+
+function refreshPreviewBodyVirtualizer() {
+  if (!previewBodyVirtualizer) return;
+  const files = previewBodyVirtualizer.files;
+  previewBodyVirtualizer.observer.disconnect();
+  files.forEach(hydratePreviewFileBody);
+  previewBodyVirtualizer = null;
+  requestAnimationFrame(initializePreviewBodyVirtualizer);
+}
+
+function schedulePreviewBodyVirtualizerRefresh() {
+  clearTimeout(previewVirtualizationResizeTimer);
+  previewVirtualizationResizeTimer = setTimeout(refreshPreviewBodyVirtualizer, 100);
+}
+
 function renderPreviewTopHunk(file) {
   const beforeRange = file.beforeLineCount ? `1,${file.beforeLineCount}` : "0,0";
   const afterRange = file.afterLineCount ? `1,${file.afterLineCount}` : "0,0";
@@ -2933,6 +3079,7 @@ function handlePreviewTreeResizeEnd(event) {
   if (elements["preview-tree-resizer"].hasPointerCapture(event.pointerId)) elements["preview-tree-resizer"].releasePointerCapture(event.pointerId);
   previewTreeResizePointerId = null;
   elements["preview-tree-resizer"].parentElement.classList.remove("preview-tree-resizing");
+  refreshPreviewBodyVirtualizer();
 }
 
 function handlePreviewTreeResizeKeyboard(event) {
@@ -2945,11 +3092,13 @@ function handlePreviewTreeResizeKeyboard(event) {
       ? PREVIEW_TREE_MAX_WIDTH
       : current + (event.key === "ArrowLeft" ? -PREVIEW_TREE_KEYBOARD_STEP : PREVIEW_TREE_KEYBOARD_STEP);
   setPreviewTreeWidth(value);
+  refreshPreviewBodyVirtualizer();
 }
 
 function setPreviewFileCollapsed(file, collapsed) {
   const body = file.querySelector(".preview-file-body");
   const toggle = file.querySelector("[data-preview-file-collapse]");
+  if (!collapsed) hydratePreviewFileBody(file);
   body.hidden = collapsed;
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} ${file.dataset.previewFileDisplayPath}`);

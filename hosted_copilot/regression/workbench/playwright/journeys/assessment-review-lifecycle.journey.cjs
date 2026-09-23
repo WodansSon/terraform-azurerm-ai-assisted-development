@@ -98,6 +98,15 @@ async function run({ page, baseUrl, assert, playback }) {
     await playback.show(page, "Decision capture · synchronized Candidate, Assessment, Plan, and capacity state");
     const candidateRow = await openCandidate(page, initialHostedId);
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
+    const stagedAddScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
+    assert(stagedAddScores[1] === "+32" && stagedAddScores[2] === "4,808", `Staged Add did not project its exact token delta against global plan headroom: ${JSON.stringify(stagedAddScores)}`);
+    await page.locator('#assessment-panel [data-rule-action="defer"]').click();
+    const stagedDeferScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
+    assert(stagedDeferScores[1] === "0" && stagedDeferScores[2] === "4,840", `Staged Defer changed catalog tokens or global projected headroom: ${JSON.stringify(stagedDeferScores)}`);
+    await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
+    const stagedNoChangeScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
+    assert(stagedNoChangeScores[1] === "0" && stagedNoChangeScores[2] === "4,840", `No Change did not restore zero token delta and global plan headroom: ${JSON.stringify(stagedNoChangeScores)}`);
+    await page.locator('#assessment-panel [data-rule-action="add"]').click();
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill(decisionRationale);
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
@@ -126,16 +135,48 @@ async function run({ page, baseUrl, assert, playback }) {
 
     const capacity = await page.locator("#capacity-panel .capacity-group").evaluateAll((groups) => Object.fromEntries(groups.map((group) => {
       const lines = group.querySelectorAll(".capacity-line");
-      return [lines[0].querySelector("span").textContent.trim(), {
-        free: lines[0].querySelector("strong").textContent.trim(),
-        guarded: lines[1].querySelector("span").textContent.trim(),
-        utilization: lines[1].querySelectorAll("span")[1].textContent.trim()
+      return [lines[0].querySelector(".capacity-label").textContent.trim(), {
+        free: lines[0].querySelectorAll("strong")[1].textContent.trim(),
+        equation: lines[1].querySelector("span").textContent.trim(),
+        utilization: lines[1].querySelectorAll("span")[1].textContent.trim(),
+        tooltip: group.dataset.workbenchTooltip,
+        ariaLabel: group.querySelector("progress").getAttribute("aria-label")
       }];
     })));
-    assert(JSON.stringify(capacity["go-combined"]) === JSON.stringify({ free: "968 free", guarded: "32 guarded", utilization: "3.2%" }), "Unrelated Go capacity changed from the fixture baseline");
-    assert(JSON.stringify(capacity["test-combined"]) === JSON.stringify({ free: "936 free", guarded: "64 guarded", utilization: "6.4%" }), `Testing capacity did not apply the exact 32-token override projection: ${JSON.stringify(capacity["test-combined"])}`);
-    assert(JSON.stringify(capacity["documentation-combined"]) === JSON.stringify({ free: "968 free", guarded: "32 guarded", utilization: "3.2%" }), "Unrelated documentation capacity changed from the fixture baseline");
+    assert(JSON.stringify(capacity["Overall Hosted Guidance"]) === JSON.stringify({ free: "4,808 free", equation: "160 current + 32 draft", utilization: "3.84%", tooltip: "192 projected of 5,000", ariaLabel: "192 projected of 5,000" }), `Global guidance capacity did not equal the sum of all five buckets: ${JSON.stringify(capacity["Overall Hosted Guidance"])}`);
+    assert(JSON.stringify(capacity["Repository-wide Guidance"]) === JSON.stringify({ free: "968 free", equation: "32 current + 0 draft", utilization: "3.2%", tooltip: "32 projected of 1,000", ariaLabel: "32 projected of 1,000" }), "Repository guidance capacity changed from the fixture baseline");
+    assert(JSON.stringify(capacity["Implementation Instructions"]) === JSON.stringify({ free: "936 free", equation: "32 current + 32 draft", utilization: "6.4%", tooltip: "64 projected of 1,000", ariaLabel: "64 projected of 1,000" }), `Implementation capacity did not apply the exact 32-token generated-placement projection: ${JSON.stringify(capacity["Implementation Instructions"])}`);
+    assert(JSON.stringify(capacity["Testing Supplement"]) === JSON.stringify({ free: "968 free", equation: "32 current + 0 draft", utilization: "3.2%", tooltip: "32 projected of 1,000", ariaLabel: "32 projected of 1,000" }), "Testing capacity changed from the fixture baseline");
+    assert(JSON.stringify(capacity["Documentation Instructions"]) === JSON.stringify({ free: "968 free", equation: "32 current + 0 draft", utilization: "3.2%", tooltip: "32 projected of 1,000", ariaLabel: "32 projected of 1,000" }), "Documentation capacity changed from the fixture baseline");
+    assert(JSON.stringify(capacity["Review Skill"]) === JSON.stringify({ free: "968 free", equation: "32 current + 0 draft", utilization: "3.2%", tooltip: "32 projected of 1,000", ariaLabel: "32 projected of 1,000" }), "Review Skill capacity changed from the fixture baseline");
+    assert(await page.locator("#capacity-panel .capacity-group").count() === 6 && await page.locator("#capacity-panel .capacity-projected").count() === 0, "Guidance Capacity still renders overlapping combined rows or visible projected-detail rows");
     assert(await page.locator("#capacity-panel .score-item strong").textContent() === "32 tokens", "Draft item estimate did not equal the exact projected token delta");
+    assert(await page.locator("#status-headroom").textContent() === "4,808", "Status bar did not synchronize global projected guidance headroom");
+
+    const retireProjection = await page.evaluate(() => {
+      const candidate = state.candidates.find((item) => {
+        const decision = getDecision(item);
+        return getAllowedActions(item, decision.proposedText).includes("retire")
+          && getActionCapacityBucketNames(item, "retire", decision).length > 0;
+      });
+      if (!candidate) return { available: false };
+      switchView("catalog");
+      setWorkspaceTab("candidate-sources");
+      selectCandidate(candidate.key);
+      showCandidatePane("details");
+      return {
+        available: true,
+        expectedDelta: -estimateGuardedTokens(getCurrentHostedText(candidate)),
+        baselineHeadroom: Number(document.querySelector("#status-headroom").textContent.replaceAll(",", ""))
+      };
+    });
+    assert(retireProjection.available, "Capacity fixture does not expose a mapped rule that can be retired");
+    await page.locator('#assessment-panel [data-rule-action="retire"]').click();
+    const stagedRetireScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
+    assert(stagedRetireScores[1] === String(retireProjection.expectedDelta) && Number(stagedRetireScores[2].replaceAll(",", "")) === retireProjection.baselineHeadroom - retireProjection.expectedDelta, `Staged Retire did not reclaim the current mapped rule tokens: ${JSON.stringify(stagedRetireScores)}`);
+    await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
+    const revertedRetireScores = await page.locator("#assessment-panel .score-item strong").allTextContents();
+    assert(revertedRetireScores[1] === "0" && Number(revertedRetireScores[2].replaceAll(",", "")) === retireProjection.baselineHeadroom, `No Change did not restore the pre-Retire projection: ${JSON.stringify(revertedRetireScores)}`);
 
     await page.locator('[data-view="catalog"]').click();
     await openCandidate(page, candidateTitle);

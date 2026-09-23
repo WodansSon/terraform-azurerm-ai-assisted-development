@@ -79,6 +79,11 @@ html.theme-hosted-dark {
   transition-duration: 180ms;
 }
 
+#assessment-panel > .assessment-content.scroll-surface {
+  --workbench-scrollbar-thumb: var(--scrollbar-thumb);
+  transition: none;
+}
+
 @supports selector(::-webkit-scrollbar) {
   .scroll-surface {
     scrollbar-color: auto;
@@ -2635,6 +2640,20 @@ p.subcontext-container {
   margin-bottom: 15px;
 }
 
+.capacity-overall {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.capacity-label {
+  font-weight: 600 !important;
+}
+
+.guidance-capacity-buckets {
+  display: block;
+  margin: 16px 0 10px;
+}
+
 .capacity-line {
   justify-content: space-between;
   gap: 8px;
@@ -4000,6 +4019,16 @@ html.theme-hosted-dark body .stage-count-badge {
 .status-item:hover {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.status-item.preview-ready,
+.status-item.preview-ready:hover {
+  color: var(--success);
+}
+
+.status-item.preview-draft,
+.status-item.preview-draft:hover {
+  color: var(--warning-foreground);
 }
 
 .target-chip {

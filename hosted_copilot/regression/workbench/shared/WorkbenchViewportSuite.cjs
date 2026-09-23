@@ -6,8 +6,7 @@ function assert(condition, message) {
 }
 
 async function waitForWorkbench(page) {
-  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0
-    || Boolean(document.querySelector("#assessment-panel .empty-state")));
+  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0);
   const loadState = await page.evaluate(() => ({
     catalogCount: Number(document.querySelector("#catalog-count")?.textContent) || 0,
     error: document.querySelector("#assessment-panel .empty-state p")?.textContent?.trim() || ""
@@ -144,15 +143,21 @@ async function assertRuleActionPreservesContext(page, width) {
     const shell = document.querySelector(".app-shell");
     const body = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
     const control = document.querySelector('.action-options [data-rule-action="no-change"]');
+    const statePill = document.querySelector("#candidate-sources-panel .assessment-title .candidate-state");
+    const catalogPill = document.querySelector("#candidate-sources-panel .assessment-title .catalog-status");
     const bodyRect = body.getBoundingClientRect();
     const controlRect = control.getBoundingClientRect();
     const controlTop = body.scrollTop + controlRect.top - bodyRect.top;
     body.scrollTop = Math.max(0, controlTop - (body.clientHeight - controlRect.height) / 2);
     control.focus({ preventScroll: true });
+    body.dataset.noChangeContextProbe = "true";
     return {
       detailScrollTop: body.scrollTop,
       shellScrollTop: shell.scrollTop,
       shellScrollLeft: shell.scrollLeft,
+      thumbColor: getComputedStyle(body, "::-webkit-scrollbar-thumb").backgroundColor,
+      stateColor: getComputedStyle(statePill).color,
+      catalogColor: getComputedStyle(catalogPill).color,
     };
   });
 
@@ -162,19 +167,28 @@ async function assertRuleActionPreservesContext(page, width) {
     const shell = document.querySelector(".app-shell");
     const body = document.querySelector("#candidate-sources-panel .assessment-panel > .assessment-content");
     const control = document.querySelector('.action-options [data-rule-action="no-change"]');
+    const statePill = document.querySelector("#candidate-sources-panel .assessment-title .candidate-state");
+    const catalogPill = document.querySelector("#candidate-sources-panel .assessment-title .catalog-status");
     return {
       detailScrollTop: body.scrollTop,
       shellScrollTop: shell.scrollTop,
       shellScrollLeft: shell.scrollLeft,
       focused: document.activeElement === control,
       rationaleDisabled: document.querySelector('[data-decision-field="rationale"]').disabled,
+      bodyPreserved: body.dataset.noChangeContextProbe === "true",
+      thumbColor: getComputedStyle(body, "::-webkit-scrollbar-thumb").backgroundColor,
+      stateColor: getComputedStyle(statePill).color,
+      catalogColor: getComputedStyle(catalogPill).color,
     };
   });
 
+  assert(noChangeAfter.bodyPreserved, `${width}px No Change: Details body was replaced`);
   assert(Math.abs(noChangeAfter.detailScrollTop - noChangeBefore.detailScrollTop) < 0.1, `${width}px No Change: Details scroll position changed from ${noChangeBefore.detailScrollTop} to ${noChangeAfter.detailScrollTop}`);
   assert(noChangeAfter.shellScrollTop === noChangeBefore.shellScrollTop && noChangeAfter.shellScrollLeft === noChangeBefore.shellScrollLeft, `${width}px No Change: app shell scroll position changed`);
   assert(noChangeAfter.focused, `${width}px No Change: selected radio lost focus`);
   assert(noChangeAfter.rationaleDisabled, `${width}px No Change: Decision Rationale remained enabled`);
+  assert(noChangeAfter.thumbColor === noChangeBefore.thumbColor, `${width}px No Change: Details scrollbar paint changed`);
+  assert(noChangeAfter.stateColor === noChangeBefore.stateColor && noChangeAfter.catalogColor === noChangeBefore.catalogColor, `${width}px No Change: unrelated header pills repainted to different colors`);
 }
 
 async function assertRationaleSaveLayout(page, width) {
@@ -572,7 +586,7 @@ async function assertStatusTooltip(page, width) {
   const fromRight = await enterFrom("right");
   const fromLeft = await enterFrom("left");
   assert(fromRight.visible && fromLeft.visible, `${width}px status tooltip: tooltip is not visible`);
-  assert(fromRight.text === "Test guidance headroom" && fromLeft.text === fromRight.text, `${width}px status tooltip: tooltip text is incorrect`);
+  assert(fromRight.text === "Hosted guidance headroom" && fromLeft.text === fromRight.text, `${width}px status tooltip: tooltip text is incorrect`);
   assert(fromRight.left >= 0 && fromRight.right <= width && fromRight.top >= 0, `${width}px status tooltip: tooltip leaves the rendered canvas`);
   assert(fromRight.bottom < fromRight.statusTop, `${width}px status tooltip: tooltip is not above the status bar`);
   assert(Math.abs(fromRight.left - fromRight.expectedLeft) < 0.1 && Math.abs(fromLeft.left - fromLeft.expectedLeft) < 0.1, `${width}px status tooltip: pointer-centered placement is incorrect`);

@@ -13,6 +13,7 @@ const behaviorIds = [
   "WB-UX-PREVIEW-010",
   "WB-UX-PREVIEW-011",
   "WB-UX-PREVIEW-012",
+  "WB-UX-PREVIEW-013",
   "WB-UX-CONFLICT-001"
 ];
 
@@ -59,6 +60,30 @@ async function run({ page, baseUrl, assert }) {
   assert(fixture.selectedCount === 4, "Preview fixture did not create four reviewable plan items");
   const retireMutation = fixture.mutations.find((mutation) => mutation.action === "retire");
   assert(retireMutation?.status === "retired" && retireMutation.retirementReason && retireMutation.lastPlacement && retireMutation.placementCount === 0, "Approved Retire mutation does not preserve retirement history while clearing active placement");
+
+  const approvalStatus = await page.evaluate(() => {
+    const owner = document.querySelector("#preview-status").closest(".status-item");
+    const readyColor = getComputedStyle(owner).color;
+    const expectedReadyColor = getComputedStyle(document.documentElement).getPropertyValue("--success").trim();
+    const approverName = state.session.approverName;
+    state.session.approverName = "";
+    renderPreview();
+    const draftColor = getComputedStyle(owner).color;
+    const expectedDraftColor = getComputedStyle(document.documentElement).getPropertyValue("--warning-foreground").trim();
+    const draftValid = owner.classList.contains("preview-draft") && document.querySelector("#preview-status").textContent === "Draft";
+    state.session.approverName = approverName;
+    renderPreview();
+    return {
+      readyValid: owner.classList.contains("preview-ready") && document.querySelector("#preview-status").textContent === "Ready",
+      readyColor,
+      expectedReadyColor,
+      draftValid,
+      draftColor,
+      expectedDraftColor
+    };
+  });
+  assert(approvalStatus.readyValid && approvalStatus.readyColor === "rgb(97, 226, 148)" && approvalStatus.expectedReadyColor === "#61e294", `Ready Preview status is not green (${JSON.stringify(approvalStatus)})`);
+  assert(approvalStatus.draftValid && approvalStatus.draftColor === "rgb(229, 186, 125)" && approvalStatus.expectedDraftColor === "#e5ba7d", `Draft Preview status is not amber (${JSON.stringify(approvalStatus)})`);
 
   const reviewModel = await page.evaluate(() => {
     const layout = document.querySelector("#preview-view .preview-layout");
@@ -305,6 +330,55 @@ async function run({ page, baseUrl, assert }) {
   }));
   assert(review.visible && review.approval && review.approver, "Review changes does not expose the existing approval workflow");
   await page.locator("#preview-review-close").click();
+
+  const virtualization = await page.evaluate(async () => {
+    disconnectPreviewBodyVirtualizer();
+    const cloneFile = (file, scope, index) => ({
+      ...structuredClone(file),
+      path: `${scope}/virtual-${String(index + 1).padStart(3, "0")}-${file.path.split("/").at(-1)}`,
+      displayPath: `${PREVIEW_SCOPE_LABELS[scope].toUpperCase()}/virtual-${String(index + 1).padStart(3, "0")}-${file.path.split("/").at(-1)}`
+    });
+    previewFilesByScope = {
+      proposed: Array.from({ length: 40 }, (_, index) => cloneFile(previewFilesByScope.proposed[index % previewFilesByScope.proposed.length], "proposed", index)),
+      payload: Array.from({ length: 40 }, (_, index) => cloneFile(previewFilesByScope.payload[index % previewFilesByScope.payload.length], "payload", index)),
+      raw: previewFilesByScope.raw.map((file, index) => cloneFile(file, "raw", index))
+    };
+    elements["preview-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.proposed, "", "");
+    elements["preview-payload-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.payload, "", "");
+    elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "", "");
+    renderPreviewReview();
+    const scroller = elements["preview-code"];
+    const fullScrollHeight = scroller.scrollHeight;
+    const fullNodeCount = scroller.querySelectorAll("*").length;
+    initializePreviewBodyVirtualizer();
+    const virtualizedCount = scroller.querySelectorAll('[data-preview-virtualized="true"]').length;
+    const mountedNodeCount = scroller.querySelectorAll("*").length;
+    const farPath = previewFilesByScope.payload.at(-1).path;
+    elements["preview-summary"].querySelector(`[data-preview-file-jump="${CSS.escape(farPath)}"]`).click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const farFile = scroller.querySelector(`[data-preview-file-path="${CSS.escape(farPath)}"]`);
+    const farHydrated = farFile.querySelector(".preview-file-body").dataset.previewVirtualized !== "true";
+    const scrollHeightAfterNavigation = scroller.scrollHeight;
+    elements["preview-tree-resizer"].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const virtualizedAfterResize = scroller.querySelectorAll('[data-preview-virtualized="true"]').length;
+    const renderedFileCount = scroller.querySelectorAll("[data-preview-file-path]").length;
+    renderPreview();
+    return {
+      fileCount: 81,
+      renderedFileCount,
+      fullScrollHeight,
+      virtualizedScrollHeight: scrollHeightAfterNavigation,
+      fullNodeCount,
+      mountedNodeCount,
+      virtualizedCount,
+      farHydrated,
+      virtualizedAfterResize
+    };
+  });
+  assert(virtualization.renderedFileCount === virtualization.fileCount && virtualization.virtualizedCount > 0 && virtualization.mountedNodeCount < virtualization.fullNodeCount, `Large Preview did not virtualize off-screen file bodies (${JSON.stringify(virtualization)})`);
+  assert(virtualization.virtualizedScrollHeight === virtualization.fullScrollHeight && virtualization.farHydrated, `Virtualized Preview did not preserve exact scroll geometry or hydrate file navigation (${JSON.stringify(virtualization)})`);
+  assert(virtualization.virtualizedAfterResize > 0, `Preview virtualization did not recover after keyboard splitter resizing (${JSON.stringify(virtualization)})`);
 
   const blockedReconciliation = await page.evaluate(() => {
     const originalReconciliation = structuredClone(state.bundle.reconciliation);
