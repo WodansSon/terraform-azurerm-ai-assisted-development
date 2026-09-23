@@ -164,7 +164,7 @@ function Invoke-DisplayBuilder {
         $exitCode = 0
     }
     catch {
-        $output = @($_)
+        $output = @($_.Exception.Message)
         $exitCode = 1
     }
     return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output | Out-String).Trim(); OutputPath = $outputPath }
