@@ -1,4 +1,4 @@
-const { getCandidateHierarchy, getCssTokenColor, hoverForWorkbenchTooltip, openWorkbench } = require("../helpers/workbench.cjs");
+const { getCandidateHierarchy, getCssTokenColor, openWorkbench } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-TREE-001",
