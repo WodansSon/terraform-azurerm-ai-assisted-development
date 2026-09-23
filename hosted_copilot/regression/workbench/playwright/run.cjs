@@ -7,6 +7,10 @@ const toolsRoot = path.resolve(workbenchRegressionRoot, "../../tools");
 const { chromium } = require(require.resolve("@playwright/test", { paths: [toolsRoot] }));
 const puppeteer = require(require.resolve("puppeteer", { paths: [toolsRoot] }));
 
+function formatProgressLine(status, name, detail) {
+  return `${`[${status.toUpperCase()}]`.padEnd(10)} ${name.padEnd(30)} : ${detail}\n`;
+}
+
 function validateManifest(manifest) {
   if (manifest.schemaVersion !== 1) throw new Error("Workbench behavior manifest schemaVersion must be 1");
   if (manifest.targetHarness !== "playwright") throw new Error("Workbench behavior manifest targetHarness must be playwright");
@@ -34,14 +38,16 @@ async function run() {
   const baseUrl = args[0];
   if (!baseUrl) throw new Error("Workbench URL is required");
   const headed = args.includes("--headed");
+  const showProgress = args.includes("--progress");
   const optionValue = (name) => {
     const index = args.indexOf(name);
     return index >= 0 ? args[index + 1] : null;
   };
   const slowMo = Number(optionValue("--slow-mo") || 0);
   const transitionDelay = Number(optionValue("--transition-delay") || 0);
-  const requestedJourney = optionValue("--journey");
-  const journeyFilter = requestedJourney === "all" ? null : requestedJourney;
+  const optionValues = (name) => args.flatMap((value, index) => value === name ? [args[index + 1]] : []).filter(Boolean);
+  const requestedJourneys = [...new Set(optionValues("--journey").flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean))];
+  const journeyFilters = requestedJourneys.length === 0 || requestedJourneys.includes("all") ? null : new Set(requestedJourneys);
   const resultFile = optionValue("--result-file");
   const shutdownAtEnd = args.includes("--shutdown-at-end");
   if (!Number.isInteger(slowMo) || slowMo < 0 || slowMo > 2000) throw new Error("--slow-mo must be an integer from 0 through 2000");
@@ -51,8 +57,9 @@ async function run() {
   const manifestPath = path.join(workbenchRegressionRoot, "behavior-manifest.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const journeys = validateManifest(manifest);
-  const selectedJourneys = new Map([...journeys].filter(([journeyPath]) => !journeyFilter || path.basename(journeyPath, ".journey.cjs") === journeyFilter));
-  if (selectedJourneys.size === 0) throw new Error(`No Playwright journey matched ${journeyFilter}`);
+  const selectedJourneys = new Map([...journeys].filter(([journeyPath]) => !journeyFilters || journeyFilters.has(path.basename(journeyPath, ".journey.cjs"))));
+  const unmatchedJourneys = journeyFilters ? [...journeyFilters].filter((name) => ![...selectedJourneys].some(([journeyPath]) => path.basename(journeyPath, ".journey.cjs") === name)) : [];
+  if (selectedJourneys.size === 0 || unmatchedJourneys.length > 0) throw new Error(`No Playwright journey matched: ${unmatchedJourneys.join(", ") || requestedJourneys.join(", ")}`);
   const executablePath = await puppeteer.executablePath();
   const browserArgs = ["--no-sandbox", "--disable-setuid-sandbox"];
   let browser = null;
@@ -201,15 +208,19 @@ async function run() {
   try {
     for (const [journeyPath, manifestBehaviorIds] of selectedJourneys) {
       const journey = require(journeyPath);
+      const journeyName = path.basename(journeyPath, ".journey.cjs");
       const declaredBehaviorIds = [...journey.behaviorIds].sort();
       const expectedBehaviorIds = [...manifestBehaviorIds].sort();
       if (JSON.stringify(declaredBehaviorIds) !== JSON.stringify(expectedBehaviorIds)) {
         throw new Error(`${path.basename(journeyPath)} behavior declarations do not match behavior-manifest.json`);
       }
 
+      const timingBrowser = journey.timingSensitive && slowMo > 0
+        ? await chromium.launch({ executablePath, headless: !headed, slowMo: 0, args: browserArgs })
+        : null;
       const context = journey.isolatedBrowser
         ? null
-        : await (await getBrowser()).newContext(headed && journey.physicalViewport
+        : await (timingBrowser || await getBrowser()).newContext(headed && journey.physicalViewport
           ? { viewport: null }
           : { viewport: journey.viewport || { width: 768, height: 900 } });
       const page = context ? await context.newPage() : null;
@@ -221,6 +232,11 @@ async function run() {
         assertionCount += 1;
         return condition;
       };
+      const assertionCountBefore = assertionCount;
+
+      if (showProgress) {
+        process.stderr.write(`\n---------------------------------------------------\nPLAYWRIGHT JOURNEY: ${journeyName.toUpperCase()}\n---------------------------------------------------\n\n${formatProgressLine("running", journeyName, "IN PROGRESS")}`);
+      }
 
       try {
         const journeyResult = await journey.run({ page, baseUrl, assert, check, playback });
@@ -236,8 +252,13 @@ async function run() {
           viewportCount = journeyResult.viewportCount;
           assertionCount += journeyResult.viewportAssertionCount;
         }
+        if (showProgress) process.stderr.write(formatProgressLine("passed", journeyName, `${assertionCount - assertionCountBefore} assertions`));
+      } catch (error) {
+        if (showProgress) process.stderr.write(formatProgressLine("failed", journeyName, "see error below"));
+        throw error;
       } finally {
         if (context) await context.close();
+        if (timingBrowser) await timingBrowser.close();
       }
     }
 

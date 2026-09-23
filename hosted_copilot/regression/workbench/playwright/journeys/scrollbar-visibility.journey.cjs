@@ -64,4 +64,4 @@ async function run({ page, baseUrl, assert, playback }) {
   assert([idle, enterStart, entering, visible, leaveStart, leaving, hidden, focused].every((value) => value.clientWidth === idle.clientWidth), "scrollbar visibility changes the content width");
 }
 
-module.exports = { name: "scrollbar visibility", behaviorIds, viewport: { width: 768, height: 900 }, run };
+module.exports = { name: "scrollbar visibility", behaviorIds, viewport: { width: 768, height: 900 }, timingSensitive: true, run };

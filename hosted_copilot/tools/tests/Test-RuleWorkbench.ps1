@@ -2,10 +2,12 @@
 param(
     [string]$Run,
 
-    [ValidatePattern('^(all|[a-z0-9-]+)$')]
-    [string]$Journey = 'all',
+    [string[]]$Journey = @('all'),
 
     [switch]$Headed,
+
+    [ValidateRange(0, 2000)]
+    [int]$SlowMo = 0,
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
@@ -116,8 +118,17 @@ $testScriptContent = Get-Content -LiteralPath $PSCommandPath -Raw
 $declaredTestNames = @([regex]::Matches($testScriptContent, "Add-TestResult\s+-Name\s+'(?<name>[^']+)'") | ForEach-Object { [string]$_.Groups['name'].Value } | Sort-Object -Unique)
 $missingFocusedRuns = @($declaredTestNames | Where-Object { $_ -ne 'run-selection' -and $_ -notin $supportedFocusedRuns })
 $unknownFocusedRuns = @($supportedFocusedRuns | Where-Object { $_ -notin $declaredTestNames })
+$journeyNames = @($Journey | ForEach-Object { @([string]$_ -split ',') } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+$invalidJourneyNames = @($journeyNames | Where-Object { $_ -notmatch '^(all|[a-z0-9-]+)$' })
+if ($journeyNames.Count -eq 0 -or $invalidJourneyNames.Count -gt 0) {
+    throw "-Journey contains invalid names: $($invalidJourneyNames -join ', ')"
+}
+if ('all' -in $journeyNames -and $journeyNames.Count -gt 1) {
+    throw '-Journey cannot combine `all` with named journeys'
+}
+$runAllJourneys = $journeyNames.Count -eq 1 -and $journeyNames[0] -eq 'all'
 
-if ($Journey -ne 'all' -and $Run -ne 'browser-playwright-journeys') {
+if (-not $runAllJourneys -and $Run -ne 'browser-playwright-journeys') {
     throw '-Journey requires -Run browser-playwright-journeys'
 }
 
@@ -1287,21 +1298,39 @@ try {
             if (Test-ShouldRun -Name 'browser-playwright-journeys') { Start-TestResult -Name 'browser-playwright-journeys' }
             $playwrightResultPath = Join-Path $tempRoot 'playwright-result.json'
             $playwrightArguments = @($playwrightRunnerPath, $shutdownUrl, '--result-file', $playwrightResultPath)
-            if ($Journey -ne 'all') {
-                $playwrightArguments += @('--journey', $Journey)
+            if (-not $runAllJourneys) {
+                foreach ($journeyName in $journeyNames) {
+                    $playwrightArguments += @('--journey', $journeyName)
+                }
             }
             if ($Headed) {
                 $playwrightArguments += @('--headed', '--transition-delay', '1000')
             }
-            $selectedBehaviors = if ($Journey -eq 'all') {
+            if ($SlowMo -gt 0) {
+                $playwrightArguments += @('--slow-mo', [string]$SlowMo)
+            }
+            if ($OutputFormat -eq 'Text') {
+                $playwrightArguments += '--progress'
+            }
+            $selectedBehaviors = if ($runAllJourneys) {
                 @($behaviorManifest.behaviors)
             }
             else {
-                @($behaviorManifest.behaviors | Where-Object { [IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetFileNameWithoutExtension([string]$_.journey)) -eq $Journey })
+                @($behaviorManifest.behaviors | Where-Object { [IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetFileNameWithoutExtension([string]$_.journey)) -in $journeyNames })
             }
             $selectedJourneyCount = @($selectedBehaviors | ForEach-Object { [string]$_.journey } | Sort-Object -Unique).Count
-            $playwrightOutput = @(& $nodeExecutable @playwrightArguments 2>&1)
+            $playwrightOutput = @(& $nodeExecutable @playwrightArguments 2>&1 | ForEach-Object {
+                if ($OutputFormat -eq 'Text') { Write-Host ([string]$_) }
+                $_
+            })
             $playwrightExitCode = $LASTEXITCODE
+            $playwrightFailureLine = @($playwrightOutput | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^Error:\s+' } | Select-Object -Last 1)
+            $playwrightFailureDetail = if ($playwrightFailureLine.Count -gt 0) {
+                $playwrightFailureLine[0] -replace '^Error:\s*', ''
+            }
+            else {
+                "Playwright runner exited with code $playwrightExitCode; see the journey output above."
+            }
             $playwrightResult = if ($playwrightExitCode -eq 0 -and (Test-Path -LiteralPath $playwrightResultPath -PathType Leaf)) { Get-Content -LiteralPath $playwrightResultPath -Raw | ConvertFrom-Json } else { $null }
             $selectedBehaviorIds = @($selectedBehaviors | ForEach-Object { [string]$_.id } | Sort-Object)
             $executedBehaviorIds = if ($null -ne $playwrightResult) {
@@ -1313,11 +1342,11 @@ try {
             $behaviorExecutionValid = (@($selectedBehaviorIds) -join [char]0) -ceq (@($executedBehaviorIds) -join [char]0)
             $expectedPlaywrightMode = if ($Headed) { 'headed' } else { 'headless' }
             $playwrightValid = $playwrightExitCode -eq 0 -and $playwrightResult.status -eq 'passed' -and $playwrightResult.harness -eq 'playwright' -and $playwrightResult.mode -eq $expectedPlaywrightMode -and $playwrightResult.journeyCount -eq $selectedJourneyCount -and $playwrightResult.behaviorCount -eq $selectedBehaviors.Count -and $behaviorExecutionValid -and $playwrightResult.assertionCount -gt 0
-            if ($Journey -eq 'all') {
+            if ($runAllJourneys) {
                 $playwrightValid = $playwrightValid -and $playwrightResult.viewportAssertionCount -gt 0 -and $playwrightResult.viewportCount -eq 9 -and $playwrightResult.shutdownVerified
             }
             if (Test-ShouldRun -Name 'browser-playwright-journeys') {
-                Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) executed behavior IDs." } else { ($playwrightOutput | Out-String).Trim() })
+                Add-TestResult -Name 'browser-playwright-journeys' -Passed $playwrightValid -Detail $(if ($playwrightExitCode -eq 0) { "Passed $($playwrightResult.assertionCount) assertions across $($playwrightResult.journeyCount) Playwright journeys covering $($playwrightResult.behaviorCount) executed behavior IDs." } else { $playwrightFailureDetail })
             }
         }
         if (Test-ShouldRun -Name 'browser-framework-coverage') {
