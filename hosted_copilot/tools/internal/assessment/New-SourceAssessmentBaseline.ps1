@@ -12,6 +12,8 @@ param(
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
+    [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
+
     [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
 
     [Parameter(Mandatory = $true)]
@@ -100,13 +102,22 @@ $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.s
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'
 $catalogSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($HostedCatalogPath))) 'instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($ProtectedRulesPath))) 'protected-rules.schema.json'
 $contractInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentContractPath)) -SchemaPath $contractSchemaPath
 $contract = $contractInput.Value
 $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot
 $hostedCatalogInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath $catalogSchemaPath
 $hostedCatalog = $hostedCatalogInput.Value
+$protectedRulesInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($ProtectedRulesPath)) -SchemaPath $protectedRulesSchemaPath
+$protectedRules = $protectedRulesInput.Value
 $knownHostedRuleIds = @{}
 foreach ($rule in @($hostedCatalog.rules)) {
+    $knownHostedRuleIds[[string]$rule.id] = $true
+}
+foreach ($rule in @($protectedRules.rules)) {
+    if ($knownHostedRuleIds.ContainsKey([string]$rule.id)) {
+        throw "Protected rule ID collides with lifecycle-managed catalog rule: $($rule.id)"
+    }
     $knownHostedRuleIds[[string]$rule.id] = $true
 }
 $canonicalMappingsBySource = @{}
@@ -317,6 +328,7 @@ $baseline = [ordered]@{
     inventoryHashes = $inventoryHashes
     priorInventoryHashes = $priorInventoryHashes
     hostedCatalogSha256 = $hostedCatalogInput.Snapshot.Sha256
+    protectedRulesContentSha256 = $protectedRulesInput.Snapshot.Sha256
     assessmentContractSha256 = $assessmentContractSha256
     assessmentRunConfigurationSha256 = $assessmentRunConfigurationSha256
     runConfiguration = $runConfiguration

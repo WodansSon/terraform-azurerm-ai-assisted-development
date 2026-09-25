@@ -4,7 +4,7 @@
   "title": "Hosted Source Assessment Baseline",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "priorInventoryHashes", "hostedCatalogSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
+  "required": ["$schema", "schemaVersion", "generatedAt", "inventoryHashes", "priorInventoryHashes", "hostedCatalogSha256", "protectedRulesContentSha256", "assessmentContractSha256", "assessmentRunConfigurationSha256", "runConfiguration", "entries"],
   "properties": {
     "$schema": {
       "const": "source-assessment-baseline-v4.schema.json"
@@ -36,6 +36,9 @@
       }
     },
     "hostedCatalogSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "protectedRulesContentSha256": {
       "$ref": "#/$defs/sha256"
     },
     "assessmentContractSha256": {

@@ -321,6 +321,9 @@ $baseline = $baselineSnapshot.Content | ConvertFrom-Json
 if ([string]$baseline.hostedCatalogSha256 -cne $catalogSnapshot.Sha256) {
     throw 'Source assessment baseline does not bind the supplied Hosted instruction catalog'
 }
+if ([string]$baseline.protectedRulesContentSha256 -cne $protectedRulesSnapshot.Sha256) {
+    throw 'Source assessment baseline does not bind the supplied protected rules catalog'
+}
 $definitionSetPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json'
 $definitionSetSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.schema.json'
 $definitionSetJson = Get-Content -LiteralPath $definitionSetPath -Raw
@@ -362,14 +365,16 @@ $succeeded = $false
 try {
     foreach ($batch in $reconciliationBatches) {
         $batchCatalogPath = Join-Path $batch.Directory 'instruction-catalog.json'
+        $batchProtectedRulesPath = Join-Path $batch.Directory 'protected-rules.json'
         $batchContractPath = Join-Path $batch.Directory 'assessment-reconciliation-v4.json'
         $batchSchemaPath = Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'
         $batchPromptPath = Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'
         [IO.File]::WriteAllBytes($batchCatalogPath, [IO.File]::ReadAllBytes($snapshotCatalogPath))
+        [IO.File]::WriteAllBytes($batchProtectedRulesPath, [IO.File]::ReadAllBytes($snapshotProtectedRulesPath))
         [IO.File]::WriteAllBytes($batchContractPath, [IO.File]::ReadAllBytes($snapshotContractPath))
         [IO.File]::WriteAllBytes($batchSchemaPath, [IO.File]::ReadAllBytes($draftSchemaPath))
         [IO.File]::WriteAllBytes($batchPromptPath, [IO.File]::ReadAllBytes($promptPath))
-        $batch | Add-Member -NotePropertyName PayloadSizeBytes -NotePropertyValue ([long]((Get-Item -LiteralPath $batch.BaselinePath).Length + (Get-Item -LiteralPath $batchCatalogPath).Length + (Get-Item -LiteralPath $batchContractPath).Length + (Get-Item -LiteralPath $batchSchemaPath).Length + (Get-Item -LiteralPath $batchPromptPath).Length)) -Force
+        $batch | Add-Member -NotePropertyName PayloadSizeBytes -NotePropertyValue ([long]((Get-Item -LiteralPath $batch.BaselinePath).Length + (Get-Item -LiteralPath $batchCatalogPath).Length + (Get-Item -LiteralPath $batchProtectedRulesPath).Length + (Get-Item -LiteralPath $batchContractPath).Length + (Get-Item -LiteralPath $batchSchemaPath).Length + (Get-Item -LiteralPath $batchPromptPath).Length)) -Force
     }
 
     $batchByNumber = @{}
@@ -387,6 +392,7 @@ try {
             sourceDefinitionId = [string]$batch.SourceDefinitionId
             baselineIdentitySha256 = Get-Sha256 -Content (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath)
             hostedCatalogSha256 = Get-Sha256 -Path $snapshotCatalogPath
+            protectedRulesContentSha256 = Get-Sha256 -Path $snapshotProtectedRulesPath
             reconciliationContractSha256 = Get-Sha256 -Path $snapshotContractPath
             draftSchemaSha256 = Get-Sha256 -Path $draftSchemaPath
             promptSha256 = Get-Sha256 -Path $promptPath
@@ -474,6 +480,7 @@ try {
             $retainedResponsePath = Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.json'
             $retainedStaticPairs = @(
                 @((Join-Path $batch.Directory 'instruction-catalog.json'), (Join-Path $retainedBatchDirectory 'instruction-catalog.json')),
+                @((Join-Path $batch.Directory 'protected-rules.json'), (Join-Path $retainedBatchDirectory 'protected-rules.json')),
                 @((Join-Path $batch.Directory 'assessment-reconciliation-v4.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-v4.json')),
                 @((Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.schema.json')),
                 @((Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'), (Join-Path $retainedBatchDirectory 'AssessmentReconciliation-v4.md'))
@@ -588,6 +595,7 @@ try {
                     $parameters = @{
                         BaselinePath = $batch.BaselinePath
                         CatalogPath = Join-Path $batch.Directory 'instruction-catalog.json'
+                        ProtectedRulesPath = Join-Path $batch.Directory 'protected-rules.json'
                         ContractPath = Join-Path $batch.Directory 'assessment-reconciliation-v4.json'
                         SchemaPath = Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'
                         PromptPath = Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'
@@ -601,7 +609,7 @@ try {
                     }
                 }
                 else {
-                    $attemptPrompt = 'Read source-assessment-baseline.json, instruction-catalog.json, assessment-reconciliation-v4.json, assessment-reconciliation-draft.schema.json, and AssessmentReconciliation-v4.md in the current directory. The baseline is one complete source-defined reconciliation batch. Cover every assessment in that batch exactly once and write only the requested JSON object in your final response.'
+                    $attemptPrompt = 'Read source-assessment-baseline.json, instruction-catalog.json, protected-rules.json, assessment-reconciliation-v4.json, assessment-reconciliation-draft.schema.json, and AssessmentReconciliation-v4.md in the current directory. The baseline is one complete source-defined reconciliation batch. Cover every assessment in that batch exactly once and write only the requested JSON object in your final response.'
                     $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
                     $evaluatorExitCode = $LASTEXITCODE
                     if ($evaluatorExitCode -ne 0) {

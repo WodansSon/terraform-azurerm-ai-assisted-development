@@ -118,18 +118,6 @@ foreach ($protectedRule in @($protectedRules.rules)) {
     }
     $protectedRulesById[$id] = $protectedRule
 }
-foreach ($rule in @($catalog.rules | Where-Object { $_.PSObject.Properties['supersededBy'] })) {
-    $supersededBy = [string]$rule.supersededBy
-    if ([string]$rule.status -cne 'retired') {
-        throw "Only retired rules can declare supersededBy: $($rule.id)"
-    }
-    if (-not $protectedRulesById.ContainsKey($supersededBy)) {
-        throw "Retired rule $($rule.id) references unknown protected successor: $supersededBy"
-    }
-    if ([string]$rule.lastPlacement.surfaceId -cne [string]$protectedRulesById[$supersededBy].surfaceId) {
-        throw "Retired rule $($rule.id) and protected successor $supersededBy must share a surface"
-    }
-}
 
 $mappingRuleIds = @($catalog.canonicalCandidateMappings.PSObject.Properties.Name)
 $missingMappingRuleIds = @($rulesById.Keys | Where-Object { $_ -notin $mappingRuleIds } | Sort-Object)

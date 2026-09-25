@@ -4,7 +4,8 @@ const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
 const WORKBENCH_DISPLAY_SCHEMA_VERSION = 4;
-const SESSION_SCHEMA_VERSION = 4;
+const SESSION_SCHEMA_VERSION = 6;
+const WORKBENCH_DRAFT_SCHEMA_VERSION = 4;
 const APPROVED_RULES_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
@@ -22,6 +23,18 @@ const PREVIEW_SCOPE_LABELS = {
   raw: "Approved rules"
 };
 const IMPLEMENTATION_MODELS = ["legacy", "typed", "framework"];
+const RULE_ISSUE_RELATIONSHIPS = {
+  equivalent: { kind: "duplicate", label: "Duplicate", semantic: "equivalent" },
+  "partial-overlap": { kind: "overlap", label: "Partial overlap", semantic: "partial" },
+  "assessment-extends-hosted": { kind: "overlap", label: "Broader overlap", sourceBreadth: "broader" },
+  "assessment-narrows-hosted": { kind: "overlap", label: "Narrower overlap", sourceBreadth: "narrower" },
+  conflicts: { kind: "contradiction", label: "Contradiction", semantic: "conflict" }
+};
+const RULE_ISSUE_FILTERS = [
+  ["contradiction", "Contradictions"],
+  ["duplicate", "Duplicates"],
+  ["overlap", "Overlaps"]
+];
 const GUIDANCE_CAPACITY_BUCKETS = [
   { reportName: "repository", label: "Repository-wide Guidance", surface: "repository" },
   { reportName: "go", label: "Implementation Instructions", surface: "implementation" },
@@ -55,6 +68,7 @@ function normalizeSessionTimestamps(session) {
   normalizeTimestampProperty(normalized, "updatedAt");
   Object.values(normalized.decisions || {}).forEach((decision) => normalizeTimestampProperty(decision, "updatedAt"));
   Object.values(normalized.applicabilityOverrides || {}).forEach((override) => normalizeTimestampProperty(override, "recordedAt"));
+  Object.values(normalized.manualRelationshipChecks || {}).forEach((check) => normalizeTimestampProperty(check, "checkedAt"));
   (normalized.bulkOperations || []).forEach((operation) => normalizeTimestampProperty(operation, "createdAt"));
   return normalized;
 }
@@ -65,6 +79,7 @@ const state = {
   assessedCandidates: [],
   candidates: [],
   protectedRules: [],
+  ruleIssues: [],
   excludedCandidateCount: 0,
   activeKey: null,
   activeProtectedRuleId: null,
@@ -72,12 +87,16 @@ const state = {
   assessmentOverrideEditingKey: null,
   candidatePane: "candidates",
   assessmentPane: "assessments",
+  activeRuleIssueKey: null,
+  ruleIssueFilter: null,
+  dismissedRuleIssueBannerKeys: new Set(),
   rationaleReturnView: null,
   workspaceTab: "candidate-sources",
   currentView: "catalog",
   queries: {
     "candidate-sources": "",
-    "assessment-results": ""
+    "assessment-results": "",
+    "rule-issues": ""
   },
   candidateSorts: {},
   assessmentSorts: {},
@@ -99,6 +118,7 @@ let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
+const activeRelationshipChecks = new Set();
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
@@ -145,9 +165,9 @@ function captureElements() {
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
     "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
-    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel",
+    "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "rule-issues-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "rule-issues-tab-count", "rule-issues-filters", "rule-issues-list", "rule-issues-detail", "rule-issues-status", "rule-issues-status-count",
     "return-catalog-button", "plan-bulk-undo", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "raw-payload-empty", "preview-json", "preview-code",
     "preview-review-toolbar",
@@ -180,6 +200,21 @@ function bindEvents() {
     elements["draft-menu"].removeAttribute("open");
   });
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
+  elements["rule-issues-status"].addEventListener("click", () => setWorkspaceTab("rule-issues"));
+  elements["rule-issues-filters"].addEventListener("click", (event) => {
+    const filter = event.target.closest("[data-rule-issue-filter]")?.dataset.ruleIssueFilter;
+    if (!filter) return;
+    state.ruleIssueFilter = filter;
+    state.activeRuleIssueKey = null;
+    renderRuleIssues();
+  });
+  elements["rule-issues-list"].addEventListener("click", (event) => {
+    const key = event.target.closest("[data-rule-issue-key]")?.dataset.ruleIssueKey;
+    if (!key) return;
+    state.activeRuleIssueKey = key;
+    renderRuleIssues();
+  });
+  elements["rule-issues-detail"].addEventListener("click", handleRuleIssueDetailClick);
   elements["bulk-actions"].addEventListener("click", handleBulkActionsClick);
   elements["bulk-actions"].addEventListener("mouseleave", handleBulkActionsMouseLeave);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
@@ -569,10 +604,13 @@ function validateDisplay(display) {
 function normalizeDisplayCandidates(display) {
   return display.candidates.map((candidate) => {
     const { source, recommendation, reviewState } = candidate;
+    const normalizedRecommendation = recommendation
+      ? { ...recommendation, retireHostedRuleIds: [...recommendation.retireHostedRuleIds] }
+      : null;
     const sourceType = source.lane === "contributor" ? "upstream" : source.lane;
-    const targetHostedRuleId = recommendation?.targetHostedId || null;
-    const proposedHostedRuleId = recommendation?.hostedId || "";
-    const hostedCategory = recommendation?.category
+    const targetHostedRuleId = normalizedRecommendation?.targetHostedId || null;
+    const proposedHostedRuleId = normalizedRecommendation?.hostedId || "";
+    const hostedCategory = normalizedRecommendation?.category
       || candidate.assessment.affectedSurfaces.find((surface) => ["repository", "implementation", "testing", "documentation"].includes(surface))
       || "repository";
     const mappedHostedRuleId = candidate.catalogMapping.hostedRuleId;
@@ -584,12 +622,12 @@ function normalizeDisplayCandidates(display) {
       assessmentConfidence: candidate.assessment.confidence,
       sourceContentSha256: source.contentSha256,
       currentHostedCoverage: candidate.assessment.existingCoverage.rationale,
-      recommendation: recommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
+      recommendation: normalizedRecommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
       proposedHostedRuleId,
       targetHostedRuleId,
-      proposedText: recommendation.ruleText,
+      proposedText: normalizedRecommendation.ruleText,
       hostedCategory,
-      guardedTokenDelta: recommendation?.guardedTokenDelta || 0
+      guardedTokenDelta: normalizedRecommendation?.guardedTokenDelta || 0
     };
     return {
       key: `${source.lane}:${source.id}:${candidate.assessment.id}`,
@@ -601,7 +639,7 @@ function normalizeDisplayCandidates(display) {
       category: sourceType === "upstream" ? (source.transition === "changed" ? "Changed guidance (drift)" : "Current guidance") : sourceType === "maintainer" ? capitalize(source.surface) : formatContractCategory(source.location),
       title: candidate.assessment.title,
       state: source.transition,
-      requiresReview: Boolean(recommendation?.needsReview) || candidate.assessment.confidence.level !== "high",
+      requiresReview: Boolean(normalizedRecommendation?.needsReview) || candidate.assessment.confidence.level !== "high",
       provenance: source.provenance,
       sourcePath: source.location,
       sourceRationale: source.rationale,
@@ -611,12 +649,327 @@ function normalizeDisplayCandidates(display) {
       text: source.text,
       baselineText: source.priorText || null,
       priorDecision: null,
-      recommendation,
+      recommendation: normalizedRecommendation,
       assessment,
       catalogMapping: candidate.catalogMapping,
       mappedHostedRules: mappedHostedRuleId ? display.catalog.rules.filter((rule) => rule.id === mappedHostedRuleId) : []
     };
   });
+}
+
+function getRuleIndex() {
+  return new Map([
+    ...state.bundle.catalog.rules.filter((rule) => rule.status === "active").map((rule) => [rule.id, { ...rule, protected: false }]),
+    ...state.protectedRules.map((rule) => [rule.id, { ...rule, status: "protected", protected: true }])
+  ]);
+}
+
+function getRecommendationRetirementRuleIds(candidate) {
+  const ruleIds = new Set(candidate.recommendation.retireHostedRuleIds);
+  if (candidate.recommendation.action === "retire" && candidate.recommendation.targetHostedId) {
+    ruleIds.add(candidate.recommendation.targetHostedId);
+  }
+  return [...ruleIds].sort();
+}
+
+function getDecisionRetirementRuleIds(candidate, decision = getDecision(candidate)) {
+  const ruleIds = new Set(decision.retireHostedRuleIds);
+  if (decision.action === "retire" && candidate.recommendation.targetHostedId) {
+    ruleIds.add(candidate.recommendation.targetHostedId);
+  }
+  return [...ruleIds].sort();
+}
+
+function isActionableRuleIssueRelationship(candidate, sourceRuleId, relatedRuleId, relationship) {
+  if (relationship === "conflicts" || relationship === "equivalent") return true;
+  const retirementRuleIds = getRecommendationRetirementRuleIds(candidate);
+  if (retirementRuleIds.includes(relatedRuleId)) return true;
+  return retirementRuleIds.includes(sourceRuleId) && relationship === "assessment-narrows-hosted";
+}
+
+function buildRuleIssues() {
+  const rulesById = getRuleIndex();
+  const issuesByKey = new Map();
+  const rank = { contradiction: 3, duplicate: 2, overlap: 1 };
+  state.candidates.forEach((candidate) => {
+    const manualCheck = getCurrentManualRelationshipCheck(candidate);
+    const sourceRuleId = candidate.catalogMapping.hostedRuleId || (manualCheck ? candidate.assessment.proposedHostedRuleId : null);
+    if (!sourceRuleId) return;
+    if (!rulesById.has(sourceRuleId) && manualCheck) {
+      rulesById.set(sourceRuleId, { id: sourceRuleId, text: manualCheck.proposedText, status: "proposed", protected: false });
+    }
+    if (!rulesById.has(sourceRuleId)) return;
+    const coverageEntries = manualCheck ? manualCheck.relationships : candidate.recommendation.relatedHostedCoverage || [];
+    coverageEntries.forEach((coverage) => {
+      const descriptor = RULE_ISSUE_RELATIONSHIPS[coverage.relationship];
+      const relatedRuleId = coverage.hostedRuleId;
+      if (!descriptor || sourceRuleId === relatedRuleId || !rulesById.has(relatedRuleId)) return;
+      if (!manualCheck && !isActionableRuleIssueRelationship(candidate, sourceRuleId, relatedRuleId, coverage.relationship)) return;
+      const ruleIds = [sourceRuleId, relatedRuleId].sort();
+      const key = ruleIds.join("::");
+      const incoming = {
+        key,
+        kind: descriptor.kind,
+        label: descriptor.label,
+        relationship: coverage.relationship,
+        sourceRuleId,
+        relatedRuleId,
+        title: candidate.title,
+        rationale: coverage.rationale,
+        suggestedConsolidatedText: coverage.suggestedConsolidatedText || "",
+        retireHostedRuleIds: getRecommendationRetirementRuleIds(candidate).filter((id) => ruleIds.includes(id)),
+        ruleIds,
+        rules: ruleIds.map((id) => rulesById.get(id)).sort((left, right) => Number(right.protected) - Number(left.protected) || left.id.localeCompare(right.id)),
+        candidateKeys: [candidate.key],
+        manualRelationshipCheck: Boolean(manualCheck),
+        protectedRuleIds: ruleIds.filter((id) => rulesById.get(id).protected)
+      };
+      const existing = issuesByKey.get(key);
+      if (!existing) {
+        issuesByKey.set(key, incoming);
+        return;
+      }
+      existing.candidateKeys = [...new Set([...existing.candidateKeys, candidate.key])].sort();
+      existing.retireHostedRuleIds = [...new Set([...existing.retireHostedRuleIds, ...incoming.retireHostedRuleIds])].sort();
+      if (rank[incoming.kind] > rank[existing.kind] || (!existing.suggestedConsolidatedText && incoming.suggestedConsolidatedText)) {
+        Object.assign(existing, { ...incoming, candidateKeys: existing.candidateKeys, retireHostedRuleIds: existing.retireHostedRuleIds });
+      }
+    });
+  });
+  return [...issuesByKey.values()]
+    .filter((issue) => !isRuleIssueRecommendationStaged(issue))
+    .sort((left, right) => rank[right.kind] - rank[left.kind] || left.key.localeCompare(right.key));
+}
+
+function getFilteredRuleIssues() {
+  const query = state.queries["rule-issues"].trim().toLowerCase();
+  return state.ruleIssues.filter((issue) => {
+    if (issue.kind !== state.ruleIssueFilter) return false;
+    if (!query) return true;
+    return [issue.title, issue.label, issue.rationale, issue.suggestedConsolidatedText, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
+      .some((value) => String(value || "").toLowerCase().includes(query));
+  });
+}
+
+function formatRuleIssueSummary(issues) {
+  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map(([kind]) => [kind, issues.filter((issue) => issue.kind === kind).length]));
+  return `${formatCountLabel(issues.length, "rule issue")}: ${formatCountLabel(counts.contradiction, "contradiction")}, ${formatCountLabel(counts.duplicate, "duplicate")}, ${formatCountLabel(counts.overlap, "overlap")}`;
+}
+
+function renderRuleIssueFilters() {
+  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map(([kind]) => [kind, state.ruleIssues.filter((issue) => issue.kind === kind).length]));
+  const visibleFilters = RULE_ISSUE_FILTERS.filter(([kind]) => counts[kind] > 0);
+  if (!visibleFilters.some(([kind]) => kind === state.ruleIssueFilter)) {
+    state.ruleIssueFilter = visibleFilters[0]?.[0] || RULE_ISSUE_FILTERS[0][0];
+  }
+  elements["rule-issues-filters"].innerHTML = visibleFilters.map(([kind, label]) => `
+    <button class="candidate-pane-tab clickable ${state.ruleIssueFilter === kind ? "active" : ""}" type="button" role="tab" data-rule-issue-filter="${kind}" aria-selected="${state.ruleIssueFilter === kind}">${escapeHtml(label)} <span>${formatNumber(counts[kind])}</span></button>
+  `).join("");
+}
+
+function renderRuleReferences(value, ruleIds) {
+  const text = String(value || "");
+  const references = [...new Set(ruleIds)].filter(Boolean).sort((left, right) => right.length - left.length);
+  let offset = 0;
+  let output = "";
+  while (offset < text.length) {
+    let match = null;
+    let matchIndex = -1;
+    references.forEach((reference) => {
+      const index = text.indexOf(reference, offset);
+      if (index < 0 || (matchIndex >= 0 && index > matchIndex)) return;
+      if (index === matchIndex && match && reference.length <= match.length) return;
+      match = reference;
+      matchIndex = index;
+    });
+    if (!match) break;
+    output += escapeHtml(text.slice(offset, matchIndex));
+    output += `<span class="rule-reference">${escapeHtml(match)}</span>`;
+    offset = matchIndex + match.length;
+  }
+  return `${output}${escapeHtml(text.slice(offset))}`;
+}
+
+function renderRuleIssueIds(ruleIds) {
+  return ruleIds.map((id) => `<span class="rule-reference">${escapeHtml(id)}</span>`).join('<span class="rule-issue-id-separator" aria-hidden="true">·</span>');
+}
+
+function getRuleIssueRecommendationCandidates(issue) {
+  const candidates = issue.candidateKeys.map((key) => state.candidates.find((candidate) => candidate.key === key)).filter(Boolean);
+  if (!issue.retireHostedRuleIds.length) return candidates.length ? candidates : null;
+  const matches = candidates.filter((candidate) => issue.retireHostedRuleIds.every((ruleId) => getRecommendationRetirementRuleIds(candidate).includes(ruleId)));
+  return matches.length ? matches : null;
+}
+
+function isRuleIssueRecommendationStaged(issue) {
+  const candidates = getRuleIssueRecommendationCandidates(issue);
+  return Boolean(candidates?.length) && candidates.every((candidate) => {
+    const decision = getDecision(candidate);
+    return decision.inPlan && issue.retireHostedRuleIds.every((ruleId) => getDecisionRetirementRuleIds(candidate, decision).includes(ruleId));
+  });
+}
+
+function renderRuleIssuePlanAction(issue) {
+  const candidates = getRuleIssueRecommendationCandidates(issue);
+  const staged = isRuleIssueRecommendationStaged(issue);
+  const identity = getValidatedCodeOwnerIdentity();
+  const unavailableReason = !candidates
+    ? "The recommendation cannot be mapped safely to retirement candidates."
+    : globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.";
+  const disabled = staged || !candidates || !identity;
+  const tooltip = disabled && !staged ? ` data-workbench-tooltip="${escapeHtml(unavailableReason)}"` : "";
+  return `<div class="rule-recommendation-actions"><button class="button primary rule-issue-plan-action ${disabled ? "" : "clickable"}" type="button" data-rule-issue-plan="${escapeHtml(issue.key)}" ${disabled ? "disabled" : ""}${tooltip}>${icon(staged ? "pass-filled" : "new-session")}<span class="button-label">${staged ? "Added to Promotion Plan" : "Add to Promotion Plan"}</span></button></div>`;
+}
+
+function stageRuleIssueRecommendation(issue) {
+  const identity = getValidatedCodeOwnerIdentity();
+  if (!identity) {
+    showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
+    return;
+  }
+  const candidates = getRuleIssueRecommendationCandidates(issue);
+  if (!candidates?.length) {
+    showToast("The recommendation cannot be mapped safely to retirement candidates.", true);
+    return;
+  }
+  const updatedAt = toUtcTimestamp();
+  const rationale = `Reviewed Rule Issues recommendation for ${issue.ruleIds.join(" and ")}: ${issue.rationale}`.slice(0, DECISION_RATIONALE_MAX_LENGTH);
+  candidates.forEach((candidate) => {
+    const { assessment, ...decision } = getDecision(candidate);
+    const primaryAction = issue.retireHostedRuleIds.length
+      ? isPromotionAction(candidate.recommendation.action) ? candidate.recommendation.action : "no-change"
+      : "defer";
+    removeCandidateFromBulkOperations(candidate.key);
+    state.session.decisions[candidate.key] = {
+      ...decision,
+      action: primaryAction,
+      rationale,
+      proposedText: candidate.recommendation.ruleText,
+      retireHostedRuleIds: [...candidate.recommendation.retireHostedRuleIds],
+      ...createPlanMembership("manual"),
+      sourceHash: candidate.hash,
+      updatedAt
+    };
+  });
+  state.session.updatedAt = updatedAt;
+  persistSession();
+  syncCandidateTreeRows();
+  renderBulkActions();
+  renderDecisionOutputs();
+  renderRuleIssues();
+  showToast(`${formatCountLabel(candidates.length, "Resolution")} added to the promotion plan.`);
+}
+
+function handleRuleIssueDetailClick(event) {
+  const dismiss = event.target.closest("[data-dismiss-rule-issue-banner]");
+  if (dismiss) {
+    state.dismissedRuleIssueBannerKeys.add(dismiss.dataset.dismissRuleIssueBanner);
+    dismiss.closest(".rule-issue-banner")?.remove();
+    return;
+  }
+  const planAction = event.target.closest("[data-rule-issue-plan]");
+  if (!planAction) return;
+  const issue = state.ruleIssues.find((item) => item.key === planAction.dataset.ruleIssuePlan);
+  if (issue) stageRuleIssueRecommendation(issue);
+}
+
+function renderRuleIssueRule(rule, issue) {
+  const status = rule.protected ? "Protected" : capitalize(rule.status);
+  const recommendation = issue.retireHostedRuleIds.length
+    ? issue.retireHostedRuleIds.includes(rule.id) ? "retire" : "keep"
+    : "";
+  return `
+    <section class="rule-issue-rule ${recommendation ? `recommend-${recommendation}` : ""}">
+      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(status)}</span></h3>
+      <div class="rule-issue-rule-body"><p>${renderRuleReferences(rule.text, issue.ruleIds)}</p></div>
+    </section>
+  `;
+}
+
+function renderRuleIssueDetail(issue) {
+  if (!issue) {
+    elements["rule-issues-detail"].innerHTML = renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
+    return;
+  }
+  const protectedNotice = issue.protectedRuleIds.length
+    ? "Protected guidance is immutable. Both rules remain generated until a maintainer explicitly changes lifecycle state."
+    : "Both rules remain generated until a maintainer explicitly changes lifecycle state.";
+  const retirementText = issue.retireHostedRuleIds.length
+    ? `Review retirement of ${issue.retireHostedRuleIds.map((id) => `<span class="rule-reference">${escapeHtml(id)}</span>`).join(", ")} and the proposed wording in the Promotion Plan.`
+    : "Reconciliation could not produce a complete lifecycle action. Maintainer input is required in the Promotion Plan.";
+  const banner = state.dismissedRuleIssueBannerKeys.has(issue.key) ? "" : `
+    <div class="rule-issue-banner ${escapeHtml(issue.kind)}">${icon(issue.kind === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${escapeHtml(getRuleIssueBannerTitle(issue))}</strong><p>${escapeHtml(protectedNotice)}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.key)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
+  elements["rule-issues-detail"].innerHTML = `
+    ${banner}
+    <div class="rule-issue-comparison">${issue.rules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
+    <section class="rule-issue-assessment"><span class="section-label">Assessment:</span><p>${renderRuleReferences(issue.rationale, issue.ruleIds)}</p></section>
+    ${issue.suggestedConsolidatedText ? `<section class="rule-issue-suggestion"><h3>Suggested Consolidated Wording</h3><p>${renderRuleReferences(issue.suggestedConsolidatedText, issue.ruleIds)}</p></section>` : ""}
+    <span class="section-label rule-issue-recommendation-label">Recommended Maintainer Action:</span>
+    <section class="rule-issue-recommendation"><p>${retirementText}</p>${renderRuleIssuePlanAction(issue)}</section>
+  `;
+}
+
+function formatRuleIssueTitle(value) {
+  const minorWords = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor", "of", "on", "or", "the", "to", "up", "with"]);
+  const words = String(value || "").split(/(\s+)/);
+  const significantWords = words.filter((word) => word.trim());
+  let significantIndex = 0;
+  return words.map((word) => {
+    if (!word.trim()) return word;
+    const lower = word.toLowerCase();
+    const first = significantIndex === 0;
+    const last = significantIndex === significantWords.length - 1;
+    significantIndex += 1;
+    if (!first && !last && minorWords.has(lower)) return lower;
+    return `${word[0].toUpperCase()}${word.slice(1)}`;
+  }).join("");
+}
+
+function getRuleIssueBannerTitle(issue) {
+  const descriptor = RULE_ISSUE_RELATIONSHIPS[issue.relationship];
+  const sourceRule = issue.rules.find((rule) => rule.id === issue.sourceRuleId);
+  const relatedRule = issue.rules.find((rule) => rule.id === issue.relatedRuleId);
+  const protectedRule = issue.rules.find((rule) => rule.protected);
+  const activeRule = issue.rules.find((rule) => !rule.protected);
+  if (!descriptor || !sourceRule || !relatedRule) return issue.label;
+
+  if (protectedRule && activeRule) {
+    if (descriptor.semantic === "equivalent") return "Protected Guidance Duplicates This Active Rule";
+    if (descriptor.semantic === "partial") return "Protected Guidance Partially Overlaps This Active Rule";
+    if (descriptor.semantic === "conflict") return "Protected Guidance Conflicts With This Active Rule";
+    const protectedBreadth = protectedRule.id === sourceRule.id
+      ? descriptor.sourceBreadth
+      : descriptor.sourceBreadth === "broader" ? "narrower" : "broader";
+    return protectedBreadth === "broader"
+      ? "Broader Protected Guidance Overlaps This Active Rule"
+      : "This Active Rule Broadens Protected Guidance";
+  }
+
+  if (descriptor.semantic === "equivalent") return "These Active Rules Duplicate Each Other";
+  if (descriptor.semantic === "partial") return "These Active Rules Partially Overlap";
+  if (descriptor.semantic === "conflict") return "These Active Rules Conflict";
+  return descriptor.sourceBreadth === "broader"
+    ? "One Active Rule Broadens Another Active Rule"
+    : "One Active Rule Narrows Another Active Rule";
+}
+
+function renderRuleIssues() {
+  if (!elements["rule-issues-list"]) return;
+  renderRuleIssueFilters();
+  const issues = getFilteredRuleIssues();
+  if (!issues.some((issue) => issue.key === state.activeRuleIssueKey)) state.activeRuleIssueKey = issues[0]?.key || null;
+  if (!issues.length) {
+    elements["rule-issues-list"].innerHTML = renderPreviewEmptyState("pass-compact", "No Rule Issues", "No rule relationships match the current filter and search.");
+    renderRuleIssueDetail(null);
+    return;
+  }
+  elements["rule-issues-list"].innerHTML = issues.map((issue) => `
+    <button class="rule-issue-row clickable ${issue.key === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.key)}" aria-pressed="${issue.key === state.activeRuleIssueKey}">
+      <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="rule-issue-kind ${escapeHtml(issue.kind)} status-badge ${issue.kind === "contradiction" ? "excluded" : "warning"} type-compact">${escapeHtml(capitalize(issue.kind))}</span></span>
+      <span class="rule-issue-ids">${renderRuleIssueIds(issue.ruleIds)}</span>
+    </button>
+  `).join("");
+  renderRuleIssueDetail(issues.find((issue) => issue.key === state.activeRuleIssueKey));
 }
 
 function getSessionId(display) {
@@ -633,6 +986,7 @@ function createSession(id, display) {
     inputFingerprint: display.inputFingerprint,
     approverName: "",
     decisions: {},
+    manualRelationshipChecks: {},
     applicabilityOverrides: {},
     bulkOperations: []
   };
@@ -640,8 +994,12 @@ function createSession(id, display) {
 
 function migrateSession(session, candidates) {
   if (!session) return null;
-  if (session.schemaVersion !== SESSION_SCHEMA_VERSION || session.inputFingerprint !== session.id) return null;
-  return session;
+  if (session.inputFingerprint !== session.id) return null;
+  if (session.schemaVersion === 5) {
+    return { ...session, schemaVersion: SESSION_SCHEMA_VERSION, manualRelationshipChecks: {} };
+  }
+  if (session.schemaVersion !== SESSION_SCHEMA_VERSION) return null;
+  return { ...session, manualRelationshipChecks: session.manualRelationshipChecks || {} };
 }
 
 function createPlanMembership(source = "none", bulkOperationId = null) {
@@ -734,6 +1092,7 @@ function defaultDecision(candidate) {
     ...createPlanMembership(),
     rationale: "",
     proposedText: assessment?.proposedText || (candidate.sourceType === "upstream" ? "" : extractRuleBody(candidate.text)),
+    retireHostedRuleIds: [...candidate.recommendation.retireHostedRuleIds],
     proposedHostedRuleId: String(assessment?.proposedHostedRuleId || ""),
     implementationModels: candidate.recommendation?.category === "implementation"
       ? [...(existingRule?.implementationModels || ["legacy", "typed"])]
@@ -767,11 +1126,13 @@ function getDecision(candidate) {
   if (!saved || saved.sourceHash !== candidate.hash) return defaultDecision(candidate);
   const defaults = defaultDecision(candidate);
   const proposedText = String(saved.proposedText ?? defaults.proposedText);
+  const retireHostedRuleIds = candidate.recommendation.retireHostedRuleIds.filter((ruleId) => saved.retireHostedRuleIds.includes(ruleId));
   const allowedActions = getAllowedActions(candidate, proposedText);
   if (!allowedActions.includes(saved.action) || !isValidPlanMembership(saved, candidate.key)) return defaultDecision(candidate);
   return {
     ...saved,
     proposedText,
+    retireHostedRuleIds,
     proposedHostedRuleId: defaults.proposedHostedRuleId,
     inPlan: saved.inPlan,
     planMembershipSource: saved.planMembershipSource,
@@ -784,6 +1145,139 @@ function getDecision(candidate) {
   };
 }
 
+function hasMaintainerEditedRuleText(candidate, proposedText = getDecision(candidate).proposedText) {
+  return String(proposedText || "").replace(/\r\n/g, "\n") !== String(candidate.recommendation.ruleText || "").replace(/\r\n/g, "\n");
+}
+
+function getManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
+  const check = state.session.manualRelationshipChecks?.[candidate.key];
+  return check && check.proposedText === proposedText ? check : null;
+}
+
+function getCurrentManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
+  if (!hasMaintainerEditedRuleText(candidate, proposedText)) return null;
+  const check = getManualRelationshipCheck(candidate, proposedText);
+  return check?.status === "current" ? check : null;
+}
+
+function requiresManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
+  return hasMaintainerEditedRuleText(candidate, proposedText) && !getCurrentManualRelationshipCheck(candidate, proposedText);
+}
+
+function encodeBase64Utf8(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+
+function renderManualRelationshipStatus(candidate, proposedText) {
+  if (!hasMaintainerEditedRuleText(candidate, proposedText)) return '<span class="relationship-check-status status-badge neutral">Reconciled</span>';
+  const check = getManualRelationshipCheck(candidate, proposedText);
+  if (activeRelationshipChecks.has(candidate.key) || check?.status === "pending") return '<span class="relationship-check-status status-badge warning">Checking relationships</span>';
+  if (check?.status === "current") return `<span class="relationship-check-status status-badge ${check.relationships.length ? "warning" : "success"}">${check.relationships.length ? formatCountLabel(check.relationships.length, "rule issue") : "Relationships current"}</span>`;
+  if (check?.status === "failed") return '<span class="relationship-check-status status-badge excluded">Relationship check failed</span>';
+  return '<span class="relationship-check-status status-badge warning">Relationship check required</span>';
+}
+
+function syncProposedRuleControls(candidate) {
+  const textarea = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  const save = elements["assessment-panel"].querySelector("[data-proposed-text-save]");
+  const status = elements["assessment-panel"].querySelector(".relationship-check-status");
+  if (!textarea || !save) return;
+  const decision = getDecision(candidate);
+  const dirty = textarea.value !== decision.proposedText;
+  const check = getManualRelationshipCheck(candidate, textarea.value);
+  const retryable = !dirty && hasMaintainerEditedRuleText(candidate, textarea.value) && check?.status === "failed";
+  save.disabled = activeRelationshipChecks.has(candidate.key) || (!dirty && !retryable);
+  save.setAttribute("aria-label", retryable ? "Retry proposed Hosted rule relationship check" : "Save proposed Hosted rule");
+  setWorkbenchTooltip(save, save.getAttribute("aria-label"));
+  if (status) status.outerHTML = renderManualRelationshipStatus(candidate, textarea.value);
+}
+
+async function reconcileManualRuleText(candidate, proposedText) {
+  const existing = getManualRelationshipCheck(candidate, proposedText);
+  if (!hasMaintainerEditedRuleText(candidate, proposedText) || existing?.status === "current") return true;
+  activeRelationshipChecks.add(candidate.key);
+  state.session.manualRelationshipChecks[candidate.key] = {
+    status: "pending",
+    proposedText,
+    checkedAt: toUtcTimestamp(),
+    relationships: []
+  };
+  state.session.updatedAt = toUtcTimestamp();
+  await persistSession();
+  syncProposedRuleControls(candidate);
+  setSaveIndicator("Checking relationships...");
+  try {
+    const request = {
+      candidateKey: candidate.key,
+      ruleId: candidate.assessment.proposedHostedRuleId,
+      ruleTextBase64: encodeBase64Utf8(proposedText),
+      category: candidate.recommendation.category,
+      placement: candidate.recommendation.placement
+    };
+    const response = await fetch("/reconcile-rule", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Operation-Token": globalThis.__HOSTED_RULE_WORKBENCH__?.operationToken || ""
+      },
+      body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) })
+    });
+    if (!response.ok) throw new Error(`Relationship check failed with ${response.status}`);
+    const result = await response.json();
+    if (result.schemaVersion !== 1 || !Array.isArray(result.relationships) || !/^[0-9a-f]{64}$/.test(result.ruleTextSha256 || "")) {
+      throw new Error("Relationship check returned an invalid result");
+    }
+    state.session.manualRelationshipChecks[candidate.key] = {
+      status: "current",
+      proposedText,
+      ruleTextSha256: result.ruleTextSha256,
+      checkedAt: toUtcTimestamp(),
+      relationships: result.relationships
+    };
+    state.session.updatedAt = toUtcTimestamp();
+    await persistSession();
+    state.ruleIssues = buildRuleIssues();
+    renderRuleIssues();
+    renderDecisionOutputs();
+    showToast(result.relationships.length ? `${formatCountLabel(result.relationships.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
+    return true;
+  }
+  catch (error) {
+    state.session.manualRelationshipChecks[candidate.key] = {
+      status: "failed",
+      proposedText,
+      checkedAt: toUtcTimestamp(),
+      relationships: []
+    };
+    state.session.updatedAt = toUtcTimestamp();
+    await persistSession();
+    showToast(error.message, true);
+    return false;
+  }
+  finally {
+    activeRelationshipChecks.delete(candidate.key);
+    syncProposedRuleControls(candidate);
+  }
+}
+
+function isActionableDecision(decision) {
+  return isPromotionAction(decision.action) || decision.retireHostedRuleIds.length > 0;
+}
+
+function formatPlanAction(decision) {
+  const primaryAction = isPromotionAction(decision.action) ? formatRecommendation(decision.action) : "";
+  const retirementAction = decision.retireHostedRuleIds.length ? `Retire ${formatNumber(decision.retireHostedRuleIds.length)}` : "";
+  return [primaryAction, retirementAction].filter(Boolean).join(" + ") || formatRecommendation(decision.action);
+}
+
+function getAncillaryRetirementRules(decision) {
+  const retirementIds = new Set(decision.retireHostedRuleIds);
+  return state.bundle.catalog.rules.filter((rule) => retirementIds.has(rule.id) && rule.status === "active");
+}
+
 function canEditImplementationModels(candidate, action = getDecision(candidate).action) {
   return candidate.recommendation?.category === "implementation" && ["add", "update"].includes(action);
 }
@@ -794,7 +1288,6 @@ function getEffectiveHostedRuleId(candidate) {
 
 function getCatalogStatus(candidate) {
   if (candidate.catalogMapping.state === "active") return { key: "mapped", label: "Mapped", rules: candidate.mappedHostedRules };
-  if (candidate.catalogMapping.state === "superseded") return { key: "superseded", label: "Superseded", rules: candidate.mappedHostedRules };
   if (candidate.catalogMapping.state === "retired") return { key: "retired", label: "Retired", rules: candidate.mappedHostedRules };
   return { key: "unmapped", label: "Not Mapped", rules: [] };
 }
@@ -818,9 +1311,7 @@ function renderMappedHostedRules(catalogStatus, includePlacements = false) {
     const placements = rule.placements?.length
       ? rule.placements.map((placement) => `${placement.surfaceId} / ${placement.sectionHeading}`).join("; ")
       : "Placement unavailable in source bundle";
-    const lifecycle = rule.supersededBy ? `Superseded by protected rule ${rule.supersededBy}` : capitalize(rule.status);
-    const lifecycleClass = rule.supersededBy ? "superseded" : rule.status;
-    return `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(lifecycleClass)}">${escapeHtml(lifecycle)}</span></div><p>${escapeHtml(rule.text)}</p>${includePlacements ? `<small>${escapeHtml(placements)}</small>` : ""}</div>`;
+    return `<div class="overlap-item subcontext-container"><div><strong>${escapeHtml(rule.id)}</strong><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p>${includePlacements ? `<small>${escapeHtml(placements)}</small>` : ""}</div>`;
   }).join("");
   return `<div class="section-block"><span class="section-label">Mapped Hosted Rules:</span><div class="overlap-list">${mappedRules}</div></div>`;
 }
@@ -832,7 +1323,6 @@ function getAllowedActions(candidate, proposedText = defaultDecision(candidate).
     if (hasHostedTextChange(candidate, proposedText)) actions.push("update");
     return [...actions, "retire", "defer"];
   }
-  if (catalogStatus === "superseded") return ["no-change", "defer"];
   if (catalogStatus === "retired") return ["no-change", "restore", "defer"];
   return ["no-change", "add", "exclude", "defer"];
 }
@@ -973,6 +1463,7 @@ async function resetCandidate(candidate) {
 }
 
 function renderDecisionOutputs() {
+  state.ruleIssues = buildRuleIssues();
   renderMetrics();
   renderPlan();
   renderCapacity();
@@ -1014,6 +1505,12 @@ function getActionTokenDelta(candidate, action, decision = getDecision(candidate
   return proposedTokens;
 }
 
+function getDecisionTokenDelta(candidate, decision = getDecision(candidate)) {
+  const retirementDelta = getAncillaryRetirementRules(decision)
+    .reduce((sum, rule) => sum - estimateGuardedTokens(rule.text), 0);
+  return getActionTokenDelta(candidate, decision.action, decision) + retirementDelta;
+}
+
 function getCandidateTokenValue(candidate, assessment) {
   const decision = getDecision(candidate);
   if (getApplicabilityOverride(candidate)) {
@@ -1027,17 +1524,19 @@ function getCandidateTokenValue(candidate, assessment) {
 
 function formatCandidateTokenValue(candidate, assessment) {
   const value = getCandidateTokenValue(candidate, assessment);
-  if (getApplicabilityOverride(candidate)) return isPromotionAction(getDecision(candidate).action) ? formatSignedNumber(value) : formatNumber(value);
+  if (getApplicabilityOverride(candidate)) return isActionableDecision(getDecision(candidate)) ? formatSignedNumber(value) : formatNumber(value);
   return ["add", "update", "retire", "restore"].includes(assessment.recommendation) ? formatSignedNumber(value) : formatNumber(value);
 }
 
 function renderAll(shouldRenderAssessment = true) {
   if (!state.bundle || !state.session) return;
+  state.ruleIssues = buildRuleIssues();
   renderTarget();
   renderMetrics();
   renderCandidateList();
   if (shouldRenderAssessment) renderAssessment();
   renderAssessmentResults();
+  renderRuleIssues();
   renderPlan();
   renderCapacity();
   renderPreview();
@@ -1076,6 +1575,13 @@ function renderMetrics() {
   elements["status-mapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length);
   elements["status-unmapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length);
   elements["status-headroom"].textContent = formatNumber(capacity.projectedHeadroomTokens);
+  const issueCount = state.ruleIssues.length;
+  elements["rule-issues-status"].hidden = false;
+  elements["rule-issues-status"].classList.toggle("has-issues", issueCount > 0);
+  elements["rule-issues-status-count"].textContent = formatNumber(issueCount);
+  const issueSummary = formatRuleIssueSummary(state.ruleIssues);
+  elements["rule-issues-status"].dataset.workbenchTooltip = issueSummary;
+  elements["rule-issues-status"].setAttribute("aria-label", `Open ${issueSummary}`);
 }
 
 function getFilteredCandidates() {
@@ -2044,12 +2550,13 @@ function renderAssessment() {
     return;
   }
   const impact = assessment ? calculateImpact(assessment.factors) : null;
-  const draftCost = getActionTokenDelta(candidate, decision.action, decision);
+  const draftCost = getDecisionTokenDelta(candidate, decision);
   const projectedHeadroom = getAssessmentProjectedHeadroom(candidate, decision.action, decision);
   const catalogStatus = getCatalogStatus(candidate);
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
   const displayId = getEffectiveHostedRuleId(candidate);
+  const rationaleDisabled = decision.action === "no-change" && decision.retireHostedRuleIds.length === 0;
 
   elements["assessment-panel"].innerHTML = `
     <div class="assessment-title">
@@ -2101,8 +2608,12 @@ function renderAssessment() {
       </div>
 
       <div class="section-block">
-        <span class="section-label">Proposed Hosted Rule:</span>
-        <pre class="evidence-box proposed-rule scroll-surface">${escapeHtml(assessment.proposedText || "No Hosted rule change proposed.")}</pre>
+        <div class="proposed-rule-heading">
+          <span class="section-label">Proposed Hosted Rule:</span>
+          ${renderManualRelationshipStatus(candidate, decision.proposedText)}
+          <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" disabled>${icon("save")}</button>
+        </div>
+        <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
       </div>
 
       <div class="section-block rule-actions">
@@ -2138,9 +2649,24 @@ function renderAssessment() {
               </fieldset>
             </div>
           </div>
+          ${candidate.recommendation.retireHostedRuleIds.length ? `<div class="control-group ancillary-retirement-control-group">
+            <span class="control-subtitle" id="ancillary-retirements-label">Related Hosted Rules to Retire:</span>
+            <p class="section-help">Reconciliation supplied these lifecycle actions. Clear a rule to keep it active.</p>
+            <div class="action-plan-group">
+              <fieldset class="action-options ancillary-retirement-options" aria-labelledby="ancillary-retirements-label">
+                <legend class="sr-only">Related Hosted rules to retire</legend>
+                ${candidate.recommendation.retireHostedRuleIds.map((ruleId) => `
+                  <label class="action-option clickable">
+                    <input type="checkbox" data-retire-hosted-rule="${escapeHtml(ruleId)}" value="${escapeHtml(ruleId)}" ${decision.retireHostedRuleIds.includes(ruleId) ? "checked" : ""}>
+                    <span>Retire ${escapeHtml(ruleId)}</span>
+                  </label>
+                `).join("")}
+              </fieldset>
+            </div>
+          </div>` : ""}
           <div class="field-stack control-group rationale-control-group">
-            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" ${decision.action !== "no-change" && (decision.rationale.trim() || state.session.decisions[candidate.key]) ? "" : "disabled"}>${icon("save")}</button></div>
-            <label><textarea class="scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${decision.action === "no-change" ? "No rationale is required for No Change." : "Record why this action is appropriate."}" ${decision.action === "no-change" ? "disabled" : ""}>${escapeHtml(decision.action === "no-change" ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${decision.action === "no-change" ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
+            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" ${!rationaleDisabled && (decision.rationale.trim() || state.session.decisions[candidate.key]) ? "" : "disabled"}>${icon("save")}</button></div>
+            <label><textarea class="scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${rationaleDisabled ? "No rationale is required for No Change." : "Record why this action is appropriate."}" ${rationaleDisabled ? "disabled" : ""}>${escapeHtml(rationaleDisabled ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${rationaleDisabled ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
           </div>
         </div>
       </div>
@@ -2208,17 +2734,27 @@ function handleAssessmentInput(event) {
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
     if (action === "no-change") {
-      removeCandidateFromBulkOperations(candidate.key);
-      saveDecision(candidate, null);
+      if (getDecision(candidate).retireHostedRuleIds.length) updateDecision(candidate, { action });
+      else {
+        removeCandidateFromBulkOperations(candidate.key);
+        saveDecision(candidate, null);
+      }
       syncAssessmentActionControls(candidate, action);
       syncImplementationModelControls(candidate, action);
-      syncAssessmentRationaleControls(action);
+      syncAssessmentRationaleControls(action, candidate);
       event.target.focus({ preventScroll: true });
       return;
     }
     syncAssessmentActionControls(candidate, action);
     syncImplementationModelControls(candidate, action);
-    syncAssessmentRationaleControls(action);
+    syncAssessmentRationaleControls(action, candidate);
+    return;
+  }
+  if (event.target.dataset.retireHostedRule) {
+    const retireHostedRuleIds = [...elements["assessment-panel"].querySelectorAll("[data-retire-hosted-rule]:checked")]
+      .map((control) => control.dataset.retireHostedRule);
+    updateDecision(candidate, { retireHostedRuleIds });
+    renderAssessment();
     return;
   }
   if (event.target.dataset.implementationModel) {
@@ -2232,6 +2768,9 @@ function handleAssessmentInput(event) {
       ? event.target.value.slice(0, DECISION_RATIONALE_MAX_LENGTH)
       : event.target.value;
     event.target.value = value;
+    if (event.target.dataset.decisionField === "proposedText") {
+      syncProposedRuleControls(candidate);
+    }
     if (event.target.dataset.decisionField === "rationale") {
       const counter = elements["assessment-panel"].querySelector(".rationale-limit");
       if (counter) counter.textContent = `${value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
@@ -2283,12 +2822,12 @@ function syncImplementationModelControls(candidate, action = getDecision(candida
   });
 }
 
-function syncAssessmentRationaleControls(action) {
+function syncAssessmentRationaleControls(action, candidate = getActiveCandidate()) {
   const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
   const limit = elements["assessment-panel"].querySelector(".rationale-limit");
   const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
   if (!rationale) return;
-  const noChange = action === "no-change";
+  const noChange = action === "no-change" && (!candidate || getDecision(candidate).retireHostedRuleIds.length === 0);
   if (noChange) rationale.value = "";
   rationale.disabled = noChange;
   rationale.placeholder = noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
@@ -2297,6 +2836,19 @@ function syncAssessmentRationaleControls(action) {
 }
 
 async function handleAssessmentClick(event) {
+  if (event.target.closest("[data-proposed-text-save]")) {
+    const candidate = getActiveCandidate();
+    if (!candidate) return;
+    const proposedText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
+    if (proposedText === undefined) return;
+    if (proposedText !== getDecision(candidate).proposedText) {
+      const { assessment, ...maintainerDecision } = getDecision(candidate);
+      saveDecision(candidate, { ...maintainerDecision, proposedText });
+      await persistencePromise;
+    }
+    await reconcileManualRuleText(candidate, proposedText);
+    return;
+  }
   if (!event.target.closest("[data-rationale-save]")) return;
   const candidate = getActiveCandidate();
   if (!candidate) return;
@@ -2314,18 +2866,24 @@ async function handleAssessmentClick(event) {
   const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
   if (!action) return;
   const current = getDecision(candidate);
+  const proposedText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value || current.proposedText;
+  const retireHostedRuleIds = [...elements["assessment-panel"].querySelectorAll("[data-retire-hosted-rule]:checked")]
+    .map((control) => control.dataset.retireHostedRule);
   const { assessment, ...maintainerDecision } = current;
   removeCandidateFromBulkOperations(candidate.key);
   saveDecision(candidate, {
     ...maintainerDecision,
     action,
     rationale,
+    proposedText,
+    retireHostedRuleIds,
     implementationModels: current.implementationModels,
     proposedHostedRuleId: candidate.assessment.proposedHostedRuleId,
-    ...createPlanMembership(isPromotionAction(action) ? "manual" : "none")
+    ...createPlanMembership(isPromotionAction(action) || retireHostedRuleIds.length ? "manual" : "none")
   });
   const returnToPlan = state.rationaleReturnView === "plan";
   await persistencePromise;
+  await reconcileManualRuleText(candidate, proposedText);
   renderAssessment();
   showToast("Decision saved");
   if (returnToPlan) {
@@ -2370,7 +2928,7 @@ function renderPlan() {
         <td class="plan-candidate"><span class="candidate-link">${escapeHtml(displayId)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
         <td class="plan-source"><span class="status-badge neutral plan-source-pill type-compact">${escapeHtml(formatTitleCase(candidate.sourceLabel))}</span></td>
         <td class="plan-type"><span class="status-badge neutral plan-membership-badge">${escapeHtml(formatTitleCase(decision.planMembershipSource))}</span></td>
-        <td class="plan-action"><span class="recommendation-badge ${escapeHtml(decision.action)}">${escapeHtml(formatRecommendation(decision.action))}</span></td>
+        <td class="plan-action"><span class="recommendation-badge ${escapeHtml(isPromotionAction(decision.action) ? decision.action : decision.retireHostedRuleIds.length ? "retire" : decision.action)}">${escapeHtml(formatPlanAction(decision))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
         <td>${readiness.ready ? `<span class="status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="Complete required fields for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and complete required fields">${icon("edit")}<span>${readiness.label}</span></button>`}</td>
@@ -2414,7 +2972,7 @@ function sortPlanCandidates(candidates, sort) {
     if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "source") return candidate.sourceLabel;
     if (sort.field === "type") return decision.planMembershipSource;
-    if (sort.field === "action") return formatRecommendation(decision.action);
+    if (sort.field === "action") return formatPlanAction(decision);
     if (sort.field === "impact") return assessment ? calculateImpact(assessment.factors) : Number.NEGATIVE_INFINITY;
     if (sort.field === "cost") return getPlanTokenValue(candidate);
     return getPlanReadiness(candidate).label;
@@ -2431,14 +2989,16 @@ function sortPlanCandidates(candidates, sort) {
 function getPlanReadiness(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
-  const actionRequired = !isPromotionAction(decision.action);
-  const rationaleRequired = !decision.rationale.trim();
+  const actionRequired = !isActionableDecision(decision);
+  const rationaleRequired = isActionableDecision(decision) && !decision.rationale.trim();
   const resourceTypeRequired = canEditImplementationModels(candidate, decision.action) && decision.implementationModels.length === 0;
+  const relationshipCheckRequired = requiresManualRelationshipCheck(candidate, decision.proposedText);
   return {
     actionRequired,
     resourceTypeRequired,
-    ready: Boolean(assessment) && !actionRequired && !rationaleRequired && !resourceTypeRequired,
-    label: actionRequired ? "Needs action" : resourceTypeRequired ? "Needs resource type" : rationaleRequired ? "Needs rationale" : assessment ? "Ready" : "Needs AI assessment"
+    relationshipCheckRequired,
+    ready: Boolean(assessment) && !actionRequired && !rationaleRequired && !resourceTypeRequired && !relationshipCheckRequired,
+    label: actionRequired ? "Needs action" : resourceTypeRequired ? "Needs resource type" : rationaleRequired ? "Needs rationale" : relationshipCheckRequired ? "Needs relationship check" : assessment ? "Ready" : "Needs AI assessment"
   };
 }
 
@@ -2498,16 +3058,18 @@ function handlePlanRowKeyboardNavigation(event) {
 
 function getPlanTokenDelta(candidate) {
   const decision = getDecision(candidate);
-  return getActionTokenDelta(candidate, decision.action, decision);
+  return getDecisionTokenDelta(candidate, decision);
 }
 
 function getActionAffectedSurfaces(candidate, action, decision = getDecision(candidate)) {
   const assessment = getAssessment(candidate, decision);
-  if (["add", "update", "restore"].includes(action)) return assessment?.affectedSurfaces || [];
-  if (action !== "retire") return [];
-  const placementSurfaces = getCatalogStatus(candidate).rules
-    .flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId));
-  return placementSurfaces.length ? placementSurfaces : assessment?.affectedSurfaces || [];
+  const surfaces = [];
+  if (["add", "update", "restore"].includes(action)) surfaces.push(...(assessment?.affectedSurfaces || []));
+  if (action === "retire") {
+    surfaces.push(...getCatalogStatus(candidate).rules.flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId)));
+  }
+  surfaces.push(...getAncillaryRetirementRules(decision).flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId)));
+  return [...new Set(surfaces)];
 }
 
 function getPlanAffectedSurfaces(candidate) {
@@ -2520,7 +3082,8 @@ function getAssessmentProjectedHeadroom(candidate, action, decision = getDecisio
   const savedContribution = decision.inPlan
     ? getPlanTokenDelta(candidate) * getActionCapacityBucketNames(candidate, decision.action, decision).length
     : 0;
-  const stagedContribution = getActionTokenDelta(candidate, action, decision) * getActionCapacityBucketNames(candidate, action, decision).length;
+  const stagedDecision = { ...decision, action };
+  const stagedContribution = getDecisionTokenDelta(candidate, stagedDecision) * getActionCapacityBucketNames(candidate, action, stagedDecision).length;
   return capacity.projectedHeadroomTokens + savedContribution - stagedContribution;
 }
 
@@ -2555,10 +3118,8 @@ function renderCapacityGroup(label, currentGuardedTokens, draftDeltaTokens, budg
 }
 
 function getActionCapacityBucketNames(candidate, action, decision = getDecision(candidate)) {
-  if (!isPromotionAction(action)) return [];
-  const surfaces = action === "retire"
-    ? getCatalogStatus(candidate).rules.flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId))
-    : [candidate.recommendation?.category || getAssessment(candidate, decision)?.category];
+  if (!isPromotionAction(action) && !decision.retireHostedRuleIds.length) return [];
+  const surfaces = getActionAffectedSurfaces(candidate, action, decision);
   const reportNamesBySurface = Object.fromEntries(GUIDANCE_CAPACITY_BUCKETS.map((bucket) => [bucket.surface, bucket.reportName]));
   return [...new Set(surfaces.map((surface) => reportNamesBySurface[surface]).filter(Boolean))];
 }
@@ -2634,14 +3195,12 @@ function renderPreview() {
 }
 
 function buildPreviewFiles(candidates) {
-  const proposed = candidates.filter((candidate) => isPromotionAction(getDecision(candidate).action)).map((candidate) => {
-    const decision = getDecision(candidate);
-    const currentText = getCurrentHostedText(candidate);
-    const before = ["add", "restore"].includes(decision.action) ? [] : splitDiffLines(currentText);
-    const after = decision.action === "retire" ? [] : splitDiffLines(decision.proposedText);
-    const hostedRuleId = decision.action === "add" ? getEffectiveHostedRuleId(candidate) : candidate.assessment.targetHostedRuleId || getEffectiveHostedRuleId(candidate);
-    return createPreviewFile(`rules/${hostedRuleId}.md`, candidate.title, before, after, false, candidate.sourceId, "proposed");
-  });
+  const proposed = candidates.flatMap((candidate) => buildApprovedMutations(candidate).map((mutation) => {
+    const existingRule = state.bundle.catalog.rules.find((rule) => rule.id === mutation.rule.id);
+    const before = mutation.action === "add" ? [] : splitDiffLines(existingRule?.text || "");
+    const after = mutation.action === "retire" ? [] : splitDiffLines(mutation.rule.text);
+    return createPreviewFile(`rules/${mutation.rule.id}.md`, candidate.title, before, after, false, candidate.sourceId, "proposed");
+  }));
   const payload = candidates.map((candidate) => {
     const current = getDecision(candidate);
     const baseline = defaultDecision(candidate);
@@ -2651,6 +3210,7 @@ function buildPreviewFiles(candidates) {
       planMembership: { source: baseline.planMembershipSource, bulkOperationId: baseline.bulkOperationId },
       rationale: baseline.rationale,
       proposedText: baseline.proposedText,
+      retireHostedRuleIds: baseline.retireHostedRuleIds,
       proposedHostedRuleId: baseline.proposedHostedRuleId,
       applicabilityOverride: null
     };
@@ -2660,6 +3220,7 @@ function buildPreviewFiles(candidates) {
       planMembership: { source: current.planMembershipSource, bulkOperationId: current.bulkOperationId },
       rationale: current.rationale,
       proposedText: current.proposedText,
+      retireHostedRuleIds: current.retireHostedRuleIds,
       proposedHostedRuleId: current.proposedHostedRuleId,
       applicabilityOverride: getApplicabilityOverride(candidate)
     };
@@ -2761,6 +3322,30 @@ function buildApprovedMutation(candidate) {
     placements,
     sourceRelationships: structuredClone(recommendation.sourceRelationships)
   };
+}
+
+function buildAncillaryRetirementMutation(candidate, existingRule) {
+  const decision = getDecision(candidate);
+  return {
+    action: "retire",
+    rationale: decision.rationale.trim(),
+    rule: {
+      ...copyCatalogRule(existingRule),
+      status: "retired",
+      retirementReason: decision.rationale.trim(),
+      lastPlacement: existingRule.placements[0]
+    },
+    canonicalCandidate: structuredClone(existingRule.canonicalCandidate),
+    placements: [],
+    sourceRelationships: structuredClone(candidate.recommendation.sourceRelationships)
+  };
+}
+
+function buildApprovedMutations(candidate) {
+  const decision = getDecision(candidate);
+  const mutations = isPromotionAction(decision.action) ? [buildApprovedMutation(candidate)] : [];
+  getAncillaryRetirementRules(decision).forEach((rule) => mutations.push(buildAncillaryRetirementMutation(candidate, rule)));
+  return mutations;
 }
 
 function createPreviewFile(path, title, beforeLines, afterLines, contextual = false, sourceId = "", scope = "") {
@@ -3254,7 +3839,7 @@ function diffTextLines(beforeText, afterText) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
-  const missingActionCount = planCandidates.filter((candidate) => !isPromotionAction(getDecision(candidate).action)).length;
+  const missingActionCount = planCandidates.filter((candidate) => !isActionableDecision(getDecision(candidate))).length;
   const missingResourceTypeCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
     return canEditImplementationModels(candidate, decision.action) && decision.implementationModels.length === 0;
@@ -3264,12 +3849,17 @@ function getPreviewReadiness() {
     return !getAssessment(candidate, decision) || !decision.rationale.trim();
   }).length;
   const missingRationale = missingRationaleCount > 0;
+  const missingRelationshipCheckCount = planCandidates.filter((candidate) => requiresManualRelationshipCheck(candidate)).length;
+  const mutationRuleIds = planCandidates.flatMap((candidate) => buildApprovedMutations(candidate).map((mutation) => mutation.rule.id));
+  const conflictingMutationCount = mutationRuleIds.length - new Set(mutationRuleIds).size;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
   if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
   else if (missingResourceTypeCount) status = "needs resource type";
   else if (missingRationale) status = "needs rationale";
+  else if (missingRelationshipCheckCount) status = "needs relationship check";
+  else if (conflictingMutationCount) status = "conflicting mutations";
   else if (!approverName) status = "needs approver";
   return {
     planCandidates,
@@ -3277,8 +3867,10 @@ function getPreviewReadiness() {
     missingActionCount,
     missingResourceTypeCount,
     missingRationaleCount,
+    missingRelationshipCheckCount,
+    conflictingMutationCount,
     status,
-    ready: planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && Boolean(approverName)
+    ready: planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && conflictingMutationCount === 0 && Boolean(approverName)
   };
 }
 
@@ -3288,6 +3880,8 @@ function renderApprovalRequirements(readiness) {
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
     ["Resource types", readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingResourceTypeCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
+    ["Relationship checks", readiness.missingRelationshipCheckCount ? `${readiness.missingRelationshipCheckCount} required` : "Current", readiness.planCandidates.length > 0 && readiness.missingRelationshipCheckCount === 0],
+    ["Mutation targets", readiness.conflictingMutationCount ? `${readiness.conflictingMutationCount} conflicting` : "Unique", readiness.planCandidates.length > 0 && readiness.conflictingMutationCount === 0],
     ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
   ];
   elements["approval-requirements"].innerHTML = `<strong class="approval-requirements-title">Approval Requirements</strong>${requirements.map(([label, value, passed]) => `
@@ -3305,6 +3899,8 @@ function renderCounts() {
   elements["plan-count"].textContent = formatNumber(planCount);
   elements["plan-activity-count"].textContent = planCount > 999 ? "999+" : formatNumber(planCount);
   elements["plan-activity-count"].hidden = planCount === 0;
+  elements["rule-issues-tab-count"].textContent = formatNumber(state.ruleIssues.length);
+  elements["rule-issues-tab-count"].hidden = state.ruleIssues.length === 0;
   const planLabel = `Promotion Plan (${formatNumber(planCount)})`;
   setWorkbenchTooltip(elements["promotion-plan-stage"], planLabel);
   elements["promotion-plan-stage"].setAttribute("aria-label", planLabel);
@@ -3427,6 +4023,7 @@ function updateFilter(value) {
     state.assessmentActiveKey = null;
     renderAssessmentResults();
   }
+  else renderRuleIssues();
   refreshPresentation();
 }
 
@@ -3474,7 +4071,7 @@ function showAssessmentPane(pane) {
 }
 
 function setWorkspaceTab(tab) {
-  if (!["candidate-sources", "assessment-results"].includes(tab)) return;
+  if (!["candidate-sources", "assessment-results", "rule-issues"].includes(tab)) return;
   dismissNotification();
   state.workspaceTab = tab;
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
@@ -3486,13 +4083,18 @@ function setWorkspaceTab(tab) {
   elements["candidate-sources-panel"].hidden = tab !== "candidate-sources";
   elements["assessment-results-panel"].classList.toggle("active", tab === "assessment-results");
   elements["assessment-results-panel"].hidden = tab !== "assessment-results";
+  elements["rule-issues-panel"].classList.toggle("active", tab === "rule-issues");
+  elements["rule-issues-panel"].hidden = tab !== "rule-issues";
   elements["search-input"].value = state.queries[tab];
   elements["search-input"].placeholder = tab === "candidate-sources"
     ? "Search sources, categories, or rules"
-    : "Search excluded assessment results";
+    : tab === "assessment-results"
+      ? "Search excluded assessment results"
+      : "Search rule issues";
   elements["search-input"].setAttribute("aria-label", elements["search-input"].placeholder);
   if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
-  else assessmentHierarchicalView?.refreshLayout();
+  else if (tab === "assessment-results") assessmentHierarchicalView?.refreshLayout();
+  else renderRuleIssues();
   refreshPresentation();
 }
 
@@ -3526,7 +4128,7 @@ function buildDraftExport() {
   const session = normalizeSessionTimestamps(state.session);
   return {
     $schema: "workbench-draft-v4.schema.json",
-    schemaVersion: SESSION_SCHEMA_VERSION,
+    schemaVersion: WORKBENCH_DRAFT_SCHEMA_VERSION,
     kind: "hosted-rule-workbench-draft",
     inputFingerprint: session.inputFingerprint,
     createdAt: session.createdAt,
@@ -3540,6 +4142,7 @@ function buildDraftExport() {
       rationale: decision.rationale,
       proposedHostedRuleId: decision.proposedHostedRuleId || null,
       proposedText: decision.proposedText,
+      retireHostedRuleIds: [...decision.retireHostedRuleIds],
       implementationModels: decision.implementationModels,
       sourceContentSha256: decision.sourceHash,
       updatedAt: decision.updatedAt
@@ -3558,7 +4161,7 @@ function buildDraftExport() {
 }
 
 function deserializeDraft(draft, candidates) {
-  if (draft?.schemaVersion !== SESSION_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft") return null;
+  if (draft?.schemaVersion !== WORKBENCH_DRAFT_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft") return null;
   const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
@@ -3575,6 +4178,7 @@ function deserializeDraft(draft, candidates) {
       rationale: decision.rationale,
       proposedHostedRuleId: candidatesByKey.get(key)?.assessment.proposedHostedRuleId || "",
       proposedText: decision.proposedText,
+      retireHostedRuleIds: [...decision.retireHostedRuleIds],
       implementationModels: Array.isArray(decision.implementationModels) ? decision.implementationModels : undefined,
       sourceHash: decision.sourceContentSha256,
       updatedAt: decision.updatedAt
@@ -3604,7 +4208,7 @@ function buildApprovedRules() {
       id: identity?.login || approvedBy,
       displayName: approvedBy
     },
-    mutations: getPlanCandidates().filter((candidate) => isPromotionAction(getDecision(candidate).action)).map(buildApprovedMutation)
+    mutations: getPlanCandidates().flatMap(buildApprovedMutations)
   };
 }
 

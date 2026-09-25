@@ -34,8 +34,10 @@ $ErrorActionPreference = 'Stop'
 
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 $sourceEvidencePath = Join-Path $PSScriptRoot '../../modules/shared/SourceEvidenceValidation.psm1'
+$workbenchFingerprintPath = Join-Path $PSScriptRoot '../../modules/shared/WorkbenchInputFingerprint.psm1'
 Import-Module -Name $sourceEvidencePath -Force
 Import-Module -Name $helpersPath -Force
+Import-Module -Name $workbenchFingerprintPath -Force
 
 function Read-JsonFile {
     param(
@@ -120,6 +122,7 @@ if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256) {
 
 $inventoryRecords = @{}
 $inventoryHashes = [ordered]@{}
+$inventoryContentHashes = [ordered]@{}
 $inventoryRevisions = @{}
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
 foreach ($inventoryPath in $InventoryPaths) {
@@ -134,6 +137,7 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     Assert-SourceInventoryIntegrity -Inventory $inventory
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
+    $inventoryContentHashes[$sourceDefinitionId] = [string]$inventory.collection.inventorySha256
     $inventoryRevisions[$sourceDefinitionId] = $inventory.collection.sourceRevision
     foreach ($record in @($inventory.records)) {
         $sourceKey = $sourceDefinitionId + [char]0 + [string]$record.sourceId
@@ -171,16 +175,6 @@ foreach ($rule in @($protectedRules.rules)) {
     $surface = @($catalog.surfaces | Where-Object { [string]$_.id -ceq [string]$rule.surfaceId })
     if ($surface.Count -ne 1) {
         throw "Protected rule $protectedId references an unknown surface: $($rule.surfaceId)"
-    }
-}
-foreach ($rule in @($catalog.rules | Where-Object { $_.PSObject.Properties['supersededBy'] })) {
-    $supersededBy = [string]$rule.supersededBy
-    $protectedSuccessor = @($protectedRules.rules | Where-Object { [string]$_.id -ceq $supersededBy })
-    if ([string]$rule.status -cne 'retired' -or $protectedSuccessor.Count -ne 1) {
-        throw "Catalog rule $($rule.id) has invalid protected successor $supersededBy"
-    }
-    if ([string]$rule.lastPlacement.surfaceId -cne [string]$protectedSuccessor[0].surfaceId) {
-        throw "Catalog rule $($rule.id) and protected successor $supersededBy must share a surface"
     }
 }
 foreach ($surface in @($catalog.surfaces)) {
@@ -410,7 +404,7 @@ foreach ($recommendation in @($draft.recommendations)) {
     }
 
     foreach ($coverage in @($recommendation.relatedHostedCoverage)) {
-        if (-not $catalogRules.ContainsKey([string]$coverage.hostedRuleId)) {
+        if (-not $occupiedHostedIds.Contains([string]$coverage.hostedRuleId)) {
             throw "Recommendation $draftKey references unknown related Hosted coverage: $($coverage.hostedRuleId)"
         }
         foreach ($reference in @($coverage.assessmentRefs)) {
@@ -592,6 +586,20 @@ foreach ($recommendation in $activeDraftRecommendations) {
             throw "Recommendation $draftKey has confirmed maintainer provenance without registered maintainer-confirmation evidence"
         }
     }
+    $retireHostedRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($retirementRuleId in @($recommendation.retireHostedRuleIds)) {
+        $retirementRuleId = [string]$retirementRuleId
+        if (-not $catalogRules.ContainsKey($retirementRuleId) -or [string]$catalogRules[$retirementRuleId].status -cne 'active') {
+            throw "Recommendation $draftKey references a retirement target that is not an active Hosted rule: $retirementRuleId"
+        }
+        if (-not $catalogLocations.ContainsKey($retirementRuleId) -or [string]$catalogLocations[$retirementRuleId].category -cne [string]$recommendation.category) {
+            throw "Recommendation $draftKey references a retirement target outside its Hosted category: $retirementRuleId"
+        }
+        if ([string]$recommendation.recommendedAction -ceq 'retire' -and [string]$recommendation.targetHostedId -ceq $retirementRuleId) {
+            throw "Recommendation $draftKey repeats its primary retirement target in retireHostedRuleIds: $retirementRuleId"
+        }
+        $null = $retireHostedRuleIds.Add($retirementRuleId)
+    }
     $displayRecommendation = [ordered]@{
         action = [string]$recommendation.recommendedAction
         hostedId = $hostedId
@@ -609,6 +617,18 @@ foreach ($recommendation in $activeDraftRecommendations) {
                 rationale = [string]$_.rationale
             }
         } | Sort-Object -Property assessmentKey)
+        relatedHostedCoverage = @($recommendation.relatedHostedCoverage | ForEach-Object {
+            $projectedCoverage = [ordered]@{
+                hostedRuleId = [string]$_.hostedRuleId
+                relationship = [string]$_.relationship
+                rationale = [string]$_.rationale
+            }
+            if ($_.PSObject.Properties['suggestedConsolidatedText']) {
+                $projectedCoverage['suggestedConsolidatedText'] = [string]$_.suggestedConsolidatedText
+            }
+            $projectedCoverage
+        } | Sort-Object -Property hostedRuleId)
+        retireHostedRuleIds = @($retireHostedRuleIds | Sort-Object -CaseSensitive)
         guardedTokenDelta = (Get-GuardedTokens -Text $recommendedText) - (Get-GuardedTokens -Text $currentText)
         provenance = @($provenance | Sort-Object -CaseSensitive)
         evidenceIds = @($evidenceIds | Sort-Object -CaseSensitive)
@@ -715,7 +735,7 @@ foreach ($entry in @($baseline.entries)) {
             catalogMapping = if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
                 $mappedHostedRuleId = [string]$canonicalHostedRuleByAssessment[$assessmentKey]
                 [ordered]@{
-                    state = if ($catalogRules[$mappedHostedRuleId].PSObject.Properties['supersededBy']) { 'superseded' } else { [string]$catalogRules[$mappedHostedRuleId].status }
+                    state = [string]$catalogRules[$mappedHostedRuleId].status
                     hostedRuleId = $mappedHostedRuleId
                 }
             }
@@ -730,13 +750,7 @@ foreach ($entry in @($baseline.entries)) {
     }
 }
 
-$fingerprintBuilder = [Text.StringBuilder]::new()
-$null = $fingerprintBuilder.Append($catalogInput.Snapshot.Sha256).Append([char]0)
-$null = $fingerprintBuilder.Append($protectedRulesInput.Snapshot.Sha256).Append([char]0)
-foreach ($inventoryHash in $inventoryHashes.GetEnumerator()) {
-    $null = $fingerprintBuilder.Append([string]$inventoryHash.Key).Append([char]0).Append([string]$inventoryHash.Value).Append([char]0)
-}
-$inputFingerprint = Get-Sha256 -Content $fingerprintBuilder.ToString()
+$inputFingerprint = Get-WorkbenchInputFingerprint -CatalogContentSha256 $catalogInput.Snapshot.Sha256 -ProtectedRulesContentSha256 $protectedRulesInput.Snapshot.Sha256 -InventoryHashes $inventoryContentHashes
 
 $catalogProjection = @($catalog.rules | ForEach-Object {
     $hostedId = [string]$_.id
@@ -757,7 +771,7 @@ $catalogProjection = @($catalog.rules | ForEach-Object {
         canonicalCandidate = $catalog.canonicalCandidateMappings.$hostedId
         placements = $placements.ToArray()
     }
-    foreach ($propertyName in @('implementationModels', 'documentationGap', 'selectionFactors', 'selectionRationale', 'supersededBy')) {
+    foreach ($propertyName in @('implementationModels', 'documentationGap', 'selectionFactors', 'selectionRationale')) {
         if ($_.PSObject.Properties[$propertyName]) {
             $projectedRule[$propertyName] = $_.$propertyName
         }

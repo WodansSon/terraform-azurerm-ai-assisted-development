@@ -34,7 +34,7 @@
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["action", "selected", "selectionSource", "bulkOperationId", "rationale", "proposedHostedRuleId", "proposedText", "sourceContentSha256", "updatedAt"],
+      "required": ["action", "selected", "selectionSource", "bulkOperationId", "rationale", "proposedHostedRuleId", "proposedText", "retireHostedRuleIds", "sourceContentSha256", "updatedAt"],
       "properties": {
         "action": { "enum": ["add", "update", "retire", "restore", "no-change", "defer", "exclude", null] },
         "selected": { "type": "boolean" },
@@ -43,6 +43,11 @@
         "rationale": { "type": "string", "maxLength": 500 },
         "proposedHostedRuleId": { "oneOf": [{ "$ref": "#/$defs/hostedId" }, { "type": "null" }] },
         "proposedText": { "type": "string" },
+        "retireHostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/hostedId" }
+        },
         "implementationModels": {
           "type": "array",
           "uniqueItems": true,

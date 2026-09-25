@@ -350,9 +350,6 @@ foreach ($mutation in @($approval.mutations)) {
         if ($action -ceq 'restore' -and [string]$existingRule.status -cne 'retired') {
             throw "Restore mutation requires a retired catalog rule: $ruleId"
         }
-        if ($action -eq 'restore' -and $existingRule.PSObject.Properties['supersededBy']) {
-            throw "Restore mutation cannot target superseded catalog rule $ruleId"
-        }
     }
 
     foreach ($surface in @($catalog.surfaces)) {

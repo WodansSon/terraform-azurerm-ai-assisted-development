@@ -794,6 +794,8 @@ if ($null -ne $timingStem) {
     if ($runnerExitCode -ne 0) {
         throw "Complete-lane source assessment failed: $($runnerRun.Output)"
     }
+    $runnerBaseline = Get-Content -LiteralPath $runnerOutputPath -Raw | ConvertFrom-Json
+    Add-TestResult -Name 'protected-rules-baseline-binding' -Passed ([string]$runnerBaseline.protectedRulesContentSha256 -ceq (Get-SourceEvidenceFileSha256 -Path (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json'))) -Detail 'Source assessment binds semantic relationship evidence to the exact protected rules catalog.'
     $runnerCalls = if (Test-Path -LiteralPath $callLogPath) { @(Get-Content -LiteralPath $callLogPath) } else { @() }
     $runnerCallGroups = @($runnerCalls | Group-Object { ([string]$_ -split ':')[0] })
     $runnerBatchSizes = @($runnerCallGroups | ForEach-Object { [int](([string]$_.Group[0] -split ':')[1]) } | Sort-Object)

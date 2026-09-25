@@ -14,6 +14,8 @@ param(
 
     [string]$ReconciliationCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
 
+    [string]$ManualRelationshipCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/manual-relationship-cache'),
+
     [string]$AssessmentResumeDirectory,
 
     [string]$ReconciliationResumeDirectory,
@@ -31,6 +33,8 @@ param(
 
     [string]$EvaluatorCommand = 'copilot',
 
+    [string]$RelationshipEvaluatorScriptPath,
+
     [switch]$Rebuild,
 
     [switch]$StageOnly,
@@ -45,21 +49,30 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
+$sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
+$workbenchFingerprintModulePath = Join-Path $PSScriptRoot 'modules/shared/WorkbenchInputFingerprint.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+Import-Module -Name $sourceEvidenceModulePath -Force
+Import-Module -Name $workbenchFingerprintModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
 $workbenchIconSource = Join-Path $workbenchSource 'icons'
 $catalogRoot = Join-Path $PSScriptRoot '../copilot-rule-catalog'
+$hostedCatalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
+$protectedRulesPath = Join-Path $catalogRoot 'protected-rules.json'
 $displaySchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-display-v4.schema.json'
 $sourceDefinitionSetPath = Join-Path $catalogRoot 'source-definitions/source-definition-set.json'
 $inventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-SourceAssessment.ps1'
 $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
+$manualRelationshipPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
 $resolvedReconciliationCacheDirectory = [IO.Path]::GetFullPath($ReconciliationCacheDirectory)
+$resolvedManualRelationshipCacheDirectory = [IO.Path]::GetFullPath($ManualRelationshipCacheDirectory)
+$resolvedRelationshipEvaluatorScriptPath = if ([string]::IsNullOrWhiteSpace($RelationshipEvaluatorScriptPath)) { $null } else { [IO.Path]::GetFullPath($RelationshipEvaluatorScriptPath) }
 $resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
 $resolvedReconciliationResumeDirectory = if ([string]::IsNullOrWhiteSpace($ReconciliationResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($ReconciliationResumeDirectory) }
 $assessmentRecoveryMode = if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
@@ -74,8 +87,14 @@ if ($resolvedAssessmentCacheDirectory.StartsWith($repositoryPrefix, [StringCompa
 if ($resolvedReconciliationCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ReconciliationCacheDirectory must be outside the source repository'
 }
+if ($resolvedManualRelationshipCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ManualRelationshipCacheDirectory must be outside the source repository'
+}
+if ($null -ne $resolvedRelationshipEvaluatorScriptPath -and -not (Test-Path -LiteralPath $resolvedRelationshipEvaluatorScriptPath -PathType Leaf)) {
+    throw "RelationshipEvaluatorScriptPath was not found: $resolvedRelationshipEvaluatorScriptPath"
+}
 
-foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $guidanceCapacityPath)) {
+foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatalogPath, $protectedRulesPath, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $manualRelationshipPath, $guidanceCapacityPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -94,6 +113,9 @@ Copy-Item -LiteralPath $workbenchIconSource -Destination $resolvedSiteDirectory 
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)
 $shutdownToken = [Convert]::ToHexString($shutdownTokenBytes).ToLowerInvariant()
+$operationTokenBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($operationTokenBytes)
+$operationToken = [Convert]::ToHexString($operationTokenBytes).ToLowerInvariant()
 $maintainerIdentity = [ordered]@{
     status = 'unavailable'
     login = $null
@@ -171,6 +193,7 @@ if ($null -ne $ghCommand) {
 }
 $shutdownConfig = [ordered]@{
     shutdownToken = $shutdownToken
+    operationToken = $operationToken
     maintainerIdentity = $maintainerIdentity
     targetRepository = $targetRepository
 } | ConvertTo-Json -Compress
@@ -178,6 +201,7 @@ $shutdownConfig = [ordered]@{
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $assessmentResult = $null
+$displayRefreshMode = 'UNINITIALIZED'
 $workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
 
@@ -208,34 +232,76 @@ function Copy-FileAtomically {
 }
 
 function Update-StagedDisplay {
-    if ($Rebuild) {
-        $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
-        $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
-        $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
-        try {
+    $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
+    $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
+    $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
+    try {
+        if ($OutputFormat -eq 'Text') {
+            Write-ValidationSectionHeader -Title 'Source Collection' | Write-Host
+        }
+        $script:workbenchPhase = 'SOURCE COLLECTION'
+        $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
+        $currentInventoryPaths = [Collections.Generic.List[string]]::new()
+        $priorInventoryPaths = [Collections.Generic.List[string]]::new()
+        $inventoryHashes = [ordered]@{}
+        foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
+            $inventoryPath = Join-Path $currentInventoryDirectory "$sourceDefinitionId.json"
             if ($OutputFormat -eq 'Text') {
-                Write-ValidationSectionHeader -Title 'Source Collection' | Write-Host
+                Write-Host ("[RUNNING]  collect/{0,-21} : Building current source inventory" -f $sourceDefinitionId)
             }
-            $script:workbenchPhase = 'SOURCE COLLECTION'
-            $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
-            $currentInventoryPaths = [Collections.Generic.List[string]]::new()
-            $priorInventoryPaths = [Collections.Generic.List[string]]::new()
-            foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
-                $inventoryPath = Join-Path $currentInventoryDirectory "$sourceDefinitionId.json"
-                if ($OutputFormat -eq 'Text') {
-                    Write-Host ("[RUNNING]  collect/{0,-21} : Building current source inventory" -f $sourceDefinitionId)
-                }
-                $collectionOutput = @(& $inventoryCollectorPath -RepositoryRoot $repositoryRoot -SourceDefinitionPath (Join-Path $catalogRoot "source-definitions/$sourceDefinitionId.json") -OutputPath $inventoryPath -OutputFormat Json 2>&1)
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Source inventory collection failed for $sourceDefinitionId`: $(($collectionOutput | Out-String).Trim())"
-                }
-                $currentInventoryPaths.Add($inventoryPath)
-                $priorInventoryPath = Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) "$sourceDefinitionId.json"
-                if (Test-Path -LiteralPath $priorInventoryPath -PathType Leaf) {
-                    $priorInventoryPaths.Add($priorInventoryPath)
-                }
+            $collectionOutput = @(& $inventoryCollectorPath -RepositoryRoot $repositoryRoot -SourceDefinitionPath (Join-Path $catalogRoot "source-definitions/$sourceDefinitionId.json") -OutputPath $inventoryPath -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Source inventory collection failed for $sourceDefinitionId`: $(($collectionOutput | Out-String).Trim())"
             }
+            $currentInventoryPaths.Add($inventoryPath)
+            $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+            $inventoryHashes[$sourceDefinitionId] = [string]$inventory.collection.inventorySha256
+            $priorInventoryPath = Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) "$sourceDefinitionId.json"
+            if (Test-Path -LiteralPath $priorInventoryPath -PathType Leaf) {
+                $priorInventoryPaths.Add($priorInventoryPath)
+            }
+        }
+        Complete-WorkbenchStage -Name $workbenchPhase
+
+        $catalogSha256 = (Get-SourceEvidenceFileSnapshot -Path $hostedCatalogPath).Sha256
+        $protectedRulesSha256 = (Get-SourceEvidenceFileSnapshot -Path $protectedRulesPath).Sha256
+        $currentInputFingerprint = Get-WorkbenchInputFingerprint -CatalogContentSha256 $catalogSha256 -ProtectedRulesContentSha256 $protectedRulesSha256 -InventoryHashes $inventoryHashes
+        $stagedDisplayExists = Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf
+        $stagedDisplayContent = $null
+        $stagedInputFingerprint = $null
+        if ($stagedDisplayExists -and -not $Rebuild) {
+            $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
+            $stagedDisplayContent = Get-Content -LiteralPath $stagedDisplayPath -Raw
+            try {
+                $stagedDisplayValid = $stagedDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop
+            }
+            catch {
+                $stagedDisplayValid = $false
+            }
+            if (-not $stagedDisplayValid) {
+                throw 'Staged Workbench display does not satisfy its schema'
+            }
+            $stagedInputFingerprint = [string](($stagedDisplayContent | ConvertFrom-Json).inputFingerprint)
             Complete-WorkbenchStage -Name $workbenchPhase
+        }
+
+        $refreshDisplay = $Rebuild -or -not $stagedDisplayExists -or $stagedInputFingerprint -cne $currentInputFingerprint
+        $script:workbenchPhase = 'INPUT FRESHNESS'
+        $script:displayRefreshMode = if (-not $refreshDisplay) {
+            'REUSED_FRESH_DISPLAY'
+        }
+        elseif ($Rebuild) {
+            'REFRESHED_FORCED'
+        }
+        elseif (-not $stagedDisplayExists) {
+            'REFRESHED_MISSING_DISPLAY'
+        }
+        else {
+            'REFRESHED_CHANGED_INPUTS'
+        }
+        Complete-WorkbenchStage -Name $workbenchPhase
+
+        if ($refreshDisplay) {
 
             $assessmentSetPath = Join-Path $runDirectory 'assessment-set.json'
             $script:workbenchPhase = 'SOURCE ASSESSMENT'
@@ -313,25 +379,20 @@ function Update-StagedDisplay {
                 Copy-FileAtomically -SourcePath $inventoryPath -DestinationPath (Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) ([IO.Path]::GetFileName($inventoryPath)))
             }
         }
-        finally {
-            Remove-Item -LiteralPath $runDirectory -Recurse -Force -ErrorAction SilentlyContinue
+        else {
+            $reconciledDisplayContent = $stagedDisplayContent
         }
-    }
-    else {
-        $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
-        if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf)) {
-            throw "No staged Workbench display was found at $stagedDisplayPath. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
+
+        $script:workbenchPhase = 'DISPLAY VALIDATION'
+        if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+            throw 'Staged Workbench display does not satisfy its schema'
         }
         Complete-WorkbenchStage -Name $workbenchPhase
+        return ($reconciledDisplayContent | ConvertFrom-Json)
     }
-
-    $script:workbenchPhase = 'DISPLAY VALIDATION'
-    $content = Get-Content -LiteralPath $stagedDisplayPath -Raw
-    if (-not ($content | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
-        throw 'Staged Workbench display does not satisfy its schema'
+    finally {
+        Remove-Item -LiteralPath $runDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Complete-WorkbenchStage -Name $workbenchPhase
-    return ($content | ConvertFrom-Json)
 }
 
 if ($OutputFormat -eq 'Text') {
@@ -378,6 +439,13 @@ catch {
     exit 1
 }
 $stagedCandidates = @($stagedDisplay.candidates)
+$assessmentSummary = switch ($displayRefreshMode) {
+    'REUSED_FRESH_DISPLAY' { 'REUSED FRESH DISPLAY' }
+    'REFRESHED_FORCED' { 'REFRESHED (FORCED)' }
+    'REFRESHED_MISSING_DISPLAY' { 'REFRESHED (MISSING DISPLAY)' }
+    'REFRESHED_CHANGED_INPUTS' { 'REFRESHED (CHANGED INPUTS)' }
+    default { $displayRefreshMode }
+}
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
@@ -396,9 +464,11 @@ $result = [ordered]@{
     reconciliationStatus = [string]$stagedDisplay.reconciliation.status
     capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
+    displayRefreshMode = $displayRefreshMode
     readOnly = $true
-    allowedMethods = @('GET', 'HEAD')
+    allowedMethods = @('GET', 'HEAD', 'POST')
     shutdownEndpoint = 'POST /shutdown'
+    relationshipEndpoint = 'POST /reconcile-rule'
     serving = -not $StageOnly
 }
 
@@ -415,7 +485,7 @@ if ($StageOnly) {
             Failed = 0
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($Rebuild) { 'COMPLETED ABOVE' } else { 'REUSED STAGED DISPLAY' })
+            Assessment = $assessmentSummary
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
@@ -476,6 +546,30 @@ function Test-ShutdownToken {
     return [Security.Cryptography.CryptographicOperations]::FixedTimeEquals($candidateBytes, $expectedBytes)
 }
 
+function Read-HttpRequestBody {
+    param(
+        [Parameter(Mandatory = $true)][IO.StreamReader]$Reader,
+        [Parameter(Mandatory = $true)][hashtable]$Headers,
+        [ValidateRange(1, 1048576)][int]$MaximumBytes = 131072
+    )
+
+    $contentLengthValue = [string]$Headers['Content-Length']
+    $contentLength = 0
+    if (-not [int]::TryParse($contentLengthValue, [ref]$contentLength) -or $contentLength -lt 1 -or $contentLength -gt $MaximumBytes) {
+        throw 'Request body length is invalid'
+    }
+    $buffer = New-Object char[] $contentLength
+    $offset = 0
+    while ($offset -lt $contentLength) {
+        $read = $Reader.ReadBlock($buffer, $offset, $contentLength - $offset)
+        if ($read -le 0) {
+            throw 'Request body ended before Content-Length bytes were read'
+        }
+        $offset += $read
+    }
+    return -join $buffer
+}
+
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
 $allowedHosts = @("127.0.0.1:$Port", "localhost:$Port")
 try {
@@ -496,7 +590,7 @@ try {
             URL = $url
             'Discovered Candidates' = $result.discoveredCandidateCount
             'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $(if ($Rebuild) { 'COMPLETED ABOVE' } else { 'REUSED STAGED DISPLAY' })
+            Assessment = $assessmentSummary
             'Assessment Cache' = $result.assessmentCacheDirectory
             'Reconciliation Cache' = $result.reconciliationCacheDirectory
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
@@ -531,7 +625,7 @@ try {
         $stream = $null
         try {
             $stream = $client.GetStream()
-            $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::ASCII, $false, 1024, $true)
+            $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $false, 1024, $true)
             $requestLine = $reader.ReadLine()
             if ([string]::IsNullOrWhiteSpace($requestLine)) {
                 continue
@@ -568,6 +662,55 @@ try {
                 $shutdownBody = [Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownBody -IncludeBody $true
                 $shutdownRequested = $true
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/reconcile-rule') {
+                $providedToken = [string]$requestHeaders['X-Workbench-Operation-Token']
+                if (-not (Test-ShutdownToken -Candidate $providedToken -Expected $operationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                $requestPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-request-$([Guid]::NewGuid().ToString('N')).json"
+                $outputPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-result-$([Guid]::NewGuid().ToString('N')).json"
+                try {
+                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
+                    $requestEnvelope = $requestBody | ConvertFrom-Json
+                    if (Compare-Object -ReferenceObject @('payloadBase64') -DifferenceObject @($requestEnvelope.PSObject.Properties.Name)) {
+                        throw 'Request envelope has an unexpected property set'
+                    }
+                    $requestBytes = [Convert]::FromBase64String([string]$requestEnvelope.payloadBase64)
+                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 65536) {
+                        throw 'Decoded request payload length is invalid'
+                    }
+                    $null = [Text.UTF8Encoding]::new($false, $true).GetString($requestBytes)
+                    [IO.File]::WriteAllBytes($requestPath, $requestBytes)
+                    $relationshipParameters = @{
+                        RequestPath = $requestPath
+                        OutputPath = $outputPath
+                        RepositoryRoot = $repositoryRoot
+                        CacheDirectory = $resolvedManualRelationshipCacheDirectory
+                        EvaluatorCommand = $EvaluatorCommand
+                        Model = $Model
+                        ReasoningEffort = $AssessmentReasoningEffort
+                    }
+                    if ($null -ne $resolvedRelationshipEvaluatorScriptPath) {
+                        $relationshipParameters.EvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
+                    }
+                    $relationshipOutput = @(& pwsh -NoProfile -File $manualRelationshipPath @relationshipParameters 2>&1)
+                    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
+                        throw "Scoped relationship evaluator failed: $(($relationshipOutput | Out-String).Trim())"
+                    }
+                    $responseBody = [IO.File]::ReadAllBytes($outputPath)
+                    Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $responseBody -IncludeBody $true
+                }
+                catch {
+                    Write-Warning "Scoped relationship check failed: $($_.Exception.Message)"
+                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"error":"Scoped relationship check failed"}')) -IncludeBody $true
+                }
+                finally {
+                    Remove-Item -LiteralPath $requestPath, $outputPath -Force -ErrorAction SilentlyContinue
+                }
                 continue
             }
 

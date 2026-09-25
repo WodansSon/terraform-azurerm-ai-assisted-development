@@ -80,6 +80,7 @@
         <div class="workspace-tabs" role="tablist" aria-label="Candidate workspace views">
           <button class="workspace-tab active clickable" id="candidate-sources-tab" type="button" role="tab" aria-selected="true" aria-controls="candidate-sources-panel" data-workspace-tab="candidate-sources">Candidate Sources</button>
           <button class="workspace-tab clickable" id="assessment-results-tab" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-panel" data-workspace-tab="assessment-results">Assessment Results</button>
+          <button class="workspace-tab clickable" id="rule-issues-tab" type="button" role="tab" aria-selected="false" aria-controls="rule-issues-panel" data-workspace-tab="rule-issues">Rule Issues<span id="rule-issues-tab-count" hidden></span></button>
         </div>
 
         <div class="workspace-tab-panel active" id="candidate-sources-panel" role="tabpanel" aria-labelledby="candidate-sources-tab">
@@ -148,6 +149,16 @@
                 <p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p>
               </div>
             </section>
+          </div>
+        </div>
+
+        <div class="workspace-tab-panel" id="rule-issues-panel" role="tabpanel" aria-labelledby="rule-issues-tab" hidden>
+          <div class="rule-issues-layout">
+            <aside class="rule-issues-list-panel">
+              <div class="candidate-pane-switch rule-issue-pane-switch" id="rule-issues-filters" role="tablist" aria-label="Rule issue type"></div>
+              <div class="rule-issues-list scroll-surface" id="rule-issues-list"></div>
+            </aside>
+            <article class="rule-issues-detail scroll-surface" id="rule-issues-detail" aria-live="polite"></article>
           </div>
         </div>
 
@@ -253,6 +264,7 @@
         </span>
       </div>
       <div class="status-cluster status-right">
+        <button class="status-item rule-issues-status clickable" id="rule-issues-status" type="button" aria-label="Open rule issues" data-workbench-tooltip="Rule issues" hidden><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-warning-compact"></use></svg><span id="rule-issues-status-count">0</span></button>
         <span class="status-item" data-workbench-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
         <span class="status-item" data-workbench-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
         <span class="status-item" data-workbench-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>

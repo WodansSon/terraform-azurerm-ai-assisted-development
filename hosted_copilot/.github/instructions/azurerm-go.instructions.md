@@ -14,6 +14,7 @@ Apply these rules only when changed lines introduce or expose an actionable defe
 ## Evidence And Resource Type
 
 - `[IMPL-EVID-001]` [legacy, typed, framework] Do not infer Azure field types, required properties, enum values, or PATCH semantics. Verify them against generated SDK models and the selected API version.
+- `[IMPL-WF-001A]` [legacy, typed, framework] Classify implementation code as legacy untyped Plugin SDK, typed `internal/sdk`, or framework-native before suggesting changes. Maintain the existing model unless the task is an explicit migration; use typed for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces.
 
 ## Create And Import Behavior
 

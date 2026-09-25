@@ -12,6 +12,8 @@ param(
 
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
 
+    [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
+
     [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
 
     [string]$BaselineBuilderPath = (Join-Path $PSScriptRoot 'New-SourceAssessmentBaseline.ps1'),
@@ -86,6 +88,7 @@ function Get-AssessmentSourceCacheIdentity {
         [Parameter(Mandatory = $true)][object]$SourceRecord,
         [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
         [Parameter(Mandatory = $true)][string]$CatalogPath,
+        [Parameter(Mandatory = $true)][string]$ProtectedRulesPath,
         [Parameter(Mandatory = $true)][string]$ContractPath,
         [Parameter(Mandatory = $true)][string]$DraftSchemaPath,
         [Parameter(Mandatory = $true)][string]$PromptPath,
@@ -98,6 +101,7 @@ function Get-AssessmentSourceCacheIdentity {
         sourceRecordSha256 = Get-SourceEvidenceContentSha256 -Content ($SourceRecord | ConvertTo-Json -Depth 40 -Compress)
         assessmentCardinality = $AssessmentCardinality
         hostedCatalogSha256 = Get-SourceEvidenceFileSha256 -Path $CatalogPath
+        protectedRulesContentSha256 = Get-SourceEvidenceFileSha256 -Path $ProtectedRulesPath
         assessmentContractSha256 = Get-SourceEvidenceFileSha256 -Path $ContractPath
         draftSchemaSha256 = Get-SourceEvidenceFileSha256 -Path $DraftSchemaPath
         promptSha256 = Get-SourceEvidenceFileSha256 -Path $PromptPath
@@ -180,6 +184,7 @@ function Get-RetainedAssessmentEntries {
     param(
         [Parameter(Mandatory = $true)][string]$RetainedRunDirectory,
         [Parameter(Mandatory = $true)][string]$CurrentCatalogPath,
+        [Parameter(Mandatory = $true)][string]$CurrentProtectedRulesPath,
         [Parameter(Mandatory = $true)][string]$CurrentContractPath,
         [Parameter(Mandatory = $true)][string]$CurrentDraftSchemaPath,
         [Parameter(Mandatory = $true)][string]$CurrentPromptPath,
@@ -196,6 +201,7 @@ function Get-RetainedAssessmentEntries {
         $responsePath = Join-Path $retainedBatchDirectory.FullName 'response.json'
         $pairs = @(
             @($CurrentCatalogPath, (Join-Path $retainedBatchDirectory.FullName 'hosted-instruction-catalog.json')),
+            @($CurrentProtectedRulesPath, (Join-Path $retainedBatchDirectory.FullName 'protected-rules.json')),
             @($CurrentDraftSchemaPath, (Join-Path $retainedBatchDirectory.FullName 'source-assessment-draft.schema.json')),
             @($CurrentPromptPath, (Join-Path $retainedBatchDirectory.FullName 'SourceAssessment-v4.md'))
         )
@@ -308,14 +314,16 @@ function New-EvaluatorAttemptPrompt {
     param([Parameter(Mandatory = $true)][int]$SourceCount)
 
     return @"
-Read the source assessment contract, source record batch, Hosted instruction catalog, and output schema from the current batch directory before evaluating the batch.
+Read the source assessment contract, source record batch, Hosted instruction catalog, protected rules catalog, and output schema from the current batch directory before evaluating the batch.
 
 Source assessment contract: SourceAssessment-v4.md
 Source record batch: source-records.json
 Hosted instruction catalog: hosted-instruction-catalog.json
+Protected rules catalog: protected-rules.json
 Output schema: source-assessment-draft.schema.json
 
 This batch contains exactly $SourceCount source records. Write only the requested JSON object in your final response.
+When a source record contains `requiredAssessmentIds`, include every listed ID exactly once in that entry's assessments.
 "@
 }
 
@@ -392,6 +400,13 @@ function Assert-BatchResponse {
         if ($AssessmentCardinality -ceq 'exactly-one' -and @($entry.assessments).Count -ne 1) {
             throw "Evaluator must return exactly one assessment for $key in $BatchId"
         }
+        $assessmentIds = @($entry.assessments | ForEach-Object { [string]$_.assessmentId })
+        $requiredAssessmentIds = if ($expectedByKey[$key].PSObject.Properties['requiredAssessmentIds']) { @($expectedByKey[$key].requiredAssessmentIds) } else { @() }
+        foreach ($requiredAssessmentId in $requiredAssessmentIds) {
+            if ([string]$requiredAssessmentId -notin $assessmentIds) {
+                throw "Evaluator omitted required assessment ID in $BatchId`: $key`: $requiredAssessmentId"
+            }
+        }
         $priorSourceEvidence = $expectedByKey[$key].priorSourceEvidence
         foreach ($assessment in @($entry.assessments)) {
             foreach ($coverage in @($assessment.relatedHostedCoverage)) {
@@ -440,6 +455,7 @@ if ($null -ne $resolvedResumeRunDirectory) {
 
 $resolvedBuilderPath = [IO.Path]::GetFullPath($BaselineBuilderPath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
+$resolvedProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($AssessmentContractPath)
 $inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
@@ -448,7 +464,7 @@ $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
 $managedRunRootPrefix = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'hosted-source-assessment')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
-foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
+foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedProtectedRulesPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required source assessment input was not found: $requiredPath"
     }
@@ -467,7 +483,8 @@ foreach ($relativePath in @(
     'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
-    'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+    'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json',
+    'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
 ) + @($assessmentContract.behaviorFiles)) {
     $null = $repositoryInputs.Add([string]$relativePath)
 }
@@ -488,11 +505,13 @@ foreach ($relativePath in $repositoryInputs) {
 }
 $resolvedBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/assessment/New-SourceAssessmentBaseline.ps1'
 $resolvedCatalogPath = Copy-RunInputFile -SourcePath $resolvedCatalogPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json')
+$resolvedProtectedRulesPath = Copy-RunInputFile -SourcePath $resolvedProtectedRulesPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json')
 $resolvedContractPath = $assessmentContractSnapshotPath
 $inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
 $draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
 $promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
 $resolvedEvaluatorScriptPath = $null
 $evaluatorIdentity = $EvaluatorCommand
@@ -511,9 +530,19 @@ if (-not (Test-Json -Json $catalogJson -SchemaFile $catalogSchemaPath -ErrorActi
     throw "Hosted catalog does not satisfy its schema: $resolvedCatalogPath"
 }
 $catalog = $catalogJson | ConvertFrom-Json
+$protectedRulesJson = Get-Content -LiteralPath $resolvedProtectedRulesPath -Raw
+if (-not (Test-Json -Json $protectedRulesJson -SchemaFile $protectedRulesSchemaPath -ErrorAction Stop)) {
+    throw "Protected rules catalog does not satisfy its schema: $resolvedProtectedRulesPath"
+}
+$protectedRules = $protectedRulesJson | ConvertFrom-Json
 $knownHostedRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($rule in @($catalog.rules)) {
     $null = $knownHostedRuleIds.Add([string]$rule.id)
+}
+foreach ($rule in @($protectedRules.rules)) {
+    if (-not $knownHostedRuleIds.Add([string]$rule.id)) {
+        throw "Protected rule ID collides with lifecycle-managed catalog rule: $($rule.id)"
+    }
 }
 $canonicalMappingsBySource = @{}
 foreach ($mappingProperty in @($catalog.canonicalCandidateMappings.PSObject.Properties)) {
@@ -599,7 +628,7 @@ foreach ($inventoryPath in $InventoryPaths) {
         else {
             Get-PriorSourceInventoryEvidence -PriorInventory $priorInventory -SourceId ([string]$record.sourceId) -CurrentRecord $record
         }
-        [ordered]@{
+        $packetRecord = [ordered]@{
             sourceRef = [ordered]@{
                 sourceDefinitionId = $sourceDefinitionId
                 sourceId = [string]$record.sourceId
@@ -609,6 +638,16 @@ foreach ($inventoryPath in $InventoryPaths) {
             priorSourceEvidence = $priorSourceEvidence
             mappedHostedRuleIds = $mappedHostedRuleIds
         }
+        [string[]]$requiredAssessmentIds = if ($canonicalMappingsBySource.ContainsKey($sourceKey)) {
+            @($canonicalMappingsBySource[$sourceKey] | Where-Object { $null -ne $_.AssessmentId } | ForEach-Object { [string]$_.AssessmentId } | Sort-Object -Unique)
+        }
+        else {
+            @()
+        }
+        if (@($requiredAssessmentIds).Count -gt 0) {
+            $packetRecord['requiredAssessmentIds'] = $requiredAssessmentIds
+        }
+        $packetRecord
     })
     $lanes.Add([ordered]@{
         sourceDefinitionId = $sourceDefinitionId
@@ -625,7 +664,7 @@ if (@(Compare-Object $expectedSourceDefinitionIds $actualSourceDefinitionIds -Sy
 }
 
 $staticEvaluatorInputBytes = 0
-foreach ($path in @($resolvedCatalogPath, $draftSchemaPath, $promptPath)) {
+foreach ($path in @($resolvedCatalogPath, $resolvedProtectedRulesPath, $draftSchemaPath, $promptPath)) {
     $staticEvaluatorInputBytes += [IO.File]::ReadAllBytes($path).Length
 }
 $draftEntries = [Collections.Generic.List[object]]::new()
@@ -637,7 +676,7 @@ $retainedEntries = if ($null -eq $resolvedResumeRunDirectory) {
     @{}
 }
 else {
-    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
+    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentProtectedRulesPath $resolvedProtectedRulesPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
 }
 if ($null -ne $resolvedResumeRunDirectory -and $retainedEntries.Count -eq 0) {
     throw 'Assessment recovery directory is incompatible with the current run. Rerun without -AssessmentResumeDirectory to use validated cache entries.'
@@ -647,7 +686,7 @@ foreach ($lane in $orderedLanes) {
     $pendingRecords = [Collections.Generic.List[object]]::new()
     foreach ($record in @($lane.records)) {
         $sourceKey = "$($record.sourceRef.sourceDefinitionId):$($record.sourceRef.sourceId)"
-        $cacheIdentity = Get-AssessmentSourceCacheIdentity -SourceRecord $record -AssessmentCardinality ([string]$lane.assessmentCardinality) -CatalogPath $resolvedCatalogPath -ContractPath $resolvedContractPath -DraftSchemaPath $draftSchemaPath -PromptPath $promptPath -Evaluator $evaluatorIdentity -Model $Model -ReasoningEffort $ReasoningEffort
+        $cacheIdentity = Get-AssessmentSourceCacheIdentity -SourceRecord $record -AssessmentCardinality ([string]$lane.assessmentCardinality) -CatalogPath $resolvedCatalogPath -ProtectedRulesPath $resolvedProtectedRulesPath -ContractPath $resolvedContractPath -DraftSchemaPath $draftSchemaPath -PromptPath $promptPath -Evaluator $evaluatorIdentity -Model $Model -ReasoningEffort $ReasoningEffort
         $cacheKey = Get-AssessmentSourceCacheKey -Identity $cacheIdentity
         $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
         $sourceCacheMetadata[$sourceKey] = [pscustomobject]@{ Identity = $cacheIdentity; Key = $cacheKey; Path = $cachePath; Record = $record; AssessmentCardinality = [string]$lane.assessmentCardinality }
@@ -772,10 +811,12 @@ try {
         $null = New-Item -ItemType Directory -Path $batchDirectory -Force
         $batchPath = Join-Path $batchDirectory 'source-records.json'
         $catalogPath = Join-Path $batchDirectory 'hosted-instruction-catalog.json'
+        $protectedRulesPath = Join-Path $batchDirectory 'protected-rules.json'
         $schemaPath = Join-Path $batchDirectory 'source-assessment-draft.schema.json'
         $batchPromptPath = Join-Path $batchDirectory 'SourceAssessment-v4.md'
         $responsePath = Join-Path $batchDirectory 'response.json'
         Copy-Item -LiteralPath $resolvedCatalogPath -Destination $catalogPath
+        Copy-Item -LiteralPath $resolvedProtectedRulesPath -Destination $protectedRulesPath
         Copy-Item -LiteralPath $draftSchemaPath -Destination $schemaPath
         Copy-Item -LiteralPath $promptPath -Destination $batchPromptPath
         Write-JsonAtomically -Path $batchPath -Value $batchPacket
@@ -788,6 +829,7 @@ try {
             Directory = $batchDirectory
             BatchPath = $batchPath
             CatalogPath = $catalogPath
+            ProtectedRulesPath = $protectedRulesPath
             SchemaPath = $schemaPath
             PromptPath = $batchPromptPath
             ResponsePath = $responsePath
@@ -1004,6 +1046,7 @@ try {
         InventoryPaths = $snapshotInventoryPaths.ToArray()
         AssessmentDraftPath = $draftPath
         HostedCatalogPath = $resolvedCatalogPath
+        ProtectedRulesPath = $resolvedProtectedRulesPath
         AssessmentContractPath = $resolvedContractPath
         OutputPath = $resolvedOutputPath
         Model = $Model

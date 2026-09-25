@@ -137,7 +137,7 @@ try {
         $implementationOutput.Contains('- `[IMPL-SCHEMA-007]` [legacy, typed, framework]') -and
         $implementationOutput.Contains('- `[IMPL-WF-000]` Classify implementation code as legacy, typed, or framework before applying resource-type-specific rules or suggesting changes.') -and
         $implementationOutput.Contains('Use typed patterns for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces.') -and
-        -not $implementationOutput.Contains('- `[IMPL-WF-001A]`') -and
+        $implementationOutput.Contains('- `[IMPL-WF-001A]` [legacy, typed, framework]') -and
         $implementationOutput.Contains('## Protected Rules') -and
         $implementationOutput.Contains('## Evidence And Resource Type') -and
         -not $implementationOutput.Contains('# AzureRM Go Review Rules:')

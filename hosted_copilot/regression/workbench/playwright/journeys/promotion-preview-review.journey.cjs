@@ -63,11 +63,13 @@ async function run({ page, baseUrl, assert }) {
   const approvalStatus = await page.evaluate(() => {
     const owner = document.querySelector("#preview-status").closest(".status-item");
     const readyColor = getComputedStyle(owner).color;
+    const readyWidth = owner.getBoundingClientRect().width;
     const expectedReadyColor = getComputedStyle(document.documentElement).getPropertyValue("--success").trim();
     const approverName = state.session.approverName;
     state.session.approverName = "";
     renderPreview();
     const draftColor = getComputedStyle(owner).color;
+    const draftWidth = owner.getBoundingClientRect().width;
     const expectedDraftColor = getComputedStyle(document.documentElement).getPropertyValue("--warning-foreground").trim();
     const draftValid = owner.classList.contains("preview-draft") && document.querySelector("#preview-status").textContent === "Draft";
     state.session.approverName = approverName;
@@ -75,14 +77,17 @@ async function run({ page, baseUrl, assert }) {
     return {
       readyValid: owner.classList.contains("preview-ready") && document.querySelector("#preview-status").textContent === "Ready",
       readyColor,
+      readyWidth,
       expectedReadyColor,
       draftValid,
       draftColor,
+      draftWidth,
       expectedDraftColor
     };
   });
   assert(approvalStatus.readyValid && approvalStatus.readyColor === "rgb(97, 226, 148)" && approvalStatus.expectedReadyColor === "#61e294", `Ready Preview status is not green (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.draftValid && approvalStatus.draftColor === "rgb(229, 186, 125)" && approvalStatus.expectedDraftColor === "#e5ba7d", `Draft Preview status is not amber (${JSON.stringify(approvalStatus)})`);
+  assert(approvalStatus.readyWidth === 60 && approvalStatus.draftWidth === 60, `Preview approval status width changed between Ready and Draft (${JSON.stringify(approvalStatus)})`);
 
   const reviewModel = await page.evaluate(() => {
     const layout = document.querySelector("#preview-view .preview-layout");

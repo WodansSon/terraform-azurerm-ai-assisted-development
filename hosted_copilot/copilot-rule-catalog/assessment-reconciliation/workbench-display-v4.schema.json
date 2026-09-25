@@ -103,7 +103,8 @@
       "properties": {
         "hostedRuleId": { "$ref": "#/$defs/hostedId" },
         "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"] },
-        "rationale": { "type": "string", "minLength": 1 }
+        "rationale": { "type": "string", "minLength": 1 },
+        "suggestedConsolidatedText": { "type": "string", "minLength": 1 }
       }
     },
     "memberMeaningCoverage": {
@@ -147,7 +148,7 @@
     "recommendation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["action", "hostedId", "idState", "targetHostedId", "ruleText", "category", "placement", "rationale", "needsReview", "assessmentKeys", "memberMeaningCoverage", "guardedTokenDelta", "provenance", "evidenceIds", "sourceRelationships"],
+      "required": ["action", "hostedId", "idState", "targetHostedId", "ruleText", "category", "placement", "rationale", "needsReview", "assessmentKeys", "memberMeaningCoverage", "relatedHostedCoverage", "retireHostedRuleIds", "guardedTokenDelta", "provenance", "evidenceIds", "sourceRelationships"],
       "properties": {
         "action": { "enum": ["add", "update", "no-change", "retire", "restore", "defer", "exclude"] },
         "hostedId": { "$ref": "#/$defs/hostedId" },
@@ -160,6 +161,8 @@
         "needsReview": { "type": "boolean" },
         "assessmentKeys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "memberMeaningCoverage": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/memberMeaningCoverage" } },
+        "relatedHostedCoverage": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/relatedHostedCoverage" } },
+        "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/hostedId" } },
         "guardedTokenDelta": { "type": "integer" },
         "provenance": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["published-upstream-standard", "confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"] } },
         "evidenceIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
@@ -178,7 +181,7 @@
       "additionalProperties": false,
       "required": ["state", "hostedRuleId"],
       "properties": {
-        "state": { "enum": ["active", "retired", "superseded", "unmapped"] },
+        "state": { "enum": ["active", "retired", "unmapped"] },
         "hostedRuleId": { "oneOf": [{ "$ref": "#/$defs/hostedId" }, { "type": "null" }] }
       },
       "allOf": [
@@ -263,8 +266,7 @@
         "selectionRationale": { "type": "string", "minLength": 1 },
         "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
         "retirementReason": { "type": "string", "minLength": 1 },
-        "lastPlacement": { "$ref": "#/$defs/placement" },
-        "supersededBy": { "$ref": "#/$defs/hostedId" }
+        "lastPlacement": { "$ref": "#/$defs/placement" }
       },
       "allOf": [
         {
@@ -279,8 +281,7 @@
             "not": {
               "anyOf": [
                 { "required": ["retirementReason"] },
-                { "required": ["lastPlacement"] },
-                { "required": ["supersededBy"] }
+                { "required": ["lastPlacement"] }
               ]
             }
           },

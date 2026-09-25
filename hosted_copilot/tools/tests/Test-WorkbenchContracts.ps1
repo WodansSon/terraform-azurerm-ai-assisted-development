@@ -108,6 +108,8 @@ $recommendation = [ordered]@{
     needsReview = $false
     assessmentKeys = @('maintainer:IMPL-TEST-901:validate-rule')
     memberMeaningCoverage = @([ordered]@{ assessmentKey = 'maintainer:IMPL-TEST-901:validate-rule'; rationale = 'The recommendation preserves the fixture assessment meaning.' })
+    relatedHostedCoverage = @()
+    retireHostedRuleIds = @()
     guardedTokenDelta = 12
     provenance = @('local-safeguard')
     evidenceIds = @('implementation-contract', 'hosted-architecture')
@@ -237,6 +239,7 @@ $draft = [ordered]@{
             rationale = ''
             proposedHostedRuleId = $null
             proposedText = ''
+            retireHostedRuleIds = @()
             implementationModels = @('legacy', 'typed')
             sourceContentSha256 = $hash
             updatedAt = $timestamp

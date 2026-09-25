@@ -18,6 +18,7 @@ $builderPath = Join-Path $PSScriptRoot '../internal/reconciliation/New-Workbench
 $runnerPath = Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $promptPath = Join-Path $PSScriptRoot '../assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
 $catalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
+$protectedRulesPath = Join-Path $catalogRoot 'protected-rules.json'
 $displaySchemaPath = Join-Path $reconciliationRoot 'workbench-display-v4.schema.json'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-assessment-reconciliation-test-' + [guid]::NewGuid().ToString('N'))
 $generatedAt = '2026-09-16T12:00:00Z'
@@ -231,6 +232,7 @@ function New-CatalogBoundAssessmentSet {
 
     $copy = Copy-JsonObject -Value $AssessmentSet
     $copy.hostedCatalogSha256 = Get-Sha256 -Path $HostedCatalogPath
+    $copy.protectedRulesContentSha256 = Get-Sha256 -Path $protectedRulesPath
     $path = Join-Path $tempRoot "$Name-assessment-set.json"
     Write-JsonFixture -Path $path -Value $copy
     return $path
@@ -334,6 +336,7 @@ try {
         inventoryHashes = $inventoryHashes
         priorInventoryHashes = [ordered]@{}
         hostedCatalogSha256 = Get-Sha256 -Path $catalogPath
+        protectedRulesContentSha256 = Get-Sha256 -Path $protectedRulesPath
         assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $assessmentContract -RepositoryRoot $repositoryRoot
         assessmentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $runConfiguration
         runConfiguration = $runConfiguration
@@ -363,6 +366,7 @@ try {
 param(
     [Parameter(Mandatory = $true)][string]$BaselinePath,
     [Parameter(Mandatory = $true)][string]$CatalogPath,
+    [Parameter(Mandatory = $true)][string]$ProtectedRulesPath,
     [Parameter(Mandatory = $true)][string]$ContractPath,
     [Parameter(Mandatory = $true)][string]$SchemaPath,
     [Parameter(Mandatory = $true)][string]$PromptPath,
@@ -402,6 +406,7 @@ foreach ($entry in @($baseline.entries)) {
             memberAssessmentRefs = @($reference)
             memberMeaningCoverage = @([ordered]@{ assessmentRef = $reference; rationale = 'The recommended rule text preserves this source meaning.' })
             relatedHostedCoverage = @()
+            retireHostedRuleIds = @()
         }
         if ($null -eq $mappedRule) {
             $recommendation.implementationModels = @('legacy', 'typed', 'framework')
@@ -537,9 +542,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
         '$schema' = 'assessment-reconciliation-draft.schema.json'
         schemaVersion = 1
         recommendations = @(
-            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'related'; rationale = 'The assessments are related but independently enforceable.'; assessmentRefs = @($contributorRef) }); implementationModels = @('legacy', 'typed', 'framework') },
-            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Resource Type'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @() },
-            [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @() }
+            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'partial-overlap'; rationale = 'The assessment overlaps existing implementation evidence guidance.'; suggestedConsolidatedText = 'Verify implementation evidence and imported schema behavior against the provider implementation.'; assessmentRefs = @($contributorRef) }); retireHostedRuleIds = @('IMPL-EVID-001'); implementationModels = @('legacy', 'typed', 'framework') },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Resource Type'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() },
+            [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() }
         )
         assessmentCoverage = @(
             [ordered]@{ assessmentRef = $contributorRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
@@ -573,6 +578,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $recommended = @($display.candidates | Where-Object reviewState -eq 'recommended')
     $excluded = @($display.candidates | Where-Object reviewState -eq 'excluded')
     Add-TestResult -Name 'recommendation-presentation' -Passed ($recommended.Count -eq 2 -and @($recommended | Where-Object { @($_.recommendation.assessmentKeys).Count -ne 1 }).Count -eq 0) -Detail 'Every source assessment retains its own recommendation action, identity, wording, and UI row.'
+    $projectedRelationship = @($recommended | ForEach-Object { @($_.recommendation.relatedHostedCoverage) } | Where-Object { [string]$_.hostedRuleId -ceq 'IMPL-EVID-001' -and $_.PSObject.Properties['suggestedConsolidatedText'] })[0]
+    $relationshipProjectionValid = [string]$projectedRelationship.relationship -ceq 'partial-overlap' -and [string]$projectedRelationship.suggestedConsolidatedText -ceq 'Verify implementation evidence and imported schema behavior against the provider implementation.' -and (@($recommended[0].recommendation.retireHostedRuleIds) -join ',') -ceq 'IMPL-EVID-001'
+    Add-TestResult -Name 'advisory-relationship-projection' -Passed $relationshipProjectionValid -Detail 'Material relationships preserve consolidated wording while the owning recommendation carries explicit lifecycle retirement actions.'
     $approvalMetadata = $recommended[0].recommendation
     $approvalMetadataValid = (@($approvalMetadata.provenance | Sort-Object) -join ',') -ceq 'published-upstream-standard' -and (@($approvalMetadata.evidenceIds | Sort-Object) -join ',') -ceq 'implementation-contract' -and (@($approvalMetadata.implementationModels | Sort-Object) -join ',') -ceq 'framework,legacy,typed' -and @($approvalMetadata.sourceRelationships).Count -eq 1
     Add-TestResult -Name 'approval-metadata-derived' -Passed $approvalMetadataValid -Detail 'The producer derives registered evidence, source provenance, implementation model scope, and one source relationship from the candidate-local recommendation.'
@@ -586,13 +594,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
     Write-TestProgress -Name 'retired-rule-lifecycle' -Detail 'Validating tombstone projection, historical placement, and invalid lifecycle combinations'
 
     $retiredCatalog = Copy-JsonObject -Value (Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json -DateKind String)
-    $surface = $retiredCatalog.surfaces[0]
-    $section = $surface.sections[0]
-    $companionSection = @($surface.sections | Where-Object { @($_.ruleIds).Count -gt 1 })[0]
-    $companionId = [string]$companionSection.ruleIds[0]
-    $companionSection.ruleIds = @($companionSection.ruleIds | Where-Object { [string]$_ -cne $companionId })
-    $section.ruleIds = @($section.ruleIds) + @($companionId)
-    $retiredId = [string]$section.ruleIds[0]
+    $retiredId = 'IMPL-EVID-001'
+    $surface = @($retiredCatalog.surfaces | Where-Object { [string]$_.id -ceq 'implementation' })[0]
+    $section = @($surface.sections | Where-Object { $retiredId -in @($_.ruleIds) })[0]
     $retiredRule = @($retiredCatalog.rules | Where-Object { [string]$_.id -ceq $retiredId })[0]
     $lastPlacement = [ordered]@{ surfaceId = [string]$surface.id; sectionHeading = [string]$section.heading }
     $section.ruleIds = @($section.ruleIds | Where-Object { [string]$_ -cne $retiredId })
@@ -602,7 +606,9 @@ $recommendations = [Collections.Generic.List[object]]::new()
     $retiredCatalogPath = Join-Path $tempRoot 'retired-catalog.json'
     Write-JsonFixture -Path $retiredCatalogPath -Value $retiredCatalog
     $retiredAssessmentSetPath = New-CatalogBoundAssessmentSet -AssessmentSet $assessmentSet -HostedCatalogPath $retiredCatalogPath -Name 'retired'
-    $retiredRun = Invoke-DisplayBuilder -Draft $draft -Name 'retired' -AssessmentSetPath $retiredAssessmentSetPath -HostedCatalogPath $retiredCatalogPath
+    $retiredDraft = Copy-JsonObject -Value $draft
+    $retiredDraft.recommendations[0].retireHostedRuleIds = @()
+    $retiredRun = Invoke-DisplayBuilder -Draft $retiredDraft -Name 'retired' -AssessmentSetPath $retiredAssessmentSetPath -HostedCatalogPath $retiredCatalogPath
     $retiredDisplay = if ($retiredRun.ExitCode -eq 0) { Get-Content -LiteralPath $retiredRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $projectedTombstone = if ($null -ne $retiredDisplay) { @($retiredDisplay.catalog.rules | Where-Object { [string]$_.id -ceq $retiredId })[0] } else { $null }
     $retiredMappedCandidate = if ($null -ne $retiredDisplay) { @($retiredDisplay.candidates | Where-Object { [string]$_.catalogMapping.hostedRuleId -ceq $retiredId })[0] } else { $null }

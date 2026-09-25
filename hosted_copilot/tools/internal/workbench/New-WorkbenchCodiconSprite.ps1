@@ -80,6 +80,7 @@ $iconNames = @(
     'sign-out',
     'tasklist',
     'warning',
+    'warning-compact',
     'workspace-unknown',
     'workspace-untrusted'
 )
