@@ -198,6 +198,24 @@ foreach ($rule in @($catalog.rules)) {
         throw "Active Hosted rule is not placed: $($rule.id)"
     }
 }
+foreach ($recommendation in @($draft.recommendations)) {
+    if ($null -eq $recommendation.targetHostedId) {
+        continue
+    }
+    $targetHostedId = [string]$recommendation.targetHostedId
+    if (-not $catalogRules.ContainsKey($targetHostedId)) {
+        continue
+    }
+    $targetRule = $catalogRules[$targetHostedId]
+    $location = if ($catalogLocations.ContainsKey($targetHostedId)) {
+        $catalogLocations[$targetHostedId]
+    }
+    else {
+        [ordered]@{ category = [string]$targetRule.lastPlacement.surfaceId; placement = [string]$targetRule.lastPlacement.sectionHeading }
+    }
+    $recommendation.category = [string]$location.category
+    $recommendation.placement = [string]$location.placement
+}
 
 $assessments = @{}
 foreach ($entry in @($baseline.entries)) {

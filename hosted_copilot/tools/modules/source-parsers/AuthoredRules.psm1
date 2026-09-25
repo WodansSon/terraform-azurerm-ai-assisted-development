@@ -88,13 +88,16 @@ function Get-AuthoredRuleBlocks {
         }
 
         $headingIndexes = [Collections.Generic.List[int]]::new()
+        $commentLineIndexes = [Collections.Generic.HashSet[int]]::new()
         $insideComment = $false
         for ($lineIndex = $frontmatterEnd + 1; $lineIndex -lt $lines.Count; $lineIndex++) {
             if ($lines[$lineIndex] -match '^\s*<!--') {
+                $null = $commentLineIndexes.Add($lineIndex)
                 $insideComment = $lines[$lineIndex] -notmatch '-->\s*$'
                 continue
             }
             if ($insideComment) {
+                $null = $commentLineIndexes.Add($lineIndex)
                 if ($lines[$lineIndex] -match '-->\s*$') {
                     $insideComment = $false
                 }
@@ -125,7 +128,7 @@ function Get-AuthoredRuleBlocks {
             $fields = @{}
             for ($fieldLineIndex = $startIndex + 1; $fieldLineIndex -le $endIndex; $fieldLineIndex++) {
                 $line = $lines[$fieldLineIndex]
-                if ([string]::IsNullOrWhiteSpace($line)) {
+                if ([string]::IsNullOrWhiteSpace($line) -or $commentLineIndexes.Contains($fieldLineIndex)) {
                     continue
                 }
                 if ($line -notmatch '^- (?<name>[^:]+): (?<value>\S.*)$') {
@@ -141,7 +144,13 @@ function Get-AuthoredRuleBlocks {
                 $fields[$fieldName] = [string]$Matches['value']
             }
 
-            $normalizedLines = @($lines[$startIndex..$endIndex])
+            $normalizedLines = @(
+                for ($contentLineIndex = $startIndex; $contentLineIndex -le $endIndex; $contentLineIndex++) {
+                    if (-not $commentLineIndexes.Contains($contentLineIndex)) {
+                        $lines[$contentLineIndex]
+                    }
+                }
+            )
             while ($normalizedLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($normalizedLines[-1])) {
                 $normalizedLines = @($normalizedLines[0..($normalizedLines.Count - 2)])
             }

@@ -136,6 +136,74 @@ async function run({ page, baseUrl, assert, playback }) {
       rowCount: document.querySelectorAll("#rule-issues-list .rule-issue-row").length
     }));
     assert(visibleRuleIssue, `Save-time overlap was not visible in Rule Issues: ${JSON.stringify(ruleIssueUi)}`);
+    await playback.show(page, "Rule Issues volume · ten rows per category");
+    const volumeSetup = await page.evaluate(() => {
+      const original = {
+        issues: structuredClone(state.ruleIssues),
+        activeKey: state.activeRuleIssueKey,
+        filter: state.ruleIssueFilter
+      };
+      const relatedRule = state.ruleIssues[0].rules.find((rule) => rule.protected) || state.ruleIssues[0].rules[0];
+      const categories = [
+        { kind: "contradiction", label: "Contradiction", relationship: "conflicts", id: "CONFLICT" },
+        { kind: "duplicate", label: "Duplicate", relationship: "equivalent", id: "DUPLICATE" },
+        { kind: "overlap", label: "Overlap", relationship: "partial-overlap", id: "OVERLAP" }
+      ];
+      state.ruleIssues = categories.flatMap((category) => Array.from({ length: 10 }, (_, index) => {
+        const ordinal = String(index + 1).padStart(2, "0");
+        const sourceRuleId = `IMPL-STRESS-${category.id}-${ordinal}`;
+        return {
+          key: `${sourceRuleId}::${relatedRule.id}`,
+          kind: category.kind,
+          label: category.label,
+          relationship: category.relationship,
+          sourceRuleId,
+          relatedRuleId: relatedRule.id,
+          title: `${category.label} stress rule ${ordinal}`,
+          rationale: `Synthetic ${category.label.toLowerCase()} relationship ${ordinal} for Rule Issues volume testing.`,
+          suggestedConsolidatedText: category.kind === "contradiction" ? "" : relatedRule.text,
+          retireHostedRuleIds: [],
+          ruleIds: [sourceRuleId, relatedRule.id].sort(),
+          rules: [
+            { id: sourceRuleId, text: `Synthetic ${category.label.toLowerCase()} proposal ${ordinal}.`, status: "proposed", protected: false },
+            structuredClone(relatedRule)
+          ].sort((left, right) => Number(right.protected) - Number(left.protected) || left.id.localeCompare(right.id)),
+          candidateKeys: [],
+          manualRelationshipCheck: true,
+          protectedRuleIds: relatedRule.protected ? [relatedRule.id] : []
+        };
+      }));
+      state.activeRuleIssueKey = null;
+      renderRuleIssues();
+      renderCounts();
+      renderMetrics();
+      globalThis.__RULE_ISSUE_VOLUME_ORIGINAL__ = original;
+      return {
+        issueCount: state.ruleIssues.length,
+        tabCount: elements["rule-issues-tab-count"].textContent,
+        statusCount: elements["rule-issues-status-count"].textContent,
+        filterCounts: Object.fromEntries([...document.querySelectorAll("[data-rule-issue-filter]")].map((button) => [button.dataset.ruleIssueFilter, button.querySelector("span")?.textContent]))
+      };
+    });
+    assert(volumeSetup.issueCount === 30 && volumeSetup.tabCount === "30" && volumeSetup.statusCount === "30", `Rule Issues volume counts are incorrect: ${JSON.stringify(volumeSetup)}`);
+    assert(["contradiction", "duplicate", "overlap"].every((kind) => volumeSetup.filterCounts[kind] === "10"), `Rule Issues category counts are incorrect: ${JSON.stringify(volumeSetup.filterCounts)}`);
+    for (const kind of ["contradiction", "duplicate", "overlap"]) {
+      await page.locator(`[data-rule-issue-filter="${kind}"]`).click();
+      assert(await page.locator("#rule-issues-list .rule-issue-row").count() === 10, `${kind} filter did not render ten Rule Issues`);
+    }
+    await page.locator('[data-rule-issue-filter="duplicate"]').click();
+    await page.locator("#rule-issues-list .rule-issue-row").nth(9).click();
+    assert(await page.evaluate(() => state.activeRuleIssueKey?.startsWith("IMPL-STRESS-DUPLICATE-10::")), "The tenth duplicate Rule Issue could not be selected");
+    await page.evaluate(() => {
+      const original = globalThis.__RULE_ISSUE_VOLUME_ORIGINAL__;
+      state.ruleIssues = original.issues;
+      state.activeRuleIssueKey = original.activeKey;
+      state.ruleIssueFilter = original.filter;
+      delete globalThis.__RULE_ISSUE_VOLUME_ORIGINAL__;
+      renderRuleIssues();
+      renderCounts();
+      renderMetrics();
+    });
     await page.locator('[data-workspace-tab="candidate-sources"]').click();
     await page.evaluate(async (setup) => {
       delete state.session.decisions[setup.candidateKey];

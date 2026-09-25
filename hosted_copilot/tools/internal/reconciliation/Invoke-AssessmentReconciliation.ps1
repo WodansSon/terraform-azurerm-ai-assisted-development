@@ -123,12 +123,21 @@ function Test-EvaluatorDraftJson {
 }
 
 function Get-ReconciliationBaselineIdentityJson {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$SourceDefinitionId
+    )
 
     $baseline = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
     $baseline.PSObject.Properties.Remove('generatedAt')
     $baseline.PSObject.Properties.Remove('inventoryHashes')
     $baseline.PSObject.Properties.Remove('priorInventoryHashes')
+    $baseline.PSObject.Properties.Remove('assessmentRunConfigurationSha256')
+    $sourceDefinitions = @($baseline.runConfiguration.sourceDefinitions | Where-Object { [string]$_.sourceDefinitionId -ceq $SourceDefinitionId })
+    if ($sourceDefinitions.Count -ne 1) {
+        throw "Reconciliation baseline does not contain exactly one source definition for cache identity: $SourceDefinitionId"
+    }
+    $baseline.runConfiguration.sourceDefinitions = $sourceDefinitions
     foreach ($entry in @($baseline.entries)) {
         if ($null -ne $entry.priorSourceEvidence) {
             $entry.priorSourceEvidence.PSObject.Properties.Remove('observedAt')
@@ -388,9 +397,9 @@ try {
     $cacheMetadataByBatch = @{}
     foreach ($batch in $reconciliationBatches) {
         $cacheIdentity = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             sourceDefinitionId = [string]$batch.SourceDefinitionId
-            baselineIdentitySha256 = Get-Sha256 -Content (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath)
+            baselineIdentitySha256 = Get-Sha256 -Content (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId))
             hostedCatalogSha256 = Get-Sha256 -Path $snapshotCatalogPath
             protectedRulesContentSha256 = Get-Sha256 -Path $snapshotProtectedRulesPath
             reconciliationContractSha256 = Get-Sha256 -Path $snapshotContractPath
@@ -488,7 +497,7 @@ try {
             if (-not (Test-Path -LiteralPath $retainedResponsePath -PathType Leaf) -or
                 -not (Test-Path -LiteralPath $retainedBaselinePath -PathType Leaf) -or
                 @($retainedStaticPairs | Where-Object { -not (Test-Path -LiteralPath $_[1] -PathType Leaf) -or (Get-FileHash -LiteralPath $_[0] -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $_[1] -Algorithm SHA256).Hash }).Count -gt 0 -or
-                (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath) -cne (Get-ReconciliationBaselineIdentityJson -Path $retainedBaselinePath)) {
+                (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId)) -cne (Get-ReconciliationBaselineIdentityJson -Path $retainedBaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId))) {
                 continue
             }
 

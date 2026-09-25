@@ -356,9 +356,19 @@ try {
     $changedMeaningBaseline.entries[0].assessments[0].sourceMeaning = 'Changed assessment meaning.'
     $changedMeaningBaselinePath = Join-Path $tempRoot 'changed-meaning-assessment-set.json'
     Write-JsonFixture -Path $changedMeaningBaselinePath -Value $changedMeaningBaseline
-    $semanticIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath) -ceq (Get-ReconciliationBaselineIdentityJson -Path $volatileBaselinePath) -and
-        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath) -cne (Get-ReconciliationBaselineIdentityJson -Path $changedMeaningBaselinePath)
+    $semanticIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -ceq (Get-ReconciliationBaselineIdentityJson -Path $volatileBaselinePath -SourceDefinitionId 'contributor-guidance') -and
+        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -cne (Get-ReconciliationBaselineIdentityJson -Path $changedMeaningBaselinePath -SourceDefinitionId 'contributor-guidance')
     Add-TestResult -Name 'recovery-semantic-baseline-identity' -Passed $semanticIdentityValid -Detail 'Recovery ignores regenerated timestamps and inventory snapshot hashes while rejecting changed assessment meaning.'
+
+    $changedParserBaseline = Copy-JsonObject -Value $assessmentSet
+    $changedParserDefinition = @($changedParserBaseline.runConfiguration.sourceDefinitions | Where-Object { [string]$_.sourceDefinitionId -ceq 'maintainer-proposals' })[0]
+    $changedParserDefinition.parserContractSha256 = 'f' * 64
+    $changedParserBaseline.assessmentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $changedParserBaseline.runConfiguration
+    $changedParserBaselinePath = Join-Path $tempRoot 'changed-parser-assessment-set.json'
+    Write-JsonFixture -Path $changedParserBaselinePath -Value $changedParserBaseline
+    $laneScopedIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -ceq (Get-ReconciliationBaselineIdentityJson -Path $changedParserBaselinePath -SourceDefinitionId 'contributor-guidance') -and
+        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'maintainer-proposals') -cne (Get-ReconciliationBaselineIdentityJson -Path $changedParserBaselinePath -SourceDefinitionId 'maintainer-proposals')
+    Add-TestResult -Name 'reconciliation-cache-identity-source-lane' -Passed $laneScopedIdentityValid -Detail 'Changing one source parser contract invalidates only that source lane reconciliation identity.'
 
     $fakeEvaluatorPath = Join-Path $tempRoot 'fake-reconciliation-evaluator.ps1'
     $fakeEvaluator = @'
