@@ -10,6 +10,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $RuntimeRoot = (Resolve-Path -LiteralPath $RuntimeRoot).Path
 $ManifestPath = (Resolve-Path -LiteralPath $ManifestPath).Path
 
@@ -43,4 +46,9 @@ if ($lineEndingViolations.Count -gt 0) {
     throw ("Manifest-managed AI text files must use LF line endings: {0}" -f ($lineEndingViolations -join ', '))
 }
 
-Write-Output ("Validated LF line endings in {0} manifest-managed AI text files." -f $runtimeTextFiles.Count)
+Write-ValidationSectionHeader -Title 'Runtime line ending validation summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    Status = 'PASSED'
+    'Files Checked' = $runtimeTextFiles.Count
+})
+Complete-ValidationTextOutput

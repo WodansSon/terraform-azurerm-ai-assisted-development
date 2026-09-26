@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-input-v4.schema.json",
+  "title": "Hosted Rule Issue Adjudication Input V4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "componentId", "sourceFiles", "rules", "relationships", "operations"],
+  "properties": {
+    "$schema": { "const": "rule-issue-adjudication-input-v4.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "hosted-rule-issue-adjudication-input" },
+    "componentId": { "type": "string", "minLength": 1 },
+    "sourceFiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceDefinitionId", "sourceId", "contentSha256"],
+        "properties": {
+          "sourceDefinitionId": { "type": "string", "minLength": 1 },
+          "sourceId": { "type": "string", "minLength": 1 },
+          "contentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "title", "text", "contentSha256", "candidateKeys"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" },
+          "status": { "enum": ["protected", "active", "retired", "proposed"] },
+          "title": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "contentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "candidateKeys": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "sourceRuleId", "relatedRuleId", "relationship", "rationale", "candidateKey"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "sourceRuleId": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" },
+          "relatedRuleId": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" },
+          "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts"] },
+          "rationale": { "type": "string", "minLength": 1 },
+          "candidateKey": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateKey", "ruleId", "action", "proposedText", "retireHostedRuleIds"],
+        "properties": {
+          "candidateKey": { "type": "string", "minLength": 1 },
+          "ruleId": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" },
+          "action": { "enum": ["add", "update", "no-change", "retire", "restore", "exclude", "defer"] },
+          "proposedText": { "type": "string", "minLength": 1 },
+          "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" } }
+        }
+      }
+    }
+  }
+}

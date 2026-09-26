@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/remote-rules-import-v4-contract.schema.json",
+  "title": "Remote Rules Import Endpoint Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "method", "path", "capabilityHeader", "synchronous", "maximumFileCount", "maximumRequestBytes", "fileSuffix"],
+  "properties": {
+    "$schema": { "const": "remote-rules-import-v4-contract.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "contractId": { "const": "remote-rules-import-v4" },
+    "method": { "const": "POST" },
+    "path": { "const": "/remote-rules/import" },
+    "capabilityHeader": { "const": "X-Hosted-Remote-Rules-Token" },
+    "synchronous": { "const": true },
+    "maximumFileCount": { "const": 12 },
+    "maximumRequestBytes": { "const": 8388608 },
+    "fileSuffix": { "const": ".rules.md" }
+  }
+}

@@ -19,6 +19,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 if ($AsJson) {
     $Output = "json"
 }
@@ -242,8 +245,24 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression artifact validation summary"
-Write-Output "  Case Files       : $($summary.caseFileCount)"
-Write-Output "  Result Files     : $($summary.resultFileCount)"
-Write-Output "  Validated Cases  : $(if ($summary.validatedCaseIds.Count -gt 0) { $summary.validatedCaseIds -join ', ' } else { 'none' })"
-Write-Output "  Validated Results: $(if ($summary.validatedResultCaseIds.Count -gt 0) { $summary.validatedResultCaseIds -join ', ' } else { 'none' })"
+$validatedResultIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($caseId in $summary.validatedResultCaseIds) {
+    [void]$validatedResultIds.Add($caseId)
+}
+$casesWithoutExampleResults = @($summary.validatedCaseIds | Where-Object { -not $validatedResultIds.Contains($_) })
+
+Write-ValidationSectionHeader -Title 'Regression artifact validation summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    Status = 'PASSED'
+    'Case Definitions Checked' = $summary.caseFileCount
+    'Example Results Checked' = $summary.resultFileCount
+    'Cases Without Example Results' = $casesWithoutExampleResults.Count
+})
+
+if ($casesWithoutExampleResults.Count -gt 0) {
+    Write-ValidationSectionHeader -Title 'Cases without example results'
+    foreach ($caseId in $casesWithoutExampleResults) {
+        Write-Output "  - $caseId"
+    }
+}
+Complete-ValidationTextOutput

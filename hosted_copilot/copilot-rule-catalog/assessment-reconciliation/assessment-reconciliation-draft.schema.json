@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json",
+  "title": "Hosted Assessment Reconciliation Evaluator Draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "recommendations", "assessmentCoverage"],
+  "properties": {
+    "$schema": {
+      "const": "assessment-reconciliation-draft.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recommendation"
+      }
+    },
+    "assessmentCoverage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/assessmentCoverage"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hostedId": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+    },
+    "assessmentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDefinitionId", "sourceId", "contentSha256", "assessmentId"],
+      "properties": {
+        "sourceDefinitionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "assessmentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+        }
+      }
+    },
+    "memberMeaningCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentRef", "rationale"],
+      "properties": {
+        "assessmentRef": {
+          "$ref": "#/$defs/assessmentRef"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "relatedHostedCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedRuleId", "relationship", "rationale", "assessmentRefs"],
+      "properties": {
+        "hostedRuleId": {
+          "$ref": "#/$defs/hostedId"
+        },
+        "relationship": {
+          "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestedConsolidatedText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessmentRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/assessmentRef"
+          }
+        }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftKey", "recommendedAction", "targetHostedId", "idFamily", "title", "recommendedRuleText", "category", "placement", "rationale", "needsReview", "memberAssessmentRefs", "memberMeaningCoverage", "relatedHostedCoverage", "retireHostedRuleIds"],
+      "properties": {
+        "draftKey": {
+          "type": "string",
+          "pattern": "^recommendation-[1-9][0-9]*$"
+        },
+        "recommendedAction": {
+          "enum": ["add", "update", "no-change", "retire", "restore", "defer", "exclude"]
+        },
+        "targetHostedId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hostedId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idFamily": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:IMPL|TEST|DOCS)-[A-Z0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedRuleText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": ["implementation", "testing", "documentation"]
+        },
+        "placement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needsReview": {
+          "type": "boolean"
+        },
+        "memberAssessmentRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/assessmentRef"
+          }
+        },
+        "memberMeaningCoverage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/memberMeaningCoverage"
+          }
+        },
+        "relatedHostedCoverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relatedHostedCoverage"
+          }
+        },
+        "retireHostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hostedId"
+          }
+        },
+        "implementationModels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["legacy", "typed", "framework"] }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": { "enum": ["add", "exclude"] },
+              "category": { "const": "implementation" }
+            },
+            "required": ["recommendedAction", "category"]
+          },
+          "then": { "required": ["implementationModels"] },
+          "else": { "not": { "required": ["implementationModels"] } }
+        },
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": {
+                "enum": ["update", "no-change", "retire", "restore"]
+              }
+            },
+            "required": ["recommendedAction"]
+          },
+          "then": {
+            "properties": {
+              "targetHostedId": {
+                "$ref": "#/$defs/hostedId"
+              },
+              "idFamily": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": {
+                "enum": ["add", "exclude"]
+              }
+            },
+            "required": ["recommendedAction"]
+          },
+          "then": {
+            "properties": {
+              "targetHostedId": {
+                "type": "null"
+              },
+              "idFamily": {
+                "type": "string",
+                "pattern": "^(?:IMPL|TEST|DOCS)-[A-Z0-9]+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recommendedAction": {
+                "const": "defer"
+              }
+            },
+            "required": ["recommendedAction"]
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "targetHostedId": {
+                    "$ref": "#/$defs/hostedId"
+                  },
+                  "idFamily": {
+                    "type": "null"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "targetHostedId": {
+                    "type": "null"
+                  },
+                  "idFamily": {
+                    "type": "string",
+                    "pattern": "^(?:IMPL|TEST|DOCS)-[A-Z0-9]+$"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "assessmentCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessmentRef", "disposition", "rationale", "recommendationDraftKeys"],
+      "properties": {
+        "assessmentRef": {
+          "$ref": "#/$defs/assessmentRef"
+        },
+        "disposition": {
+          "enum": ["recommended", "deferred", "excluded"]
+        },
+        "rationale": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommendationDraftKeys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^recommendation-[1-9][0-9]*$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "recommended"
+              }
+            },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": {
+              "rationale": {
+                "type": "null"
+              },
+              "recommendationDraftKeys": { "minItems": 1 }
+            }
+          },
+          "else": {
+            "properties": {
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recommendationDraftKeys": { "minItems": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

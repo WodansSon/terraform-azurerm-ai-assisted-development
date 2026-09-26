@@ -1,0 +1,18 @@
+{
+  "$schema": "parser-contract.schema.json",
+  "schemaVersion": 1,
+  "parserId": "maintainer-proposals-v4",
+  "assessmentCardinality": "exactly-one",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json",
+    "hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json",
+    "hosted_copilot/tools/internal/collection/New-SourceInventory.ps1",
+    "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1",
+    "hosted_copilot/tools/modules/source-parsers/AuthoredRules.psm1",
+    "hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV2.psm1",
+    "hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1"
+  ]
+}

@@ -4,6 +4,9 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $targetScriptPath = Join-Path $PSScriptRoot 'Get-PRReady.ps1'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testCount = 0
@@ -231,19 +234,24 @@ function Invoke-TestCase {
     )
 
     $script:testCount++
+    $started = Get-Date
     try {
         $null = & $Test
-        Write-Output ("[PASSED] {0}" -f $Name)
+        $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
+        Write-Output (Format-ValidationStatusLine -Status 'passed' -Name $Name -Detail ("{0}s" -f $durationSeconds) -NameWidth 40)
     }
     catch {
         $issues.Add(("{0}: {1}" -f $Name, $_.Exception.Message))
-        Write-Output ("[FAILED] {0}" -f $Name)
+        $durationSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
+        Write-Output (Format-ValidationStatusLine -Status 'failed' -Name $Name -Detail ("{0}s" -f $durationSeconds) -NameWidth 40)
     }
 }
 
 if (-not (Test-Path -LiteralPath $targetScriptPath -PathType Leaf)) {
     throw "target script was not found: $targetScriptPath"
 }
+
+Write-ValidationSectionHeader -Title 'PR readiness utility tests'
 
 Invoke-TestCase -Name 'help-output' -Test {
     $result = Invoke-ScriptProcess -Arguments @('-Help')
@@ -385,18 +393,22 @@ Invoke-TestCase -Name 'mid-batch-authentication-failure' -Test {
     Confirm-Condition -Condition ($result.error -match 'AUTHENTICATION \| ERROR: GitHub GraphQL query failed: Unauthorized request \(403\)\.') -Message 'authentication error is missing'
 }
 
-Write-Output ''
-Write-Output 'PR readiness utility test summary'
-Write-Output ("  Tests : {0}" -f $testCount)
-Write-Output ("  Issues: {0}" -f $issues.Count)
+Write-ValidationSectionHeader -Title 'PR readiness utility test summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    Status = $(if ($issues.Count -eq 0) { 'PASSED' } else { 'FAILED' })
+    Tests = $testCount
+    Issues = $issues.Count
+})
 
 if ($issues.Count -gt 0) {
-    Write-Output ''
+    Write-ValidationSectionHeader -Title 'Issues'
     foreach ($issue in $issues) {
         Write-Output ("  - {0}" -f $issue)
     }
 
+    Complete-ValidationTextOutput
     throw 'PR readiness utility regression tests failed'
 }
 
+Complete-ValidationTextOutput
 $global:LASTEXITCODE = 0

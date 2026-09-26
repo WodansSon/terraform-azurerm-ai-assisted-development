@@ -1,0 +1,17 @@
+{
+  "$schema": "source-definition.schema.json",
+  "schemaVersion": 1,
+  "id": "interactive-toolkit",
+  "displayName": "Interactive Toolkit",
+  "root": {
+    "kind": "repository",
+    "path": "tools/interactive-rule-catalog"
+  },
+  "files": [
+    "rule-catalog.json",
+    "rule-catalog.schema.json"
+  ],
+  "exclude": [],
+  "parser": "interactive-toolkit-v2",
+  "assessmentBatchSize": 20
+}

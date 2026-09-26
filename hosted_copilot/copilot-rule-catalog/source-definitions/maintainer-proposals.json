@@ -1,0 +1,16 @@
+{
+  "$schema": "source-definition.schema.json",
+  "schemaVersion": 1,
+  "id": "maintainer-proposals",
+  "displayName": "Maintainer Proposals",
+  "root": {
+    "kind": "repository",
+    "path": "hosted_copilot/authored-rules/proposals"
+  },
+  "files": [
+    "**/*.rules.md"
+  ],
+  "exclude": [],
+  "parser": "maintainer-proposals-v2",
+  "assessmentBatchSize": 20
+}

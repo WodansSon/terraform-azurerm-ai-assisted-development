@@ -9,6 +9,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $validatedLinkCount = 0
@@ -71,19 +74,21 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
-    Write-Output 'Copied Markdown link validation summary'
-    Write-Output ("  Status          : {0}" -f $result.status.ToUpperInvariant())
-    Write-Output ("  Files Checked   : {0}" -f $result.validatedFileCount)
-    Write-Output ("  Links Checked   : {0}" -f $result.validatedLinkCount)
-    Write-Output ("  Issue Count     : {0}" -f $result.issueCount)
+    Write-ValidationSectionHeader -Title 'Copied Markdown link validation summary'
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        'Files Checked' = $result.validatedFileCount
+        'Links Checked' = $result.validatedLinkCount
+        'Issue Count' = $result.issueCount
+    })
 
     if ($issues.Count -gt 0) {
-        Write-Output ''
-        Write-Output 'Issues'
+        Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {
             Write-Output ("  - {0}" -f $issue)
         }
     }
+    Complete-ValidationTextOutput
 }
 
 if ($issues.Count -gt 0) {

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "rules"],
+  "properties": {
+    "$schema": {
+      "const": "protected-rules.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "surfaceId", "title", "text", "provenance", "protectionReason", "impact", "sourcePath", "contentSha256"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$"
+          },
+          "status": {
+            "const": "protected"
+          },
+          "surfaceId": {
+            "enum": ["implementation", "testing", "documentation"]
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "provenance": {
+            "enum": ["confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"]
+          },
+          "protectionReason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "const": 100
+          },
+          "sourcePath": {
+            "type": "string",
+            "pattern": "^hosted_copilot/authored-rules/protected/.+\\.rules\\.md$"
+          },
+          "contentSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

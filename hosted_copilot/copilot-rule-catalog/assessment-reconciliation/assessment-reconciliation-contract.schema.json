@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json",
+  "title": "Hosted Assessment Reconciliation Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "behaviorFiles", "idAllocation"],
+  "properties": {
+    "$schema": {
+      "const": "assessment-reconciliation-contract.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "contractId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
+    },
+    "behaviorFiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._/-]+$"
+      }
+    },
+    "idAllocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numericWidth", "families"],
+      "properties": {
+        "numericWidth": {
+          "const": 3
+        },
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "placement", "idFamily"],
+            "properties": {
+              "category": {
+                "enum": ["implementation", "testing", "documentation"]
+              },
+              "placement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "idFamily": {
+                "type": "string",
+                "pattern": "^(?:IMPL|TEST|DOCS)-[A-Z0-9]+$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

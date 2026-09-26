@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "testing-callback-poller-deadline",
+  "contentRoot": "content",
+  "expectedFindings": [
+    {
+      "ruleId": "TEST-PATTERN-012",
+      "path": "internal/services/hostedfixture/hosted_fixture_callback_resource_test.go",
+      "match": "CreateOrUpdateThenPoll(ctx, id, payload)",
+      "reason": "The callback passes a context without an explicit deadline to an Azure polling helper."
+    }
+  ],
+  "unexpectedFindingPolicy": "Record every additional comment for maintainer adjudication."
+}
