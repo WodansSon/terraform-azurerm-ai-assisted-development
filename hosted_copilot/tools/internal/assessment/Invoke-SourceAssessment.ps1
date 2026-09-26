@@ -83,38 +83,66 @@ function Write-JsonAtomically {
     }
 }
 
-function Get-AssessmentSourceCacheIdentity {
+function Read-AssessmentCacheLedger {
     param(
-        [Parameter(Mandatory = $true)][object]$SourceRecord,
-        [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
-        [Parameter(Mandatory = $true)][string]$CatalogPath,
-        [Parameter(Mandatory = $true)][string]$ProtectedRulesPath,
-        [Parameter(Mandatory = $true)][string]$ContractPath,
-        [Parameter(Mandatory = $true)][string]$DraftSchemaPath,
-        [Parameter(Mandatory = $true)][string]$PromptPath,
-        [Parameter(Mandatory = $true)][string]$Evaluator,
-        [Parameter(Mandatory = $true)][string]$Model,
-        [Parameter(Mandatory = $true)][string]$ReasoningEffort
+        [Parameter(Mandatory = $true)][string]$Path,
+        [switch]$ShowProgress
     )
 
-    return [ordered]@{
-        sourceRecordSha256 = Get-SourceEvidenceContentSha256 -Content ($SourceRecord | ConvertTo-Json -Depth 40 -Compress)
-        assessmentCardinality = $AssessmentCardinality
-        hostedCatalogSha256 = Get-SourceEvidenceFileSha256 -Path $CatalogPath
-        protectedRulesContentSha256 = Get-SourceEvidenceFileSha256 -Path $ProtectedRulesPath
-        assessmentContractSha256 = Get-SourceEvidenceFileSha256 -Path $ContractPath
-        draftSchemaSha256 = Get-SourceEvidenceFileSha256 -Path $DraftSchemaPath
-        promptSha256 = Get-SourceEvidenceFileSha256 -Path $PromptPath
-        evaluator = $Evaluator
-        model = $Model
-        reasoningEffort = $ReasoningEffort
+    $entriesBySource = @{}
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $entriesBySource
+    }
+    try {
+        $ledger = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
+        if (Compare-Object -ReferenceObject @('entries', 'kind', 'schemaVersion') -DifferenceObject @($ledger.PSObject.Properties.Name | Sort-Object)) {
+            throw 'Assessment cache ledger has an unexpected property set'
+        }
+        if ([int]$ledger.schemaVersion -ne 1 -or [string]$ledger.kind -cne 'hosted-source-assessment-cache') {
+            throw 'Assessment cache ledger header is invalid'
+        }
+        foreach ($cacheEntry in @($ledger.entries)) {
+            if (Compare-Object -ReferenceObject @('contentSha256', 'result', 'sourceDefinitionId', 'sourceId') -DifferenceObject @($cacheEntry.PSObject.Properties.Name | Sort-Object)) {
+                throw 'Assessment cache ledger entry has an unexpected property set'
+            }
+            $sourceKey = "$([string]$cacheEntry.sourceDefinitionId):$([string]$cacheEntry.sourceId)"
+            if ($entriesBySource.ContainsKey($sourceKey)) {
+                throw "Assessment cache ledger contains duplicate source: $sourceKey"
+            }
+            $entriesBySource[$sourceKey] = $cacheEntry
+        }
+        return $entriesBySource
+    }
+    catch {
+        if ($ShowProgress) {
+            Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'source-assessment/cache' -Detail $_.Exception.Message -NameWidth 42)
+        }
+        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        return @{}
     }
 }
 
-function Get-AssessmentSourceCacheKey {
-    param([Parameter(Mandatory = $true)][object]$Identity)
+function Write-AssessmentCacheLedger {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object[]]$UpdatedEntries
+    )
 
-    return Get-SourceEvidenceContentSha256 -Content ($Identity | ConvertTo-Json -Depth 10 -Compress)
+    return Invoke-WithExclusiveFileLock -Path ($Path + '.lock') -Operation {
+        param($LedgerPath, $Updates)
+
+        $entriesBySource = Read-AssessmentCacheLedger -Path $LedgerPath
+        foreach ($cacheEntry in @($Updates)) {
+            $sourceKey = "$([string]$cacheEntry.sourceDefinitionId):$([string]$cacheEntry.sourceId)"
+            $entriesBySource[$sourceKey] = $cacheEntry
+        }
+        Write-JsonAtomically -Path $LedgerPath -Value ([ordered]@{
+            schemaVersion = 1
+            kind = 'hosted-source-assessment-cache'
+            entries = @($entriesBySource.Values | Sort-Object -Property @{ Expression = { [string]$_.sourceDefinitionId } }, @{ Expression = { [string]$_.sourceId } })
+        })
+        return $entriesBySource
+    } -ArgumentList @($Path, @($UpdatedEntries))
 }
 
 function Test-AssessmentResponseEntry {
@@ -142,9 +170,7 @@ function Test-AssessmentResponseEntry {
 
 function Read-AssessmentSourceCache {
     param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$ExpectedCacheKey,
-        [Parameter(Mandatory = $true)][object]$ExpectedIdentity,
+        [object]$CacheEntry,
         [Parameter(Mandatory = $true)][object]$ExpectedRecord,
         [Parameter(Mandatory = $true)][string]$Context,
         [Parameter(Mandatory = $true)][string]$AssessmentCardinality,
@@ -153,29 +179,20 @@ function Read-AssessmentSourceCache {
         [switch]$ShowProgress
     )
 
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    if ($null -eq $CacheEntry) {
         return $null
     }
     try {
-        $entry = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-        $actualProperties = @($entry.PSObject.Properties.Name | Sort-Object)
-        if (Compare-Object -ReferenceObject @('cacheKey', 'entry', 'identity', 'kind', 'schemaVersion') -DifferenceObject $actualProperties) {
-            throw 'Source cache entry has an unexpected property set'
+        if ([string]$CacheEntry.contentSha256 -cne [string]$ExpectedRecord.sourceRef.contentSha256) {
+            throw 'Source cache entry content hash does not match'
         }
-        if ([int]$entry.schemaVersion -ne 1 -or [string]$entry.kind -cne 'hosted-source-assessment-source-cache' -or [string]$entry.cacheKey -cne $ExpectedCacheKey) {
-            throw 'Source cache entry identity is invalid'
-        }
-        if (($entry.identity | ConvertTo-Json -Depth 10 -Compress) -cne ($ExpectedIdentity | ConvertTo-Json -Depth 10 -Compress)) {
-            throw 'Source cache entry inputs do not match the current assessment'
-        }
-        Test-AssessmentResponseEntry -Entry $entry.entry -ExpectedRecord $ExpectedRecord -Context $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $DraftSchemaPath
-        return $entry.entry
+        Test-AssessmentResponseEntry -Entry $CacheEntry.result -ExpectedRecord $ExpectedRecord -Context $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $DraftSchemaPath
+        return $CacheEntry.result
     }
     catch {
         if ($ShowProgress) {
             Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'source-assessment/cache' -Detail ("{0}; {1}" -f $Context, $_.Exception.Message) -NameWidth 42)
         }
-        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
         return $null
     }
 }
@@ -183,32 +200,15 @@ function Read-AssessmentSourceCache {
 function Get-RetainedAssessmentEntries {
     param(
         [Parameter(Mandatory = $true)][string]$RetainedRunDirectory,
-        [Parameter(Mandatory = $true)][string]$CurrentCatalogPath,
-        [Parameter(Mandatory = $true)][string]$CurrentProtectedRulesPath,
-        [Parameter(Mandatory = $true)][string]$CurrentContractPath,
         [Parameter(Mandatory = $true)][string]$CurrentDraftSchemaPath,
-        [Parameter(Mandatory = $true)][string]$CurrentPromptPath,
         [Parameter(Mandatory = $true)][Collections.Generic.HashSet[string]]$KnownHostedRuleIds
     )
 
-    $retainedContractPath = Join-Path $RetainedRunDirectory 'repository/hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
-    if (-not (Test-Path -LiteralPath $retainedContractPath -PathType Leaf) -or (Get-SourceEvidenceFileSha256 -Path $CurrentContractPath) -cne (Get-SourceEvidenceFileSha256 -Path $retainedContractPath)) {
-        return @{}
-    }
     $entries = @{}
     foreach ($retainedBatchDirectory in @(Get-ChildItem -LiteralPath $RetainedRunDirectory -Directory)) {
         $batchPath = Join-Path $retainedBatchDirectory.FullName 'source-records.json'
         $responsePath = Join-Path $retainedBatchDirectory.FullName 'response.json'
-        $pairs = @(
-            @($CurrentCatalogPath, (Join-Path $retainedBatchDirectory.FullName 'hosted-instruction-catalog.json')),
-            @($CurrentProtectedRulesPath, (Join-Path $retainedBatchDirectory.FullName 'protected-rules.json')),
-            @($CurrentDraftSchemaPath, (Join-Path $retainedBatchDirectory.FullName 'source-assessment-draft.schema.json')),
-            @($CurrentPromptPath, (Join-Path $retainedBatchDirectory.FullName 'SourceAssessment-v4.md'))
-        )
         if (-not (Test-Path -LiteralPath $batchPath -PathType Leaf) -or -not (Test-Path -LiteralPath $responsePath -PathType Leaf)) {
-            continue
-        }
-        if (@($pairs | Where-Object { -not (Test-Path -LiteralPath $_[1] -PathType Leaf) -or (Get-SourceEvidenceFileSha256 -Path $_[0]) -cne (Get-SourceEvidenceFileSha256 -Path $_[1]) }).Count -gt 0) {
             continue
         }
         try {
@@ -671,12 +671,17 @@ $draftEntries = [Collections.Generic.List[object]]::new()
 $cachedSourceCount = 0
 $recoveredSourceCount = 0
 $evaluatedSourceCount = 0
-$sourceCacheMetadata = @{}
+$sourceCachePath = Join-Path $resolvedCacheDirectory 'assessment-cache.json'
+$sourceCacheEntries = Invoke-WithExclusiveFileLock -Path ($sourceCachePath + '.lock') -Operation {
+    param($LedgerPath, $ReportSkipped)
+
+    Read-AssessmentCacheLedger -Path $LedgerPath -ShowProgress:$ReportSkipped
+} -ArgumentList @($sourceCachePath, ($OutputFormat -eq 'Text' -or $ShowProgress))
 $retainedEntries = if ($null -eq $resolvedResumeRunDirectory) {
     @{}
 }
 else {
-    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentCatalogPath $resolvedCatalogPath -CurrentProtectedRulesPath $resolvedProtectedRulesPath -CurrentContractPath $resolvedContractPath -CurrentDraftSchemaPath $draftSchemaPath -CurrentPromptPath $promptPath -KnownHostedRuleIds $knownHostedRuleIds
+    Get-RetainedAssessmentEntries -RetainedRunDirectory $resolvedResumeRunDirectory -CurrentDraftSchemaPath $draftSchemaPath -KnownHostedRuleIds $knownHostedRuleIds
 }
 if ($null -ne $resolvedResumeRunDirectory -and $retainedEntries.Count -eq 0) {
     throw 'Assessment recovery directory is incompatible with the current run. Rerun without -AssessmentResumeDirectory to use validated cache entries.'
@@ -686,11 +691,8 @@ foreach ($lane in $orderedLanes) {
     $pendingRecords = [Collections.Generic.List[object]]::new()
     foreach ($record in @($lane.records)) {
         $sourceKey = "$($record.sourceRef.sourceDefinitionId):$($record.sourceRef.sourceId)"
-        $cacheIdentity = Get-AssessmentSourceCacheIdentity -SourceRecord $record -AssessmentCardinality ([string]$lane.assessmentCardinality) -CatalogPath $resolvedCatalogPath -ProtectedRulesPath $resolvedProtectedRulesPath -ContractPath $resolvedContractPath -DraftSchemaPath $draftSchemaPath -PromptPath $promptPath -Evaluator $evaluatorIdentity -Model $Model -ReasoningEffort $ReasoningEffort
-        $cacheKey = Get-AssessmentSourceCacheKey -Identity $cacheIdentity
-        $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
-        $sourceCacheMetadata[$sourceKey] = [pscustomobject]@{ Identity = $cacheIdentity; Key = $cacheKey; Path = $cachePath; Record = $record; AssessmentCardinality = [string]$lane.assessmentCardinality }
-        $entry = Read-AssessmentSourceCache -Path $cachePath -ExpectedCacheKey $cacheKey -ExpectedIdentity $cacheIdentity -ExpectedRecord $record -Context "cached $sourceKey" -AssessmentCardinality ([string]$lane.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds -DraftSchemaPath $draftSchemaPath -ShowProgress:($OutputFormat -eq 'Text' -or $ShowProgress)
+        $cacheEntry = if ($sourceCacheEntries.ContainsKey($sourceKey)) { $sourceCacheEntries[$sourceKey] } else { $null }
+        $entry = Read-AssessmentSourceCache -CacheEntry $cacheEntry -ExpectedRecord $record -Context "cached $sourceKey" -AssessmentCardinality ([string]$lane.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds -DraftSchemaPath $draftSchemaPath -ShowProgress:($OutputFormat -eq 'Text' -or $ShowProgress)
         if ($null -ne $entry) {
             $draftEntries.Add($entry)
             $cachedSourceCount++
@@ -698,15 +700,10 @@ foreach ($lane in $orderedLanes) {
         }
         if ($retainedEntries.ContainsKey($sourceKey)) {
             $retained = $retainedEntries[$sourceKey]
-            if ([string]$retained.AssessmentCardinality -ceq [string]$lane.assessmentCardinality -and ($retained.Record | ConvertTo-Json -Depth 40 -Compress) -ceq ($record | ConvertTo-Json -Depth 40 -Compress)) {
+            if ([string]$retained.AssessmentCardinality -ceq [string]$lane.assessmentCardinality -and [string]$retained.Record.sourceRef.contentSha256 -ceq [string]$record.sourceRef.contentSha256) {
                 Test-AssessmentResponseEntry -Entry $retained.Entry -ExpectedRecord $record -Context "recovered $sourceKey" -AssessmentCardinality ([string]$lane.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds -DraftSchemaPath $draftSchemaPath
-                Write-JsonAtomically -Path $cachePath -Value ([ordered]@{
-                    schemaVersion = 1
-                    kind = 'hosted-source-assessment-source-cache'
-                    cacheKey = $cacheKey
-                    identity = $cacheIdentity
-                    entry = $retained.Entry
-                })
+                $cacheUpdate = [ordered]@{ sourceDefinitionId = [string]$record.sourceRef.sourceDefinitionId; sourceId = [string]$record.sourceRef.sourceId; contentSha256 = [string]$record.sourceRef.contentSha256; result = $retained.Entry }
+                $sourceCacheEntries = Write-AssessmentCacheLedger -Path $sourceCachePath -UpdatedEntries @($cacheUpdate)
                 $draftEntries.Add($retained.Entry)
                 $recoveredSourceCount++
                 continue
@@ -968,17 +965,11 @@ try {
                 }
                 $response = $responseJson | ConvertFrom-Json
                 Assert-BatchResponse -Response $response -ExpectedRecords @($batch.Packet.records) -BatchId $batch.BatchId -AssessmentCardinality ([string]$batch.Packet.assessmentCardinality) -KnownHostedRuleIds $knownHostedRuleIds
+                $cacheUpdates = [Collections.Generic.List[object]]::new()
                 foreach ($entry in @($response.entries)) {
-                    $sourceKey = "$($entry.sourceRef.sourceDefinitionId):$($entry.sourceRef.sourceId)"
-                    $cacheMetadata = $sourceCacheMetadata[$sourceKey]
-                    Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
-                        schemaVersion = 1
-                        kind = 'hosted-source-assessment-source-cache'
-                        cacheKey = $cacheMetadata.Key
-                        identity = $cacheMetadata.Identity
-                        entry = $entry
-                    })
+                    $cacheUpdates.Add([ordered]@{ sourceDefinitionId = [string]$entry.sourceRef.sourceDefinitionId; sourceId = [string]$entry.sourceRef.sourceId; contentSha256 = [string]$entry.sourceRef.contentSha256; result = $entry })
                 }
+                $sourceCacheEntries = Write-AssessmentCacheLedger -Path $sourceCachePath -UpdatedEntries $cacheUpdates.ToArray()
                 $validatedResponses[$batch.BatchId] = $response
                 $failureByBatch.Remove($batch.BatchId)
                 $evaluatedBatchCount++

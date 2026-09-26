@@ -35,8 +35,6 @@ param(
 
     [string]$RelationshipEvaluatorScriptPath,
 
-    [switch]$Rebuild,
-
     [switch]$StageOnly,
 
     [switch]$NoLaunch,
@@ -50,10 +48,8 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
-$workbenchFingerprintModulePath = Join-Path $PSScriptRoot 'modules/shared/WorkbenchInputFingerprint.psm1'
 Import-Module -Name $validationOutputModulePath -Force
 Import-Module -Name $sourceEvidenceModulePath -Force
-Import-Module -Name $workbenchFingerprintModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
@@ -62,10 +58,12 @@ $catalogRoot = Join-Path $PSScriptRoot '../copilot-rule-catalog'
 $hostedCatalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
 $protectedRulesPath = Join-Path $catalogRoot 'protected-rules.json'
 $displaySchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-display-v4.schema.json'
+$ruleIssuesSchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-rule-issues-v4.schema.json'
 $sourceDefinitionSetPath = Join-Path $catalogRoot 'source-definitions/source-definition-set.json'
 $inventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-SourceAssessment.ps1'
 $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
+$ruleIssuesExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $manualRelationshipPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
@@ -94,7 +92,7 @@ if ($null -ne $resolvedRelationshipEvaluatorScriptPath -and -not (Test-Path -Lit
     throw "RelationshipEvaluatorScriptPath was not found: $resolvedRelationshipEvaluatorScriptPath"
 }
 
-foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatalogPath, $protectedRulesPath, $displaySchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $manualRelationshipPath, $guidanceCapacityPath)) {
+foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatalogPath, $protectedRulesPath, $displaySchemaPath, $ruleIssuesSchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $ruleIssuesExporterPath, $manualRelationshipPath, $guidanceCapacityPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -200,8 +198,9 @@ $shutdownConfig = [ordered]@{
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
+$stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
 $assessmentResult = $null
-$displayRefreshMode = 'UNINITIALIZED'
+$ruleIssuesResult = $null
 $workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
 
@@ -243,7 +242,6 @@ function Update-StagedDisplay {
         $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
         $currentInventoryPaths = [Collections.Generic.List[string]]::new()
         $priorInventoryPaths = [Collections.Generic.List[string]]::new()
-        $inventoryHashes = [ordered]@{}
         foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
             $inventoryPath = Join-Path $currentInventoryDirectory "$sourceDefinitionId.json"
             if ($OutputFormat -eq 'Text') {
@@ -254,54 +252,12 @@ function Update-StagedDisplay {
                 throw "Source inventory collection failed for $sourceDefinitionId`: $(($collectionOutput | Out-String).Trim())"
             }
             $currentInventoryPaths.Add($inventoryPath)
-            $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
-            $inventoryHashes[$sourceDefinitionId] = [string]$inventory.collection.inventorySha256
             $priorInventoryPath = Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) "$sourceDefinitionId.json"
             if (Test-Path -LiteralPath $priorInventoryPath -PathType Leaf) {
                 $priorInventoryPaths.Add($priorInventoryPath)
             }
         }
         Complete-WorkbenchStage -Name $workbenchPhase
-
-        $catalogSha256 = (Get-SourceEvidenceFileSnapshot -Path $hostedCatalogPath).Sha256
-        $protectedRulesSha256 = (Get-SourceEvidenceFileSnapshot -Path $protectedRulesPath).Sha256
-        $currentInputFingerprint = Get-WorkbenchInputFingerprint -CatalogContentSha256 $catalogSha256 -ProtectedRulesContentSha256 $protectedRulesSha256 -InventoryHashes $inventoryHashes
-        $stagedDisplayExists = Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf
-        $stagedDisplayContent = $null
-        $stagedInputFingerprint = $null
-        if ($stagedDisplayExists -and -not $Rebuild) {
-            $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
-            $stagedDisplayContent = Get-Content -LiteralPath $stagedDisplayPath -Raw
-            try {
-                $stagedDisplayValid = $stagedDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop
-            }
-            catch {
-                $stagedDisplayValid = $false
-            }
-            if (-not $stagedDisplayValid) {
-                throw 'Staged Workbench display does not satisfy its schema'
-            }
-            $stagedInputFingerprint = [string](($stagedDisplayContent | ConvertFrom-Json).inputFingerprint)
-            Complete-WorkbenchStage -Name $workbenchPhase
-        }
-
-        $refreshDisplay = $Rebuild -or -not $stagedDisplayExists -or $stagedInputFingerprint -cne $currentInputFingerprint
-        $script:workbenchPhase = 'INPUT FRESHNESS'
-        $script:displayRefreshMode = if (-not $refreshDisplay) {
-            'REUSED_FRESH_DISPLAY'
-        }
-        elseif ($Rebuild) {
-            'REFRESHED_FORCED'
-        }
-        elseif (-not $stagedDisplayExists) {
-            'REFRESHED_MISSING_DISPLAY'
-        }
-        else {
-            'REFRESHED_CHANGED_INPUTS'
-        }
-        Complete-WorkbenchStage -Name $workbenchPhase
-
-        if ($refreshDisplay) {
 
             $assessmentSetPath = Join-Path $runDirectory 'assessment-set.json'
             $script:workbenchPhase = 'SOURCE ASSESSMENT'
@@ -373,21 +329,70 @@ function Update-StagedDisplay {
             if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
                 throw 'Reconciled Workbench display does not satisfy its schema'
             }
-            Copy-FileAtomically -SourcePath $reconciledDisplayPath -DestinationPath $stagedDisplayPath
             Complete-WorkbenchStage -Name $workbenchPhase
+            $script:workbenchPhase = 'CANDIDATE PROJECTION'
+            Complete-WorkbenchStage -Name $workbenchPhase
+
+            $script:workbenchPhase = 'RULE ISSUES EXPORT'
+            if ($OutputFormat -eq 'Text') {
+                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/rule-issues' -Detail 'Adjudicating grouped Rule Issues' -NameWidth 42)
+            }
+            $reconciledRuleIssuesPath = Join-Path $runDirectory 'workbench-rule-issues.json'
+            $ruleIssuesParameters = @{
+                RepositoryRoot = $repositoryRoot
+                DisplayPath = $reconciledDisplayPath
+                OutputPath = $reconciledRuleIssuesPath
+                DisplaySchemaPath = $displaySchemaPath
+                RuleIssuesSchemaPath = $ruleIssuesSchemaPath
+                EvaluatorCommand = $EvaluatorCommand
+                Model = $Model
+                ReasoningEffort = $AssessmentReasoningEffort
+                MaxRetries = $MaxRetries
+                MaxParallelBatches = $MaxParallelBatches
+                OutputFormat = 'Json'
+                ShowProgress = $OutputFormat -eq 'Text'
+            }
+            $ruleIssuesOutput = @(& $ruleIssuesExporterPath @ruleIssuesParameters 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Rule Issues export failed: $(($ruleIssuesOutput | Out-String).Trim())"
+            }
+            $script:ruleIssuesResult = ($ruleIssuesOutput | Out-String) | ConvertFrom-Json
+            $reconciledRuleIssuesContent = Get-Content -LiteralPath $reconciledRuleIssuesPath -Raw
+            if (-not ($reconciledRuleIssuesContent | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
+                throw 'Reconciled Workbench Rule Issues do not satisfy their schema'
+            }
+            $reconciledDisplay = $reconciledDisplayContent | ConvertFrom-Json -DateKind String
+            $reconciledRuleIssues = $reconciledRuleIssuesContent | ConvertFrom-Json -DateKind String
+            $displaySourceFiles = @($reconciledDisplay.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+            $ruleIssueSourceFiles = @($reconciledRuleIssues.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+            if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
+                throw 'Workbench display and Rule Issues source files do not match'
+            }
+            if ($OutputFormat -eq 'Text') {
+                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/rule-issues' -Detail ("{0} grouped issues | {1} cached | {2} evaluated" -f @($reconciledRuleIssues.issues).Count, [int]$ruleIssuesResult.cachedComponentCount, [int]$ruleIssuesResult.evaluatedComponentCount) -NameWidth 42)
+            }
+            Complete-WorkbenchStage -Name $workbenchPhase
+
+            $script:workbenchPhase = 'WORKBENCH DISPLAY'
+            if ($OutputFormat -eq 'Text') {
+                Write-ValidationSectionHeader -Title 'Display' | Write-Host
+                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'workbench/display' -Detail 'Validating and publishing Workbench artifacts' -NameWidth 42)
+            }
+            if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+                throw 'Staged Workbench display does not satisfy its schema'
+            }
+            if (-not ($reconciledRuleIssuesContent | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
+                throw 'Staged Workbench Rule Issues do not satisfy their schema'
+            }
             foreach ($inventoryPath in $currentInventoryPaths) {
                 Copy-FileAtomically -SourcePath $inventoryPath -DestinationPath (Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) ([IO.Path]::GetFileName($inventoryPath)))
             }
-        }
-        else {
-            $reconciledDisplayContent = $stagedDisplayContent
-        }
-
-        $script:workbenchPhase = 'DISPLAY VALIDATION'
-        if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
-            throw 'Staged Workbench display does not satisfy its schema'
-        }
-        Complete-WorkbenchStage -Name $workbenchPhase
+            Copy-FileAtomically -SourcePath $reconciledRuleIssuesPath -DestinationPath $stagedRuleIssuesPath
+            Copy-FileAtomically -SourcePath $reconciledDisplayPath -DestinationPath $stagedDisplayPath
+            if ($OutputFormat -eq 'Text') {
+                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'workbench/display' -Detail 'Candidate and Rule Issues artifacts published' -NameWidth 42)
+            }
+            Complete-WorkbenchStage -Name $workbenchPhase
         return ($reconciledDisplayContent | ConvertFrom-Json)
     }
     finally {
@@ -423,7 +428,7 @@ catch {
     }
     else {
         $failureStages = @($workbenchStages.ToArray()) + @([pscustomobject]@{ status = 'failed'; name = $failure.phase })
-        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
+        Write-ValidationSectionHeader -Title 'Summary'
         Write-ValidationSummary -Fields ([ordered]@{
             Status = 'FAILED'
             Stages = $failureStages.Count
@@ -439,19 +444,18 @@ catch {
     exit 1
 }
 $stagedCandidates = @($stagedDisplay.candidates)
-$assessmentSummary = switch ($displayRefreshMode) {
-    'REUSED_FRESH_DISPLAY' { 'REUSED FRESH DISPLAY' }
-    'REFRESHED_FORCED' { 'REFRESHED (FORCED)' }
-    'REFRESHED_MISSING_DISPLAY' { 'REFRESHED (MISSING DISPLAY)' }
-    'REFRESHED_CHANGED_INPUTS' { 'REFRESHED (CHANGED INPUTS)' }
-    default { $displayRefreshMode }
-}
+$stagedRuleIssues = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw | ConvertFrom-Json -DateKind String
+$assessmentSummary = 'REBUILT FROM CURRENT SOURCES'
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
     url = $url
     siteDirectory = $resolvedSiteDirectory
     displayPath = $stagedDisplayPath
+    ruleIssuesPath = $stagedRuleIssuesPath
+    ruleIssueCount = @($stagedRuleIssues.issues).Count
+    protectedRuleIssueCount = @($stagedRuleIssues.issues | Where-Object { @($_.protectedRuleIds).Count -gt 0 }).Count
+    blockingRuleIssueCount = @($stagedRuleIssues.issues | Where-Object blocking).Count
     assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
     reconciliationCacheDirectory = $resolvedReconciliationCacheDirectory
     assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
@@ -464,7 +468,7 @@ $result = [ordered]@{
     reconciliationStatus = [string]$stagedDisplay.reconciliation.status
     capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
-    displayRefreshMode = $displayRefreshMode
+    displayBuildMode = 'REBUILT_CURRENT_SOURCES'
     readOnly = $true
     allowedMethods = @('GET', 'HEAD', 'POST')
     shutdownEndpoint = 'POST /shutdown'
@@ -477,7 +481,7 @@ if ($StageOnly) {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
+        Write-ValidationSectionHeader -Title 'Summary'
         Write-ValidationSummary -Fields ([ordered]@{
             Status = 'PASSED'
             Stages = $workbenchStages.Count
@@ -491,6 +495,9 @@ if ($StageOnly) {
             'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
             'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
             Reconciliation = 'READY'
+            'Rule Issues' = $result.ruleIssueCount
+            'Protected Rule Issues' = $result.protectedRuleIssueCount
+            'Blocking Rule Issues' = $result.blockingRuleIssueCount
             'Capacity Reports' = $result.capacityReportCount
             'Site Directory' = $result.siteDirectory
             Serving = $result.serving
@@ -581,7 +588,7 @@ try {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Hosted Rule Workbench Summary'
+        Write-ValidationSectionHeader -Title 'Summary'
         Write-ValidationSummary -Fields ([ordered]@{
             Status = 'PASSED'
             Stages = $workbenchStages.Count

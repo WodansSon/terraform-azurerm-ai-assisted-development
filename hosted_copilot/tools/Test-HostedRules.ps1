@@ -67,6 +67,14 @@ $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconcil
 $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-WorkbenchDisplay.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
+$ruleIssueAdjudicationInputSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-input-v4.schema.json'
+$ruleIssueAdjudicationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-draft-v4.schema.json'
+$workbenchRuleIssuesSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-rule-issues-v4.schema.json'
+$ruleIssueAdjudicationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'
+$ruleIssueAdjudicationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
+$ruleIssueExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
+$ruleIssueAdjudicationTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleIssueAdjudication.ps1'
+$ruleIssueAdjudicationFixturePath = Join-Path $PSScriptRoot 'tests/fixtures/rule-issue-adjudication-evaluator.ps1'
 $v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
@@ -316,6 +324,14 @@ if ($runtimeStarted) {
         $assessmentReconciliationBuilderPath,
         $assessmentReconciliationTestPath,
         $assessmentReconciliationPromptPath,
+        $ruleIssueAdjudicationInputSchemaPath,
+        $ruleIssueAdjudicationDraftSchemaPath,
+        $workbenchRuleIssuesSchemaPath,
+        $ruleIssueAdjudicationPromptPath,
+        $ruleIssueAdjudicationRunnerPath,
+        $ruleIssueExporterPath,
+        $ruleIssueAdjudicationTestPath,
+        $ruleIssueAdjudicationFixturePath,
         $ruleWorkbenchLauncherPath,
         $ruleWorkbenchTestPath,
         $ruleWorkbenchIconPreviewRendererPath,
@@ -537,7 +553,7 @@ if ($runtimeStarted) {
     $outputContracts = @(
         @{ Path = $installerPath; Opening = 'Hosted Rules deployment'; Summary = 'Hosted Rules deployment summary'; Results = 'Deployment operations'; Activity = 'manifest-validation' },
         @{ Path = $hostedReviewCommandPath; Opening = 'Hosted review workflow'; Summary = 'Hosted review workflow summary'; Results = 'Hosted review request'; Activity = 'Write-ValidationSummary' },
-        @{ Path = $ruleWorkbenchLauncherPath; Opening = 'Hosted Rule Workbench'; Summary = 'Hosted Rule Workbench Summary'; Results = 'Workbench Stages'; Activity = 'Write-ValidationSummary' },
+        @{ Path = $ruleWorkbenchLauncherPath; Opening = 'Hosted Rule Workbench'; Summary = 'Summary'; Results = 'Workbench Stages'; Activity = 'Write-ValidationSummary' },
         @{ Path = $PSCommandPath; Opening = 'Hosted Rules validation'; Summary = 'Hosted Rules validation summary'; Results = 'Validation checks'; Activity = 'Start-ValidationCheck' },
         @{ Path = $instructionGeneratorPath; Opening = 'Hosted instruction generation'; Summary = 'Hosted instruction generation summary'; Results = 'Instruction surfaces'; Activity = 'catalog-validation' },
         @{ Path = $upstreamSourceValidatorPath; Opening = 'Hosted upstream source drift validation'; Summary = 'Hosted upstream source drift validation summary'; Results = 'Source results'; Activity = 'source-fetch' },
@@ -723,6 +739,22 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'rule-issue-adjudication'
+    try {
+        $ruleIssueAdjudicationTestOutput = @(& pwsh -NoProfile -File $ruleIssueAdjudicationTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($ruleIssueAdjudicationTestOutput | Out-String).Trim())
+        }
+        $ruleIssueAdjudicationTestResult = ($ruleIssueAdjudicationTestOutput | Out-String) | ConvertFrom-Json
+        if ($ruleIssueAdjudicationTestResult.status -ne 'passed') {
+            throw 'Rule Issue adjudication regression suite reported failures'
+        }
+        Add-CheckResult -Name 'rule-issue-adjudication' -Passed $true -Detail "Passed $($ruleIssueAdjudicationTestResult.testCount) component evaluation, cache reuse, direct-hash invalidation, zero-issue, protected-wording, and reconciliation-authority tests without model calls."
+    }
+    catch {
+        Add-ValidationIssue -Name 'rule-issue-adjudication' -Issue "Hosted Rule Issue adjudication validation failed: $($_.Exception.Message)"
     }
 
     Start-ValidationCheck -Name 'v4-workbench-contracts'
@@ -1217,7 +1249,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

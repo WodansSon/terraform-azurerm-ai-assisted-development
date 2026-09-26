@@ -153,6 +153,39 @@ function Write-JsonSnapshot {
     }
 }
 
+function Invoke-WithExclusiveFileLock {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][scriptblock]$Operation,
+        [object[]]$ArgumentList = @(),
+        [ValidateRange(1, 300000)][int]$TimeoutMilliseconds = 30000
+    )
+
+    $directory = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $directory -Force
+    }
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $lockStream = $null
+    while ($null -eq $lockStream) {
+        try {
+            $lockStream = [IO.File]::Open($Path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        }
+        catch [IO.IOException] {
+            if ($stopwatch.ElapsedMilliseconds -ge $TimeoutMilliseconds) {
+                throw "Timed out waiting for exclusive file lock: $Path"
+            }
+            [Threading.Thread]::Sleep(25)
+        }
+    }
+    try {
+        return & $Operation @ArgumentList
+    }
+    finally {
+        $lockStream.Dispose()
+    }
+}
+
 function Get-BehaviorManifestSha256 {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$IdentityValues,
@@ -321,4 +354,4 @@ function Get-EstimatedRemainingMilliseconds {
     return [long][Math]::Ceiling($RemainingPayloadBytes / ($bytesPerMillisecondPerWorker * [Math]::Max(1, $MaxParallelBatches)))
 }
 
-Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds
+Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Invoke-WithExclusiveFileLock, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds

@@ -19,7 +19,7 @@ html.theme-hosted-dark {
   --warning-action-background-hover: #453b19;
   --warning-action-border: #b89500;
   --warning-action-foreground: #ffffff;
-  --error-foreground: #f85149;
+  --error-foreground: #f6d1d3;
   --error-background: rgba(248, 81, 73, 0.14);
   --error-border: rgba(248, 81, 73, 0.72);
   --added-resource: #78a680;
@@ -624,20 +624,28 @@ h3 {
 }
 
 .rule-issue-kind.contradiction {
-  color: var(--danger);
+  color: var(--error-foreground);
 }
 
 .rule-issue-ids {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   margin-top: 5px;
-  overflow: hidden;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-start;
+  color: var(--accent-bright);
   font-family: var(--font-mono);
   font-size: var(--font-size-compact);
+  font-weight: 600;
   line-height: var(--line-height-compact);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: left;
+}
+
+html.theme-hosted-dark .rule-issue-ids .rule-reference {
+  color: var(--accent-bright);
+  font-weight: 600 !important;
 }
 
 .rule-issues-detail .rule-reference {
@@ -649,6 +657,11 @@ h3 {
 .rule-issue-id-separator {
   color: #ffffff;
   font-weight: 400;
+}
+
+html.theme-hosted-dark .rule-issue-ids .rule-issue-id-separator {
+  color: #ffffff !important;
+  font-weight: 400 !important;
 }
 
 .rule-issues-detail {
@@ -671,14 +684,14 @@ h3 {
   align-items: center;
   color: var(--warning-foreground);
   background: var(--warning-action-background);
-  border-left: 3px solid var(--warning-action-border);
+  border: 1px solid var(--warning-action-border);
   border-radius: 4px;
 }
 
 .rule-issue-banner.contradiction {
-  color: var(--danger);
-  background: var(--red-soft);
-  border-left-color: var(--danger);
+  color: var(--error-foreground);
+  background: var(--error-background);
+  border: 1px solid var(--error-border);
 }
 
 .rule-issue-banner > .codicon {
@@ -686,6 +699,7 @@ h3 {
   height: 16px;
   align-self: start;
   margin-top: 2px;
+  transform: translateY(2px);
 }
 
 .rule-issue-banner > div {
@@ -695,6 +709,11 @@ h3 {
 .rule-issue-banner p {
   margin: 3px 0 0;
   color: inherit;
+}
+
+html.theme-hosted-dark .rule-issue-banner-reference {
+  color: inherit;
+  font-weight: 600 !important;
 }
 
 .rule-issue-banner-dismiss {
@@ -724,7 +743,7 @@ h3 {
 
 .rule-issue-comparison {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
   margin: 16px 0 20px;
 }
@@ -757,12 +776,29 @@ h3 {
   padding: 14px;
 }
 
-.rule-issue-rule.recommend-keep .rule-issue-rule-body {
+.rule-issue-rule.recommend-keep .rule-issue-rule-body,
+.rule-issue-rule.recommend-promote .rule-issue-rule-body {
   border-left: 3px solid var(--success);
 }
 
-.rule-issue-rule.recommend-retire .rule-issue-rule-body {
+.rule-issue-rule.recommend-retire .rule-issue-rule-body,
+.rule-issue-rule.recommend-replace .rule-issue-rule-body,
+.rule-issue-rule.recommend-exclude .rule-issue-rule-body {
   border-left: 3px solid rgb(216, 93, 101);
+}
+
+.rule-issue-assessment {
+  margin-top: 8px;
+  padding: 14px;
+  background: var(--surface-quiet);
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+}
+
+.rule-issue-assessment-label {
+  display: block;
+  margin-top: 16px;
 }
 
 .rule-issue-rule p,
@@ -771,6 +807,12 @@ h3 {
 .rule-issue-recommendation p {
   margin: 0;
   line-height: var(--line-height-body);
+}
+
+.rule-issue-assessment p {
+  margin-top: 0;
+  color: #c6d4ff;
+  font-size: var(--font-size-compact);
 }
 
 .rule-issue-suggestion,
@@ -804,6 +846,15 @@ h3 {
 
 .rule-issue-suggestion h3 {
   color: var(--success);
+}
+
+.rule-issue-wording-unresolved {
+  background: var(--warning-action-background);
+  border-color: var(--warning-action-border);
+}
+
+.rule-issue-wording-unresolved h3 {
+  color: var(--warning-foreground);
 }
 
 .rule-recommendation-actions {

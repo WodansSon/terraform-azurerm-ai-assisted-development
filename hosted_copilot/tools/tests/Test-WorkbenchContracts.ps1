@@ -122,7 +122,7 @@ $display = [ordered]@{
     kind = 'hosted-rule-workbench-display'
     generatedAt = $timestamp
     readOnly = $true
-    inputFingerprint = $hash
+    sourceFiles = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'IMPL-TEST-901'; contentSha256 = $hash })
     reconciliation = [ordered]@{ status = 'ready' }
     candidates = @([ordered]@{
         source = [ordered]@{
@@ -226,7 +226,7 @@ $draft = [ordered]@{
     '$schema' = 'workbench-draft-v4.schema.json'
     schemaVersion = 4
     kind = 'hosted-rule-workbench-draft'
-    inputFingerprint = $hash
+    sourceFiles = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'IMPL-TEST-901'; contentSha256 = $hash })
     createdAt = $timestamp
     updatedAt = $timestamp
     approverName = 'Maintainer'

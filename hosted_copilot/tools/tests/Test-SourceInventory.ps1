@@ -283,6 +283,41 @@ try {
     } $graphQlFunctionDefinitions
     Add-TestResult -Name 'graphql-body-error-retried' -Passed ($graphQlRetryAttemptCount -eq 2) -Detail 'A structured transient GraphQL error in an HTTP-success response remains inside the bounded retry boundary.'
 
+    $concurrentLedgerPath = Join-Path $fixtureRoot 'concurrent-cache.json'
+    $concurrentWriter = {
+        param($ModulePath, $LedgerPath, $EntryId)
+
+        Import-Module -Name $ModulePath -Force
+        Invoke-WithExclusiveFileLock -Path ($LedgerPath + '.lock') -Operation {
+            param($Path, $Id)
+
+            $entries = if (Test-Path -LiteralPath $Path -PathType Leaf) { @((Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json).entries) } else { @() }
+            [Threading.Thread]::Sleep(100)
+            $entries = @($entries | Where-Object { [string]$_.id -cne [string]$Id })
+            $entries += [ordered]@{ id = [string]$Id }
+            $temporaryPath = $Path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+            try {
+                [IO.File]::WriteAllText($temporaryPath, (([ordered]@{ entries = $entries } | ConvertTo-Json -Depth 10) + "`n"), [Text.UTF8Encoding]::new($false))
+                [IO.File]::Move($temporaryPath, $Path, $true)
+            }
+            finally {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
+        } -ArgumentList @($LedgerPath, $EntryId)
+    }
+    $concurrentJobs = @(
+        Start-Job -ScriptBlock $concurrentWriter -ArgumentList $helpersPath, $concurrentLedgerPath, 'first'
+        Start-Job -ScriptBlock $concurrentWriter -ArgumentList $helpersPath, $concurrentLedgerPath, 'second'
+    )
+    try {
+        $null = $concurrentJobs | Wait-Job | Receive-Job -ErrorAction Stop
+    }
+    finally {
+        $concurrentJobs | Remove-Job -Force -ErrorAction SilentlyContinue
+    }
+    $concurrentEntries = @((Get-Content -LiteralPath $concurrentLedgerPath -Raw | ConvertFrom-Json).entries)
+    Add-TestResult -Name 'exclusive-cache-ledger-writers' -Passed ($concurrentEntries.Count -eq 2 -and @($concurrentEntries.id | Sort-Object) -join ',' -ceq 'first,second') -Detail 'Concurrent processes serialize read, merge, and atomic replacement so neither cache-ledger update is lost.'
+
     Write-TestProgress -Name 'contract-validation' -Detail 'Validating source definitions, parser contracts, schemas, and behavior dependencies'
     Add-TestResult -Name 'source-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $definitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Maintainer Proposals uses the strict shared source-definition schema.'
     Add-TestResult -Name 'parser-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Maintainer Proposals parser contract has a strict versioned shape.'
@@ -321,7 +356,7 @@ try {
     $interactiveSecondInventory = if ($interactiveSecondRun.ExitCode -eq 0) { Get-Content -LiteralPath $interactiveSecondOutputPath -Raw | ConvertFrom-Json } else { $null }
     Add-TestResult -Name 'real-inventory-generated' -Passed ($firstRun.ExitCode -eq 0 -and $secondRun.ExitCode -eq 0) -Detail 'The collector generates staged inventories for the real Maintainer Proposal corpus.'
     Add-TestResult -Name 'real-inventory-schema' -Passed ($null -ne $firstInventory -and (Test-JsonInstance -Json (Get-Content -LiteralPath $firstOutputPath -Raw) -SchemaPath $inventorySchemaPath)) -Detail 'The staged inventory satisfies the strict inventory schema.'
-    Add-TestResult -Name 'real-inventory-count' -Passed ($null -ne $firstInventory -and @($firstInventory.records).Count -eq 38 -and @($firstInventory.records.sourceId | Sort-Object -Unique).Count -eq 38) -Detail 'The Maintainer Proposal corpus contains exactly 38 unique live proposal IDs.'
+    Add-TestResult -Name 'real-inventory-identities' -Passed ($null -ne $firstInventory -and @($firstInventory.records.sourceId | Sort-Object -Unique).Count -eq @($firstInventory.records).Count) -Detail 'Every Maintainer Proposal ID is unique when the corpus contains proposals; an empty corpus remains valid.'
     $currentMaintainerEvidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $repoRoot -SourceDefinitionId 'maintainer-proposals'
     Add-TestResult -Name 'generated-parser-hash-binding' -Passed ($null -ne $firstInventory -and [string]$firstInventory.parserContractSha256 -ceq [string]$currentMaintainerEvidence.ParserContractSha256) -Detail 'Generated inventory stores the automatically calculated hash of its exact parser behavior contract.'
     Add-TestResult -Name 'inventory-deterministic' -Passed ($null -ne $firstInventory -and $null -ne $secondInventory -and $firstInventory.collection.inventorySha256 -ceq $secondInventory.collection.inventorySha256 -and $firstInventory.inventoryConfigurationSha256 -ceq $secondInventory.inventoryConfigurationSha256) -Detail 'Repeated collection produces identical factual and configuration hashes.'

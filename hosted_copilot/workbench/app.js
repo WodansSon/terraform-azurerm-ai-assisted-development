@@ -4,7 +4,8 @@ const DATABASE_NAME = "hosted-rule-workbench";
 const DATABASE_VERSION = 1;
 const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
 const WORKBENCH_DISPLAY_SCHEMA_VERSION = 4;
-const SESSION_SCHEMA_VERSION = 6;
+const WORKBENCH_RULE_ISSUES_SCHEMA_VERSION = 4;
+const SESSION_SCHEMA_VERSION = 7;
 const WORKBENCH_DRAFT_SCHEMA_VERSION = 4;
 const APPROVED_RULES_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
@@ -23,17 +24,11 @@ const PREVIEW_SCOPE_LABELS = {
   raw: "Approved rules"
 };
 const IMPLEMENTATION_MODELS = ["legacy", "typed", "framework"];
-const RULE_ISSUE_RELATIONSHIPS = {
-  equivalent: { kind: "duplicate", label: "Duplicate", semantic: "equivalent" },
-  "partial-overlap": { kind: "overlap", label: "Partial overlap", semantic: "partial" },
-  "assessment-extends-hosted": { kind: "overlap", label: "Broader overlap", sourceBreadth: "broader" },
-  "assessment-narrows-hosted": { kind: "overlap", label: "Narrower overlap", sourceBreadth: "narrower" },
-  conflicts: { kind: "contradiction", label: "Contradiction", semantic: "conflict" }
-};
 const RULE_ISSUE_FILTERS = [
-  ["contradiction", "Contradictions"],
-  ["duplicate", "Duplicates"],
-  ["overlap", "Overlaps"]
+  { key: "protected", label: "Protected", classifications: ["protected-integrity", "protected-conflict", "protected-coverage"] },
+  { key: "contradiction", label: "Contradictions", classifications: ["contradiction"] },
+  { key: "duplicate", label: "Duplicates", classifications: ["duplicate"] },
+  { key: "overlap", label: "Overlaps", classifications: ["overlap"] }
 ];
 const GUIDANCE_CAPACITY_BUCKETS = [
   { reportName: "repository", label: "Repository-wide Guidance", surface: "repository" },
@@ -75,6 +70,7 @@ function normalizeSessionTimestamps(session) {
 
 const state = {
   bundle: null,
+  ruleIssueBundle: null,
   session: null,
   assessedCandidates: [],
   candidates: [],
@@ -509,16 +505,26 @@ async function loadBundle() {
   setSaveIndicator("Loading display");
   try {
     await preloadIconSprites();
-    const response = await fetch("workbench-display.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Display request failed with ${response.status}`);
-    const display = await response.json();
+    const [displayResponse, ruleIssuesResponse] = await Promise.all([
+      fetch("workbench-display.json", { cache: "no-store" }),
+      fetch("workbench-rule-issues.json", { cache: "no-store" })
+    ]);
+    if (!displayResponse.ok) throw new Error(`Display request failed with ${displayResponse.status}`);
+    if (!ruleIssuesResponse.ok) throw new Error(`Rule Issues request failed with ${ruleIssuesResponse.status}`);
+    const [display, ruleIssueBundle] = await Promise.all([displayResponse.json(), ruleIssuesResponse.json()]);
     validateDisplay(display);
+    validateRuleIssueBundle(ruleIssueBundle);
+    if (!sourceFilesEqual(display.sourceFiles, ruleIssueBundle.sourceFiles)) {
+      throw new Error("The Workbench display and Rule Issues source files do not match.");
+    }
     state.bundle = display;
+    state.ruleIssueBundle = ruleIssueBundle;
+    state.ruleIssues = structuredClone(ruleIssueBundle.issues);
     state.protectedRules = display.catalog.protectedRules;
     const discoveredCandidates = normalizeDisplayCandidates(display);
     const sessionId = getSessionId(display);
     const existing = await readSession(sessionId);
-    state.session = migrateSession(existing, discoveredCandidates) || createSession(sessionId, display);
+    state.session = migrateSession(existing, discoveredCandidates, display) || createSession(sessionId, display);
     autofillApproverName();
     const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
@@ -587,7 +593,7 @@ async function closeWorkbench() {
 }
 
 function validateDisplay(display) {
-  if (!display || display.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION || display.kind !== "hosted-rule-workbench-display" || display.readOnly !== true || !/^[a-f0-9]{64}$/.test(display.inputFingerprint)) {
+  if (!display || display.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION || display.kind !== "hosted-rule-workbench-display" || display.readOnly !== true || !Array.isArray(display.sourceFiles) || display.sourceFiles.length === 0) {
     throw new Error("The Workbench display does not satisfy the read-only display contract.");
   }
   if (!Array.isArray(display.candidates) || !display.catalog || !Array.isArray(display.catalog.rules) || !Array.isArray(display.catalog.protectedRules)) {
@@ -598,6 +604,25 @@ function validateDisplay(display) {
   }
   if (!display.reconciliation || display.reconciliation.status !== "ready") {
     throw new Error("The Workbench display does not contain reconciliation status.");
+  }
+}
+
+function validateRuleIssueBundle(bundle) {
+  const classifications = new Set(RULE_ISSUE_FILTERS.flatMap((filter) => filter.classifications));
+  const wordingStatuses = new Set(["canonical", "selected", "unresolved"]);
+  if (!bundle || bundle.schemaVersion !== WORKBENCH_RULE_ISSUES_SCHEMA_VERSION || bundle.kind !== "hosted-rule-workbench-rule-issues" || bundle.readOnly !== true || !Array.isArray(bundle.sourceFiles) || bundle.sourceFiles.length === 0) {
+    throw new Error("The Workbench Rule Issues artifact does not satisfy its read-only contract.");
+  }
+  if (!Array.isArray(bundle.issues) || bundle.issues.some((issue) => !classifications.has(issue.classification)
+    || !Array.isArray(issue.rules)
+    || !Array.isArray(issue.relationships)
+    || typeof issue.assessmentSummary !== "string"
+    || issue.assessmentSummary.length < 1
+    || issue.assessmentSummary.length > 600
+    || !wordingStatuses.has(issue.wording?.status)
+    || !["section", "member"].includes(issue.wording?.presentation)
+    || (issue.wording.status === "unresolved" ? !issue.wording.reason : !issue.wording.text))) {
+    throw new Error("The Workbench Rule Issues artifact does not contain display-ready issues.");
   }
 }
 
@@ -657,117 +682,36 @@ function normalizeDisplayCandidates(display) {
   });
 }
 
-function getRuleIndex() {
-  return new Map([
-    ...state.bundle.catalog.rules.filter((rule) => rule.status === "active").map((rule) => [rule.id, { ...rule, protected: false }]),
-    ...state.protectedRules.map((rule) => [rule.id, { ...rule, status: "protected", protected: true }])
-  ]);
-}
-
-function getRecommendationRetirementRuleIds(candidate) {
-  const ruleIds = new Set(candidate.recommendation.retireHostedRuleIds);
-  if (candidate.recommendation.action === "retire" && candidate.recommendation.targetHostedId) {
-    ruleIds.add(candidate.recommendation.targetHostedId);
-  }
-  return [...ruleIds].sort();
-}
-
-function getDecisionRetirementRuleIds(candidate, decision = getDecision(candidate)) {
-  const ruleIds = new Set(decision.retireHostedRuleIds);
-  if (decision.action === "retire" && candidate.recommendation.targetHostedId) {
-    ruleIds.add(candidate.recommendation.targetHostedId);
-  }
-  return [...ruleIds].sort();
-}
-
-function isActionableRuleIssueRelationship(candidate, sourceRuleId, relatedRuleId, relationship) {
-  if (relationship === "conflicts" || relationship === "equivalent") return true;
-  const retirementRuleIds = getRecommendationRetirementRuleIds(candidate);
-  if (retirementRuleIds.includes(relatedRuleId)) return true;
-  return retirementRuleIds.includes(sourceRuleId) && relationship === "assessment-narrows-hosted";
-}
-
-function buildRuleIssues() {
-  const rulesById = getRuleIndex();
-  const issuesByKey = new Map();
-  const rank = { contradiction: 3, duplicate: 2, overlap: 1 };
-  state.candidates.forEach((candidate) => {
-    const manualCheck = getCurrentManualRelationshipCheck(candidate);
-    const sourceRuleId = candidate.catalogMapping.hostedRuleId || (manualCheck ? candidate.assessment.proposedHostedRuleId : null);
-    if (!sourceRuleId) return;
-    if (!rulesById.has(sourceRuleId) && manualCheck) {
-      rulesById.set(sourceRuleId, { id: sourceRuleId, text: manualCheck.proposedText, status: "proposed", protected: false });
-    }
-    if (!rulesById.has(sourceRuleId)) return;
-    const coverageEntries = manualCheck ? manualCheck.relationships : candidate.recommendation.relatedHostedCoverage || [];
-    coverageEntries.forEach((coverage) => {
-      const descriptor = RULE_ISSUE_RELATIONSHIPS[coverage.relationship];
-      const relatedRuleId = coverage.hostedRuleId;
-      if (!descriptor || sourceRuleId === relatedRuleId || !rulesById.has(relatedRuleId)) return;
-      if (!manualCheck && !isActionableRuleIssueRelationship(candidate, sourceRuleId, relatedRuleId, coverage.relationship)) return;
-      const ruleIds = [sourceRuleId, relatedRuleId].sort();
-      const key = ruleIds.join("::");
-      const incoming = {
-        key,
-        kind: descriptor.kind,
-        label: descriptor.label,
-        relationship: coverage.relationship,
-        sourceRuleId,
-        relatedRuleId,
-        title: candidate.title,
-        rationale: coverage.rationale,
-        suggestedConsolidatedText: coverage.suggestedConsolidatedText || "",
-        retireHostedRuleIds: getRecommendationRetirementRuleIds(candidate).filter((id) => ruleIds.includes(id)),
-        ruleIds,
-        rules: ruleIds.map((id) => rulesById.get(id)).sort((left, right) => Number(right.protected) - Number(left.protected) || left.id.localeCompare(right.id)),
-        candidateKeys: [candidate.key],
-        manualRelationshipCheck: Boolean(manualCheck),
-        protectedRuleIds: ruleIds.filter((id) => rulesById.get(id).protected)
-      };
-      const existing = issuesByKey.get(key);
-      if (!existing) {
-        issuesByKey.set(key, incoming);
-        return;
-      }
-      existing.candidateKeys = [...new Set([...existing.candidateKeys, candidate.key])].sort();
-      existing.retireHostedRuleIds = [...new Set([...existing.retireHostedRuleIds, ...incoming.retireHostedRuleIds])].sort();
-      if (rank[incoming.kind] > rank[existing.kind] || (!existing.suggestedConsolidatedText && incoming.suggestedConsolidatedText)) {
-        Object.assign(existing, { ...incoming, candidateKeys: existing.candidateKeys, retireHostedRuleIds: existing.retireHostedRuleIds });
-      }
-    });
-  });
-  return [...issuesByKey.values()]
-    .filter((issue) => !isRuleIssueRecommendationStaged(issue))
-    .sort((left, right) => rank[right.kind] - rank[left.kind] || left.key.localeCompare(right.key));
-}
-
 function getFilteredRuleIssues() {
   const query = state.queries["rule-issues"].trim().toLowerCase();
-  return state.ruleIssues.filter((issue) => {
-    if (issue.kind !== state.ruleIssueFilter) return false;
+  const activeFilter = RULE_ISSUE_FILTERS.find((filter) => filter.key === state.ruleIssueFilter);
+  return getOpenRuleIssues().filter((issue) => {
+    if (!activeFilter?.classifications.includes(issue.classification)) return false;
     if (!query) return true;
-    return [issue.title, issue.label, issue.rationale, issue.suggestedConsolidatedText, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
+    return [issue.title, issue.label, issue.bannerTitle, issue.bannerMessage, issue.assessmentSummary, issue.wording?.text, issue.recommendedMaintainerAction.summary, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 }
 
 function formatRuleIssueSummary(issues) {
-  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map(([kind]) => [kind, issues.filter((issue) => issue.kind === kind).length]));
-  return `${formatCountLabel(issues.length, "rule issue")}: ${formatCountLabel(counts.contradiction, "contradiction")}, ${formatCountLabel(counts.duplicate, "duplicate")}, ${formatCountLabel(counts.overlap, "overlap")}`;
+  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, issues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
+  const protectedCount = counts.protected;
+  return `${formatCountLabel(issues.length, "rule issue")}: ${formatCountLabel(protectedCount, "protected")}, ${formatCountLabel(counts.contradiction, "contradiction")}, ${formatCountLabel(counts.duplicate, "duplicate")}, ${formatCountLabel(counts.overlap, "overlap")}`;
 }
 
 function renderRuleIssueFilters() {
-  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map(([kind]) => [kind, state.ruleIssues.filter((issue) => issue.kind === kind).length]));
-  const visibleFilters = RULE_ISSUE_FILTERS.filter(([kind]) => counts[kind] > 0);
-  if (!visibleFilters.some(([kind]) => kind === state.ruleIssueFilter)) {
-    state.ruleIssueFilter = visibleFilters[0]?.[0] || RULE_ISSUE_FILTERS[0][0];
+  const openIssues = getOpenRuleIssues();
+  const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, openIssues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
+  const visibleFilters = RULE_ISSUE_FILTERS.filter((filter) => counts[filter.key] > 0);
+  if (!visibleFilters.some((filter) => filter.key === state.ruleIssueFilter)) {
+    state.ruleIssueFilter = visibleFilters[0]?.key || RULE_ISSUE_FILTERS[0].key;
   }
-  elements["rule-issues-filters"].innerHTML = visibleFilters.map(([kind, label]) => `
-    <button class="candidate-pane-tab clickable ${state.ruleIssueFilter === kind ? "active" : ""}" type="button" role="tab" data-rule-issue-filter="${kind}" aria-selected="${state.ruleIssueFilter === kind}">${escapeHtml(label)} <span>${formatNumber(counts[kind])}</span></button>
+  elements["rule-issues-filters"].innerHTML = visibleFilters.map((filter) => `
+    <button class="candidate-pane-tab clickable ${state.ruleIssueFilter === filter.key ? "active" : ""}" type="button" role="tab" data-rule-issue-filter="${filter.key}" aria-selected="${state.ruleIssueFilter === filter.key}">${escapeHtml(filter.label)} <span>${formatNumber(counts[filter.key])}</span></button>
   `).join("");
 }
 
-function renderRuleReferences(value, ruleIds) {
+function renderRuleReferences(value, ruleIds, referenceClass = "rule-reference") {
   const text = String(value || "");
   const references = [...new Set(ruleIds)].filter(Boolean).sort((left, right) => right.length - left.length);
   let offset = 0;
@@ -784,7 +728,7 @@ function renderRuleReferences(value, ruleIds) {
     });
     if (!match) break;
     output += escapeHtml(text.slice(offset, matchIndex));
-    output += `<span class="rule-reference">${escapeHtml(match)}</span>`;
+    output += `<span class="${escapeHtml(referenceClass)}">${escapeHtml(match)}</span>`;
     offset = matchIndex + match.length;
   }
   return `${output}${escapeHtml(text.slice(offset))}`;
@@ -794,31 +738,40 @@ function renderRuleIssueIds(ruleIds) {
   return ruleIds.map((id) => `<span class="rule-reference">${escapeHtml(id)}</span>`).join('<span class="rule-issue-id-separator" aria-hidden="true">·</span>');
 }
 
-function getRuleIssueRecommendationCandidates(issue) {
-  const candidates = issue.candidateKeys.map((key) => state.candidates.find((candidate) => candidate.key === key)).filter(Boolean);
-  if (!issue.retireHostedRuleIds.length) return candidates.length ? candidates : null;
-  const matches = candidates.filter((candidate) => issue.retireHostedRuleIds.every((ruleId) => getRecommendationRetirementRuleIds(candidate).includes(ruleId)));
-  return matches.length ? matches : null;
+function getRuleIssueOperations(issue) {
+  return issue.recommendedMaintainerAction.operations;
 }
 
 function isRuleIssueRecommendationStaged(issue) {
-  const candidates = getRuleIssueRecommendationCandidates(issue);
-  return Boolean(candidates?.length) && candidates.every((candidate) => {
+  const operations = getRuleIssueOperations(issue);
+  return operations.length > 0 && operations.every((operation) => {
+    const candidate = state.candidates.find((item) => item.key === operation.candidateKey);
+    if (!candidate) return false;
     const decision = getDecision(candidate);
-    return decision.inPlan && issue.retireHostedRuleIds.every((ruleId) => getDecisionRetirementRuleIds(candidate, decision).includes(ruleId));
+    return decision.inPlan
+      && decision.action === operation.action
+      && decision.proposedText === operation.proposedText
+      && JSON.stringify([...decision.retireHostedRuleIds].sort()) === JSON.stringify([...operation.retireHostedRuleIds].sort());
   });
 }
 
+function getOpenRuleIssues() {
+  return state.ruleIssues.filter((issue) => !isRuleIssueRecommendationStaged(issue));
+}
+
 function renderRuleIssuePlanAction(issue) {
-  const candidates = getRuleIssueRecommendationCandidates(issue);
+  const operations = getRuleIssueOperations(issue);
+  const candidates = operations.map((operation) => state.candidates.find((candidate) => candidate.key === operation.candidateKey));
   const staged = isRuleIssueRecommendationStaged(issue);
   const identity = getValidatedCodeOwnerIdentity();
-  const unavailableReason = !candidates
-    ? "The recommendation cannot be mapped safely to retirement candidates."
+  const unavailableReason = issue.blocking
+    ? "Protected integrity issues must be resolved in the protected source files."
+    : !operations.length || candidates.some((candidate) => !candidate)
+      ? "The supplied maintainer operations cannot be mapped to current candidates."
     : globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.";
-  const disabled = staged || !candidates || !identity;
+  const disabled = staged || issue.blocking || !operations.length || candidates.some((candidate) => !candidate) || !identity;
   const tooltip = disabled && !staged ? ` data-workbench-tooltip="${escapeHtml(unavailableReason)}"` : "";
-  return `<div class="rule-recommendation-actions"><button class="button primary rule-issue-plan-action ${disabled ? "" : "clickable"}" type="button" data-rule-issue-plan="${escapeHtml(issue.key)}" ${disabled ? "disabled" : ""}${tooltip}>${icon(staged ? "pass-filled" : "new-session")}<span class="button-label">${staged ? "Added to Promotion Plan" : "Add to Promotion Plan"}</span></button></div>`;
+  return `<div class="rule-recommendation-actions"><button class="button primary rule-issue-plan-action ${disabled ? "" : "clickable"}" type="button" data-rule-issue-plan="${escapeHtml(issue.id)}" ${disabled ? "disabled" : ""}${tooltip}>${icon(staged ? "pass-filled" : "new-session")}<span class="button-label">${staged ? "Added to Promotion Plan" : "Add to Promotion Plan"}</span></button></div>`;
 }
 
 function stageRuleIssueRecommendation(issue) {
@@ -827,25 +780,24 @@ function stageRuleIssueRecommendation(issue) {
     showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
     return;
   }
-  const candidates = getRuleIssueRecommendationCandidates(issue);
-  if (!candidates?.length) {
-    showToast("The recommendation cannot be mapped safely to retirement candidates.", true);
+  const operations = getRuleIssueOperations(issue);
+  if (issue.blocking || !operations.length) {
+    showToast(issue.blocking ? "Resolve protected integrity in the protected source files." : "The artifact does not contain maintainer operations for this issue.", true);
     return;
   }
   const updatedAt = toUtcTimestamp();
-  const rationale = `Reviewed Rule Issues recommendation for ${issue.ruleIds.join(" and ")}: ${issue.rationale}`.slice(0, DECISION_RATIONALE_MAX_LENGTH);
-  candidates.forEach((candidate) => {
+  const rationale = issue.recommendedMaintainerAction.summary.slice(0, DECISION_RATIONALE_MAX_LENGTH);
+  operations.forEach((operation) => {
+    const candidate = state.candidates.find((item) => item.key === operation.candidateKey);
+    if (!candidate) throw new Error(`Rule Issues operation references an unknown candidate: ${operation.candidateKey}`);
     const { assessment, ...decision } = getDecision(candidate);
-    const primaryAction = issue.retireHostedRuleIds.length
-      ? isPromotionAction(candidate.recommendation.action) ? candidate.recommendation.action : "no-change"
-      : "defer";
     removeCandidateFromBulkOperations(candidate.key);
     state.session.decisions[candidate.key] = {
       ...decision,
-      action: primaryAction,
+      action: operation.action,
       rationale,
-      proposedText: candidate.recommendation.ruleText,
-      retireHostedRuleIds: [...candidate.recommendation.retireHostedRuleIds],
+      proposedText: operation.proposedText,
+      retireHostedRuleIds: [...operation.retireHostedRuleIds],
       ...createPlanMembership("manual"),
       sourceHash: candidate.hash,
       updatedAt
@@ -857,7 +809,7 @@ function stageRuleIssueRecommendation(issue) {
   renderBulkActions();
   renderDecisionOutputs();
   renderRuleIssues();
-  showToast(`${formatCountLabel(candidates.length, "Resolution")} added to the promotion plan.`);
+  showToast(`${formatCountLabel(operations.length, "Resolution")} added to the promotion plan.`);
 }
 
 function handleRuleIssueDetailClick(event) {
@@ -869,21 +821,23 @@ function handleRuleIssueDetailClick(event) {
   }
   const planAction = event.target.closest("[data-rule-issue-plan]");
   if (!planAction) return;
-  const issue = state.ruleIssues.find((item) => item.key === planAction.dataset.ruleIssuePlan);
+  const issue = state.ruleIssues.find((item) => item.id === planAction.dataset.ruleIssuePlan);
   if (issue) stageRuleIssueRecommendation(issue);
 }
 
 function renderRuleIssueRule(rule, issue) {
-  const status = rule.protected ? "Protected" : capitalize(rule.status);
-  const recommendation = issue.retireHostedRuleIds.length
-    ? issue.retireHostedRuleIds.includes(rule.id) ? "retire" : "keep"
-    : "";
   return `
-    <section class="rule-issue-rule ${recommendation ? `recommend-${recommendation}` : ""}">
-      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(status)}</span></h3>
+    <section class="rule-issue-rule recommend-${escapeHtml(rule.disposition)}">
+      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></h3>
       <div class="rule-issue-rule-body"><p>${renderRuleReferences(rule.text, issue.ruleIds)}</p></div>
     </section>
   `;
+}
+
+function renderRuleIssueWording(wording, ruleIds) {
+  const unresolved = wording.status === "unresolved";
+  const text = unresolved ? wording.reason : wording.text;
+  return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><h3>${escapeHtml(wording.label)}</h3><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
 }
 
 function renderRuleIssueDetail(issue) {
@@ -891,21 +845,16 @@ function renderRuleIssueDetail(issue) {
     elements["rule-issues-detail"].innerHTML = renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
     return;
   }
-  const protectedNotice = issue.protectedRuleIds.length
-    ? "Protected guidance is immutable. Both rules remain generated until a maintainer explicitly changes lifecycle state."
-    : "Both rules remain generated until a maintainer explicitly changes lifecycle state.";
-  const retirementText = issue.retireHostedRuleIds.length
-    ? `Review retirement of ${issue.retireHostedRuleIds.map((id) => `<span class="rule-reference">${escapeHtml(id)}</span>`).join(", ")} and the proposed wording in the Promotion Plan.`
-    : "Reconciliation could not produce a complete lifecycle action. Maintainer input is required in the Promotion Plan.";
-  const banner = state.dismissedRuleIssueBannerKeys.has(issue.key) ? "" : `
-    <div class="rule-issue-banner ${escapeHtml(issue.kind)}">${icon(issue.kind === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${escapeHtml(getRuleIssueBannerTitle(issue))}</strong><p>${escapeHtml(protectedNotice)}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.key)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
+  const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
+    <div class="rule-issue-banner ${escapeHtml(issue.classification)}">${icon(issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${escapeHtml(formatRuleIssueTitle(issue.bannerTitle))}</strong><p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
   elements["rule-issues-detail"].innerHTML = `
     ${banner}
     <div class="rule-issue-comparison">${issue.rules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
-    <section class="rule-issue-assessment"><span class="section-label">Assessment:</span><p>${renderRuleReferences(issue.rationale, issue.ruleIds)}</p></section>
-    ${issue.suggestedConsolidatedText ? `<section class="rule-issue-suggestion"><h3>Suggested Consolidated Wording</h3><p>${renderRuleReferences(issue.suggestedConsolidatedText, issue.ruleIds)}</p></section>` : ""}
+    <span class="section-label rule-issue-assessment-label">Assessment:</span>
+    <section class="rule-issue-assessment"><p>${renderRuleReferences(issue.assessmentSummary, issue.ruleIds)}</p></section>
+    ${renderRuleIssueWording(issue.wording, issue.ruleIds)}
     <span class="section-label rule-issue-recommendation-label">Recommended Maintainer Action:</span>
-    <section class="rule-issue-recommendation"><p>${retirementText}</p>${renderRuleIssuePlanAction(issue)}</section>
+    <section class="rule-issue-recommendation"><p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>${renderRuleIssuePlanAction(issue)}</section>
   `;
 }
 
@@ -925,55 +874,35 @@ function formatRuleIssueTitle(value) {
   }).join("");
 }
 
-function getRuleIssueBannerTitle(issue) {
-  const descriptor = RULE_ISSUE_RELATIONSHIPS[issue.relationship];
-  const sourceRule = issue.rules.find((rule) => rule.id === issue.sourceRuleId);
-  const relatedRule = issue.rules.find((rule) => rule.id === issue.relatedRuleId);
-  const protectedRule = issue.rules.find((rule) => rule.protected);
-  const activeRule = issue.rules.find((rule) => !rule.protected);
-  if (!descriptor || !sourceRule || !relatedRule) return issue.label;
-
-  if (protectedRule && activeRule) {
-    if (descriptor.semantic === "equivalent") return "Protected Guidance Duplicates This Active Rule";
-    if (descriptor.semantic === "partial") return "Protected Guidance Partially Overlaps This Active Rule";
-    if (descriptor.semantic === "conflict") return "Protected Guidance Conflicts With This Active Rule";
-    const protectedBreadth = protectedRule.id === sourceRule.id
-      ? descriptor.sourceBreadth
-      : descriptor.sourceBreadth === "broader" ? "narrower" : "broader";
-    return protectedBreadth === "broader"
-      ? "Broader Protected Guidance Overlaps This Active Rule"
-      : "This Active Rule Broadens Protected Guidance";
-  }
-
-  if (descriptor.semantic === "equivalent") return "These Active Rules Duplicate Each Other";
-  if (descriptor.semantic === "partial") return "These Active Rules Partially Overlap";
-  if (descriptor.semantic === "conflict") return "These Active Rules Conflict";
-  return descriptor.sourceBreadth === "broader"
-    ? "One Active Rule Broadens Another Active Rule"
-    : "One Active Rule Narrows Another Active Rule";
-}
-
 function renderRuleIssues() {
   if (!elements["rule-issues-list"]) return;
   renderRuleIssueFilters();
   const issues = getFilteredRuleIssues();
-  if (!issues.some((issue) => issue.key === state.activeRuleIssueKey)) state.activeRuleIssueKey = issues[0]?.key || null;
+  if (!issues.some((issue) => issue.id === state.activeRuleIssueKey)) state.activeRuleIssueKey = issues[0]?.id || null;
   if (!issues.length) {
     elements["rule-issues-list"].innerHTML = renderPreviewEmptyState("pass-compact", "No Rule Issues", "No rule relationships match the current filter and search.");
     renderRuleIssueDetail(null);
     return;
   }
   elements["rule-issues-list"].innerHTML = issues.map((issue) => `
-    <button class="rule-issue-row clickable ${issue.key === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.key)}" aria-pressed="${issue.key === state.activeRuleIssueKey}">
-      <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="rule-issue-kind ${escapeHtml(issue.kind)} status-badge ${issue.kind === "contradiction" ? "excluded" : "warning"} type-compact">${escapeHtml(capitalize(issue.kind))}</span></span>
+    <button class="rule-issue-row clickable ${issue.id === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.id)}" aria-pressed="${issue.id === state.activeRuleIssueKey}">
+      <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="rule-issue-kind ${escapeHtml(issue.classification)} status-badge ${issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "excluded" : "warning"} type-compact">${escapeHtml(issue.label)}</span></span>
       <span class="rule-issue-ids">${renderRuleIssueIds(issue.ruleIds)}</span>
     </button>
   `).join("");
-  renderRuleIssueDetail(issues.find((issue) => issue.key === state.activeRuleIssueKey));
+  renderRuleIssueDetail(issues.find((issue) => issue.id === state.activeRuleIssueKey));
 }
 
 function getSessionId(display) {
-  return display.inputFingerprint;
+  return "current";
+}
+
+function sourceFilesEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  const ordered = (sourceFiles) => [...sourceFiles].sort((first, second) =>
+    String(first.sourceDefinitionId).localeCompare(String(second.sourceDefinitionId))
+    || String(first.sourceId).localeCompare(String(second.sourceId)));
+  return JSON.stringify(ordered(left)) === JSON.stringify(ordered(right));
 }
 
 function createSession(id, display) {
@@ -983,7 +912,7 @@ function createSession(id, display) {
     id,
     createdAt: timestamp,
     updatedAt: timestamp,
-    inputFingerprint: display.inputFingerprint,
+    sourceFiles: structuredClone(display.sourceFiles),
     approverName: "",
     decisions: {},
     manualRelationshipChecks: {},
@@ -992,13 +921,9 @@ function createSession(id, display) {
   };
 }
 
-function migrateSession(session, candidates) {
+function migrateSession(session, candidates, display) {
   if (!session) return null;
-  if (session.inputFingerprint !== session.id) return null;
-  if (session.schemaVersion === 5) {
-    return { ...session, schemaVersion: SESSION_SCHEMA_VERSION, manualRelationshipChecks: {} };
-  }
-  if (session.schemaVersion !== SESSION_SCHEMA_VERSION) return null;
+  if (session.id !== "current" || session.schemaVersion !== SESSION_SCHEMA_VERSION || !sourceFilesEqual(session.sourceFiles, display.sourceFiles)) return null;
   return { ...session, manualRelationshipChecks: session.manualRelationshipChecks || {} };
 }
 
@@ -1239,7 +1164,6 @@ async function reconcileManualRuleText(candidate, proposedText) {
     };
     state.session.updatedAt = toUtcTimestamp();
     await persistSession();
-    state.ruleIssues = buildRuleIssues();
     renderRuleIssues();
     renderDecisionOutputs();
     showToast(result.relationships.length ? `${formatCountLabel(result.relationships.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
@@ -1463,7 +1387,6 @@ async function resetCandidate(candidate) {
 }
 
 function renderDecisionOutputs() {
-  state.ruleIssues = buildRuleIssues();
   renderMetrics();
   renderPlan();
   renderCapacity();
@@ -1530,7 +1453,6 @@ function formatCandidateTokenValue(candidate, assessment) {
 
 function renderAll(shouldRenderAssessment = true) {
   if (!state.bundle || !state.session) return;
-  state.ruleIssues = buildRuleIssues();
   renderTarget();
   renderMetrics();
   renderCandidateList();
@@ -1575,11 +1497,12 @@ function renderMetrics() {
   elements["status-mapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length);
   elements["status-unmapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length);
   elements["status-headroom"].textContent = formatNumber(capacity.projectedHeadroomTokens);
-  const issueCount = state.ruleIssues.length;
+  const openIssues = getOpenRuleIssues();
+  const issueCount = openIssues.length;
   elements["rule-issues-status"].hidden = false;
   elements["rule-issues-status"].classList.toggle("has-issues", issueCount > 0);
   elements["rule-issues-status-count"].textContent = formatNumber(issueCount);
-  const issueSummary = formatRuleIssueSummary(state.ruleIssues);
+  const issueSummary = formatRuleIssueSummary(openIssues);
   elements["rule-issues-status"].dataset.workbenchTooltip = issueSummary;
   elements["rule-issues-status"].setAttribute("aria-label", `Open ${issueSummary}`);
 }
@@ -2301,7 +2224,7 @@ function renderAssessmentResultRow(candidate) {
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
+      <span class="assessment-result-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
   `;
 }
@@ -2498,7 +2421,7 @@ function renderCandidateTreeRow(candidate) {
     <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""} ${decoration ? `candidate-decoration-${decoration.status}` : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
       <input type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${inPlan ? "Remove" : "Add"} ${escapeHtml(displayId)} ${inPlan ? "from" : "to"} promotion plan" data-workbench-tooltip="${inPlan ? "Remove candidate from promotion plan" : "Add candidate to promotion plan"}" ${inPlan ? "checked" : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(displayId)}</strong><small>${escapeHtml(candidate.title)}</small>${renderCandidateDecoration(decoration, "candidate-decoration-icon")}</span>
-      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="candidate-tree-summary"><span class="candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span><span class="catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
     </div>
   `;
 }
@@ -3899,8 +3822,9 @@ function renderCounts() {
   elements["plan-count"].textContent = formatNumber(planCount);
   elements["plan-activity-count"].textContent = planCount > 999 ? "999+" : formatNumber(planCount);
   elements["plan-activity-count"].hidden = planCount === 0;
-  elements["rule-issues-tab-count"].textContent = formatNumber(state.ruleIssues.length);
-  elements["rule-issues-tab-count"].hidden = state.ruleIssues.length === 0;
+  const openRuleIssueCount = getOpenRuleIssues().length;
+  elements["rule-issues-tab-count"].textContent = formatNumber(openRuleIssueCount);
+  elements["rule-issues-tab-count"].hidden = openRuleIssueCount === 0;
   const planLabel = `Promotion Plan (${formatNumber(planCount)})`;
   setWorkbenchTooltip(elements["promotion-plan-stage"], planLabel);
   elements["promotion-plan-stage"].setAttribute("aria-label", planLabel);
@@ -4130,7 +4054,7 @@ function buildDraftExport() {
     $schema: "workbench-draft-v4.schema.json",
     schemaVersion: WORKBENCH_DRAFT_SCHEMA_VERSION,
     kind: "hosted-rule-workbench-draft",
-    inputFingerprint: session.inputFingerprint,
+    sourceFiles: structuredClone(session.sourceFiles),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     approverName: session.approverName || "",
@@ -4165,8 +4089,8 @@ function deserializeDraft(draft, candidates) {
   const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
-    id: draft.inputFingerprint,
-    inputFingerprint: draft.inputFingerprint,
+    id: "current",
+    sourceFiles: structuredClone(draft.sourceFiles),
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
     approverName: draft.approverName,
@@ -4253,7 +4177,7 @@ async function importDraft(event) {
     const importedDraft = JSON.parse(await file.text());
     const draft = deserializeDraft(importedDraft, state.assessedCandidates);
     if (!draft) throw new Error("The draft version is not supported.");
-    if (draft.inputFingerprint !== state.session.inputFingerprint) {
+    if (!sourceFilesEqual(draft.sourceFiles, state.session.sourceFiles)) {
       throw new Error("The draft belongs to a different source snapshot.");
     }
     if (!draft.decisions || typeof draft.decisions !== "object" || Array.isArray(draft.decisions)) {
@@ -4433,6 +4357,12 @@ function formatTitleCase(value) {
 
 function formatRecommendation(value) {
   return value === "no-change" ? "No Change" : capitalize(value);
+}
+
+function formatCandidateLifecycle(value) {
+  if (value === "added") return "New";
+  if (value === "source-lifecycle-changed") return "Lifecycle Changed";
+  return capitalize(value);
 }
 
 function formatHostedCategory(value) {

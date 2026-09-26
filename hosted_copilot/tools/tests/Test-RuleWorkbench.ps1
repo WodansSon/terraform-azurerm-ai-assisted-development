@@ -34,15 +34,13 @@ $octiconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-Workb
 $iconPreviewPath = Join-Path $PSScriptRoot '../internal/workbench/WorkbenchIconPreview.ps1'
 $iconPreviewRendererPath = Join-Path $PSScriptRoot '../Render-WorkbenchIconPreview.cjs'
 $launcherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'
+$loopbackServerPath = Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'
+$manualRelationshipPath = Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $manualRelationshipEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/manual-relationship-evaluator.ps1'
-$inventoryCollectorPath = Join-Path $PSScriptRoot '../internal/collection/New-SourceInventory.ps1'
-$sourceDefinitionSetPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/source-definitions/source-definition-set.json'
-$workbenchFingerprintModulePath = Join-Path $PSScriptRoot '../modules/shared/WorkbenchInputFingerprint.psm1'
 $workbenchRegressionRoot = Join-Path $PSScriptRoot '../../regression/workbench'
 $behaviorManifestPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.json'
 $behaviorManifestSchemaPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.schema.json'
 $playwrightRunnerPath = Join-Path $workbenchRegressionRoot 'playwright/run.cjs'
-Import-Module -Name $workbenchFingerprintModulePath -Force
 $layoutTestPath = Join-Path $workbenchRegressionRoot 'puppeteer/Test-RuleWorkbenchLayout.cjs'
 $implementationContractPath = Join-Path $PSScriptRoot '../../docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md'
 $nodePackageManifestPath = Join-Path $toolsRoot 'package.json'
@@ -53,6 +51,7 @@ $npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
 $puppeteerCliPath = Join-Path $toolsRoot $puppeteerCliRelativePath
 $displaySchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation/workbench-display-v4.schema.json'
+$ruleIssuesSchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation/workbench-rule-issues-v4.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
@@ -70,9 +69,6 @@ $serverTestNames = @('loopback-host-validation', 'browser-playwright-journeys', 
 $staticTestNames = @(
     'fixture-display-valid',
     'assessment-factor-range',
-    'external-staging-valid',
-    'source-display-read-only',
-    'launcher-failure-summary',
     'local-icon-family-sprites',
     'portable-icon-generation',
     'browser-state-contract',
@@ -325,7 +321,7 @@ function New-WorkbenchDisplayFixture {
         kind = 'hosted-rule-workbench-display'
         generatedAt = [string]$Fixture.generatedAt
         readOnly = $true
-        inputFingerprint = 'a' * 64
+        sourceFiles = @($candidates | ForEach-Object { [ordered]@{ sourceDefinitionId = [string]$_.source.lane; sourceId = [string]$_.source.id; contentSha256 = [string]$_.source.contentSha256 } } | Sort-Object -Property sourceDefinitionId, sourceId -Unique)
         reconciliation = [ordered]@{ status = 'ready' }
         candidates = $candidates.ToArray()
         catalog = [ordered]@{
@@ -473,6 +469,7 @@ try {
         }
     }
     $displayPath = Join-Path $tempRoot 'workbench-display.json'
+    $ruleIssuesPath = Join-Path $tempRoot 'workbench-rule-issues.json'
     $capacityReports = @(
         New-CapacityReport -Name 'repository' -Kind 'file'
         New-CapacityReport -Name 'go' -Kind 'file'
@@ -707,55 +704,57 @@ try {
         assessments = @($maintainerAssessment)
     })
     $display = New-WorkbenchDisplayFixture -Fixture $fixture
-    $freshnessInventoryDirectory = Join-Path $tempRoot 'freshness-inventories'
-    $null = New-Item -ItemType Directory -Path $freshnessInventoryDirectory -Force
-    $sourceDefinitionSet = Get-Content -LiteralPath $sourceDefinitionSetPath -Raw | ConvertFrom-Json
-    $freshnessInventoryHashes = [ordered]@{}
-    foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
-        $inventoryPath = Join-Path $freshnessInventoryDirectory "$sourceDefinitionId.json"
-        & $inventoryCollectorPath -RepositoryRoot $repositoryRoot -SourceDefinitionPath (Join-Path $repositoryRoot "hosted_copilot/copilot-rule-catalog/source-definitions/$sourceDefinitionId.json") -OutputPath $inventoryPath -OutputFormat Json | Out-Null
-        $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
-        $freshnessInventoryHashes[$sourceDefinitionId] = [string]$inventory.collection.inventorySha256
-    }
     $display.catalog.contentSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     $display.catalog.protectedRulesContentSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json') -Algorithm SHA256).Hash.ToLowerInvariant()
-    $display.inputFingerprint = Get-WorkbenchInputFingerprint -CatalogContentSha256 $display.catalog.contentSha256 -ProtectedRulesContentSha256 $display.catalog.protectedRulesContentSha256 -InventoryHashes $freshnessInventoryHashes
     $displayJson = $display | ConvertTo-Json -Depth 30
     [IO.File]::WriteAllText($displayPath, $displayJson + "`n", [Text.UTF8Encoding]::new($false))
     Add-TestResult -Name 'fixture-display-valid' -Passed ([bool]($displayJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench display satisfies the v4 display schema.'
+
+    $issueCandidate = @($display.candidates | Where-Object { $null -ne $_.recommendation } | Select-Object -First 1)[0]
+    $issueCandidateKey = "$([string]$issueCandidate.source.lane):$([string]$issueCandidate.source.id):$([string]$issueCandidate.assessment.id)"
+    $issueSourceRuleId = [string]$issueCandidate.recommendation.hostedId
+    $issueRelatedRule = @($display.catalog.rules | Where-Object { [string]$_.id -cne $issueSourceRuleId } | Select-Object -First 1)[0]
+    $ruleIssuesFixture = [ordered]@{
+        '$schema' = 'workbench-rule-issues-v4.schema.json'
+        schemaVersion = 4
+        kind = 'hosted-rule-workbench-rule-issues'
+        generatedAt = [string]$display.generatedAt
+        readOnly = $true
+        sourceFiles = @($display.sourceFiles)
+        issues = @([ordered]@{
+            id = "relationship:$issueSourceRuleId`:fixture"
+            classification = 'duplicate'
+            label = 'Duplicate'
+            title = "$issueSourceRuleId duplicates $([string]$issueRelatedRule.id)"
+            bannerTitle = 'Fixture duplicate guidance'
+            bannerMessage = 'The proposed fixture wording duplicates an active hosted rule.'
+            blocking = $false
+            ruleIds = @($issueSourceRuleId, [string]$issueRelatedRule.id)
+            protectedRuleIds = @()
+            candidateKeys = @($issueCandidateKey)
+            rules = @(
+                [ordered]@{ id = $issueSourceRuleId; status = 'proposed'; disposition = 'exclude'; text = [string]$issueCandidate.recommendation.ruleText; candidateKeys = @($issueCandidateKey) },
+                [ordered]@{ id = [string]$issueRelatedRule.id; status = [string]$issueRelatedRule.status; disposition = 'keep'; text = [string]$issueRelatedRule.text; candidateKeys = @() }
+            )
+            relationships = @([ordered]@{ sourceRuleId = $issueSourceRuleId; relatedRuleId = [string]$issueRelatedRule.id; relationship = 'equivalent'; kind = 'duplicate'; rationale = 'The fixture rules express the same enforceable obligation.'; candidateKey = $issueCandidateKey })
+            assessmentSummary = 'The proposed fixture rule duplicates existing hosted guidance.'
+            wording = [ordered]@{ status = 'selected'; label = 'Suggested Consolidated Wording'; presentation = 'member'; text = [string]$issueRelatedRule.text; sourceRuleId = [string]$issueRelatedRule.id }
+            recommendedMaintainerAction = [ordered]@{
+                summary = "Keep $([string]$issueRelatedRule.id) and exclude $issueSourceRuleId."
+                operations = @([ordered]@{ candidateKey = $issueCandidateKey; ruleId = $issueSourceRuleId; action = 'exclude'; proposedText = [string]$issueCandidate.recommendation.ruleText; retireHostedRuleIds = @() })
+            }
+        })
+    }
+    $ruleIssuesJson = $ruleIssuesFixture | ConvertTo-Json -Depth 30
+    if (-not ($ruleIssuesJson | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
+        throw 'The offline Workbench Rule Issues fixture does not satisfy the v4 schema'
+    }
+    [IO.File]::WriteAllText($ruleIssuesPath, $ruleIssuesJson + "`n", [Text.UTF8Encoding]::new($false))
 
     $invalidAssessmentDisplay = $displayJson | ConvertFrom-Json
     $invalidAssessmentDisplay.candidates[0].assessment.selectionFactors.severity = 6
     $invalidAssessmentJson = $invalidAssessmentDisplay | ConvertTo-Json -Depth 30
     Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
-
-    $stageResult = $null
-    if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('external-staging-valid', 'source-display-read-only', 'loopback-read-only-server')) {
-        $siteDirectory = Join-Path $tempRoot 'site'
-        $stageCacheDirectory = Join-Path $tempRoot 'assessment-cache'
-        $null = New-Item -ItemType Directory -Path $siteDirectory -Force
-        Copy-Item -LiteralPath $displayPath -Destination (Join-Path $siteDirectory 'workbench-display.json')
-        $displayHashBefore = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
-        Start-TestResult -Name 'external-staging-valid'
-        $stageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $siteDirectory -AssessmentCacheDirectory $stageCacheDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
-        $stageExitCode = $LASTEXITCODE
-        $stageResult = if ($stageExitCode -eq 0) { ($stageOutput | Out-String) | ConvertFrom-Json } else { $null }
-        $displayHashAfter = (Get-FileHash -LiteralPath $displayPath -Algorithm SHA256).Hash
-        $stagedPaths = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg', 'icons/codicons/sprite.svg', 'icons/codicons/discard.svg', 'icons/codicons/git-commit.svg', 'icons/codicons/LICENSE.txt', 'icons/codicons/ATTRIBUTION.md', 'icons/octicons/sprite.svg', 'icons/octicons/code-review-16.svg', 'icons/octicons/LICENSE.txt', 'icons/octicons/ATTRIBUTION.md', 'shutdown-config.js', 'workbench-display.json') | ForEach-Object { Join-Path $siteDirectory $_ }
-        Add-TestResult -Name 'external-staging-valid' -Passed ($stageExitCode -eq 0 -and @($stagedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -eq 0 -and $stageResult.discoveredCandidateCount -eq 7 -and $stageResult.evaluatedCandidateCount -eq 7 -and $stageResult.ruleCandidateCount -eq 7 -and $stageResult.capacityReportCount -eq 8 -and [string]$stageResult.assessmentCacheDirectory -ceq [IO.Path]::GetFullPath($stageCacheDirectory)) -Detail $(if ($stageExitCode -eq 0) { 'The normal launcher refreshes static assets, reuses the validated staged display, and preserves the resolved external assessment cache path.' } else { ($stageOutput | Out-String).Trim() })
-        Add-TestResult -Name 'source-display-read-only' -Passed ($displayHashBefore -eq $displayHashAfter) -Detail 'Display-only Workbench startup does not modify the validated display source used to seed the site.'
-    }
-
-    if (Test-ShouldRun -Name 'launcher-failure-summary') {
-        $failureSiteDirectory = Join-Path $tempRoot 'failure-site'
-        $null = New-Item -ItemType Directory -Path $failureSiteDirectory -Force
-        [IO.File]::WriteAllText((Join-Path $failureSiteDirectory 'workbench-display.json'), "{}`n", [Text.UTF8Encoding]::new($false))
-        $failureOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $failureSiteDirectory -StageOnly -NoLaunch -OutputFormat Text 2>&1)
-        $failureExitCode = $LASTEXITCODE
-        $failureText = ($failureOutput | Out-String)
-        $launcherFailureSummaryValid = $failureExitCode -ne 0 -and ([regex]::Matches($failureText, 'HOSTED RULE WORKBENCH')).Count -ge 2 -and $failureText -match 'Cache Directory\s+:' -and $failureText -match 'HOSTED RULE WORKBENCH SUMMARY[\s\S]+Status\s+: FAILED' -and $failureText -match 'Stages\s+: 2' -and $failureText -match 'Passed\s+: 1' -and $failureText -match 'Failed\s+: 1' -and $failureText -match 'WORKBENCH STAGES[\s\S]+PASSED\s+SOURCE COLLECTION[\s\S]+FAILED\s+EXISTING DISPLAY VALIDATION' -and $failureText -match 'FAILURES[\s\S]+- EXISTING DISPLAY VALIDATION: Staged Workbench display does not satisfy its schema' -and $failureText -notmatch 'START WORKBENCH FAILED|Exception:|Line \|'
-        Add-TestResult -Name 'launcher-failure-summary' -Passed $launcherFailureSummaryValid -Detail 'Startup validates current inputs, then reports an invalid staged display through the standard failure summary without invoking assessment.'
-    }
 
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
@@ -772,9 +771,9 @@ try {
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
-    $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg', 'chat-sparkle-error.svg', 'discard-all.svg') }).Count
+    $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
     $octiconSourceCount = @(Get-ChildItem -LiteralPath $octiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
-    $codiconContractValid = $codiconSourceCount -eq 71 -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 73)
+    $codiconContractValid = $codiconSourceCount -eq [regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-git-branch-conflicts"' -and $spriteContent -match 'id="codicon-git-pull-request-error"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-check-compact"' -and $spriteContent -match 'id="codicon-circle-slash-compact"' -and $spriteContent -match 'id="codicon-debug-disconnect-compact"' -and $spriteContent -match 'id="codicon-checklist-compact"' -and $spriteContent -match 'id="codicon-shield-compact"' -and $spriteContent -match 'id="codicon-warning-compact"' -and $spriteContent -match 'id="codicon-chevron-right-compact"' -and $spriteContent -match 'id="codicon-chevron-down-compact"' -and $spriteContent -match 'id="codicon-fold-up"' -and $spriteContent -match 'id="codicon-diff-modified"' -and $spriteContent -match 'id="codicon-arrow-circle-down"' -and $spriteContent -match 'id="codicon-arrow-circle-left"' -and $spriteContent -match 'id="codicon-arrow-circle-right"' -and $spriteContent -match 'id="codicon-arrow-circle-up"' -and $spriteContent -match 'id="codicon-arrow-circle-up-sparkle"' -and $spriteContent -match 'id="codicon-close"' -and $spriteContent -match 'id="codicon-close-small"' -and $spriteContent -match 'id="codicon-close-compact"' -and $spriteContent -match 'id="codicon-pass"' -and $spriteContent -match 'id="codicon-pass-compact"' -and $spriteContent -match 'id="codicon-git-stash-apply"' -and $spriteContent -match 'id="codicon-kebab-vertical"' -and $spriteContent -match 'id="codicon-layers"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-folder-opened"' -and $spriteContent -match 'id="codicon-folder-opened-compact"' -and $spriteContent -match 'id="codicon-folder-library"' -and $spriteContent -match 'id="codicon-folder-compact"' -and $spriteContent -match 'id="codicon-folder-active"' -and $spriteContent -match 'id="codicon-file-symlink-directory"' -and $spriteContent -match 'id="codicon-remote"' -and $spriteContent -match 'id="codicon-remote-compact"' -and $spriteContent -match 'id="codicon-workspace-untrusted"' -and $spriteContent -match 'id="codicon-workspace-unknown"'
@@ -787,10 +786,10 @@ try {
     $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-check-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-collection' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-circle-slash-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-debug-disconnect-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-new-session' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-shield-compact'
     $codiconContractValid = $codiconContractValid -and $appContent -match 'octicon\("copy"\)' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $indexContent -match 'data-view="catalog"[\s\S]*?codicon-collection' -and $indexContent -match 'data-view="plan"[\s\S]*?codicon-new-session' -and $indexContent -match 'data-view="preview"[\s\S]*?codicon-open-preview' -and $appContent -match 'icon\("discard"\)'
     $chatSparkleErrorContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-chat-sparkle-error"' -and $iconGeneratorContent -match "'chat-sparkle-error'"
-    $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq 73) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
+    $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq $codiconSourceCount) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
     $diffModifiedContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'diff-modified.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-diff-modified"' -and $appContent -match 'codicon-diff-modified'
     $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid
-    $octiconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0 -and $octiconSourceCount -eq 44 -and ([regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -eq 44) -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
+    $octiconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0 -and $octiconSourceCount -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
     $iconPreviewsValid = $iconGeneratorContent -match 'New-WorkbenchIconPreview' -and $octiconGeneratorContent -match 'New-WorkbenchIconPreview' -and $iconPreviewContent -match 'fill="#f0f6fc"' -and $iconPreviewContent -match 'Render-WorkbenchIconPreview\.cjs' -and $iconPreviewContent -match 'Get-Command node' -and $iconPreviewContent -notmatch 'Start-Process|Microsoft Edge|msedge' -and $iconPreviewRendererContent -match 'require\("puppeteer"\)' -and $iconPreviewRendererContent -match 'headless:\s*true' -and (Test-PngFile -Path (Join-Path $codiconRoot 'preview.png')) -and (Test-PngFile -Path (Join-Path $octiconRoot 'preview.png'))
     $iconFamiliesValid = $codiconContractValid -and $octiconContractValid -and $iconPreviewsValid
     Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'The Workbench separately owns pinned, attributed, offline Codicon and Octicon source families, generated sprites, and visible PNG inventory sheets, stages both recursively, and has no runtime icon-network dependency.'
@@ -811,8 +810,8 @@ try {
         $generatedCodiconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -Raw } else { '' }
         $generatedOcticonSprite = if (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -Raw } else { '' }
         $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and
-            [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq 73 -and
-            [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq 44 -and
+            [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq $codiconSourceCount -and
+            [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq $octiconSourceCount -and
             (Test-PngFile -Path (Join-Path $generatedCodiconRoot 'preview.png')) -and
             (Test-PngFile -Path (Join-Path $generatedOcticonRoot 'preview.png')) -and
             -not (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'preview.svg')) -and
@@ -962,7 +961,7 @@ try {
     $assessmentPaneValid = $indexContent -match 'class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace"' -and $indexContent -match 'data-assessment-pane="assessments"' -and $indexContent -match 'data-assessment-pane="details"' -and $indexContent -match 'id="assessment-results-list-panel" role="tabpanel"' -and $indexContent -match 'id="assessment-results-detail" role="tabpanel"[^>]*hidden' -and $stylesContent -match '#assessment-results-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-panel\.workspace-tab-panel\.active\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-detail\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $appContent -match 'assessmentPane:\s*"assessments"' -and $appContent -match 'state\.assessmentPane = "assessments";\s*renderAll\(\);[\s\S]*?showAssessmentPane\("assessments"\)' -and $appContent -match 'selectAssessmentResult\(row\.dataset\.assessmentKey\);\s*showAssessmentPane\("details"\)' -and $appContent -match 'selectAssessmentResult, \(\) => showAssessmentPane\("details"\)' -and $appContent -match 'function syncAssessmentResultRows\(' -and $appContent -match 'row\.dataset\.assessmentKey === state\.assessmentActiveKey' -and $appContent -match 'function showAssessmentPane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "assessments"'
     Add-TestResult -Name 'assessment-pane-navigation' -Passed $assessmentPaneValid -Detail 'Assessment Results always exposes full-width Assessments and Details tabs, initializes without a selection, opens Details on row activation, and synchronizes the selected-row highlight from one state owner.'
 
-    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 6' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
+    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'function updateOverrideLifecycle\(' -and $appContent -match 'repairOverridePlanMembership\(\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, override, \{ \.\.\.defaultDecision\(candidate\), \.\.\.createPlanMembership\("override"\) \}\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'class="button warning-action clickable"[^>]*data-override-open' -and $appContent -match '\$\{icon\("chat-sparkle-error"\)\}Contest Assessment' -and $stylesContent -match '--warning-action-background:\s*#352a05' -and $stylesContent -match '--warning-action-background-hover:\s*#453b19' -and $stylesContent -match '--warning-action-border:\s*#b89500' -and $stylesContent -match '--warning-action-foreground:\s*#ffffff' -and $stylesContent -match '\.button\.warning-action\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background\);[^}]*border-color:\s*var\(--warning-action-border\)' -and $stylesContent -match '\.button\.warning-action:hover\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background-hover\);[^}]*border-color:\s*var\(--warning-action-border\)'
     Add-TestResult -Name 'maintainer-applicability-override' -Passed $overrideContractValid -Detail 'Authenticated Hosted CODEOWNERS can atomically move an exclusion into Overrides and the plan, while removal returns it to active exclusions without mutating the AI assessment.'
@@ -1023,6 +1022,17 @@ try {
     $detailPresentationValid = $detailLayoutValid -and $sharedPresentationValid -and $actionControlsValid -and $assessmentLegendValid -and $appContent -match 'candidate-state \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'return value === "no-change" \? "No Change"'
     $detailPresentationValid = $detailPresentationValid -and $appContent -match 'if \(!candidate\) \{[\s\S]*?icon\("tasklist"\)[\s\S]*?<h2>Select a Candidate</h2>[\s\S]*?refreshPresentation\(\);\s*return;' -and $stylesContent -match '--info-foreground:\s*#3a94bc' -and $stylesContent -match '--warning-foreground:\s*#e5ba7d' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.empty-state\.warning-state svg\s*\{[^}]*color:\s*var\(--warning-foreground\)' -and $stylesContent -match 'html\.theme-hosted-dark body \.empty-state > :is\(h2, h3\)\s*\{[^}]*font-size:\s*18px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*24px !important'
     $detailPresentationValid = $detailPresentationValid -and $appContent -match 'function renderCatalogStatusBadge\(catalogStatus\)' -and $appContent -match 'function renderMappedHostedRules\(catalogStatus, includePlacements = false\)' -and $appContent -match 'if \(!catalogStatus\.rules\.length\) return ""' -and ([regex]::Matches($appContent, 'renderCatalogStatusBadge\(catalogStatus\)').Count -eq 3) -and ([regex]::Matches($appContent, 'renderMappedHostedRules\(catalogStatus').Count -eq 3) -and $appContent -match 'Mapped Hosted Rules:' -and $appContent -match 'label: "Retired"' -and $appContent -notmatch 'Retired Mapping|Hosted Catalog Status:|No authoritative mapping|No Hosted rule is mapped to this source candidate'
+    $detailPresentationValid = $detailPresentationValid -and
+        $appContent -notmatch 'wording\.presentation === "member"' -and
+        $appContent -match 'renderRuleReferences\(issue\.bannerMessage, issue\.ruleIds, "rule-issue-banner-reference"\)' -and
+        $appContent -match '<span class="section-label rule-issue-assessment-label">Assessment:</span>\s*<section class="rule-issue-assessment">' -and
+        $stylesContent -match '--error-foreground:\s*#f6d1d3' -and
+        $stylesContent -match '\.rule-issue-banner\s*\{[^}]*border:\s*1px solid var\(--warning-action-border\);[^}]*border-radius:\s*4px' -and
+        $stylesContent -match '\.rule-issue-banner\.contradiction\s*\{[^}]*color:\s*var\(--error-foreground\);[^}]*background:\s*var\(--error-background\);[^}]*border:\s*1px solid var\(--error-border\)' -and
+        $stylesContent -match '\.rule-issue-banner > \.codicon\s*\{[^}]*transform:\s*translateY\(2px\)' -and
+        $stylesContent -match '\.rule-issue-banner-reference\s*\{[^}]*color:\s*inherit;[^}]*font-weight:\s*600 !important' -and
+        $stylesContent -match '\.rule-issue-assessment\s*\{[^}]*margin-top:\s*8px;[^}]*background:\s*var\(--surface-quiet\);[^}]*border-left:\s*4px solid var\(--accent\)' -and
+        $stylesContent -match '\.rule-issue-assessment-label\s*\{[^}]*display:\s*block;[^}]*margin-top:\s*16px'
     Add-TestResult -Name 'detail-presentation-contract' -Passed $detailPresentationValid -Detail 'Candidates and Details use connected full-width tabs; empty Details renders its selection illustration and prompt, while selected details retain the approved evidence and control presentation.'
 
     $staticInformationColorsValid = $stylesContent -match '--ink: #bfbfbf' -and $stylesContent -match '--muted: #8c8c8c' -and $stylesContent -match '\.stage-link\s*\{[^}]*color:\s*var\(--muted\)' -and $stylesContent -match '\.stage-link\.active\s*\{[^}]*color:\s*var\(--ink\);[^}]*background:\s*rgba\(255, 255, 255, 0\.13\)' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.save-indicator\s*\{[^}]*color:\s*#89d185' -and $stylesContent -match '\.tree-impact\s*\{[^}]*color:\s*var\(--blue\)' -and $stylesContent -match '\.toast\s*\{[^}]*background:\s*#202122;[^}]*border:\s*1px solid var\(--line\);[^}]*border-radius:\s*4px'
@@ -1104,7 +1114,7 @@ try {
         $appContent -match 'candidate\.recommendation\.retireHostedRuleIds' -and
         $appContent -match 'function isActionableDecision\(' -and
         $appContent -match 'createPlanMembership\(isPromotionAction\(action\) \|\| retireHostedRuleIds\.length \? "manual" : "none"\)' -and
-        $appContent -match 'SESSION_SCHEMA_VERSION = 6' -and
+        $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and
         $appContent -match 'WORKBENCH_DRAFT_SCHEMA_VERSION = 4' -and
         $appContent -notmatch 'recommendedRetirementRuleIds|relatedHostedRules|isPromotionOwner|data-decision-field="proposedHostedRuleId"'
     Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Catalog-owned mapping controls lifecycle actions and immutable identity; Rule Actions shows the generated ID in a flush embedded header, and related coverage cannot infer ownership.'
@@ -1260,17 +1270,15 @@ try {
         $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
         $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
         $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and
-        $launcherContent -match '\[switch\]\$Rebuild' -and
-        $launcherContent -match '\$currentInputFingerprint = Get-WorkbenchInputFingerprint' -and
-        $launcherContent -match '\$refreshDisplay = \$Rebuild -or -not \$stagedDisplayExists -or \$stagedInputFingerprint -cne \$currentInputFingerprint' -and
-        $launcherContent -match '''REUSED_FRESH_DISPLAY''' -and
-        $launcherContent -match '''REFRESHED_CHANGED_INPUTS''' -and
+        $launcherContent -notmatch '\[switch\]\$Rebuild' -and
+        $launcherContent -notmatch 'Get-WorkbenchInputFingerprint|REUSED_FRESH_DISPLAY|REFRESHED_CHANGED_INPUTS|stagedInputFingerprint' -and
+        $launcherContent -match '''REBUILT_CURRENT_SOURCES''' -and
         $launcherContent -notmatch '\$DisplayPath|Remove-Item -LiteralPath \$stagedDisplayPath'
     $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "SiteDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/site'\)" -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Normal launches reuse the durable validated display, while explicit -Rebuild runs independently cached assessment and reconciliation and publishes only after validation.'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Every launch rebuilds the ephemeral display from independently cached assessment and reconciliation results and publishes only after validation.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
-        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and $stageResult.readOnly -and (@($stageResult.allowedMethods) -join ',') -eq 'GET,HEAD,POST' -and $stageResult.shutdownEndpoint -eq 'POST /shutdown' -and $stageResult.relationshipEndpoint -eq 'POST /reconcile-rule'
+        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
         Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, and exposes only token-authenticated shutdown and scoped relationship operations.'
     }
 
@@ -1297,11 +1305,25 @@ try {
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
     $null = New-Item -ItemType Directory -Path $shutdownSiteDirectory -Force
+    foreach ($assetName in @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg')) {
+        Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
+    }
+    Copy-Item -LiteralPath (Join-Path $workbenchRoot 'icons') -Destination $shutdownSiteDirectory -Recurse
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $shutdownSiteDirectory 'workbench-display.json')
+    Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $shutdownSiteDirectory 'workbench-rule-issues.json')
+    $shutdownToken = 'a' * 64
+    $operationToken = 'b' * 64
+    $shutdownConfig = [ordered]@{
+        shutdownToken = $shutdownToken
+        operationToken = $operationToken
+        maintainerIdentity = [ordered]@{ status = 'unavailable'; login = $null; isCodeOwner = $false; reason = 'Fixture identity.' }
+        targetRepository = [ordered]@{ status = 'unavailable'; repository = $null; branch = $null; commit = $null; upstreamRepository = $null; upstreamBranch = $null; aheadBy = $null; behindBy = $null; reason = 'Fixture target.' }
+    } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText((Join-Path $shutdownSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
     $serverJob = Start-Job -ScriptBlock {
-        param($LauncherPath, $SiteDirectory, $Port, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory)
-        & pwsh -NoProfile -File $LauncherPath -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -OutputFormat Json -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory
-    } -ArgumentList $launcherPath, $shutdownSiteDirectory, $shutdownPort, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache')
+        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory)
+        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -NoLaunch
+    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache')
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)

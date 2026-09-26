@@ -179,7 +179,8 @@ function Invoke-ReconciliationRunner {
         [Parameter(Mandatory = $true)][string]$Name,
         [int]$MaxRetries = 0,
         [string]$ResumeRunDirectory,
-        [string]$CacheDirectory
+        [string]$CacheDirectory,
+        [string]$Model = 'fixture-model'
     )
 
     $outputPath = Join-Path $tempRoot "$Name-display.json"
@@ -190,7 +191,7 @@ function Invoke-ReconciliationRunner {
         GuidanceCapacityPath = $guidanceCapacityPath
         OutputPath = $outputPath
         EvaluatorScriptPath = $EvaluatorScriptPath
-        Model = 'fixture-model'
+        Model = $Model
         ReasoningEffort = 'high'
         MaxRetries = $MaxRetries
         RetryDelayMilliseconds = 0
@@ -270,7 +271,7 @@ try {
     $runnerTokens = $null
     $runnerParseErrors = $null
     $runnerAst = [Management.Automation.Language.Parser]::ParseFile($runnerPath, [ref]$runnerTokens, [ref]$runnerParseErrors)
-    $identityFunction = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReconciliationBaselineIdentityJson' }, $true)
+    $identityFunction = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReconciliationSourceFiles' }, $true)
     . ([scriptblock]::Create($identityFunction.Extent.Text))
 
     Write-TestProgress -Name 'fixture-validation' -Detail 'Preparing source lanes, assessment set, reconciliation response, catalog, and capacity'
@@ -356,9 +357,9 @@ try {
     $changedMeaningBaseline.entries[0].assessments[0].sourceMeaning = 'Changed assessment meaning.'
     $changedMeaningBaselinePath = Join-Path $tempRoot 'changed-meaning-assessment-set.json'
     Write-JsonFixture -Path $changedMeaningBaselinePath -Value $changedMeaningBaseline
-    $semanticIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -ceq (Get-ReconciliationBaselineIdentityJson -Path $volatileBaselinePath -SourceDefinitionId 'contributor-guidance') -and
-        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -cne (Get-ReconciliationBaselineIdentityJson -Path $changedMeaningBaselinePath -SourceDefinitionId 'contributor-guidance')
-    Add-TestResult -Name 'recovery-semantic-baseline-identity' -Passed $semanticIdentityValid -Detail 'Recovery ignores regenerated timestamps and inventory snapshot hashes while rejecting changed assessment meaning.'
+    $sourceFileIdentityValid = (@(Get-ReconciliationSourceFiles -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') | ConvertTo-Json -Compress) -ceq (@(Get-ReconciliationSourceFiles -Path $volatileBaselinePath -SourceDefinitionId 'contributor-guidance') | ConvertTo-Json -Compress) -and
+        (@(Get-ReconciliationSourceFiles -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') | ConvertTo-Json -Compress) -ceq (@(Get-ReconciliationSourceFiles -Path $changedMeaningBaselinePath -SourceDefinitionId 'contributor-guidance') | ConvertTo-Json -Compress)
+    Add-TestResult -Name 'recovery-source-file-hash-identity' -Passed $sourceFileIdentityValid -Detail 'Recovery identity consists only of direct source file content hashes and ignores timestamps, inventory metadata, and derived assessment meaning.'
 
     $changedParserBaseline = Copy-JsonObject -Value $assessmentSet
     $changedParserDefinition = @($changedParserBaseline.runConfiguration.sourceDefinitions | Where-Object { [string]$_.sourceDefinitionId -ceq 'maintainer-proposals' })[0]
@@ -366,9 +367,8 @@ try {
     $changedParserBaseline.assessmentRunConfigurationSha256 = Get-SourceAssessmentRunConfigurationSha256 -RunConfiguration $changedParserBaseline.runConfiguration
     $changedParserBaselinePath = Join-Path $tempRoot 'changed-parser-assessment-set.json'
     Write-JsonFixture -Path $changedParserBaselinePath -Value $changedParserBaseline
-    $laneScopedIdentityValid = (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'contributor-guidance') -ceq (Get-ReconciliationBaselineIdentityJson -Path $changedParserBaselinePath -SourceDefinitionId 'contributor-guidance') -and
-        (Get-ReconciliationBaselineIdentityJson -Path $assessmentSetPath -SourceDefinitionId 'maintainer-proposals') -cne (Get-ReconciliationBaselineIdentityJson -Path $changedParserBaselinePath -SourceDefinitionId 'maintainer-proposals')
-    Add-TestResult -Name 'reconciliation-cache-identity-source-lane' -Passed $laneScopedIdentityValid -Detail 'Changing one source parser contract invalidates only that source lane reconciliation identity.'
+    $parserMetadataIgnored = (@(Get-ReconciliationSourceFiles -Path $assessmentSetPath -SourceDefinitionId 'maintainer-proposals') | ConvertTo-Json -Compress) -ceq (@(Get-ReconciliationSourceFiles -Path $changedParserBaselinePath -SourceDefinitionId 'maintainer-proposals') | ConvertTo-Json -Compress)
+    Add-TestResult -Name 'reconciliation-cache-ignores-parser-metadata' -Passed $parserMetadataIgnored -Detail 'Changing parser metadata does not invalidate reconciliation when direct source file hashes are unchanged.'
 
     $fakeEvaluatorPath = Join-Path $tempRoot 'fake-reconciliation-evaluator.ps1'
     $fakeEvaluator = @'
@@ -463,7 +463,7 @@ $json = $json -replace '"implementationModels":\[[^\]]+\]', '"implementationMode
     $cacheSeedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-seed' -CacheDirectory $persistentCacheDirectory
     $env:RECONCILIATION_FAIL_ALL = '1'
     try {
-        $cachedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-reuse' -CacheDirectory $persistentCacheDirectory
+        $cachedRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $fakeEvaluatorPath -Name 'cache-reuse' -CacheDirectory $persistentCacheDirectory -Model 'different-model'
     }
     finally {
         Remove-Item Env:RECONCILIATION_FAIL_ALL -ErrorAction SilentlyContinue

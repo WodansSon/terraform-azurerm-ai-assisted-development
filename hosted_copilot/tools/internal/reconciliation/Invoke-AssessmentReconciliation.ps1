@@ -122,32 +122,17 @@ function Test-EvaluatorDraftJson {
     }
 }
 
-function Get-ReconciliationBaselineIdentityJson {
+function Get-ReconciliationSourceFiles {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$SourceDefinitionId
     )
 
     $baseline = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
-    $baseline.PSObject.Properties.Remove('generatedAt')
-    $baseline.PSObject.Properties.Remove('inventoryHashes')
-    $baseline.PSObject.Properties.Remove('priorInventoryHashes')
-    $baseline.PSObject.Properties.Remove('assessmentRunConfigurationSha256')
-    $sourceDefinitions = @($baseline.runConfiguration.sourceDefinitions | Where-Object { [string]$_.sourceDefinitionId -ceq $SourceDefinitionId })
-    if ($sourceDefinitions.Count -ne 1) {
-        throw "Reconciliation baseline does not contain exactly one source definition for cache identity: $SourceDefinitionId"
-    }
-    $baseline.runConfiguration.sourceDefinitions = $sourceDefinitions
-    foreach ($entry in @($baseline.entries)) {
-        if ($null -ne $entry.priorSourceEvidence) {
-            $entry.priorSourceEvidence.PSObject.Properties.Remove('observedAt')
-            $entry.priorSourceEvidence.PSObject.Properties.Remove('inventorySha256')
-        }
-        foreach ($assessment in @($entry.assessments)) {
-            $assessment.assessmentProvenance.PSObject.Properties.Remove('assessedAt')
-        }
-    }
-    return $baseline | ConvertTo-Json -Depth 100 -Compress
+    return @($baseline.entries |
+        Where-Object { [string]$_.sourceRef.sourceDefinitionId -ceq $SourceDefinitionId } |
+        ForEach-Object { [ordered]@{ sourceId = [string]$_.sourceRef.sourceId; contentSha256 = [string]$_.sourceRef.contentSha256 } } |
+        Sort-Object -Property @{ Expression = { [string]$_.sourceId } })
 }
 
 function Write-JsonAtomically {
@@ -168,6 +153,60 @@ function Write-JsonAtomically {
     finally {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Read-ReconciliationCacheLedger {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $entriesByBatch = @{}
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $entriesByBatch
+    }
+    $ledger = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
+    if (Compare-Object -ReferenceObject @('entries', 'kind', 'schemaVersion') -DifferenceObject @($ledger.PSObject.Properties.Name | Sort-Object)) {
+        throw 'Reconciliation cache ledger has an unexpected property set'
+    }
+    if ([int]$ledger.schemaVersion -ne 1 -or [string]$ledger.kind -cne 'hosted-assessment-reconciliation-cache') {
+        throw 'Reconciliation cache ledger header is invalid'
+    }
+    foreach ($cacheEntry in @($ledger.entries)) {
+        if (Compare-Object -ReferenceObject @('batchNumber', 'result', 'sourceDefinitionId', 'sourceFiles') -DifferenceObject @($cacheEntry.PSObject.Properties.Name | Sort-Object)) {
+            throw 'Reconciliation cache ledger entry has an unexpected property set'
+        }
+        $batchKey = "$([string]$cacheEntry.sourceDefinitionId):$([int]$cacheEntry.batchNumber)"
+        if ($entriesByBatch.ContainsKey($batchKey)) {
+            throw "Reconciliation cache ledger contains duplicate batch: $batchKey"
+        }
+        $entriesByBatch[$batchKey] = $cacheEntry
+    }
+    return $entriesByBatch
+}
+
+function Write-ReconciliationCacheLedger {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [object[]]$UpdatedEntries = @(),
+        [string[]]$RemovedKeys = @()
+    )
+
+    return Invoke-WithExclusiveFileLock -Path ($Path + '.lock') -Operation {
+        param($LedgerPath, $Updates, $Removals)
+
+        $entriesByBatch = Read-ReconciliationCacheLedger -Path $LedgerPath
+        foreach ($batchKey in @($Removals)) {
+            $entriesByBatch.Remove([string]$batchKey)
+        }
+        foreach ($cacheEntry in @($Updates)) {
+            $batchKey = "$([string]$cacheEntry.sourceDefinitionId):$([int]$cacheEntry.batchNumber)"
+            $entriesByBatch[$batchKey] = $cacheEntry
+        }
+        Write-JsonAtomically -Path $LedgerPath -Value ([ordered]@{
+            schemaVersion = 1
+            kind = 'hosted-assessment-reconciliation-cache'
+            entries = @($entriesByBatch.Values | Sort-Object -Property @{ Expression = { [string]$_.sourceDefinitionId } }, @{ Expression = { [int]$_.batchNumber } })
+        })
+        return $entriesByBatch
+    } -ArgumentList @($Path, @($UpdatedEntries), @($RemovedKeys))
 }
 
 function Save-ReconciliationAttemptFailure {
@@ -395,40 +434,37 @@ try {
     $cachedBatchCount = 0
     $reusedBatchCount = 0
     $cacheMetadataByBatch = @{}
-    foreach ($batch in $reconciliationBatches) {
-        $cacheIdentity = [ordered]@{
-            schemaVersion = 2
-            sourceDefinitionId = [string]$batch.SourceDefinitionId
-            baselineIdentitySha256 = Get-Sha256 -Content (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId))
-            hostedCatalogSha256 = Get-Sha256 -Path $snapshotCatalogPath
-            protectedRulesContentSha256 = Get-Sha256 -Path $snapshotProtectedRulesPath
-            reconciliationContractSha256 = Get-Sha256 -Path $snapshotContractPath
-            draftSchemaSha256 = Get-Sha256 -Path $draftSchemaPath
-            promptSha256 = Get-Sha256 -Path $promptPath
-            evaluator = $evaluatorIdentity
-            model = $Model
-            reasoningEffort = $ReasoningEffort
+    $cacheLedgerPath = Join-Path $resolvedCacheDirectory 'reconciliation-cache.json'
+    $cacheEntriesByBatch = Invoke-WithExclusiveFileLock -Path ($cacheLedgerPath + '.lock') -Operation {
+        param($LedgerPath, $ReportSkipped)
+
+        try {
+            Read-ReconciliationCacheLedger -Path $LedgerPath
         }
-        $cacheKey = Get-Sha256 -Content ($cacheIdentity | ConvertTo-Json -Compress)
-        $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
-        $cacheMetadataByBatch[[int]$batch.Number] = [pscustomobject]@{ Identity = $cacheIdentity; Key = $cacheKey; Path = $cachePath }
-        if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
+        catch {
+            if ($ReportSkipped) {
+                Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'assessment-reconciliation/cache' -Detail $_.Exception.Message -NameWidth 42)
+            }
+            Remove-Item -LiteralPath $LedgerPath -Force -ErrorAction SilentlyContinue
+            return @{}
+        }
+    } -ArgumentList @($cacheLedgerPath, (-not $Quiet))
+    foreach ($batch in $reconciliationBatches) {
+        $sourceFiles = @(Get-ReconciliationSourceFiles -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId))
+        $batchKey = "$([string]$batch.SourceDefinitionId):$([int]$batch.Number)"
+        $cacheMetadataByBatch[[int]$batch.Number] = [pscustomobject]@{ BatchKey = $batchKey; SourceFiles = $sourceFiles }
+        if (-not $cacheEntriesByBatch.ContainsKey($batchKey)) {
             continue
         }
 
         $batchResponsePath = Join-Path $batch.Directory 'assessment-reconciliation-draft.json'
         $batchDisplayPath = Join-Path $batch.Directory 'workbench-display.json'
         try {
-            $cacheEntry = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -DateKind String
-            $actualProperties = @($cacheEntry.PSObject.Properties.Name | Sort-Object)
-            if (Compare-Object -ReferenceObject @('cacheKey', 'draft', 'identity', 'kind', 'schemaVersion') -DifferenceObject $actualProperties) {
-                throw 'cached reconciliation entry has an unexpected property set'
+            $cacheEntry = $cacheEntriesByBatch[$batchKey]
+            if ((@($cacheEntry.sourceFiles) | ConvertTo-Json -Compress) -cne ($sourceFiles | ConvertTo-Json -Compress)) {
+                throw 'cached reconciliation source files do not match'
             }
-            if ([int]$cacheEntry.schemaVersion -ne 1 -or [string]$cacheEntry.kind -cne 'hosted-assessment-reconciliation-batch-cache' -or [string]$cacheEntry.cacheKey -cne $cacheKey -or
-                ($cacheEntry.identity | ConvertTo-Json -Compress) -cne ($cacheIdentity | ConvertTo-Json -Compress)) {
-                throw 'cached reconciliation identity does not match'
-            }
-            [IO.File]::WriteAllText($batchResponsePath, (($cacheEntry.draft | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText($batchResponsePath, (($cacheEntry.result | ConvertTo-Json -Depth 100) + "`n"), [Text.UTF8Encoding]::new($false))
             if (-not ((Get-Content -LiteralPath $batchResponsePath -Raw) | Test-Json -SchemaFile $draftSchemaPath -ErrorAction Stop)) {
                 throw 'cached reconciliation draft does not satisfy its schema'
             }
@@ -450,7 +486,8 @@ try {
             $reusedBatchCount++
         }
         catch {
-            Remove-Item -LiteralPath $cachePath, $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
+            $cacheEntriesByBatch = Write-ReconciliationCacheLedger -Path $cacheLedgerPath -RemovedKeys @($batchKey)
+            Remove-Item -LiteralPath $batchResponsePath, $batchDisplayPath -Force -ErrorAction SilentlyContinue
             if (-not $Quiet) {
                 Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name ("assessment-reconciliation {0}/{1}" -f $batch.Number, $reconciliationBatches.Count) -Detail ("{0} cache rejected" -f $batch.SourceDefinitionId) -NameWidth 42)
                 foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Message ([string]$_.Exception.Message))) {
@@ -461,25 +498,6 @@ try {
     }
     if ($null -ne $resolvedResumeRunDirectory) {
         $recoveryRunDirectory = $resolvedResumeRunDirectory
-        $retainedConfigurationPath = Join-Path $recoveryRunDirectory 'reconciliation-run.json'
-        $retainedBaselinePath = Join-Path $recoveryRunDirectory 'source-assessment-baseline.json'
-        $resumeConfigurationValid = if (Test-Path -LiteralPath $retainedConfigurationPath -PathType Leaf) {
-            $retainedConfiguration = Get-Content -LiteralPath $retainedConfigurationPath -Raw | ConvertFrom-Json
-            ($retainedConfiguration | ConvertTo-Json -Compress) -ceq ($reconciliationRunConfiguration | ConvertTo-Json -Compress)
-        }
-        elseif (Test-Path -LiteralPath $retainedBaselinePath -PathType Leaf) {
-            $retainedBaseline = Get-Content -LiteralPath $retainedBaselinePath -Raw | ConvertFrom-Json
-            [string]$retainedBaseline.runConfiguration.evaluator -ceq $evaluatorIdentity -and
-                [string]$retainedBaseline.runConfiguration.model -ceq $Model -and
-                [string]$retainedBaseline.runConfiguration.reasoningEffort -ceq $ReasoningEffort
-        }
-        else {
-            $false
-        }
-        if (-not $resumeConfigurationValid) {
-            throw 'Reconciliation recovery directory is incompatible with the current run. Rerun without -ReconciliationResumeDirectory to use validated cache entries.'
-        }
-
         foreach ($batch in $reconciliationBatches) {
             if ($validatedDrafts.ContainsKey([int]$batch.Number)) {
                 continue
@@ -487,17 +505,10 @@ try {
             $retainedBatchDirectory = Join-Path $recoveryRunDirectory ('batches/batch-{0:D3}' -f $batch.Number)
             $retainedBaselinePath = Join-Path $retainedBatchDirectory 'source-assessment-baseline.json'
             $retainedResponsePath = Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.json'
-            $retainedStaticPairs = @(
-                @((Join-Path $batch.Directory 'instruction-catalog.json'), (Join-Path $retainedBatchDirectory 'instruction-catalog.json')),
-                @((Join-Path $batch.Directory 'protected-rules.json'), (Join-Path $retainedBatchDirectory 'protected-rules.json')),
-                @((Join-Path $batch.Directory 'assessment-reconciliation-v4.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-v4.json')),
-                @((Join-Path $batch.Directory 'assessment-reconciliation-draft.schema.json'), (Join-Path $retainedBatchDirectory 'assessment-reconciliation-draft.schema.json')),
-                @((Join-Path $batch.Directory 'AssessmentReconciliation-v4.md'), (Join-Path $retainedBatchDirectory 'AssessmentReconciliation-v4.md'))
-            )
             if (-not (Test-Path -LiteralPath $retainedResponsePath -PathType Leaf) -or
                 -not (Test-Path -LiteralPath $retainedBaselinePath -PathType Leaf) -or
-                @($retainedStaticPairs | Where-Object { -not (Test-Path -LiteralPath $_[1] -PathType Leaf) -or (Get-FileHash -LiteralPath $_[0] -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $_[1] -Algorithm SHA256).Hash }).Count -gt 0 -or
-                (Get-ReconciliationBaselineIdentityJson -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId)) -cne (Get-ReconciliationBaselineIdentityJson -Path $retainedBaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId))) {
+                (@(Get-ReconciliationSourceFiles -Path $batch.BaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId)) | ConvertTo-Json -Compress) -cne
+                (@(Get-ReconciliationSourceFiles -Path $retainedBaselinePath -SourceDefinitionId ([string]$batch.SourceDefinitionId)) | ConvertTo-Json -Compress)) {
                 continue
             }
 
@@ -521,13 +532,8 @@ try {
                 $null = @(& $snapshotBuilderPath @batchBuilderParameters 2>&1)
                 $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
                 $cacheMetadata = $cacheMetadataByBatch[[int]$batch.Number]
-                Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
-                    schemaVersion = 1
-                    kind = 'hosted-assessment-reconciliation-batch-cache'
-                    cacheKey = $cacheMetadata.Key
-                    identity = $cacheMetadata.Identity
-                    draft = $validatedDrafts[[int]$batch.Number]
-                })
+                $cacheUpdate = [ordered]@{ sourceDefinitionId = [string]$batch.SourceDefinitionId; batchNumber = [int]$batch.Number; sourceFiles = @($cacheMetadata.SourceFiles); result = $validatedDrafts[[int]$batch.Number] }
+                $cacheEntriesByBatch = Write-ReconciliationCacheLedger -Path $cacheLedgerPath -UpdatedEntries @($cacheUpdate)
                 $reusedBatchCount++
             }
             catch {
@@ -707,13 +713,8 @@ try {
                 }
                 $validatedDrafts[[int]$batch.Number] = Get-Content -LiteralPath $batchResponsePath -Raw | ConvertFrom-Json -DateKind String
                 $cacheMetadata = $cacheMetadataByBatch[[int]$batch.Number]
-                Write-JsonAtomically -Path $cacheMetadata.Path -Value ([ordered]@{
-                    schemaVersion = 1
-                    kind = 'hosted-assessment-reconciliation-batch-cache'
-                    cacheKey = $cacheMetadata.Key
-                    identity = $cacheMetadata.Identity
-                    draft = $validatedDrafts[[int]$batch.Number]
-                })
+                $cacheUpdate = [ordered]@{ sourceDefinitionId = [string]$batch.SourceDefinitionId; batchNumber = [int]$batch.Number; sourceFiles = @($cacheMetadata.SourceFiles); result = $validatedDrafts[[int]$batch.Number] }
+                $cacheEntriesByBatch = Write-ReconciliationCacheLedger -Path $cacheLedgerPath -UpdatedEntries @($cacheUpdate)
                 $batchErrors.Remove([int]$batch.Number)
                 $null = $completedBatchNumbers.Add([int]$batch.Number)
                 $completedPayloadBytes += [long]$batch.PayloadSizeBytes
@@ -795,7 +796,8 @@ try {
     }
 
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/display' -Detail 'building Workbench display' -NameWidth 42)
+        Write-ValidationSectionHeader -Title 'Rule Issues' | Write-Host
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/candidates' -Detail 'Building candidate projection' -NameWidth 42)
     }
     $builderParameters = @{
         RepositoryRoot = $runRepositoryRoot
@@ -818,7 +820,7 @@ try {
     }
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail 'Workbench display built' -NameWidth 42)
+        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/candidates' -Detail 'Candidate projection built' -NameWidth 42)
     }
     $succeeded = $true
 }

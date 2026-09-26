@@ -34,10 +34,8 @@ $ErrorActionPreference = 'Stop'
 
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 $sourceEvidencePath = Join-Path $PSScriptRoot '../../modules/shared/SourceEvidenceValidation.psm1'
-$workbenchFingerprintPath = Join-Path $PSScriptRoot '../../modules/shared/WorkbenchInputFingerprint.psm1'
 Import-Module -Name $sourceEvidencePath -Force
 Import-Module -Name $helpersPath -Force
-Import-Module -Name $workbenchFingerprintPath -Force
 
 function Read-JsonFile {
     param(
@@ -122,8 +120,8 @@ if ([string]$baseline.hostedCatalogSha256 -cne $catalogInput.Snapshot.Sha256) {
 
 $inventoryRecords = @{}
 $inventoryHashes = [ordered]@{}
-$inventoryContentHashes = [ordered]@{}
 $inventoryRevisions = @{}
+$sourceFiles = [Collections.Generic.List[object]]::new()
 $inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
 foreach ($inventoryPath in $InventoryPaths) {
     $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Source inventory'
@@ -137,9 +135,9 @@ foreach ($inventoryPath in $InventoryPaths) {
     }
     Assert-SourceInventoryIntegrity -Inventory $inventory
     $inventoryHashes[$sourceDefinitionId] = $inventoryInput.Snapshot.Sha256
-    $inventoryContentHashes[$sourceDefinitionId] = [string]$inventory.collection.inventorySha256
     $inventoryRevisions[$sourceDefinitionId] = $inventory.collection.sourceRevision
     foreach ($record in @($inventory.records)) {
+        $sourceFiles.Add([ordered]@{ sourceDefinitionId = $sourceDefinitionId; sourceId = [string]$record.sourceId; contentSha256 = [string]$record.contentSha256 })
         $sourceKey = $sourceDefinitionId + [char]0 + [string]$record.sourceId
         if ($inventoryRecords.ContainsKey($sourceKey)) {
             throw "Source inventories contain duplicate source identity: $sourceDefinitionId/$($record.sourceId)"
@@ -768,8 +766,6 @@ foreach ($entry in @($baseline.entries)) {
     }
 }
 
-$inputFingerprint = Get-WorkbenchInputFingerprint -CatalogContentSha256 $catalogInput.Snapshot.Sha256 -ProtectedRulesContentSha256 $protectedRulesInput.Snapshot.Sha256 -InventoryHashes $inventoryContentHashes
-
 $catalogProjection = @($catalog.rules | ForEach-Object {
     $hostedId = [string]$_.id
     $placements = [Collections.Generic.List[object]]::new()
@@ -822,7 +818,7 @@ $display = [ordered]@{
     kind = 'hosted-rule-workbench-display'
     generatedAt = ConvertTo-UtcTimestamp -Value $GeneratedAt
     readOnly = $true
-    inputFingerprint = $inputFingerprint
+    sourceFiles = @($sourceFiles | Sort-Object -Property @{ Expression = { [string]$_.sourceDefinitionId } }, @{ Expression = { [string]$_.sourceId } })
     reconciliation = [ordered]@{
         status = 'ready'
     }

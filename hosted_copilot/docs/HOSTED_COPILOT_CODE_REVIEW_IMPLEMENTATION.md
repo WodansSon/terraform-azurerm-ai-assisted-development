@@ -401,17 +401,11 @@ The static proof-of-concept interface lives beneath `hosted_copilot/workbench/`.
 pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
 ```
 
-The normal command refreshes Workbench assets, validates the durable `%LOCALAPPDATA%\hosted-workbench\site\workbench-display.json`, and serves it at `http://127.0.0.1:43143/`. It does not collect, assess, or reconcile sources. On a new machine or whenever the maintainer intentionally requests fresh semantic data, run:
-
-```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild
-```
-
-An explicit rebuild collects the three source inventories, assesses their source-local meanings, reconciles them into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid display. Each phase reports progress. If any phase fails, the launcher preserves the prior validated display.
+Every launch collects the three source inventories, assesses cache misses, reconciles cache misses into Hosted recommendations with assigned rule IDs, computes guidance capacity, and stages one schema-valid disposable display. Each phase reports progress. If any phase fails, the launcher preserves the prior validated display.
 
 Source assessment emits only independently enforceable meanings from each source record; it does not propose Hosted rule wording. Reconciliation exclusively combines equivalent or complementary meanings into one or two compact sentences. Every recommendation must explain how its final rule text preserves each member assessment meaning, and trusted display construction rejects missing, duplicate, or non-member coverage.
 
-Validated assessments are cached per source record under `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, and validated reconciliation results are cached per source-defined batch under `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`. During explicit rebuilds, unchanged records and batches are revalidated and reused, while changed identities return only affected work to evaluation. Source assessment and reconciliation each evaluate up to three isolated cache misses concurrently by default, validate results in the parent process, merge them deterministically, and preserve complete coverage before publishing the display. The durable display is presentation state rather than semantic cache evidence.
+Validated assessments are stored in one locked `%LOCALAPPDATA%\hosted-workbench\assessment-cache\assessment-cache.json` ledger, and validated reconciliation results are stored in one locked `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache\reconciliation-cache.json` ledger. Source IDs locate entries, while direct source file content hashes are the only reuse values. Source assessment and reconciliation each evaluate up to three isolated cache misses concurrently by default, validate results in the parent process, and perform locked reread-merge-atomic-replace ledger updates. The display is presentation state and is rebuilt on every launch rather than reused as semantic cache evidence.
 
 Every failed evaluator attempt is retained with its validation reason before retry. Duplicate recommendations that claim one existing Hosted target remain strict batch- and final-validation failures. Related coverage cannot establish ownership. When bounded retries cannot produce unique catalog-owned targets, fail before Workbench launch rather than publishing a partially valid or blocked display.
 

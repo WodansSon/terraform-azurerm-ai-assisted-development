@@ -835,10 +835,12 @@ if ($null -ne $timingStem) {
 
     $parallelTimingDirectory = Join-Path $tempRoot 'parallel-timing'
     $env:SOURCE_ASSESSMENT_TIMING_DIRECTORY = $parallelTimingDirectory
-    $modelChangedRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'model-changed-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -MaxParallelBatches 3 -CacheDirectory $runnerCacheDirectory -Model 'gpt-5.3'
+    $modelChangedRun = Invoke-Runner -AcceptedInventoryPaths $changedRunnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'model-changed-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -MaxParallelBatches 3 -CacheDirectory $runnerCacheDirectory -Model 'gpt-5.3'
+    $parallelRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'parallel-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 0 -MaxParallelBatches 3 -CacheDirectory (Join-Path $tempRoot 'parallel-source-cache') -Model 'gpt-5.3'
     Remove-Item Env:SOURCE_ASSESSMENT_TIMING_DIRECTORY -ErrorAction SilentlyContinue
     $modelChangedResult = if ($modelChangedRun.ExitCode -eq 0) { $modelChangedRun.Output | ConvertFrom-Json } else { $null }
-    Add-TestResult -Name 'source-cache-model-invalidation' -Passed ($modelChangedRun.ExitCode -eq 0 -and $modelChangedResult.cachedSourceCount -eq 0 -and $modelChangedResult.evaluatedSourceCount -eq $runnerResult.sourceCount -and $modelChangedResult.evaluatedBatchCount -eq $runnerResult.batchCount) -Detail 'Changing the evaluator model invalidates all otherwise matching source checkpoints.'
+    $parallelResult = if ($parallelRun.ExitCode -eq 0) { $parallelRun.Output | ConvertFrom-Json } else { $null }
+    Add-TestResult -Name 'source-cache-content-only-reuse' -Passed ($modelChangedRun.ExitCode -eq 0 -and $modelChangedResult.cachedSourceCount -eq $runnerResult.sourceCount -and $modelChangedResult.evaluatedSourceCount -eq 0 -and $modelChangedResult.evaluatedBatchCount -eq 0) -Detail 'Changing evaluator metadata preserves every source checkpoint when source file content hashes are unchanged.'
     $parallelIntervals = @(Get-ChildItem -LiteralPath $parallelTimingDirectory -Filter '*.start' -File -ErrorAction SilentlyContinue | ForEach-Object {
         $endPath = Join-Path $parallelTimingDirectory ($_.BaseName + '.end')
         if (Test-Path -LiteralPath $endPath -PathType Leaf) {
@@ -854,7 +856,7 @@ if ($null -ne $timingStem) {
             }
         }
     }
-    Add-TestResult -Name 'source-batch-parallelism' -Passed ($modelChangedRun.ExitCode -eq 0 -and $parallelIntervals.Count -eq $runnerResult.batchCount -and $parallelOverlap) -Detail "A throttle of 3 executes isolated source-assessment evaluator batches concurrently while parent-owned assembly remains deterministic. Completed intervals: $($parallelIntervals.Count); overlap: $parallelOverlap."
+    Add-TestResult -Name 'source-batch-parallelism' -Passed ($parallelRun.ExitCode -eq 0 -and $parallelResult.evaluatedBatchCount -eq $runnerResult.batchCount -and $parallelIntervals.Count -eq $runnerResult.batchCount -and $parallelOverlap) -Detail "A throttle of 3 executes isolated source-assessment evaluator batches concurrently while parent-owned assembly remains deterministic. Completed intervals: $($parallelIntervals.Count); overlap: $parallelOverlap."
     $runnerBaselineJson = if ($runnerExitCode -eq 0) { Get-Content -LiteralPath $runnerOutputPath -Raw } else { '' }
     Add-TestResult -Name 'runner-baseline-output' -Passed ($runnerExitCode -eq 0 -and $runnerResult.assessmentCount -eq 25 -and (Test-JsonInstance -Json $runnerBaselineJson -SchemaPath $baselineSchemaPath)) -Detail 'The runner delegates exhaustive three-lane draft assembly to the trusted baseline builder and emits a schema-valid version 4 snapshot.'
     $runnerBaseline = if ($runnerExitCode -eq 0) { $runnerBaselineJson | ConvertFrom-Json -DateKind String } else { $null }

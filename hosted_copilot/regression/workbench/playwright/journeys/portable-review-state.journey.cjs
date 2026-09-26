@@ -78,6 +78,7 @@ async function run({ page, baseUrl, assert, playback }) {
         originalText,
         originalAction,
         originalActiveKey,
+        ruleIssuesSnapshot: JSON.stringify(state.ruleIssues),
         enabledWhenDirty: !save.disabled,
         checkRequiredBeforeSave: requiresManualRelationshipCheck(candidate, textarea.value)
       };
@@ -110,14 +111,14 @@ async function run({ page, baseUrl, assert, playback }) {
         originalAction: setup.originalAction,
         relationshipStatus: state.session.manualRelationshipChecks[candidate.key].status,
         checkCurrentAfterSave: !requiresManualRelationshipCheck(candidate, saved.proposedText),
-        manualIssueCount: state.ruleIssues.filter((issue) => issue.manualRelationshipCheck && issue.candidateKeys.includes(candidate.key)).length,
+        ruleIssuesUnchanged: JSON.stringify(state.ruleIssues) === setup.ruleIssuesSnapshot,
         relationshipDiagnostics: {
           canonicalCandidate: Boolean(canonicalCandidate),
           canonicalProposedText: canonicalCandidate ? getDecision(canonicalCandidate).proposedText : null,
           activeProposedText: saved.proposedText,
           relationshipCount: manualCheck.relationships.length,
           relatedRuleId: manualCheck.relationships[0]?.hostedRuleId || null,
-          relatedRuleKnown: Boolean(manualCheck.relationships[0] && getRuleIndex().has(manualCheck.relationships[0].hostedRuleId)),
+          relatedRuleKnown: Boolean(manualCheck.relationships[0] && state.bundle.catalog.rules.some((rule) => rule.id === manualCheck.relationships[0].hostedRuleId)),
           sourceRuleId: canonicalCandidate?.catalogMapping.hostedRuleId || canonicalCandidate?.assessment.proposedHostedRuleId || null
         }
       };
@@ -125,9 +126,9 @@ async function run({ page, baseUrl, assert, playback }) {
     }, proposedTextSaveSetup);
     assert(proposedTextSaveResult.enabledWhenDirty && proposedTextSaveResult.disabledAfterSave, "Proposed Hosted Rule save dirty state is incorrect");
     assert(proposedTextSaveResult.checkRequiredBeforeSave && proposedTextSaveResult.relationshipStatus === "current" && proposedTextSaveResult.checkCurrentAfterSave, "Proposed Hosted Rule save did not complete an exact-text relationship check");
-    assert(proposedTextSaveResult.manualIssueCount === 1, `Save-time overlap produced ${proposedTextSaveResult.manualIssueCount} manual Rule Issues instead of 1: ${JSON.stringify(proposedTextSaveResult.relationshipDiagnostics)}`);
+    assert(proposedTextSaveResult.ruleIssuesUnchanged, "Save-time relationship checking mutated the read-only Rule Issues artifact");
     await page.locator('[data-workspace-tab="rule-issues"]').click();
-    await playback.show(page, "Save-time relationship check · overlap appears in Rule Issues");
+    await playback.show(page, "Rule Issues · adjudicated display records remain presentation-only");
     const visibleRuleIssue = await page.locator("#rule-issues-list .rule-issue-row").first().isVisible();
     const ruleIssueUi = await page.evaluate(() => ({
       workspaceTab: state.workspaceTab,
@@ -135,7 +136,7 @@ async function run({ page, baseUrl, assert, playback }) {
       panelActive: document.querySelector("#rule-issues-panel")?.classList.contains("active"),
       rowCount: document.querySelectorAll("#rule-issues-list .rule-issue-row").length
     }));
-    assert(visibleRuleIssue, `Save-time overlap was not visible in Rule Issues: ${JSON.stringify(ruleIssueUi)}`);
+    assert(visibleRuleIssue, `The supplied Rule Issues artifact was not visible: ${JSON.stringify(ruleIssueUi)}`);
     await playback.show(page, "Rule Issues volume · ten rows per category");
     const volumeSetup = await page.evaluate(() => {
       const original = {
@@ -143,7 +144,8 @@ async function run({ page, baseUrl, assert, playback }) {
         activeKey: state.activeRuleIssueKey,
         filter: state.ruleIssueFilter
       };
-      const relatedRule = state.ruleIssues[0].rules.find((rule) => rule.protected) || state.ruleIssues[0].rules[0];
+      const relatedRule = state.ruleIssues[0].rules.find((rule) => rule.status === "protected" || rule.status === "active") || state.ruleIssues[0].rules[0];
+      const candidateKey = state.candidates[0].key;
       const categories = [
         { kind: "contradiction", label: "Contradiction", relationship: "conflicts", id: "CONFLICT" },
         { kind: "duplicate", label: "Duplicate", relationship: "equivalent", id: "DUPLICATE" },
@@ -153,24 +155,26 @@ async function run({ page, baseUrl, assert, playback }) {
         const ordinal = String(index + 1).padStart(2, "0");
         const sourceRuleId = `IMPL-STRESS-${category.id}-${ordinal}`;
         return {
-          key: `${sourceRuleId}::${relatedRule.id}`,
-          kind: category.kind,
+          id: `relationship:${sourceRuleId}:stress-${category.kind}-${ordinal}`,
+          classification: category.kind,
           label: category.label,
-          relationship: category.relationship,
-          sourceRuleId,
-          relatedRuleId: relatedRule.id,
           title: `${category.label} stress rule ${ordinal}`,
-          rationale: `Synthetic ${category.label.toLowerCase()} relationship ${ordinal} for Rule Issues volume testing.`,
-          suggestedConsolidatedText: category.kind === "contradiction" ? "" : relatedRule.text,
-          retireHostedRuleIds: [],
+          bannerTitle: `${category.label} fixture issue`,
+          bannerMessage: `Synthetic ${category.label.toLowerCase()} relationship ${ordinal} for Rule Issues volume testing.`,
+          blocking: false,
           ruleIds: [sourceRuleId, relatedRule.id].sort(),
+          protectedRuleIds: relatedRule.status === "protected" ? [relatedRule.id] : [],
+          candidateKeys: [candidateKey],
           rules: [
-            { id: sourceRuleId, text: `Synthetic ${category.label.toLowerCase()} proposal ${ordinal}.`, status: "proposed", protected: false },
-            structuredClone(relatedRule)
-          ].sort((left, right) => Number(right.protected) - Number(left.protected) || left.id.localeCompare(right.id)),
-          candidateKeys: [],
-          manualRelationshipCheck: true,
-          protectedRuleIds: relatedRule.protected ? [relatedRule.id] : []
+            { id: sourceRuleId, text: `Synthetic ${category.label.toLowerCase()} proposal ${ordinal}.`, status: "proposed", disposition: category.kind === "contradiction" ? "defer" : "exclude", candidateKeys: [candidateKey] },
+            { ...structuredClone(relatedRule), disposition: "keep", candidateKeys: [] }
+          ],
+          relationships: [{ sourceRuleId, relatedRuleId: relatedRule.id, relationship: category.relationship, kind: category.kind, rationale: `Synthetic ${category.label.toLowerCase()} relationship ${ordinal}.`, candidateKey }],
+          assessmentSummary: `Synthetic ${category.label.toLowerCase()} assessment ${ordinal}.`,
+          wording: category.kind === "contradiction"
+            ? { status: "unresolved", label: "Consolidated Wording Unresolved", presentation: "section", reason: "The conflicting fixture wording requires maintainer resolution." }
+            : { status: "selected", label: "Suggested Consolidated Wording", presentation: "member", text: relatedRule.text, sourceRuleId: relatedRule.id },
+          recommendedMaintainerAction: { summary: `Review synthetic ${category.label.toLowerCase()} issue ${ordinal}.`, operations: [] }
         };
       }));
       state.activeRuleIssueKey = null;
@@ -193,7 +197,7 @@ async function run({ page, baseUrl, assert, playback }) {
     }
     await page.locator('[data-rule-issue-filter="duplicate"]').click();
     await page.locator("#rule-issues-list .rule-issue-row").nth(9).click();
-    assert(await page.evaluate(() => state.activeRuleIssueKey?.startsWith("IMPL-STRESS-DUPLICATE-10::")), "The tenth duplicate Rule Issue could not be selected");
+    assert(await page.evaluate(() => state.activeRuleIssueKey?.startsWith("relationship:IMPL-STRESS-DUPLICATE-10:")), "The tenth duplicate Rule Issue could not be selected");
     await page.evaluate(() => {
       const original = globalThis.__RULE_ISSUE_VOLUME_ORIGINAL__;
       state.ruleIssues = original.issues;
@@ -212,7 +216,6 @@ async function run({ page, baseUrl, assert, playback }) {
       await persistSession();
       const textarea = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
       if (textarea) textarea.value = setup.originalText;
-      state.ruleIssues = buildRuleIssues();
       renderRuleIssues();
     }, proposedTextSaveSetup);
     assert(proposedTextSaveResult.activeKeyPreserved && proposedTextSaveResult.scrollPreserved, "Proposed Hosted Rule save changed the active Details context");
@@ -251,7 +254,8 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Draft import did not restore action-derived plan membership");
 
     const beforeRejectedImports = await sessionFingerprint(page);
-    const mismatchedDraft = { ...draft, inputFingerprint: "0".repeat(64) };
+    const mismatchedDraft = structuredClone(draft);
+    mismatchedDraft.sourceFiles[0].contentSha256 = "0".repeat(64);
     await importBytes(page, Buffer.from(`${JSON.stringify(mismatchedDraft, null, 2)}\n`), "mismatched-draft.json");
     assert((await page.locator("#toast-message").textContent()).includes("different source snapshot"), "Mismatched Draft import did not report its bundle rejection");
     assert(JSON.stringify(await sessionFingerprint(page)) === JSON.stringify(beforeRejectedImports), "Mismatched Draft import changed browser or IndexedDB state");
@@ -262,7 +266,7 @@ async function run({ page, baseUrl, assert, playback }) {
     assert((await page.locator("#toast-message").textContent()).includes("draft decision"), "Invalid Draft import did not report its decision rejection");
     assert(JSON.stringify(await sessionFingerprint(page)) === JSON.stringify(beforeRejectedImports), "Invalid Draft import changed browser or IndexedDB state");
 
-    await playback.show(page, "Version 4 Draft persistence · import into session v6 and reload");
+    await playback.show(page, "Version 4 Draft persistence · import into session v7 and reload");
     const persistedDraft = await page.evaluate(async (key) => {
       const persisted = await readSession(state.session.id);
       return {
@@ -272,7 +276,7 @@ async function run({ page, baseUrl, assert, playback }) {
         retireHostedRuleIds: persisted.decisions[key].retireHostedRuleIds
       };
     }, decisionKey);
-    assert(persistedDraft.memoryVersion === 6 && persistedDraft.persistedVersion === 6, "Version 4 Draft did not persist as session schema version 6");
+    assert(persistedDraft.memoryVersion === 7 && persistedDraft.persistedVersion === 7, "Version 4 Draft did not persist as session schema version 7");
     assert(persistedDraft.proposedHostedRuleId === proposedId, "Version 4 Draft did not retain the selected proposed ID");
     assert(Array.isArray(persistedDraft.retireHostedRuleIds) && persistedDraft.retireHostedRuleIds.length === 0, "Version 4 Draft did not retain the explicit retirement selection");
 
@@ -342,29 +346,35 @@ async function run({ page, baseUrl, assert, playback }) {
     const primaryRetirement = await page.evaluate(async () => {
       const candidate = state.candidates.find((item) => item.catalogMapping.state === "active");
       const sourceRuleId = candidate.catalogMapping.hostedRuleId;
+      const sourceRule = state.bundle.catalog.rules.find((rule) => rule.id === sourceRuleId);
       const relatedRule = state.bundle.catalog.rules.find((rule) => rule.status === "active" && rule.id !== sourceRuleId);
+      const originalRuleIssues = structuredClone(state.ruleIssues);
       delete state.session.decisions[candidate.key];
-      candidate.recommendation.action = "no-change";
-      candidate.recommendation.targetHostedId = sourceRuleId;
-      candidate.recommendation.retireHostedRuleIds = [];
-      candidate.recommendation.relatedHostedCoverage = [{
-        hostedRuleId: relatedRule.id,
-        relationship: "partial-overlap",
-        rationale: "The rules are related but require no lifecycle action.",
-        suggestedConsolidatedText: ""
-      }];
-      const nonActionableIssueCount = buildRuleIssues().length;
-
-      candidate.recommendation.action = "retire";
-      candidate.recommendation.relatedHostedCoverage[0] = {
-        hostedRuleId: relatedRule.id,
-        relationship: "assessment-narrows-hosted",
-        rationale: `${relatedRule.id} fully preserves ${sourceRuleId}.`,
-        suggestedConsolidatedText: relatedRule.text
+      const issue = {
+        id: `relationship:${sourceRuleId}:fixture-primary-retirement`,
+        classification: "overlap",
+        label: "Overlap",
+        title: `${relatedRule.id} preserves ${sourceRuleId}`,
+        bannerTitle: "Hosted rule retirement is recommended",
+        bannerMessage: `${relatedRule.id} preserves the enforceable meaning of ${sourceRuleId}.`,
+        blocking: false,
+        ruleIds: [sourceRuleId, relatedRule.id],
+        protectedRuleIds: [],
+        candidateKeys: [candidate.key],
+        rules: [
+          { id: sourceRuleId, status: "active", disposition: "retire", text: sourceRule.text, candidateKeys: [candidate.key] },
+          { id: relatedRule.id, status: "active", disposition: "keep", text: relatedRule.text, candidateKeys: [] }
+        ],
+        relationships: [{ sourceRuleId, relatedRuleId: relatedRule.id, relationship: "assessment-narrows-hosted", kind: "overlap", rationale: `${relatedRule.id} fully preserves ${sourceRuleId}.`, candidateKey: candidate.key }],
+        assessmentSummary: `${relatedRule.id} preserves the enforceable meaning of ${sourceRuleId}.`,
+        wording: { status: "selected", label: "Suggested Consolidated Wording", presentation: "member", text: relatedRule.text, sourceRuleId: relatedRule.id },
+        recommendedMaintainerAction: {
+          summary: `Retire ${sourceRuleId} and retain ${relatedRule.id}.`,
+          operations: [{ candidateKey: candidate.key, ruleId: sourceRuleId, action: "retire", proposedText: sourceRule.text, retireHostedRuleIds: [] }]
+        }
       };
-      const issue = buildRuleIssues().find((item) => item.ruleIds.includes(sourceRuleId) && item.ruleIds.includes(relatedRule.id));
       state.ruleIssues = [issue];
-      state.activeRuleIssueKey = issue.key;
+      state.activeRuleIssueKey = issue.id;
       switchView("catalog");
       setWorkspaceTab("rule-issues");
       renderRuleIssues();
@@ -395,7 +405,7 @@ async function run({ page, baseUrl, assert, playback }) {
       const decision = getDecision(candidate);
       const approved = buildApprovedRules();
       const stagedUi = {
-        issueCount: state.ruleIssues.length,
+        issueCount: getOpenRuleIssues().length,
         issueRows: document.querySelectorAll("#rule-issues-list .rule-issue-row").length,
         statusHidden: status.hidden,
         statusCount: elements["rule-issues-status-count"].textContent,
@@ -406,16 +416,18 @@ async function run({ page, baseUrl, assert, playback }) {
       renderDecisionOutputs();
       renderRuleIssues();
       const restoredUi = {
-        issueCount: state.ruleIssues.length,
+        issueCount: getOpenRuleIssues().length,
         issueRows: document.querySelectorAll("#rule-issues-list .rule-issue-row").length,
         statusHidden: status.hidden,
         statusCount: elements["rule-issues-status-count"].textContent,
         statusHasIssues: status.classList.contains("has-issues"),
         statusColor: getComputedStyle(status).color
       };
+      state.ruleIssues = originalRuleIssues;
+      state.activeRuleIssueKey = null;
       return {
-        nonActionableIssueCount,
-        issueRetirements: issue.retireHostedRuleIds,
+        browserAdjudicatorAbsent: typeof buildRuleIssues === "undefined",
+        issueOperation: { action: issue.recommendedMaintainerAction.operations[0].action, ruleId: issue.recommendedMaintainerAction.operations[0].ruleId },
         action: decision.action,
         ancillaryRetirements: decision.retireHostedRuleIds,
         mutations: approved.mutations.filter((mutation) => mutation.rule.id === sourceRuleId).map((mutation) => ({ action: mutation.action, status: mutation.rule.status })),
@@ -424,8 +436,8 @@ async function run({ page, baseUrl, assert, playback }) {
         restoredUi
       };
     });
-    assert(primaryRetirement.nonActionableIssueCount === 0, "Non-actionable broad-to-specific overlap was promoted to Rule Issues");
-    assert(primaryRetirement.issueRetirements.length === 1, "Primary retirement target was omitted from the Rule Issue recommendation");
+    assert(primaryRetirement.browserAdjudicatorAbsent, "Workbench still exposes browser-side Rule Issue adjudication");
+    assert(primaryRetirement.issueOperation.action === "retire", "Primary retirement operation was omitted from the supplied Rule Issue");
     assert(primaryRetirement.action === "retire" && primaryRetirement.ancillaryRetirements.length === 0, "Primary retirement was staged as an ancillary or non-retirement action");
     assert(primaryRetirement.mutations.length === 1 && primaryRetirement.mutations[0].action === "retire" && primaryRetirement.mutations[0].status === "retired", "Primary retirement did not export exactly one retirement mutation");
     assert(primaryRetirement.openUi.actionLabel === "Recommended Maintainer Action:" && primaryRetirement.openUi.actionLabelTransform === "uppercase" && primaryRetirement.openUi.actionLabelOutside, `Recommended Maintainer Action label hierarchy is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);

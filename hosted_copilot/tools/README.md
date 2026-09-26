@@ -10,15 +10,14 @@ Files beneath `internal/`, `modules/`, and `tests/` are implementation or valida
 | --- | --- |
 | Validate the complete Hosted Toolkit | `pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1` |
 | Launch the Hosted Rule Workbench | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1` |
-| Rebuild semantic Workbench data | `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild` |
 | Plan or install the Hosted payload | `pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1` |
 | Run or resume a controlled Hosted review | `pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory <provider-fork> -CaseId <case-id>` |
 
 Review the command help before supplying operation-specific parameters. Installation defaults to a dry run.
 
-The normal Workbench command refreshes static UI assets, validates `%LOCALAPPDATA%\hosted-workbench\site\workbench-display.json`, and serves that last good display. It never runs source collection, assessment, or reconciliation. If no validated display exists yet, the command fails with an explicit instruction to run `-Rebuild`.
+Every Workbench launch collects the three current source inventories, reuses validated model results when the direct source file content hashes are unchanged, rebuilds the disposable display locally, validates it, and atomically replaces the staged display. Assessment results are stored in one locked `%LOCALAPPDATA%\hosted-workbench\assessment-cache\assessment-cache.json` ledger. Reconciliation results are stored in one locked `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache\reconciliation-cache.json` ledger. Source IDs locate ledger entries; only source file content hashes control reuse. The display is never reused as semantic cache evidence.
 
-`-Rebuild` is the only normal operation that performs semantic work. It reuses validated per-source assessments from `%LOCALAPPDATA%\hosted-workbench\assessment-cache`, validated source-defined reconciliation batches from `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`, and compatible toolkit-managed artifacts from failed runs. Only changed semantic identities return to model evaluation. Reconciliation runs up to three cache misses concurrently, merges all cached, recovered, and evaluated results deterministically, and reports progress. Failed evaluator attempts retain their draft and validation reason. A successful rebuild schema-validates the new display before atomically replacing the last good display; collection, assessment, reconciliation, or validation failure leaves the previous display untouched. Cache, recovery, and concurrency parameters are diagnostic or controlled rebuild overrides, not UI-restart requirements.
+Assessment and reconciliation run up to three cache misses concurrently, merge cached, recovered, and evaluated results deterministically, and report progress. Each ledger update takes a short exclusive lock, rereads and merges the latest entries, then atomically replaces the ledger so concurrent Workbench processes cannot lose completed results. Failed evaluator attempts retain their draft and validation reason. Collection, assessment, reconciliation, or validation failure leaves the previous staged display untouched.
 
 ## Catalog Maintenance
 
