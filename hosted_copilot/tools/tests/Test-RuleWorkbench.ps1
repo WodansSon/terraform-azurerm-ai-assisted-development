@@ -344,6 +344,7 @@ function New-WorkbenchDisplayFixture {
                 $projectedRule
             })
             protectedRules = @($Fixture.protectedRules)
+            protectedRuleFiles = @($Fixture.protectedRuleFiles)
         }
         guidanceCapacity = $Fixture.guidanceCapacity
     }
@@ -505,6 +506,13 @@ try {
             guardedTokens = 150
             sourcePath = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
             contentSha256 = 'f' * 64
+        })
+        protectedRuleFiles = @([ordered]@{
+            path = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
+            surfaceId = 'implementation'
+            content = "# Protected Implementation Review Rules`n`n### IMPL-WF-000: Classify AzureRM implementation resource types`n`n- Rule: Classify implementation code before applying resource-type-specific rules."
+            contentSha256 = 'e' * 64
+            ruleIds = @('IMPL-WF-000')
         })
         upstreamCandidates = @(
             [ordered]@{
@@ -1235,7 +1243,7 @@ try {
         $stylesContent -match '\.preview-split-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)' -and
         $stylesContent -match '\.preview-diff-cell\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)' -and
         $stylesContent -match '\.preview-diff-cell code\s*\{[^}]*white-space:\s*pre-wrap' -and
-        $stylesContent -match ':is\(#preview-diff, #preview-payload-diff, #preview-json\)\s*\{[^}]*gap:\s*16px' -and
+        $stylesContent -match ':is\(#preview-diff, #preview-payload-diff, #preview-json, #preview-protected\)\s*\{[^}]*gap:\s*16px' -and
         $stylesContent -match '#preview-view #preview-diff\s*\{[^}]*padding-top:\s*16px' -and
         $stylesContent -match '\.preview-diff-stat i\.delete\s*\{[^}]*background-image:\s*repeating-linear-gradient' -and
         $stylesContent -match '\.preview-diff-stat i\.neutral\s*\{[^}]*background:\s*rgba\(101, 108, 118, 0\.2\)' -and
@@ -1244,11 +1252,13 @@ try {
     Add-TestResult -Name 'preview-change-review' -Passed $previewDiffValid -Detail 'Preview renders one authenticated GitHub-style continuous split-file review with virtual artifact paths, status-aware tree icons, graphical totals, CODEOWNERS headers, explicit selection, and independent Viewed and disclosure state.'
 
     $rawPayloadNavigationValid = $appContent -match 'PREVIEW_CONTEXT_LINE_COUNT = 2' -and $appContent -match 'PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10' -and $appContent -match 'createPreviewFile\("approval/approved-rules\.json"' -and $appContent -match 'function createContextualPreviewRows\(' -and $appContent -match 'direction: start === 0 \? "up" : index === rows\.length \? "down" : "all"' -and $appContent -match 'const selectedRows = direction === "all"' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $stylesContent -match '\.preview-context-gap\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)' -and $stylesContent -match '\.preview-context-expand\s*\{[^}]*width:\s*44px'
-    Add-TestResult -Name 'raw-payload-change-navigation' -Passed $rawPayloadNavigationValid -Detail 'Raw approved rules render as one contextual full-file split diff with two context lines and exact local Octicon expansion controls.'
+    Add-TestResult -Name 'raw-payload-change-navigation' -Passed $rawPayloadNavigationValid -Detail 'Resulting Catalog renders as one contextual full-file split diff with two context lines and exact local Octicon expansion controls.'
 
-    $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'const allowedActions = getAllowedActions\(candidate, proposedText\)' -and $appContent -match 'inPlan: saved\.inPlan && isPromotionAction\(saved\.action\)'
-    $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'inPlan: saved\.inPlan,' -and $appContent -match 'const proposed = candidates\.flatMap\(\(candidate\) => buildApprovedMutations\(candidate\)' -and $appContent -match 'function buildApprovedMutations\(' -and $appContent -match 'getAncillaryRetirementRules\(decision\)' -and $appContent -match 'elements\["preview-diff"\]\.innerHTML = renderPreviewFiles\(previewFilesByScope\.proposed'
-    Add-TestResult -Name 'no-op-update-suppression' -Passed $noOpUpdateValid -Detail 'Mapped candidates expose Update only for text changes; independent unresolved membership is retained but cannot render or approve as a proposed change.'
+    $protectedPreviewValid = $appContent -match 'protected:\s*"Protected rules"' -and $appContent -match 'catalog\.protectedRuleFiles\.map' -and $appContent -match 'reference:\s*true' -and $appContent -match 'function renderPreviewReferenceFile\(' -and $appContent -match 'class="ui-badge status-capsule preview-reference-status"' -and $appContent -match 'class="preview-reference-row"' -and $appContent -match 'class="preview-reference-line-number"' -and $appContent -match 'const changedFiles = files\.filter\(\(file\) => !file\.reference\)' -and $appContent -match 'scope === "protected" && files\.length === 0' -and $indexContent -match 'class="preview-protected-rules" id="preview-protected-section" hidden' -and $stylesContent -match '--informational-foreground:\s*#c6d4ff' -and $stylesContent -match '\.preview-tree-file-icon\.protected,[\s\S]*color:\s*var\(--red\)' -and $stylesContent -match '\.preview-reference-status\s*\{[^}]*color:\s*var\(--gold\);[^}]*background:\s*var\(--gold-soft\)' -and $stylesContent -match '\.preview-reference-row\s*\{[^}]*grid-template-columns:\s*52px minmax\(0, 1fr\)' -and $stylesContent -match '\.preview-reference-row > code\s*\{[^}]*padding:\s*0 16px;[^}]*color:\s*var\(--informational-foreground\);[^}]*white-space:\s*pre-wrap'
+    Add-TestResult -Name 'protected-preview-files' -Passed $protectedPreviewValid -Detail 'Preview renders exact rule-bearing protected instruction files as collapsed read-only references excluded from mutation accounting.'
+
+    $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'function isCurrentMappedNoChangeNoOp\(' -and $appContent -match 'function repairNoOpPlanMembership\(' -and $appContent -match 'changes\.inPlan === true && !canSelectCandidateForPlan' -and $appContent -match 'candidate-plan-unavailable'
+    Add-TestResult -Name 'no-op-update-suppression' -Passed $noOpUpdateValid -Detail 'Current mapped No Change candidates omit no-op action and membership controls while preserving explicit promotion overrides.'
 
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'

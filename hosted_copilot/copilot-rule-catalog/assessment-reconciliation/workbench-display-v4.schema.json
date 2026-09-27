@@ -320,15 +320,28 @@
         "contentSha256": { "$ref": "#/$defs/sha256" }
       }
     },
+    "protectedRuleFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "surfaceId", "content", "contentSha256", "ruleIds"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^hosted_copilot/authored-rules/protected/.+\\.rules\\.md$" },
+        "surfaceId": { "enum": ["implementation", "testing", "documentation"] },
+        "content": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "ruleIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/hostedId" } }
+      }
+    },
     "catalog": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contentSha256", "protectedRulesContentSha256", "rules", "protectedRules"],
+      "required": ["contentSha256", "protectedRulesContentSha256", "rules", "protectedRules", "protectedRuleFiles"],
       "properties": {
         "contentSha256": { "$ref": "#/$defs/sha256" },
         "protectedRulesContentSha256": { "$ref": "#/$defs/sha256" },
         "rules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/catalogRule" } },
-        "protectedRules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/protectedRule" } }
+        "protectedRules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/protectedRule" } },
+        "protectedRuleFiles": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/protectedRuleFile" } }
       }
     },
     "capacityReport": {

@@ -185,6 +185,13 @@ $display = [ordered]@{
             sourcePath = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
             contentSha256 = $hash
         })
+        protectedRuleFiles = @([ordered]@{
+            path = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
+            surfaceId = 'implementation'
+            content = "# Protected Implementation Review Rules`n`n### IMPL-WF-000: Classify AzureRM implementation resource types`n`n- Rule: Classify implementation code before applying resource-type-specific rules."
+            contentSha256 = $hash
+            ruleIds = @('IMPL-WF-000')
+        })
     }
     guidanceCapacity = [ordered]@{
         status = 'passed'

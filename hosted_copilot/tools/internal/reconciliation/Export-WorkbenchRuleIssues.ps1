@@ -155,7 +155,8 @@ foreach ($candidate in @($display.candidates)) {
         Candidate = $candidate
         CandidateKey = $candidateKey
         SourceRuleId = $sourceRuleId
-        RetirementRuleIds = @(Get-RetirementRuleIds -Candidate $candidate)
+        ComponentRetirementRuleIds = @(Get-RetirementRuleIds -Candidate $candidate)
+        OperationRetirementRuleIds = @($candidate.recommendation.retireHostedRuleIds | Where-Object { [string]$_ -cne $sourceRuleId } | Sort-Object -CaseSensitive -Unique)
     }
     $candidateRecords.Add($record)
     if (-not $candidateRecordsByRuleId.ContainsKey($sourceRuleId)) {
@@ -237,7 +238,7 @@ foreach ($sourceFile in @($display.sourceFiles)) {
 
 foreach ($component in @($components | Sort-Object ComponentId)) {
     $ruleIds = @($component.RuleIds)
-    $componentCandidateRecords = @($candidateRecords | Where-Object { $_.SourceRuleId -in $ruleIds -or @($_.RetirementRuleIds | Where-Object { $_ -in $ruleIds }).Count -gt 0 })
+    $componentCandidateRecords = @($candidateRecords | Where-Object { $_.SourceRuleId -in $ruleIds -or @($_.ComponentRetirementRuleIds | Where-Object { $_ -in $ruleIds }).Count -gt 0 })
     $componentSourceFiles = @($componentCandidateRecords | ForEach-Object {
         $sourceDefinitionId = [string]$sourceDefinitionByLane[[string]$_.Candidate.source.lane]
         $key = "$sourceDefinitionId`0$([string]$_.Candidate.source.id)"
@@ -274,7 +275,7 @@ foreach ($component in @($components | Sort-Object ComponentId)) {
             ruleId = [string]$_.SourceRuleId
             action = [string]$_.Candidate.recommendation.action
             proposedText = [string]$_.Candidate.recommendation.ruleText
-            retireHostedRuleIds = @($_.RetirementRuleIds)
+            retireHostedRuleIds = @($_.OperationRetirementRuleIds)
         }
     } | Sort-Object -Property candidateKey)
     $componentInput = [ordered]@{
@@ -361,7 +362,16 @@ foreach ($draft in @($adjudicationSet.components)) {
                 candidateKey = [string]$relationship.candidateKey
             }
         } | Sort-Object -Property sourceRuleId, relatedRuleId, relationship, candidateKey)
-        $selectedOperations = @($adjudicatedIssue.recommendedMaintainerAction.operations | Sort-Object -Property candidateKey)
+        $selectedOperations = @($adjudicatedIssue.recommendedMaintainerAction.operations | ForEach-Object {
+            $operation = $_
+            [ordered]@{
+                candidateKey = [string]$operation.candidateKey
+                ruleId = [string]$operation.ruleId
+                action = [string]$operation.action
+                proposedText = [string]$operation.proposedText
+                retireHostedRuleIds = @($operation.retireHostedRuleIds | Where-Object { [string]$_ -cne [string]$operation.ruleId } | Sort-Object -CaseSensitive -Unique)
+            }
+        } | Sort-Object -Property candidateKey)
         $finalRules = @($issueRuleIds | ForEach-Object {
             $rule = $ruleById[[string]$_]
             [ordered]@{

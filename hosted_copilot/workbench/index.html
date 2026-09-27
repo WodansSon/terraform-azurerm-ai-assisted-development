@@ -58,7 +58,7 @@
       </button>
       <button class="stage-link clickable" id="promotion-plan-stage" type="button" data-view="plan" data-workbench-tooltip="Promotion Plan (0)" aria-label="Promotion Plan (0)">
         <svg class="codicon" aria-hidden="true"><use id="promotion-plan-stage-icon" href="icons/codicons/sprite.svg#codicon-new-session"></use></svg>
-        <span class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
+        <span class="ui-badge activity-count-badge stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden></span>
         <span class="sr-only">Promotion Plan</span>
       </button>
       <button class="stage-link clickable" type="button" data-view="preview" data-workbench-tooltip="Promotion Preview" aria-label="Promotion Preview">
@@ -102,10 +102,10 @@
                   </summary>
                   <div class="bulk-actions-menu">
                     <div class="bulk-actions-scope"><strong>Current Results</strong><span id="bulk-scope-count">0 Candidates</span></div>
-                    <button class="clickable" type="button" data-bulk-scope="add"><span>Add Recommended Adds</span><span class="status-badge neutral count-badge type-compact" id="bulk-add-count">0 Candidates</span></button>
-                    <button class="clickable" type="button" data-bulk-scope="update"><span>Add Recommended Updates</span><span class="status-badge neutral count-badge type-compact" id="bulk-update-count">0 Candidates</span></button>
-                    <button class="clickable" type="button" data-bulk-scope="actionable"><span>Add All Actionable Recommendations</span><span class="status-badge neutral count-badge type-compact" id="bulk-actionable-count">0 Candidates</span></button>
-                    <button class="bulk-undo clickable" id="bulk-undo" type="button" data-bulk-undo disabled><span>Undo Last Bulk Selection</span><span class="status-badge neutral type-compact" id="bulk-undo-count">None</span></button>
+                    <button class="clickable" type="button" data-bulk-scope="add"><span>Add Recommended Adds</span><span class="ui-badge count-badge type-compact" id="bulk-add-count">0 Candidates</span></button>
+                    <button class="clickable" type="button" data-bulk-scope="update"><span>Add Recommended Updates</span><span class="ui-badge count-badge type-compact" id="bulk-update-count">0 Candidates</span></button>
+                    <button class="clickable" type="button" data-bulk-scope="actionable"><span>Add All Actionable Recommendations</span><span class="ui-badge count-badge type-compact" id="bulk-actionable-count">0 Candidates</span></button>
+                    <button class="bulk-undo clickable" id="bulk-undo" type="button" data-bulk-undo disabled><span>Undo Last Bulk Selection</span><span class="ui-badge count-badge type-compact" id="bulk-undo-count">None</span></button>
                     <p id="bulk-actions-note">Bulk actions require a validated Hosted CODEOWNER.</p>
                   </div>
                 </details>
@@ -171,9 +171,17 @@
             <button class="titlebar-icon clickable" id="return-catalog-button" type="button" aria-label="Return to catalog" data-workbench-tooltip="Return to catalog">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
             </button>
-            <button class="titlebar-icon clickable" id="plan-bulk-undo" type="button" aria-label="No bulk selection to undo" data-workbench-tooltip="No bulk selection to undo" disabled>
-              <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-discard-all"></use></svg>
-            </button>
+            <details class="plan-undo-menu" id="plan-undo-menu">
+              <summary class="titlebar-icon clickable" id="plan-undo-trigger" aria-label="No plan items to undo" aria-disabled="true" aria-haspopup="menu" data-workbench-tooltip="No plan items to undo">
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-discard-all"></use></svg>
+              </summary>
+              <div class="bulk-actions-menu plan-undo-options" role="menu" aria-label="Undo promotion plan items">
+                <button class="clickable" type="button" role="menuitem" data-plan-undo-scope="all" disabled><span>Undo All Items</span><span class="ui-badge count-badge type-compact" id="plan-undo-all-count">0 Items</span></button>
+                <button class="clickable" type="button" role="menuitem" data-plan-undo-scope="manual" disabled><span>Undo Manual Items</span><span class="ui-badge count-badge type-compact" id="plan-undo-manual-count">0 Items</span></button>
+                <button class="clickable" type="button" role="menuitem" data-plan-undo-scope="bulk" disabled><span>Undo Bulk Items</span><span class="ui-badge count-badge type-compact" id="plan-undo-bulk-count">0 Items</span></button>
+                <button class="clickable" type="button" role="menuitem" data-plan-undo-scope="override" disabled><span>Undo Override Items</span><span class="ui-badge count-badge type-compact" id="plan-undo-override-count">0 Items</span></button>
+              </div>
+            </details>
           </div>
         </div>
         <div class="plan-layout">
@@ -198,14 +206,14 @@
               <p>Choose an add, update, or retire action to add it to this plan.</p>
             </div>
           </section>
-          <aside class="capacity-panel scroll-surface type-compact" id="capacity-panel"></aside>
+          <aside class="capacity-panel scroll-surface type-compact" id="capacity-panel" tabindex="-1"></aside>
         </div>
       </section>
 
       <section class="view" id="preview-view" data-view-panel="preview">
         <div class="page-heading">
           <h2>Promotion Preview:</h2>
-          <span class="status-badge warning preview-approval-badge" id="approval-badge">Not staged</span>
+          <span class="ui-badge status-capsule status-badge warning preview-approval-badge" id="approval-badge">Not staged</span>
         </div>
         <div class="preview-review-toolbar" id="preview-review-toolbar">
           <div class="preview-review-context" id="preview-review-context"></div>
@@ -244,8 +252,10 @@
               <div id="preview-payload-diff"></div>
             </section>
             <section class="preview-raw-payload">
-              <div id="raw-payload-empty" hidden></div>
               <div id="preview-json"></div>
+            </section>
+            <section class="preview-protected-rules" id="preview-protected-section" hidden>
+              <div id="preview-protected"></div>
             </section>
           </section>
         </div>
@@ -264,14 +274,14 @@
         </span>
       </div>
       <div class="status-cluster status-right">
-        <button class="status-item rule-issues-status clickable" id="rule-issues-status" type="button" aria-label="Open rule issues" data-workbench-tooltip="Rule issues" hidden><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-warning-compact"></use></svg><span id="rule-issues-status-count">0</span></button>
-        <span class="status-item" data-workbench-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Hosted guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></span>
-        <span class="status-item" data-workbench-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></span>
+        <button class="status-item rule-issues-status clickable" id="rule-issues-status" type="button" data-status-navigation="issues" aria-label="Open rule issues" data-workbench-tooltip="Rule issues" hidden><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-warning-compact"></use></svg><span id="rule-issues-status-count">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="eligible" aria-label="Show eligible candidates" data-workbench-tooltip="Eligible candidates"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-collection"></use></svg><span id="catalog-count">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="excluded" aria-label="Show excluded assessments" data-workbench-tooltip="Excluded assessments"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-circle-slash-compact"></use></svg><span id="status-excluded">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="mapped" aria-label="Show mapped Hosted rules" data-workbench-tooltip="Mapped Hosted rules"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-link"></use></svg><span id="status-mapped">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="unmapped" aria-label="Show not mapped candidates" data-workbench-tooltip="Not mapped"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-debug-disconnect-compact"></use></svg><span id="status-unmapped">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="plan" aria-label="Open Promotion Plan" data-workbench-tooltip="Promotion plan items"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-new-session"></use></svg><span id="plan-count">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="capacity" aria-label="Show Hosted guidance headroom" data-workbench-tooltip="Hosted guidance headroom"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-graph"></use></svg><span id="status-headroom">0</span></button>
+        <button class="status-item clickable" type="button" data-status-navigation="preview" aria-label="Open Promotion Preview" data-workbench-tooltip="Preview approval state"><svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-shield-compact"></use></svg><span id="preview-status">Draft</span></button>
       </div>
     </footer>
     <div class="status-surface-tooltip type-compact" id="status-surface-tooltip" role="tooltip" aria-hidden="true"></div>

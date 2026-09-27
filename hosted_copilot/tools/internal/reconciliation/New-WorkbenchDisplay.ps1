@@ -811,6 +811,28 @@ $protectedRulesProjection = @($protectedRules.rules | ForEach-Object {
         contentSha256 = [string]$_.contentSha256
     }
 })
+$protectedRuleFiles = @($protectedRules.rules | Group-Object -Property sourcePath | Sort-Object -Property Name | ForEach-Object {
+    $sourcePath = [string]$_.Name
+    $resolvedSourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot $sourcePath))
+    if (-not $resolvedSourcePath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Protected rule source path escapes the repository root: $sourcePath"
+    }
+    if (-not (Test-Path -LiteralPath $resolvedSourcePath -PathType Leaf)) {
+        throw "Protected rule source file was not found: $sourcePath"
+    }
+    $surfaceIds = @($_.Group | ForEach-Object { [string]$_.surfaceId } | Sort-Object -Unique)
+    if ($surfaceIds.Count -ne 1) {
+        throw "Protected rule source file must contain rules for exactly one surface: $sourcePath"
+    }
+    $snapshot = Get-FileSnapshot -Path $resolvedSourcePath
+    [ordered]@{
+        path = $sourcePath.Replace([IO.Path]::DirectorySeparatorChar, '/')
+        surfaceId = $surfaceIds[0]
+        content = $snapshot.Content
+        contentSha256 = $snapshot.Sha256
+        ruleIds = @($_.Group | ForEach-Object { [string]$_.id } | Sort-Object)
+    }
+})
 
 $display = [ordered]@{
     '$schema' = 'workbench-display-v4.schema.json'
@@ -828,6 +850,7 @@ $display = [ordered]@{
         protectedRulesContentSha256 = $protectedRulesInput.Snapshot.Sha256
         rules = $catalogProjection
         protectedRules = $protectedRulesProjection
+        protectedRuleFiles = $protectedRuleFiles
     }
     guidanceCapacity = $guidanceCapacityInput.Value
 }

@@ -330,6 +330,26 @@
       "journey": "playwright/journeys/bulk-manual-color-lifecycle.journey.cjs"
     },
     {
+      "id": "WB-UX-OWNERSHIP-005",
+      "title": "Plan Undo menu exposes fixed ownership scopes and live counts",
+      "journey": "playwright/journeys/plan-undo-menu.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-006",
+      "title": "Plan Undo scopes reset only matching manual and bulk items",
+      "journey": "playwright/journeys/plan-undo-menu.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-007",
+      "title": "Plan Undo override scope removes its decision and override record",
+      "journey": "playwright/journeys/plan-undo-menu.journey.cjs"
+    },
+    {
+      "id": "WB-UX-OWNERSHIP-008",
+      "title": "Plan Undo all atomically clears plan items while preserving unrelated draft decisions",
+      "journey": "playwright/journeys/plan-undo-menu.journey.cjs"
+    },
+    {
       "id": "WB-UX-ZOOM-001",
       "title": "Browser zoom enlarges content while preserving the physical window",
       "journey": "playwright/journeys/browser-zoom.journey.cjs"
