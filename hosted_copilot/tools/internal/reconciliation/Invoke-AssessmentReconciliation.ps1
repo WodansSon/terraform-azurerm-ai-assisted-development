@@ -336,6 +336,15 @@ $snapshotProtectedRulesPath = Join-Path $runRepositoryRoot 'hosted_copilot/copil
 $protectedRulesSnapshot = Copy-InputSnapshot -SourcePath $resolvedProtectedRulesPath -DestinationPath $snapshotProtectedRulesPath
 $snapshotProtectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
 $null = Copy-InputSnapshot -SourcePath (Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) 'protected-rules.schema.json') -DestinationPath $snapshotProtectedRulesSchemaPath
+$protectedRules = $protectedRulesSnapshot.Content | ConvertFrom-Json
+foreach ($relativePath in @($protectedRules.rules | ForEach-Object { [string]$_.sourcePath } | Sort-Object -Unique)) {
+    $sourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot $relativePath))
+    if (-not $sourcePath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Protected rule source path escapes the repository root: $relativePath"
+    }
+    $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot $relativePath))
+    $null = Copy-InputSnapshot -SourcePath $sourcePath -DestinationPath $destinationPath
+}
 $snapshotInventoryPaths = [Collections.Generic.List[string]]::new()
 foreach ($inventoryPath in $InventoryPaths) {
     $resolvedInventoryPath = [IO.Path]::GetFullPath($inventoryPath)

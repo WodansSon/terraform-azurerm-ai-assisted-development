@@ -35,11 +35,11 @@
           <div class="title-draft-popover">
             <button class="button clickable" id="export-button" type="button">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-download"></use></svg>
-              <span class="button-label">Export draft</span>
+              <span class="button-label">Export Draft</span>
             </button>
             <label class="button clickable" for="import-input">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-cloud-upload"></use></svg>
-              <span class="button-label">Import draft</span>
+              <span class="button-label">Import Draft</span>
             </label>
             <input id="import-input" type="file" accept="application/json" hidden>
           </div>
@@ -155,7 +155,17 @@
         <div class="workspace-tab-panel" id="rule-issues-panel" role="tabpanel" aria-labelledby="rule-issues-tab" hidden>
           <div class="rule-issues-layout">
             <aside class="rule-issues-list-panel">
-              <div class="candidate-pane-switch rule-issue-pane-switch" id="rule-issues-filters" role="tablist" aria-label="Rule issue type"></div>
+              <div class="rule-issue-tab-pager" id="rule-issue-tab-pager">
+                <button class="titlebar-icon clickable rule-issue-tab-scroll-button" id="rule-issues-previous" type="button" aria-label="Previous Issues" data-workbench-tooltip="Previous Issues" hidden>
+                  <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-right-compact" transform="rotate(180 8 8)"></use></svg>
+                </button>
+                <div class="rule-issue-tab-viewport" id="rule-issue-tab-viewport">
+                  <div class="candidate-pane-switch rule-issue-pane-switch" id="rule-issues-filters" role="tablist" aria-label="Rule issue type"></div>
+                </div>
+                <button class="titlebar-icon clickable rule-issue-tab-scroll-button" id="rule-issues-next" type="button" aria-label="Next Issues" data-workbench-tooltip="Next Issues" hidden>
+                  <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-chevron-right-compact"></use></svg>
+                </button>
+              </div>
               <div class="rule-issues-list scroll-surface" id="rule-issues-list"></div>
             </aside>
             <article class="rule-issues-detail scroll-surface" id="rule-issues-detail" aria-live="polite"></article>
@@ -171,6 +181,13 @@
             <button class="titlebar-icon clickable" id="return-catalog-button" type="button" aria-label="Return to catalog" data-workbench-tooltip="Return to catalog">
               <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-arrow-left"></use></svg>
             </button>
+            <span class="plan-attention-filter">
+              <button class="titlebar-icon clickable" id="plan-attention-filter" type="button" aria-label="No promotion plan items need attention" aria-pressed="false" data-workbench-tooltip="No promotion plan items need attention" disabled>
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-git-pull-request-draft"></use></svg>
+                <span class="ui-badge activity-count-badge stage-count-badge" id="plan-attention-count" aria-hidden="true" hidden>0</span>
+                <span class="sr-only">Needs Attention</span>
+              </button>
+            </span>
             <details class="plan-undo-menu" id="plan-undo-menu">
               <summary class="titlebar-icon clickable" id="plan-undo-trigger" aria-label="No plan items to undo" aria-disabled="true" aria-haspopup="menu" data-workbench-tooltip="No plan items to undo">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-discard-all"></use></svg>
@@ -218,19 +235,19 @@
         <div class="preview-review-toolbar" id="preview-review-toolbar">
           <div class="preview-review-context" id="preview-review-context"></div>
           <div class="preview-review-actions">
-            <button class="preview-review-button clickable" id="preview-review-toggle" type="button">Review changes</button>
+            <button class="button review clickable" id="preview-review-toggle" type="button">Review Changes</button>
           </div>
           <div class="preview-review-popover" id="preview-review-popover" hidden>
             <div class="preview-review-popover-heading">
-              <strong>Review changes</strong>
-              <button class="preview-icon-button clickable" id="preview-review-close" type="button" aria-label="Close review changes" data-workbench-tooltip="Close review changes">
+              <strong>Review Changes</strong>
+              <button class="preview-icon-button clickable" id="preview-review-close" type="button" aria-label="Close Review Changes" data-workbench-tooltip="Close Review Changes">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-close"></use></svg>
               </button>
             </div>
             <div class="approval-controls">
               <label for="approver-name">Approver Name</label>
               <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
-              <section class="approval-requirements" id="approval-requirements" aria-label="Approval requirements"></section>
+              <section class="approval-requirements" id="approval-requirements" aria-label="Approval Requirements"></section>
               <button class="button primary clickable" id="approve-export-button" type="button" disabled>
                 <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
                 Approve &amp; Export

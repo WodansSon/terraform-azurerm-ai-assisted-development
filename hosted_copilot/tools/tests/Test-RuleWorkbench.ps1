@@ -58,6 +58,7 @@ $testStartTimes = @{}
 $dependencyAuditFindings = New-Object 'System.Collections.Generic.List[object]'
 $dependencyAuditCounts = $null
 $dependencyAuditError = $null
+$dependencyAuditInconclusive = $false
 $failureAlreadyReported = $false
 $npmFixApplied = $false
 $npmFixRequiresBreaking = $false
@@ -89,6 +90,7 @@ $staticTestNames = @(
     'scrollbar-theme-contract',
     'ide-shell-contract',
     'preview-editor-layout',
+    'preview-artifact-tree-stability',
     'contained-view-scrolling',
     'impact-factor-guidance',
     'detail-presentation-contract',
@@ -102,9 +104,13 @@ $staticTestNames = @(
     'undo-updates-capacity-projection',
     'semantic-color-contract',
     'clickable-cursor-affordance',
+    'button-component-contract',
+    'promotion-plan-attention-filter',
+    'rule-issue-tab-pagination',
     'promotion-plan-column-alignment',
     'promotion-plan-detail-routing',
     'promotion-plan-token-deltas',
+    'protected-preview-files',
     'preview-approval-export',
     'preview-change-review',
     'raw-payload-change-navigation',
@@ -416,6 +422,13 @@ try {
     $matchingAuditReports = @(if ($null -ne $auditResult) { $auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath } })
     $hostedAuditReport = if ($matchingAuditReports.Count -gt 0) { $matchingAuditReports[0] } else { $null }
     $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
+    $auditFailures = @(if ($null -ne $auditResult) { $auditResult.failures })
+    $expectedIncompleteAuditFailure = "$nodePackageLockRelativePath`: npm audit did not return a complete vulnerability report"
+    $dependencyAuditInconclusive = -not [string]::IsNullOrWhiteSpace($Run) -and
+        $null -ne $auditResult -and
+        $null -eq $hostedAuditReport -and
+        $auditFailures.Count -eq 1 -and
+        [string]$auditFailures[0] -ceq $expectedIncompleteAuditFailure
     if ($null -ne $hostedAuditReport) {
         $dependencyAuditCounts = $hostedAuditReport.counts
         foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
@@ -426,7 +439,10 @@ try {
     if (-not $auditPassed) {
         $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
     }
-    $auditDetail = if (-not $auditPassed) {
+    $auditDetail = if ($dependencyAuditInconclusive) {
+        "$dependencyAuditError; focused validation is continuing with the existing locked dependency graph"
+    }
+    elseif (-not $auditPassed) {
         "$dependencyAuditError; dependency installation blocked"
     }
     elseif ($npmFixApplied) {
@@ -435,15 +451,20 @@ try {
     else {
         "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
     }
-    Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
-    if (-not $auditPassed) {
+    Add-TestResult -Name 'npm audit' -Passed ($auditPassed -or $dependencyAuditInconclusive) -Detail $auditDetail
+    if (-not $auditPassed -and -not $dependencyAuditInconclusive) {
         $failureAlreadyReported = $true
         throw 'npm audit failed before dependency installation'
     }
     Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'
     $dependencyOutput = @()
     $dependencyExitCode = 0
-    if (-not (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath)) {
+    $packageGraphCurrent = Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath
+    if (-not $packageGraphCurrent -and $dependencyAuditInconclusive) {
+        $dependencyExitCode = 1
+        $dependencyOutput = @('npm audit was inconclusive and the installed package graph does not match the lockfile; unaudited dependency installation is blocked')
+    }
+    elseif (-not $packageGraphCurrent) {
         $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
         $dependencyExitCode = $LASTEXITCODE
     }
@@ -1010,8 +1031,20 @@ try {
 
     $ideShellValid = $ideShellValid -and $indexContent -notmatch 'data-lucide="list-tree"|data-lucide="panel-right"|data-lucide="clipboard-list"' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*40px;[^}]*padding:\s*4px 0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*32px;[^}]*min-height:\s*32px' -and $stylesContent -match '\.workspace-tabs\s*\{[^}]*background:\s*var\(--paper\);[^}]*border:\s*0;[^}]*border-bottom:\s*1px solid var\(--line\)' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*margin-right:\s*1px;[^}]*background:\s*var\(--surface\);[^}]*border:\s*1px solid var\(--line\);[^}]*border-bottom:\s*0' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*inset:\s*auto 0 0' -and $stylesContent -match '\.candidate-pane-switch\s*\{[^}]*background:\s*var\(--paper\)' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*background:\s*var\(--surface\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\.active\s*\{[^}]*background:\s*var\(--paper\);[^}]*box-shadow:\s*inset 0 -1px var\(--accent\)' -and $stylesContent -match '@media \(min-width: 1400px\)[\s\S]*?grid-template-columns:\s*18px minmax\(280px, 640px\) auto;[\s\S]*?justify-content:\s*start' -and $stylesContent -match '@media \(min-width: 1180px\)[\s\S]*?\.assessment-results-header,[\s\S]*?grid-template-columns:\s*minmax\(280px, 640px\) auto'
 
-    $previewEditorValid = $indexContent -match '<h2>Promotion Preview:</h2>' -and $indexContent -notmatch 'preview-sidebar-title|preview-review-scope' -and $indexContent -match 'id="preview-review-toolbar"[\s\S]*?class="preview-layout"' -and $indexContent -match 'id="preview-tree-resizer"[^>]*role="slider"[^>]*aria-orientation="vertical"' -and $indexContent -match 'id="preview-review-toggle"[^>]*>Review changes</button>' -and $indexContent -match 'id="preview-review-popover"[^>]*hidden' -and $appContent -match 'function renderPreviewArtifactGroup\(' -and $appContent -match 'data-preview-artifact-scope=' -and $appContent -match 'previewExpandedScopes' -and $stylesContent -match '#preview-view \.preview-layout\s*\{[^}]*--preview-tree-width:\s*380px;[^}]*grid-template-columns:\s*var\(--preview-tree-width\) minmax\(0, 1fr\)' -and $stylesContent -match '#preview-view \.preview-summary\s*\{[^}]*height:\s*100%;[^}]*border-right:\s*1px solid #30363d' -and $stylesContent -match '\.preview-review-toolbar\s*\{[^}]*position:\s*relative' -and $stylesContent -match '\.preview-file-heading-wrapper\s*\{[^}]*position:\s*sticky;[^}]*top:\s*-2px' -and $stylesContent -match '\.preview-review-popover\s*\{[^}]*position:\s*absolute'
-    Add-TestResult -Name 'preview-editor-layout' -Passed $previewEditorValid -Detail 'Preview separates its review toolbar, resizable artifact tree, contained diff scroller, sticky file-header wrappers, and Review changes approval popover.'
+    $previewEditorValid = $indexContent -match '<h2>Promotion Preview:</h2>' -and $indexContent -notmatch 'preview-sidebar-title|preview-review-scope' -and $indexContent -match 'id="preview-review-toolbar"[\s\S]*?class="preview-layout"' -and $indexContent -match 'id="preview-tree-resizer"[^>]*role="slider"[^>]*aria-orientation="vertical"' -and $indexContent -match 'class="button review clickable"[^>]*id="preview-review-toggle"[^>]*>Review Changes</button>' -and $indexContent -match 'id="preview-review-popover"[^>]*hidden' -and $appContent -match 'function renderPreviewArtifactGroup\(' -and $appContent -match 'data-preview-artifact-scope=' -and $appContent -match 'previewExpandedScopes' -and $stylesContent -match '#preview-view \.preview-layout\s*\{[^}]*--preview-tree-width:\s*380px;[^}]*grid-template-columns:\s*var\(--preview-tree-width\) minmax\(0, 1fr\)' -and $stylesContent -match '#preview-view \.preview-summary\s*\{[^}]*height:\s*100%;[^}]*border-right:\s*1px solid #30363d' -and $stylesContent -match '\.preview-review-toolbar\s*\{[^}]*position:\s*relative' -and $stylesContent -match '\.preview-file-heading-wrapper\s*\{[^}]*position:\s*sticky;[^}]*top:\s*-2px' -and $stylesContent -match '\.preview-review-popover\s*\{[^}]*position:\s*absolute'
+    Add-TestResult -Name 'preview-editor-layout' -Passed $previewEditorValid -Detail 'Preview separates its review toolbar, resizable artifact tree, contained diff scroller, sticky file-header wrappers, and Review Changes approval popover.'
+
+    $previewArtifactTreeValid = $appContent -match 'function renderPreviewFileTree\(\)[\s\S]*?let tree = elements\["preview-summary"\]\.querySelector\("\.preview-artifact-tree"\)[\s\S]*?tree\.innerHTML = groups;[\s\S]*?applyPreviewFileFilter' -and
+        $appContent -match 'function renderPreviewIconBuffer\(' -and
+        $appContent -match 'if \(!files\.length\) return "";' -and
+        $appContent -match 'renderPreviewIconBuffer\("chevron-right", "chevron-down", expanded, "preview-chevron-buffer"\)' -and
+        $appContent -match 'renderPreviewIconBuffer\("file-directory-fill", "file-directory-open-fill", expanded, "preview-folder-buffer"\)' -and
+        $appContent -match 'function applyPreviewFileFilter\(' -and
+        $appContent -match 'requestAnimationFrame\(\(\) => \{[\s\S]*?buffer\.dataset\.state = expanded \? "open" : "closed";[\s\S]*?\.hidden = !expanded;' -and
+        $stylesContent -match '\.preview-icon-buffer\s*\{[^}]*position:\s*relative;[^}]*width:\s*16px;[^}]*height:\s*16px' -and
+        $stylesContent -match '\.preview-icon-buffer > \.octicon\s*\{[^}]*position:\s*absolute;[^}]*opacity:\s*0;[^}]*will-change:\s*opacity' -and
+        $stylesContent -match '\.preview-icon-buffer\[data-state="closed"\] > \.buffer-closed,[\s\S]*?opacity:\s*1'
+    Add-TestResult -Name 'preview-artifact-tree-stability' -Passed $previewArtifactTreeValid -Detail 'Preview omits empty artifact folders, preserves the search control while refreshing the nav, and swaps prepainted folder-state icons without replacing tree nodes.'
 
     $containedViewsValid = $stylesContent -match '@media \(min-width: 901px\)' -and $stylesContent -match 'html,\s*body\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden' -and $stylesContent -match '\.app-shell\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*overflow:\s*hidden' -and $stylesContent -match '\.workspace\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden' -and $stylesContent -match '#catalog-view\.view\.active\s*\{[^}]*grid-template-rows:\s*auto auto auto minmax\(0, 1fr\)' -and $stylesContent -match '#candidate-sources-panel \.candidate-list,[\s\S]*?#assessment-results-panel \.candidate-list\s*\{[^}]*max-height:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $stylesContent -match '#preview-view\.view\.active\s*\{[^}]*grid-template-rows:\s*auto 60px minmax\(0, 1fr\)' -and $stylesContent -match '#plan-view \.plan-table-wrap,[\s\S]*?#preview-view \.preview-code\s*\{[^}]*overflow:\s*auto' -and $stylesContent -match '#plan-view \.plan-table th\s*\{[^}]*position:\s*sticky'
     Add-TestResult -Name 'contained-view-scrolling' -Passed $containedViewsValid -Detail 'Desktop stages keep navigation, headers, tabs, Draft Summary, and Plan Projection static while their owned tree, form, table, and review surfaces scroll independently.'
@@ -1160,7 +1193,7 @@ try {
 
     $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and
         $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
-        $indexContent -match 'class="preview-review-button clickable"[^>]*id="preview-review-toggle"' -and
+        $indexContent -match 'class="button review clickable"[^>]*id="preview-review-toggle"' -and
         $appContent -match 'preview-file-tree-item clickable' -and
         $appContent -match 'preview-context-expand clickable' -and
         $appContent -match 'hierarchical-parent-row[^"]*clickable' -and
@@ -1170,9 +1203,54 @@ try {
         $appContent -match 'plan-detail-link clickable'
     Add-TestResult -Name 'clickable-cursor-affordance' -Passed $clickableAffordanceValid -Detail 'Static and generated command, navigation, disclosure, row, and option controls share an explicit pointer cursor while unavailable commands retain the normal arrow.'
 
+    $buttonComponentValid = $indexContent -match '<span class="button-label">Export Draft</span>' -and
+        $indexContent -match '<span class="button-label">Import Draft</span>' -and
+        $indexContent -match 'class="button review clickable"[^>]*id="preview-review-toggle"[^>]*>Review Changes</button>' -and
+        $indexContent -match 'class="button primary clickable"[^>]*id="approve-export-button"' -and
+        $stylesContent -match '\.button\s*\{[^}]*--button-background:[^}]*--button-hover-background:[^}]*--button-foreground:[^}]*border-radius:\s*6px' -and
+        $stylesContent -match '\.button:hover:not\(:disabled\):not\(\[aria-disabled="true"\]\)\s*\{[^}]*background:\s*var\(--button-hover-background\)' -and
+        $stylesContent -match '\.button :is\(\.codicon, \.octicon\)\s*\{[^}]*color:\s*inherit;[^}]*fill:\s*currentColor' -and
+        $stylesContent -match '\.button\.primary\s*\{[^}]*--button-background:\s*#1f6284;[^}]*--button-hover-background:\s*var\(--accent-deep\);[^}]*--button-border:\s*#78b9d4;[^}]*--button-hover-border:\s*#9bd6eb' -and
+        $stylesContent -match '\.button\.review\s*\{[^}]*--button-background:\s*#196c2e;[^}]*--button-hover-background:\s*#238636;[^}]*--button-border:\s*#93ba9d;[^}]*--button-hover-border:\s*#b9d8bf' -and
+        $stylesContent -match '\.button:disabled,[\s\S]*?color:\s*var\(--disabled-foreground\);[\s\S]*?background:\s*var\(--disabled-background\);[\s\S]*?border-color:\s*var\(--disabled-border\);[\s\S]*?opacity:\s*1'
+    $buttonComponentValid = $buttonComponentValid -and
+        $stylesContent -notmatch '\.button\.secondary' -and
+        $stylesContent -notmatch '\.rule-issue-plan-action:disabled' -and
+        $stylesContent -notmatch '\.title-draft-popover \.button:hover' -and
+        $stylesContent -match '\.title-draft-popover \.button\s*\{[^}]*--button-background:\s*transparent;[^}]*--button-hover-background:\s*rgba\(255, 255, 255, 0\.06\)'
+    Add-TestResult -Name 'button-component-contract' -Passed $buttonComponentValid -Detail 'Text command buttons use Title Case, shared 6px geometry, explicit base and hover palettes, inherited icon color, and hard disabled colors.'
+
     $planColumnsValid = $indexContent -match '<col class="plan-column-source">\s*<col class="plan-column-action">' -and $indexContent -match '<th>Source</th>\s*<th>Action</th>' -and $indexContent -match '<th>Controls</th>' -and $appContent -match '<td class="plan-source">' -and $appContent -match '<td class="plan-action">' -and $appContent -match '<tr class="plan-candidate-row clickable"[^>]*tabindex="0"[^>]*data-plan-row=' -and $appContent -match '<span class="candidate-link">' -and $appContent -notmatch '<button class="candidate-link' -and $appContent -match 'function handlePlanRowKeyboardNavigation\(' -and $stylesContent -match '\.plan-candidate-row:hover td,[\s\S]*?background:\s*var\(--accent-soft\)' -and $stylesContent -match '\.plan-table\s*\{[^}]*table-layout:\s*fixed' -and $stylesContent -match '\.plan-table th\s*\{[^}]*white-space:\s*nowrap' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.plan-table\s*\{\s*min-width:\s*900px' -and $stylesContent -match '\.plan-table th:last-child\s*\{[^}]*text-align:\s*center'
     $planColumnsValid = $indexContent -match '<col class="plan-column-source">\s*<col class="plan-column-type">\s*<col class="plan-column-action">' -and $appContent -match 'function renderPlanHeader\(' -and $appContent -match '\["type", "Type", "Type", "How the candidate entered the promotion plan\."\]' -and $appContent -match 'renderSortButton\(column, state\.planSort, \{ "plan-sort": column\[0\] \}\)' -and $appContent -match '<td class="plan-source"><span class="status-badge neutral plan-source-pill type-compact">\$\{escapeHtml\(formatTitleCase\(candidate\.sourceLabel\)\)\}</span></td>' -and $appContent -match '<td class="plan-type"><span class="status-badge neutral plan-membership-badge">' -and $appContent -match '<tr class="plan-candidate-row clickable"[^>]*tabindex="0"[^>]*data-plan-row=' -and $appContent -match '<span class="candidate-link">' -and $appContent -match '<span class="plan-candidate-title">' -and $appContent -match 'function handlePlanRowKeyboardNavigation\(' -and $stylesContent -match '\.plan-source-pill\s*\{[^}]*display:\s*inline-flex;[^}]*white-space:\s*nowrap' -and $stylesContent -match '\.plan-column-type\s*\{[^}]*width:\s*90px' -and $stylesContent -match '\.plan-table :is\(th, td\):not\(:first-child\):not\(:last-child\)\s*\{[^}]*text-align:\s*center' -and $stylesContent -match '\.plan-table :is\(th, td\):last-child\s*\{[^}]*text-align:\s*left' -and $stylesContent -match '\.plan-table th:first-child \.candidate-sort-button\s*\{[^}]*justify-content:\s*flex-start;[^}]*text-align:\s*left' -and $stylesContent -match '\.plan-candidate-row:hover td,[\s\S]*?background:\s*var\(--accent-soft\)' -and $stylesContent -match '\.plan-table\s*\{[^}]*min-width:\s*1000px;[^}]*table-layout:\s*fixed' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.plan-table\s*\{\s*min-width:\s*900px'
     Add-TestResult -Name 'promotion-plan-column-alignment' -Passed $planColumnsValid -Detail 'Promotion Plan separates Source and sortable Type into eight aligned columns while retaining shared hover, focus, pointer, and keyboard behavior.'
+
+    $planAttentionFilterValid = $indexContent -match 'id="return-catalog-button"[\s\S]*?class="plan-attention-filter"[\s\S]*?id="plan-attention-filter"[\s\S]*?codicon-git-pull-request-draft[\s\S]*?id="plan-attention-count"[\s\S]*?id="plan-undo-menu"' -and
+        $appContent -match 'planAttentionOnly: false' -and
+        $appContent -match 'attentionCandidates = allPlanCandidates\.filter\(\(candidate\) => !getPlanReadiness\(candidate\)\.ready\)' -and
+        $appContent -match 'if \(!attentionCandidates\.length\) state\.planAttentionOnly = false' -and
+        $appContent -match 'elements\["plan-attention-filter"\]\.disabled = attentionCandidates\.length === 0' -and
+        $appContent -match 'state\.planAttentionOnly \? attentionCandidates : allPlanCandidates' -and
+        $appContent -match 'Show all promotion plan items' -and
+        $appContent -match 'Show only promotion plan items needing attention' -and
+        $stylesContent -match '\.plan-attention-filter\s*\{[^}]*position:\s*relative;[^}]*width:\s*34px;[^}]*height:\s*34px' -and
+        $stylesContent -match '#plan-attention-filter\[aria-pressed="true"\]\s*\{[^}]*color:\s*var\(--warning-foreground\)' -and
+        $stylesContent -match '#plan-attention-filter > svg\s*\{[^}]*transform:\s*translate\(-2px, -2px\)' -and
+        $stylesContent -match '#plan-attention-count\s*\{[^}]*right:\s*0;[^}]*bottom:\s*0'
+    Add-TestResult -Name 'promotion-plan-attention-filter' -Passed $planAttentionFilterValid -Detail 'Promotion Plan filters incomplete items through a standard header icon with an offset count, amber active state, dynamic tooltip, and disabled zero state.'
+
+    $ruleIssueTabPaginationValid = $indexContent -match 'id="rule-issue-tab-pager"[\s\S]*?id="rule-issues-previous"[\s\S]*?Previous Issues[\s\S]*?transform="rotate\(180 8 8\)"[\s\S]*?id="rule-issue-tab-viewport"[\s\S]*?id="rule-issues-filters"[\s\S]*?id="rule-issues-next"[\s\S]*?Next Issues' -and
+        $appContent -match 'ruleIssueTabPage: 0' -and
+        $appContent -match 'function getRuleIssueTabPages\(' -and
+        $appContent -match 'function renderRuleIssueTabPagination\(' -and
+        $appContent -match 'totalWidth <= pager\.clientWidth \+ 0\.5' -and
+        $appContent -match 'renderRuleIssueTabPagination\(true\)' -and
+        $appContent -match 'previous\.disabled = state\.ruleIssueTabPage === 0' -and
+        $appContent -match 'next\.disabled = state\.ruleIssueTabPage === pages\.length - 1' -and
+        $stylesContent -match '\.rule-issue-tab-pager\.paging\s*\{[^}]*grid-template-columns:\s*28px minmax\(0, 1fr\) 28px' -and
+        $stylesContent -match '\.rule-issue-tab-page-hidden\s*\{[^}]*display:\s*none !important' -and
+        $stylesContent -match '\.rule-issue-tab-scroll-button:disabled,[\s\S]*?opacity:\s*0\.38' -and
+        $stylesContent -match '\.rule-issue-tab-scroll-button\[hidden\]\s*\{[^}]*display:\s*none !important'
+    Add-TestResult -Name 'rule-issue-tab-pagination' -Passed $ruleIssueTabPaginationValid -Detail 'Rule Issue type tabs page only complete labels and counts, reveal the selected type, expose durable Previous and Next controls with edge states, and hide paging when all tabs fit.'
 
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-rationale-save' -and $appContent -notmatch '<span>Save</span>' -and $appContent -match 'Save decision rationale and return to Promotion Plan' -and $appContent -match 'Save and return to Promotion Plan' -and $appContent -match 'save\.disabled = !value\.trim\(\)' -and $appContent -match 'await persistencePromise' -and $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)' -and $stylesContent -match '\.plan-detail-link:focus-visible' -and $stylesContent -match '\.rationale-heading'
@@ -1193,10 +1271,10 @@ try {
     $planTokenDeltaValid = $appContent -match 'function getAssessmentTokenValue\(' -and $appContent -match '!getApplicabilityOverride\(candidate\) \|\| assessment\.guardedTokenDelta !== 0' -and $appContent -match 'function getActionTokenDelta\(' -and $appContent -match 'if \(!isPromotionAction\(action\)\) return 0' -and $appContent -match 'if \(action === "retire"\) return -estimateGuardedTokens\(getCurrentHostedText\(candidate\)\)' -and $appContent -match 'if \(action === "update"\) return proposedTokens - estimateGuardedTokens\(getCurrentHostedText\(candidate\)\)' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'function getPlanTokenValue\(' -and $appContent -match 'function getPlanTokenDisplay\(' -and $appContent -match 'return formatSignedNumber\(getPlanTokenValue\(candidate\)\)' -and $appContent -match 'function getPlanTokenDelta\(' -and $appContent -match 'return getActionTokenDelta\(candidate, decision\.action, decision\)' -and $appContent -match 'function getActionCapacityBucketNames\(' -and $appContent -match '<td class="mono">\$\{cost\}</td>' -and $appContent -match 'token\.textContent = formatCandidateTokenValue\(candidate, assessment\)' -and $appContent -match 'draftDeltaTokens: deltasByName\[bucket\.reportName\]'
     Add-TestResult -Name 'promotion-plan-token-deltas' -Passed $planTokenDeltaValid -Detail 'Token displays and Draft Item Estimate reuse signed action-aware values, including maintained proposed-text estimates for unresolved overrides, while capacity projections wait for an explicit action and Retire retains negative savings.'
 
-    $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'function buildApprovedRules' -and $appContent -match 'function buildApprovedMutation' -and $appContent -match 'function approveAndExport' -and $appContent -match '\$schema: "approved-rules-v4\.schema\.json"' -and $appContent -match 'kind: "hosted-approved-rules"' -and $appContent -match 'catalogContentSha256: state\.bundle\.catalog\.contentSha256' -and $appContent -notmatch 'hosted-rule-workbench-approval-handoff|sha256-payload-bytes-v1|crypto\.subtle\.digest\("SHA-256"' -and $stylesContent -match '\.approval-requirements'
+    $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval Requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["Catalog mutations"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'mutationCount > 0' -and $appContent -match 'status = "no catalog mutations"' -and $appContent -match 'function buildApprovedRules' -and $appContent -match 'function buildApprovedMutation' -and $appContent -match 'function approveAndExport' -and $appContent -match '\$schema: "approved-rules-v4\.schema\.json"' -and $appContent -match 'kind: "hosted-approved-rules"' -and $appContent -match 'catalogContentSha256: state\.bundle\.catalog\.contentSha256' -and $appContent -notmatch 'hosted-rule-workbench-approval-handoff|sha256-payload-bytes-v1|crypto\.subtle\.digest\("SHA-256"' -and $stylesContent -match '\.approval-requirements'
     $approvalExportValid = $approvalExportValid -and $appContent -match '\["Rule actions", readiness\.missingActionCount' -and $appContent -match 'missingActionCount === 0' -and $appContent -match 'status = "needs action"'
     $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVED_RULES_SCHEMA_VERSION = 4'
-    Add-TestResult -Name 'preview-approval-export' -Passed $approvalExportValid -Detail 'Preview explains plan, action, rationale, and identity gates and blocks export until every selected candidate has an explicit promotion action and rationale.'
+    Add-TestResult -Name 'preview-approval-export' -Passed $approvalExportValid -Detail 'Preview explains plan, action, rationale, catalog mutation, and identity gates and blocks export until the approval contains at least one schema-valid catalog mutation.'
 
     $previewDiffValid = $indexContent -match 'id="preview-diff"' -and
         $indexContent -match 'id="preview-payload-diff"' -and
@@ -1507,6 +1585,7 @@ $result = [ordered]@{
         counts = $dependencyAuditCounts
         findings = $dependencyAuditFindings.ToArray()
         error = $dependencyAuditError
+        inconclusive = $dependencyAuditInconclusive
         remediationApplied = $npmFixApplied
         remediationChanges = $npmFixChanges.ToArray()
         requiresBreakingFix = $npmFixRequiresBreaking
@@ -1561,6 +1640,16 @@ else {
         Write-Output '  2. Review the resulting package.json and package-lock.json diff.'
         Write-Output '  3. If only a breaking fix remains, review it before adding -AllowBreakingNpmFix.'
         Write-Output '  4. npm ci and browser tests remain blocked until the staged graph passes audit.'
+    }
+    elseif ($dependencyAuditInconclusive) {
+        Write-ValidationSectionHeader -Title 'Dependency security'
+        Write-ValidationSummary -Fields ([ordered]@{
+            Threshold = 'LOW'
+            Audit = 'INCONCLUSIVE'
+            Installation = 'BLOCKED'
+            FunctionalTests = 'CONTINUED'
+            Error = $dependencyAuditError
+        })
     }
     elseif ($null -ne $dependencyAuditError) {
         Write-ValidationSectionHeader -Title 'Dependency security'

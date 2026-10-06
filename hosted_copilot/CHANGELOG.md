@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a normalized Hosted rule catalog and read-only intake workflow that evaluates upstream contributor guidance, Interactive rules, and Maintainer Proposals with reusable semantic assessments, guidance-capacity reporting, portable drafts, and auditable promotion contracts.
 - Added versioned source definitions, parser contracts, deterministic collection-only inventories, complete-corpus assessment and reconciliation, and one disposable Workbench display with canonical source and catalog binding.
 - Added the Hosted Rule Workbench as a laptop-and-desktop Hosted-rules IDE with searchable candidate and assessment views, persistent decisions, promotion-plan review, guarded capacity projections, source-backed diffs, exact approved-rules export, and repository-read-only loopback serving.
+- Added an icon-first Promotion Plan filter that isolates items needing maintainer attention, reports the outstanding count, and follows existing header active, hover, tooltip, and disabled-state behavior.
+- Added responsive Rule Issue type paging that keeps labels and counts intact, hides navigation when all tabs fit, and exposes clear Previous and Next edge states on narrower desktop layouts.
 - Expanded the pinned, locally hosted Codicon inventory with folder-state, directory-link, workspace-trust, remote-connection, and reconciliation-conflict symbols for current and future Workbench surfaces.
 
 ### Changed
@@ -39,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Restored Contributor Guidance provenance pills by projecting the source repository, configured ref, and immutable commit into the v4 display and validating both real Workbench roots.
 - Prevented cold server starts from revealing persisted candidate trees before their external icon symbols paint, so Overrides and Contributor Guidance decorations no longer require folder expansion to appear.
 - Scoped Workbench npm auditing to the Hosted lockfile, reported installed packages as current when they match the audited lock, and skipped redundant reinstalls without changing remediation behavior for stale or vulnerable graphs.
+- Allowed focused Workbench checks to report an incomplete npm registry audit as inconclusive and continue only with an already-current locked dependency graph, while complete validation and genuine vulnerability findings remain blocking.
+- Included protected authored-rule files in isolated reconciliation snapshots so cached and newly evaluated batches can rebuild and validate the complete Workbench display.
+- Standardized text command buttons on Title Case, shared 6px geometry, explicit base and hover palettes, inherited icon color, and hard disabled colors; aligned Preview approval labels and spacing; and blocked exports without a catalog mutation.
+- Omitted empty Promotion Preview artifact folders and stabilized folder expansion by preserving the search control and swapping prepainted icon layers without replacing tree nodes.
 - Hardened release boundaries by rejecting linked-path installer escapes, blocking loopback DNS rebinding, constraining review cleanup to tool-owned branch namespaces, scanning deployable files for recognizable credentials and private keys, integrity-locking Node validation dependencies, and delegating pre-install audit and explicit staged remediation to the shared repository validator with failures at every severity.
 - Kept required CI deterministic by moving live Hosted upstream-source drift detection to the explicit maintainer audit while continuing to validate the committed source catalog and pinned baseline.
 - Made Workbench icon preview generation portable across Windows and Linux by replacing Edge-only process launch with locked headless Puppeteer and exercising both icon families in temporary CI staging.

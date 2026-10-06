@@ -86,6 +86,7 @@ const state = {
   assessmentPane: "assessments",
   activeRuleIssueKey: null,
   ruleIssueFilter: null,
+  ruleIssueTabPage: 0,
   ruleIssueSelections: {},
   ruleIssueResolutionHistory: [],
   dismissedRuleIssueBannerKeys: new Set(),
@@ -99,7 +100,8 @@ const state = {
   },
   candidateSorts: {},
   assessmentSorts: {},
-  planSort: { field: "candidate", direction: "ascending" }
+  planSort: { field: "candidate", direction: "ascending" },
+  planAttentionOnly: false
 };
 
 const elements = {};
@@ -107,6 +109,7 @@ let databasePromise;
 let persistencePromise = Promise.resolve();
 let toastTimer;
 let truncationTooltipFrame;
+let ruleIssueTabPaginationFrame;
 let candidateHierarchicalView;
 let assessmentHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [], protected: [] };
@@ -166,8 +169,8 @@ function captureElements() {
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "rule-issues-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "rule-issues-tab-count", "rule-issues-filters", "rule-issues-list", "rule-issues-detail", "rule-issues-status", "rule-issues-status-count",
-    "return-catalog-button", "plan-undo-menu", "plan-undo-trigger", "plan-undo-all-count", "plan-undo-manual-count", "plan-undo-bulk-count", "plan-undo-override-count", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "rule-issues-tab-count", "rule-issue-tab-pager", "rule-issue-tab-viewport", "rule-issues-previous", "rule-issues-filters", "rule-issues-next", "rule-issues-list", "rule-issues-detail", "rule-issues-status", "rule-issues-status-count",
+    "return-catalog-button", "plan-attention-filter", "plan-attention-count", "plan-undo-menu", "plan-undo-trigger", "plan-undo-all-count", "plan-undo-manual-count", "plan-undo-bulk-count", "plan-undo-override-count", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "preview-json", "preview-protected", "preview-protected-section", "preview-code",
     "preview-review-toolbar",
     "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
@@ -188,6 +191,10 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
   elements["return-catalog-button"].addEventListener("click", () => switchView("catalog"));
+  elements["plan-attention-filter"].addEventListener("click", () => {
+    state.planAttentionOnly = !state.planAttentionOnly;
+    renderPlan();
+  });
   elements["plan-undo-menu"].addEventListener("click", handlePlanUndoMenuClick);
   elements["plan-undo-menu"].addEventListener("mouseleave", () => elements["plan-undo-menu"].removeAttribute("open"));
   elements["close-button"].addEventListener("click", closeWorkbench);
@@ -209,6 +216,9 @@ function bindEvents() {
     state.activeRuleIssueKey = state.ruleIssueSelections[filter]?.issueId || null;
     renderRuleIssues();
   });
+  elements["rule-issues-previous"].addEventListener("click", () => changeRuleIssueTabPage(-1));
+  elements["rule-issues-next"].addEventListener("click", () => changeRuleIssueTabPage(1));
+  window.addEventListener("resize", () => scheduleRuleIssueTabPagination(true));
   elements["rule-issues-list"].addEventListener("click", (event) => {
     const key = event.target.closest("[data-rule-issue-key]")?.dataset.ruleIssueKey;
     if (!key) return;
@@ -746,6 +756,73 @@ function formatRuleIssueSummary(issues) {
   return `${formatCountLabel(issues.length, "rule issue")}: ${formatCountLabel(protectedCount, "protected")}, ${formatCountLabel(counts.contradiction, "contradiction")}, ${formatCountLabel(counts.duplicate, "duplicate")}, ${formatCountLabel(counts.overlap, "overlap")}`;
 }
 
+function getRuleIssueTabPages(tabs, availableWidth) {
+  const pages = [];
+  let page = [];
+  let pageWidth = 0;
+  tabs.forEach((tab, index) => {
+    const tabWidth = tab.getBoundingClientRect().width + Number.parseFloat(getComputedStyle(tab).marginRight || "0");
+    if (page.length && pageWidth + tabWidth > availableWidth) {
+      pages.push(page);
+      page = [];
+      pageWidth = 0;
+    }
+    page.push(index);
+    pageWidth += tabWidth;
+  });
+  if (page.length) pages.push(page);
+  return pages;
+}
+
+function renderRuleIssueTabPagination(revealSelected = false) {
+  const pager = elements["rule-issue-tab-pager"];
+  const viewport = elements["rule-issue-tab-viewport"];
+  const previous = elements["rule-issues-previous"];
+  const next = elements["rule-issues-next"];
+  const tabs = [...elements["rule-issues-filters"].querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab) => tab.classList.remove("rule-issue-tab-page-hidden"));
+  pager.classList.remove("paging");
+  previous.hidden = true;
+  next.hidden = true;
+  previous.disabled = true;
+  next.disabled = true;
+  previous.tabIndex = -1;
+  next.tabIndex = -1;
+  if (!tabs.length) return;
+
+  const totalWidth = tabs.reduce((total, tab) => total + tab.getBoundingClientRect().width + Number.parseFloat(getComputedStyle(tab).marginRight || "0"), 0);
+  if (totalWidth <= pager.clientWidth + 0.5) {
+    state.ruleIssueTabPage = 0;
+    return;
+  }
+
+  pager.classList.add("paging");
+  previous.hidden = false;
+  next.hidden = false;
+  const pages = getRuleIssueTabPages(tabs, viewport.clientWidth);
+  if (revealSelected) {
+    const selectedPage = pages.findIndex((page) => page.some((index) => tabs[index].getAttribute("aria-selected") === "true"));
+    if (selectedPage >= 0) state.ruleIssueTabPage = selectedPage;
+  }
+  state.ruleIssueTabPage = Math.max(0, Math.min(state.ruleIssueTabPage, pages.length - 1));
+  const visibleTabs = new Set(pages[state.ruleIssueTabPage]);
+  tabs.forEach((tab, index) => tab.classList.toggle("rule-issue-tab-page-hidden", !visibleTabs.has(index)));
+  previous.disabled = state.ruleIssueTabPage === 0;
+  next.disabled = state.ruleIssueTabPage === pages.length - 1;
+  previous.tabIndex = previous.disabled ? -1 : 0;
+  next.tabIndex = next.disabled ? -1 : 0;
+}
+
+function scheduleRuleIssueTabPagination(revealSelected = false) {
+  cancelAnimationFrame(ruleIssueTabPaginationFrame);
+  ruleIssueTabPaginationFrame = requestAnimationFrame(() => renderRuleIssueTabPagination(revealSelected));
+}
+
+function changeRuleIssueTabPage(direction) {
+  state.ruleIssueTabPage += direction;
+  renderRuleIssueTabPagination();
+}
+
 function renderRuleIssueFilters() {
   const openIssues = getOpenRuleIssues();
   const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, openIssues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
@@ -756,6 +833,7 @@ function renderRuleIssueFilters() {
   elements["rule-issues-filters"].innerHTML = visibleFilters.map((filter) => `
     <button class="candidate-pane-tab clickable ${state.ruleIssueFilter === filter.key ? "active" : ""}" type="button" role="tab" data-rule-issue-filter="${filter.key}" aria-selected="${state.ruleIssueFilter === filter.key}">${escapeHtml(filter.label)} <span>${formatNumber(counts[filter.key])}</span></button>
   `).join("");
+  renderRuleIssueTabPagination(true);
 }
 
 function renderRuleReferences(value, ruleIds, referenceClass = "rule-reference") {
@@ -3049,7 +3127,21 @@ function refreshAssessmentScores(candidate, action = getDecision(candidate).acti
 }
 
 function renderPlan() {
-  const planCandidates = sortPlanCandidates(getPlanCandidates(), state.planSort);
+  const allPlanCandidates = sortPlanCandidates(getPlanCandidates(), state.planSort);
+  const attentionCandidates = allPlanCandidates.filter((candidate) => !getPlanReadiness(candidate).ready);
+  if (!attentionCandidates.length) state.planAttentionOnly = false;
+  const attentionTooltip = !attentionCandidates.length
+    ? "No promotion plan items need attention"
+    : state.planAttentionOnly
+      ? "Show all promotion plan items"
+      : "Show only promotion plan items needing attention";
+  elements["plan-attention-filter"].disabled = attentionCandidates.length === 0;
+  elements["plan-attention-filter"].setAttribute("aria-pressed", String(state.planAttentionOnly));
+  elements["plan-attention-filter"].setAttribute("aria-label", attentionCandidates.length ? `${attentionTooltip}, ${formatCountLabel(attentionCandidates.length, "Item")}` : attentionTooltip);
+  setWorkbenchTooltip(elements["plan-attention-filter"], attentionTooltip);
+  elements["plan-attention-count"].hidden = attentionCandidates.length === 0;
+  elements["plan-attention-count"].textContent = formatNumber(attentionCandidates.length);
+  const planCandidates = state.planAttentionOnly ? attentionCandidates : allPlanCandidates;
   const undoCounts = Object.fromEntries(["all", "manual", "bulk", "override"].map((scope) => [scope, getPlanUndoCandidates(scope).length]));
   const undoLabel = undoCounts.all ? `Undo promotion plan items, ${formatCountLabel(undoCounts.all, "Item")}` : "No plan items to undo";
   elements["plan-undo-trigger"].setAttribute("aria-disabled", String(undoCounts.all === 0));
@@ -3388,7 +3480,7 @@ function buildPreviewFiles(candidates) {
     ...structuredClone(proposedPayload),
     mutations: []
   };
-  const raw = candidates.length
+  const raw = proposedPayload.mutations.length
     ? [createPreviewFile("approval/approved-rules.json", "Approved catalog mutations", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true, "", "raw")]
     : [];
   const protectedFiles = state.bundle.catalog.protectedRuleFiles.map((file) => {
@@ -3768,16 +3860,30 @@ function renderPreviewReview() {
 }
 
 function renderPreviewFileTree() {
-  elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter preview files" aria-label="Filter preview files"></label><nav class="preview-artifact-tree" aria-label="Review artifacts">${Object.entries(previewFilesByScope).map(([scope, files]) => renderPreviewArtifactGroup(scope, files)).join("")}</nav>`;
+  const groups = Object.entries(previewFilesByScope).map(([scope, files]) => renderPreviewArtifactGroup(scope, files)).join("");
+  let tree = elements["preview-summary"].querySelector(".preview-artifact-tree");
+  if (!tree) {
+    elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter preview files" aria-label="Filter preview files"></label><nav class="preview-artifact-tree" aria-label="Review artifacts"></nav>`;
+    tree = elements["preview-summary"].querySelector(".preview-artifact-tree");
+  }
+  tree.innerHTML = groups;
+  applyPreviewFileFilter(elements["preview-summary"].querySelector('.preview-file-filter input')?.value || "");
+}
+
+function renderPreviewIconBuffer(closedName, openName, expanded, className) {
+  for (const name of [closedName, openName]) {
+    if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
+  }
+  return `<span class="preview-icon-buffer ${escapeHtml(className)}" data-state="${expanded ? "open" : "closed"}" aria-hidden="true"><svg class="octicon buffer-closed"><use href="icons/octicons/sprite.svg#octicon-${closedName}-16"></use></svg><svg class="octicon buffer-open"><use href="icons/octicons/sprite.svg#octicon-${openName}-16"></use></svg></span>`;
 }
 
 function renderPreviewArtifactGroup(scope, files) {
-  if (scope === "protected" && files.length === 0) return "";
+  if (!files.length) return "";
   const expanded = previewExpandedScopes.has(scope);
   const children = files.map((file) => renderPreviewTreeFile(scope, { ...file, name: file.path.split("/").at(-1) })).join("");
   return `
     <section class="preview-artifact-group" data-preview-artifact-group="${escapeHtml(scope)}">
-      <button class="preview-artifact-parent clickable" type="button" data-preview-artifact-scope="${escapeHtml(scope)}" aria-expanded="${expanded}">${octicon(`chevron-${expanded ? "down" : "right"}`)}${octicon(`file-directory-${expanded ? "open-" : ""}fill`)}<span>${escapeHtml(PREVIEW_SCOPE_LABELS[scope])}</span></button>
+      <button class="preview-artifact-parent clickable" type="button" data-preview-artifact-scope="${escapeHtml(scope)}" aria-expanded="${expanded}">${renderPreviewIconBuffer("chevron-right", "chevron-down", expanded, "preview-chevron-buffer")}${renderPreviewIconBuffer("file-directory-fill", "file-directory-open-fill", expanded, "preview-folder-buffer")}<span class="preview-artifact-label">${escapeHtml(PREVIEW_SCOPE_LABELS[scope])}</span></button>
       <div class="preview-artifact-children" ${expanded ? "" : "hidden"}>${children}</div>
     </section>
   `;
@@ -3799,9 +3905,8 @@ function updatePreviewSelectedFile() {
   });
 }
 
-function handlePreviewFileFilter(event) {
-  if (!event.target.matches('input[type="search"]')) return;
-  const query = event.target.value.trim().toLowerCase();
+function applyPreviewFileFilter(value) {
+  const query = String(value || "").trim().toLowerCase();
   elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((button) => {
     button.hidden = !button.dataset.previewFileJump.toLowerCase().includes(query);
   });
@@ -3812,13 +3917,25 @@ function handlePreviewFileFilter(event) {
   });
 }
 
+function handlePreviewFileFilter(event) {
+  if (!event.target.matches('input[type="search"]')) return;
+  applyPreviewFileFilter(event.target.value);
+}
+
 function handlePreviewFileNavigation(event) {
   const parent = event.target.closest("[data-preview-artifact-scope]");
   if (parent) {
     const scope = parent.dataset.previewArtifactScope;
     if (previewExpandedScopes.has(scope)) previewExpandedScopes.delete(scope);
     else previewExpandedScopes.add(scope);
-    renderPreviewFileTree();
+    requestAnimationFrame(() => {
+      const expanded = previewExpandedScopes.has(scope);
+      parent.setAttribute("aria-expanded", String(expanded));
+      parent.querySelectorAll(".preview-icon-buffer").forEach((buffer) => {
+        buffer.dataset.state = expanded ? "open" : "closed";
+      });
+      parent.closest(".preview-artifact-group").querySelector(".preview-artifact-children").hidden = !expanded;
+    });
     return;
   }
   const button = event.target.closest("[data-preview-file-jump]");
@@ -4035,7 +4152,9 @@ function getPreviewReadiness() {
   }).length;
   const missingRationale = missingRationaleCount > 0;
   const missingRelationshipCheckCount = planCandidates.filter((candidate) => requiresManualRelationshipCheck(candidate)).length;
-  const mutationRuleIds = planCandidates.flatMap((candidate) => buildApprovedMutations(candidate).map((mutation) => mutation.rule.id));
+  const approvedMutations = planCandidates.flatMap(buildApprovedMutations);
+  const mutationRuleIds = approvedMutations.map((mutation) => mutation.rule.id);
+  const mutationCount = approvedMutations.length;
   const conflictingMutationCount = mutationRuleIds.length - new Set(mutationRuleIds).size;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
@@ -4044,6 +4163,7 @@ function getPreviewReadiness() {
   else if (missingResourceTypeCount) status = "needs resource type";
   else if (missingRationale) status = "needs rationale";
   else if (missingRelationshipCheckCount) status = "needs relationship check";
+  else if (mutationCount === 0) status = "no catalog mutations";
   else if (conflictingMutationCount) status = "conflicting mutations";
   else if (!approverName) status = "needs approver";
   return {
@@ -4053,9 +4173,10 @@ function getPreviewReadiness() {
     missingResourceTypeCount,
     missingRationaleCount,
     missingRelationshipCheckCount,
+    mutationCount,
     conflictingMutationCount,
     status,
-    ready: planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && conflictingMutationCount === 0 && Boolean(approverName)
+    ready: planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
   };
 }
 
@@ -4066,6 +4187,7 @@ function renderApprovalRequirements(readiness) {
     ["Resource types", readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingResourceTypeCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
     ["Relationship checks", readiness.missingRelationshipCheckCount ? `${readiness.missingRelationshipCheckCount} required` : "Current", readiness.planCandidates.length > 0 && readiness.missingRelationshipCheckCount === 0],
+    ["Catalog mutations", readiness.mutationCount ? formatCountLabel(readiness.mutationCount, "mutation") : "None", readiness.mutationCount > 0],
     ["Mutation targets", readiness.conflictingMutationCount ? `${readiness.conflictingMutationCount} conflicting` : "Unique", readiness.planCandidates.length > 0 && readiness.conflictingMutationCount === 0],
     ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
   ];
@@ -4463,7 +4585,7 @@ function handleApproverInput(event) {
 function approveAndExport() {
   const readiness = getPreviewReadiness();
   if (!readiness.ready) {
-    showToast("Complete the selected rule rationale and approver name before exporting.", true);
+    showToast("Complete the approval requirements before exporting.", true);
     return;
   }
   elements["approve-export-button"].disabled = true;

@@ -253,11 +253,11 @@ foreach ($path in $candidateLockPaths) {
 
 $reports = New-Object 'System.Collections.Generic.List[object]'
 $failures = New-Object 'System.Collections.Generic.List[string]'
-foreach ($lockPath in @($lockPaths | Sort-Object)) {
-    $relativeLockPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $lockPath).Replace('\', '/')
-    $packageDirectory = Split-Path -Parent $lockPath
+foreach ($resolvedLockPath in @($lockPaths | Sort-Object)) {
+    $relativeLockPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $resolvedLockPath).Replace('\', '/')
+    $packageDirectory = Split-Path -Parent $resolvedLockPath
     $manifestPath = Join-Path $packageDirectory 'package.json'
-    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $resolvedLockPath -PathType Leaf)) {
         $failures.Add("npm lockfile was not found: $relativeLockPath")
         continue
     }
@@ -268,7 +268,7 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
 
     try {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
-        $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $lock = Get-Content -LiteralPath $resolvedLockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
         if ($manifest.private -ne $true) {
             throw 'package.json must set private to true'
         }
@@ -289,10 +289,10 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
             }
         }
 
-        $hashesBefore = @($manifestPath, $lockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $hashesBefore = @($manifestPath, $resolvedLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
         $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
         $auditExitCode = $auditResult.exitCode
-        $hashesAfter = @($manifestPath, $lockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $hashesAfter = @($manifestPath, $resolvedLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
         if (Compare-Object -ReferenceObject $hashesBefore -DifferenceObject $hashesAfter) {
             throw 'npm audit modified package.json or package-lock.json'
         }
@@ -304,7 +304,7 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
         $passed = $auditExitCode -eq 0 -and $findings.Count -eq 0
         $remediation = $null
         if (-not $passed -and $Fix) {
-            $remediation = Invoke-NpmRemediation -ManifestPath $manifestPath -LockPath $lockPath -AllowBreaking:$AllowBreakingFix
+            $remediation = Invoke-NpmRemediation -ManifestPath $manifestPath -LockPath $resolvedLockPath -AllowBreaking:$AllowBreakingFix
             if ($remediation.passed) {
                 $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
                 $audit = $auditResult.report
