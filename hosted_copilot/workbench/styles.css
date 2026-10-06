@@ -146,6 +146,17 @@ label.button {
   cursor: pointer;
 }
 
+.static-surface {
+  cursor: default;
+}
+
+.editable-text:not([readonly]):not(:disabled),
+.static-surface input:is([type="text"], [type="search"], [type="email"], [type="url"], [type="tel"], [type="password"], [type="number"]):not([readonly]):not(:disabled),
+.static-surface textarea:not([readonly]):not(:disabled),
+.static-surface [contenteditable="true"] {
+  cursor: text;
+}
+
 .clickable {
   cursor: pointer !important;
 }

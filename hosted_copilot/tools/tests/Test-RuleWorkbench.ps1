@@ -1193,6 +1193,12 @@ try {
 
     $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and
         $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
+        $indexContent -match '<body class="static-surface">' -and
+        $indexContent -match 'class="editable-text" id="search-input"' -and
+        $indexContent -match 'class="editable-text" id="approver-name"' -and
+        $appContent -match '<input class="editable-text" type="search" placeholder="Filter preview files"' -and
+        $stylesContent -match '\.static-surface\s*\{\s*cursor:\s*default' -and
+        $stylesContent -match '\.editable-text:not\(\[readonly\]\):not\(:disabled\),[\s\S]*?\.static-surface textarea:not\(\[readonly\]\):not\(:disabled\),[\s\S]*?cursor:\s*text' -and
         $indexContent -match 'class="button review clickable"[^>]*id="preview-review-toggle"' -and
         $appContent -match 'preview-file-tree-item clickable' -and
         $appContent -match 'preview-context-expand clickable' -and
@@ -1201,7 +1207,7 @@ try {
         $appContent -match 'candidate-tree-row clickable' -and
         $appContent -match 'action-option clickable' -and
         $appContent -match 'plan-detail-link clickable'
-    Add-TestResult -Name 'clickable-cursor-affordance' -Passed $clickableAffordanceValid -Detail 'Static and generated command, navigation, disclosure, row, and option controls share an explicit pointer cursor while unavailable commands retain the normal arrow.'
+    Add-TestResult -Name 'clickable-cursor-affordance' -Passed $clickableAffordanceValid -Detail 'Static Workbench content retains the normal arrow, editable text controls use the text cursor, and available command, navigation, disclosure, row, and option controls use the pointer cursor.'
 
     $buttonComponentValid = $indexContent -match '<span class="button-label">Export Draft</span>' -and
         $indexContent -match '<span class="button-label">Import Draft</span>' -and
@@ -1244,13 +1250,14 @@ try {
         $appContent -match 'function renderRuleIssueTabPagination\(' -and
         $appContent -match 'totalWidth <= pager\.clientWidth \+ 0\.5' -and
         $appContent -match 'renderRuleIssueTabPagination\(true\)' -and
+        $appContent -match 'state\.ruleIssueTabPage = selectedPage >= 0 \? selectedPage : 0' -and
         $appContent -match 'previous\.disabled = state\.ruleIssueTabPage === 0' -and
         $appContent -match 'next\.disabled = state\.ruleIssueTabPage === pages\.length - 1' -and
         $stylesContent -match '\.rule-issue-tab-pager\.paging\s*\{[^}]*grid-template-columns:\s*28px minmax\(0, 1fr\) 28px' -and
         $stylesContent -match '\.rule-issue-tab-page-hidden\s*\{[^}]*display:\s*none !important' -and
         $stylesContent -match '\.rule-issue-tab-scroll-button:disabled,[\s\S]*?opacity:\s*0\.38' -and
         $stylesContent -match '\.rule-issue-tab-scroll-button\[hidden\]\s*\{[^}]*display:\s*none !important'
-    Add-TestResult -Name 'rule-issue-tab-pagination' -Passed $ruleIssueTabPaginationValid -Detail 'Rule Issue type tabs page only complete labels and counts, reveal the selected type, expose durable Previous and Next controls with edge states, and hide paging when all tabs fit.'
+    Add-TestResult -Name 'rule-issue-tab-pagination' -Passed $ruleIssueTabPaginationValid -Detail 'Rule Issue type tabs page only complete labels and counts, reveal the selected type or default to the first page, expose durable Previous and Next controls with edge states, and hide paging when all tabs fit.'
 
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-rationale-save' -and $appContent -notmatch '<span>Save</span>' -and $appContent -match 'Save decision rationale and return to Promotion Plan' -and $appContent -match 'Save and return to Promotion Plan' -and $appContent -match 'save\.disabled = !value\.trim\(\)' -and $appContent -match 'await persistencePromise' -and $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)' -and $stylesContent -match '\.plan-detail-link:focus-visible' -and $stylesContent -match '\.rationale-heading'

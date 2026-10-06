@@ -802,7 +802,7 @@ function renderRuleIssueTabPagination(revealSelected = false) {
   const pages = getRuleIssueTabPages(tabs, viewport.clientWidth);
   if (revealSelected) {
     const selectedPage = pages.findIndex((page) => page.some((index) => tabs[index].getAttribute("aria-selected") === "true"));
-    if (selectedPage >= 0) state.ruleIssueTabPage = selectedPage;
+    state.ruleIssueTabPage = selectedPage >= 0 ? selectedPage : 0;
   }
   state.ruleIssueTabPage = Math.max(0, Math.min(state.ruleIssueTabPage, pages.length - 1));
   const visibleTabs = new Set(pages[state.ruleIssueTabPage]);
@@ -3863,7 +3863,7 @@ function renderPreviewFileTree() {
   const groups = Object.entries(previewFilesByScope).map(([scope, files]) => renderPreviewArtifactGroup(scope, files)).join("");
   let tree = elements["preview-summary"].querySelector(".preview-artifact-tree");
   if (!tree) {
-    elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input type="search" placeholder="Filter preview files" aria-label="Filter preview files"></label><nav class="preview-artifact-tree" aria-label="Review artifacts"></nav>`;
+    elements["preview-summary"].innerHTML = `<label class="preview-file-filter">${icon("search")}<input class="editable-text" type="search" placeholder="Filter preview files" aria-label="Filter preview files"></label><nav class="preview-artifact-tree" aria-label="Review artifacts"></nav>`;
     tree = elements["preview-summary"].querySelector(".preview-artifact-tree");
   }
   tree.innerHTML = groups;

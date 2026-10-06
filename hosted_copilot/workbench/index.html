@@ -11,7 +11,7 @@
   <script src="hierarchical-view.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body>
+<body class="static-surface">
   <main class="unsupported-device" aria-labelledby="unsupported-device-heading">
     <div class="unsupported-brand-lockup">
       <svg class="unsupported-brand-icon codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-json"></use></svg>
@@ -73,7 +73,7 @@
           <label class="search-field">
             <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-search"></use></svg>
             <span class="sr-only">Search evaluated candidates</span>
-            <input id="search-input" type="search" placeholder="Search sources, categories, or rules">
+            <input class="editable-text" id="search-input" type="search" placeholder="Search sources, categories, or rules">
           </label>
         </div>
 
@@ -246,7 +246,7 @@
             </div>
             <div class="approval-controls">
               <label for="approver-name">Approver Name</label>
-              <input id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
+              <input class="editable-text" id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
               <section class="approval-requirements" id="approval-requirements" aria-label="Approval Requirements"></section>
               <button class="button primary clickable" id="approve-export-button" type="button" disabled>
                 <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
