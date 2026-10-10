@@ -14,7 +14,9 @@ param(
 
     [switch]$FixNpmAudit,
 
-    [switch]$AllowBreakingNpmFix
+    [switch]$AllowBreakingNpmFix,
+
+    [switch]$ContinueAfterNpmAuditFailure
 )
 
 Set-StrictMode -Version Latest
@@ -34,6 +36,8 @@ $octiconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-Workb
 $iconPreviewPath = Join-Path $PSScriptRoot '../internal/workbench/WorkbenchIconPreview.ps1'
 $iconPreviewRendererPath = Join-Path $PSScriptRoot '../Render-WorkbenchIconPreview.cjs'
 $launcherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'
+$hostedGitHubHelpersPath = Join-Path $PSScriptRoot '../modules/shared/HostedGitHub.Helpers.psm1'
+$workbenchGitHubContextPath = Join-Path $PSScriptRoot '../modules/workbench/Workbench.GitHubContext.psm1'
 $loopbackServerPath = Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'
 $manualRelationshipPath = Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $manualRelationshipEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/manual-relationship-evaluator.ps1'
@@ -59,6 +63,7 @@ $dependencyAuditFindings = New-Object 'System.Collections.Generic.List[object]'
 $dependencyAuditCounts = $null
 $dependencyAuditError = $null
 $dependencyAuditInconclusive = $false
+$dependencyAuditContinuation = $false
 $failureAlreadyReported = $false
 $npmFixApplied = $false
 $npmFixRequiresBreaking = $false
@@ -73,6 +78,7 @@ $staticTestNames = @(
     'local-icon-family-sprites',
     'portable-icon-generation',
     'browser-state-contract',
+    'tooltip-sentence-case',
     'browser-behavior-manifest',
     'browser-timestamp-normalization',
     'repository-identity-presentation',
@@ -106,6 +112,7 @@ $staticTestNames = @(
     'clickable-cursor-affordance',
     'button-component-contract',
     'promotion-plan-attention-filter',
+    'rule-issue-recommendation-staging',
     'rule-issue-tab-pagination',
     'promotion-plan-column-alignment',
     'promotion-plan-detail-routing',
@@ -394,6 +401,12 @@ try {
     if ($AllowBreakingNpmFix -and -not $FixNpmAudit) {
         Add-TestResult -Name 'run-selection' -Passed $false -Detail '-AllowBreakingNpmFix requires -FixNpmAudit'
     }
+    elseif ($ContinueAfterNpmAuditFailure -and [string]::IsNullOrWhiteSpace($Run)) {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-ContinueAfterNpmAuditFailure requires a focused -Run and is not available for the complete Workbench suite'
+    }
+    elseif ($ContinueAfterNpmAuditFailure -and $FixNpmAudit) {
+        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-ContinueAfterNpmAuditFailure cannot be combined with -FixNpmAudit'
+    }
     elseif ($FixNpmAudit -and -not [string]::IsNullOrWhiteSpace($Run)) {
         Add-TestResult -Name 'run-selection' -Passed $false -Detail '-FixNpmAudit is available only for the complete Workbench suite'
     }
@@ -439,8 +452,12 @@ try {
     if (-not $auditPassed) {
         $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
     }
+    $dependencyAuditContinuation = $ContinueAfterNpmAuditFailure -and -not $auditPassed -and -not $dependencyAuditInconclusive
     $auditDetail = if ($dependencyAuditInconclusive) {
         "$dependencyAuditError; focused validation is continuing with the existing locked dependency graph"
+    }
+    elseif ($dependencyAuditContinuation) {
+        "$dependencyAuditError; focused validation is continuing without dependency installation and remains unverified"
     }
     elseif (-not $auditPassed) {
         "$dependencyAuditError; dependency installation blocked"
@@ -452,7 +469,7 @@ try {
         "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
     }
     Add-TestResult -Name 'npm audit' -Passed ($auditPassed -or $dependencyAuditInconclusive) -Detail $auditDetail
-    if (-not $auditPassed -and -not $dependencyAuditInconclusive) {
+    if (-not $auditPassed -and -not $dependencyAuditInconclusive -and -not $dependencyAuditContinuation) {
         $failureAlreadyReported = $true
         throw 'npm audit failed before dependency installation'
     }
@@ -460,16 +477,23 @@ try {
     $dependencyOutput = @()
     $dependencyExitCode = 0
     $packageGraphCurrent = Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath
-    if (-not $packageGraphCurrent -and $dependencyAuditInconclusive) {
+    if (-not $packageGraphCurrent -and ($dependencyAuditInconclusive -or $dependencyAuditContinuation)) {
         $dependencyExitCode = 1
-        $dependencyOutput = @('npm audit was inconclusive and the installed package graph does not match the lockfile; unaudited dependency installation is blocked')
+        $dependencyOutput = @('npm audit did not pass and the installed package graph does not match the lockfile; dependency installation and focused execution are blocked')
     }
     elseif (-not $packageGraphCurrent) {
         $dependencyOutput = @(& $npmCommand.Source ci --prefix $toolsRoot --ignore-scripts --no-audit --no-fund 2>&1)
         $dependencyExitCode = $LASTEXITCODE
     }
     $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $toolsRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
-    Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Detail $(if ($lockedDependencyValid) { "Installed packages match the audited lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)." } else { ($dependencyOutput | Out-String).Trim() })
+    $lockedDependencySuccessDetail = if ($auditPassed) { 'CURRENT (MATCHES AUDITED LOCKFILE)' } else { 'CURRENT (MATCHES LOCKFILE; UNVERIFIED)' }
+    $lockedDependencyDetail = if ($lockedDependencyValid) {
+        "Installed packages match the lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)."
+    }
+    else {
+        ($dependencyOutput | Out-String).Trim()
+    }
+    Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail $lockedDependencySuccessDetail -Detail $lockedDependencyDetail
     if (-not $lockedDependencyValid) {
         throw 'locked browser validation dependencies could not be installed'
     }
@@ -477,15 +501,33 @@ try {
         Start-TestResult -Name 'locked-browser-runtime'
         $browserInstallOutput = New-Object 'System.Collections.Generic.List[string]'
         $browserInstallPassed = Test-Path -LiteralPath $puppeteerCliPath -PathType Leaf
-        foreach ($browserName in @('chrome', 'chrome-headless-shell')) {
-            if (-not $browserInstallPassed) {
-                break
-            }
-            $output = @(& $puppeteerCliPath browsers install $browserName 2>&1)
+        if ($browserInstallPassed -and -not $auditPassed) {
+            $output = @(& $puppeteerCliPath browsers list 2>&1)
             foreach ($line in $output) { $browserInstallOutput.Add([string]$line) }
-            $browserInstallPassed = $LASTEXITCODE -eq 0
+            $browserInstallPassed = $LASTEXITCODE -eq 0 -and
+                @($output | Where-Object { [string]$_ -match '^chrome@' }).Count -gt 0 -and
+                @($output | Where-Object { [string]$_ -match '^chrome-headless-shell@' }).Count -gt 0
         }
-        Add-TestResult -Name 'locked-browser-runtime' -Passed $browserInstallPassed -Detail $(if ($browserInstallPassed) { 'Installed the Puppeteer-pinned Chrome and Chrome Headless Shell runtimes through the locked local CLI.' } else { ($browserInstallOutput | Out-String).Trim() })
+        elseif ($browserInstallPassed) {
+            foreach ($browserName in @('chrome', 'chrome-headless-shell')) {
+                if (-not $browserInstallPassed) {
+                    break
+                }
+                $output = @(& $puppeteerCliPath browsers install $browserName 2>&1)
+                foreach ($line in $output) { $browserInstallOutput.Add([string]$line) }
+                $browserInstallPassed = $LASTEXITCODE -eq 0
+            }
+        }
+        $browserRuntimeDetail = if ($browserInstallPassed -and $auditPassed) {
+            'Installed the Puppeteer-pinned Chrome and Chrome Headless Shell runtimes through the locked local CLI.'
+        }
+        elseif ($browserInstallPassed) {
+            'Verified existing Chrome and Chrome Headless Shell runtimes without installation after npm audit did not pass.'
+        }
+        else {
+            ($browserInstallOutput | Out-String).Trim()
+        }
+        Add-TestResult -Name 'locked-browser-runtime' -Passed $browserInstallPassed -Detail $browserRuntimeDetail
         if (-not $browserInstallPassed) {
             throw 'locked browser runtimes could not be installed'
         }
@@ -788,6 +830,7 @@ try {
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
     $hierarchicalViewContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'hierarchical-view.js') -Raw
+    $statusbarContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'statusbar.js') -Raw
     $stylesContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'styles.css') -Raw
     $faviconContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'favicon.svg') -Raw
     $generatedSpriteContent = Get-Content -LiteralPath (Join-Path $codiconRoot 'sprite.svg') -Raw
@@ -800,6 +843,8 @@ try {
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
+    $hostedGitHubHelpersContent = Get-Content -LiteralPath $hostedGitHubHelpersPath -Raw
+    $workbenchGitHubContextContent = Get-Content -LiteralPath $workbenchGitHubContextPath -Raw
     $codiconSourceCount = @(Get-ChildItem -LiteralPath $codiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
     $octiconSourceCount = @(Get-ChildItem -LiteralPath $octiconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') }).Count
     $codiconContractValid = $codiconSourceCount -eq [regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count
@@ -812,7 +857,7 @@ try {
     $codiconContractValid = $codiconContractValid -and $launcherContent -match 'workbenchIconSource' -and $launcherContent -match 'Copy-Item -LiteralPath \$workbenchIconSource -Destination \$resolvedSiteDirectory -Recurse -Force'
     $codiconContractValid = $codiconContractValid -and $indexContent -notmatch 'cdn\.jsdelivr|data-lucide|lucide\.min\.js' -and $appContent -notmatch 'data-lucide|window\.lucide|refreshIcons' -and $appContent -match 'function icon\(name\)' -and $appContent -match 'icons/codicons/sprite\.svg#codicon-\$\{name\}' -and $appContent -match 'data-detail-back-to-top[\s\S]*?icon\("arrow-circle-up"\)'
     $codiconContractValid = $codiconContractValid -and $stylesContent -match '\.detail-back-to-top\s*\{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*color:\s*var\(--accent-bright\);[^}]*background:\s*transparent;[^}]*border:\s*0;[^}]*border-radius:\s*0' -and $stylesContent -match '\.detail-back-to-top > \.codicon\s*\{[^}]*width:\s*26px;[^}]*height:\s*26px'
-    $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-check-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-collection' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-circle-slash-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-debug-disconnect-compact' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-new-session' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-shield-compact'
+    $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $statusbarContent -match 'icon: "git-branch-compact"' -and $statusbarContent -match 'icon: "check-compact"' -and $statusbarContent -match 'icon: "collection"' -and $statusbarContent -match 'icon: "circle-slash-compact"' -and $statusbarContent -match 'icon: "debug-disconnect-compact"' -and $statusbarContent -match 'icon: "new-session"' -and $statusbarContent -match 'icon: "shield-compact"'
     $codiconContractValid = $codiconContractValid -and $appContent -match 'octicon\("copy"\)' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $indexContent -match 'data-view="catalog"[\s\S]*?codicon-collection' -and $indexContent -match 'data-view="plan"[\s\S]*?codicon-new-session' -and $indexContent -match 'data-view="preview"[\s\S]*?codicon-open-preview' -and $appContent -match 'icon\("discard"\)'
     $chatSparkleErrorContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-chat-sparkle-error"' -and $iconGeneratorContent -match "'chat-sparkle-error'"
     $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq $codiconSourceCount) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
@@ -854,11 +899,36 @@ try {
         Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
 
-    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"' -and $indexContent -match 'id="status-target"' -and $indexContent -match 'id="status-mapped"' -and $indexContent -match 'id="status-headroom"' -and $indexContent -notmatch 'id="metrics-band"|Refresh candidates' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'async function preloadIconSprites\(\)' -and $appContent -match 'await preloadIconSprites\(\)' -and $appContent -match 'elements\["status-target"\]\.textContent' -and $appContent -match 'elements\["status-mapped"\]\.textContent' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML'
+    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match '<script src="statusbar\.js" defer></script>[\s\S]*<script src="app\.js" defer></script>' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"[\s\S]*class="status-cluster status-left"></div>[\s\S]*class="status-cluster status-right"></div>' -and $indexContent -notmatch 'id="status-target"|id="status-mapped"|id="status-headroom"|id="metrics-band"|Refresh candidates' -and $statusbarContent -match 'const STATUS_BAR_ENTRIES = Object\.freeze' -and $statusbarContent -match 'class WorkbenchStatusBarService' -and $statusbarContent -match 'key: "promotionApproval"[\s\S]*tooltip: "Promotion approval status"[\s\S]*kind: "warning"' -and $statusbarContent -match 'const workbenchStatusBar = new WorkbenchStatusBarService' -and $appContent -match 'workbenchStatusBar\.render\(\)' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'async function preloadIconSprites\(\)' -and $appContent -match 'await preloadIconSprites\(\)' -and $appContent -match 'workbenchStatusBar\.update\("target"' -and $appContent -match 'workbenchStatusBar\.update\("mapped"' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML' -and $launcherContent -match "'statusbar\.js'"
     $shutdownPresentationValid = $appContent -match '<div class="shutdown-brand-lockup">\s*<svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="' -and $appContent -match '<p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $appContent -match '<h1>Workbench Closed</h1>' -and $appContent -notmatch '<span class="brand-mark" aria-hidden="true">HR</span>'
     $shutdownPresentationValid = $shutdownPresentationValid -and $stylesContent -match '\.shutdown-state\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center' -and $stylesContent -match '\.shutdown-brand-lockup\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center' -and $stylesContent -match '\.shutdown-brand-icon\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*color:\s*#ffff00;[^}]*fill:\s*currentColor' -and $stylesContent -match '\.shutdown-state \.shutdown-product-name\s*\{[^}]*font-size:\s*20px !important;[^}]*font-weight:\s*600 !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.shutdown-state > h1\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important'
     $browserContractValid = $browserContractValid -and $shutdownPresentationValid
     Add-TestResult -Name 'browser-state-contract' -Passed $browserContractValid -Detail 'The IDE shell keeps draft portability in a compact title-bar menu, places shutdown at the far right, and renders the validated fork promotion target plus operational state directly into the status bar.'
+
+    $tooltipLiterals = foreach ($content in @($indexContent, $appContent, $statusbarContent)) {
+        foreach ($pattern in @('data-workbench-tooltip="([^"$<{]+)"', 'setWorkbenchTooltip\([^,]+,\s*"([^"$<{]+)"\)', 'tooltip:\s*"([^"$<{]+)"')) {
+            foreach ($match in [regex]::Matches($content, $pattern)) {
+                $match.Groups[1].Value.Trim()
+            }
+        }
+    }
+    $tooltipProperNames = @('AI', 'AzureRM', 'CODEOWNER', 'Copilot', 'GitHub', 'Hosted', 'Workbench')
+    $tooltipCaseViolations = @(foreach ($tooltipLiteral in @($tooltipLiterals | Sort-Object -Unique)) {
+        if ($tooltipLiteral -ceq 'Hosted Copilot Rule Manager') {
+            continue
+        }
+        $tooltipWords = @([regex]::Matches($tooltipLiteral, '[A-Za-z][A-Za-z''-]*') | ForEach-Object Value)
+        if ($tooltipWords.Count -lt 2) {
+            continue
+        }
+        $unexpectedCapitalization = @($tooltipWords[1..($tooltipWords.Count - 1)] | Where-Object {
+                $_[0] -cmatch '[A-Z]' -and $_ -notin $tooltipProperNames -and $_ -cnotmatch '^[A-Z0-9]+$'
+            })
+        if ($unexpectedCapitalization.Count -gt 0) {
+            "$tooltipLiteral ($($unexpectedCapitalization -join ', '))"
+        }
+    })
+    Add-TestResult -Name 'tooltip-sentence-case' -Passed ($tooltipCaseViolations.Count -eq 0) -Detail $(if ($tooltipCaseViolations.Count -eq 0) { 'Authored Workbench tooltips use sentence case while preserving product names and acronyms.' } else { "Unexpected tooltip capitalization: $($tooltipCaseViolations -join '; ')" })
 
     $timestampNormalizationValid = $appContent -match 'function toUtcTimestamp\(value = new Date\(\)\)' -and
         $appContent -match 'return date\.toISOString\(\)\.replace\(/Z\$/, "0000Z"\)' -and
@@ -868,9 +938,21 @@ try {
         $appContent -notmatch 'new Date\(\)\.toISOString\(\)'
     Add-TestResult -Name 'browser-timestamp-normalization' -Passed $timestampNormalizationValid -Detail 'Workbench persistence and exports use one browser canonicalizer that matches the PowerShell seven-digit UTC wire format.'
 
-    $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and $launcherContent -match '\$repository\.fork -eq \$true' -and $launcherContent -match '\$repository\.parent\.full_name -eq ''hashicorp/terraform-provider-azurerm''' -and $launcherContent -match '\$comparisonOutput = @\(& \$ghCommand\.Source api' -and $launcherContent -match 'aheadBy = if \(\$null -ne \$comparison\)' -and $launcherContent -match 'behindBy = if \(\$null -ne \$comparison\)' -and $appContent -match 'function renderTarget\(' -and $appContent -match 'syncIndicators\.push\(`↓ \$\{behindBy\}`\)' -and $appContent -match 'syncIndicators\.push\(`↑ \$\{aheadBy\}`\)' -and $appContent -match 'classList\.toggle\("sync-behind", behindBy > 0\)' -and $appContent -match '\[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and $indexContent -match 'id="target-chip"[^>]*data-truncation-owner' -and $appContent -match 'node\.closest\("\[data-truncation-owner\]"\)' -and $stylesContent -match '\.target-chip\.sync-behind,\s*\.target-chip\.sync-behind:hover\s*\{[^}]*color:\s*var\(--gold\)' -and $stylesContent -match '#status-target\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis' -and $stylesContent -match '\.ide-statusbar\s*\{[^}]*cursor:\s*default;[^}]*user-select:\s*none' -and $appContent -match 'function renderSourceSummaryLabel\(' -and ([regex]::Matches($appContent, '\$\{renderSourceSummaryLabel\(sourceType,').Count -eq 2) -and $appContent -match 'data-source-provenance-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and $appContent -notmatch 'Contributor guidance source:' -and $stylesContent -match '\.source-summary-label\s*\{[^}]*gap:\s*8px' -and $stylesContent -match '\.source-provenance-pill\s*\{[^}]*color:\s*var\(--success\);[^}]*background:\s*var\(--success-soft\);[^}]*border:\s*1px solid var\(--success\)' -and $stylesContent -match '@media \(max-width: 1180px\)[\s\S]*?\.candidate-source-root > summary\s*\{[^}]*grid-template-columns:\s*18px minmax\(0, 1fr\) 108px'
-    $repositoryIdentityValid = $launcherContent -match '\$repositoryName = "\$login/terraform-provider-azurerm"' -and
-        $appContent -match 'elements\["target-chip"\]\.dataset\.workbenchTooltip = \[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and
+    $repositoryIdentityValid = $launcherContent -match 'modules/workbench/Workbench\.GitHubContext\.psm1' -and
+        $launcherContent -match 'Get-HostedWorkbenchGitHubContext -RepositoryRoot \$repositoryRoot -SkipGitHubAuthorization:\$SkipGitHubAuthorization' -and
+        $workbenchGitHubContextContent -match 'Import-Module \(Join-Path \$PSScriptRoot ''\.\./shared/HostedGitHub\.Helpers\.psm1''\) -Force' -and
+        $workbenchGitHubContextContent -match 'function Get-HostedWorkbenchGitHubContext' -and
+        $workbenchGitHubContextContent -match 'Get-HostedToolkitCodeOwners -CodeOwnersPath \$codeOwnersPath' -and
+        $workbenchGitHubContextContent -match 'Get-HostedGitHubForkTarget -Login \$login' -and
+        $workbenchGitHubContextContent -match "status = 'validated'" -and
+        $hostedGitHubHelpersContent -match 'function Invoke-HostedGitHubApi' -and
+        $hostedGitHubHelpersContent -match 'RedirectStandardOutput = \$true' -and
+        $hostedGitHubHelpersContent -match 'RedirectStandardError = \$true' -and
+        $hostedGitHubHelpersContent -match 'function Get-HostedToolkitCodeOwners' -and
+        $hostedGitHubHelpersContent -match 'function Get-HostedGitHubForkTarget' -and
+        $hostedGitHubHelpersContent -match "CanonicalRepository = 'hashicorp/terraform-provider-azurerm'" -and
+        $appContent -match 'workbenchStatusBar\.update\("target", \{' -and
+        $appContent -match 'tooltip: \[targetLabel, \.\.\.syncIndicators\]\.join\(" \| "\)' -and
         $appContent -match 'revision\?\.repository && revision\?\.configuredRef && shortCommit' -and
         $appContent -match '\$\{revision\.repository\} · \$\{revision\.configuredRef\}@\$\{shortCommit\}' -and
         $appContent -match 'data-workbench-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and
@@ -885,10 +967,10 @@ try {
         $stylesContent -match '@keyframes workbench-tooltip-fade-in'
     Add-TestResult -Name 'repository-identity-presentation' -Passed $repositoryIdentityValid -Detail 'The status bar identifies and safely truncates the writable AzureRM fork, uses amber only when it is behind, and exposes compact nonzero sync arrows through its parent-owned tooltip; both Contributor Guidance roots retain aligned green provenance pills.'
 
-    $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*title="Promotion Plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and $indexContent -match 'class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden' -and $appContent -match 'const planCount = getPlanCandidates\(\)\.length' -and $appContent -match 'elements\["plan-count"\]\.textContent = formatNumber\(planCount\)' -and $appContent -match 'planCount > 999 \? "999\+" : formatNumber\(planCount\)' -and $appContent -match 'elements\["plan-activity-count"\]\.hidden = planCount === 0' -and $appContent -match 'const planLabel = `Promotion Plan \(\$\{formatNumber\(planCount\)\}\)`' -and $stylesContent -match '--activity-badge-background:\s*#307e9f' -and $stylesContent -match '--activity-badge-foreground:\s*#ffffff' -and $stylesContent -match '\.stage-count-badge\s*\{[^}]*right:\s*4px;[^}]*bottom:\s*5px;[^}]*min-width:\s*16px;[^}]*height:\s*16px;[^}]*color:\s*var\(--activity-badge-foreground\);[^}]*background:\s*var\(--activity-badge-background\);[^}]*border:\s*0;[^}]*border-radius:\s*999px' -and $stylesContent -match 'html\.theme-hosted-dark body \.stage-count-badge\s*\{[^}]*font-size:\s*10px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*14px !important'
-    $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*data-workbench-tooltip="Promotion Plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and
+    $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*title="Promotion Plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and $indexContent -match 'class="stage-count-badge" id="plan-activity-count" aria-hidden="true" hidden' -and $appContent -match 'const planCount = getPlanCandidates\(\)\.length' -and $appContent -match 'workbenchStatusBar\.update\("plan", \{ text: formatNumber\(planCount\) \}\)' -and $appContent -match 'planCount > 999 \? "999\+" : formatNumber\(planCount\)' -and $appContent -match 'elements\["plan-activity-count"\]\.hidden = planCount === 0' -and $appContent -match 'const planLabel = `Promotion Plan \(\$\{formatNumber\(planCount\)\}\)`' -and $stylesContent -match '--activity-badge-background:\s*#307e9f' -and $stylesContent -match '--activity-badge-foreground:\s*#ffffff' -and $stylesContent -match '\.stage-count-badge\s*\{[^}]*right:\s*4px;[^}]*bottom:\s*5px;[^}]*min-width:\s*16px;[^}]*height:\s*16px;[^}]*color:\s*var\(--activity-badge-foreground\);[^}]*background:\s*var\(--activity-badge-background\);[^}]*border:\s*0;[^}]*border-radius:\s*999px' -and $stylesContent -match 'html\.theme-hosted-dark body \.stage-count-badge\s*\{[^}]*font-size:\s*10px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*14px !important'
+    $planActivityBadgeValid = $indexContent -match 'id="promotion-plan-stage"[^>]*data-workbench-tooltip="Open promotion plan \(0\)"[^>]*aria-label="Promotion Plan \(0\)"' -and
         $appContent -match 'planCount > 999 \? "999\+" : formatNumber\(planCount\)' -and
-        $appContent -match 'setWorkbenchTooltip\(elements\["promotion-plan-stage"\], planLabel\)' -and
+        $appContent -match 'setWorkbenchTooltip\(elements\["promotion-plan-stage"\], `Open promotion plan \(\$\{formatNumber\(planCount\)\}\)`\)' -and
         $stylesContent -match '\.stage-count-badge\s*\{[^}]*border-radius:\s*999px'
     Add-TestResult -Name 'promotion-plan-activity-badge' -Passed $planActivityBadgeValid -Detail 'The Promotion Plan rail badge hides at zero, displays exact counts through 999, expands left as a semibold pill, abbreviates larger counts to 999+, and preserves the exact localized count in the footer and accessibility text.'
 
@@ -913,9 +995,9 @@ try {
         $assessmentDetailBody -match 'Proposed Hosted Rule:[\s\S]*assessment\.proposedHostedRuleId[\s\S]*Generated[\s\S]*assessment\.proposedText' -and
         $appContent -match 'data-assessment-override-toggle=' -and
         $appContent -match 'data-assessment-override-remove=' -and
-        $appContent -match 'data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove Override"' -and
-        $appContent -match 'data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply Override" disabled>\$\{icon\("git-stash-apply"\)\}' -and
-        $appContent -match 'data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel Override">\$\{icon\("close"\)\}' -and
+        $appContent -match 'data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove override"' -and
+        $appContent -match 'data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>\$\{icon\("git-stash-apply"\)\}' -and
+        $appContent -match 'data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">\$\{icon\("close"\)\}' -and
         $appContent -notmatch 'class="override-actions"' -and
         $stylesContent -match '\.override-inline-actions\s*\{[^}]*display:\s*flex;[^}]*gap:\s*4px' -and
         $stylesContent -match '\.factor-line\.penalty\.risk-high \.factor-meter::\-webkit-progress-value\s*\{[^}]*background:\s*var\(--red\)' -and
@@ -990,7 +1072,7 @@ try {
     $assessmentPaneValid = $indexContent -match 'class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace"' -and $indexContent -match 'data-assessment-pane="assessments"' -and $indexContent -match 'data-assessment-pane="details"' -and $indexContent -match 'id="assessment-results-list-panel" role="tabpanel"' -and $indexContent -match 'id="assessment-results-detail" role="tabpanel"[^>]*hidden' -and $stylesContent -match '#assessment-results-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-panel\.workspace-tab-panel\.active\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)' -and $stylesContent -match '#assessment-results-detail\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $appContent -match 'assessmentPane:\s*"assessments"' -and $appContent -match 'state\.assessmentPane = "assessments";\s*renderAll\(\);[\s\S]*?showAssessmentPane\("assessments"\)' -and $appContent -match 'selectAssessmentResult\(row\.dataset\.assessmentKey\);\s*showAssessmentPane\("details"\)' -and $appContent -match 'selectAssessmentResult, \(\) => showAssessmentPane\("details"\)' -and $appContent -match 'function syncAssessmentResultRows\(' -and $appContent -match 'row\.dataset\.assessmentKey === state\.assessmentActiveKey' -and $appContent -match 'function showAssessmentPane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "assessments"'
     Add-TestResult -Name 'assessment-pane-navigation' -Passed $assessmentPaneValid -Detail 'Assessment Results always exposes full-width Assessments and Details tabs, initializes without a selection, opens Details on row activation, and synchronizes the selected-row highlight from one state owner.'
 
-    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $launcherContent -match 'gh -ErrorAction SilentlyContinue' -and $launcherContent -match 'api user --jq \.login' -and $launcherContent -match '''/hosted_copilot/''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
+    $overrideContractValid = $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and $appContent -match 'applicabilityOverrides:\s*\{\}' -and $appContent -match 'function getApplicabilityOverride' -and $appContent -match 'sourceContentSha256 !== candidate\.hash' -and $appContent -match 'originalHostedApplicable === false' -and $appContent -match 'effectiveHostedApplicable === true' -and $appContent -match 'function getEffectiveHostedApplicability' -and $appContent -match 'Maintainer Override:' -and $appContent -match 'data-override-open' -and $appContent -match 'data-override-apply' -and $appContent -match 'data-override-remove' -and $appContent -match 'recordedBy:\s*\{ type: "github-cli", login: identity\.login \}' -and $appContent -match 'applicabilityOverride: getApplicabilityOverride\(candidate\)' -and $appContent -match 'draft\.applicabilityOverrides' -and $appContent -match 'The AI assessment is read-only' -and $workbenchGitHubContextContent -match 'Invoke-HostedGitHubApi -Endpoint user -Jq ''\.login''' -and $workbenchGitHubContextContent -match 'Join-Path \$RepositoryRoot ''\.github/CODEOWNERS''' -and $launcherContent -match 'maintainerIdentity = \$maintainerIdentity'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'function updateOverrideLifecycle\(' -and $appContent -match 'repairOverridePlanMembership\(\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, override, \{ \.\.\.defaultDecision\(candidate\), \.\.\.createPlanMembership\("override"\) \}\)' -and $appContent -match 'updateOverrideLifecycle\(candidate, null, null\)'
     $overrideContractValid = $overrideContractValid -and $appContent -match 'class="button warning-action clickable"[^>]*data-override-open' -and $appContent -match '\$\{icon\("chat-sparkle-error"\)\}Contest Assessment' -and $stylesContent -match '--warning-action-background:\s*#352a05' -and $stylesContent -match '--warning-action-background-hover:\s*#453b19' -and $stylesContent -match '--warning-action-border:\s*#b89500' -and $stylesContent -match '--warning-action-foreground:\s*#ffffff' -and $stylesContent -match '\.button\.warning-action\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background\);[^}]*border-color:\s*var\(--warning-action-border\)' -and $stylesContent -match '\.button\.warning-action:hover\s*\{[^}]*color:\s*var\(--warning-action-foreground\);[^}]*background:\s*var\(--warning-action-background-hover\);[^}]*border-color:\s*var\(--warning-action-border\)'
     Add-TestResult -Name 'maintainer-applicability-override' -Passed $overrideContractValid -Detail 'Authenticated Hosted CODEOWNERS can atomically move an exclusion into Overrides and the plan, while removal returns it to active exclusions without mutating the AI assessment.'
@@ -1024,9 +1106,9 @@ try {
     $ideShellValid = $indexContent -match 'data-lucide="braces"' -and $indexContent -match 'data-lucide="git-fork"' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $indexContent -notmatch 'Maintainer review|Read-only assessment audit|Selected changes|preview-editor-icon' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.topbar\s*\{[^}]*grid-template-columns:\s*auto 1fr' -and $stylesContent -match '\.brand-block\s*\{[^}]*grid-column:\s*1;[^}]*margin-left:\s*8px' -and $stylesContent -match '\.topbar-actions\s*\{[^}]*grid-column:\s*2' -and $stylesContent -match '#candidate-panel > \.panel-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*min-height:\s*48px' -and $stylesContent -match '#candidate-panel > \.panel-heading h2,[\s\S]*?#preview-view > \.page-heading h2\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*22px !important;[^}]*text-transform:\s*uppercase' -and $stylesContent -match '#plan-view > \.page-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*margin-bottom:\s*6px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*12px;[^}]*padding:\s*2px;[^}]*overflow:\s*visible' -and $stylesContent -notmatch '\.status-right \.status-item:nth-child' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*34px;[^}]*background:\s*var\(--paper\);[^}]*border:\s*0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*26px;[^}]*border-radius:\s*2px' -and $stylesContent -match '\.search-field:focus-within\s*\{[^}]*border-color:\s*var\(--line\)' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*background:\s*var\(--accent\)'
     $codiconShellValid = $indexContent -match 'class="brand-icon codicon"[^>]*>[\s\S]*?icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*13px;[^}]*height:\s*13px' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*text-transform:\s*uppercase'
     $codiconShellValid = $indexContent -match 'class="brand-icon codicon"' -and
-        $indexContent -match 'class="stage-link active clickable"[^>]*data-workbench-tooltip="Eligible Candidates"' -and
+        $indexContent -match 'class="stage-link active clickable"[^>]*data-workbench-tooltip="Show eligible candidates"' -and
         $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and
-        $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px'
+        $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*var\(--topbar-height\) minmax\(0, 1fr\) var\(--status-bar-height\)'
     Add-TestResult -Name 'ide-shell-contract' -Passed ($ideShellValid -or $codiconShellValid) -Detail 'The source-backed IDE shell uses compact title, activity, editor-tab, search, and status surfaces with icon-first controls and exact approved dimensions.'
 
     $ideShellValid = $ideShellValid -and $indexContent -notmatch 'data-lucide="list-tree"|data-lucide="panel-right"|data-lucide="clipboard-list"' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*40px;[^}]*padding:\s*4px 0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*32px;[^}]*min-height:\s*32px' -and $stylesContent -match '\.workspace-tabs\s*\{[^}]*background:\s*var\(--paper\);[^}]*border:\s*0;[^}]*border-bottom:\s*1px solid var\(--line\)' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*margin-right:\s*1px;[^}]*background:\s*var\(--surface\);[^}]*border:\s*1px solid var\(--line\);[^}]*border-bottom:\s*0' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*inset:\s*auto 0 0' -and $stylesContent -match '\.candidate-pane-switch\s*\{[^}]*background:\s*var\(--paper\)' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*background:\s*var\(--surface\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\.active\s*\{[^}]*background:\s*var\(--paper\);[^}]*box-shadow:\s*inset 0 -1px var\(--accent\)' -and $stylesContent -match '@media \(min-width: 1400px\)[\s\S]*?grid-template-columns:\s*18px minmax\(280px, 640px\) auto;[\s\S]*?justify-content:\s*start' -and $stylesContent -match '@media \(min-width: 1180px\)[\s\S]*?\.assessment-results-header,[\s\S]*?grid-template-columns:\s*minmax\(280px, 640px\) auto'
@@ -1259,6 +1341,15 @@ try {
         $stylesContent -match '\.rule-issue-tab-scroll-button\[hidden\]\s*\{[^}]*display:\s*none !important'
     Add-TestResult -Name 'rule-issue-tab-pagination' -Passed $ruleIssueTabPaginationValid -Detail 'Rule Issue type tabs page only complete labels and counts, reveal the selected type or default to the first page, expose durable Previous and Next controls with edge states, and hide paging when all tabs fit.'
 
+    $ruleIssueRecommendationStagingValid = $appContent -match 'const activeRuleIssueRecommendations = new Set\(\)' -and
+        $appContent -match 'async function stageRuleIssueRecommendation\(issue\)' -and
+        $appContent -match 'activeRuleIssueRecommendations\.add\(issue\.id\)' -and
+        $appContent -match 'for \(const \{ candidate, operation \} of candidateOperations\)' -and
+        $appContent -match 'if \(!await reconcileRuleTextRelationships\(candidate, operation\.proposedText, \{ notify: false \}\)\) return' -and
+        $appContent -match 'const label = checking \? "Checking Relationships"' -and
+        $appContent -match 'activeRuleIssueRecommendations\.delete\(issue\.id\)'
+    Add-TestResult -Name 'rule-issue-recommendation-staging' -Passed $ruleIssueRecommendationStagingValid -Detail 'Rule Issue recommendations disable their action while every changed proposed text is reconciled and commit decisions only after all exact-text checks succeed.'
+
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-rationale-save' -and $appContent -notmatch '<span>Save</span>' -and $appContent -match 'Save decision rationale and return to Promotion Plan' -and $appContent -match 'Save and return to Promotion Plan' -and $appContent -match 'save\.disabled = !value\.trim\(\)' -and $appContent -match 'await persistencePromise' -and $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)' -and $stylesContent -match '\.plan-detail-link:focus-visible' -and $stylesContent -match '\.rationale-heading'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-plan-action=' -and $appContent -match 'openPlanCandidate\(action\.dataset\.planAction, "action"\)' -and $appContent -match 'focusTarget === "action"' -and $appContent -match 'function scrollCandidateDetailTargetIntoView\(' -and ([regex]::Matches($appContent, 'scrollCandidateDetailTargetIntoView\(').Count -eq 3) -and $appContent -match 'control\?\.focus' -and $appContent -match 'class="assessment-title-statuses"' -and $stylesContent -match '#candidate-sources-panel \.assessment-panel\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto'
@@ -1348,6 +1439,31 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
+    $reuseSiteDirectory = Join-Path $tempRoot 'display-reuse-site'
+    $null = New-Item -ItemType Directory -Path $reuseSiteDirectory -Force
+    Copy-Item -LiteralPath $displayPath -Destination (Join-Path $reuseSiteDirectory 'workbench-display.json')
+    Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $reuseSiteDirectory 'workbench-rule-issues.json')
+    $reuseStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $reuseOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $reuseExitCode = $LASTEXITCODE
+    $reuseStopwatch.Stop()
+    $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
+
+    $mismatchedSiteDirectory = Join-Path $tempRoot 'display-mismatch-site'
+    $null = New-Item -ItemType Directory -Path $mismatchedSiteDirectory -Force
+    Copy-Item -LiteralPath $displayPath -Destination (Join-Path $mismatchedSiteDirectory 'workbench-display.json')
+    $mismatchedRuleIssues = $ruleIssuesJson | ConvertFrom-Json
+    $mismatchedRuleIssues.sourceFiles[0].contentSha256 = '0' * 64
+    [IO.File]::WriteAllText((Join-Path $mismatchedSiteDirectory 'workbench-rule-issues.json'), (($mismatchedRuleIssues | ConvertTo-Json -Depth 30) + "`n"), [Text.UTF8Encoding]::new($false))
+    $mismatchOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $mismatchedSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $mismatchExitCode = $LASTEXITCODE
+
+    $incompleteSiteDirectory = Join-Path $tempRoot 'display-incomplete-site'
+    $null = New-Item -ItemType Directory -Path $incompleteSiteDirectory -Force
+    Copy-Item -LiteralPath $displayPath -Destination (Join-Path $incompleteSiteDirectory 'workbench-display.json')
+    $incompleteOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $incompleteSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $incompleteExitCode = $LASTEXITCODE
+
     $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and
         $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and
         $launcherContent -match 'Invoke-AssessmentReconciliation\.ps1' -and
@@ -1365,12 +1481,25 @@ try {
         $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
         $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
         $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and
-        $launcherContent -notmatch '\[switch\]\$Rebuild' -and
+        $launcherContent -match '\[switch\]\$Rebuild' -and
+        $launcherContent -match 'if \(-not \$Rebuild\)' -and
+        $launcherContent -match 'Get-HostedWorkbenchGitHubContext -RepositoryRoot \$repositoryRoot -SkipGitHubAuthorization:\$SkipGitHubAuthorization' -and
+        $launcherContent -match 'Staged Workbench display and Rule Issues source files do not match' -and
         $launcherContent -notmatch 'Get-WorkbenchInputFingerprint|REUSED_FRESH_DISPLAY|REFRESHED_CHANGED_INPUTS|stagedInputFingerprint' -and
         $launcherContent -match '''REBUILT_CURRENT_SOURCES''' -and
+        $launcherContent -match '''REUSED_VALIDATED_DISPLAY''' -and
         $launcherContent -notmatch '\$DisplayPath|Remove-Item -LiteralPath \$stagedDisplayPath'
     $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "SiteDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/site'\)" -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Every launch rebuilds the ephemeral display from independently cached assessment and reconciliation results and publishes only after validation.'
+    $assessmentLaunchValid = $assessmentLaunchValid -and
+        $reuseExitCode -eq 0 -and
+        [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
+        [int]$reuseResult.discoveredCandidateCount -eq @($display.candidates).Count -and
+        $reuseStopwatch.Elapsed.TotalSeconds -lt 30 -and
+        $mismatchExitCode -ne 0 -and
+        ($mismatchOutput | Out-String) -match 'display and Rule Issues source files do not match' -and
+        $incompleteExitCode -ne 0 -and
+        ($incompleteOutput | Out-String) -match 'Run Start-RuleWorkbench\.ps1 -Rebuild to create one'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch locally validates and reuses the complete staged display pair without network or semantic work; explicit -Rebuild owns source refresh and atomic publication.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
@@ -1400,7 +1529,7 @@ try {
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
     $null = New-Item -ItemType Directory -Path $shutdownSiteDirectory -Force
-    foreach ($assetName in @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg')) {
+    foreach ($assetName in @('index.html', 'app.js', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
     }
     Copy-Item -LiteralPath (Join-Path $workbenchRoot 'icons') -Destination $shutdownSiteDirectory -Recurse
@@ -1593,6 +1722,7 @@ $result = [ordered]@{
         findings = $dependencyAuditFindings.ToArray()
         error = $dependencyAuditError
         inconclusive = $dependencyAuditInconclusive
+        continuedAfterFailure = $dependencyAuditContinuation
         remediationApplied = $npmFixApplied
         remediationChanges = $npmFixChanges.ToArray()
         requiresBreakingFix = $npmFixRequiresBreaking
@@ -1629,6 +1759,7 @@ else {
             Critical = $dependencyAuditCounts.critical
             High = $dependencyAuditCounts.high
             Installation = 'BLOCKED'
+            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
         })
         Write-ValidationSectionHeader -Title 'Vulnerabilities'
         foreach ($finding in $dependencyAuditFindings) {
@@ -1646,7 +1777,7 @@ else {
         Write-Output '  1. Run: pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -FixNpmAudit'
         Write-Output '  2. Review the resulting package.json and package-lock.json diff.'
         Write-Output '  3. If only a breaking fix remains, review it before adding -AllowBreakingNpmFix.'
-        Write-Output '  4. npm ci and browser tests remain blocked until the staged graph passes audit.'
+        Write-Output '  4. Complete validation remains blocked until the staged graph passes audit.'
     }
     elseif ($dependencyAuditInconclusive) {
         Write-ValidationSectionHeader -Title 'Dependency security'

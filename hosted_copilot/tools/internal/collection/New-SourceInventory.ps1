@@ -28,6 +28,8 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../../modules/shared/Source
 Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersPath -Force
+$githubHelpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedGitHub.Helpers.psm1'
+Import-Module -Name $githubHelpersPath -Force
 
 function Test-JsonFile {
     param(
@@ -266,35 +268,16 @@ function Invoke-GitHubCliJson {
         [string]$InputJson
     )
 
-    $gh = Get-Command gh -ErrorAction SilentlyContinue
-    if ($null -eq $gh) {
-        throw 'GitHub CLI is not available'
+    try {
+        $standardOutput = if ($PSBoundParameters.ContainsKey('InputJson')) {
+            Invoke-HostedGitHubCli -Arguments $Arguments -InputText $InputJson
+        }
+        else {
+            Invoke-HostedGitHubCli -Arguments $Arguments
+        }
     }
-
-    $startInfo = [Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $gh.Source
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
-    $startInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
-    foreach ($argument in $Arguments) {
-        $startInfo.ArgumentList.Add($argument)
-    }
-
-    $process = [Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
-    $null = $process.Start()
-    if (-not [string]::IsNullOrEmpty($InputJson)) {
-        $process.StandardInput.Write($InputJson)
-    }
-    $process.StandardInput.Close()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
-    $standardError = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-        throw "GitHub CLI request failed: $($standardError.Trim())"
+    catch {
+        throw "GitHub CLI request failed: $($_.Exception.Message)"
     }
     return $standardOutput | ConvertFrom-Json -ErrorAction Stop
 }

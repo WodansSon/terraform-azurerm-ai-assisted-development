@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot '../shared/HostedGitHub.Helpers.psm1') -Force
+
 function Get-HostedReviewRepositoryFromRemote {
     param(
         [Parameter(Mandatory = $true)]
@@ -41,26 +43,7 @@ function Invoke-HostedReviewGitHubApi {
         [switch]$Raw
     )
 
-    $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
-    if ($null -eq $ghCommand) {
-        throw 'gh was not found on PATH'
-    }
-
-    $arguments = @('api', $Endpoint, '--method', $Method, '-H', "Accept: $Accept")
-    foreach ($key in $Fields.Keys) {
-        $arguments += @('-f', "$key=$($Fields[$key])")
-    }
-    $output = @(& $ghCommand.Source @arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw "GitHub API request failed: $((($output | Out-String).Trim()))"
-    }
-
-    $content = $output -join "`n"
-    if ($Raw) {
-        return $content
-    }
-
-    return $content | ConvertFrom-Json
+    return Invoke-HostedGitHubApi -Endpoint $Endpoint -Method $Method -Fields $Fields -Accept $Accept -Raw:$Raw
 }
 
 function Assert-HostedReviewWritableFork {

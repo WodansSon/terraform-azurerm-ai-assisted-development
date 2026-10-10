@@ -35,6 +35,10 @@ param(
 
     [string]$RelationshipEvaluatorScriptPath,
 
+    [switch]$Rebuild,
+
+    [switch]$SkipGitHubAuthorization,
+
     [switch]$StageOnly,
 
     [switch]$NoLaunch,
@@ -48,8 +52,10 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
+$workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 Import-Module -Name $validationOutputModulePath -Force
 Import-Module -Name $sourceEvidenceModulePath -Force
+Import-Module -Name $workbenchGitHubContextModulePath -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
@@ -102,7 +108,7 @@ if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
 
-$ownedAssetNames = @('index.html', 'app.js', 'hierarchical-view.js', 'styles.css', 'favicon.svg')
+$ownedAssetNames = @('index.html', 'app.js', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
@@ -114,81 +120,9 @@ $shutdownToken = [Convert]::ToHexString($shutdownTokenBytes).ToLowerInvariant()
 $operationTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($operationTokenBytes)
 $operationToken = [Convert]::ToHexString($operationTokenBytes).ToLowerInvariant()
-$maintainerIdentity = [ordered]@{
-    status = 'unavailable'
-    login = $null
-    isCodeOwner = $false
-    reason = 'GitHub CLI authentication is required for CODEOWNER-only Workbench actions.'
-}
-$targetRepository = [ordered]@{
-    status = 'unavailable'
-    repository = $null
-    branch = $null
-    commit = $null
-    upstreamRepository = $null
-    upstreamBranch = $null
-    aheadBy = $null
-    behindBy = $null
-    reason = 'GitHub CLI authentication is required to resolve the promotion target.'
-}
-$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
-if ($null -ne $ghCommand) {
-    $loginOutput = @(& $ghCommand.Source api user --jq .login 2>$null)
-    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($loginOutput | Out-String))) {
-        $login = ($loginOutput | Select-Object -First 1).Trim()
-        $codeOwnersPath = Join-Path $repositoryRoot '.github/CODEOWNERS'
-        $applicableOwners = @()
-        if (Test-Path -LiteralPath $codeOwnersPath -PathType Leaf) {
-            foreach ($line in Get-Content -LiteralPath $codeOwnersPath) {
-                $trimmed = $line.Trim()
-                if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith('#')) { continue }
-                $parts = @($trimmed -split '\s+' | Where-Object { $_ })
-                if ($parts.Count -ge 2 -and $parts[0] -in @('*', '/hosted_copilot/')) {
-                    $applicableOwners = @($parts[1..($parts.Count - 1)])
-                }
-            }
-        }
-        $isCodeOwner = $applicableOwners -contains "@$login"
-        $maintainerIdentity = [ordered]@{
-            status = if ($isCodeOwner) { 'validated' } else { 'unauthorized' }
-            login = $login
-            isCodeOwner = $isCodeOwner
-            reason = if ($isCodeOwner) { $null } else { 'The authenticated GitHub user is not a CODEOWNER for Hosted Toolkit changes.' }
-        }
-
-        $repositoryName = "$login/terraform-provider-azurerm"
-        $repositoryOutput = @(& $ghCommand.Source api "repos/$repositoryName" 2>$null)
-        if ($LASTEXITCODE -eq 0) {
-            $repository = ($repositoryOutput | Out-String) | ConvertFrom-Json
-            $branch = [string]$repository.default_branch
-            $commitOutput = @(& $ghCommand.Source api "repos/$repositoryName/commits/$branch" --jq .sha 2>$null)
-            $commit = ($commitOutput | Select-Object -First 1).Trim()
-            if ($LASTEXITCODE -eq 0 -and $repository.fork -eq $true -and $repository.parent.full_name -eq 'hashicorp/terraform-provider-azurerm' -and $commit -match '^[0-9a-f]{40}$') {
-                $upstreamRepository = [string]$repository.parent.full_name
-                $upstreamBranch = [string]$repository.parent.default_branch
-                $comparisonOutput = @(& $ghCommand.Source api "repos/$upstreamRepository/compare/$upstreamBranch...$login`:$branch" 2>$null)
-                $comparison = if ($LASTEXITCODE -eq 0) { ($comparisonOutput | Out-String) | ConvertFrom-Json } else { $null }
-                $targetRepository = [ordered]@{
-                    status = 'validated'
-                    repository = [string]$repository.full_name
-                    branch = $branch
-                    commit = $commit
-                    upstreamRepository = $upstreamRepository
-                    upstreamBranch = $upstreamBranch
-                    aheadBy = if ($null -ne $comparison) { [int]$comparison.ahead_by } else { $null }
-                    behindBy = if ($null -ne $comparison) { [int]$comparison.behind_by } else { $null }
-                    reason = $null
-                }
-            }
-            else {
-                $targetRepository.reason = "The authenticated user's terraform-provider-azurerm repository is not a valid fork promotion target."
-            }
-        }
-        else {
-            $targetRepository.reason = "The authenticated user's terraform-provider-azurerm fork could not be resolved."
-        }
-    }
-}
+$githubContext = Get-HostedWorkbenchGitHubContext -RepositoryRoot $repositoryRoot -SkipGitHubAuthorization:$SkipGitHubAuthorization
+$maintainerIdentity = $githubContext.maintainerIdentity
+$targetRepository = $githubContext.targetRepository
 $shutdownConfig = [ordered]@{
     shutdownToken = $shutdownToken
     operationToken = $operationToken
@@ -231,6 +165,30 @@ function Copy-FileAtomically {
 }
 
 function Update-StagedDisplay {
+    if (-not $Rebuild) {
+        $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
+        if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf) -or -not (Test-Path -LiteralPath $stagedRuleIssuesPath -PathType Leaf)) {
+            throw "A complete staged Workbench display was not found in $resolvedSiteDirectory. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
+        }
+        $stagedDisplayContent = Get-Content -LiteralPath $stagedDisplayPath -Raw
+        $stagedRuleIssuesContent = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw
+        if (-not ($stagedDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+            throw 'Staged Workbench display does not satisfy its schema'
+        }
+        if (-not ($stagedRuleIssuesContent | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
+            throw 'Staged Workbench Rule Issues do not satisfy their schema'
+        }
+        $validatedDisplay = $stagedDisplayContent | ConvertFrom-Json -DateKind String
+        $validatedRuleIssues = $stagedRuleIssuesContent | ConvertFrom-Json -DateKind String
+        $displaySourceFiles = @($validatedDisplay.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+        $ruleIssueSourceFiles = @($validatedRuleIssues.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+        if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
+            throw 'Staged Workbench display and Rule Issues source files do not match'
+        }
+        Complete-WorkbenchStage -Name $workbenchPhase
+        return $validatedDisplay
+    }
+
     $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))
     $currentInventoryDirectory = Join-Path $runDirectory 'inventories'
     $null = New-Item -ItemType Directory -Path $currentInventoryDirectory -Force
@@ -445,7 +403,7 @@ catch {
 }
 $stagedCandidates = @($stagedDisplay.candidates)
 $stagedRuleIssues = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw | ConvertFrom-Json -DateKind String
-$assessmentSummary = 'REBUILT FROM CURRENT SOURCES'
+$assessmentSummary = if ($Rebuild) { 'REBUILT FROM CURRENT SOURCES' } else { 'REUSED VALIDATED DISPLAY' }
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
@@ -468,7 +426,7 @@ $result = [ordered]@{
     reconciliationStatus = [string]$stagedDisplay.reconciliation.status
     capacityReportCount = @($stagedDisplay.guidanceCapacity.reports).Count
     assessment = $assessmentResult
-    displayBuildMode = 'REBUILT_CURRENT_SOURCES'
+    displayBuildMode = if ($Rebuild) { 'REBUILT_CURRENT_SOURCES' } else { 'REUSED_VALIDATED_DISPLAY' }
     readOnly = $true
     allowedMethods = @('GET', 'HEAD', 'POST')
     shutdownEndpoint = 'POST /shutdown'

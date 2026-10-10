@@ -329,12 +329,16 @@ try {
     $requiredParserValidationFiles = @(
         'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
         'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
-        'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
+        'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
+        'hosted_copilot/tools/modules/shared/HostedGitHub.Helpers.psm1'
     )
     $parserContracts = @($contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
     $missingParserValidationFiles = @($parserContracts | ForEach-Object { $contract = $_; $requiredParserValidationFiles | Where-Object { $_ -notin @($contract.behaviorFiles) } })
     $maintainerCatalogSchemaPath = 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
-    Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, and parser-specific validation schemas.'
+    Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, shared GitHub runtime, and parser-specific validation schemas.'
+    $collectorContent = Get-Content -LiteralPath $collectorPath -Raw
+    $githubCliProcessOwnershipValid = $collectorContent -match 'HostedGitHub\.Helpers\.psm1' -and $collectorContent -match 'Invoke-HostedGitHubCli -Arguments' -and $collectorContent -notmatch 'ProcessStartInfo|\.Source api|& \$.*gh.* api'
+    Add-TestResult -Name 'github-cli-process-ownership' -Passed $githubCliProcessOwnershipValid -Detail 'Source inventory retains transport fallback and retry policy while delegating GitHub CLI process execution to the shared helper.'
 
     Write-TestProgress -Name 'inventory-generation' -Detail 'Collecting Maintainer Proposal inventories and a synthetic Interactive intake fixture'
     $interactiveFixtureProtectedPaths = @(
@@ -399,6 +403,7 @@ try {
     Copy-Item -LiteralPath $contractSchemaPath -Destination $snapshotContractRoot
     Copy-Item -LiteralPath $contractPath -Destination $snapshotContractRoot
     Copy-Item -LiteralPath $collectorPath -Destination $snapshotCollectorRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../modules/shared/HostedGitHub.Helpers.psm1') -Destination $snapshotSharedModuleRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Destination $snapshotSharedModuleRoot
     Copy-Item -LiteralPath $sourceEvidenceModulePath -Destination $snapshotSharedModuleRoot
     Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.json') -Destination $snapshotCatalogRoot

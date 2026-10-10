@@ -342,6 +342,132 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(compoundDecision.draftRetirements.length === 1, "Strict draft did not preserve the compound retirement selection");
     assert(compoundDecision.mutations.length === 1 && compoundDecision.mutations[0].action === "retire" && compoundDecision.mutations[0].status === "retired", "Compound Plan item did not export exactly one retirement mutation");
 
+    await playback.show(page, "Rule Issues · exact-text reconciliation before atomic staging");
+    const adjudicatedStaging = await page.evaluate(async () => {
+      const candidates = state.assessedCandidates
+        .filter((candidate) => candidate.recommendation && candidate.assessment && ["add", "update"].includes(candidate.assessment.recommendation))
+        .slice(0, 2);
+      if (candidates.length !== 2) throw new Error("Two actionable candidates are required for Rule Issue staging coverage");
+      const originalFetch = window.fetch;
+      const originalRuleIssues = structuredClone(state.ruleIssues);
+      const originalDecisions = structuredClone(state.session.decisions);
+      const originalChecks = structuredClone(state.session.manualRelationshipChecks);
+      const originalActiveRuleIssueKey = state.activeRuleIssueKey;
+      const proposedTexts = candidates.map((candidate, index) => `${candidate.recommendation.ruleText} Adjudicated wording ${index + 1}.`);
+      const issue = {
+        id: "relationship:fixture:exact-text-staging",
+        classification: "overlap",
+        label: "Overlap",
+        title: "Adjudicated wording requires exact-text checks",
+        bannerTitle: "Exact-text relationship checks are required",
+        bannerMessage: "Every changed recommendation must be checked before staging.",
+        blocking: false,
+        ruleIds: candidates.map((candidate) => candidate.assessment.proposedHostedRuleId),
+        protectedRuleIds: [],
+        candidateKeys: candidates.map((candidate) => candidate.key),
+        rules: candidates.map((candidate, index) => ({
+          id: candidate.assessment.proposedHostedRuleId,
+          status: "proposed",
+          disposition: "promote",
+          text: proposedTexts[index],
+          candidateKeys: [candidate.key]
+        })),
+        relationships: [],
+        assessmentSummary: "The fixture verifies exact-text relationship checks before atomic staging.",
+        wording: { status: "selected", label: "Suggested Consolidated Wording", presentation: "member", text: proposedTexts[0], sourceRuleId: candidates[0].assessment.proposedHostedRuleId },
+        recommendedMaintainerAction: {
+          summary: "Stage both adjudicated recommendations after exact-text relationship checks.",
+          operations: candidates.map((candidate, index) => ({
+            candidateKey: candidate.key,
+            ruleId: candidate.assessment.proposedHostedRuleId,
+            action: candidate.assessment.recommendation,
+            proposedText: proposedTexts[index],
+            retireHostedRuleIds: []
+          }))
+        }
+      };
+      const decodeBase64Utf8 = (value) => new TextDecoder().decode(Uint8Array.from(atob(value), (character) => character.charCodeAt(0)));
+      const createSuccessResponse = () => new Response(JSON.stringify({ schemaVersion: 1, ruleTextSha256: "a".repeat(64), relationships: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      try {
+        candidates.forEach((candidate) => {
+          delete state.session.decisions[candidate.key];
+          delete state.session.manualRelationshipChecks[candidate.key];
+        });
+        state.ruleIssues = [issue];
+        state.activeRuleIssueKey = issue.id;
+        switchView("catalog");
+        setWorkspaceTab("rule-issues");
+        renderRuleIssues();
+        renderMetrics();
+
+        const requestedTexts = [];
+        let releaseFirstRequest;
+        window.fetch = async (url, options) => {
+          if (!String(url).endsWith("/reconcile-rule")) return originalFetch(url, options);
+          const envelope = JSON.parse(options.body);
+          const request = JSON.parse(decodeBase64Utf8(envelope.payloadBase64));
+          requestedTexts.push(decodeBase64Utf8(request.ruleTextBase64));
+          if (requestedTexts.length === 1) await new Promise((resolve) => { releaseFirstRequest = resolve; });
+          return createSuccessResponse();
+        };
+        const successPromise = stageRuleIssueRecommendation(issue);
+        while (!releaseFirstRequest) await new Promise((resolve) => setTimeout(resolve, 0));
+        const checkingButton = document.querySelector("[data-rule-issue-plan]");
+        const checkingUi = {
+          disabled: checkingButton.disabled,
+          label: checkingButton.textContent.trim(),
+          decisionsBeforeRelease: candidates.some((candidate) => Boolean(state.session.decisions[candidate.key]))
+        };
+        releaseFirstRequest();
+        await successPromise;
+        const success = {
+          requestedTexts: [...requestedTexts],
+          decisions: candidates.map((candidate) => getDecision(candidate).proposedText),
+          checks: candidates.map((candidate) => state.session.manualRelationshipChecks[candidate.key]?.status || null),
+          issueStaged: isRuleIssueRecommendationStaged(issue)
+        };
+
+        candidates.forEach((candidate) => {
+          delete state.session.decisions[candidate.key];
+          delete state.session.manualRelationshipChecks[candidate.key];
+        });
+        state.activeRuleIssueKey = issue.id;
+        renderRuleIssues();
+        let failureCallCount = 0;
+        window.fetch = async (url, options) => {
+          if (!String(url).endsWith("/reconcile-rule")) return originalFetch(url, options);
+          failureCallCount += 1;
+          return failureCallCount === 2 ? new Response("", { status: 500 }) : createSuccessResponse();
+        };
+        await stageRuleIssueRecommendation(issue);
+        const failure = {
+          callCount: failureCallCount,
+          decisionsCommitted: candidates.some((candidate) => Boolean(state.session.decisions[candidate.key])),
+          checkStatuses: candidates.map((candidate) => state.session.manualRelationshipChecks[candidate.key]?.status || null),
+          issueStillOpen: getOpenRuleIssues().some((item) => item.id === issue.id),
+          actionEnabled: !document.querySelector("[data-rule-issue-plan]")?.disabled
+        };
+        return { checkingUi, proposedTexts, success, failure };
+      }
+      finally {
+        window.fetch = originalFetch;
+        state.ruleIssues = originalRuleIssues;
+        state.activeRuleIssueKey = originalActiveRuleIssueKey;
+        state.session.decisions = originalDecisions;
+        state.session.manualRelationshipChecks = originalChecks;
+        state.session.updatedAt = toUtcTimestamp();
+        await persistSession();
+        renderAll();
+      }
+    });
+    assert(adjudicatedStaging.checkingUi.disabled && adjudicatedStaging.checkingUi.label === "Checking Relationships" && !adjudicatedStaging.checkingUi.decisionsBeforeRelease, `Rule Issue checking state is incorrect: ${JSON.stringify(adjudicatedStaging.checkingUi)}`);
+    assert(JSON.stringify(adjudicatedStaging.success.requestedTexts) === JSON.stringify(adjudicatedStaging.proposedTexts), "Rule Issue staging did not evaluate each exact adjudicated text");
+    assert(JSON.stringify(adjudicatedStaging.success.decisions) === JSON.stringify(adjudicatedStaging.proposedTexts) && adjudicatedStaging.success.checks.every((status) => status === "current") && adjudicatedStaging.success.issueStaged, `Successful Rule Issue staging is incomplete: ${JSON.stringify(adjudicatedStaging.success)}`);
+    assert(adjudicatedStaging.failure.callCount === 2 && !adjudicatedStaging.failure.decisionsCommitted && adjudicatedStaging.failure.checkStatuses[0] === "current" && adjudicatedStaging.failure.checkStatuses[1] === "failed" && adjudicatedStaging.failure.issueStillOpen && adjudicatedStaging.failure.actionEnabled, `Failed Rule Issue staging was not atomic and retryable: ${JSON.stringify(adjudicatedStaging.failure)}`);
+
     await playback.show(page, "Primary retirement · actionable issue and one retirement mutation");
     const primaryRetirement = await page.evaluate(async () => {
       const candidate = state.candidates.find((item) => item.catalogMapping.state === "active");

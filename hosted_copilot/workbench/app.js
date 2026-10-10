@@ -115,12 +115,13 @@ let assessmentHierarchicalView;
 let previewFilesByScope = { proposed: [], payload: [], raw: [], protected: [] };
 let previewBodyVirtualizer;
 let previewVirtualizationResizeTimer;
-const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS).filter((scope) => scope !== "protected"));
+const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS));
 let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const activeRelationshipChecks = new Set();
+const activeRuleIssueRecommendations = new Set();
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
@@ -156,6 +157,7 @@ if (mobileDeviceDetected) document.documentElement.classList.add("mobile-unsuppo
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (mobileDeviceDetected) return;
+  workbenchStatusBar.render();
   captureElements();
   bindEvents();
   await loadBundle();
@@ -915,19 +917,22 @@ function renderRuleIssuePlanAction(issue) {
   const candidates = pendingOperations.map((operation) => state.assessedCandidates.find((candidate) => candidate.key === operation.candidateKey));
   const staged = isRuleIssueRecommendationStaged(issue);
   const partiallyStaged = !staged && pendingOperations.length < operations.length;
+  const checking = activeRuleIssueRecommendations.has(issue.id);
   const identity = getValidatedCodeOwnerIdentity();
-  const unavailableReason = issue.blocking
+  const unavailableReason = checking
+    ? "Recommended action relationships are being checked."
+    : issue.blocking
     ? "Protected integrity issues must be resolved in the protected source files."
     : !operations.length || candidates.some((candidate) => !candidate)
       ? "The supplied maintainer operations cannot be mapped to current candidates."
     : globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.";
-  const disabled = staged || issue.blocking || !operations.length || candidates.some((candidate) => !candidate) || !identity;
+  const disabled = checking || staged || issue.blocking || !operations.length || candidates.some((candidate) => !candidate) || !identity;
   const tooltip = disabled && !staged ? ` data-workbench-tooltip="${escapeHtml(unavailableReason)}"` : "";
-  const label = staged ? "Recommended Actions Applied" : partiallyStaged ? `Apply ${formatCountLabel(pendingOperations.length, "Remaining Action")}` : "Apply Recommended Actions";
+  const label = checking ? "Checking Relationships" : staged ? "Recommended Actions Applied" : partiallyStaged ? `Apply ${formatCountLabel(pendingOperations.length, "Remaining Action")}` : "Apply Recommended Actions";
   return `<div class="rule-recommendation-actions"><button class="button primary rule-issue-plan-action ${disabled ? "" : "clickable"}" type="button" data-rule-issue-plan="${escapeHtml(issue.id)}" ${disabled ? "disabled" : ""}${tooltip}>${icon(staged ? "pass-filled" : "new-session")}<span class="button-label">${label}</span></button></div>`;
 }
 
-function stageRuleIssueRecommendation(issue) {
+async function stageRuleIssueRecommendation(issue) {
   const identity = getValidatedCodeOwnerIdentity();
   if (!identity) {
     showToast(globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity?.reason || "A validated Hosted CODEOWNER identity is required.", true);
@@ -938,44 +943,58 @@ function stageRuleIssueRecommendation(issue) {
     showToast(issue.blocking ? "Resolve protected integrity in the protected source files." : "The artifact does not contain maintainer operations for this issue.", true);
     return;
   }
-  const updatedAt = toUtcTimestamp();
-  const rationale = issue.recommendedMaintainerAction.summary.slice(0, DECISION_RATIONALE_MAX_LENGTH);
-  const visibleIssues = getFilteredRuleIssues();
-  const resolvedIndex = Math.max(0, visibleIssues.findIndex((item) => item.id === issue.id));
-  operations.forEach((operation) => {
+  const candidateOperations = operations.map((operation) => {
     const candidate = state.assessedCandidates.find((item) => item.key === operation.candidateKey);
     if (!candidate) throw new Error(`Rule Issues operation references an unknown candidate: ${operation.candidateKey}`);
-    const { assessment, ...decision } = getDecision(candidate);
-    removeCandidateFromBulkOperations(candidate.key);
-    state.session.decisions[candidate.key] = {
-      ...decision,
-      action: operation.action,
-      rationale,
-      proposedText: operation.proposedText,
-      retireHostedRuleIds: getRuleIssueAncillaryRetirements(operation),
-      ...createPlanMembership("manual"),
-      sourceHash: candidate.hash,
-      updatedAt
-    };
+    return { candidate, operation };
   });
-  if (isRuleIssueRecommendationStaged(issue)) {
-    rememberResolvedRuleIssue(issue, resolvedIndex);
-    const remainingIssues = getFilteredRuleIssues();
-    const nextIndex = Math.min(resolvedIndex, remainingIssues.length - 1);
-    const nextIssue = remainingIssues[nextIndex] || null;
-    state.activeRuleIssueKey = nextIssue?.id || null;
-    if (nextIssue) rememberRuleIssueSelection(nextIssue.id, state.ruleIssueFilter, nextIndex);
-  }
-  state.session.updatedAt = updatedAt;
-  persistSession();
-  syncCandidateTreeRows();
-  renderBulkActions();
-  renderDecisionOutputs();
+  activeRuleIssueRecommendations.add(issue.id);
   renderRuleIssues();
-  showToast(`${formatCountLabel(operations.length, "Resolution")} added to the promotion plan.`);
+  try {
+    for (const { candidate, operation } of candidateOperations) {
+      if (!await reconcileRuleTextRelationships(candidate, operation.proposedText, { notify: false })) return;
+    }
+    const updatedAt = toUtcTimestamp();
+    const rationale = issue.recommendedMaintainerAction.summary.slice(0, DECISION_RATIONALE_MAX_LENGTH);
+    const visibleIssues = getFilteredRuleIssues();
+    const resolvedIndex = Math.max(0, visibleIssues.findIndex((item) => item.id === issue.id));
+    candidateOperations.forEach(({ candidate, operation }) => {
+      const { assessment, ...decision } = getDecision(candidate);
+      removeCandidateFromBulkOperations(candidate.key);
+      state.session.decisions[candidate.key] = {
+        ...decision,
+        action: operation.action,
+        rationale,
+        proposedText: operation.proposedText,
+        retireHostedRuleIds: getRuleIssueAncillaryRetirements(operation),
+        ...createPlanMembership("manual"),
+        sourceHash: candidate.hash,
+        updatedAt
+      };
+    });
+    if (isRuleIssueRecommendationStaged(issue)) {
+      rememberResolvedRuleIssue(issue, resolvedIndex);
+      const remainingIssues = getFilteredRuleIssues();
+      const nextIndex = Math.min(resolvedIndex, remainingIssues.length - 1);
+      const nextIssue = remainingIssues[nextIndex] || null;
+      state.activeRuleIssueKey = nextIssue?.id || null;
+      if (nextIssue) rememberRuleIssueSelection(nextIssue.id, state.ruleIssueFilter, nextIndex);
+    }
+    state.session.updatedAt = updatedAt;
+    await persistSession();
+    syncCandidateTreeRows();
+    renderBulkActions();
+    renderDecisionOutputs();
+    renderRuleIssues();
+    showToast(`${formatCountLabel(operations.length, "Resolution")} added to the promotion plan.`);
+  }
+  finally {
+    activeRuleIssueRecommendations.delete(issue.id);
+    renderRuleIssues();
+  }
 }
 
-function handleRuleIssueDetailClick(event) {
+async function handleRuleIssueDetailClick(event) {
   const dismiss = event.target.closest("[data-dismiss-rule-issue-banner]");
   if (dismiss) {
     state.dismissedRuleIssueBannerKeys.add(dismiss.dataset.dismissRuleIssueBanner);
@@ -985,7 +1004,7 @@ function handleRuleIssueDetailClick(event) {
   const planAction = event.target.closest("[data-rule-issue-plan]");
   if (!planAction) return;
   const issue = state.ruleIssues.find((item) => item.id === planAction.dataset.ruleIssuePlan);
-  if (issue) stageRuleIssueRecommendation(issue);
+  if (issue) await stageRuleIssueRecommendation(issue);
 }
 
 function renderRuleIssueRule(rule, issue) {
@@ -1312,7 +1331,7 @@ function syncProposedRuleControls(candidate) {
   if (status) status.outerHTML = renderManualRelationshipStatus(candidate, textarea.value);
 }
 
-async function reconcileManualRuleText(candidate, proposedText) {
+async function reconcileRuleTextRelationships(candidate, proposedText, { notify = true } = {}) {
   const existing = getManualRelationshipCheck(candidate, proposedText);
   if (!hasMaintainerEditedRuleText(candidate, proposedText) || existing?.status === "current") return true;
   activeRelationshipChecks.add(candidate.key);
@@ -1358,7 +1377,7 @@ async function reconcileManualRuleText(candidate, proposedText) {
     await persistSession();
     renderRuleIssues();
     renderDecisionOutputs();
-    showToast(result.relationships.length ? `${formatCountLabel(result.relationships.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
+    if (notify) showToast(result.relationships.length ? `${formatCountLabel(result.relationships.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
     return true;
   }
   catch (error) {
@@ -1683,35 +1702,37 @@ function renderTarget() {
     const syncIndicators = [];
     if (behindBy > 0) syncIndicators.push(`↓ ${behindBy}`);
     if (aheadBy > 0) syncIndicators.push(`↑ ${aheadBy}`);
-    elements["status-target"].textContent = targetLabel;
     elements["status-target"].removeAttribute("title");
     elements["status-target"].removeAttribute("data-truncation-tooltip");
-    elements["target-chip"].classList.toggle("sync-behind", behindBy > 0);
-    elements["target-chip"].dataset.workbenchTooltip = [targetLabel, ...syncIndicators].join(" | ");
-    elements["target-chip"].setAttribute("aria-label", `${targetLabel}.${behindBy > 0 ? ` ${behindBy} commits behind ${target.upstreamRepository} ${target.upstreamBranch}.` : ""}${aheadBy > 0 ? ` ${aheadBy} commits ahead.` : ""}`);
+    workbenchStatusBar.update("target", {
+      text: targetLabel,
+      tooltip: [targetLabel, ...syncIndicators].join(" | "),
+      ariaLabel: `${targetLabel}.${behindBy > 0 ? ` ${behindBy} commits behind ${target.upstreamRepository} ${target.upstreamBranch}.` : ""}${aheadBy > 0 ? ` ${aheadBy} commits ahead.` : ""}`,
+      kind: behindBy > 0 ? "warning" : "standard"
+    });
     return;
   }
-  elements["status-target"].textContent = "Target unavailable";
-  elements["target-chip"].classList.remove("sync-behind");
-  elements["target-chip"].dataset.workbenchTooltip = target?.reason || "Promotion target could not be resolved";
-  elements["target-chip"].setAttribute("aria-label", elements["target-chip"].dataset.workbenchTooltip);
+  const reason = target?.reason || "Promotion target could not be resolved";
+  workbenchStatusBar.update("target", { text: "Target unavailable", tooltip: reason, ariaLabel: reason, kind: "error" });
 }
 
 function renderMetrics() {
   const excludedCount = getActiveExcludedCandidates().length;
   const capacity = getGuidanceCapacityProjection();
-  elements["status-excluded"].textContent = formatNumber(excludedCount);
-  elements["status-mapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length);
-  elements["status-unmapped"].textContent = formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length);
-  elements["status-headroom"].textContent = formatNumber(capacity.projectedHeadroomTokens);
+  workbenchStatusBar.update("excluded", { text: formatNumber(excludedCount) });
+  workbenchStatusBar.update("mapped", { text: formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "mapped").length) });
+  workbenchStatusBar.update("unmapped", { text: formatNumber(state.candidates.filter((candidate) => getCatalogStatus(candidate).key === "unmapped").length) });
+  workbenchStatusBar.update("capacity", { text: formatNumber(capacity.projectedHeadroomTokens) });
   const openIssues = getOpenRuleIssues();
   const issueCount = openIssues.length;
-  elements["rule-issues-status"].hidden = false;
-  elements["rule-issues-status"].classList.toggle("has-issues", issueCount > 0);
-  elements["rule-issues-status-count"].textContent = formatNumber(issueCount);
   const issueSummary = formatRuleIssueSummary(openIssues);
-  elements["rule-issues-status"].dataset.workbenchTooltip = issueSummary;
-  elements["rule-issues-status"].setAttribute("aria-label", `Open ${issueSummary}`);
+  workbenchStatusBar.update("ruleIssues", {
+    text: formatNumber(issueCount),
+    tooltip: issueSummary,
+    ariaLabel: `Open ${issueSummary}`,
+    hidden: false,
+    kind: issueCount > 0 ? "warning" : "standard"
+  });
 }
 
 function getFilteredCandidates() {
@@ -2504,8 +2525,8 @@ function renderAssessmentResultDetail() {
       </div>
       ${renderDetailHeaderActions(`
         <span class="ui-badge status-capsule status-badge ${eligible ? "success" : "excluded"}">${eligible ? "Eligible" : "Excluded"}</span>
-        ${override ? `<button class="ui-badge status-capsule status-badge warning clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to Maintainer Override">Contested</button>` : ""}
-        ${included ? `<button class="ui-badge status-capsule status-badge success clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to Maintainer Override">Maintainer Included</button>` : ""}
+        ${override ? `<button class="ui-badge status-capsule status-badge warning clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to maintainer override">Contested</button>` : ""}
+        ${included ? `<button class="ui-badge status-capsule status-badge success clickable" type="button" data-override-jump="${escapeHtml(candidate.key)}" aria-label="Go to Maintainer Override" data-workbench-tooltip="Go to maintainer override">Maintainer Included</button>` : ""}
         ${renderCatalogStatusBadge(catalogStatus)}
       `)}
     </div>
@@ -2528,8 +2549,8 @@ function renderApplicabilityOverride(candidate) {
     const editing = state.assessmentOverrideEditingKey === candidate.key;
     const fieldId = `saved-override-rationale-${candidate.key}`;
     const actions = editing
-      ? `<button class="titlebar-icon clickable rationale-save" type="button" data-override-save aria-label="Apply Override Rationale" data-workbench-tooltip="Apply Override Rationale" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-edit-cancel aria-label="Cancel Override Rationale Changes" data-workbench-tooltip="Cancel Override Rationale Changes">${icon("close")}</button>`
-      : `<button class="titlebar-icon clickable" type="button" data-override-edit aria-label="Edit Override Rationale" data-workbench-tooltip="Edit Override Rationale">${icon("edit")}</button><button class="titlebar-icon clickable" type="button" data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove Override">${icon("discard")}</button>`;
+      ? `<button class="titlebar-icon clickable rationale-save" type="button" data-override-save aria-label="Apply Override Rationale" data-workbench-tooltip="Apply override rationale" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-edit-cancel aria-label="Cancel Override Rationale Changes" data-workbench-tooltip="Cancel override rationale changes">${icon("close")}</button>`
+      : `<button class="titlebar-icon clickable" type="button" data-override-edit aria-label="Edit Override Rationale" data-workbench-tooltip="Edit override rationale">${icon("edit")}</button><button class="titlebar-icon clickable" type="button" data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove override">${icon("discard")}</button>`;
     return `
       <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
         <span class="section-label">Maintainer Override:</span>
@@ -2557,7 +2578,7 @@ function renderApplicabilityOverride(candidate) {
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
         <label class="override-outcome clickable"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
-        <label class="override-rationale"><span class="rationale-heading"><span class="control-subtitle">Override Rationale:</span><span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply Override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel Override">${icon("close")}</button></span></span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
+        <label class="override-rationale"><span class="rationale-heading"><span class="control-subtitle">Override Rationale:</span><span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span></span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
       </div>
       <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
@@ -3067,7 +3088,7 @@ async function handleAssessmentClick(event) {
       saveDecision(candidate, { ...maintainerDecision, proposedText });
       await persistencePromise;
     }
-    await reconcileManualRuleText(candidate, proposedText);
+    await reconcileRuleTextRelationships(candidate, proposedText);
     return;
   }
   if (!event.target.closest("[data-rationale-save]")) return;
@@ -3104,7 +3125,7 @@ async function handleAssessmentClick(event) {
   });
   const returnToPlan = state.rationaleReturnView === "plan";
   await persistencePromise;
-  await reconcileManualRuleText(candidate, proposedText);
+  await reconcileRuleTextRelationships(candidate, proposedText);
   renderAssessment();
   showToast("Decision saved");
   if (returnToPlan) {
@@ -3417,12 +3438,15 @@ function renderPreview() {
   const readiness = getPreviewReadiness();
   const planCandidates = readiness.planCandidates;
   const ready = readiness.ready;
-  elements["approval-badge"].className = `ui-badge status-capsule status-badge ${ready ? "success" : "warning"}`;
-  elements["approval-badge"].textContent = ready ? "Ready to export" : "Not ready";
-  elements["preview-status"].textContent = ready ? "Ready" : "Draft";
-  const previewStatus = elements["preview-status"].closest(".status-item");
-  previewStatus.classList.toggle("preview-ready", ready);
-  previewStatus.classList.toggle("preview-draft", !ready);
+  const blocked = readiness.openRuleIssueCount > 0;
+  const approvalState = blocked
+    ? { text: "Blocked", kind: "error", badge: "Blocked by Rule Issues" }
+    : ready
+      ? { text: "Ready", kind: "success", badge: "Ready to export" }
+      : { text: "Draft", kind: "warning", badge: "Not ready" };
+  elements["approval-badge"].className = `ui-badge status-capsule status-badge ${approvalState.kind}`;
+  elements["approval-badge"].textContent = approvalState.badge;
+  workbenchStatusBar.update("promotionApproval", { text: approvalState.text, kind: approvalState.kind });
   if (elements["approver-name"].value !== state.session.approverName) {
     elements["approver-name"].value = state.session.approverName || "";
   }
@@ -3851,9 +3875,10 @@ function renderPreviewReview() {
   const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0);
   const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0);
   elements["preview-review-context"].innerHTML = `<strong>${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} changed</strong><span class="preview-change-summary"><b>+${additions}</b><i>-${deletions}</i></span>${renderPreviewDiffStat(additions, deletions)}`;
-  document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload, .preview-protected-rules").forEach((section) => {
+  document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload").forEach((section) => {
     section.hidden = false;
   });
+  elements["preview-protected-section"].hidden = previewFilesByScope.protected.length === 0;
   if (!files.some((file) => file.path === previewSelectedFilePath)) previewSelectedFilePath = files[0]?.path || "";
   renderPreviewFileTree();
   updatePreviewSelectedFile();
@@ -4141,6 +4166,7 @@ function diffTextLines(beforeText, afterText) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
+  const openRuleIssueCount = getOpenRuleIssues().length;
   const missingActionCount = planCandidates.filter((candidate) => !isActionableDecision(getDecision(candidate))).length;
   const missingResourceTypeCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
@@ -4158,7 +4184,8 @@ function getPreviewReadiness() {
   const conflictingMutationCount = mutationRuleIds.length - new Set(mutationRuleIds).size;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
-  if (planCandidates.length === 0) status = "no actions";
+  if (openRuleIssueCount) status = "blocked by rule issues";
+  else if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
   else if (missingResourceTypeCount) status = "needs resource type";
   else if (missingRationale) status = "needs rationale";
@@ -4168,6 +4195,7 @@ function getPreviewReadiness() {
   else if (!approverName) status = "needs approver";
   return {
     planCandidates,
+    openRuleIssueCount,
     approverName,
     missingActionCount,
     missingResourceTypeCount,
@@ -4176,12 +4204,13 @@ function getPreviewReadiness() {
     mutationCount,
     conflictingMutationCount,
     status,
-    ready: planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
+    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
   };
 }
 
 function renderApprovalRequirements(readiness) {
   const requirements = [
+    ["Rule Issues", readiness.openRuleIssueCount ? `${readiness.openRuleIssueCount} pending` : "None pending", readiness.openRuleIssueCount === 0],
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
     ["Resource types", readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingResourceTypeCount === 0],
@@ -4202,15 +4231,15 @@ function renderApprovalRequirements(readiness) {
 
 function renderCounts() {
   const planCount = getPlanCandidates().length;
-  elements["catalog-count"].textContent = formatNumber(state.candidates.length);
-  elements["plan-count"].textContent = formatNumber(planCount);
+  workbenchStatusBar.update("eligible", { text: formatNumber(state.candidates.length) });
+  workbenchStatusBar.update("plan", { text: formatNumber(planCount) });
   elements["plan-activity-count"].textContent = planCount > 999 ? "999+" : formatNumber(planCount);
   elements["plan-activity-count"].hidden = planCount === 0;
   const openRuleIssueCount = getOpenRuleIssues().length;
   elements["rule-issues-tab-count"].textContent = formatNumber(openRuleIssueCount);
   elements["rule-issues-tab-count"].hidden = openRuleIssueCount === 0;
   const planLabel = `Promotion Plan (${formatNumber(planCount)})`;
-  setWorkbenchTooltip(elements["promotion-plan-stage"], planLabel);
+  setWorkbenchTooltip(elements["promotion-plan-stage"], `Open promotion plan (${formatNumber(planCount)})`);
   elements["promotion-plan-stage"].setAttribute("aria-label", planLabel);
 }
 
@@ -4704,7 +4733,7 @@ async function persistSession() {
 }
 
 function setSaveIndicator(text) {
-  elements["save-indicator"].textContent = text;
+  workbenchStatusBar.update("save", { text });
 }
 
 function renderFatalError(error) {

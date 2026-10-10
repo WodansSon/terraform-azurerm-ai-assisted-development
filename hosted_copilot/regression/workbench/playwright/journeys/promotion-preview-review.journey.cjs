@@ -13,7 +13,8 @@ const behaviorIds = [
   "WB-UX-PREVIEW-010",
   "WB-UX-PREVIEW-011",
   "WB-UX-PREVIEW-012",
-  "WB-UX-PREVIEW-013"
+  "WB-UX-PREVIEW-013",
+  "WB-UX-PREVIEW-014"
 ];
 
 async function run({ page, baseUrl, assert }) {
@@ -62,20 +63,45 @@ async function run({ page, baseUrl, assert }) {
 
   const approvalStatus = await page.evaluate(() => {
     const owner = document.querySelector("#preview-status").closest(".status-item");
+    const originalRuleIssues = state.ruleIssues;
+    const blockedColor = getComputedStyle(owner).color;
+    const blockedWidth = owner.getBoundingClientRect().width;
+    const expectedBlockedColor = getComputedStyle(document.documentElement).getPropertyValue("--red").trim();
+    const expectedWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-promotion-approval-width"));
+    const blockedRequirement = [...document.querySelectorAll("#approval-requirements .approval-requirement")]
+      .find((row) => row.querySelector("span")?.textContent === "Rule Issues");
+    const blockedValid = owner.classList.contains("error-kind")
+      && document.querySelector("#preview-status").textContent === "Blocked"
+      && document.querySelector("#approve-export-button").disabled
+      && document.querySelector("#approval-badge").textContent === "Blocked by Rule Issues"
+      && owner.dataset.workbenchTooltip === "Promotion approval status"
+      && blockedRequirement?.querySelector("strong")?.textContent === `${getOpenRuleIssues().length} pending`
+      && blockedRequirement?.querySelector("use")?.getAttribute("href").endsWith("#codicon-warning");
+    state.ruleIssues = [];
+    renderPreview();
     const readyColor = getComputedStyle(owner).color;
     const readyWidth = owner.getBoundingClientRect().width;
     const expectedReadyColor = getComputedStyle(document.documentElement).getPropertyValue("--success").trim();
+    const readyValid = owner.classList.contains("success-kind")
+      && document.querySelector("#preview-status").textContent === "Ready"
+      && !document.querySelector("#approve-export-button").disabled;
     const approverName = state.session.approverName;
     state.session.approverName = "";
     renderPreview();
     const draftColor = getComputedStyle(owner).color;
     const draftWidth = owner.getBoundingClientRect().width;
     const expectedDraftColor = getComputedStyle(document.documentElement).getPropertyValue("--warning-foreground").trim();
-    const draftValid = owner.classList.contains("preview-draft") && document.querySelector("#preview-status").textContent === "Draft";
+    const draftValid = owner.classList.contains("warning-kind") && document.querySelector("#preview-status").textContent === "Draft";
     state.session.approverName = approverName;
+    state.ruleIssues = originalRuleIssues;
     renderPreview();
     return {
-      readyValid: owner.classList.contains("preview-ready") && document.querySelector("#preview-status").textContent === "Ready",
+      blockedValid,
+      blockedColor,
+      blockedWidth,
+      expectedBlockedColor,
+      expectedWidth,
+      readyValid,
       readyColor,
       readyWidth,
       expectedReadyColor,
@@ -85,9 +111,10 @@ async function run({ page, baseUrl, assert }) {
       expectedDraftColor
     };
   });
+  assert(approvalStatus.blockedValid && approvalStatus.blockedColor === "rgb(255, 107, 107)" && approvalStatus.expectedBlockedColor === "#ff6b6b", `Blocked Preview status does not expose pending Rule Issues in red (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.readyValid && approvalStatus.readyColor === "rgb(97, 226, 148)" && approvalStatus.expectedReadyColor === "#61e294", `Ready Preview status is not green (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.draftValid && approvalStatus.draftColor === "rgb(229, 186, 125)" && approvalStatus.expectedDraftColor === "#e5ba7d", `Draft Preview status is not amber (${JSON.stringify(approvalStatus)})`);
-  assert(approvalStatus.readyWidth === 60 && approvalStatus.draftWidth === 60, `Preview approval status width changed between Ready and Draft (${JSON.stringify(approvalStatus)})`);
+  assert(approvalStatus.expectedWidth === 72 && [approvalStatus.blockedWidth, approvalStatus.readyWidth, approvalStatus.draftWidth].every((width) => width === approvalStatus.expectedWidth), `Promotion approval status geometry changed between Blocked, Ready, and Draft (${JSON.stringify(approvalStatus)})`);
 
   const reviewModel = await page.evaluate(() => {
     const layout = document.querySelector("#preview-view .preview-layout");
@@ -97,10 +124,11 @@ async function run({ page, baseUrl, assert }) {
     const splitter = document.querySelector("#preview-tree-resizer");
     const files = [...document.querySelectorAll(".preview-code [data-preview-file-path]")];
     const fileModels = Object.values(previewFilesByScope).flat();
+    const changedFileModels = fileModels.filter((file) => !file.reference);
     const first = files[0];
     const rows = [...document.querySelectorAll(".preview-split-row")];
     const gaps = files.slice(0, -1).map((file, index) => Math.round(files[index + 1].getBoundingClientRect().top - file.getBoundingClientRect().bottom));
-    const treeIcons = Object.entries(previewFilesByScope).flatMap(([scope, scopeFiles]) => scopeFiles.map((file) => {
+    const treeIcons = Object.entries(previewFilesByScope).flatMap(([scope, scopeFiles]) => scopeFiles.filter((file) => !file.reference).map((file) => {
       const button = document.querySelector(`[data-preview-artifact-file-scope="${scope}"][data-preview-file-jump="${CSS.escape(file.path)}"]`);
       const status = file.additions > 0 && file.deletions === 0 ? "added" : file.deletions > 0 && file.additions === 0 ? "removed" : "modified";
       return {
@@ -108,8 +136,9 @@ async function run({ page, baseUrl, assert }) {
         href: button?.querySelector(":scope > .octicon use")?.getAttribute("href")
       };
     }));
-    const folderIcons = [...document.querySelectorAll("[data-preview-artifact-scope]")].map((button) => button.querySelectorAll(":scope > .octicon use")[1]?.getAttribute("href"));
-    const treeStatuses = [...document.querySelectorAll(".preview-tree-file-icon")].map((icon) => ({ label: icon.getAttribute("aria-label"), color: getComputedStyle(icon).color }));
+    const folderIcons = [...document.querySelectorAll("[data-preview-artifact-scope]")].map((button) => button.querySelector(".preview-folder-buffer .buffer-open use")?.getAttribute("href"));
+    const treeStatuses = [...document.querySelectorAll(".preview-tree-file-icon:not(.protected)")].map((icon) => ({ label: icon.getAttribute("aria-label"), color: getComputedStyle(icon).color }));
+    const protectedTreeIcons = [...document.querySelectorAll('.preview-tree-file-icon.protected use')].map((use) => use.getAttribute("href"));
     const displayPaths = files.map((file) => ({
       internal: file.dataset.previewFilePath,
       display: file.dataset.previewFileDisplayPath,
@@ -131,6 +160,7 @@ async function run({ page, baseUrl, assert }) {
       proposedFiles: document.querySelectorAll(".preview-proposed-review [data-preview-file-path]").length,
       payloadFiles: document.querySelectorAll(".payload-review [data-preview-file-path]").length,
       rawFiles: document.querySelectorAll(".preview-raw-payload [data-preview-file-path]").length,
+      protectedFiles: document.querySelectorAll(".preview-protected-rules [data-preview-file-path]").length,
       columns: getComputedStyle(layout).gridTemplateColumns,
       viewChildren: [...view.children].map((child) => child.className),
       layoutChildren: [...layout.children].map((child) => child.className),
@@ -142,13 +172,14 @@ async function run({ page, baseUrl, assert }) {
       splitColumns: rows[0] ? getComputedStyle(rows[0]).gridTemplateColumns.split(" ").map(parseFloat) : [],
       withinViewport: files.every((file) => file.getBoundingClientRect().right <= innerWidth),
       noHorizontalOverflow: files.every((file) => file.querySelector(".preview-file-body").scrollWidth === file.querySelector(".preview-file-body").clientWidth),
-      allSectionsVisible: [...document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload")].every((section) => !section.hidden),
+      allSectionsVisible: [...document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload, .preview-protected-rules")].every((section) => !section.hidden),
       uniformGaps: gaps.every((gap) => gap === 16),
       firstGap,
       sectionBordersAbsent: [...document.querySelectorAll(".preview-proposed-review, .payload-review, .preview-raw-payload")].every((section) => getComputedStyle(section).borderTopWidth === "0px"),
       topHunks: [...document.querySelectorAll(".preview-hunk-header use")].map((use) => use.getAttribute("href")),
       treeIcons,
       treeStatuses,
+      protectedTreeIcons,
       folderIcons,
       displayPaths,
       fileHierarchy,
@@ -157,7 +188,7 @@ async function run({ page, baseUrl, assert }) {
       codeownerShields: document.querySelectorAll('.preview-review-status-icon use[href$="#octicon-shield-lock-16"]').length,
       viewedControls: [...document.querySelectorAll(".preview-viewed")].map((control) => ({ width: control.getBoundingClientRect().width, height: control.getBoundingClientRect().height })),
       toolbarText: document.querySelector("#preview-review-context").textContent.trim().replace(/\s+/g, " "),
-      expectedToolbarText: `${fileModels.length} files changed+${fileModels.reduce((sum, file) => sum + file.additions, 0)}-${fileModels.reduce((sum, file) => sum + file.deletions, 0)}`,
+      expectedToolbarText: `${changedFileModels.length} files changed+${changedFileModels.reduce((sum, file) => sum + file.additions, 0)}-${changedFileModels.reduce((sum, file) => sum + file.deletions, 0)}`,
       toolbarDiffstat,
       splitter: {
         role: splitter.getAttribute("role"),
@@ -167,26 +198,45 @@ async function run({ page, baseUrl, assert }) {
         current: splitter.getAttribute("aria-valuenow"),
         width: splitter.getBoundingClientRect().width
       },
-      initiallyExpanded: [...document.querySelectorAll("[data-preview-artifact-scope]")].every((button) => button.getAttribute("aria-expanded") === "true")
+      initialExpansion: Object.fromEntries([...document.querySelectorAll("[data-preview-artifact-scope]")]
+        .map((button) => [button.dataset.previewArtifactScope, button.getAttribute("aria-expanded") === "true"]))
     };
   });
-  assert(reviewModel.scopeControlAbsent && reviewModel.sidebarHeadingAbsent && reviewModel.parentCount === 3, "Preview still exposes obsolete scope or sidebar-heading controls");
-  assert(reviewModel.fileCount === 9 && reviewModel.sidebarFiles === 9 && reviewModel.proposedFiles === 4 && reviewModel.payloadFiles === 4 && reviewModel.rawFiles === 1 && reviewModel.allSectionsVisible, `Preview is not one continuous nine-file review (${JSON.stringify(reviewModel)})`);
+  assert(reviewModel.scopeControlAbsent && reviewModel.sidebarHeadingAbsent && reviewModel.parentCount === 4, "Preview still exposes obsolete scope or sidebar-heading controls");
+  assert(reviewModel.fileCount === 10 && reviewModel.sidebarFiles === 10 && reviewModel.proposedFiles === 4 && reviewModel.payloadFiles === 4 && reviewModel.rawFiles === 1 && reviewModel.protectedFiles === 1 && reviewModel.allSectionsVisible, `Preview does not preserve nine changed files plus one protected reference (${JSON.stringify(reviewModel)})`);
   assert(reviewModel.lineNumberWidth === 44 && reviewModel.splitLabels === 0 && reviewModel.withinViewport && reviewModel.noHorizontalOverflow, "Preview does not use GitHub split-diff geometry with wrapped content");
   assert(reviewModel.splitColumns.length === 2 && Math.abs(reviewModel.splitColumns[0] - reviewModel.splitColumns[1]) <= 1, "Preview split panes are not equal width");
   assert(reviewModel.firstGap === 16 && reviewModel.uniformGaps && reviewModel.sectionBordersAbsent, "Preview file spacing changes at the leading or artifact boundaries");
   assert(reviewModel.topHunks.length === 8 && reviewModel.topHunks.every((icon) => icon.endsWith("#octicon-kebab-horizontal-16")), "Top-file hunks do not use the local kebab-horizontal Octicon");
   assert(reviewModel.treeIcons.length === 9 && reviewModel.treeIcons.every((icon) => icon.href?.endsWith(icon.expected)), "Preview tree files do not use status-aware authenticated file icons");
   assert(reviewModel.treeStatuses.every((item) => ["Added", "Removed", "Modified"].includes(item.label)) && new Set(reviewModel.treeStatuses.map((item) => item.color)).size === 3, "Preview tree status icons do not retain distinct accessible states and colors");
-  assert(reviewModel.folderIcons.length === 3 && reviewModel.folderIcons.every((icon) => icon.endsWith("#octicon-file-directory-open-fill-16")), "Preview tree folders do not use the authenticated open-directory icon");
+  assert(reviewModel.protectedTreeIcons.length === 1 && reviewModel.protectedTreeIcons[0].endsWith("#octicon-shield-lock-16"), "Preview tree does not distinguish the protected reference file");
+  assert(reviewModel.folderIcons.length === 4 && reviewModel.folderIcons.every((icon) => icon.endsWith("#octicon-file-directory-open-fill-16")), "Preview tree folders do not use the authenticated open-directory icon");
   assert(reviewModel.displayPaths.every((item) => item.display === item.heading && item.display === item.copy && item.display !== item.internal && /^[A-Z ]+\//.test(item.display)), "Preview file headers do not expose virtual artifact paths while preserving internal navigation identity");
   assert(reviewModel.fileHierarchy.every((item) => item.children.join(",") === "preview-file-heading-wrapper,preview-file-body" && !item.bodyInsideHeader), "Preview file cards do not own sibling sticky-header and diff-body containers");
   assert(reviewModel.viewChildren.join(",") === "page-heading,preview-review-toolbar,preview-layout" && reviewModel.layoutChildren.join(",") === "preview-summary scroll-surface type-ui,preview-tree-resizer,preview-code scroll-surface type-editor" && !reviewModel.codeChildren.includes("preview-review-toolbar"), "Preview toolbar, tree, and diff scroller do not retain independent layer ownership");
   assert(reviewModel.codeOverflow === "auto" && reviewModel.codeContainment === "paint", "Preview diff flow is not isolated inside its owned scroll surface");
   assert(reviewModel.toolbarHeight === 60 && reviewModel.fileHeaderHeights.length === 1 && reviewModel.fileHeaderHeights[0] === 42, "Preview toolbar or sticky file headers do not match authenticated GitHub geometry");
-  assert(reviewModel.codeownerShields === 9 && reviewModel.viewedControls.every((control) => control.width === 77 && control.height === 28), "Preview file headers do not retain CODEOWNERS and Viewed controls");
-  assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("neutral") && reviewModel.initiallyExpanded, `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to all files (${JSON.stringify(reviewModel)})`);
+  assert(reviewModel.codeownerShields === 10 && reviewModel.viewedControls.length === 9 && reviewModel.viewedControls.every((control) => control.width === 77 && control.height === 28), "Preview file headers do not retain changed-file CODEOWNERS controls and the protected reference shield");
+  const expectedInitialExpansion = { proposed: true, payload: true, raw: true, protected: true };
+  assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("neutral") && JSON.stringify(reviewModel.initialExpansion) === JSON.stringify(expectedInitialExpansion), `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to changed and protected files (${JSON.stringify(reviewModel)})`);
   assert(reviewModel.splitter.role === "slider" && reviewModel.splitter.orientation === "vertical" && reviewModel.splitter.minimum === "296" && Number(reviewModel.splitter.maximum) >= Number(reviewModel.splitter.current) && reviewModel.splitter.width === 5, "Preview changed-file tree does not expose an accessible five-pixel splitter");
+
+  const emptyProtectedScope = await page.evaluate(() => {
+    const protectedRuleFiles = state.bundle.catalog.protectedRuleFiles;
+    state.bundle.catalog.protectedRuleFiles = [];
+    renderPreview();
+    const result = {
+      folderAbsent: !document.querySelector('[data-preview-artifact-group="protected"]'),
+      treeFileAbsent: !document.querySelector('[data-preview-artifact-file-scope="protected"]'),
+      sectionHidden: elements["preview-protected-section"].hidden,
+      sectionEmpty: elements["preview-protected"].children.length === 0
+    };
+    state.bundle.catalog.protectedRuleFiles = protectedRuleFiles;
+    renderPreview();
+    return result;
+  });
+  assert(emptyProtectedScope.folderAbsent && emptyProtectedScope.treeFileAbsent && emptyProtectedScope.sectionHidden && emptyProtectedScope.sectionEmpty, `Empty Protected Rules scope remains visible (${JSON.stringify(emptyProtectedScope)})`);
 
   const firstFile = page.locator(".preview-proposed-review [data-preview-file-path]").first();
   await firstFile.locator("[data-preview-file-collapse]").click();
@@ -224,19 +274,21 @@ async function run({ page, baseUrl, assert }) {
   assert(await firstFile.evaluate((element) => element.classList.contains("viewed") && !element.querySelector(".preview-file-body").hidden), "Tree navigation changes an expanded Viewed file card");
   await firstFile.locator(".preview-viewed").click();
 
-  const parentDisclosure = await page.evaluate(() => {
+  const parentDisclosure = await page.evaluate(async () => {
     const scroller = document.querySelector("#preview-code");
     const parent = document.querySelector('[data-preview-artifact-scope="payload"]');
     const selected = document.querySelector("[data-preview-file-jump].active")?.dataset.previewFileJump;
     scroller.scrollTop = 120;
-    const before = { scrollTop: scroller.scrollTop, selected, proposed: document.querySelector('[data-preview-artifact-scope="proposed"]').getAttribute("aria-expanded"), raw: document.querySelector('[data-preview-artifact-scope="raw"]').getAttribute("aria-expanded") };
+    const before = { scrollTop: scroller.scrollTop, selected, payload: parent.getAttribute("aria-expanded"), proposed: document.querySelector('[data-preview-artifact-scope="proposed"]').getAttribute("aria-expanded"), raw: document.querySelector('[data-preview-artifact-scope="raw"]').getAttribute("aria-expanded") };
     parent.click();
+    await new Promise(requestAnimationFrame);
     const collapsed = { scrollTop: scroller.scrollTop, selected: document.querySelector("[data-preview-file-jump].active")?.dataset.previewFileJump, expanded: document.querySelector('[data-preview-artifact-scope="payload"]').getAttribute("aria-expanded"), activeParents: document.querySelectorAll("[data-preview-artifact-scope].active").length };
     document.querySelector('[data-preview-artifact-scope="payload"]').click();
+    await new Promise(requestAnimationFrame);
     const expanded = { scrollTop: scroller.scrollTop, selected: document.querySelector("[data-preview-file-jump].active")?.dataset.previewFileJump, expanded: document.querySelector('[data-preview-artifact-scope="payload"]').getAttribute("aria-expanded"), proposed: document.querySelector('[data-preview-artifact-scope="proposed"]').getAttribute("aria-expanded"), raw: document.querySelector('[data-preview-artifact-scope="raw"]').getAttribute("aria-expanded") };
     return { before, collapsed, expanded };
   });
-  assert(parentDisclosure.collapsed.expanded === "false" && parentDisclosure.expanded.expanded === "true", "Artifact parent does not independently toggle its children");
+  assert(parentDisclosure.collapsed.expanded !== parentDisclosure.before.payload && parentDisclosure.expanded.expanded === parentDisclosure.before.payload, `Artifact parent does not independently toggle and restore its children (${JSON.stringify(parentDisclosure)})`);
   assert(parentDisclosure.before.scrollTop === parentDisclosure.collapsed.scrollTop && parentDisclosure.collapsed.scrollTop === parentDisclosure.expanded.scrollTop, "Artifact parent changes the review scroll position");
   assert(parentDisclosure.before.selected === parentDisclosure.collapsed.selected && parentDisclosure.collapsed.selected === parentDisclosure.expanded.selected && parentDisclosure.collapsed.activeParents === 0, "Artifact parent changes or duplicates file selection");
   assert(parentDisclosure.before.proposed === parentDisclosure.expanded.proposed && parentDisclosure.before.raw === parentDisclosure.expanded.raw, "Artifact parent changes sibling expansion state");
@@ -266,7 +318,7 @@ async function run({ page, baseUrl, assert }) {
     };
   }, selectedPath);
   assert(persistentSelection.selectedAfterClick === selectedPath && persistentSelection.selectedAfterScroll === selectedPath && persistentSelection.activeCount === 1 && persistentSelection.activeParents === 0, "Preview tree selection does not remain on the last explicitly selected file");
-  assert(persistentSelection.rawSticky && persistentSelection.visibleFiles === 9, "Continuous review does not keep the current file header sticky while all files remain mounted");
+  assert(persistentSelection.rawSticky && persistentSelection.visibleFiles === 10, "Continuous review does not keep the current file header sticky while all changed and protected files remain mounted");
 
   const raw = await page.evaluate(() => {
     const file = document.querySelector(".preview-raw-payload [data-preview-file-path]");
@@ -274,6 +326,7 @@ async function run({ page, baseUrl, assert }) {
     return {
       fileCount: document.querySelectorAll(".preview-raw-payload [data-preview-file-path]").length,
       path: file.dataset.previewFilePath,
+      displayPath: file.dataset.previewFileDisplayPath,
       nestedSections: file.querySelectorAll("details").length,
       controls: controls.map((button) => ({ label: button.getAttribute("aria-label"), icon: button.querySelector("use")?.getAttribute("href") })),
       gapCount: file.querySelectorAll("[data-preview-context-gap]").length,
@@ -294,7 +347,7 @@ async function run({ page, baseUrl, assert }) {
   assert(raw.controls.some((control) => control.label === "Expand Up" && control.icon.endsWith("#octicon-fold-up-16")), "Raw review does not use the local Fold Up Octicon");
   const expectedControlIcons = { "Expand Up": "#octicon-fold-up-16", "Expand All": "#octicon-unfold-16", "Expand Down": "#octicon-fold-down-16" };
   assert(raw.controls.every((control) => control.icon.endsWith(expectedControlIcons[control.label])), "Raw review does not use the correct local Octicon for each available expansion direction");
-  assert(raw.linesToggle.label === "Expand all lines: APPROVED RULES/approved-rules.json" && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Approved Rules review does not start with the file-level Expand all lines override");
+  assert(raw.linesToggle.label === `Expand all lines: ${raw.displayPath}` && raw.linesToggle.pressed === "false" && raw.linesToggle.icon.endsWith("#octicon-unfold-16"), "Approved Rules review does not start with the file-level Expand all lines override");
 
   const directionalExpansion = await page.evaluate(async () => {
     const file = document.querySelector(".preview-raw-payload [data-preview-file-path]");
@@ -323,7 +376,7 @@ async function run({ page, baseUrl, assert }) {
     };
   });
   assert(directionalExpansion.before - directionalExpansion.expanded.remaining === Math.min(10, directionalExpansion.before), "Fold Up does not reveal the expected directional line count");
-  assert(directionalExpansion.expanded.label === "Collapse all lines: APPROVED RULES/approved-rules.json" && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
+  assert(directionalExpansion.expanded.label === `Collapse all lines: ${raw.displayPath}` && directionalExpansion.expanded.pressed === "true" && directionalExpansion.expanded.icon.endsWith("#octicon-fold-16"), "Inline context expansion does not switch the file-level override to Collapse all lines");
   assert(directionalExpansion.restored.gaps === raw.gapCount && directionalExpansion.restored.label === raw.linesToggle.label && directionalExpansion.restored.pressed === "false" && directionalExpansion.restored.icon.endsWith("#octicon-unfold-16"), "File-level Collapse all lines does not restore the canonical compact view and Expand all lines state");
 
   await page.locator("#preview-review-toggle").click();
@@ -345,7 +398,8 @@ async function run({ page, baseUrl, assert }) {
     previewFilesByScope = {
       proposed: Array.from({ length: 40 }, (_, index) => cloneFile(previewFilesByScope.proposed[index % previewFilesByScope.proposed.length], "proposed", index)),
       payload: Array.from({ length: 40 }, (_, index) => cloneFile(previewFilesByScope.payload[index % previewFilesByScope.payload.length], "payload", index)),
-      raw: previewFilesByScope.raw.map((file, index) => cloneFile(file, "raw", index))
+      raw: previewFilesByScope.raw.map((file, index) => cloneFile(file, "raw", index)),
+      protected: previewFilesByScope.protected
     };
     elements["preview-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.proposed, "", "");
     elements["preview-payload-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.payload, "", "");
@@ -367,9 +421,10 @@ async function run({ page, baseUrl, assert }) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const virtualizedAfterResize = scroller.querySelectorAll('[data-preview-virtualized="true"]').length;
     const renderedFileCount = scroller.querySelectorAll("[data-preview-file-path]").length;
+    const fileCount = Object.values(previewFilesByScope).flat().length;
     renderPreview();
     return {
-      fileCount: 81,
+      fileCount,
       renderedFileCount,
       fullScrollHeight,
       virtualizedScrollHeight: scrollHeightAfterNavigation,

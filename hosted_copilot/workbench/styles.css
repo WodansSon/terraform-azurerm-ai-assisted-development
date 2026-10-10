@@ -48,6 +48,9 @@ html.theme-hosted-dark {
   --shadow: none;
   --radius: 0;
   --topbar-height: 35px;
+  --status-bar-height: 22px;
+  --status-bar-gap: 8px;
+  --status-promotion-approval-width: 72px;
   --font-family-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-size-default: 14px;
   --font-size-ui: 13px;
@@ -2070,6 +2073,11 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 .status-badge.success {
   color: var(--success);
   background: var(--success-soft);
+}
+
+.status-badge.error {
+  color: var(--red);
+  background: var(--red-soft);
 }
 
 .status-badge.excluded {
@@ -4500,10 +4508,10 @@ html.theme-hosted-dark body .activity-count-badge {
 .ide-statusbar {
   display: flex;
   min-width: 0;
-  height: 22px;
+  height: var(--status-bar-height);
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--status-bar-gap);
   color: var(--muted);
   background: var(--surface);
   border-top: 1px solid var(--line);
@@ -4547,26 +4555,25 @@ html.theme-hosted-dark body .activity-count-badge {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.status-item.preview-ready,
-.status-item.preview-ready:hover {
+.status-item.success-kind,
+.status-item.success-kind:hover {
   color: var(--success);
 }
 
-.status-item.preview-draft,
-.status-item.preview-draft:hover {
+.status-item.warning-kind,
+.status-item.warning-kind:hover {
   color: var(--warning-foreground);
 }
 
-.status-item.preview-ready,
-.status-item.preview-draft {
-  flex: 0 0 60px;
-  min-width: 60px;
+.status-item.error-kind,
+.status-item.error-kind:hover {
+  color: var(--red);
+}
+
+.status-item.promotion-approval-status {
+  flex: 0 0 var(--status-promotion-approval-width);
+  min-width: var(--status-promotion-approval-width);
   justify-content: center;
-}
-
-.rule-issues-status.has-issues,
-.rule-issues-status.has-issues:hover {
-  color: var(--warning-foreground);
 }
 
 .target-chip {
@@ -5595,7 +5602,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
   .app-shell {
     display: grid;
     grid-template-columns: 48px minmax(0, 1fr);
-    grid-template-rows: 35px minmax(0, 1fr) 22px;
+    grid-template-rows: var(--topbar-height) minmax(0, 1fr) var(--status-bar-height);
     height: 100vh;
     min-height: 0;
     overflow: hidden;

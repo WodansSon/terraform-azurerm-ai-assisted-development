@@ -53,7 +53,9 @@ $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-Guidance
 $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceInventory.ps1'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
+$hostedGitHubHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedGitHub.Helpers.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
+$workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
 $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceAssessment.ps1'
 $assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
@@ -310,7 +312,9 @@ if ($runtimeStarted) {
         $instructionGenerationTestPath,
         $guidanceCapacityPath,
         $hostedToolkitHelpersPath,
+        $hostedGitHubHelpersPath,
         $sourceEvidenceModulePath,
+        $workbenchGitHubContextModulePath,
         $sourceInventoryCollectorPath,
         $sourceInventoryTestPath,
         $sourceAssessmentTestPath,
@@ -409,6 +413,15 @@ if ($runtimeStarted) {
             $hostedReviewContent -notmatch 'Read-Adjudications' -or
             $hostedReviewContent -notmatch '\[switch\]\$Cleanup') {
             $lifecycleIssues.Add('the root Hosted review command must own create, resume, local adjudication, validation, and explicit cleanup')
+        }
+    }
+    if (Test-Path -LiteralPath $reviewCapturePath -PathType Leaf) {
+        $reviewCaptureContent = Get-Content -LiteralPath $reviewCapturePath -Raw
+        if ($reviewCaptureContent -notmatch 'HostedGitHub\.Helpers\.psm1' -or
+            $reviewCaptureContent -notmatch 'Invoke-HostedGitHubApi' -or
+            $reviewCaptureContent -notmatch 'Invoke-HostedGitHubCli -Arguments' -or
+            $reviewCaptureContent -match 'function Invoke-GitHubApi|\$script:ghCommand|\.Source api') {
+            $lifecycleIssues.Add('review capture must delegate REST and run-log GitHub CLI execution to the shared GitHub helper')
         }
     }
     if (Test-Path -LiteralPath $hostedReviewDocumentationPath -PathType Leaf) {

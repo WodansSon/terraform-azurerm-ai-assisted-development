@@ -40,6 +40,8 @@ $ErrorActionPreference = 'Stop'
 
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersPath -Force
+$githubHelpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedGitHub.Helpers.psm1'
+Import-Module -Name $githubHelpersPath -Force
 
 if ($PSCmdlet.ParameterSetName -eq 'PairRecord') {
     $resolvedPairPath = [IO.Path]::GetFullPath($PairPath)
@@ -63,27 +65,6 @@ if ($PSCmdlet.ParameterSetName -eq 'PairRecord') {
         [string]$pair.sourceProvenance.type -eq 'synthetic_case') {
         $FixtureId = [string]$pair.sourceProvenance.caseId
     }
-}
-
-function Invoke-GitHubApi {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Endpoint
-    )
-
-    $originalOutputEncoding = [Console]::OutputEncoding
-    try {
-        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-        $output = & $script:ghCommand.Source api $Endpoint -H 'Accept: application/vnd.github+json'
-        if ($LASTEXITCODE -ne 0) {
-            throw "GitHub API request failed: $Endpoint"
-        }
-    }
-    finally {
-        [Console]::OutputEncoding = $originalOutputEncoding
-    }
-
-    return $output | ConvertFrom-Json
 }
 
 function Get-StringSha256 {
@@ -121,19 +102,14 @@ function Invoke-GitHubRunLog {
         [int64]$RunId
     )
 
-    $originalOutputEncoding = [Console]::OutputEncoding
     try {
-        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-        $output = & $script:ghCommand.Source run view $RunId --repo $Repository --log
-        if ($LASTEXITCODE -ne 0) {
-            throw "GitHub Actions log request failed for run $RunId"
-        }
+        $output = Invoke-HostedGitHubCli -Arguments @('run', 'view', [string]$RunId, '--repo', $Repository, '--log')
     }
-    finally {
-        [Console]::OutputEncoding = $originalOutputEncoding
+    catch {
+        throw "GitHub Actions log request failed for run $RunId`: $($_.Exception.Message)"
     }
 
-    return $output -join "`n"
+    return ($output -replace "`r`n", "`n").TrimEnd("`r", "`n")
 }
 
 function Get-RegexValues {
@@ -200,7 +176,7 @@ function Get-ReviewRuntimeEvidence {
         [DateTimeOffset]$ReviewedAt
     )
 
-    $runsResponse = Invoke-GitHubApi -Endpoint "repos/$Repository/actions/runs?head_sha=$HeadCommit&per_page=100"
+    $runsResponse = Invoke-HostedGitHubApi -Endpoint "repos/$Repository/actions/runs?head_sha=$HeadCommit&per_page=100"
     $runs = @(Get-OptionalPropertyValue -InputObject $runsResponse -Name 'workflow_runs')
     $candidates = New-Object 'System.Collections.Generic.List[object]'
     foreach ($run in $runs) {
@@ -395,8 +371,8 @@ function Get-PullRequestEvidence {
         [string]$ExpectedProfile
     )
 
-    $pullRequest = Invoke-GitHubApi -Endpoint "repos/$Repository/pulls/$Number"
-    $files = @(Invoke-GitHubApi -Endpoint "repos/$Repository/pulls/$Number/files?per_page=100")
+    $pullRequest = Invoke-HostedGitHubApi -Endpoint "repos/$Repository/pulls/$Number"
+    $files = @(Invoke-HostedGitHubApi -Endpoint "repos/$Repository/pulls/$Number/files?per_page=100")
     if ($pullRequest.changed_files -gt 100) {
         throw "Pull request #$Number has more than 100 changed files; paged capture is required"
     }
@@ -404,7 +380,7 @@ function Get-PullRequestEvidence {
         throw "Pull request #$Number file capture is incomplete"
     }
 
-    $reviews = @(Invoke-GitHubApi -Endpoint "repos/$Repository/pulls/$Number/reviews?per_page=100")
+    $reviews = @(Invoke-HostedGitHubApi -Endpoint "repos/$Repository/pulls/$Number/reviews?per_page=100")
     $matchingReviews = @($reviews | Where-Object {
             $_.user.login -match '^copilot-pull-request-reviewer' -and
             $_.body -match "Review effort level:\*\*\s+$([regex]::Escape($ReviewEffort))"
@@ -414,8 +390,8 @@ function Get-PullRequestEvidence {
     }
     $review = $matchingReviews[-1]
 
-    $comments = @(Invoke-GitHubApi -Endpoint "repos/$Repository/pulls/$Number/comments?per_page=100" | Where-Object pull_request_review_id -eq $review.id)
-    $timeline = @(Invoke-GitHubApi -Endpoint "repos/$Repository/issues/$Number/timeline?per_page=100")
+    $comments = @(Invoke-HostedGitHubApi -Endpoint "repos/$Repository/pulls/$Number/comments?per_page=100" | Where-Object pull_request_review_id -eq $review.id)
+    $timeline = @(Invoke-HostedGitHubApi -Endpoint "repos/$Repository/issues/$Number/timeline?per_page=100")
     $requestEvents = @($timeline | Where-Object {
             $requestedReviewer = Get-OptionalPropertyValue -InputObject $_ -Name 'requested_reviewer'
             $_.event -eq 'review_requested' -and
@@ -608,10 +584,6 @@ function ConvertTo-ReviewSummaryMarkdown {
     return ($lines -join "`n") + "`n"
 }
 
-$ghCommand = Get-Command 'gh' -ErrorAction SilentlyContinue
-if ($null -eq $ghCommand) {
-    throw 'GitHub CLI was not found on PATH'
-}
 $control = Get-PullRequestEvidence -Number $ControlPullRequest -ExpectedProfile 'control'
 $hosted = Get-PullRequestEvidence -Number $HostedPullRequest -ExpectedProfile 'hosted'
 if (($control.changedFiles -join "`n") -ne ($hosted.changedFiles -join "`n")) {

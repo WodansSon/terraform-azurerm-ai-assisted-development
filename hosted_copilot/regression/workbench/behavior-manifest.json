@@ -61,7 +61,7 @@
     },
     {
       "id": "WB-UX-PREVIEW-002",
-      "title": "Review artifact folders disclose independently while file selection alone navigates the diff",
+      "title": "Non-empty review artifact folders start expanded, empty scopes remain absent, and disclosure stays independent from file navigation",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
@@ -117,6 +117,11 @@
     {
       "id": "WB-UX-PREVIEW-013",
       "title": "Large reviews virtualize off-screen diff bodies while preserving navigation and scroll geometry",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-014",
+      "title": "Open Rule Issues block promotion approval with stable status geometry and an explicit requirement",
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
