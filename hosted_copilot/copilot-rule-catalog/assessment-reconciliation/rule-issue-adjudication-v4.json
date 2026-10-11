@@ -1,0 +1,22 @@
+{
+  "$schema": "rule-issue-adjudication-contract.schema.json",
+  "schemaVersion": 1,
+  "contractId": "rule-issue-adjudication-v4",
+  "behaviorFiles": [
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-cache.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-run.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-contract.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-draft-v4.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-input-v4.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/workbench-display-v4.schema.json",
+    "hosted_copilot/copilot-rule-catalog/assessment-reconciliation/workbench-rule-issues-v4.schema.json",
+    "hosted_copilot/tools/assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md",
+    "hosted_copilot/tools/internal/reconciliation/Export-WorkbenchRuleIssues.ps1",
+    "hosted_copilot/tools/internal/reconciliation/Invoke-CopilotReconciliationStage.ps1",
+    "hosted_copilot/tools/internal/reconciliation/Invoke-RuleIssueAdjudication.ps1",
+    "hosted_copilot/tools/modules/reconciliation/HierarchicalReconciliationState.psm1",
+    "hosted_copilot/tools/modules/reconciliation/ReconciliationStageExecutor.psm1",
+    "hosted_copilot/tools/modules/reconciliation/RuleIssueAdjudication.psm1",
+    "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1"
+  ]
+}

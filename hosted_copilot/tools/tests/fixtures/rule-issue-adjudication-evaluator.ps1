@@ -1,9 +1,14 @@
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory = $true)][ValidateSet('adjudication')][string]$Stage,
     [Parameter(Mandatory = $true)][string]$InputPath,
+    [Parameter(Mandatory = $true)][string]$CatalogPath,
+    [Parameter(Mandatory = $true)][string]$ProtectedRulesPath,
+    [Parameter(Mandatory = $true)][string]$ContractPath,
     [Parameter(Mandatory = $true)][string]$SchemaPath,
     [Parameter(Mandatory = $true)][string]$PromptPath,
     [Parameter(Mandatory = $true)][string]$OutputPath,
+    [Parameter(Mandatory = $true)][string]$EvaluatorCommand,
     [Parameter(Mandatory = $true)][string]$Model,
     [Parameter(Mandatory = $true)][string]$ReasoningEffort
 )
@@ -11,7 +16,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$request = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json -DateKind String
+$stageInput = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json -DateKind String
+$request = $stageInput.payload
 $independent = [string]$request.componentId -like '*independent*'
 $invalidReference = [string]$request.componentId -like '*invalid-reference*'
 $decisions = @($request.relationships | ForEach-Object {

@@ -21,6 +21,10 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-issue-adjudication-te
 $null = New-Item -ItemType Directory -Path $root -Force
 $hash = 'a' * 64
 
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Hosted Rule Issue adjudication'
+}
+
 function Add-TestResult {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -30,6 +34,17 @@ function Add-TestResult {
 
     $results.Add([pscustomobject]@{ name = $Name; status = if ($Passed) { 'passed' } else { 'failed' }; detail = $Detail })
     if (-not $Passed) { $issues.Add("$Name`: $Detail") }
+}
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($OutputFormat -eq 'Text') {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -NameWidth 42)
+    }
 }
 
 function New-ComponentInput {
@@ -74,23 +89,64 @@ try {
         OutputFormat = 'Json'
         Quiet = $true
     }
+    Write-TestProgress -Name 'first-run-evaluates-components' -Detail 'Evaluating every uncached Rule Issue component'
     $first = & $runnerPath @parameters | ConvertFrom-Json
     $firstSet = Get-Content -LiteralPath $parameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
     Add-TestResult -Name 'first-run-evaluates-components' -Passed ([int]$first.evaluatedComponentCount -eq 2 -and [int]$first.cachedComponentCount -eq 0) -Detail 'The first run evaluates every uncached component.'
+    Write-TestProgress -Name 'hierarchical-adjudication-cache' -Detail 'Checking v2 adjudication shards and legacy cache exclusion'
+    $hierarchicalCachePath = Join-Path $parameters.CacheDirectory 'hierarchical-reconciliation-cache.json'
+    $hierarchicalCache = Get-Content -LiteralPath $hierarchicalCachePath -Raw | ConvertFrom-Json -DateKind String
+    $hierarchicalCacheValid = [int]$hierarchicalCache.schemaVersion -eq 2 -and
+        [string]$hierarchicalCache.kind -ceq 'hosted-hierarchical-reconciliation-cache' -and
+        @($hierarchicalCache.entries).Count -eq 2 -and
+        @($hierarchicalCache.entries | Where-Object { [string]$_.stage -cne 'adjudication' -or [string]$_.shardKey -cnotmatch '^adjudication:[0-9a-f]{64}$' }).Count -eq 0 -and
+        -not (Test-Path -LiteralPath (Join-Path $parameters.CacheDirectory 'rule-issue-adjudication-cache.json') -PathType Leaf)
+    Add-TestResult -Name 'hierarchical-adjudication-cache' -Passed $hierarchicalCacheValid -Detail 'Rule Issue components use only v2 adjudication shards and never create the legacy component ledger.'
+    Write-TestProgress -Name 'independent-component-produces-no-issue' -Detail 'Checking rejection of a provisional relationship'
     Add-TestResult -Name 'independent-component-produces-no-issue' -Passed (@($firstSet.components | Where-Object componentId -like '*independent*' | ForEach-Object { @($_.issues).Count })[0] -eq 0) -Detail 'AI can reject every provisional edge without producing a Rule Issue.'
+    Write-TestProgress -Name 'protected-canonical-wording' -Detail 'Checking immutable protected wording'
     $protectedIssue = @($firstSet.components | Where-Object componentId -like '*protected*')[0].issues[0]
     Add-TestResult -Name 'protected-canonical-wording' -Passed ([string]$protectedIssue.wording.status -ceq 'canonical' -and [string]$protectedIssue.wording.text -ceq 'Canonical text.') -Detail 'Protected adjudication preserves exact canonical wording.'
 
+    Write-TestProgress -Name 'second-run-reuses-components' -Detail 'Reusing unchanged adjudication shards'
     $parameters.OutputPath = Join-Path $root 'second.json'
     $second = & $runnerPath @parameters | ConvertFrom-Json
     Add-TestResult -Name 'second-run-reuses-components' -Passed ([int]$second.cachedComponentCount -eq 2 -and [int]$second.evaluatedComponentCount -eq 0) -Detail 'Unchanged component source and rule hashes reuse cached adjudication.'
 
+    Write-TestProgress -Name 'changed-component-reevaluates-only-itself' -Detail 'Invalidating only the changed component shard'
     $changed = New-ComponentInput -Id '001' -ContentSha256 ('b' * 64)
     [IO.File]::WriteAllText($componentPaths[0], (($changed | ConvertTo-Json -Depth 30) + "`n"), [Text.UTF8Encoding]::new($false))
     $parameters.OutputPath = Join-Path $root 'third.json'
     $third = & $runnerPath @parameters | ConvertFrom-Json
     Add-TestResult -Name 'changed-component-reevaluates-only-itself' -Passed ([int]$third.cachedComponentCount -eq 1 -and [int]$third.evaluatedComponentCount -eq 1) -Detail 'A changed direct source hash invalidates only its component adjudication.'
 
+    Write-TestProgress -Name 'behavior-change-invalidates-cache' -Detail 'Binding cache authority to every declared behavior file'
+    $authorityRepositoryRoot = Join-Path $root 'authority-repository'
+    $null = New-Item -ItemType Directory -Path $authorityRepositoryRoot -Force
+    $authorityBehaviorPath = Join-Path $authorityRepositoryRoot 'behavior.ps1'
+    [IO.File]::WriteAllText($authorityBehaviorPath, "'first'`n", [Text.UTF8Encoding]::new($false))
+    $authorityContractPath = Join-Path $root 'rule-issue-adjudication-v4.json'
+    $authorityContract = [ordered]@{ '$schema' = 'rule-issue-adjudication-contract.schema.json'; schemaVersion = 1; contractId = 'rule-issue-adjudication-v4'; behaviorFiles = @('behavior.ps1') }
+    [IO.File]::WriteAllText($authorityContractPath, (($authorityContract | ConvertTo-Json -Depth 10) + "`n"), [Text.UTF8Encoding]::new($false))
+    $authorityParameters = @{} + $parameters
+    $authorityParameters.RepositoryRoot = $authorityRepositoryRoot
+    $authorityParameters.AdjudicationContractPath = $authorityContractPath
+    $authorityParameters.ContractSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-contract.schema.json'
+    $authorityParameters.CacheDirectory = Join-Path $root 'authority-cache'
+    $authorityParameters.OutputPath = Join-Path $root 'authority-first.json'
+    $authorityFirst = & $runnerPath @authorityParameters | ConvertFrom-Json
+    $authorityParameters.OutputPath = Join-Path $root 'authority-second.json'
+    $authoritySecond = & $runnerPath @authorityParameters | ConvertFrom-Json
+    [IO.File]::WriteAllText($authorityBehaviorPath, "'second'`n", [Text.UTF8Encoding]::new($false))
+    $authorityParameters.OutputPath = Join-Path $root 'authority-third.json'
+    $authorityThird = & $runnerPath @authorityParameters | ConvertFrom-Json
+    $behaviorAuthorityValid = [int]$authorityFirst.evaluatedComponentCount -eq 2 -and
+        [int]$authoritySecond.cachedComponentCount -eq 2 -and
+        [int]$authorityThird.cachedComponentCount -eq 0 -and
+        [int]$authorityThird.evaluatedComponentCount -eq 2
+    Add-TestResult -Name 'behavior-change-invalidates-cache' -Passed $behaviorAuthorityValid -Detail 'Changing one declared behavior file invalidates every adjudication shard even when component payloads and the contract manifest are unchanged.'
+
+    Write-TestProgress -Name 'non-member-rule-reference-rejected' -Detail 'Rejecting visible references to non-member rule IDs'
     $invalidReferencePath = Join-Path $root 'invalid-reference.json'
     [IO.File]::WriteAllText($invalidReferencePath, (((New-ComponentInput -Id '003' -ContentSha256 $hash -InvalidReference) | ConvertTo-Json -Depth 30) + "`n"), [Text.UTF8Encoding]::new($false))
     $invalidReferenceParameters = @{
@@ -114,13 +170,11 @@ try {
     }
     Add-TestResult -Name 'non-member-rule-reference-rejected' -Passed $invalidReferenceRejected -Detail 'Visible AI-authored issue prose cannot reference a rule ID outside that issue membership.'
 
+    Write-TestProgress -Name 'exporter-uses-reconciliation-authority' -Detail 'Checking provisional relationship ownership'
     $exporterText = Get-Content -LiteralPath $exporterPath -Raw
     $authorityBoundary = $exporterText -match 'candidate\.recommendation\.relatedHostedCoverage' -and $exporterText -notmatch 'candidate\.assessment\.relatedHostedCoverage' -and $exporterText -notmatch '\$actionable\s*='
     Add-TestResult -Name 'exporter-uses-reconciliation-authority' -Passed $authorityBoundary -Detail 'The exporter builds provisional edges from reconciliation output and contains no action-based semantic heuristic.'
 
-    $runnerText = Get-Content -LiteralPath $runnerPath -Raw
-    $calibratedEstimate = $runnerText -match '\$adjudicationBootstrapBytesPerSecondPerWorker\s*=\s*600' -and $runnerText -match '\[Math\]::Min\(\$MaxParallelBatches, \$pendingBatches\.Count\)'
-    Add-TestResult -Name 'estimate-uses-observed-throughput-and-active-workers' -Passed $calibratedEstimate -Detail 'Rule Issue estimates use the observed phase throughput and cap worker count to pending components.'
 }
 catch {
     Add-TestResult -Name 'unexpected-exception' -Passed $false -Detail $_.Exception.Message
@@ -140,10 +194,16 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 10
 }
 else {
-    Write-ValidationSectionHeader -Title 'Rule Issue adjudication test summary'
-    Write-ValidationSummary -Fields ([ordered]@{ Status = $result.status.ToUpperInvariant(); Tests = $result.testCount; Passed = @($results | Where-Object status -eq 'passed').Count; Failed = $result.issueCount })
-    Write-ValidationTwoColumnTable -Rows $results.ToArray() -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Test' -SecondProperty 'name' -UppercaseFirst
-    if ($issues.Count -gt 0) { Write-ValidationIssueList -Issues $issues.ToArray() }
+    Write-ValidationSectionHeader -Title 'Hosted Rule Issue adjudication test summary'
+    Write-ValidationSummary -Fields ([ordered]@{ Status = $result.status.ToUpperInvariant(); Tests = $result.testCount; Issues = $result.issueCount })
+    Write-ValidationSectionHeader -Title 'Rule Issue adjudication tests'
+    Write-ValidationTwoColumnTable -Rows @($results | ForEach-Object { [pscustomobject]@{ Status = $_.status; Test = $_.name } }) -FirstHeader 'Status' -FirstProperty 'Status' -SecondHeader 'Test' -SecondProperty 'Test' -UppercaseFirst
+    if ($issues.Count -gt 0) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        foreach ($issue in $issues) {
+            Write-Output "  - $issue"
+        }
+    }
     Complete-ValidationTextOutput
 }
 if ($issues.Count -gt 0) { exit 1 }

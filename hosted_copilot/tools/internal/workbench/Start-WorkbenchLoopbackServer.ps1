@@ -20,6 +20,18 @@ $ErrorActionPreference = 'Stop'
 
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $url = "http://127.0.0.1:$Port/"
+$stagedConfigPath = Join-Path $resolvedSiteDirectory 'shutdown-config.js'
+if (-not (Test-Path -LiteralPath $stagedConfigPath -PathType Leaf)) {
+    throw "Workbench runtime configuration was not found: $stagedConfigPath"
+}
+$stagedConfigContent = Get-Content -LiteralPath $stagedConfigPath -Raw
+if ($stagedConfigContent -notmatch '^globalThis\.__HOSTED_RULE_WORKBENCH__\s*=\s*(?<json>\{.*\});\s*$') {
+    throw 'Workbench runtime configuration is invalid'
+}
+$runtimeConfig = [string]$Matches['json'] | ConvertFrom-Json -DateKind String
+$runtimeConfig.shutdownToken = $ShutdownToken
+$runtimeConfig.operationToken = $OperationToken
+$runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
 
 function Write-HttpResponse {
     param(
@@ -142,6 +154,10 @@ try {
             $requestHost = [string]$requestHeaders['Host']
             if ([string]::IsNullOrWhiteSpace($requestHost) -or $requestHost.Trim() -notin $allowedHosts) {
                 Write-HttpResponse -Stream $stream -StatusCode 421 -StatusText 'Misdirected Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Misdirected Request')) -IncludeBody $true
+                continue
+            }
+            if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
+                Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
             }
             if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/shutdown') {

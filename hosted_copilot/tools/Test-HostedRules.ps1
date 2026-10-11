@@ -61,19 +61,29 @@ $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceAssessment
 $assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
 $assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
 $assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
+$hierarchicalReconciliationCacheSchemaPath = Join-Path $assessmentReconciliationRoot 'hierarchical-reconciliation-cache.schema.json'
+$hierarchicalReconciliationRunSchemaPath = Join-Path $assessmentReconciliationRoot 'hierarchical-reconciliation-run.schema.json'
 $assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-v4.json'
 $workbenchDisplaySchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-display-v4.schema.json'
 $workbenchDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-draft-v4.schema.json'
 $approvedRulesSchemaPath = Join-Path $assessmentReconciliationRoot 'approved-rules-v4.schema.json'
 $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-WorkbenchDisplay.ps1'
+$hierarchicalReconciliationPipelinePath = Join-Path $PSScriptRoot 'modules/reconciliation/HierarchicalReconciliationPipeline.psm1'
+$hierarchicalReconciliationStatePath = Join-Path $PSScriptRoot 'modules/reconciliation/HierarchicalReconciliationState.psm1'
+$reconciliationStageExecutorPath = Join-Path $PSScriptRoot 'modules/reconciliation/ReconciliationStageExecutor.psm1'
+$copilotReconciliationStageAdapterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-CopilotReconciliationStage.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
+$reconciliationStageExecutorTestPath = Join-Path $PSScriptRoot 'tests/Test-ReconciliationStageExecutor.ps1'
 $assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
 $ruleIssueAdjudicationInputSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-input-v4.schema.json'
 $ruleIssueAdjudicationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-draft-v4.schema.json'
+$ruleIssueAdjudicationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-contract.schema.json'
+$ruleIssueAdjudicationContractPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-v4.json'
 $workbenchRuleIssuesSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-rule-issues-v4.schema.json'
 $ruleIssueAdjudicationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'
 $ruleIssueAdjudicationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
+$ruleIssueAdjudicationModulePath = Join-Path $PSScriptRoot 'modules/reconciliation/RuleIssueAdjudication.psm1'
 $ruleIssueExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $ruleIssueAdjudicationTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleIssueAdjudication.ps1'
 $ruleIssueAdjudicationFixturePath = Join-Path $PSScriptRoot 'tests/fixtures/rule-issue-adjudication-evaluator.ps1'
@@ -320,19 +330,29 @@ if ($runtimeStarted) {
         $sourceAssessmentTestPath,
         $assessmentReconciliationContractSchemaPath,
         $assessmentReconciliationDraftSchemaPath,
+        $hierarchicalReconciliationCacheSchemaPath,
+        $hierarchicalReconciliationRunSchemaPath,
         $assessmentReconciliationContractPath,
         $workbenchDisplaySchemaPath,
         $workbenchDraftSchemaPath,
         $approvedRulesSchemaPath,
         $assessmentReconciliationRunnerPath,
         $assessmentReconciliationBuilderPath,
+        $hierarchicalReconciliationPipelinePath,
+        $hierarchicalReconciliationStatePath,
+        $reconciliationStageExecutorPath,
+        $copilotReconciliationStageAdapterPath,
         $assessmentReconciliationTestPath,
+        $reconciliationStageExecutorTestPath,
         $assessmentReconciliationPromptPath,
         $ruleIssueAdjudicationInputSchemaPath,
         $ruleIssueAdjudicationDraftSchemaPath,
+        $ruleIssueAdjudicationContractSchemaPath,
+        $ruleIssueAdjudicationContractPath,
         $workbenchRuleIssuesSchemaPath,
         $ruleIssueAdjudicationPromptPath,
         $ruleIssueAdjudicationRunnerPath,
+        $ruleIssueAdjudicationModulePath,
         $ruleIssueExporterPath,
         $ruleIssueAdjudicationTestPath,
         $ruleIssueAdjudicationFixturePath,
@@ -576,6 +596,8 @@ if ($runtimeStarted) {
         @{ Path = $sourceInventoryTestPath; Opening = 'Hosted source inventory'; Summary = 'Hosted source inventory test summary'; Results = 'Source inventory tests'; Activity = 'evidence-utilities' },
         @{ Path = $sourceAssessmentTestPath; Opening = 'Hosted source assessment'; Summary = 'Hosted source assessment test summary'; Results = 'Source assessment tests'; Activity = 'contract-validation' },
         @{ Path = $assessmentReconciliationTestPath; Opening = 'Hosted assessment reconciliation'; Summary = 'Hosted assessment reconciliation test summary'; Results = 'Assessment reconciliation tests'; Activity = 'fixture-validation' },
+        @{ Path = $reconciliationStageExecutorTestPath; Opening = 'Hosted reconciliation stage executor'; Summary = 'Hosted reconciliation stage executor test summary'; Results = 'Reconciliation stage executor tests'; Activity = 'hierarchical-cache-contract-files' },
+        @{ Path = $ruleIssueAdjudicationTestPath; Opening = 'Hosted Rule Issue adjudication'; Summary = 'Hosted Rule Issue adjudication test summary'; Results = 'Rule Issue adjudication tests'; Activity = 'first-run-evaluates-components' },
         @{ Path = $v4WorkbenchContractsTestPath; Opening = 'Hosted Workbench contracts'; Summary = 'Hosted Workbench contract test summary'; Results = 'Workbench contract tests'; Activity = 'display-contract' },
         @{ Path = $ruleWorkbenchTestPath; Opening = 'Hosted Rule Workbench tests'; Summary = 'Hosted Rule Workbench test summary'; Results = 'Add-TestResult'; Activity = 'Start-TestResult' }
     )
@@ -752,6 +774,22 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'assessment-reconciliation' -Issue "Hosted assessment reconciliation validation failed: $($_.Exception.Message)"
+    }
+
+    Start-ValidationCheck -Name 'reconciliation-stage-executor'
+    try {
+        $reconciliationStageExecutorTestOutput = @(& pwsh -NoProfile -File $reconciliationStageExecutorTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($reconciliationStageExecutorTestOutput | Out-String).Trim())
+        }
+        $reconciliationStageExecutorTestResult = ($reconciliationStageExecutorTestOutput | Out-String) | ConvertFrom-Json
+        if ($reconciliationStageExecutorTestResult.status -ne 'passed') {
+            throw 'reconciliation stage executor regression suite reported failures'
+        }
+        Add-CheckResult -Name 'reconciliation-stage-executor' -Passed $true -Detail "Passed $($reconciliationStageExecutorTestResult.testCount) v2 cache identity, legacy rejection, stage isolation, and resume-authority tests without model calls."
+    }
+    catch {
+        Add-ValidationIssue -Name 'reconciliation-stage-executor' -Issue "Hosted reconciliation stage executor validation failed: $($_.Exception.Message)"
     }
 
     Start-ValidationCheck -Name 'rule-issue-adjudication'

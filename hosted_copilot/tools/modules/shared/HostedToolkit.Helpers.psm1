@@ -354,4 +354,4 @@ function Get-EstimatedRemainingMilliseconds {
     return [long][Math]::Ceiling($RemainingPayloadBytes / ($bytesPerMillisecondPerWorker * [Math]::Max(1, $MaxParallelBatches)))
 }
 
-Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, Get-JsonSnapshotSha256, Write-JsonSnapshot, Invoke-WithExclusiveFileLock, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds
+Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, ConvertTo-JsonSnapshotBytes, Get-JsonSnapshotSha256, Write-JsonSnapshot, Invoke-WithExclusiveFileLock, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds

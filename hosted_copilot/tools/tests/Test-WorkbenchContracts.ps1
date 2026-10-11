@@ -316,6 +316,44 @@ $reconciliationClean = @($reconciliationContract.behaviorFiles | Where-Object { 
 Add-TestResult -Name 'assessment-contract-dependency-boundary' -Passed $sourceAssessmentClean -Detail 'The v4 assessment behavior identity excludes generation and publication machinery.'
 Add-TestResult -Name 'reconciliation-contract-dependency-boundary' -Passed $reconciliationClean -Detail 'The v4 reconciliation behavior identity excludes Promotion Plan and transaction machinery.'
 
+$behaviorManifestIssues = [Collections.Generic.List[string]]::new()
+$behaviorManifestCount = 0
+foreach ($manifestPath in @(Get-ChildItem (Join-Path $repositoryRoot 'hosted_copilot') -Recurse -File -Filter '*.json')) {
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath.FullName -Raw | ConvertFrom-Json -DateKind String
+    }
+    catch {
+        continue
+    }
+    $behaviorFilesProperty = $manifest.PSObject.Properties['behaviorFiles']
+    if ($null -eq $behaviorFilesProperty) {
+        continue
+    }
+    $behaviorManifestCount++
+    $manifestRelativePath = $manifestPath.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+    foreach ($behaviorFile in @($behaviorFilesProperty.Value)) {
+        $relativePath = [string]$behaviorFile
+        if ($relativePath -notlike 'hosted_copilot/*') {
+            $behaviorManifestIssues.Add("$manifestRelativePath references behavior outside Hosted ownership: $relativePath")
+            continue
+        }
+        if ($relativePath -match '(?i)(^|[-_/])v1([-_/.]|$)|obsolete-v3|legacy-v3') {
+            $behaviorManifestIssues.Add("$manifestRelativePath references legacy behavior: $relativePath")
+            continue
+        }
+        $resolvedBehaviorPath = Join-Path $repositoryRoot $relativePath
+        if (-not (Test-Path -LiteralPath $resolvedBehaviorPath -PathType Leaf)) {
+            $behaviorManifestIssues.Add("$manifestRelativePath references missing behavior: $relativePath")
+            continue
+        }
+        if ((Get-Item -LiteralPath $resolvedBehaviorPath).Length -eq 0) {
+            $behaviorManifestIssues.Add("$manifestRelativePath references empty behavior: $relativePath")
+        }
+    }
+}
+$behaviorManifestsClean = $behaviorManifestCount -gt 0 -and $behaviorManifestIssues.Count -eq 0
+Add-TestResult -Name 'all-behavior-manifests-active-only' -Passed $behaviorManifestsClean -Detail $(if ($behaviorManifestsClean) { "All $behaviorManifestCount behavior manifests reference only existing active Hosted files without v1 reconciliation symbols." } else { $behaviorManifestIssues -join ' | ' })
+
 $remoteParserContract = Get-Content -LiteralPath (Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $remoteParserOwnsExchange = [string]$remoteParserContract.parserId -ceq 'maintainer-proposals-v4' -and 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1' -in @($remoteParserContract.behaviorFiles)
 Add-TestResult -Name 'remote-rules-parser-owned' -Passed $remoteParserOwnsExchange -Detail 'Remote Rules remain ordinary Maintainer Proposal files owned by the lane parser rather than an endpoint contract.'

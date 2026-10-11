@@ -588,7 +588,20 @@ async function loadBundle() {
 }
 
 async function closeWorkbench() {
-  const shutdownToken = globalThis.__HOSTED_RULE_WORKBENCH__?.shutdownToken;
+  let runtimeConfig;
+  try {
+    const configResponse = await fetch("/runtime-config", { cache: "no-store" });
+    if (!configResponse.ok) throw new Error(`Workbench runtime configuration failed with ${configResponse.status}`);
+    runtimeConfig = await configResponse.json();
+    if (!/^[0-9a-f]{64}$/.test(runtimeConfig?.shutdownToken || "") || !/^[0-9a-f]{64}$/.test(runtimeConfig?.operationToken || "")) {
+      throw new Error("Workbench runtime configuration is invalid");
+    }
+    globalThis.__HOSTED_RULE_WORKBENCH__ = runtimeConfig;
+  } catch (error) {
+    showToast(error.message, true);
+    return;
+  }
+  const shutdownToken = runtimeConfig.shutdownToken;
   if (!shutdownToken) {
     showToast("Workbench shutdown is unavailable.", true);
     return;
@@ -1346,6 +1359,11 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
   syncProposedRuleControls(candidate);
   setSaveIndicator("Checking relationships...");
   try {
+    const configResponse = await fetch("/runtime-config", { cache: "no-store" });
+    if (!configResponse.ok) throw new Error(`Workbench runtime configuration failed with ${configResponse.status}`);
+    const runtimeConfig = await configResponse.json();
+    if (!/^[0-9a-f]{64}$/.test(runtimeConfig?.operationToken || "")) throw new Error("Workbench runtime configuration is invalid");
+    globalThis.__HOSTED_RULE_WORKBENCH__ = runtimeConfig;
     const request = {
       candidateKey: candidate.key,
       ruleId: candidate.assessment.proposedHostedRuleId,
@@ -1357,7 +1375,7 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Workbench-Operation-Token": globalThis.__HOSTED_RULE_WORKBENCH__?.operationToken || ""
+        "X-Workbench-Operation-Token": runtimeConfig.operationToken
       },
       body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) })
     });

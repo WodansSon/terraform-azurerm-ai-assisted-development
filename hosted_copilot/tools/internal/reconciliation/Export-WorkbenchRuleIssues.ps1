@@ -9,14 +9,14 @@ param(
     [string]$AdjudicationDraftSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-draft-v4.schema.json'),
     [string]$AdjudicationPromptPath = (Join-Path $PSScriptRoot '../../assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'),
     [string]$AdjudicatorPath = (Join-Path $PSScriptRoot 'Invoke-RuleIssueAdjudication.ps1'),
-    [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/rule-issue-adjudication-cache'),
+    [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/hierarchical-rule-issue-adjudication-cache'),
     [string]$ResumeRunDirectory,
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
     [string]$Model = 'gpt-5.4',
     [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
     [ValidateRange(0, 3)][int]$MaxRetries = 1,
-    [ValidateRange(1, 8)][int]$MaxParallelBatches = 3,
+    [ValidateRange(1, 8)][int]$MaxParallelShards = 3,
     [object]$GeneratedAt = [DateTime]::UtcNow,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text',
     [switch]$ShowProgress
@@ -317,7 +317,7 @@ if ($componentInputPaths.Count -gt 0) {
         Model = $Model
         ReasoningEffort = $ReasoningEffort
         MaxRetries = $MaxRetries
-        MaxParallelBatches = $MaxParallelBatches
+        MaxParallelShards = $MaxParallelShards
         OutputFormat = 'Json'
         Quiet = -not $ShowProgress
     }

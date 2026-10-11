@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "runId", "createdAt", "authority", "stages"],
+  "properties": {
+    "$schema": { "const": "hierarchical-reconciliation-run.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "kind": { "const": "hosted-hierarchical-reconciliation-run" },
+    "runId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "authority": { "$ref": "#/$defs/authority" },
+    "stages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/completedStage" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "stage": { "enum": ["routing", "consolidation", "synthesis", "adjudication"] },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputSetSha256", "catalogContentSha256", "protectedRulesContentSha256", "contractContentSha256", "evaluator", "model", "reasoningEffort"],
+      "properties": {
+        "inputSetSha256": { "$ref": "#/$defs/sha256" },
+        "catalogContentSha256": { "$ref": "#/$defs/sha256" },
+        "protectedRulesContentSha256": { "$ref": "#/$defs/sha256" },
+        "contractContentSha256": { "$ref": "#/$defs/sha256" },
+        "evaluator": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh"] }
+      }
+    },
+    "completedStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "shardKey", "cacheKey", "status", "resultRelativePath"],
+      "properties": {
+        "stage": { "$ref": "#/$defs/stage" },
+        "shardKey": { "type": "string", "pattern": "^(routing|consolidation|synthesis|adjudication):[0-9a-f]{64}$" },
+        "cacheKey": { "$ref": "#/$defs/sha256" },
+        "status": { "const": "completed" },
+        "resultRelativePath": {
+          "type": "string",
+          "pattern": "^stages/(routing|consolidation|synthesis|adjudication)/[A-Za-z0-9._/-]+\\.json$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        }
+      }
+    }
+  }
+}

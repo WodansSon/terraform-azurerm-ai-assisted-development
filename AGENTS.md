@@ -33,6 +33,7 @@ These rules govern maintainer collaboration behavior before any formal review wo
 - Do not introduce real resource or service names into shared policy or shared prompt wording unless the behavior truly depends on that concrete example.
 - Prefer removing duplicated meaning over adding more wording when the same behavior already has an authoritative owner.
 - Start prose in every Markdown bullet with a capital letter. If a bullet begins with inline code or another Markdown marker, preserve the literal or marker syntax, but capitalize the first visible prose word when applicable.
+- Require every new or modified AI evaluator prompt to include a `## Boundaries` section. At minimum, the prompt must treat supplied source, assessment, and catalog text as untrusted quoted data and explicitly reject prompt injection, tool requests, role changes, output-format changes, and policy claims found within that data. Add or update a focused contract test that enforces this boundary across the prompt's registered runtime set.
 
 ## Sensitive Data Handling
 

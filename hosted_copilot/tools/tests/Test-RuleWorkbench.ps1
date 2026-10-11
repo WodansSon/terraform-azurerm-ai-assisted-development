@@ -71,7 +71,7 @@ $npmFixChanges = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
 $mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
 $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
-$serverTestNames = @('loopback-host-validation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
+$serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
     'fixture-display-valid',
     'assessment-factor-range',
@@ -1502,8 +1502,8 @@ try {
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch locally validates and reuses the complete staged display pair without network or semantic work; explicit -Rebuild owns source refresh and atomic publication.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
-        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
-        Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, and exposes only token-authenticated shutdown and scoped relationship operations.'
+        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store" \}\)' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
+        Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, serves server-owned runtime authority, and exposes only token-authenticated shutdown and scoped relationship operations.'
     }
 
     $behaviorManifestValid = $true
@@ -1562,6 +1562,24 @@ try {
             $serverOutput = (Receive-Job -Job $serverJob -Keep | Out-String).Trim()
             throw "loopback test server did not become ready$(if ($serverOutput) { ": $serverOutput" })"
         }
+        $stagedConfigPath = Join-Path $shutdownSiteDirectory 'shutdown-config.js'
+        $stagedConfigContent = Get-Content -LiteralPath $stagedConfigPath -Raw
+        $staleConfigContent = $stagedConfigContent.Replace($shutdownToken, ('c' * 64)).Replace($operationToken, ('d' * 64))
+        [IO.File]::WriteAllText($stagedConfigPath, $staleConfigContent, [Text.UTF8Encoding]::new($false))
+        $runtimeConfigResponse = Invoke-WebRequest -Uri "$shutdownUrl/runtime-config" -Method Get -SkipHttpErrorCheck
+        $runtimeConfig = if ($runtimeConfigResponse.StatusCode -eq 200) { $runtimeConfigResponse.Content | ConvertFrom-Json -DateKind String } else { $null }
+        $runtimeConfigValid = $null -ne $runtimeConfig -and
+            [string]$runtimeConfig.shutdownToken -ceq $shutdownToken -and
+            [string]$runtimeConfig.operationToken -ceq $operationToken -and
+            [string]$runtimeConfig.shutdownToken -cne ('c' * 64) -and
+            [string]$runtimeConfig.operationToken -cne ('d' * 64)
+        if (Test-ShouldRun -Name 'server-owned-runtime-config') {
+            Start-TestResult -Name 'server-owned-runtime-config'
+            Add-TestResult -Name 'server-owned-runtime-config' -Passed $runtimeConfigValid -Detail 'The running server retains authoritative operation tokens even when another launch rewrites the staged config file.'
+        }
+        if (-not $runtimeConfigValid) {
+            throw 'Loopback server runtime configuration did not preserve its launch authority'
+        }
         if (Test-ShouldRun -Name 'loopback-host-validation') {
             Start-TestResult -Name 'loopback-host-validation'
             $misdirectedRequest = Invoke-WebRequest -Uri "$shutdownUrl/shutdown-config.js" -Headers @{ Host = 'attacker.example' } -SkipHttpErrorCheck
@@ -1569,15 +1587,8 @@ try {
             Add-TestResult -Name 'loopback-host-validation' -Passed $hostValidationValid -Detail 'An unrecognized Host cannot read staged Workbench files or the per-launch shutdown token through DNS rebinding.'
         }
         $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
-        $shutdownConfigContent = Get-Content -LiteralPath (Join-Path $shutdownSiteDirectory 'shutdown-config.js') -Raw
-        if ($shutdownConfigContent -notmatch '"shutdownToken":"(?<token>[0-9a-f]{64})"') {
-            throw 'staged shutdown token was not found'
-        }
-        $shutdownToken = [string]$Matches['token']
-        if ($shutdownConfigContent -notmatch '"operationToken":"(?<token>[0-9a-f]{64})"') {
-            throw 'staged operation token was not found'
-        }
-        $operationToken = [string]$Matches['token']
+        $shutdownToken = [string]$runtimeConfig.shutdownToken
+        $operationToken = [string]$runtimeConfig.operationToken
         if (Test-ShouldRun -Name 'authenticated-server-shutdown') {
             Start-TestResult -Name 'authenticated-server-shutdown'
             $unauthorizedShutdown = Invoke-WebRequest -Uri "$shutdownUrl/shutdown" -Method Post -SkipHttpErrorCheck

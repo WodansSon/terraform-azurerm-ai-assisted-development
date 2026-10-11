@@ -421,7 +421,7 @@
     },
     {
       "id": "WB-UX-SHUTDOWN-001",
-      "title": "Close Workbench triggers authenticated server shutdown and renders the closed state",
+      "title": "Close Workbench refreshes server-owned launch authority, shuts down the active server, and renders the closed state",
       "journey": "playwright/journeys/ui-triggered-shutdown.journey.cjs"
     }
   ]

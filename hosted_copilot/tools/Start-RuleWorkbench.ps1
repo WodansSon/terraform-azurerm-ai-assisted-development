@@ -130,6 +130,7 @@ $shutdownConfig = [ordered]@{
     targetRepository = $targetRepository
 } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $resolvedSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
+$runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes($shutdownConfig)
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
@@ -306,7 +307,7 @@ function Update-StagedDisplay {
                 Model = $Model
                 ReasoningEffort = $AssessmentReasoningEffort
                 MaxRetries = $MaxRetries
-                MaxParallelBatches = $MaxParallelBatches
+                MaxParallelShards = $MaxParallelBatches
                 OutputFormat = 'Json'
                 ShowProgress = $OutputFormat -eq 'Text'
             }
@@ -616,6 +617,10 @@ try {
             $requestHost = [string]$requestHeaders['Host']
             if ([string]::IsNullOrWhiteSpace($requestHost) -or $requestHost.Trim() -notin $allowedHosts) {
                 Write-HttpResponse -Stream $stream -StatusCode 421 -StatusText 'Misdirected Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Misdirected Request')) -IncludeBody $true
+                continue
+            }
+            if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
+                Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
             }
             if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/shutdown') {

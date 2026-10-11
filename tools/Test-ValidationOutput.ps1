@@ -184,10 +184,11 @@ if ($ProductScope -in @('All', 'Hosted')) {
     $hostedWorkbenchValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1') -Raw
     if ($hostedWorkbenchValidationContent -match "Start-TestResult -Name 'locked-browser-dependencies'" -or
         $hostedWorkbenchValidationContent -notmatch "Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'" -or
-        $hostedWorkbenchValidationContent -notmatch "Add-TestResult -Name 'npm-packages'.*-SuccessDetail 'CURRENT \(MATCHES AUDITED LOCKFILE\)'" -or
+        $hostedWorkbenchValidationContent -notmatch '\$lockedDependencySuccessDetail = if \(\$auditPassed\) \{ ''CURRENT \(MATCHES AUDITED LOCKFILE\)'' \} else \{ ''CURRENT \(MATCHES LOCKFILE; UNVERIFIED\)'' \}' -or
+        $hostedWorkbenchValidationContent -notmatch 'Add-TestResult -Name ''npm-packages''.*-SuccessDetail \$lockedDependencySuccessDetail' -or
         $hostedWorkbenchValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
         $hostedWorkbenchValidationContent -notmatch "node_modules/\.package-lock\.json") {
-        $issues.Add('Hosted npm validation must skip redundant installs and report package currency against its audited lockfile')
+        $issues.Add('Hosted npm validation must skip redundant installs and distinguish audited from unverified lockfile currency')
     }
 }
 
