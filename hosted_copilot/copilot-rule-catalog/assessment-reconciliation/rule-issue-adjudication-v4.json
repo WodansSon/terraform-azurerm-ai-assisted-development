@@ -18,5 +18,8 @@
     "hosted_copilot/tools/modules/reconciliation/ReconciliationStageExecutor.psm1",
     "hosted_copilot/tools/modules/reconciliation/RuleIssueAdjudication.psm1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1"
+  ],
+  "presentationFiles": [
+    "hosted_copilot/tools/modules/reconciliation/ReconciliationStagePresentation.psm1"
   ]
 }

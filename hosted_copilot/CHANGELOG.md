@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added an icon-first Promotion Plan filter that isolates items needing maintainer attention, reports the outstanding count, and follows existing header active, hover, tooltip, and disabled-state behavior.
 - Added responsive Rule Issue type paging that keeps labels and counts intact, hides navigation when all tabs fit, and exposes clear Previous and Next edge states on narrower desktop layouts.
 - Expanded the pinned, locally hosted Codicon inventory with folder-state, directory-link, workspace-trust, remote-connection, and reconciliation-conflict symbols for current and future Workbench surfaces.
+- Added a shared native-PowerShell help renderer across all four normal maintainer commands with side-effect-free `-Help`, `-h`, and `-Detailed` menus, complete native `-?` and `Get-Help` topics, semantic terminal styling, and parameter-set enforcement that keeps help independent from operational requirements.
 
 ### Changed
 
@@ -24,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Made the normalized catalog authoritative for generated path-specific guidance, applicability, provenance, and active-rule rendering, with direct source deployment and exact installed-file tracking.
 - Made assessment identity and meaning source-local while reconciliation exclusively owns compact Hosted rule synthesis with complete per-member meaning coverage, contingent metadata for deferred and excluded assessments, collision-free recommendations, and explicit implementation-model scope for implementation additions.
 - Replaced lane-local reconciliation and bespoke Rule Issue component execution with complete-corpus hierarchical routing, pair-cover consolidation, rehydrated synthesis, and post-synthesis adjudication shards while preserving the version-4 Workbench display and Rule Issues contracts.
+- Projected each synthesized recommendation as one scored Workbench parent candidate with read-only contributing-rule evidence, per-member meaning preservation, and unchanged parent-owned decisions, plans, previews, mutations, and Rule Issue operations.
+- Hardened Workbench rebuilds for PowerShell-backed Copilot commands and in-process stage status, admitted indivisible synthesis components within the existing hard evaluator envelope, and added aligned cache-aware workloads with calibrated assessment and reconciliation estimates plus immediate worker completion progress.
+- Persisted each validated reconciliation shard immediately for automatic interrupted-run reuse, made exact cache reuse the default rebuild behavior, and added `-Rebuild -Force` to bypass assessment and reconciliation cache reads without weakening atomic artifact publication.
 - Standardized Hosted validation and test reporting with the Interactive Toolkit execution-state presentation and adopted a guarded four-characters-per-token capacity estimate with 25% safety headroom.
 - Organized Hosted tooling around four root-level everyday commands, including explicit `Install-HostedRules.ps1` and `Test-HostedRules.ps1` entrypoints, grouped specialized catalog commands, dedicated internal, module, test, migration, and legacy directories, and permanent layout enforcement.
 - Added CODEOWNER-only current-results Bulk Actions that accept evaluated Add and Update recommendations as complete decisions with deterministic rationale, operation-scoped Undo, and preservation of existing or subsequently reviewed manual decisions.
@@ -38,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Corrected Workbench cache authority so audit-only assessment timestamps and presentation-only Source Assessment, reconciliation, and adjudication output changes no longer invalidate semantic results, while declared semantic behavior changes invalidate the appropriate caches consistently; rebuild output now distinguishes cached artifact reconstruction from model evaluation with concise stages, elapsed summaries, publication status, and condition-aware final results.
 - Restored toolkit isolation by distinguishing the Hosted deployment `.github` tree from root Interactive runtime, sourcing installed files only from `hosted_copilot`, and replacing normal Hosted validation reads of live Interactive manifests and catalogs with Hosted-owned checks and synthetic intake fixtures.
 - Removed the unreachable blocked-reconciliation Workbench UI, payload schema, builder bypass, approval gate, and regression path now that duplicate target ownership fails before display publication; retained the conflict icons in the local icon inventory.
 - Restored Contributor Guidance provenance pills by projecting the source repository, configured ref, and immutable commit into the v4 display and validating both real Workbench roots.
@@ -45,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Scoped Workbench npm auditing to the Hosted lockfile, reported installed packages as current when they match the audited lock, and skipped redundant reinstalls without changing remediation behavior for stale or vulnerable graphs.
 - Allowed focused Workbench checks to report an incomplete npm registry audit as inconclusive, or explicitly continue after a conclusive audit failure, only with an already-current locked dependency graph and browser runtimes; continued runs perform no installation, remain unverified, and exit nonzero while complete validation stays blocked.
 - Included protected authored-rule and declared behavior files in isolated hierarchical snapshots so cached and newly evaluated shards can rebuild and validate the complete Workbench display and Rule Issues artifacts.
+- Rejected synthesis shards before cache publication when they omit assessments, duplicate related Hosted coverage, or attribute relationships without assessment evidence, and made retries consume bounded trusted validator diagnostics instead of blindly repeating the same request.
 - Standardized text command buttons on Title Case, shared 6px geometry, explicit base and hover palettes, inherited icon color, and hard disabled colors; aligned Preview approval labels and spacing; and blocked exports without a catalog mutation.
 - Blocked Promotion approval and **Approve & Export** while any Rule Issue remains open, exposed the pending count in Approval Requirements with the shared warning icon, and kept `Blocked`, `Ready`, and `Draft` status geometry stable.
 - Omitted empty Promotion Preview artifact folders, expanded every populated folder by default, and stabilized disclosure by preserving the search control and swapping prepainted icon layers without replacing tree nodes.

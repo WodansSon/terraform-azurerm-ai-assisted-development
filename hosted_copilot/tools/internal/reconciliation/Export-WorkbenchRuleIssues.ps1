@@ -240,12 +240,14 @@ foreach ($component in @($components | Sort-Object ComponentId)) {
     $ruleIds = @($component.RuleIds)
     $componentCandidateRecords = @($candidateRecords | Where-Object { $_.SourceRuleId -in $ruleIds -or @($_.ComponentRetirementRuleIds | Where-Object { $_ -in $ruleIds }).Count -gt 0 })
     $componentSourceFiles = @($componentCandidateRecords | ForEach-Object {
-        $sourceDefinitionId = [string]$sourceDefinitionByLane[[string]$_.Candidate.source.lane]
-        $key = "$sourceDefinitionId`0$([string]$_.Candidate.source.id)"
-        if (-not $sourceFilesByKey.ContainsKey($key)) {
-            throw "Rule Issue component references unknown source file: $key"
+        foreach ($member in @($_.Candidate.members)) {
+            $sourceDefinitionId = [string]$sourceDefinitionByLane[[string]$member.source.lane]
+            $key = "$sourceDefinitionId`0$([string]$member.source.id)"
+            if (-not $sourceFilesByKey.ContainsKey($key)) {
+                throw "Rule Issue component references unknown source file: $key"
+            }
+            $sourceFilesByKey[$key]
         }
-        $sourceFilesByKey[$key]
     } | Sort-Object -Property sourceDefinitionId, sourceId -Unique)
     $inputRules = @($ruleIds | ForEach-Object {
         $ruleId = [string]$_
@@ -301,9 +303,6 @@ foreach ($component in @($components | Sort-Object ComponentId)) {
 $adjudicationSet = [ordered]@{ schemaVersion = 1; kind = 'hosted-rule-issue-adjudication-set'; components = @() }
 $adjudicationResult = [pscustomobject]@{ componentCount = 0; cachedComponentCount = 0; evaluatedComponentCount = 0; cacheDirectory = [IO.Path]::GetFullPath($CacheDirectory) }
 if ($componentInputPaths.Count -gt 0) {
-    if ($ShowProgress) {
-        Write-ValidationSectionHeader -Title 'Export Workbench Rule Issues' | Write-Host
-    }
     $adjudicationSetPath = Join-Path $runDirectory 'rule-issue-adjudication-set.json'
     $adjudicationParameters = @{
         RepositoryRoot = $resolvedRepositoryRoot

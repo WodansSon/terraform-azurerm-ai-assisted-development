@@ -190,7 +190,8 @@ function Invoke-ReconciliationRunner {
         [int]$MaxRetries = 0,
         [string]$ResumeRunDirectory,
         [string]$CacheDirectory,
-        [string]$Model = 'fixture-model'
+        [string]$Model = 'fixture-model',
+        [switch]$Force
     )
 
     $outputPath = Join-Path $tempRoot "$Name-display.json"
@@ -211,6 +212,9 @@ function Invoke-ReconciliationRunner {
     }
     if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
         $parameters.ResumeRunDirectory = $ResumeRunDirectory
+    }
+    if ($Force) {
+        $parameters.Force = $true
     }
     $output = [Collections.Generic.List[object]]::new()
     $progress = [Collections.Generic.List[string]]::new()
@@ -260,6 +264,10 @@ try {
         $promptContent -match 'when no mapping exists, use `targetHostedId` null with one contract-allowlisted `idFamily`' -and
         $promptContent -match 'Never select `targetHostedId` from `relatedHostedCoverage`'
     Add-TestResult -Name 'defer-identity-prompt-contract' -Passed $deferIdentityContract -Detail 'The evaluator prompt derives defer identity only from canonical mappings and forbids promoting related coverage into a target.'
+    $singleCanonicalOwnerPromptContract = $promptContent -match 'member assessments to collectively identify at most one distinct canonical Hosted rule through `mappedHostedRuleIds`' -and
+        $promptContent -match 'split them into separate recommendations even when one rule text could preserve every meaning' -and
+        $promptContent -match 'ancillary lifecycle actions only; it never permits a recommendation to absorb assessments owned by another canonical Hosted rule'
+    Add-TestResult -Name 'single-canonical-owner-prompt-contract' -Passed $singleCanonicalOwnerPromptContract -Detail 'The evaluator prompt requires differently owned assessments to remain separate and prevents ancillary retirement from transferring canonical ownership.'
     $contractContent = Get-Content -LiteralPath $contractPath -Raw
     $hierarchicalStageContract = $promptContent -match 'Group equivalent or complementary assessments when one coherent Hosted rule preserves every member meaning' -and
         $promptContent -notmatch 'For every assessment independently|Do not group, merge, suppress, or choose a representative assessment|each contain only that assessment' -and
@@ -360,6 +368,9 @@ try {
             (New-SourceEntry -SourceDefinitionId 'maintainer-proposals' -SourceId 'equivalent-two' -Title 'Equivalent guidance' -HostedApplicable $true),
             (New-SourceEntry -SourceDefinitionId 'interactive-toolkit' -SourceId 'excluded-guidance' -Title 'Excluded guidance' -HostedApplicable $false)
         )
+    }
+    foreach ($hierarchicalEntry in $hierarchicalBaseline.entries) {
+        $hierarchicalEntry.assessments[0].relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-HIER-001'; relationship = 'related'; rationale = 'Related fixture evidence.' })
     }
     $hierarchicalCatalog = [ordered]@{ rules = @([ordered]@{ id = 'IMPL-HIER-001'; status = 'active'; text = 'Mutable catalog meaning.' }) }
     $hierarchicalProtectedCatalog = [ordered]@{ rules = @([ordered]@{ id = 'IMPL-HIER-000'; status = 'protected'; title = 'Protected meaning'; text = 'Protected catalog meaning.'; contentSha256 = 'b' * 64 }) }
@@ -466,7 +477,13 @@ try {
         -not [bool]$excludedRehydrated[0].original.hostedApplicable
     Add-TestResult -Name 'hierarchical-rehydrated-synthesis' -Passed $rehydrationValid -Detail 'Bounded synthesis batches rehydrate every routed assessment and append each trusted excluded assessment as its own final-outcome component.'
 
-    $secondSemanticLedger = New-HierarchicalSemanticLedger -AssessmentBaseline $hierarchicalBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog
+    $timestampShiftedBaseline = Copy-JsonObject -Value $hierarchicalBaseline
+    foreach ($entry in @($timestampShiftedBaseline.entries)) {
+        foreach ($assessment in @($entry.assessments)) {
+            $assessment.assessmentProvenance.assessedAt = '2026-09-16T00:00:00Z'
+        }
+    }
+    $secondSemanticLedger = New-HierarchicalSemanticLedger -AssessmentBaseline $timestampShiftedBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog
     $secondRoutingShards = @(New-ByteBoundRoutingShards -Ledger $secondSemanticLedger -MaxBytes $routingBudget)
     $secondLocalComponents = @(Merge-LocalRoutingSuggestions -Ledger $secondSemanticLedger -Suggestions @())
     $secondConsolidationShards = @(New-ByteBoundConsolidationShards -Components $secondLocalComponents -MaxBytes $consolidationBudget)
@@ -474,7 +491,15 @@ try {
     $secondSynthesisBatches = @(New-RehydratedSynthesisBatches -Ledger $secondSemanticLedger -Components $secondConsolidatedComponents -MaxBytes $synthesisBudget)
     $firstHierarchicalOutput = [ordered]@{ ledger = $semanticLedger; routing = $routingShards; localComponents = $localComponents; consolidation = $consolidationShards; consolidatedComponents = $consolidatedComponents; synthesis = $synthesisBatches }
     $secondHierarchicalOutput = [ordered]@{ ledger = $secondSemanticLedger; routing = $secondRoutingShards; localComponents = $secondLocalComponents; consolidation = $secondConsolidationShards; consolidatedComponents = $secondConsolidatedComponents; synthesis = $secondSynthesisBatches }
-    Add-TestResult -Name 'hierarchical-deterministic-output' -Passed ((Get-JsonSnapshotSha256 -Value $firstHierarchicalOutput) -ceq (Get-JsonSnapshotSha256 -Value $secondHierarchicalOutput)) -Detail 'Equivalent trusted inputs and suggestions produce byte-identical hierarchical reconciliation structures.'
+    $changedMeaningBaseline = Copy-JsonObject -Value $hierarchicalBaseline
+    $originalMeaning = [string]$changedMeaningBaseline.entries[0].assessments[0].sourceMeaning
+    $replacementInitial = if ($originalMeaning[0] -ceq 'X') { 'Y' } else { 'X' }
+    $changedMeaningBaseline.entries[0].assessments[0].sourceMeaning = $replacementInitial + $originalMeaning.Substring(1)
+    $changedMeaningLedger = New-HierarchicalSemanticLedger -AssessmentBaseline $changedMeaningBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog
+    $changedMeaningSynthesisBatches = @(New-RehydratedSynthesisBatches -Ledger $changedMeaningLedger -Components $consolidatedComponents -MaxBytes $synthesisBudget)
+    $stableTimestampIdentity = (Get-JsonSnapshotSha256 -Value $firstHierarchicalOutput) -ceq (Get-JsonSnapshotSha256 -Value $secondHierarchicalOutput)
+    $changedMeaningIdentity = (Get-JsonSnapshotSha256 -Value $synthesisBatches) -cne (Get-JsonSnapshotSha256 -Value $changedMeaningSynthesisBatches)
+    Add-TestResult -Name 'hierarchical-deterministic-output' -Passed ($stableTimestampIdentity -and $changedMeaningIdentity) -Detail 'Synthesis identity ignores audit-only assessment timestamps but changes when assessment meaning changes.'
 
     $oversizedFailure = $false
     try {
@@ -484,6 +509,25 @@ try {
         $oversizedFailure = $_.Exception.Message -match '^Semantic component `component:[0-9a-f]{64}` requires [0-9]+ bytes and exceeds the synthesis batch budget of 1 bytes; semantic components are indivisible\.$'
     }
     Add-TestResult -Name 'hierarchical-indivisible-component-fails' -Passed $oversizedFailure -Detail 'A semantic component that cannot fit one synthesis batch fails closed with its key, required bytes, configured budget, and indivisibility diagnostic.'
+
+    $runnerContent = Get-Content -LiteralPath $runnerPath -Raw
+    $pipelineContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../modules/reconciliation/HierarchicalReconciliationPipeline.psm1') -Raw
+    $payloadBudgetHeadroomValid = $runnerContent -match '\$StagePayloadBudgetBytes = 262144' -and
+        $runnerContent -match '\$EvaluatorPayloadBudgetBytes = 393216' -and
+        $pipelineContent -match '\$StagePayloadBudgetBytes = 262144' -and
+        $pipelineContent -match '\$EvaluatorPayloadBudgetBytes = 393216'
+    Add-TestResult -Name 'hierarchical-payload-budget-headroom' -Passed $payloadBudgetHeadroomValid -Detail 'The stage batching threshold admits corpus-sized indivisible components while retaining a larger hard evaluator-envelope ceiling.'
+
+    $assessmentContractDefinition = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-v4.json') -Raw | ConvertFrom-Json
+    $executorBehaviorPath = 'hosted_copilot/tools/modules/reconciliation/ReconciliationStageExecutor.psm1'
+    $presentationBehaviorPath = 'hosted_copilot/tools/modules/reconciliation/ReconciliationStagePresentation.psm1'
+    $behaviorAuthorityValid = $runnerContent -match '\$behaviorAuthority\.Add\(' -and
+        $runnerContent -match '\$contractAuthorityPath = Join-Path \$runDirectory ''assessment-reconciliation-authority\.json''' -and
+        $runnerContent -match '-ContractAuthorityPath \$contractAuthorityPath' -and
+        $executorBehaviorPath -in @($assessmentContractDefinition.behaviorFiles) -and
+        $presentationBehaviorPath -in @($assessmentContractDefinition.presentationFiles) -and
+        $presentationBehaviorPath -notin @($assessmentContractDefinition.behaviorFiles)
+    Add-TestResult -Name 'hierarchical-behavior-authority' -Passed $behaviorAuthorityValid -Detail 'Assessment reconciliation hashes declared semantic behavior while snapshotting presentation-only dependencies outside cache authority.'
 
     $pipelineCatalogPath = Join-Path $tempRoot 'hierarchical-pipeline-catalog.json'
     $pipelineProtectedPath = Join-Path $tempRoot 'hierarchical-pipeline-protected.json'
@@ -514,7 +558,71 @@ try {
         [int]$pipelineResult.stages.synthesis.shardCount -gt 0
     Add-TestResult -Name 'hierarchical-pipeline-three-stage' -Passed $pipelineIntegrationValid -Detail 'The clean pipeline executes routing, pair-cover consolidation, and synthesis, then merges every assessment outcome exactly once.'
 
-    $hierarchicalRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $pipelineEvaluatorPath -Name 'hierarchical'
+    $env:RECONCILIATION_EMIT_UNSUPPORTED_COVERAGE_ONCE = '1'
+    try {
+        $semanticRetryRunDirectory = Join-Path $tempRoot 'hierarchical-semantic-retry-run'
+        $semanticRetryResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $hierarchicalBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog -RunDirectory $semanticRetryRunDirectory -CachePath (Join-Path $tempRoot 'hierarchical-semantic-retry-cache.json') -CacheSchemaPath $cacheSchemaPath -CatalogPath $pipelineCatalogPath -ProtectedRulesPath $pipelineProtectedPath -ContractPath $contractPath -RoutingSchemaPath $routingSchemaPath -RoutingPromptPath $routingPromptPath -ConsolidationSchemaPath $consolidationSchemaPath -ConsolidationPromptPath $consolidationPromptPath -SynthesisSchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -SynthesisPromptPath $promptPath -EvaluatorScriptPath $pipelineEvaluatorPath -EvaluatorCommand 'fixture' -Model 'fixture-model' -ReasoningEffort 'high' -MaxRetries 1 -RetryDelayMilliseconds 0 -MaxParallelShards 2 -StagePayloadBudgetBytes 20000
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_EMIT_UNSUPPORTED_COVERAGE_ONCE -ErrorAction SilentlyContinue
+    }
+    $semanticRetryFailures = @(Get-ChildItem -LiteralPath (Join-Path $semanticRetryRunDirectory 'stages/synthesis') -Filter 'failure.json' -File -Recurse | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -DateKind String })
+    $semanticRetryValid = $semanticRetryFailures.Count -gt 0 -and
+        @($semanticRetryFailures | Where-Object { [string]$_.error -notlike '*related coverage IMPL-HIER-000 is not backed by assessment evidence*' }).Count -eq 0 -and
+        @($semanticRetryResult.draft.recommendations | Where-Object { @($_.relatedHostedCoverage).Count -gt 0 }).Count -eq 0
+    Add-TestResult -Name 'synthesis-related-coverage-semantic-retry' -Passed $semanticRetryValid -Detail 'Synthesis rejects and retries schema-valid related coverage when any cited member assessment lacks evidence for that exact Hosted rule.'
+
+    $env:RECONCILIATION_OMIT_ASSESSMENT_ONCE = '1'
+    try {
+        $coverageRetryRunDirectory = Join-Path $tempRoot 'hierarchical-coverage-retry-run'
+        $coverageRetryResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $hierarchicalBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog -RunDirectory $coverageRetryRunDirectory -CachePath (Join-Path $tempRoot 'hierarchical-coverage-retry-cache.json') -CacheSchemaPath $cacheSchemaPath -CatalogPath $pipelineCatalogPath -ProtectedRulesPath $pipelineProtectedPath -ContractPath $contractPath -RoutingSchemaPath $routingSchemaPath -RoutingPromptPath $routingPromptPath -ConsolidationSchemaPath $consolidationSchemaPath -ConsolidationPromptPath $consolidationPromptPath -SynthesisSchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -SynthesisPromptPath $promptPath -EvaluatorScriptPath $pipelineEvaluatorPath -EvaluatorCommand 'fixture' -Model 'fixture-model' -ReasoningEffort 'high' -MaxRetries 1 -RetryDelayMilliseconds 0 -MaxParallelShards 2 -StagePayloadBudgetBytes 20000
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_OMIT_ASSESSMENT_ONCE -ErrorAction SilentlyContinue
+    }
+    $coverageRetryFailures = @(Get-ChildItem -LiteralPath (Join-Path $coverageRetryRunDirectory 'stages/synthesis') -Filter 'failure.json' -File -Recurse | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -DateKind String })
+    $coverageRetryValid = $coverageRetryFailures.Count -gt 0 -and
+        @($coverageRetryFailures | Where-Object { [string]$_.error -notlike '*omits recommendation membership*' }).Count -eq 0 -and
+        @($coverageRetryResult.draft.assessmentCoverage).Count -eq 3
+    Add-TestResult -Name 'synthesis-exhaustive-coverage-semantic-retry' -Passed $coverageRetryValid -Detail 'Synthesis rejects and retries schema-valid output that omits any assessment from recommendation membership and coverage.'
+
+    $env:RECONCILIATION_EMIT_DUPLICATE_COVERAGE_ONCE = '1'
+    try {
+        $duplicateCoverageRetryRunDirectory = Join-Path $tempRoot 'hierarchical-duplicate-coverage-retry-run'
+        $duplicateCoverageRetryResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $hierarchicalBaseline -Catalog $hierarchicalCatalog -ProtectedCatalog $hierarchicalProtectedCatalog -RunDirectory $duplicateCoverageRetryRunDirectory -CachePath (Join-Path $tempRoot 'hierarchical-duplicate-coverage-retry-cache.json') -CacheSchemaPath $cacheSchemaPath -CatalogPath $pipelineCatalogPath -ProtectedRulesPath $pipelineProtectedPath -ContractPath $contractPath -RoutingSchemaPath $routingSchemaPath -RoutingPromptPath $routingPromptPath -ConsolidationSchemaPath $consolidationSchemaPath -ConsolidationPromptPath $consolidationPromptPath -SynthesisSchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -SynthesisPromptPath $promptPath -EvaluatorScriptPath $pipelineEvaluatorPath -EvaluatorCommand 'fixture' -Model 'fixture-model' -ReasoningEffort 'high' -MaxRetries 1 -RetryDelayMilliseconds 0 -MaxParallelShards 2 -StagePayloadBudgetBytes 20000
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_EMIT_DUPLICATE_COVERAGE_ONCE -ErrorAction SilentlyContinue
+    }
+    $duplicateCoverageRetryFailures = @(Get-ChildItem -LiteralPath (Join-Path $duplicateCoverageRetryRunDirectory 'stages/synthesis') -Filter 'failure.json' -File -Recurse | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -DateKind String })
+    $duplicateCoverageRetryValid = $duplicateCoverageRetryFailures.Count -gt 0 -and
+        @($duplicateCoverageRetryFailures | Where-Object { [string]$_.error -notlike '*contains duplicate related Hosted coverage for IMPL-HIER-001*' }).Count -eq 0 -and
+        @($duplicateCoverageRetryResult.draft.recommendations | Where-Object { @($_.relatedHostedCoverage).Count -gt 0 }).Count -eq 0
+    Add-TestResult -Name 'synthesis-unique-related-coverage-semantic-retry' -Passed $duplicateCoverageRetryValid -Detail 'Synthesis rejects and retries schema-valid output that emits multiple relationship records for one Hosted rule.'
+
+    $multipleOwnerBaseline = Copy-JsonObject -Value $hierarchicalBaseline
+    $multipleOwnerBaseline.entries[0].assessments[0].mappedHostedRuleIds = @('IMPL-HIER-001')
+    $multipleOwnerBaseline.entries[1].assessments[0].mappedHostedRuleIds = @('IMPL-HIER-002')
+    $multipleOwnerCatalog = Copy-JsonObject -Value $hierarchicalCatalog
+    $multipleOwnerCatalog.rules = @($multipleOwnerCatalog.rules) + @([ordered]@{ id = 'IMPL-HIER-002'; status = 'active'; text = 'Second mutable catalog meaning.' })
+    $multipleOwnerCatalogPath = Join-Path $tempRoot 'hierarchical-multiple-owner-catalog.json'
+    Write-JsonFixture -Path $multipleOwnerCatalogPath -Value $multipleOwnerCatalog
+    $env:RECONCILIATION_EMIT_MULTIPLE_CANONICAL_OWNERS_ONCE = '1'
+    try {
+        $multipleOwnerRetryRunDirectory = Join-Path $tempRoot 'hierarchical-multiple-owner-retry-run'
+        $multipleOwnerRetryResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $multipleOwnerBaseline -Catalog $multipleOwnerCatalog -ProtectedCatalog $hierarchicalProtectedCatalog -RunDirectory $multipleOwnerRetryRunDirectory -CachePath (Join-Path $tempRoot 'hierarchical-multiple-owner-retry-cache.json') -CacheSchemaPath $cacheSchemaPath -CatalogPath $multipleOwnerCatalogPath -ProtectedRulesPath $pipelineProtectedPath -ContractPath $contractPath -RoutingSchemaPath $routingSchemaPath -RoutingPromptPath $routingPromptPath -ConsolidationSchemaPath $consolidationSchemaPath -ConsolidationPromptPath $consolidationPromptPath -SynthesisSchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -SynthesisPromptPath $promptPath -EvaluatorScriptPath $pipelineEvaluatorPath -EvaluatorCommand 'fixture' -Model 'fixture-model' -ReasoningEffort 'high' -MaxRetries 1 -RetryDelayMilliseconds 0 -MaxParallelShards 2 -StagePayloadBudgetBytes 20000
+    }
+    finally {
+        Remove-Item Env:RECONCILIATION_EMIT_MULTIPLE_CANONICAL_OWNERS_ONCE -ErrorAction SilentlyContinue
+    }
+    $multipleOwnerRetryFailures = @(Get-ChildItem -LiteralPath (Join-Path $multipleOwnerRetryRunDirectory 'stages/synthesis') -Filter 'failure.json' -File -Recurse | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -DateKind String })
+    $multipleOwnerRetryValid = $multipleOwnerRetryFailures.Count -gt 0 -and
+        @($multipleOwnerRetryFailures | Where-Object { [string]$_.error -notlike '*contains assessments owned by different canonical Hosted rules: IMPL-HIER-001, IMPL-HIER-002*' }).Count -eq 0 -and
+        @($multipleOwnerRetryResult.draft.recommendations | Where-Object { @($_.memberAssessmentRefs).Count -gt 1 }).Count -eq 0
+    Add-TestResult -Name 'synthesis-single-canonical-owner-semantic-retry' -Passed $multipleOwnerRetryValid -Detail 'Synthesis rejects and retries schema-valid output that combines assessments owned by different canonical Hosted rules.'
+
+    $hierarchicalCacheDirectory = Join-Path $tempRoot 'hierarchical-cache'
+    $hierarchicalRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $pipelineEvaluatorPath -Name 'hierarchical' -CacheDirectory $hierarchicalCacheDirectory
     $hierarchicalResult = if ($hierarchicalRun.ExitCode -eq 0) { $hierarchicalRun.Output | ConvertFrom-Json -DateKind String } else { $null }
     $hierarchicalDisplay = if ($hierarchicalRun.ExitCode -eq 0) { Get-Content -LiteralPath $hierarchicalRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
     $hierarchicalRunnerValid = $hierarchicalRun.ExitCode -eq 0 -and
@@ -524,9 +632,60 @@ try {
         @($hierarchicalDisplay.candidates).Count -eq 3 -and
         $null -eq $hierarchicalResult.PSObject.Properties['batchCount']
     Add-TestResult -Name 'hierarchical-reconciliation-runner' -Passed $hierarchicalRunnerValid -Detail $(if ($hierarchicalRunnerValid) { 'The production runner executes only hierarchical stages and builds one exhaustive display.' } else { $hierarchicalRun.Output })
-    $alignedProgress = @($hierarchicalRun.Progress | Where-Object { $_ -match '^\[(?:RUNNING|PASSED|BLOCKED)\]\s+assessment-reconciliation/(?:hierarchy|display)\s+:' })
+    $alignedProgress = @($hierarchicalRun.Progress | Where-Object { $_ -match '^\[(?:RUNNING|PASSED|BLOCKED)\]\s+assessment-reconciliation/display\s+:' })
     $progressColonIndexes = @($alignedProgress | ForEach-Object { $_.IndexOf(' : ') })
-    Add-TestResult -Name 'reconciliation-progress-alignment' -Passed ($alignedProgress.Count -eq 4 -and @($progressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $progressColonIndexes[0] -gt 0) -Detail 'Hierarchical evaluation and display lifecycle rows align their detail separators to the shared 42-character name column.'
+    Add-TestResult -Name 'reconciliation-progress-alignment' -Passed ($alignedProgress.Count -eq 2 -and @($progressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $progressColonIndexes[0] -gt 0) -Detail 'Display lifecycle rows align their detail separators to the shared 42-character name column without a redundant hierarchy wrapper.'
+    $hierarchySectionIndex = @($hierarchicalRun.Progress | ForEach-Object -Begin { $index = -1 } -Process { $index++; if ($_ -match '(?m)^HIERARCHICAL RECONCILIATION$') { $index } })[0]
+    $consolidationSectionIndexes = @($hierarchicalRun.Progress | ForEach-Object -Begin { $index = -1 } -Process { $index++; if ($_ -match '(?m)^GROUP CONSOLIDATION$') { $index } })
+    $synthesisSectionIndexes = @($hierarchicalRun.Progress | ForEach-Object -Begin { $index = -1 } -Process { $index++; if ($_ -match '(?m)^RECOMMENDATION SYNTHESIS$') { $index } })
+    $hierarchySummaryIndex = @($hierarchicalRun.Progress | ForEach-Object -Begin { $index = -1 } -Process { $index++; if ($_ -match '(?m)^HIERARCHICAL RECONCILIATION SUMMARY$') { $index } })[0]
+    $hierarchyLifecycleRows = @($hierarchicalRun.Progress | Where-Object { $_ -match '^\[(?:RUNNING|PASSED)\]\s+assessment-reconciliation/hierarchy\s+:' })
+    $hierarchyPhaseSummaryValid = $consolidationSectionIndexes.Count -eq 1 -and
+        $synthesisSectionIndexes.Count -eq 1 -and
+        $hierarchySectionIndex -lt $consolidationSectionIndexes[0] -and
+        $consolidationSectionIndexes[0] -lt $synthesisSectionIndexes[0] -and
+        $synthesisSectionIndexes[0] -lt $hierarchySummaryIndex -and
+        $hierarchyLifecycleRows.Count -eq 0 -and
+        [string]$hierarchicalRun.Progress[$hierarchySummaryIndex + 3] -ceq '  Stages           : 3 total' -and
+        [string]$hierarchicalRun.Progress[$hierarchySummaryIndex + 4] -match '^  Batches\s+: [0-9]+ total \| [0-9]+ cached \| [0-9]+ evaluated$' -and
+        [string]$hierarchicalRun.Progress[$hierarchySummaryIndex + 5] -match '^  Elapsed\s+: [0-9]{2}:[0-9]{2}:[0-9]{2}$'
+    $displaySectionIndex = @($hierarchicalRun.Progress | ForEach-Object -Begin { $index = -1 } -Process { $index++; if ($_ -match '(?m)^DISPLAY PROJECTION$') { $index } })[0]
+    $displayPhaseSummaryValid = $displaySectionIndex -ge 0 -and
+        [string]$hierarchicalRun.Progress[$displaySectionIndex + 3] -ceq '  Recommendations  : 3 total' -and
+        [string]$hierarchicalRun.Progress[$displaySectionIndex + 4] -ceq '  Assessments      : 3 total' -and
+        [string]$hierarchicalRun.Progress[$displaySectionIndex + 5] -match '^  Payload\s+: [0-9.]+ (?:KB|MB)$' -and
+        [string]$hierarchicalRun.Progress[$displaySectionIndex + 7] -match '^\[RUNNING\]\s+assessment-reconciliation/display\s+:' -and
+        [string]$hierarchicalRun.Progress[$displaySectionIndex + 8] -match '^\[PASSED\]\s+assessment-reconciliation/display\s+: Candidate projection built : \[Elapsed: [0-9]{2}:[0-9]{2}:[0-9]{2}\]$'
+    $phaseSummariesValid = $hierarchyPhaseSummaryValid -and $displayPhaseSummaryValid
+    $phaseSummaryDetail = if ($phaseSummariesValid) {
+        'Hierarchical reconciliation and display projection report aligned phase-specific workload summaries without a redundant hierarchy lifecycle wrapper.'
+    }
+    else {
+        @($hierarchicalRun.Progress | Where-Object { $_ -match '^  (?:Phase|Stages|Recommendations|Assessments|Batches|Payload)\s*:' }) -join ' || '
+    }
+    Add-TestResult -Name 'reconciliation-phase-summaries' -Passed $phaseSummariesValid -Detail $phaseSummaryDetail
+    $synthesisRunningRows = @($hierarchicalRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+reconciliation/synthesis batch [0-9]+/[0-9]+\s+:' })
+    $synthesisPassedRows = @($hierarchicalRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+reconciliation/synthesis batch [0-9]+/[0-9]+\s+: Total Elapsed .*\[Batch: .*\] : \[Remaining: .*\]$' })
+    Add-TestResult -Name 'reconciliation-synthesis-worker-progress' -Passed ($synthesisRunningRows.Count -gt 0 -and $synthesisPassedRows.Count -eq $synthesisRunningRows.Count) -Detail 'Every started synthesis worker emits one Passed row with elapsed and updated remaining time.'
+    $workloadSummary = @($hierarchicalRun.Progress | Where-Object { $_ -match '^  (?:Stage|Assessments|Assessment Groups|Batches|Workers|Payload|Estimated)\s*:' })
+    $workloadColonIndexes = @($workloadSummary | ForEach-Object { $_.IndexOf(':') } | Sort-Object -Unique)
+    $workloadStages = @($workloadSummary | Where-Object { $_ -match '^  Stage\s+: (?:Initial Assessment Grouping|Group Consolidation|Recommendation Synthesis)$' })
+    $workloadSummaryValid = $workloadSummary.Count -eq 21 -and $workloadColonIndexes.Count -eq 1 -and $workloadStages.Count -eq 3 -and @($workloadSummary | Where-Object { $_ -match '^  Batches\s+: [0-9]+ total \| [0-9]+ cached \| [0-9]+ pending$' }).Count -eq 3
+    $workloadSummaryDetail = if ($workloadSummaryValid) { 'Every hierarchical stage reports aligned inputs, cache-aware batches, workers, pending payload, and an estimated duration.' } else { "count=$($workloadSummary.Count); colonIndexes=$($workloadColonIndexes -join ','); lines=$($workloadSummary -join ' || ')" }
+    Add-TestResult -Name 'reconciliation-workload-summary' -Passed $workloadSummaryValid -Detail $workloadSummaryDetail
+
+    $cachedHierarchicalRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $pipelineEvaluatorPath -Name 'hierarchical-cached' -CacheDirectory $hierarchicalCacheDirectory
+    $cachedHierarchicalResult = if ($cachedHierarchicalRun.ExitCode -eq 0) { $cachedHierarchicalRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $forcedHierarchicalRun = Invoke-ReconciliationRunner -AssessmentSetPath $assessmentSetPath -InventoryPaths $inventoryPaths -EvaluatorScriptPath $pipelineEvaluatorPath -Name 'hierarchical-forced' -CacheDirectory $hierarchicalCacheDirectory -Force
+    $forcedHierarchicalResult = if ($forcedHierarchicalRun.ExitCode -eq 0) { $forcedHierarchicalRun.Output | ConvertFrom-Json -DateKind String } else { $null }
+    $forceCacheBehaviorValid = $cachedHierarchicalRun.ExitCode -eq 0 -and
+        [int]$cachedHierarchicalResult.cachedShardCount -eq [int]$cachedHierarchicalResult.shardCount -and
+        [int]$cachedHierarchicalResult.evaluatedShardCount -eq 0 -and
+        $forcedHierarchicalRun.ExitCode -eq 0 -and
+        [string]$forcedHierarchicalResult.cacheMode -ceq 'force-refresh' -and
+        [int]$forcedHierarchicalResult.cachedShardCount -eq 0 -and
+        [int]$forcedHierarchicalResult.evaluatedShardCount -eq [int]$forcedHierarchicalResult.shardCount
+    Add-TestResult -Name 'force-bypasses-reconciliation-cache' -Passed $forceCacheBehaviorValid -Detail 'Default reconciliation reuses every exact shard, while Force bypasses cache reads and reevaluates all shards before writing replacements.'
 
     $env:RECONCILIATION_EMIT_UNDEFINED = '1'
     try {
@@ -559,9 +718,9 @@ try {
         '$schema' = 'assessment-reconciliation-draft.schema.json'
         schemaVersion = 1
         recommendations = @(
-            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'partial-overlap'; rationale = 'The assessment overlaps existing implementation evidence guidance.'; suggestedConsolidatedText = 'Verify implementation evidence and imported schema behavior against the provider implementation.'; assessmentRefs = @($contributorRef) }); retireHostedRuleIds = @('IMPL-EVID-001'); implementationModels = @('legacy', 'typed', 'framework') },
-            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Resource Type'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() },
-            [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() }
+            [ordered]@{ draftKey = 'recommendation-1'; recommendedAction = 'add'; targetHostedId = $null; idFamily = 'IMPL-SCHEMA'; title = 'Validate imported schema behavior'; recommendedRuleText = 'Validate imported schema behavior against the provider implementation.'; category = 'implementation'; placement = 'Schema And State'; rationale = 'The contributor assessment describes one enforceable Hosted behavior.'; needsReview = $false; selectionFactors = $entries[0].assessments[0].selectionFactors; selectionRationale = 'The parent rule retains the contributor assessment scope and priority.'; memberAssessmentRefs = @($contributorRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $contributorRef; rationale = 'The rule preserves the contributor schema requirement.' }); relatedHostedCoverage = @([ordered]@{ hostedRuleId = 'IMPL-EVID-001'; relationship = 'partial-overlap'; rationale = 'The assessment overlaps existing implementation evidence guidance.'; suggestedConsolidatedText = 'Verify implementation evidence and imported schema behavior against the provider implementation.'; assessmentRefs = @($contributorRef) }); retireHostedRuleIds = @('IMPL-EVID-001'); implementationModels = @('legacy', 'typed', 'framework') },
+            [ordered]@{ draftKey = 'recommendation-2'; recommendedAction = 'no-change'; targetHostedId = 'IMPL-EVID-001'; idFamily = $null; title = 'Preserve mapped implementation evidence'; recommendedRuleText = $mappedRuleText; category = 'implementation'; placement = 'Evidence And Resource Type'; rationale = 'The canonical Interactive candidate is already represented by its mapped Hosted rule.'; needsReview = $false; selectionFactors = $entries[1].assessments[0].selectionFactors; selectionRationale = 'The parent rule retains the Interactive assessment scope and priority.'; memberAssessmentRefs = @($interactiveRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $interactiveRef; rationale = 'The current Hosted rule preserves the Interactive source meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() },
+            [ordered]@{ draftKey = 'recommendation-3'; recommendedAction = 'exclude'; targetHostedId = $null; idFamily = 'DOCS-EX'; title = 'Exclude maintainer source rule'; recommendedRuleText = 'Document the source behavior.'; category = 'documentation'; placement = 'Examples And Imports'; rationale = 'The assessment is outside Hosted review scope unless a maintainer overrides applicability.'; needsReview = $false; selectionFactors = $entries[2].assessments[0].selectionFactors; selectionRationale = 'The parent rule retains the maintainer assessment scope and priority.'; memberAssessmentRefs = @($maintainerRef); memberMeaningCoverage = @([ordered]@{ assessmentRef = $maintainerRef; rationale = 'The rule preserves the maintainer documentation meaning.' }); relatedHostedCoverage = @(); retireHostedRuleIds = @() }
         )
         assessmentCoverage = @(
             [ordered]@{ assessmentRef = $contributorRef; disposition = 'recommended'; rationale = $null; recommendationDraftKeys = @('recommendation-1') },
@@ -570,6 +729,9 @@ try {
         )
     }
     Add-TestResult -Name 'reconciliation-response-schema' -Passed (Test-JsonInstance -Value $draft -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json')) -Detail 'The evaluator response has strict recommendations and exhaustive coverage.'
+    $missingParentScoring = Copy-JsonObject -Value $draft
+    $missingParentScoring.recommendations[0].PSObject.Properties.Remove('selectionFactors')
+    Add-TestResult -Name 'parent-recommendation-scoring-required' -Passed (-not (Test-JsonInstance -Value $missingParentScoring -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json'))) -Detail 'Every synthesized parent recommendation must carry its own semantic factor vector and rationale.'
     $missingImplementationModels = Copy-JsonObject -Value $draft
     $missingImplementationModels.recommendations[0].PSObject.Properties.Remove('implementationModels')
     Add-TestResult -Name 'implementation-model-scope-required' -Passed (-not (Test-JsonInstance -Value $missingImplementationModels -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json'))) -Detail 'An implementation Add cannot reach trusted ID allocation without explicit implementation model scope.'
@@ -670,6 +832,36 @@ try {
     $duplicateMembership.recommendations = @($duplicateMembership.recommendations[0], $duplicateMembership.recommendations[1], $secondRecommendation)
     $duplicateRun = Invoke-DisplayBuilder -Draft $duplicateMembership -Name 'duplicate-membership'
     Add-TestResult -Name 'duplicate-membership-rejected' -Passed ($duplicateRun.ExitCode -ne 0 -and $duplicateRun.Output -like '*more than one generated recommendation*') -Detail 'One assessment cannot belong to multiple recommendations.'
+
+    $groupedRecommendation = Copy-JsonObject -Value $draft
+    $groupedRecommendation.recommendations[0].recommendedAction = 'update'
+    $groupedRecommendation.recommendations[0].targetHostedId = 'IMPL-EVID-001'
+    $groupedRecommendation.recommendations[0].idFamily = $null
+    $groupedRecommendation.recommendations[0].title = 'Consolidate implementation evidence and imported schema behavior'
+    $groupedRecommendation.recommendations[0].recommendedRuleText = $mappedRuleText + ' Validate imported schema behavior against the provider implementation.'
+    $groupedRecommendation.recommendations[0].placement = 'Evidence And Resource Type'
+    $groupedRecommendation.recommendations[0].selectionFactors = [ordered]@{ severity = 5; frequency = 4; breadth = 3; hostedDetectability = 5; evidenceStrength = 5; falsePositiveRisk = 1; redundancy = 2 }
+    $groupedRecommendation.recommendations[0].selectionRationale = 'The consolidated parent increases breadth while retaining strong evidence and detectability.'
+    $groupedRecommendation.recommendations[0].memberAssessmentRefs = @($contributorRef, $interactiveRef)
+    $groupedRecommendation.recommendations[0].memberMeaningCoverage = @(
+        [ordered]@{ assessmentRef = $contributorRef; rationale = 'The parent preserves imported schema validation.' },
+        [ordered]@{ assessmentRef = $interactiveRef; rationale = 'The parent preserves implementation evidence validation.' }
+    )
+    $groupedRecommendation.recommendations[0].relatedHostedCoverage = @()
+    $groupedRecommendation.recommendations[0].retireHostedRuleIds = @()
+    $groupedRecommendation.recommendations[0].PSObject.Properties.Remove('implementationModels')
+    $groupedRecommendation.recommendations = @($groupedRecommendation.recommendations[0], $groupedRecommendation.recommendations[2])
+    $groupedRecommendation.assessmentCoverage[1].recommendationDraftKeys = @('recommendation-1')
+    $groupedRun = Invoke-DisplayBuilder -Draft $groupedRecommendation -Name 'grouped-recommendation'
+    $groupedDisplay = if ($groupedRun.ExitCode -eq 0) { Get-Content -LiteralPath $groupedRun.OutputPath -Raw | ConvertFrom-Json -DateKind String } else { $null }
+    $groupedParent = if ($null -ne $groupedDisplay) { @($groupedDisplay.candidates | Where-Object { [string]$_.recommendation.hostedId -ceq 'IMPL-EVID-001' })[0] } else { $null }
+    $groupedProjectionValid = $groupedRun.ExitCode -eq 0 -and
+        @($groupedDisplay.candidates).Count -eq 2 -and
+        @($groupedParent.members).Count -eq 2 -and
+        [string]$groupedParent.assessment.title -ceq 'Consolidate implementation evidence and imported schema behavior' -and
+        [int]$groupedParent.assessment.selectionFactors.breadth -eq 3 -and
+        [string]$groupedParent.assessment.selectionRationale -ceq 'The consolidated parent increases breadth while retaining strong evidence and detectability.'
+    Add-TestResult -Name 'grouped-parent-display-projection' -Passed $groupedProjectionValid -Detail $(if ($groupedProjectionValid) { 'One synthesized recommendation projects as one scored parent candidate with every contributing assessment nested as evidence.' } else { $groupedRun.Output })
 
     $noncanonicalTarget = Copy-JsonObject -Value $draft
     $noncanonicalTarget.recommendations[0].recommendedAction = 'update'

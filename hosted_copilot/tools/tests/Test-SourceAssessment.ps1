@@ -18,12 +18,12 @@ Import-Module -Name $helpersModulePath -Force
 $assessmentRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $builderPath = Join-Path $PSScriptRoot '../internal/assessment/New-SourceAssessmentBaseline.ps1'
 $runnerPath = Join-Path $PSScriptRoot '../internal/assessment/Invoke-SourceAssessment.ps1'
+$presentationModulePath = Join-Path $PSScriptRoot '../modules/assessment/SourceAssessmentPresentation.psm1'
 $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json'
 $inventorySchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
 $contractPath = Join-Path $assessmentRoot 'source-assessment-v4.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'
 $promptPath = Join-Path $PSScriptRoot '../assessment-prompts/SourceAssessment-v4.md'
-$hostedCatalogPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment-test-' + [guid]::NewGuid().ToString('N'))
 $expectedBuilderGeneratedAt = [datetime]::new(2026, 9, 15, 13, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
 $expectedRunnerGeneratedAt = [datetime]::new(2026, 9, 15, 14, 0, 0, [DateTimeKind]::Utc).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
@@ -155,6 +155,7 @@ function Invoke-Runner {
         [string]$CacheDirectory,
         [string]$ResumeRunDirectory,
         [string]$Model = 'gpt-5.4',
+        [switch]$Force,
         [switch]$ShowProgress
     )
 
@@ -177,6 +178,9 @@ function Invoke-Runner {
     }
     if ($ShowProgress) {
         $parameters.ShowProgress = $true
+    }
+    if ($Force) {
+        $parameters.Force = $true
     }
     if (-not [string]::IsNullOrWhiteSpace($ResumeRunDirectory)) {
         $parameters.ResumeRunDirectory = $ResumeRunDirectory
@@ -333,6 +337,12 @@ try {
     }
     $actualContractHash = Get-StringSha256 -Value $contractBuilder.ToString()
     Add-TestResult -Name 'contract-hash-calculation' -Passed (@(Compare-Object $behaviorFiles $sortedBehaviorFiles -SyncWindow 0).Count -eq 0 -and $actualContractHash -match '^[0-9a-f]{64}$') -Detail 'The manifest uses ordinal behavior-file order and produces a deterministic assessment contract hash without a maintained aggregate field.'
+    $presentationRelativePath = 'hosted_copilot/tools/modules/assessment/SourceAssessmentPresentation.psm1'
+    $presentationBoundaryValid = @($contract.presentationFiles).Count -eq 1 -and
+        $presentationRelativePath -in @($contract.presentationFiles) -and
+        $presentationRelativePath -notin $behaviorFiles -and
+        (Test-Path -LiteralPath (Join-Path $repositoryRoot $presentationRelativePath) -PathType Leaf)
+    Add-TestResult -Name 'source-assessment-presentation-authority' -Passed $presentationBoundaryValid -Detail 'Source Assessment snapshots its presentation module without including labels, estimates, or status formatting in semantic cache authority.'
     $requiredAssessmentValidationFiles = @(
         'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json',
         'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
@@ -559,7 +569,8 @@ try {
     $runnerContent = Get-Content -LiteralPath $runnerPath -Raw
     $runnerConstrained = $runnerContent -match '--available-tools=view' -and $runnerContent -match '--output-format json' -and $runnerContent -match '--disallow-temp-dir' -and $runnerContent -match '--no-custom-instructions' -and $runnerContent -notmatch '--allow-all|--allow-all-tools|--allow-all-paths|--yolo'
     Add-TestResult -Name 'runner-evaluator-constrained' -Passed $runnerConstrained -Detail 'Real Copilot source assessment runs in an isolated batch directory with only the read-only view tool exposed.'
-    Add-TestResult -Name 'source-assessment-bootstrap-throughput' -Passed ($runnerContent -match '\$sourceAssessmentBootstrapBytesPerSecondPerWorker = 500' -and $runnerContent -match '-BootstrapBytesPerSecondPerWorker \$sourceAssessmentBootstrapBytesPerSecondPerWorker') -Detail 'Source assessment owns an explicit 500-byte-per-second-per-worker bootstrap estimate instead of inheriting an implicit shared default.'
+    $presentationContent = Get-Content -LiteralPath $presentationModulePath -Raw
+    Add-TestResult -Name 'source-assessment-bootstrap-throughput' -Passed ($presentationContent -match 'return 400' -and $runnerContent -match '-BootstrapBytesPerSecondPerWorker \$sourceAssessmentBootstrapBytesPerSecondPerWorker') -Detail 'Source assessment presentation owns a conservative 400-byte-per-second-per-worker estimate calibrated from a complete uncached run.'
     $silentEvaluatorFailure = Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode 1 -Output @()
     $structuredEvaluatorFailure = Get-EvaluatorFailureMessage -EvaluatorName 'Copilot evaluator' -ExitCode 2 -Output @('{"type":"error","data":{"message":"Synthetic rate limit"}}')
     Add-TestResult -Name 'evaluator-failure-diagnostics' -Passed ($silentEvaluatorFailure -ceq 'Copilot evaluator exited with code 1 without diagnostic output' -and $structuredEvaluatorFailure -ceq 'Copilot evaluator exited with code 2: Synthetic rate limit') -Detail 'Native evaluator failures always retain the exit code and prefer structured JSONL diagnostics without producing an empty failure label.'
@@ -805,10 +816,13 @@ if ($null -ne $timingStem) {
     $passedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment \d+/\d+' })
     $planProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Sources\s+:\s+25 total \| 0 cached \| 0 recovered \| 25 pending$' })
     $batchPlanProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Batches\s+:\s+4 pending$' })
+    $workerPlanProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Workers\s+:\s+3$' })
     $estimatePlanProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\s*Estimated\s+:\s+\d{2}:\d{2}:\d{2}$' })
+    $assessmentRunningProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[RUNNING\]\s+source-assessment\s+: Evaluating 25 pending sources across 4 batches$' })
+    $assessmentPassedProgress = @($runnerRun.Progress | Where-Object { $_ -match '^\[PASSED\]\s+source-assessment\s+: 25 sources \| 0 cached \| 0 recovered \| 25 evaluated : \[Elapsed: \d{2}:\d{2}:\d{2}\]$' })
     $positionedProgress = @($runningProgress + $passedProgress | Where-Object { $_ -match 'source-assessment [1-4]/4\s+:' })
     $estimatedProgress = @($passedProgress | Where-Object { $_ -match 'Total Elapsed \d{2}:\d{2}:\d{2} : \[Batch: \d{2}:\d{2}:\d{2}\] : \[Remaining: \d{2}:\d{2}:\d{2}\]' })
-    Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $planProgress.Count -eq 1 -and $batchPlanProgress.Count -eq 1 -and $estimatePlanProgress.Count -eq 1 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $positionedProgress.Count -eq ($runnerResult.batchCount * 2) -and $estimatedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits one compact execution plan, then derives elapsed and remaining time from current-run throughput without corrupting the final JSON result.'
+    Add-TestResult -Name 'batch-progress-output' -Passed ($runnerExitCode -eq 0 -and $planProgress.Count -eq 1 -and $batchPlanProgress.Count -eq 1 -and $workerPlanProgress.Count -eq 1 -and $estimatePlanProgress.Count -eq 1 -and $assessmentRunningProgress.Count -eq 1 -and $assessmentPassedProgress.Count -eq 1 -and $runningProgress.Count -eq $runnerResult.batchCount -and $passedProgress.Count -eq $runnerResult.batchCount -and $positionedProgress.Count -eq ($runnerResult.batchCount * 2) -and $estimatedProgress.Count -eq $runnerResult.batchCount -and $runnerRun.Output.TrimStart().StartsWith('{')) -Detail 'Explicit progress emits the workload plan before matched aggregate and batch lifecycle rows without corrupting the final JSON result.'
     $assessmentProgressColonIndexes = @($runningProgress + $passedProgress | ForEach-Object { $_.IndexOf(' : ') })
     Add-TestResult -Name 'batch-progress-alignment' -Passed (@($assessmentProgressColonIndexes | Sort-Object -Unique).Count -eq 1 -and $assessmentProgressColonIndexes[0] -gt 0) -Detail 'Every assessment batch status line aligns its detail separator to the shared 42-character assessment name column.'
     $callsBeforeCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
@@ -816,9 +830,33 @@ if ($null -ne $timingStem) {
     $cachedRunnerResult = if ($cachedRunnerRun.ExitCode -eq 0) { $cachedRunnerRun.Output | ConvertFrom-Json } else { $null }
     $callsAfterCacheReuse = @(Get-Content -LiteralPath $callLogPath).Count
     $sourceCacheFileCount = @(Get-ChildItem -LiteralPath $runnerCacheDirectory -File -ErrorAction SilentlyContinue).Count
-    $cachedPlanProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Sources\s+:\s+25 total \| 25 cached \| 0 recovered \| 0 pending$' })
-    $cachedEstimateProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Estimated\s+:\s+00:00:00$' })
-    Add-TestResult -Name 'validated-source-cache-reuse' -Passed ($cachedRunnerRun.ExitCode -eq 0 -and $cachedRunnerResult.cachedSourceCount -eq $runnerResult.sourceCount -and $cachedRunnerResult.evaluatedSourceCount -eq 0 -and $cachedRunnerResult.evaluatedBatchCount -eq 0 -and $callsAfterCacheReuse -eq $callsBeforeCacheReuse -and $cachedPlanProgress.Count -eq 1 -and $cachedEstimateProgress.Count -eq 1) -Detail "An identical assessment run reports a compact zero-batch plan, revalidates and reuses every content-addressed source entry, and does not invoke the evaluator. Cache files: $sourceCacheFileCount; cached: $($cachedRunnerResult.cachedSourceCount); evaluated sources: $($cachedRunnerResult.evaluatedSourceCount); evaluated batches: $($cachedRunnerResult.evaluatedBatchCount); evaluator call delta: $($callsAfterCacheReuse - $callsBeforeCacheReuse); progress: $($cachedRunnerRun.Progress -join ' | ')."
+    $cachedPlanProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Sources\s+:\s+25 total \| 25 cached \| 0 recovered$' })
+    $cachedExecutionProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*Execution\s+:\s+Fully cached$' })
+    $cachedZeroWorkProgress = @($cachedRunnerRun.Progress | Where-Object { $_ -match '^\s*(?:Batches|Workers|Payload|Estimated)\s+:' -or $_ -match '^\[(?:RUNNING|PASSED)\]\s+source-assessment\s+:' })
+    Add-TestResult -Name 'validated-source-cache-reuse' -Passed ($cachedRunnerRun.ExitCode -eq 0 -and $cachedRunnerResult.cachedSourceCount -eq $runnerResult.sourceCount -and $cachedRunnerResult.evaluatedSourceCount -eq 0 -and $cachedRunnerResult.evaluatedBatchCount -eq 0 -and $callsAfterCacheReuse -eq $callsBeforeCacheReuse -and $cachedPlanProgress.Count -eq 1 -and $cachedExecutionProgress.Count -eq 1 -and $cachedZeroWorkProgress.Count -eq 0) -Detail "An identical assessment run emits one concise fully cached summary, revalidates every content-addressed source entry, and does not invoke the evaluator. Cache files: $sourceCacheFileCount; cached: $($cachedRunnerResult.cachedSourceCount); evaluator call delta: $($callsAfterCacheReuse - $callsBeforeCacheReuse); progress: $($cachedRunnerRun.Progress -join ' | ')."
+
+    $callsBeforePromotedReuse = @(Get-Content -LiteralPath $callLogPath).Count
+    $promotedRunnerOutputPath = Join-Path $tempRoot 'promoted-stable-runner-baseline.json'
+    $promotedRunnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $runnerInventoryPaths -OutputPath $promotedRunnerOutputPath -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -CacheDirectory $runnerCacheDirectory -ShowProgress
+    $promotedRunnerResult = if ($promotedRunnerRun.ExitCode -eq 0) { $promotedRunnerRun.Output | ConvertFrom-Json } else { $null }
+    $promotedRunnerBaseline = if ($promotedRunnerRun.ExitCode -eq 0) { Get-Content -LiteralPath $promotedRunnerOutputPath -Raw | ConvertFrom-Json } else { $null }
+    $callsAfterPromotedReuse = @(Get-Content -LiteralPath $callLogPath).Count
+    $promotedCacheRejections = @($promotedRunnerRun.Progress | Where-Object { $_ -match '^\[SKIPPED\]\s+source-assessment/cache' })
+    $promotedReassessments = @($promotedRunnerBaseline.entries | ForEach-Object { @($_.assessments) } | Where-Object { $null -ne $_.semanticReassessment })
+    $promotedReuseValid = $promotedRunnerRun.ExitCode -eq 0 -and
+        [int]$promotedRunnerResult.cachedSourceCount -eq [int]$promotedRunnerResult.sourceCount -and
+        [int]$promotedRunnerResult.evaluatedSourceCount -eq 0 -and
+        [int]$promotedRunnerResult.evaluatedBatchCount -eq 0 -and
+        $callsAfterPromotedReuse -eq $callsBeforePromotedReuse -and
+        $promotedCacheRejections.Count -eq 0 -and
+        $promotedReassessments.Count -eq 0
+    Add-TestResult -Name 'promoted-inventory-cache-reuse' -Passed $promotedReuseValid -Detail "After successful inventory promotion makes sources unchanged, cached durable assessments discard transition-only semantic reassessment metadata without evaluator calls or cache-rejection output. Sources: $($promotedRunnerResult.sourceCount); cached: $($promotedRunnerResult.cachedSourceCount); evaluator call delta: $($callsAfterPromotedReuse - $callsBeforePromotedReuse); cache rejections: $($promotedCacheRejections.Count); retained reassessments: $($promotedReassessments.Count)."
+
+    $callsBeforeForce = @(Get-Content -LiteralPath $callLogPath).Count
+    $forcedRunnerRun = Invoke-Runner -AcceptedInventoryPaths $runnerInventoryPaths -PriorInventoryPaths $priorInventoryPaths -OutputPath (Join-Path $tempRoot 'forced-runner-baseline.json') -EvaluatorScriptPath $fakeEvaluatorPath -MaxRetries 1 -CacheDirectory $runnerCacheDirectory -Force
+    $forcedRunnerResult = if ($forcedRunnerRun.ExitCode -eq 0) { $forcedRunnerRun.Output | ConvertFrom-Json } else { $null }
+    $callsAfterForce = @(Get-Content -LiteralPath $callLogPath).Count
+    Add-TestResult -Name 'force-bypasses-source-cache' -Passed ($forcedRunnerRun.ExitCode -eq 0 -and [string]$forcedRunnerResult.cacheMode -ceq 'force-refresh' -and [int]$forcedRunnerResult.cachedSourceCount -eq 0 -and [int]$forcedRunnerResult.evaluatedSourceCount -eq [int]$runnerResult.sourceCount -and $callsAfterForce -gt $callsBeforeForce) -Detail 'Force bypasses assessment cache reads, reevaluates every source, and writes validated replacements without deleting the cache up front.'
 
     $changedRunnerInventory = Copy-JsonObject -Value (Get-Content -LiteralPath $runnerInventoryPath -Raw | ConvertFrom-Json)
     $changedRunnerInventory.records[0].content = 'Changed runner source record 1.'

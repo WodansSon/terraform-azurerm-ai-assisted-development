@@ -18,10 +18,11 @@ param(
     [ValidateRange(0, 3)][int]$MaxRetries = 1,
     [ValidateRange(0, 60000)][int]$RetryDelayMilliseconds = 1000,
     [ValidateRange(1, 8)][int]$MaxParallelBatches = 3,
-    [ValidateRange(1, [int]::MaxValue)][int]$StagePayloadBudgetBytes = 196608,
+    [ValidateRange(1, [int]::MaxValue)][int]$StagePayloadBudgetBytes = 262144,
     [ValidateRange(1, [int]::MaxValue)][int]$EvaluatorPayloadBudgetBytes = 393216,
     [object]$GeneratedAt = [DateTime]::UtcNow,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text',
+    [switch]$Force,
     [switch]$Quiet
 )
 
@@ -29,6 +30,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1') -Force
 
 function Copy-InputSnapshot {
     param(
@@ -56,6 +58,9 @@ if ($resolvedCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::Or
     throw 'CacheDirectory must be outside the repository root.'
 }
 $resolvedResumeRunDirectory = if ([string]::IsNullOrWhiteSpace($ResumeRunDirectory)) { $null } else { [IO.Path]::GetFullPath($ResumeRunDirectory) }
+if ($Force -and $null -ne $resolvedResumeRunDirectory) {
+    throw 'Force cannot be combined with ResumeRunDirectory.'
+}
 if ($null -ne $resolvedResumeRunDirectory -and $resolvedResumeRunDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ResumeRunDirectory must be outside the repository root.'
 }
@@ -81,7 +86,14 @@ $runRepositoryRoot = Join-Path $runDirectory 'repository'
 $null = New-Item -ItemType Directory -Path $runRepositoryRoot -Force
 $contractSnapshot = Get-FileSnapshot -Path $resolvedContractPath
 $contract = $contractSnapshot.Content | ConvertFrom-Json -DateKind String
-foreach ($relativePath in @($contract.behaviorFiles)) {
+$behaviorAuthority = [Collections.Generic.List[object]]::new()
+foreach ($relativePath in @($contract.behaviorFiles | Sort-Object -CaseSensitive)) {
+    $sourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot ([string]$relativePath)))
+    $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot ([string]$relativePath)))
+    $snapshot = Copy-InputSnapshot -SourcePath $sourcePath -DestinationPath $destinationPath
+    $behaviorAuthority.Add([ordered]@{ path = [string]$relativePath; contentSha256 = $snapshot.Sha256 })
+}
+foreach ($relativePath in @($contract.presentationFiles | Sort-Object -CaseSensitive)) {
     $sourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot ([string]$relativePath)))
     $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot ([string]$relativePath)))
     $null = Copy-InputSnapshot -SourcePath $sourcePath -DestinationPath $destinationPath
@@ -146,6 +158,9 @@ $snapshotStatePath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/modules/
 Import-Module $snapshotStatePath -Force
 Import-Module $snapshotPipelinePath -Force
 Import-Module $snapshotExecutorPath -Force
+$contractAuthorityPath = Join-Path $runDirectory 'assessment-reconciliation-authority.json'
+Write-HierarchicalJsonAtomically -Path $contractAuthorityPath -Value ([ordered]@{ contractContentSha256 = $contractSnapshot.Sha256; behaviorFiles = $behaviorAuthority.ToArray() })
+$contractAuthoritySnapshot = Get-FileSnapshot -Path $contractAuthorityPath
 $resolvedEvaluatorScriptPath = if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
     Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-CopilotReconciliationStage.ps1'
 }
@@ -161,7 +176,7 @@ $authority = [ordered]@{
     inputSetSha256 = $baselineSnapshot.Sha256
     catalogContentSha256 = $catalogSnapshot.Sha256
     protectedRulesContentSha256 = $protectedRulesSnapshot.Sha256
-    contractContentSha256 = $contractSnapshot.Sha256
+    contractContentSha256 = $contractAuthoritySnapshot.Sha256
     evaluator = $evaluatorIdentity
     model = $Model
     reasoningEffort = $ReasoningEffort
@@ -180,7 +195,7 @@ if ($null -ne $resolvedResumeRunDirectory) {
     $null = Read-HierarchicalReconciliationCache -Path $resumeCachePath -SchemaPath $cacheSchemaPath
     Copy-HierarchicalFileAtomically -SourcePath $resumeCachePath -DestinationPath $runCachePath
 }
-elseif (Test-Path -LiteralPath $persistentCachePath -PathType Leaf) {
+elseif (-not $Force -and (Test-Path -LiteralPath $persistentCachePath -PathType Leaf)) {
     try {
         $null = Read-HierarchicalReconciliationCache -Path $persistentCachePath -SchemaPath $cacheSchemaPath
         Copy-HierarchicalFileAtomically -SourcePath $persistentCachePath -DestinationPath $runCachePath
@@ -197,11 +212,16 @@ Write-HierarchicalReconciliationRunManifest -Path $manifestPath -SchemaPath $run
 $succeeded = $false
 try {
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/hierarchy' -Detail 'Routing, consolidating, and synthesizing semantic components' -NameWidth 42)
+        Write-ValidationSectionHeader -Title 'Hierarchical Reconciliation' | Write-Host
     }
-    $pipelineResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $baseline -Catalog $catalog -ProtectedCatalog $protectedRules -RunDirectory $runDirectory -CachePath $runCachePath -CacheSchemaPath $cacheSchemaPath -CatalogPath $snapshotCatalogPath -ProtectedRulesPath $snapshotProtectedRulesPath -ContractPath $snapshotContractPath -RoutingSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-routing.schema.json') -RoutingPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationRouting-v4.md') -ConsolidationSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-consolidation.schema.json') -ConsolidationPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationConsolidation-v4.md') -SynthesisSchemaPath $draftSchemaPath -SynthesisPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliation-v4.md') -EvaluatorScriptPath $resolvedEvaluatorScriptPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds $RetryDelayMilliseconds -MaxParallelShards $MaxParallelBatches -StagePayloadBudgetBytes $StagePayloadBudgetBytes -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes
+    $hierarchyStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $pipelineResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $baseline -Catalog $catalog -ProtectedCatalog $protectedRules -RunDirectory $runDirectory -CachePath $runCachePath -PersistentCachePath $persistentCachePath -CacheSchemaPath $cacheSchemaPath -CatalogPath $snapshotCatalogPath -ProtectedRulesPath $snapshotProtectedRulesPath -ContractPath $snapshotContractPath -ContractAuthorityPath $contractAuthorityPath -RoutingSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-routing.schema.json') -RoutingPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationRouting-v4.md') -ConsolidationSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-consolidation.schema.json') -ConsolidationPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationConsolidation-v4.md') -SynthesisSchemaPath $draftSchemaPath -SynthesisPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliation-v4.md') -EvaluatorScriptPath $resolvedEvaluatorScriptPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds $RetryDelayMilliseconds -MaxParallelShards $MaxParallelBatches -StagePayloadBudgetBytes $StagePayloadBudgetBytes -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes -ShowProgress:(-not $Quiet)
+    $hierarchyStopwatch.Stop()
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/hierarchy' -Detail ("{0} shards | {1} cached | {2} evaluated" -f $pipelineResult.shardCount, $pipelineResult.cachedShardCount, $pipelineResult.evaluatedShardCount) -NameWidth 42)
+        Write-ValidationSectionHeader -Title 'Hierarchical Reconciliation Summary' | Write-Host
+        Write-Host ("  {0,-17}: {1} total" -f 'Stages', 3)
+        Write-Host ("  {0,-17}: {1} total | {2} cached | {3} evaluated" -f 'Batches', $pipelineResult.shardCount, $pipelineResult.cachedShardCount, $pipelineResult.evaluatedShardCount)
+        Write-Host ("  {0,-17}: {1}" -f 'Elapsed', (Format-ElapsedDuration -Milliseconds ([long]$hierarchyStopwatch.ElapsedMilliseconds)))
     }
     $responsePath = Join-Path $runDirectory 'assessment-reconciliation-draft.json'
     Write-HierarchicalJsonAtomically -Path $responsePath -Value $pipelineResult.draft
@@ -210,13 +230,24 @@ try {
     }
 
     if (-not $Quiet) {
+        [long]$displayPayloadBytes = 0
+        foreach ($displayInputPath in @($responsePath, $snapshotBaselinePath, $snapshotGuidanceCapacityPath, $snapshotCatalogPath, $snapshotProtectedRulesPath, $snapshotContractPath) + @($snapshotInventoryPaths.ToArray())) {
+            $displayPayloadBytes += (Get-Item -LiteralPath $displayInputPath).Length
+        }
+        Write-ValidationSectionHeader -Title 'Display Projection' | Write-Host
+        Write-Host ("  {0,-17}: {1} total" -f 'Recommendations', @($pipelineResult.draft.recommendations).Count)
+        Write-Host ("  {0,-17}: {1} total" -f 'Assessments', @($pipelineResult.draft.assessmentCoverage).Count)
+        Write-Host ("  {0,-17}: {1}" -f 'Payload', (Format-ByteSize -Bytes $displayPayloadBytes))
+        Write-Host ''
         Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/display' -Detail 'Building candidate projection' -NameWidth 42)
     }
     $snapshotBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1'
+    $displayStopwatch = [Diagnostics.Stopwatch]::StartNew()
     $builderOutput = @(& $snapshotBuilderPath -RepositoryRoot $runRepositoryRoot -AssessmentBaselinePath $snapshotBaselinePath -InventoryPaths $snapshotInventoryPaths.ToArray() -ReconciliationDraftPath $responsePath -GuidanceCapacityPath $snapshotGuidanceCapacityPath -OutputPath $resolvedOutputPath -HostedCatalogPath $snapshotCatalogPath -ProtectedRulesPath $snapshotProtectedRulesPath -ReconciliationContractPath $snapshotContractPath -GeneratedAt $GeneratedAt -OutputFormat Json 2>&1)
+    $displayStopwatch.Stop()
     $builderResult = ($builderOutput | Out-String) | ConvertFrom-Json -DateKind String
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail 'Candidate projection built' -NameWidth 42)
+        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/display' -Detail ("Candidate projection built : [Elapsed: {0}]" -f (Format-ElapsedDuration -Milliseconds ([long]$displayStopwatch.ElapsedMilliseconds))) -NameWidth 42)
     }
 
     $allStageResults = @($pipelineResult.stages.routing.results) + @($pipelineResult.stages.consolidation.results) + @($pipelineResult.stages.synthesis.results)
@@ -254,6 +285,7 @@ $result = [ordered]@{
     recommendationCount = [int]$builderResult.recommendationCount
     evaluator = $evaluatorIdentity
     cacheDirectory = $resolvedCacheDirectory
+    cacheMode = if ($Force) { 'force-refresh' } else { 'reuse' }
     displaySha256 = [string]$builderResult.displaySha256
 }
 if ($OutputFormat -eq 'Json') {

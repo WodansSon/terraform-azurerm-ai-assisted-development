@@ -2301,6 +2301,87 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   overflow-wrap: anywhere;
 }
 
+.contributing-rules {
+  display: grid;
+  gap: 8px;
+}
+
+.contributing-rule {
+  overflow: hidden;
+  background: rgba(2, 10, 24, 0.36);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.contributing-rule > summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.contributing-rule > summary::-webkit-details-marker {
+  display: none;
+}
+
+.contributing-rule[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.contributing-rule-identity {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.contributing-rule-identity strong,
+.contributing-rule-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contributing-rule-identity small,
+.contributing-rule-content > .source-line {
+  color: var(--muted);
+}
+
+.contributing-rule-badges {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.contributing-rule[open] .contributing-rule-badges > .codicon {
+  transform: rotate(180deg);
+}
+
+.contributing-rule-content {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.contributing-rule-meaning > strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.contributing-rule-meaning > p {
+  margin: 0;
+  color: #c6d4ff;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .overlap-list {
   display: grid;
   gap: 8px;

@@ -1,20 +1,93 @@
-[CmdletBinding()]
+<#
+.SYNOPSIS
+Plans or installs the Hosted Toolkit payload into a target repository.
+
+.DESCRIPTION
+Validates the Hosted deployment manifest, compares packaged files with a target repository, and reports the planned changes. Installation occurs only when Install is supplied, and protected collisions require Force.
+
+.PARAMETER RepoDirectory
+Specifies the required Git repository root that receives the Hosted Toolkit payload.
+
+.PARAMETER ManifestPath
+Specifies the Hosted package manifest. Defaults to `hosted_copilot/tools/package-manifest.json`.
+
+.PARAMETER Install
+Applies the validated deployment plan. When omitted, the command performs a read-only dry run.
+
+.PARAMETER Force
+Approves replacement of unowned collisions, modified installed files, or invalid installed-state records.
+
+.PARAMETER OutputFormat
+Selects human-readable text or machine-readable JSON output.
+
+.PARAMETER Help
+Displays curated Hosted command help and exits without deployment work.
+
+.PARAMETER Detailed
+Displays curated Hosted command help and exits without deployment work.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1 -RepoDirectory C:\github\terraform-provider-azurerm
+Plans deployment into the target repository without writing files.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1 -RepoDirectory C:\github\terraform-provider-azurerm -Install
+Installs the validated Hosted Toolkit payload into the target repository.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Install-HostedRules.ps1 -RepoDirectory C:\github\terraform-provider-azurerm -Install -Force
+Installs while explicitly approving protected replacements reported by the deployment plan.
+
+.NOTES
+Dry run is the default. Installation validates repository boundaries, rejects symbolic-link and junction traversal, and verifies installed file hashes.
+
+.LINK
+https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/hosted_copilot/tools/README.md
+#>
+[CmdletBinding(DefaultParameterSetName = 'DryRun')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory, ParameterSetName = 'DryRun')]
+    [Parameter(Mandatory, ParameterSetName = 'Install')]
     [string]$RepoDirectory,
 
+    [Parameter(ParameterSetName = 'DryRun')]
+    [Parameter(ParameterSetName = 'Install')]
     [string]$ManifestPath = (Join-Path $PSScriptRoot 'package-manifest.json'),
 
+    [Parameter(Mandatory, ParameterSetName = 'Install')]
     [switch]$Install,
 
+    [Parameter(ParameterSetName = 'DryRun')]
+    [Parameter(ParameterSetName = 'Install')]
     [switch]$Force,
 
+    [Parameter(ParameterSetName = 'DryRun')]
+    [Parameter(ParameterSetName = 'Install')]
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [Parameter(Mandatory, ParameterSetName = 'Help')]
+    [Alias('h')]
+    [switch]$Help,
+
+    [Parameter(Mandatory, ParameterSetName = 'Detailed')]
+    [switch]$Detailed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$commandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
+Import-Module -Name $commandHelpModulePath -Force
+if ($Help -or $Detailed) {
+    $helpParameterGroups = [ordered]@{
+        'Deployment Options' = @('Install', 'Force')
+        'Target And Package' = @('RepoDirectory', 'ManifestPath')
+        'Output' = @('OutputFormat')
+    }
+    Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Rules Installation Help' -ParameterGroups $helpParameterGroups
+    return
+}
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force

@@ -173,6 +173,8 @@ function New-HierarchicalSemanticLedger {
             $title = [string](Get-ReconciliationProperty -Value $assessment -Name 'title')
             $sourceMeaning = [string](Get-ReconciliationProperty -Value $assessment -Name 'sourceMeaning')
             $impact = [string](Get-ReconciliationProperty -Value $assessment -Name 'impactDescription')
+            $semanticAssessment = ($assessment | ConvertTo-Json -Depth 100 -Compress) | ConvertFrom-Json -DateKind String
+            $semanticAssessment.PSObject.Properties.Remove('assessmentProvenance')
             $nodes.Add([pscustomobject][ordered]@{
                 nodeKey = Get-SemanticNodeKey -NodeType 'assessment' -Identity $assessmentRef
                 nodeType = 'assessment'
@@ -180,7 +182,7 @@ function New-HierarchicalSemanticLedger {
                 sourceContentSha256 = [string]$assessmentRef.contentSha256
                 applicability = [pscustomobject][ordered]@{ hostedApplicable = $hostedApplicable; rationale = [string](Get-ReconciliationProperty -Value $assessment -Name 'applicabilityRationale') }
                 routingText = "$title`n$sourceMeaning`n$impact"
-                original = $assessment
+                original = $semanticAssessment
             })
         }
     }

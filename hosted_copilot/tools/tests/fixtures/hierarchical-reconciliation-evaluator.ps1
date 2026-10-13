@@ -21,6 +21,22 @@ $outputDirectory = Split-Path -Parent $OutputPath
 $callDirectory = Join-Path $outputDirectory 'calls'
 $null = New-Item -ItemType Directory -Path $callDirectory -Force
 $null = New-Item -ItemType File -Path (Join-Path $callDirectory ([guid]::NewGuid().ToString('N') + '.marker'))
+function Assert-RetryCorrection {
+    param([Parameter(Mandatory = $true)][string]$ExpectedDiagnostic)
+
+    $retryContextPath = Join-Path $outputDirectory 'stage-retry-context.json'
+    if (-not (Test-Path -LiteralPath $retryContextPath -PathType Leaf)) {
+        throw 'Synthetic retry did not receive stage-retry-context.json.'
+    }
+    $retryContext = Get-Content -LiteralPath $retryContextPath -Raw | ConvertFrom-Json -DateKind String
+    $retryPrompt = Get-Content -LiteralPath $PromptPath -Raw
+    if ([string]$retryContext.kind -cne 'hosted-hierarchical-reconciliation-retry-context' -or
+        [string]$retryContext.diagnostic -notlike "*$ExpectedDiagnostic*" -or
+        $retryPrompt -notmatch '(?m)^## Trusted Retry Correction$' -or
+        $retryPrompt -notlike "*$ExpectedDiagnostic*") {
+        throw "Synthetic retry correction did not contain the expected diagnostic: $ExpectedDiagnostic"
+    }
+}
 if ($env:RECONCILIATION_FAIL_ALL -eq '1') {
     throw 'Synthetic evaluator invocation during cache reuse.'
 }
@@ -33,6 +49,7 @@ if ([string]$env:RECONCILIATION_FAIL_ONCE_SHARD -ceq [string]$input.shardKey) {
         $null = New-Item -ItemType File -Path $retryMarker
         throw "Synthetic first-attempt failure for $($input.shardKey)."
     }
+    Assert-RetryCorrection -ExpectedDiagnostic 'Synthetic first-attempt failure'
 }
 
 if ($Stage -ceq 'routing') {
@@ -63,6 +80,8 @@ else {
             placement = if ($null -ne $mappedRule) { 'Evidence And Resource Type' } else { 'Schema And State' }
             rationale = [string]$assessment.selectionRationale
             needsReview = $false
+            selectionFactors = $assessment.selectionFactors
+            selectionRationale = [string]$assessment.selectionRationale
             memberAssessmentRefs = @($reference)
             memberMeaningCoverage = @([ordered]@{ assessmentRef = $reference; rationale = 'The recommendation preserves this assessment meaning.' })
             relatedHostedCoverage = @()
@@ -80,6 +99,80 @@ else {
         })
     }
     $result = [ordered]@{ '$schema' = 'assessment-reconciliation-draft.schema.json'; schemaVersion = 1; recommendations = $recommendations.ToArray(); assessmentCoverage = $coverage.ToArray() }
+    if ($env:RECONCILIATION_EMIT_UNSUPPORTED_COVERAGE_ONCE -eq '1') {
+        $retryMarker = Join-Path $outputDirectory 'unsupported-coverage-emitted.marker'
+        if (-not (Test-Path -LiteralPath $retryMarker -PathType Leaf)) {
+            $null = New-Item -ItemType File -Path $retryMarker
+            $recommendation = @($result.recommendations)[0]
+            $recommendation.relatedHostedCoverage = @([ordered]@{
+                    hostedRuleId = 'IMPL-HIER-000'
+                    relationship = 'related'
+                    rationale = 'Synthetic unsupported relationship for semantic validation.'
+                    assessmentRefs = @($recommendation.memberAssessmentRefs)
+                })
+        }
+            else {
+                Assert-RetryCorrection -ExpectedDiagnostic 'not backed by assessment evidence'
+            }
+    }
+    if ($env:RECONCILIATION_OMIT_ASSESSMENT_ONCE -eq '1') {
+        $retryMarker = Join-Path $outputDirectory 'omitted-assessment-emitted.marker'
+        if (-not (Test-Path -LiteralPath $retryMarker -PathType Leaf)) {
+            $null = New-Item -ItemType File -Path $retryMarker
+            $omittedDraftKey = [string]@($result.recommendations)[0].draftKey
+            $result.recommendations = @($result.recommendations | Where-Object { [string]$_.draftKey -cne $omittedDraftKey })
+            $result.assessmentCoverage = @($result.assessmentCoverage | Where-Object { @($_.recommendationDraftKeys) -cnotcontains $omittedDraftKey })
+        }
+        else {
+            Assert-RetryCorrection -ExpectedDiagnostic 'omits recommendation membership'
+        }
+    }
+    if ($env:RECONCILIATION_EMIT_DUPLICATE_COVERAGE_ONCE -eq '1') {
+        $retryMarker = Join-Path $outputDirectory 'duplicate-coverage-emitted.marker'
+        if (-not (Test-Path -LiteralPath $retryMarker -PathType Leaf)) {
+            $null = New-Item -ItemType File -Path $retryMarker
+            $recommendation = @($result.recommendations)[0]
+            $firstCoverage = [ordered]@{
+                hostedRuleId = 'IMPL-HIER-001'
+                relationship = 'related'
+                rationale = 'Synthetic duplicate relationship for semantic validation.'
+                assessmentRefs = @($recommendation.memberAssessmentRefs)
+            }
+            $secondCoverage = [ordered]@{
+                hostedRuleId = 'IMPL-HIER-001'
+                relationship = 'partial-overlap'
+                rationale = 'Synthetic conflicting duplicate relationship for semantic validation.'
+                assessmentRefs = @($recommendation.memberAssessmentRefs)
+            }
+            $recommendation.relatedHostedCoverage = @($firstCoverage, $secondCoverage)
+        }
+        else {
+            Assert-RetryCorrection -ExpectedDiagnostic 'duplicate related Hosted coverage'
+        }
+    }
+    if ($env:RECONCILIATION_EMIT_MULTIPLE_CANONICAL_OWNERS_ONCE -eq '1') {
+        $retryMarker = Join-Path $outputDirectory 'multiple-canonical-owners-emitted.marker'
+        if (-not (Test-Path -LiteralPath $retryMarker -PathType Leaf)) {
+            $null = New-Item -ItemType File -Path $retryMarker
+            $mappedRecommendations = @($result.recommendations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.targetHostedId) })
+            if ($mappedRecommendations.Count -lt 2) {
+                throw 'Synthetic multiple-owner fixture requires two mapped recommendations in one synthesis batch.'
+            }
+            $primary = $mappedRecommendations[0]
+            $secondary = $mappedRecommendations[1]
+            $primary.memberAssessmentRefs = @($primary.memberAssessmentRefs) + @($secondary.memberAssessmentRefs)
+            $primary.memberMeaningCoverage = @($primary.memberMeaningCoverage) + @($secondary.memberMeaningCoverage)
+            $primary.retireHostedRuleIds = @([string]$secondary.targetHostedId)
+            $secondaryDraftKey = [string]$secondary.draftKey
+            $result.recommendations = @($result.recommendations | Where-Object { [string]$_.draftKey -cne $secondaryDraftKey })
+            foreach ($assessmentCoverage in @($result.assessmentCoverage | Where-Object { @($_.recommendationDraftKeys) -ccontains $secondaryDraftKey })) {
+                $assessmentCoverage.recommendationDraftKeys = @([string]$primary.draftKey)
+            }
+        }
+        else {
+            Assert-RetryCorrection -ExpectedDiagnostic 'assessments owned by different canonical Hosted rules'
+        }
+    }
 }
 
 $json = $result | ConvertTo-Json -Depth 100 -Compress

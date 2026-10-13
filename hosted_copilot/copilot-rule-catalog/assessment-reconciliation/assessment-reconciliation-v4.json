@@ -29,6 +29,9 @@
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
     "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1"
   ],
+  "presentationFiles": [
+    "hosted_copilot/tools/modules/reconciliation/ReconciliationStagePresentation.psm1"
+  ],
   "idAllocation": {
     "numericWidth": 3,
     "families": [

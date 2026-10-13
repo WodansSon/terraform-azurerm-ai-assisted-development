@@ -45,6 +45,8 @@ param(
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
+    [switch]$Force,
+
     [switch]$ShowProgress,
 
     [ValidateSet('Text', 'Json')]
@@ -60,7 +62,9 @@ $helpersModulePath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit
 Import-Module -Name $helpersModulePath -Force
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
-$sourceAssessmentBootstrapBytesPerSecondPerWorker = 500
+$presentationModulePath = Join-Path $PSScriptRoot '../../modules/assessment/SourceAssessmentPresentation.psm1'
+Import-Module -Name $presentationModulePath -Force
+$sourceAssessmentBootstrapBytesPerSecondPerWorker = Get-SourceAssessmentBootstrapBytesPerSecondPerWorker
 $sourceAssessmentStopwatch = [Diagnostics.Stopwatch]::StartNew()
 
 function Write-JsonAtomically {
@@ -115,7 +119,7 @@ function Read-AssessmentCacheLedger {
     }
     catch {
         if ($ShowProgress) {
-            Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'source-assessment/cache' -Detail $_.Exception.Message -NameWidth 42)
+            Write-SourceAssessmentCacheSkipped -Detail $_.Exception.Message
         }
         Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
         return @{}
@@ -186,12 +190,18 @@ function Read-AssessmentSourceCache {
         if ([string]$CacheEntry.contentSha256 -cne [string]$ExpectedRecord.sourceRef.contentSha256) {
             throw 'Source cache entry content hash does not match'
         }
-        Test-AssessmentResponseEntry -Entry $CacheEntry.result -ExpectedRecord $ExpectedRecord -Context $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $DraftSchemaPath
-        return $CacheEntry.result
+        $normalizedResult = ($CacheEntry.result | ConvertTo-Json -Depth 40 -Compress) | ConvertFrom-Json -DateKind String
+        if ($null -eq $ExpectedRecord.priorSourceEvidence) {
+            foreach ($assessment in @($normalizedResult.assessments)) {
+                $assessment.semanticReassessment = $null
+            }
+        }
+        Test-AssessmentResponseEntry -Entry $normalizedResult -ExpectedRecord $ExpectedRecord -Context $Context -AssessmentCardinality $AssessmentCardinality -KnownHostedRuleIds $KnownHostedRuleIds -DraftSchemaPath $DraftSchemaPath
+        return $normalizedResult
     }
     catch {
         if ($ShowProgress) {
-            Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name 'source-assessment/cache' -Detail ("{0}; {1}" -f $Context, $_.Exception.Message) -NameWidth 42)
+            Write-SourceAssessmentCacheSkipped -Detail ("{0}; {1}" -f $Context, $_.Exception.Message)
         }
         return $null
     }
@@ -444,6 +454,9 @@ if ($resolvedCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::Or
     throw 'CacheDirectory must be outside the repository root'
 }
 $resolvedResumeRunDirectory = if ([string]::IsNullOrWhiteSpace($ResumeRunDirectory)) { $null } else { [IO.Path]::GetFullPath($ResumeRunDirectory) }
+if ($Force -and $null -ne $resolvedResumeRunDirectory) {
+    throw 'Force cannot be combined with ResumeRunDirectory.'
+}
 if ($null -ne $resolvedResumeRunDirectory) {
     if ($resolvedResumeRunDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'ResumeRunDirectory must be outside the repository root'
@@ -462,7 +475,6 @@ $definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilo
 $draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
 $promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
-$managedRunRootPrefix = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'hosted-source-assessment')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
 foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedProtectedRulesPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -486,6 +498,9 @@ foreach ($relativePath in @(
     'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json',
     'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
 ) + @($assessmentContract.behaviorFiles)) {
+    $null = $repositoryInputs.Add([string]$relativePath)
+}
+foreach ($relativePath in @($assessmentContract.presentationFiles)) {
     $null = $repositoryInputs.Add([string]$relativePath)
 }
 $expectedSourceDefinitionIds = @(Get-ExpectedSourceDefinitionIds -RepositoryRoot $resolvedRepositoryRoot)
@@ -672,11 +687,16 @@ $cachedSourceCount = 0
 $recoveredSourceCount = 0
 $evaluatedSourceCount = 0
 $sourceCachePath = Join-Path $resolvedCacheDirectory 'assessment-cache.json'
-$sourceCacheEntries = Invoke-WithExclusiveFileLock -Path ($sourceCachePath + '.lock') -Operation {
-    param($LedgerPath, $ReportSkipped)
+$sourceCacheEntries = if ($Force) {
+    @{}
+}
+else {
+    Invoke-WithExclusiveFileLock -Path ($sourceCachePath + '.lock') -Operation {
+        param($LedgerPath, $ReportSkipped)
 
-    Read-AssessmentCacheLedger -Path $LedgerPath -ShowProgress:$ReportSkipped
-} -ArgumentList @($sourceCachePath, ($OutputFormat -eq 'Text' -or $ShowProgress))
+        Read-AssessmentCacheLedger -Path $LedgerPath -ShowProgress:$ReportSkipped
+    } -ArgumentList @($sourceCachePath, ($OutputFormat -eq 'Text' -or $ShowProgress))
+}
 $retainedEntries = if ($null -eq $resolvedResumeRunDirectory) {
     @{}
 }
@@ -775,14 +795,9 @@ if ($OutputFormat -eq 'Text' -or $ShowProgress) {
     }
     $totalSourceCount = [int]$orderedLanes.records.Count
     $pendingSourceCount = $totalSourceCount - $cachedSourceCount - $recoveredSourceCount
-    $initialEstimate = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes 0 -CompletedElapsedMilliseconds 0 -RemainingPayloadBytes $pendingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
-    Write-Host ''
-    Write-Host ("  Sources   : {0} total | {1} cached | {2} recovered | {3} pending" -f $totalSourceCount, $cachedSourceCount, $recoveredSourceCount, $pendingSourceCount)
-    Write-Host ("  Batches   : {0} pending" -f $batches.Count)
-    Write-Host ("  Workers   : {0}" -f $MaxParallelBatches)
-    Write-Host ("  Payload   : {0}" -f (Format-ByteSize -Bytes $pendingPayloadBytes))
-    Write-Host ("  Estimated : {0}" -f (Format-ElapsedDuration -Milliseconds $initialEstimate))
-    Write-Host ''
+    $effectiveWorkerCount = [Math]::Min($MaxParallelBatches, $batches.Count)
+    $initialEstimate = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes 0 -CompletedElapsedMilliseconds 0 -RemainingPayloadBytes $pendingPayloadBytes -MaxParallelBatches $effectiveWorkerCount -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
+    Write-SourceAssessmentPlan -TotalSourceCount $totalSourceCount -CachedSourceCount $cachedSourceCount -RecoveredSourceCount $recoveredSourceCount -PendingSourceCount $pendingSourceCount -BatchCount $batches.Count -WorkerCount $effectiveWorkerCount -PendingPayloadBytes $pendingPayloadBytes -EstimatedMilliseconds $initialEstimate
 }
 
 $evaluatorCommandPath = $null
@@ -915,7 +930,7 @@ try {
             $batch = $batchById[[string]$workerResult.BatchId]
             if ([string]$workerResult.Kind -ceq 'started') {
                 if (($OutputFormat -eq 'Text' -or $ShowProgress) -and [int]$workerResult.Attempt -eq 1) {
-                    Write-Host (Format-ValidationStatusLine -Status 'running' -Name "source-assessment $($workerResult.BatchNumber)/$($workerResult.BatchCount)" -Detail ("{0} ({1} sources)" -f $workerResult.BatchId, $workerResult.SourceCount) -NameWidth 42)
+                    Write-SourceAssessmentBatchStarted -WorkerResult $workerResult
                 }
                 return
             }
@@ -969,7 +984,7 @@ try {
                 foreach ($entry in @($response.entries)) {
                     $cacheUpdates.Add([ordered]@{ sourceDefinitionId = [string]$entry.sourceRef.sourceDefinitionId; sourceId = [string]$entry.sourceRef.sourceId; contentSha256 = [string]$entry.sourceRef.contentSha256; result = $entry })
                 }
-                $sourceCacheEntries = Write-AssessmentCacheLedger -Path $sourceCachePath -UpdatedEntries $cacheUpdates.ToArray()
+                $null = Write-AssessmentCacheLedger -Path $sourceCachePath -UpdatedEntries $cacheUpdates.ToArray()
                 $validatedResponses[$batch.BatchId] = $response
                 $failureByBatch.Remove($batch.BatchId)
                 $evaluatedBatchCount++
@@ -982,7 +997,7 @@ try {
                 }
                 $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
                 if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-                    Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-assessment $($batch.BatchNumber)/$($batch.BatchCount)" -Detail ("Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)) -NameWidth 42)
+                    Write-SourceAssessmentBatchPassed -Batch $batch -TotalElapsedMilliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds) -BatchElapsedMilliseconds ([long]$workerResult.ElapsedMilliseconds) -RemainingMilliseconds $estimatedRemainingMilliseconds
                 }
             }
             catch {
@@ -990,9 +1005,6 @@ try {
                 $failureByBatch[$batch.BatchId] = [string]$_.Exception.Message
                 $retryBatches.Add($batch)
                 if ($OutputFormat -eq 'Text' -or $ShowProgress) {
-                    foreach ($diagnosticLine in @(Format-IndentedDiagnostic -Label ("[ERROR] Batch {0}/{1}:" -f $batch.BatchNumber, $batch.BatchCount) -Message ([string]$_.Exception.Message))) {
-                        Write-Host $diagnosticLine
-                    }
                     $completedPayloadBytes += [long]$batch.PayloadSizeBytes
                     $completedElapsedMilliseconds += [long]$workerResult.ElapsedMilliseconds
                     [long]$remainingPayloadBytes = 0
@@ -1000,14 +1012,7 @@ try {
                         $remainingPayloadBytes += [long]$remainingBatch.PayloadSizeBytes
                     }
                     $estimatedRemainingMilliseconds = Get-EstimatedRemainingMilliseconds -CompletedPayloadBytes $completedPayloadBytes -CompletedElapsedMilliseconds $completedElapsedMilliseconds -RemainingPayloadBytes $remainingPayloadBytes -MaxParallelBatches $MaxParallelBatches -BootstrapBytesPerSecondPerWorker $sourceAssessmentBootstrapBytesPerSecondPerWorker
-                    $failureStatus = if ($attempt -le $MaxRetries) { 'retrying' } else { 'failed' }
-                    $failureDetail = if ($attempt -le $MaxRetries) {
-                        "Total Elapsed {0} : [Batch: {1}] : [Remaining: {2}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds $estimatedRemainingMilliseconds)
-                    }
-                    else {
-                        "Total Elapsed {0} : [Batch: {1}]" -f (Format-ElapsedDuration -Milliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)), (Format-ElapsedDuration -Milliseconds ([long]$workerResult.ElapsedMilliseconds))
-                    }
-                    Write-Host (Format-ValidationStatusLine -Status $failureStatus -Name "source-assessment $($batch.BatchNumber)/$($batch.BatchCount)" -Detail $failureDetail -NameWidth 42)
+                    Write-SourceAssessmentBatchFailure -Batch $batch -ErrorMessage ([string]$_.Exception.Message) -CanRetry ($attempt -le $MaxRetries) -TotalElapsedMilliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds) -BatchElapsedMilliseconds ([long]$workerResult.ElapsedMilliseconds) -RemainingMilliseconds $estimatedRemainingMilliseconds
                 }
             }
         }
@@ -1079,9 +1084,13 @@ $result = [ordered]@{
     evaluatedSourceCount = $evaluatedSourceCount
     evaluatedBatchCount = $evaluatedBatchCount
     cacheDirectory = $resolvedCacheDirectory
+    cacheMode = if ($Force) { 'force-refresh' } else { 'reuse' }
     baselineSha256 = [string]$builderResult.baselineSha256
     assessmentContractSha256 = [string]$builderResult.assessmentContractSha256
     assessmentRunConfigurationSha256 = [string]$builderResult.assessmentRunConfigurationSha256
+}
+if (($OutputFormat -eq 'Text' -or $ShowProgress) -and $batches.Count -gt 0) {
+    Write-SourceAssessmentCompleted -Result $result -ElapsedMilliseconds ([long]$sourceAssessmentStopwatch.ElapsedMilliseconds)
 }
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 5

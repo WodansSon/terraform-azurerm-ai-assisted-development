@@ -124,6 +124,7 @@ $staticTestNames = @(
     'no-op-update-suppression',
     'mobile-unsupported-contract',
     'incremental-assessment-launch',
+    'internal-stage-status-boundary',
     'loopback-read-only-server',
     'repository-staging-rejected'
 )
@@ -286,8 +287,6 @@ function New-WorkbenchDisplayFixture {
                         placement = $placement
                         rationale = [string]$assessment.selectionRationale
                         needsReview = [bool]$sourceCandidate.requiresReview
-                        assessmentKeys = @("$($sourceGroup.Lane):$($sourceCandidate.id):$($assessment.assessmentId)")
-                        memberMeaningCoverage = @([ordered]@{ assessmentKey = "$($sourceGroup.Lane):$($sourceCandidate.id):$($assessment.assessmentId)"; rationale = 'The recommendation preserves this fixture assessment meaning.' })
                         relatedHostedCoverage = @()
                         retireHostedRuleIds = @()
                         guardedTokenDelta = [int]$assessment.guardedTokenDelta
@@ -297,33 +296,36 @@ function New-WorkbenchDisplayFixture {
                     }
                     if ($category -ceq 'implementation' -and [string]$assessment.recommendation -in @('add', 'exclude')) { $recommendation['implementationModels'] = @('legacy', 'typed', 'framework') }
                 }
+                $displayAssessment = [ordered]@{
+                    id = [string]$assessment.assessmentId
+                    title = [string]$assessment.title
+                    sourceMeaning = [string]$assessment.summary
+                    impactDescription = [string]$assessment.impactDescription
+                    hostedApplicable = [bool]$assessment.hostedApplicable
+                    applicabilityRationale = [string]$assessment.applicabilityRationale
+                    selectionFactors = $assessment.selectionFactors
+                    selectionRationale = [string]$assessment.selectionRationale
+                    confidence = [ordered]@{ level = 'high'; rationale = 'The offline fixture is deterministic.'; uncertainties = @() }
+                    affectedSurfaces = @($assessment.affectedSurfaces)
+                    existingCoverage = [ordered]@{ score = if ($null -ne $assessment.targetHostedRuleId) { 5 } else { 0 }; rationale = [string]$assessment.currentHostedCoverage }
+                    relatedHostedCoverage = @()
+                    evaluatedAt = [string]$assessment.assessedAt
+                    evaluator = [string]$assessment.evaluator
+                }
+                $catalogMapping = if ($null -ne $assessment.targetHostedRuleId) {
+                    $mappedRule = @($Fixture.hostedRules | Where-Object { [string]$_.id -ceq [string]$assessment.targetHostedRuleId })[0]
+                    [ordered]@{ state = [string]$mappedRule.status; hostedRuleId = [string]$assessment.targetHostedRuleId }
+                }
+                else {
+                    [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
+                }
                 $candidates.Add([ordered]@{
                     source = $source
-                    assessment = [ordered]@{
-                        id = [string]$assessment.assessmentId
-                        title = [string]$assessment.title
-                        sourceMeaning = [string]$assessment.summary
-                        impactDescription = [string]$assessment.impactDescription
-                        hostedApplicable = [bool]$assessment.hostedApplicable
-                        applicabilityRationale = [string]$assessment.applicabilityRationale
-                        selectionFactors = $assessment.selectionFactors
-                        selectionRationale = [string]$assessment.selectionRationale
-                        confidence = [ordered]@{ level = 'high'; rationale = 'The offline fixture is deterministic.'; uncertainties = @() }
-                        affectedSurfaces = @($assessment.affectedSurfaces)
-                        existingCoverage = [ordered]@{ score = if ($null -ne $assessment.targetHostedRuleId) { 5 } else { 0 }; rationale = [string]$assessment.currentHostedCoverage }
-                        relatedHostedCoverage = @()
-                        evaluatedAt = [string]$assessment.assessedAt
-                        evaluator = [string]$assessment.evaluator
-                    }
+                    assessment = $displayAssessment
                     reviewState = $reviewState
                     recommendation = $recommendation
-                    catalogMapping = if ($null -ne $assessment.targetHostedRuleId) {
-                        $mappedRule = @($Fixture.hostedRules | Where-Object { [string]$_.id -ceq [string]$assessment.targetHostedRuleId })[0]
-                        [ordered]@{ state = [string]$mappedRule.status; hostedRuleId = [string]$assessment.targetHostedRuleId }
-                    }
-                    else {
-                        [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
-                    }
+                    catalogMapping = $catalogMapping
+                    members = @([ordered]@{ source = $source; assessment = $displayAssessment; meaningCoverageRationale = 'The recommendation preserves this fixture assessment meaning.'; catalogMapping = $catalogMapping })
                 })
             }
         }
@@ -1449,6 +1451,9 @@ try {
     $reuseStopwatch.Stop()
     $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
 
+    $invalidForceOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -Force -OutputFormat Json 2>&1)
+    $invalidForceExitCode = $LASTEXITCODE
+
     $mismatchedSiteDirectory = Join-Path $tempRoot 'display-mismatch-site'
     $null = New-Item -ItemType Directory -Path $mismatchedSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $mismatchedSiteDirectory 'workbench-display.json')
@@ -1472,12 +1477,43 @@ try {
         $launcherContent -match "AssessmentCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/assessment-cache'\)" -and
         $launcherContent -match 'CacheDirectory = \$resolvedAssessmentCacheDirectory' -and
         $launcherContent -match 'ResumeRunDirectory = \$resolvedAssessmentResumeDirectory' -and
+        $launcherContent -match '\[switch\]\$Force' -and
+        $launcherContent -match '\$assessmentParameters\.Force = \$true' -and
+        $launcherContent -match '\$reconciliationParameters\.Force = \$true' -and
+        $launcherContent -match 'Force requires Rebuild\.' -and
+        $launcherContent -notmatch 'ReconciliationResumeDirectory' -and
         $launcherContent -notmatch 'Find-Automatic.*Recovery|RecoveryRunDirectories' -and
         $launcherContent -match '\[ValidateRange\(1, 8\)\]\s*\[int\]\$MaxParallelBatches = 3' -and
         $launcherContent -match 'MaxParallelBatches = \$MaxParallelBatches' -and
-        $launcherContent -match "Write-ValidationSectionHeader -Title 'Assessment Status'" -and
-        $launcherContent -match "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Source Assessment'" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Hosted Guidance Token Capacity'" -and
+        $launcherContent -match "'Checking token usage and safety headroom'" -and
+        $launcherContent -match "guidance files and \{1\} combined scopes fit within safety-adjusted token limits" -and
+        $launcherContent -notmatch "Write-ValidationSectionHeader -Title 'Assessment Status'" -and
+        $launcherContent -notmatch "Write-ValidationSectionHeader -Title 'Reconciliation Status'" -and
+        $launcherContent -notmatch "-Status '(?:running|passed)' -Name 'source-assessment'" -and
+        $launcherContent -match "-Status 'passed' -Name 'guidance-capacity'" -and
+        $launcherContent -match '-Status ''passed'' -Name "source-collection/\$sourceDefinitionId"' -and
         $launcherContent -match 'ShowProgress = \$OutputFormat -eq ''Text''' -and
+        $launcherContent -match "\$script:workbenchPhase = 'RULE ISSUE ADJUDICATION'" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Rule Issue Adjudication'" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Rule Issue Adjudication Summary'" -and
+        $launcherContent -notmatch "-Name 'assessment-reconciliation/rule-issues'" -and
+        $launcherContent -match "'Batches'.*componentCount.*cachedComponentCount.*evaluatedComponentCount" -and
+        $launcherContent -match "'Elapsed'.*Format-ElapsedDuration.*ruleIssuesStopwatch" -and
+        $launcherContent -match "Write-ValidationSectionHeader -Title 'Workbench UI Artifact Publication'" -and
+        $launcherContent -match "'Artifacts', 2" -and
+        $launcherContent -match "-Status 'running' -Name 'workbench/display'" -and
+        $launcherContent -match "-Status 'passed' -Name 'workbench/display'.*Format-ElapsedDuration.*publicationStopwatch" -and
+        [regex]::Matches($launcherContent, "Write-ValidationSectionHeader -Title 'Workbench Summary'").Count -eq 3 -and
+        $launcherContent -notmatch "Write-ValidationSectionHeader -Title 'Summary'" -and
+        $launcherContent -match "Write-Output ''\s+Write-Output 'Press Ctrl\+C to stop the Workbench\.'" -and
+        $launcherContent -match '\$workbenchSummaryFields = \[ordered\]@' -and
+        [regex]::Matches($launcherContent, 'Write-ValidationSummary -Fields \$workbenchSummaryFields').Count -eq 2 -and
+        $launcherContent -match 'Mode = if \(\$StageOnly\) \{ ''STAGE ONLY'' \} else \{ ''SERVER'' \}' -and
+        $launcherContent -match 'Server = if \(\$StageOnly\) \{ ''Not started'' \} else \{ "Running at \$url" \}' -and
+        $launcherContent -notmatch "'Discovered Candidates' =|'AI-Evaluated Candidates' =|'Assessment Cache' =|'Reconciliation Cache' =|'Assessment Recovery' =" -and
+        $launcherContent -notmatch "\$script:workbenchPhase = 'RULE ISSUES EXPORT'" -and
         $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
         $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
         $launcherContent -notmatch 'OutputPath = \$stagedDisplayPath' -and
@@ -1495,15 +1531,27 @@ try {
         [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
         [int]$reuseResult.discoveredCandidateCount -eq @($display.candidates).Count -and
         $reuseStopwatch.Elapsed.TotalSeconds -lt 30 -and
+        $invalidForceExitCode -ne 0 -and
+        ($invalidForceOutput | Out-String) -match 'Force requires Rebuild' -and
         $mismatchExitCode -ne 0 -and
         ($mismatchOutput | Out-String) -match 'display and Rule Issues source files do not match' -and
         $incompleteExitCode -ne 0 -and
         ($incompleteOutput | Out-String) -match 'Run Start-RuleWorkbench\.ps1 -Rebuild to create one'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch locally validates and reuses the complete staged display pair without network or semantic work; explicit -Rebuild owns source refresh and atomic publication.'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses the staged display, Rebuild reuses exact semantic caches, and Rebuild with Force bypasses cache reads while preserving atomic publication.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store" \}\)' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
         Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, serves server-owned runtime authority, and exposes only token-authenticated shutdown and scoped relationship operations.'
+    }
+
+    if (Test-ShouldRun -Name 'internal-stage-status-boundary') {
+        $internalStageStatusValid = @('collectionSucceeded', 'assessmentSucceeded', 'capacitySucceeded', 'reconciliationSucceeded', 'ruleIssuesSucceeded' | Where-Object { $launcherContent -notmatch "\`$$($_) = \`$\?" }).Count -eq 0 -and
+            $launcherContent -notmatch "-Status '(?:running|passed)' -Name 'source-assessment'" -and
+            $launcherContent -match "-Status 'running' -Name 'guidance-capacity'" -and
+            $launcherContent -match "-Status 'passed' -Name 'guidance-capacity'" -and
+            $launcherContent -notmatch "-Name 'assessment-reconciliation/rule-issues'" -and
+            $launcherContent -notmatch "-Name 'assessment-reconciliation' -Detail 'Consolidating assessments into the Workbench display'"
+        Add-TestResult -Name 'internal-stage-status-boundary' -Passed $internalStageStatusValid -Detail 'In-process PowerShell stages use immediate invocation status, generic executors own batch lifecycle rows, and launcher-owned aggregate phases avoid redundant parent wrappers.'
     }
 
     $behaviorManifestValid = $true
@@ -1701,7 +1749,7 @@ try {
     if (Test-ShouldRun -Name 'repository-staging-rejected') {
         $repositorySiteDirectory = Join-Path $repositoryRoot 'hosted_copilot/workbench/staged-test'
         Start-TestResult -Name 'repository-staging-rejected'
-        $rejectedOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $null = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $repositorySiteDirectory -StageOnly -NoLaunch -OutputFormat Json 2>&1)
         $repositoryStagingRejected = $LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $repositorySiteDirectory)
         Add-TestResult -Name 'repository-staging-rejected' -Passed $repositoryStagingRejected -Detail 'The launcher rejects generated staging output inside the source repository.'
     }

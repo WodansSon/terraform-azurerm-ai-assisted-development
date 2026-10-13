@@ -1,21 +1,94 @@
-[CmdletBinding()]
+<#
+.SYNOPSIS
+Starts, resumes, adjudicates, or cleans up a controlled Hosted review.
+
+.DESCRIPTION
+Coordinates a paired Hosted and control review for one controlled regression case. The command resumes existing work by default, exits when GitHub review action is required, guides local adjudication, validates the paired result, and performs cleanup only with explicit approval.
+
+.PARAMETER RepoDirectory
+Specifies the required clean Git repository root used for controlled review branches and pull requests.
+
+.PARAMETER CaseId
+Specifies the controlled regression case to start or resume. When omitted, the command resumes the sole unfinished run or reports the available next step.
+
+.PARAMETER ReviewEffort
+Specifies the Copilot review effort used when publishing a new review pair.
+
+.PARAMETER NewRun
+Starts a new run for the selected CaseId instead of resuming an existing run.
+
+.PARAMETER Cleanup
+Approves removal of the disposable pull requests and branches for a completed review run.
+
+.PARAMETER Help
+Displays curated Hosted command help and exits without review workflow activity.
+
+.PARAMETER Detailed
+Displays curated Hosted command help and exits without review workflow activity.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory C:\github\terraform-provider-azurerm
+Resumes the sole unfinished controlled review or reports which CaseId is required.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory C:\github\terraform-provider-azurerm -CaseId documentation-basic
+Starts or resumes the selected controlled review case.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory C:\github\terraform-provider-azurerm -CaseId documentation-basic -NewRun -ReviewEffort Balanced
+Starts a fresh Balanced-effort run for the selected case.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Invoke-HostedReview.ps1 -RepoDirectory C:\github\terraform-provider-azurerm -CaseId documentation-basic -Cleanup
+Cleans up the disposable pull requests and branches after the paired result is complete.
+
+.NOTES
+The target repository must be clean. The workflow intentionally exits while Copilot reviews are pending and requires explicit cleanup approval after result capture.
+
+.LINK
+https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/hosted_copilot/docs/HOSTED_REVIEW.md
+#>
+[CmdletBinding(DefaultParameterSetName = 'Review')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory, ParameterSetName = 'Review')]
     [string]$RepoDirectory,
 
+    [Parameter(ParameterSetName = 'Review')]
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
     [string]$CaseId,
 
+    [Parameter(ParameterSetName = 'Review')]
     [ValidateSet('Lite', 'Balanced')]
     [string]$ReviewEffort = 'Lite',
 
+    [Parameter(ParameterSetName = 'Review')]
     [switch]$NewRun,
 
-    [switch]$Cleanup
+    [Parameter(ParameterSetName = 'Review')]
+    [switch]$Cleanup,
+
+    [Parameter(Mandatory, ParameterSetName = 'Help')]
+    [Alias('h')]
+    [switch]$Help,
+
+    [Parameter(Mandatory, ParameterSetName = 'Detailed')]
+    [switch]$Detailed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$commandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
+Import-Module -Name $commandHelpModulePath -Force
+if ($Help -or $Detailed) {
+    $helpParameterGroups = [ordered]@{
+        'Review Lifecycle' = @('CaseId', 'NewRun', 'Cleanup')
+        'Review Quality' = @('ReviewEffort')
+        'Target Repository' = @('RepoDirectory')
+    }
+    Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Review Workflow Help' -ParameterGroups $helpParameterGroups
+    return
+}
 
 $hostedRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $regressionDirectory = Join-Path $hostedRoot 'regression'

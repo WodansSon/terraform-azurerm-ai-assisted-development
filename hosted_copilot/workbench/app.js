@@ -636,6 +636,10 @@ function validateDisplay(display) {
   if (!Array.isArray(display.candidates) || !display.catalog || !Array.isArray(display.catalog.rules) || !Array.isArray(display.catalog.protectedRules) || !Array.isArray(display.catalog.protectedRuleFiles)) {
     throw new Error("The Workbench display does not contain candidates and a catalog projection.");
   }
+  if (display.candidates.some((candidate) => !Array.isArray(candidate.members) || candidate.members.length === 0
+    || candidate.members.some((member) => !member.source || !member.assessment || !member.meaningCoverageRationale || !member.catalogMapping))) {
+    throw new Error("The Workbench display contains an invalid contributing-rule projection.");
+  }
   if (display.catalog.protectedRuleFiles.some((file) => typeof file.path !== "string" || typeof file.content !== "string" || !file.content || !Array.isArray(file.ruleIds) || file.ruleIds.length === 0)) {
     throw new Error("The Workbench display contains an invalid protected rule file projection.");
   }
@@ -694,6 +698,16 @@ function normalizeDisplayCandidates(display) {
       hostedCategory,
       guardedTokenDelta: normalizedRecommendation?.guardedTokenDelta || 0
     };
+    const members = candidate.members.map((member) => {
+      const memberSourceType = member.source.lane === "contributor" ? "upstream" : member.source.lane;
+      return {
+        source: member.source,
+        assessment: member.assessment,
+        meaningCoverageRationale: member.meaningCoverageRationale,
+        catalogMapping: member.catalogMapping,
+        sourceLabel: memberSourceType === "upstream" ? "Contributor guidance" : memberSourceType === "interactive" ? "Interactive rule" : "Maintainer proposal"
+      };
+    });
     return {
       key: `${source.lane}:${source.id}:${candidate.assessment.id}`,
       id: proposedHostedRuleId || targetHostedRuleId || candidate.assessment.id,
@@ -704,7 +718,7 @@ function normalizeDisplayCandidates(display) {
       category: sourceType === "upstream" ? (source.transition === "changed" ? "Changed guidance (drift)" : "Current guidance") : sourceType === "maintainer" ? capitalize(source.surface) : formatContractCategory(source.location),
       title: candidate.assessment.title,
       state: source.transition,
-      requiresReview: Boolean(normalizedRecommendation?.needsReview) || candidate.assessment.confidence.level !== "high",
+      requiresReview: Boolean(normalizedRecommendation?.needsReview) || members.some((member) => member.assessment.confidence.level !== "high"),
       provenance: source.provenance,
       sourcePath: source.location,
       sourceRationale: source.rationale,
@@ -716,6 +730,7 @@ function normalizeDisplayCandidates(display) {
       priorDecision: null,
       recommendation: normalizedRecommendation,
       assessment,
+      members,
       catalogMapping: candidate.catalogMapping,
       mappedHostedRules: mappedHostedRuleId ? display.catalog.rules.filter((rule) => rule.id === mappedHostedRuleId) : []
     };
@@ -1759,7 +1774,8 @@ function getFilteredCandidates() {
   return state.candidates.filter((candidate) => {
     if (catalogStatusFilter && getCatalogStatus(candidate).key !== catalogStatusFilter) return false;
     if (!query || catalogStatusFilter) return true;
-    return [getEffectiveHostedRuleId(candidate), candidate.id, candidate.title, candidate.sourceId, candidate.sourceTitle, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel]
+    return [getEffectiveHostedRuleId(candidate), candidate.id, candidate.title, candidate.sourceId, candidate.sourceTitle, candidate.sourcePath, candidate.text, candidate.category, candidate.sourceLabel,
+      ...candidate.members.flatMap((member) => [member.source.id, member.source.title, member.source.location, member.source.text, member.assessment.sourceMeaning, member.meaningCoverageRationale])]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 }
@@ -2756,6 +2772,30 @@ function renderProtectedRuleDetails(rule) {
   scheduleTruncationTooltips();
 }
 
+function renderContributingRules(candidate) {
+  return `
+    <div class="contributing-rules">
+      ${candidate.members.map((member) => {
+        const mappedRuleId = member.catalogMapping.hostedRuleId;
+        return `
+          <details class="contributing-rule" ${candidate.members.length === 1 ? "open" : ""}>
+            <summary>
+              <span class="contributing-rule-identity"><strong>${escapeHtml(member.source.id)}</strong><small>${escapeHtml(member.assessment.title)}</small></span>
+              <span class="contributing-rule-badges"><span class="ui-badge status-capsule status-badge neutral">${escapeHtml(member.sourceLabel)}</span>${mappedRuleId ? `<span class="ui-badge status-capsule catalog-status mapped">${escapeHtml(mappedRuleId)}</span>` : ""}${icon("chevron-down")}</span>
+            </summary>
+            <div class="contributing-rule-content">
+              <div class="source-line"><span>${escapeHtml(member.source.location)}</span><span>${escapeHtml(member.source.contentSha256.slice(0, 12))}</span></div>
+              <pre class="evidence-box scroll-surface">${escapeHtml(member.source.text)}</pre>
+              <div class="contributing-rule-meaning"><strong>Source meaning</strong><p>${escapeHtml(member.assessment.sourceMeaning)}</p></div>
+              <div class="contributing-rule-meaning"><strong>Meaning preserved in parent</strong><p>${escapeHtml(member.meaningCoverageRationale)}</p></div>
+            </div>
+          </details>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderAssessment() {
   const protectedRule = getActiveProtectedRule();
   if (protectedRule) {
@@ -2789,12 +2829,12 @@ function renderAssessment() {
     <div class="assessment-title">
       <div>
         <div class="source-line detail-identity">
-          <span>${escapeHtml(candidate.sourceLabel)}</span>
+          <span>Synthesized recommendation</span>
           <span>/</span>
           <span>${escapeHtml(displayId)}</span>
         </div>
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
-        <div class="source-line"><span>${escapeHtml(candidate.sourcePath)}</span><span>${escapeHtml(candidate.hash.slice(0, 12))}</span></div>
+        <div class="source-line"><span>${escapeHtml(formatCountLabel(candidate.members.length, "contributing rule"))}</span><span>${escapeHtml(formatHostedCategory(candidate.assessment.hostedCategory))}</span><span>${escapeHtml(candidate.recommendation.placement)}</span></div>
       </div>
       ${renderDetailHeaderActions(`
         <span class="ui-badge status-capsule candidate-state ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span>
@@ -2805,9 +2845,8 @@ function renderAssessment() {
 
     <div class="assessment-content scroll-surface">
       <div class="section-block">
-        <span class="section-label">Source Rule:</span>
-        <pre class="evidence-box scroll-surface">${escapeHtml(candidate.text)}</pre>
-        ${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}
+        <span class="section-label">Contributing Rules (${formatNumber(candidate.members.length)}):</span>
+        ${renderContributingRules(candidate)}
       </div>
 
       ${renderMappedHostedRules(catalogStatus, true)}

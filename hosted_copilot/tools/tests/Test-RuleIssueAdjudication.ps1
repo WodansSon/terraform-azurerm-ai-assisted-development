@@ -124,9 +124,11 @@ try {
     $authorityRepositoryRoot = Join-Path $root 'authority-repository'
     $null = New-Item -ItemType Directory -Path $authorityRepositoryRoot -Force
     $authorityBehaviorPath = Join-Path $authorityRepositoryRoot 'behavior.ps1'
+    $authorityPresentationPath = Join-Path $authorityRepositoryRoot 'presentation.psm1'
     [IO.File]::WriteAllText($authorityBehaviorPath, "'first'`n", [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($authorityPresentationPath, "'first presentation'`n", [Text.UTF8Encoding]::new($false))
     $authorityContractPath = Join-Path $root 'rule-issue-adjudication-v4.json'
-    $authorityContract = [ordered]@{ '$schema' = 'rule-issue-adjudication-contract.schema.json'; schemaVersion = 1; contractId = 'rule-issue-adjudication-v4'; behaviorFiles = @('behavior.ps1') }
+    $authorityContract = [ordered]@{ '$schema' = 'rule-issue-adjudication-contract.schema.json'; schemaVersion = 1; contractId = 'rule-issue-adjudication-v4'; behaviorFiles = @('behavior.ps1'); presentationFiles = @('presentation.psm1') }
     [IO.File]::WriteAllText($authorityContractPath, (($authorityContract | ConvertTo-Json -Depth 10) + "`n"), [Text.UTF8Encoding]::new($false))
     $authorityParameters = @{} + $parameters
     $authorityParameters.RepositoryRoot = $authorityRepositoryRoot
@@ -137,14 +139,19 @@ try {
     $authorityFirst = & $runnerPath @authorityParameters | ConvertFrom-Json
     $authorityParameters.OutputPath = Join-Path $root 'authority-second.json'
     $authoritySecond = & $runnerPath @authorityParameters | ConvertFrom-Json
+    [IO.File]::WriteAllText($authorityPresentationPath, "'second presentation'`n", [Text.UTF8Encoding]::new($false))
+    $authorityParameters.OutputPath = Join-Path $root 'authority-presentation.json'
+    $authorityPresentation = & $runnerPath @authorityParameters | ConvertFrom-Json
     [IO.File]::WriteAllText($authorityBehaviorPath, "'second'`n", [Text.UTF8Encoding]::new($false))
-    $authorityParameters.OutputPath = Join-Path $root 'authority-third.json'
-    $authorityThird = & $runnerPath @authorityParameters | ConvertFrom-Json
+    $authorityParameters.OutputPath = Join-Path $root 'authority-behavior.json'
+    $authorityBehavior = & $runnerPath @authorityParameters | ConvertFrom-Json
     $behaviorAuthorityValid = [int]$authorityFirst.evaluatedComponentCount -eq 2 -and
         [int]$authoritySecond.cachedComponentCount -eq 2 -and
-        [int]$authorityThird.cachedComponentCount -eq 0 -and
-        [int]$authorityThird.evaluatedComponentCount -eq 2
-    Add-TestResult -Name 'behavior-change-invalidates-cache' -Passed $behaviorAuthorityValid -Detail 'Changing one declared behavior file invalidates every adjudication shard even when component payloads and the contract manifest are unchanged.'
+        [int]$authorityPresentation.cachedComponentCount -eq 2 -and
+        [int]$authorityPresentation.evaluatedComponentCount -eq 0 -and
+        [int]$authorityBehavior.cachedComponentCount -eq 0 -and
+        [int]$authorityBehavior.evaluatedComponentCount -eq 2
+    Add-TestResult -Name 'behavior-change-invalidates-cache' -Passed $behaviorAuthorityValid -Detail 'Presentation-only changes preserve adjudication cache reuse while declared semantic behavior changes invalidate every shard.'
 
     Write-TestProgress -Name 'non-member-rule-reference-rejected' -Detail 'Rejecting visible references to non-member rule IDs'
     $invalidReferencePath = Join-Path $root 'invalid-reference.json'
@@ -172,7 +179,7 @@ try {
 
     Write-TestProgress -Name 'exporter-uses-reconciliation-authority' -Detail 'Checking provisional relationship ownership'
     $exporterText = Get-Content -LiteralPath $exporterPath -Raw
-    $authorityBoundary = $exporterText -match 'candidate\.recommendation\.relatedHostedCoverage' -and $exporterText -notmatch 'candidate\.assessment\.relatedHostedCoverage' -and $exporterText -notmatch '\$actionable\s*='
+    $authorityBoundary = $exporterText -match 'candidate\.recommendation\.relatedHostedCoverage' -and $exporterText -match 'Candidate\.members' -and $exporterText -notmatch 'candidate\.assessment\.relatedHostedCoverage' -and $exporterText -notmatch '\$actionable\s*='
     Add-TestResult -Name 'exporter-uses-reconciliation-authority' -Passed $authorityBoundary -Detail 'The exporter builds provisional edges from reconciliation output and contains no action-based semantic heuristic.'
 
 }

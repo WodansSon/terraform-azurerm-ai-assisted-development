@@ -106,8 +106,6 @@ $recommendation = [ordered]@{
     placement = 'Schema And State'
     rationale = 'The complete source meaning is not covered.'
     needsReview = $false
-    assessmentKeys = @('maintainer:IMPL-TEST-901:validate-rule')
-    memberMeaningCoverage = @([ordered]@{ assessmentKey = 'maintainer:IMPL-TEST-901:validate-rule'; rationale = 'The recommendation preserves the fixture assessment meaning.' })
     relatedHostedCoverage = @()
     retireHostedRuleIds = @()
     guardedTokenDelta = 12
@@ -116,6 +114,20 @@ $recommendation = [ordered]@{
     implementationModels = @('legacy', 'typed', 'framework')
     sourceRelationships = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'IMPL-TEST-901'; relationshipKind = 'included'; rationale = 'The assessment is included in this recommendation.' })
 }
+$source = [ordered]@{
+    lane = 'maintainer'
+    id = 'IMPL-TEST-901'
+    title = 'Validate rule'
+    location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
+    text = 'Validate the rule deterministically.'
+    contentSha256 = $hash
+    surface = 'implementation'
+    provenance = 'local-safeguard'
+    rationale = 'Protect deterministic behavior.'
+    evidence = @()
+    transition = 'added'
+}
+$catalogMapping = [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
 $display = [ordered]@{
     '$schema' = 'workbench-display-v4.schema.json'
     schemaVersion = 4
@@ -125,23 +137,12 @@ $display = [ordered]@{
     sourceFiles = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'IMPL-TEST-901'; contentSha256 = $hash })
     reconciliation = [ordered]@{ status = 'ready' }
     candidates = @([ordered]@{
-        source = [ordered]@{
-            lane = 'maintainer'
-            id = 'IMPL-TEST-901'
-            title = 'Validate rule'
-            location = 'hosted_copilot/authored-rules/proposals/implementation.rules.md'
-            text = 'Validate the rule deterministically.'
-            contentSha256 = $hash
-            surface = 'implementation'
-            provenance = 'local-safeguard'
-            rationale = 'Protect deterministic behavior.'
-            evidence = @()
-            transition = 'added'
-        }
+        source = $source
         assessment = $assessment
         reviewState = 'recommended'
         recommendation = $recommendation
-        catalogMapping = [ordered]@{ state = 'unmapped'; hostedRuleId = $null }
+        catalogMapping = $catalogMapping
+        members = @([ordered]@{ source = $source; assessment = $assessment; meaningCoverageRationale = 'The recommendation preserves the fixture assessment meaning.'; catalogMapping = $catalogMapping })
     })
     catalog = [ordered]@{
         contentSha256 = $hash
@@ -318,6 +319,7 @@ Add-TestResult -Name 'reconciliation-contract-dependency-boundary' -Passed $reco
 
 $behaviorManifestIssues = [Collections.Generic.List[string]]::new()
 $behaviorManifestCount = 0
+$presentationManifestCount = 0
 foreach ($manifestPath in @(Get-ChildItem (Join-Path $repositoryRoot 'hosted_copilot') -Recurse -File -Filter '*.json')) {
     try {
         $manifest = Get-Content -LiteralPath $manifestPath.FullName -Raw | ConvertFrom-Json -DateKind String
@@ -350,9 +352,34 @@ foreach ($manifestPath in @(Get-ChildItem (Join-Path $repositoryRoot 'hosted_cop
             $behaviorManifestIssues.Add("$manifestRelativePath references empty behavior: $relativePath")
         }
     }
+    $presentationFilesProperty = $manifest.PSObject.Properties['presentationFiles']
+    if ($null -eq $presentationFilesProperty) {
+        continue
+    }
+    $presentationManifestCount++
+    foreach ($presentationFile in @($presentationFilesProperty.Value)) {
+        $relativePath = [string]$presentationFile
+        if ($relativePath -in @($behaviorFilesProperty.Value)) {
+            $behaviorManifestIssues.Add("$manifestRelativePath treats presentation as semantic behavior: $relativePath")
+            continue
+        }
+        if ($relativePath -notlike 'hosted_copilot/*') {
+            $behaviorManifestIssues.Add("$manifestRelativePath references presentation outside Hosted ownership: $relativePath")
+            continue
+        }
+        $resolvedPresentationPath = Join-Path $repositoryRoot $relativePath
+        if (-not (Test-Path -LiteralPath $resolvedPresentationPath -PathType Leaf)) {
+            $behaviorManifestIssues.Add("$manifestRelativePath references missing presentation: $relativePath")
+            continue
+        }
+        if ((Get-Item -LiteralPath $resolvedPresentationPath).Length -eq 0) {
+            $behaviorManifestIssues.Add("$manifestRelativePath references empty presentation: $relativePath")
+        }
+    }
 }
 $behaviorManifestsClean = $behaviorManifestCount -gt 0 -and $behaviorManifestIssues.Count -eq 0
 Add-TestResult -Name 'all-behavior-manifests-active-only' -Passed $behaviorManifestsClean -Detail $(if ($behaviorManifestsClean) { "All $behaviorManifestCount behavior manifests reference only existing active Hosted files without v1 reconciliation symbols." } else { $behaviorManifestIssues -join ' | ' })
+Add-TestResult -Name 'presentation-authority-boundaries' -Passed ($presentationManifestCount -eq 3 -and $behaviorManifestIssues.Count -eq 0) -Detail 'Source assessment and both reconciliation contracts snapshot existing Hosted presentation files without treating them as semantic cache authority.'
 
 $remoteParserContract = Get-Content -LiteralPath (Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $remoteParserOwnsExchange = [string]$remoteParserContract.parserId -ceq 'maintainer-proposals-v4' -and 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1' -in @($remoteParserContract.behaviorFiles)

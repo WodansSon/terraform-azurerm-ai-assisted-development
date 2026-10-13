@@ -1,15 +1,80 @@
-[CmdletBinding()]
+<#
+.SYNOPSIS
+Validates the complete Hosted Toolkit source checkout.
+
+.DESCRIPTION
+Runs the Hosted architecture, runtime, contract, regression, security, documentation, isolation, and Workbench validation checks. Live upstream drift and the complete Rule Workbench suite can be skipped explicitly for focused local validation.
+
+.PARAMETER OutputFormat
+Selects human-readable text or machine-readable JSON output.
+
+.PARAMETER SkipUpstreamDrift
+Skips the live upstream contributor-guidance drift audit and records the check as not applicable.
+
+.PARAMETER SkipRuleWorkbench
+Skips the complete Rule Workbench browser and dependency suite while retaining non-UI Workbench contract validation.
+
+.PARAMETER Help
+Displays curated Hosted command help and exits without running validation.
+
+.PARAMETER Detailed
+Displays curated Hosted command help and exits without running validation.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1
+Runs the complete Hosted Toolkit validation profile.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift
+Runs deterministic local validation without the live upstream contributor-guidance audit.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift -SkipRuleWorkbench
+Runs the complete non-UI local validation profile when Workbench browser behavior is unaffected.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -OutputFormat Json
+Runs complete validation and emits one machine-readable result.
+
+.NOTES
+Complete validation includes the Rule Workbench dependency audit and live upstream source checks. Skip switches must reflect the scope of the current change, not bypass relevant failures.
+
+.LINK
+https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/hosted_copilot/tools/README.md
+#>
+[CmdletBinding(DefaultParameterSetName = 'Validation')]
 param(
+    [Parameter(ParameterSetName = 'Validation')]
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text',
 
+    [Parameter(ParameterSetName = 'Validation')]
     [switch]$SkipUpstreamDrift,
 
-    [switch]$SkipRuleWorkbench
+    [Parameter(ParameterSetName = 'Validation')]
+    [switch]$SkipRuleWorkbench,
+
+    [Parameter(Mandatory, ParameterSetName = 'Help')]
+    [Alias('h')]
+    [switch]$Help,
+
+    [Parameter(Mandatory, ParameterSetName = 'Detailed')]
+    [switch]$Detailed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$commandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
+Import-Module -Name $commandHelpModulePath -Force
+if ($Help -or $Detailed) {
+    $helpParameterGroups = [ordered]@{
+        'Validation Scope' = @('SkipUpstreamDrift', 'SkipRuleWorkbench')
+        'Output' = @('OutputFormat')
+    }
+    Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Rules Validation Help' -ParameterGroups $helpParameterGroups
+    return
+}
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $validationOutputModulePath = Join-Path $repoRoot 'tools/ValidationOutput.psm1'
@@ -54,6 +119,9 @@ $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceInventory.ps1'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
 $hostedGitHubHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedGitHub.Helpers.psm1'
+$hostedCommandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
+$hostedCommandHelpTestPath = Join-Path $PSScriptRoot 'tests/Test-HostedCommandHelp.ps1'
+$hostedCommandHelpFixturePath = Join-Path $PSScriptRoot 'tests/fixtures/command-help-fixture.ps1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
 $workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
@@ -323,6 +391,9 @@ if ($runtimeStarted) {
         $guidanceCapacityPath,
         $hostedToolkitHelpersPath,
         $hostedGitHubHelpersPath,
+        $hostedCommandHelpModulePath,
+        $hostedCommandHelpTestPath,
+        $hostedCommandHelpFixturePath,
         $sourceEvidenceModulePath,
         $workbenchGitHubContextModulePath,
         $sourceInventoryCollectorPath,
@@ -594,6 +665,7 @@ if ($runtimeStarted) {
         @{ Path = $instructionGenerationTestPath; Opening = 'Hosted instruction generation'; Summary = 'Hosted instruction generation test summary'; Results = 'Generation tests'; Activity = 'fixture-preparation' },
         @{ Path = $reviewResultValidatorPath; Opening = 'Hosted paired review result validation'; Summary = 'Hosted paired review result validation summary'; Results = 'Paired review results'; Activity = 'result-validation' },
         @{ Path = $sourceInventoryTestPath; Opening = 'Hosted source inventory'; Summary = 'Hosted source inventory test summary'; Results = 'Source inventory tests'; Activity = 'evidence-utilities' },
+        @{ Path = $hostedCommandHelpTestPath; Opening = 'Hosted command help'; Summary = 'Hosted command help test summary'; Results = 'Command help tests'; Activity = 'native-help-content' },
         @{ Path = $sourceAssessmentTestPath; Opening = 'Hosted source assessment'; Summary = 'Hosted source assessment test summary'; Results = 'Source assessment tests'; Activity = 'contract-validation' },
         @{ Path = $assessmentReconciliationTestPath; Opening = 'Hosted assessment reconciliation'; Summary = 'Hosted assessment reconciliation test summary'; Results = 'Assessment reconciliation tests'; Activity = 'fixture-validation' },
         @{ Path = $reconciliationStageExecutorTestPath; Opening = 'Hosted reconciliation stage executor'; Summary = 'Hosted reconciliation stage executor test summary'; Results = 'Reconciliation stage executor tests'; Activity = 'hierarchical-cache-contract-files' },
@@ -624,6 +696,22 @@ if ($runtimeStarted) {
     }
     else {
         Add-ValidationIssue -Name 'output-contracts' -Issue ($outputContractIssues -join '; ')
+    }
+
+    Start-ValidationCheck -Name 'command-help'
+    try {
+        $commandHelpTestOutput = @(& pwsh -NoProfile -File $hostedCommandHelpTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw (($commandHelpTestOutput | Out-String).Trim())
+        }
+        $commandHelpTestResult = ($commandHelpTestOutput | Out-String) | ConvertFrom-Json
+        if ($commandHelpTestResult.status -ne 'passed') {
+            throw 'command help regression suite reported failures'
+        }
+        Add-CheckResult -Name 'command-help' -Passed $true -Detail "Passed $($commandHelpTestResult.testCount) native help, shared rendering, alias, parameter-set, and side-effect tests."
+    }
+    catch {
+        Add-ValidationIssue -Name 'command-help' -Issue "Hosted command help validation failed: $($_.Exception.Message)"
     }
 
     Start-ValidationCheck -Name 'instruction-frontmatter'
@@ -1300,7 +1388,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'command-help', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

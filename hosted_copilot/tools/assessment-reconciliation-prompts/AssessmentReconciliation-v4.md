@@ -12,6 +12,9 @@ For every semantic component:
 
 - Group equivalent or complementary assessments when one coherent Hosted rule preserves every member meaning.
 - Split independent, contradictory, or differently targeted meanings into separate recommendations within the component.
+- Permit one recommendation's member assessments to collectively identify at most one distinct canonical Hosted rule through `mappedHostedRuleIds`.
+- When members identify different canonical Hosted rules, split them into separate recommendations even when one rule text could preserve every meaning.
+- Treat `retireHostedRuleIds` as ancillary lifecycle actions only; it never permits a recommendation to absorb assessments owned by another canonical Hosted rule.
 - Cover every assessment exactly once across `memberAssessmentRefs`, `memberMeaningCoverage`, and `assessmentCoverage`.
 - Evaluate proposed recommendations against active catalog rules before selecting an action, target, category, placement, and wording.
 - Account for every assessment exactly once in `assessmentCoverage` as `recommended`, `deferred`, or `excluded`.
@@ -28,8 +31,12 @@ For every semantic component:
 - For `no-change` and `restore`, preserve the exact current Hosted rule text; for `update`, provide text that differs from the current Hosted rule text.
 - For an implementation `add` or `exclude`, select every implementation model the proposed rule governs in `implementationModels`; omit that property for all other recommendations.
 - Write one or two complete condensed sentences in `recommendedRuleText`.
+- Score the final `recommendedRuleText` as one parent rule in `selectionFactors`; evaluate its consolidated severity, frequency, breadth, Hosted detectability, evidence strength, false-positive risk, and current Hosted redundancy rather than copying or taking the maximum of member scores.
+- Explain the parent factor vector in `selectionRationale`, including how consolidation changes scope, detectability, risk, or redundancy when those differ from the member assessments.
 - Add exactly one `memberMeaningCoverage` entry for every member assessment explaining how `recommendedRuleText` preserves that assessment's `sourceMeaning`.
 - Preserve related Hosted coverage references as advisory evidence only.
+- Include an assessment in one related Hosted coverage entry only when that exact assessment's `relatedHostedCoverage` contains the same `hostedRuleId`; never broaden one member's relationship across other grouped members.
+- Emit at most one related Hosted coverage entry for each `hostedRuleId` in a recommendation; merge all supporting `assessmentRefs` into that entry and select one relationship and rationale for the final consolidated rule.
 - Re-evaluate every preserved related Hosted coverage reference against the exact final target rule text and the exact referenced Hosted rule text. Do not copy an assessment relationship when it does not describe that catalog-rule pair.
 - Do not invent distinctions, requirements, exceptions, or source meaning that is absent from the two rule texts being compared. Every relationship rationale must identify concrete meaning present in those texts.
 - Do not classify ordinary broad-to-specific applicability as a material overlap. Keep independent, coherent obligations as separate rules unless one final rule can preserve both without combining unrelated requirements.

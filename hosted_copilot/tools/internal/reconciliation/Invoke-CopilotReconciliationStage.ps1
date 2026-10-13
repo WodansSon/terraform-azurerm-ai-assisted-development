@@ -50,12 +50,21 @@ if ($null -eq $command) {
 
 $prompt = "Read stage-input.json, instruction-catalog.json, protected-rules.json, stage-contract.json, stage-result.schema.json, and stage-prompt.md in the current directory. Evaluate the complete bounded $Stage shard and return only the JSON object required by stage-result.schema.json."
 $processInfo = [Diagnostics.ProcessStartInfo]::new()
-$processInfo.FileName = $command.Source
+$commandPrefixArguments = @()
+if ($command.CommandType -eq [Management.Automation.CommandTypes]::ExternalScript) {
+	$processInfo.FileName = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+	$commandPrefixArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', [string]$command.Source)
+}
+else {
+	$processInfo.FileName = $command.Source
+}
 $processInfo.WorkingDirectory = $workingDirectory
 $processInfo.UseShellExecute = $false
 $processInfo.RedirectStandardOutput = $true
 $processInfo.RedirectStandardError = $true
-foreach ($argument in @(
+$processInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+$processInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+foreach ($argument in @($commandPrefixArguments) + @(
 	'-C', $workingDirectory,
 	'-p', $prompt,
 	'--no-color',

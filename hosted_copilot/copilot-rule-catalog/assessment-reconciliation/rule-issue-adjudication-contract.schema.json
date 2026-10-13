@@ -4,12 +4,22 @@
   "title": "Hosted Rule Issue Adjudication Contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "contractId", "behaviorFiles"],
+  "required": ["$schema", "schemaVersion", "contractId", "behaviorFiles", "presentationFiles"],
   "properties": {
     "$schema": { "const": "rule-issue-adjudication-contract.schema.json" },
     "schemaVersion": { "const": 1 },
     "contractId": { "const": "rule-issue-adjudication-v4" },
     "behaviorFiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._/-]+$"
+      }
+    },
+    "presentationFiles": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,

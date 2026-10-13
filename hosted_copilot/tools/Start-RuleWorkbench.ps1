@@ -1,59 +1,214 @@
-[CmdletBinding()]
+<#
+.SYNOPSIS
+Launches or rebuilds the Hosted Rule Workbench.
+
+.DESCRIPTION
+Serves the last validated Workbench artifacts by default. Rebuild mode collects current sources, evaluates cache misses, reconciles assessments, and atomically stages a new display. Force mode performs a rebuild without reading assessment or reconciliation caches.
+
+.PARAMETER Port
+Specifies the loopback port used by the Workbench server.
+
+.PARAMETER OwnerProcessId
+Specifies a process whose exit should stop the Workbench server.
+
+.PARAMETER SiteDirectory
+Specifies the external directory that receives staged Workbench assets and validated artifacts. Defaults to `%LOCALAPPDATA%\hosted-workbench\site`.
+
+.PARAMETER InventoryDirectory
+Specifies the external directory that stores collected source inventories. Defaults to `%LOCALAPPDATA%\terraform-azurerm-ai-assisted-development\hosted-rule-intake\inventories`.
+
+.PARAMETER AssessmentCacheDirectory
+Specifies the external directory that stores validated source-assessment cache entries. Defaults to `%LOCALAPPDATA%\hosted-workbench\assessment-cache`.
+
+.PARAMETER ReconciliationCacheDirectory
+Specifies the external directory that stores validated hierarchical reconciliation cache entries. Defaults to `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`.
+
+.PARAMETER ManualRelationshipCacheDirectory
+Specifies the external directory that stores manual relationship-evaluation cache entries. Defaults to `%LOCALAPPDATA%\hosted-workbench\manual-relationship-cache`.
+
+.PARAMETER AssessmentResumeDirectory
+Specifies an exact-authority retained source-assessment run to resume during an ordinary rebuild.
+
+.PARAMETER Model
+Specifies the Copilot model requested for source assessment and reconciliation.
+
+.PARAMETER AssessmentReasoningEffort
+Specifies the reasoning effort requested for source assessment and reconciliation.
+
+.PARAMETER MaxRetries
+Specifies how many times a failed evaluator batch may be retried.
+
+.PARAMETER MaxParallelBatches
+Specifies the maximum number of evaluator batches or shards that may run concurrently.
+
+.PARAMETER EvaluatorCommand
+Specifies the Copilot evaluator executable.
+
+.PARAMETER RelationshipEvaluatorScriptPath
+Specifies an optional evaluator adapter used for manual relationship checks.
+
+.PARAMETER Rebuild
+Collects current sources and rebuilds the staged Workbench artifacts while reusing compatible cache entries.
+
+.PARAMETER Force
+Requires Rebuild and bypasses assessment and reconciliation cache reads while still persisting validated replacements.
+
+.PARAMETER SkipGitHubAuthorization
+Skips authenticated GitHub identity and fork authorization for supported local diagnostics.
+
+.PARAMETER StageOnly
+Stages validated assets and artifacts without starting the local server.
+
+.PARAMETER NoLaunch
+Starts the local server without opening a browser.
+
+.PARAMETER OutputFormat
+Selects human-readable text or machine-readable JSON output.
+
+.PARAMETER Help
+Displays curated Hosted command help and exits without operational side effects.
+
+.PARAMETER Detailed
+Displays curated Hosted command help and exits without operational side effects.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1
+Serves the last jointly validated Workbench display and Rule Issues artifacts.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild
+Collects current sources and rebuilds while reusing compatible semantic caches.
+
+.EXAMPLE
+pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild -Force
+Performs a complete uncached assessment and reconciliation rebuild.
+
+.NOTES
+Ordinary launch performs no source collection or semantic evaluation. Site, inventory, and cache directories must remain outside the source repository.
+
+.LINK
+https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/hosted_copilot/tools/README.md
+#>
+[CmdletBinding(DefaultParameterSetName = 'Default')]
 param(
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(1024, 65535)]
     [int]$Port = 43143,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(1, 2147483647)]
     [int]$OwnerProcessId,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$SiteDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/site'),
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$InventoryDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'terraform-azurerm-ai-assisted-development/hosted-rule-intake/inventories'),
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$AssessmentCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/assessment-cache'),
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$ReconciliationCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$ManualRelationshipCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/manual-relationship-cache'),
 
+    [Parameter(ParameterSetName = 'Default')]
     [string]$AssessmentResumeDirectory,
 
-    [string]$ReconciliationResumeDirectory,
-
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$Model = 'gpt-5.4',
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
     [string]$AssessmentReasoningEffort = 'high',
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(1, 8)]
     [int]$MaxParallelBatches = 3,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$EvaluatorCommand = 'copilot',
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [string]$RelationshipEvaluatorScriptPath,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [switch]$Rebuild,
 
+    [Parameter(Mandatory, ParameterSetName = 'Force')]
+    [switch]$Force,
+
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [switch]$SkipGitHubAuthorization,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [switch]$StageOnly,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [switch]$NoLaunch,
 
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text'
+    [string]$OutputFormat = 'Text',
+
+    [Parameter(Mandatory, ParameterSetName = 'Help')]
+    [Alias('h')]
+    [switch]$Help,
+
+    [Parameter(Mandatory, ParameterSetName = 'Detailed')]
+    [switch]$Detailed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$commandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
+Import-Module -Name $commandHelpModulePath -Force
+if ($Help -or $Detailed) {
+    $helpParameterGroups = [ordered]@{
+        'Workflow Options' = @('Rebuild', 'Force', 'StageOnly', 'NoLaunch')
+        'Server And Output' = @('Port', 'OwnerProcessId', 'OutputFormat')
+        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath')
+        'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'ManualRelationshipCacheDirectory', 'AssessmentResumeDirectory')
+        'Authorization' = @('SkipGitHubAuthorization')
+    }
+    Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Rule Workbench Help' -ParameterGroups $helpParameterGroups
+    return
+}
+if ($Force -and -not $Rebuild) {
+    throw 'Force requires Rebuild.'
+}
+
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../tools/ValidationOutput.psm1'
+$hostedToolkitHelpersModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
 $workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+Import-Module -Name $hostedToolkitHelpersModulePath -Force
 Import-Module -Name $sourceEvidenceModulePath -Force
 Import-Module -Name $workbenchGitHubContextModulePath -Force
 
@@ -78,9 +233,8 @@ $resolvedReconciliationCacheDirectory = [IO.Path]::GetFullPath($ReconciliationCa
 $resolvedManualRelationshipCacheDirectory = [IO.Path]::GetFullPath($ManualRelationshipCacheDirectory)
 $resolvedRelationshipEvaluatorScriptPath = if ([string]::IsNullOrWhiteSpace($RelationshipEvaluatorScriptPath)) { $null } else { [IO.Path]::GetFullPath($RelationshipEvaluatorScriptPath) }
 $resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
-$resolvedReconciliationResumeDirectory = if ([string]::IsNullOrWhiteSpace($ReconciliationResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($ReconciliationResumeDirectory) }
 $assessmentRecoveryMode = if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
-$reconciliationRecoveryMode = if ($null -eq $resolvedReconciliationResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
+$cacheMode = if ($Force) { 'FORCE-REFRESH' } else { 'REUSE' }
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'SiteDirectory must be outside the source repository'
@@ -136,7 +290,7 @@ $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
 $assessmentResult = $null
 $ruleIssuesResult = $null
-$workbenchPhase = 'INITIALIZATION'
+$script:workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
 
 function Complete-WorkbenchStage {
@@ -186,7 +340,7 @@ function Update-StagedDisplay {
         if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
             throw 'Staged Workbench display and Rule Issues source files do not match'
         }
-        Complete-WorkbenchStage -Name $workbenchPhase
+        Complete-WorkbenchStage -Name $script:workbenchPhase
         return $validatedDisplay
     }
 
@@ -204,11 +358,15 @@ function Update-StagedDisplay {
         foreach ($sourceDefinitionId in @($sourceDefinitionSet.sourceDefinitionIds)) {
             $inventoryPath = Join-Path $currentInventoryDirectory "$sourceDefinitionId.json"
             if ($OutputFormat -eq 'Text') {
-                Write-Host ("[RUNNING]  collect/{0,-21} : Building current source inventory" -f $sourceDefinitionId)
+                Write-Host (Format-ValidationStatusLine -Status 'running' -Name "source-collection/$sourceDefinitionId" -Detail 'Building current source inventory' -NameWidth 42)
             }
             $collectionOutput = @(& $inventoryCollectorPath -RepositoryRoot $repositoryRoot -SourceDefinitionPath (Join-Path $catalogRoot "source-definitions/$sourceDefinitionId.json") -OutputPath $inventoryPath -OutputFormat Json 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $collectionSucceeded = $?
+            if (-not $collectionSucceeded) {
                 throw "Source inventory collection failed for $sourceDefinitionId`: $(($collectionOutput | Out-String).Trim())"
+            }
+            if ($OutputFormat -eq 'Text') {
+                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name "source-collection/$sourceDefinitionId" -Detail 'Current source inventory built' -NameWidth 42)
             }
             $currentInventoryPaths.Add($inventoryPath)
             $priorInventoryPath = Join-Path ([IO.Path]::GetFullPath($InventoryDirectory)) "$sourceDefinitionId.json"
@@ -216,13 +374,12 @@ function Update-StagedDisplay {
                 $priorInventoryPaths.Add($priorInventoryPath)
             }
         }
-        Complete-WorkbenchStage -Name $workbenchPhase
+        Complete-WorkbenchStage -Name $script:workbenchPhase
 
             $assessmentSetPath = Join-Path $runDirectory 'assessment-set.json'
             $script:workbenchPhase = 'SOURCE ASSESSMENT'
             if ($OutputFormat -eq 'Text') {
-                Write-ValidationSectionHeader -Title 'Assessment Status' | Write-Host
-                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'source-assessment' -Detail 'Evaluating current source inventories' -NameWidth 42)
+                Write-ValidationSectionHeader -Title 'Source Assessment' | Write-Host
             }
             $assessmentParameters = @{
                 RepositoryRoot = $repositoryRoot
@@ -241,26 +398,38 @@ function Update-StagedDisplay {
             if ($null -ne $resolvedAssessmentResumeDirectory) {
                 $assessmentParameters.ResumeRunDirectory = $resolvedAssessmentResumeDirectory
             }
+            if ($Force) {
+                $assessmentParameters.Force = $true
+            }
             $assessmentOutput = @(& $sourceAssessmentPath @assessmentParameters 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $assessmentSucceeded = $?
+            if (-not $assessmentSucceeded) {
                 throw "Source assessment failed: $(($assessmentOutput | Out-String).Trim())"
             }
             $script:assessmentResult = ($assessmentOutput | Out-String) | ConvertFrom-Json
-            Complete-WorkbenchStage -Name $workbenchPhase
+            Complete-WorkbenchStage -Name $script:workbenchPhase
 
             $capacityPath = Join-Path $runDirectory 'guidance-capacity.json'
-            $script:workbenchPhase = 'GUIDANCE CAPACITY'
+            $script:workbenchPhase = 'HOSTED GUIDANCE TOKEN CAPACITY'
+            if ($OutputFormat -eq 'Text') {
+                Write-ValidationSectionHeader -Title 'Hosted Guidance Token Capacity' | Write-Host
+                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'guidance-capacity' -Detail 'Checking token usage and safety headroom' -NameWidth 42)
+            }
             $capacityOutput = @(& $guidanceCapacityPath -HostedRoot (Join-Path $repositoryRoot 'hosted_copilot') -OutputFormat Json 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $capacitySucceeded = $?
+            if (-not $capacitySucceeded) {
                 throw "Guidance capacity calculation failed: $(($capacityOutput | Out-String).Trim())"
             }
-            [IO.File]::WriteAllText($capacityPath, (($capacityOutput | Out-String).Trim() + "`n"), [Text.UTF8Encoding]::new($false))
-            Complete-WorkbenchStage -Name $workbenchPhase
-
+            $capacityContent = ($capacityOutput | Out-String).Trim()
+            [IO.File]::WriteAllText($capacityPath, ($capacityContent + "`n"), [Text.UTF8Encoding]::new($false))
             if ($OutputFormat -eq 'Text') {
-                Write-ValidationSectionHeader -Title 'Reconciliation Status' | Write-Host
-                Write-Host '[RUNNING]  assessment-reconciliation   : Consolidating assessments into the Workbench display'
+                $capacityResult = $capacityContent | ConvertFrom-Json -DateKind String
+                $guidanceFileCount = @($capacityResult.reports | Where-Object { [string]$_.kind -ceq 'file' }).Count
+                $combinedScopeCount = @($capacityResult.reports | Where-Object { [string]$_.kind -ceq 'combined' }).Count
+                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'guidance-capacity' -Detail ("{0} guidance files and {1} combined scopes fit within safety-adjusted token limits" -f $guidanceFileCount, $combinedScopeCount) -NameWidth 42)
             }
+            Complete-WorkbenchStage -Name $script:workbenchPhase
+
             $script:workbenchPhase = 'ASSESSMENT RECONCILIATION'
             $reconciledDisplayPath = Join-Path $runDirectory 'workbench-display.json'
             $reconciliationParameters = @{
@@ -277,24 +446,25 @@ function Update-StagedDisplay {
                 CacheDirectory = $resolvedReconciliationCacheDirectory
                 OutputFormat = 'Json'
             }
-            if ($null -ne $resolvedReconciliationResumeDirectory) {
-                $reconciliationParameters.ResumeRunDirectory = $resolvedReconciliationResumeDirectory
+            if ($Force) {
+                $reconciliationParameters.Force = $true
             }
             $reconciliationOutput = @(& $assessmentReconciliationPath @reconciliationParameters 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $reconciliationSucceeded = $?
+            if (-not $reconciliationSucceeded) {
                 throw "Assessment reconciliation failed: $(($reconciliationOutput | Out-String).Trim())"
             }
             $reconciledDisplayContent = Get-Content -LiteralPath $reconciledDisplayPath -Raw
             if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
                 throw 'Reconciled Workbench display does not satisfy its schema'
             }
-            Complete-WorkbenchStage -Name $workbenchPhase
+            Complete-WorkbenchStage -Name $script:workbenchPhase
             $script:workbenchPhase = 'CANDIDATE PROJECTION'
-            Complete-WorkbenchStage -Name $workbenchPhase
+            Complete-WorkbenchStage -Name $script:workbenchPhase
 
-            $script:workbenchPhase = 'RULE ISSUES EXPORT'
+            $script:workbenchPhase = 'RULE ISSUE ADJUDICATION'
             if ($OutputFormat -eq 'Text') {
-                Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'assessment-reconciliation/rule-issues' -Detail 'Adjudicating grouped Rule Issues' -NameWidth 42)
+                Write-ValidationSectionHeader -Title 'Rule Issue Adjudication' | Write-Host
             }
             $reconciledRuleIssuesPath = Join-Path $runDirectory 'workbench-rule-issues.json'
             $ruleIssuesParameters = @{
@@ -311,8 +481,10 @@ function Update-StagedDisplay {
                 OutputFormat = 'Json'
                 ShowProgress = $OutputFormat -eq 'Text'
             }
+            $ruleIssuesStopwatch = [Diagnostics.Stopwatch]::StartNew()
             $ruleIssuesOutput = @(& $ruleIssuesExporterPath @ruleIssuesParameters 2>&1)
-            if ($LASTEXITCODE -ne 0) {
+            $ruleIssuesSucceeded = $?
+            if (-not $ruleIssuesSucceeded) {
                 throw "Rule Issues export failed: $(($ruleIssuesOutput | Out-String).Trim())"
             }
             $script:ruleIssuesResult = ($ruleIssuesOutput | Out-String) | ConvertFrom-Json
@@ -327,16 +499,23 @@ function Update-StagedDisplay {
             if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
                 throw 'Workbench display and Rule Issues source files do not match'
             }
+            $ruleIssuesStopwatch.Stop()
             if ($OutputFormat -eq 'Text') {
-                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'assessment-reconciliation/rule-issues' -Detail ("{0} grouped issues | {1} cached | {2} evaluated" -f @($reconciledRuleIssues.issues).Count, [int]$ruleIssuesResult.cachedComponentCount, [int]$ruleIssuesResult.evaluatedComponentCount) -NameWidth 42)
+                Write-ValidationSectionHeader -Title 'Rule Issue Adjudication Summary' | Write-Host
+                Write-Host ("  {0,-17}: {1} grouped" -f 'Rule Issues', @($reconciledRuleIssues.issues).Count)
+                Write-Host ("  {0,-17}: {1} total | {2} cached | {3} evaluated" -f 'Batches', [int]$ruleIssuesResult.componentCount, [int]$ruleIssuesResult.cachedComponentCount, [int]$ruleIssuesResult.evaluatedComponentCount)
+                Write-Host ("  {0,-17}: {1}" -f 'Elapsed', (Format-ElapsedDuration -Milliseconds ([long]$ruleIssuesStopwatch.ElapsedMilliseconds)))
             }
-            Complete-WorkbenchStage -Name $workbenchPhase
+            Complete-WorkbenchStage -Name $script:workbenchPhase
 
             $script:workbenchPhase = 'WORKBENCH DISPLAY'
             if ($OutputFormat -eq 'Text') {
-                Write-ValidationSectionHeader -Title 'Display' | Write-Host
+                Write-ValidationSectionHeader -Title 'Workbench UI Artifact Publication' | Write-Host
+                Write-Host ("  {0,-17}: {1} total" -f 'Artifacts', 2)
+                Write-Host ''
                 Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'workbench/display' -Detail 'Validating and publishing Workbench artifacts' -NameWidth 42)
             }
+            $publicationStopwatch = [Diagnostics.Stopwatch]::StartNew()
             if (-not ($reconciledDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
                 throw 'Staged Workbench display does not satisfy its schema'
             }
@@ -348,10 +527,11 @@ function Update-StagedDisplay {
             }
             Copy-FileAtomically -SourcePath $reconciledRuleIssuesPath -DestinationPath $stagedRuleIssuesPath
             Copy-FileAtomically -SourcePath $reconciledDisplayPath -DestinationPath $stagedDisplayPath
+            $publicationStopwatch.Stop()
             if ($OutputFormat -eq 'Text') {
-                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'workbench/display' -Detail 'Candidate and Rule Issues artifacts published' -NameWidth 42)
+                Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'workbench/display' -Detail ("Candidate and Rule Issues artifacts published : [Elapsed: {0}]" -f (Format-ElapsedDuration -Milliseconds ([long]$publicationStopwatch.ElapsedMilliseconds))) -NameWidth 42)
             }
-            Complete-WorkbenchStage -Name $workbenchPhase
+            Complete-WorkbenchStage -Name $script:workbenchPhase
         return ($reconciledDisplayContent | ConvertFrom-Json)
     }
     finally {
@@ -373,21 +553,20 @@ catch {
     $failureMessage = ($_.Exception.Message -replace '\s+', ' ').Trim()
     $failure = [ordered]@{
         status = 'failed'
-        phase = $workbenchPhase
+        phase = $script:workbenchPhase
         error = $failureMessage
         assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
         reconciliationCacheDirectory = $resolvedReconciliationCacheDirectory
         assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
-        reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
         assessmentRecoveryMode = $assessmentRecoveryMode
-        reconciliationRecoveryMode = $reconciliationRecoveryMode
+        cacheMode = $cacheMode
     }
     if ($OutputFormat -eq 'Json') {
         $failure | ConvertTo-Json -Depth 5
     }
     else {
         $failureStages = @($workbenchStages.ToArray()) + @([pscustomobject]@{ status = 'failed'; name = $failure.phase })
-        Write-ValidationSectionHeader -Title 'Summary'
+        Write-ValidationSectionHeader -Title 'Workbench Summary'
         Write-ValidationSummary -Fields ([ordered]@{
             Status = 'FAILED'
             Stages = $failureStages.Count
@@ -404,7 +583,6 @@ catch {
 }
 $stagedCandidates = @($stagedDisplay.candidates)
 $stagedRuleIssues = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw | ConvertFrom-Json -DateKind String
-$assessmentSummary = if ($Rebuild) { 'REBUILT FROM CURRENT SOURCES' } else { 'REUSED VALIDATED DISPLAY' }
 $url = "http://127.0.0.1:$Port/"
 $result = [ordered]@{
     status = 'ready'
@@ -418,9 +596,8 @@ $result = [ordered]@{
     assessmentCacheDirectory = $resolvedAssessmentCacheDirectory
     reconciliationCacheDirectory = $resolvedReconciliationCacheDirectory
     assessmentResumeDirectory = $resolvedAssessmentResumeDirectory
-    reconciliationResumeDirectory = $resolvedReconciliationResumeDirectory
     assessmentRecoveryMode = $assessmentRecoveryMode
-    reconciliationRecoveryMode = $reconciliationRecoveryMode
+    cacheMode = $cacheMode
     discoveredCandidateCount = $stagedCandidates.Count
     evaluatedCandidateCount = $stagedCandidates.Count
     ruleCandidateCount = $stagedCandidates.Count
@@ -434,33 +611,26 @@ $result = [ordered]@{
     relationshipEndpoint = 'POST /reconcile-rule'
     serving = -not $StageOnly
 }
+$workbenchSummaryFields = [ordered]@{
+    Status = 'PASSED'
+    Mode = if ($StageOnly) { 'STAGE ONLY' } else { 'SERVER' }
+    Stages = "{0}/{0} passed" -f $workbenchStages.Count
+    Candidates = "{0} evaluated" -f $result.evaluatedCandidateCount
+    'Rule Issues' = "{0} total | {1} protected | {2} blocking" -f $result.ruleIssueCount, $result.protectedRuleIssueCount, $result.blockingRuleIssueCount
+    Assessment = if ($Force) { 'Forced rebuild from current sources' } elseif ($Rebuild) { 'Rebuilt from current sources' } else { 'Reused validated display' }
+    'Cache Mode' = if ($Force) { 'Force refresh' } else { 'Reuse compatible results' }
+    Capacity = "{0} reports" -f $result.capacityReportCount
+    'Workbench Site' = $result.siteDirectory
+    Server = if ($StageOnly) { 'Not started' } else { "Running at $url" }
+}
 
 if ($StageOnly) {
     if ($OutputFormat -eq 'Json') {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Summary'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Status = 'PASSED'
-            Stages = $workbenchStages.Count
-            Passed = $workbenchStages.Count
-            Failed = 0
-            'Discovered Candidates' = $result.discoveredCandidateCount
-            'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $assessmentSummary
-            'Assessment Cache' = $result.assessmentCacheDirectory
-            'Reconciliation Cache' = $result.reconciliationCacheDirectory
-            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
-            'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
-            Reconciliation = 'READY'
-            'Rule Issues' = $result.ruleIssueCount
-            'Protected Rule Issues' = $result.protectedRuleIssueCount
-            'Blocking Rule Issues' = $result.blockingRuleIssueCount
-            'Capacity Reports' = $result.capacityReportCount
-            'Site Directory' = $result.siteDirectory
-            Serving = $result.serving
-        })
+        Write-ValidationSectionHeader -Title 'Workbench Summary'
+        Write-ValidationSummary -Fields $workbenchSummaryFields
         Write-ValidationSectionHeader -Title 'Workbench Stages'
         Write-ValidationTwoColumnTable -Rows $workbenchStages.ToArray() -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Stage' -SecondProperty 'name' -UppercaseFirst
         Complete-ValidationTextOutput
@@ -547,27 +717,11 @@ try {
         $result | ConvertTo-Json -Depth 5
     }
     else {
-        Write-ValidationSectionHeader -Title 'Summary'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Status = 'PASSED'
-            Stages = $workbenchStages.Count
-            Passed = $workbenchStages.Count
-            Failed = 0
-            URL = $url
-            'Discovered Candidates' = $result.discoveredCandidateCount
-            'AI-Evaluated Candidates' = $result.evaluatedCandidateCount
-            Assessment = $assessmentSummary
-            'Assessment Cache' = $result.assessmentCacheDirectory
-            'Reconciliation Cache' = $result.reconciliationCacheDirectory
-            'Assessment Recovery' = $(if ($null -eq $result.assessmentResumeDirectory) { 'NONE' } else { "$($result.assessmentRecoveryMode): $($result.assessmentResumeDirectory)" })
-            'Reconciliation Recovery' = $(if ($null -eq $result.reconciliationResumeDirectory) { 'NONE' } else { "$($result.reconciliationRecoveryMode): $($result.reconciliationResumeDirectory)" })
-            Reconciliation = 'READY'
-            'Capacity Reports' = $result.capacityReportCount
-            'Site Directory' = $resolvedSiteDirectory
-            'Repository Writes' = 'DISABLED'
-        })
+        Write-ValidationSectionHeader -Title 'Workbench Summary'
+        Write-ValidationSummary -Fields $workbenchSummaryFields
         Write-ValidationSectionHeader -Title 'Workbench Stages'
         Write-ValidationTwoColumnTable -Rows $workbenchStages.ToArray() -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Stage' -SecondProperty 'name' -UppercaseFirst
+        Write-Output ''
         Write-Output 'Press Ctrl+C to stop the Workbench.'
         Complete-ValidationTextOutput
     }

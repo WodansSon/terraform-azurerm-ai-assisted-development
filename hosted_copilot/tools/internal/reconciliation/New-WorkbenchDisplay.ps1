@@ -69,18 +69,6 @@ function Get-AssessmentKey {
     return [string]$Reference.sourceDefinitionId + [char]0 + [string]$Reference.sourceId + [char]0 + [string]$Reference.contentSha256 + [char]0 + [string]$Reference.assessmentId
 }
 
-function Get-DisplayAssessmentKey {
-    param([Parameter(Mandatory = $true)][object]$Reference)
-
-    $lane = switch ([string]$Reference.sourceDefinitionId) {
-        'contributor-guidance' { 'contributor' }
-        'interactive-toolkit' { 'interactive' }
-        'maintainer-proposals' { 'maintainer' }
-        default { throw "Unsupported source lane: $($Reference.sourceDefinitionId)" }
-    }
-    return $lane + ':' + [string]$Reference.sourceId + ':' + [string]$Reference.assessmentId
-}
-
 function Get-EstimatedTokens {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
@@ -349,9 +337,6 @@ foreach ($recommendation in @($draft.recommendations)) {
         }
         $membershipByAssessment[$assessmentKey] = $draftKey
     }
-    if ($memberKeys.Count -ne 1) {
-        throw "Recommendation $draftKey must contain exactly one assessment"
-    }
     $meaningCoverageKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($coverage in @($recommendation.memberMeaningCoverage)) {
         $coverageKey = Get-AssessmentKey -Reference $coverage.assessmentRef
@@ -372,8 +357,11 @@ foreach ($recommendation in @($draft.recommendations)) {
     $idFamily = if ($null -eq $recommendation.idFamily) { $null } else { [string]$recommendation.idFamily }
     $action = [string]$recommendation.recommendedAction
     $targetExists = $null -ne $targetHostedId -and $catalogRules.ContainsKey($targetHostedId)
-    $memberAssessmentKey = [string]@($memberKeys)[0]
-    $canonicalTargetHostedId = if ($canonicalHostedRuleByAssessment.ContainsKey($memberAssessmentKey)) { [string]$canonicalHostedRuleByAssessment[$memberAssessmentKey] } else { $null }
+    $canonicalTargetHostedIds = @($memberKeys | Where-Object { $canonicalHostedRuleByAssessment.ContainsKey([string]$_) } | ForEach-Object { [string]$canonicalHostedRuleByAssessment[[string]$_] } | Sort-Object -CaseSensitive -Unique)
+    if ($canonicalTargetHostedIds.Count -gt 1) {
+        throw "Recommendation $draftKey contains assessments owned by different canonical Hosted rules"
+    }
+    $canonicalTargetHostedId = if ($canonicalTargetHostedIds.Count -eq 1) { [string]$canonicalTargetHostedIds[0] } else { $null }
     if ($action -in @('update', 'no-change', 'retire', 'restore') -and -not $targetExists) {
         throw "Recommendation $draftKey requires one exact existing Hosted target"
     }
@@ -626,13 +614,6 @@ foreach ($recommendation in $activeDraftRecommendations) {
         placement = [string]$recommendation.placement
         rationale = [string]$recommendation.rationale
         needsReview = [bool]$recommendation.needsReview
-        assessmentKeys = @($recommendation.memberAssessmentRefs | ForEach-Object { Get-DisplayAssessmentKey -Reference $_ } | Sort-Object -CaseSensitive)
-        memberMeaningCoverage = @($recommendation.memberMeaningCoverage | ForEach-Object {
-            [ordered]@{
-                assessmentKey = Get-DisplayAssessmentKey -Reference $_.assessmentRef
-                rationale = [string]$_.rationale
-            }
-        } | Sort-Object -Property assessmentKey)
         relatedHostedCoverage = @($recommendation.relatedHostedCoverage | ForEach-Object {
             $projectedCoverage = [ordered]@{
                 hostedRuleId = [string]$_.hostedRuleId
@@ -656,7 +637,7 @@ foreach ($recommendation in $activeDraftRecommendations) {
     $recommendationsByDraftKey[$draftKey] = $displayRecommendation
 }
 
-$candidates = [Collections.Generic.List[object]]::new()
+$membersByDraftKey = @{}
 foreach ($entry in @($baseline.entries)) {
     $sourceDefinitionId = [string]$entry.sourceRef.sourceDefinitionId
     $sourceKey = $sourceDefinitionId + [char]0 + [string]$entry.sourceRef.sourceId
@@ -743,27 +724,99 @@ foreach ($entry in @($baseline.entries)) {
         if (-not $displaySource.Contains('surface') -and @($assessment.affectedSurfaces).Count -eq 1 -and [string]$assessment.affectedSurfaces[0] -in @('implementation', 'testing', 'documentation')) {
             $displaySource['surface'] = [string]$assessment.affectedSurfaces[0]
         }
-        $displayCandidate = [ordered]@{
+        $catalogMapping = if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
+            $mappedHostedRuleId = [string]$canonicalHostedRuleByAssessment[$assessmentKey]
+            [ordered]@{
+                state = [string]$catalogRules[$mappedHostedRuleId].status
+                hostedRuleId = $mappedHostedRuleId
+            }
+        }
+        else {
+            [ordered]@{
+                state = 'unmapped'
+                hostedRuleId = $null
+            }
+        }
+        $meaningCoverage = @($draftRecommendations[$draftKey].memberMeaningCoverage | Where-Object { (Get-AssessmentKey -Reference $_.assessmentRef) -ceq $assessmentKey })[0]
+        $displayMember = [ordered]@{
+            assessmentKey = $assessmentKey
             source = $displaySource
             assessment = $displayAssessment
             reviewState = [string]$coverage.disposition
-            recommendation = $recommendation
-            catalogMapping = if ($canonicalHostedRuleByAssessment.ContainsKey($assessmentKey)) {
-                $mappedHostedRuleId = [string]$canonicalHostedRuleByAssessment[$assessmentKey]
-                [ordered]@{
-                    state = [string]$catalogRules[$mappedHostedRuleId].status
-                    hostedRuleId = $mappedHostedRuleId
-                }
-            }
-            else {
-                [ordered]@{
-                    state = 'unmapped'
-                    hostedRuleId = $null
-                }
+            meaningCoverageRationale = [string]$meaningCoverage.rationale
+            catalogMapping = $catalogMapping
+        }
+        if (-not $membersByDraftKey.ContainsKey($draftKey)) {
+            $membersByDraftKey[$draftKey] = [Collections.Generic.List[object]]::new()
+        }
+        $membersByDraftKey[$draftKey].Add($displayMember)
+    }
+}
+
+$candidates = [Collections.Generic.List[object]]::new()
+foreach ($recommendation in $activeDraftRecommendations) {
+    $draftKey = [string]$recommendation.draftKey
+    $displayRecommendation = $recommendationsByDraftKey[$draftKey]
+    $members = @($membersByDraftKey[$draftKey] | Sort-Object -Property assessmentKey)
+    if ($members.Count -eq 0) {
+        throw "Recommendation $draftKey has no projected assessment members"
+    }
+    $primaryMember = if ($null -ne $recommendation.targetHostedId) {
+        $canonicalAssessmentKey = [string]$canonicalAssessmentByHostedRule[[string]$recommendation.targetHostedId]
+        @($members | Where-Object { [string]$_.assessmentKey -ceq $canonicalAssessmentKey })[0]
+    }
+    else {
+        $members[0]
+    }
+    if ($null -eq $primaryMember) {
+        throw "Recommendation $draftKey cannot resolve its canonical assessment member"
+    }
+    $parentAssessment = [ordered]@{
+        id = [string]$primaryMember.assessment.id
+        title = [string]$recommendation.title
+        sourceMeaning = [string]$recommendation.recommendedRuleText
+        impactDescription = [string]$recommendation.selectionRationale
+        hostedApplicable = [string]$recommendation.recommendedAction -cne 'exclude'
+        applicabilityRationale = [string]$recommendation.rationale
+        selectionFactors = $recommendation.selectionFactors
+        selectionRationale = [string]$recommendation.selectionRationale
+        confidence = $primaryMember.assessment.confidence
+        affectedSurfaces = @([string]$recommendation.category)
+        existingCoverage = [ordered]@{
+            score = [int]$recommendation.selectionFactors.redundancy
+            rationale = [string]$recommendation.selectionRationale
+        }
+        relatedHostedCoverage = @($displayRecommendation.relatedHostedCoverage)
+        evaluatedAt = [string]$primaryMember.assessment.evaluatedAt
+        evaluator = [string]$primaryMember.assessment.evaluator
+    }
+    $displayMembers = @($members | ForEach-Object {
+        [ordered]@{
+            source = $_.source
+            assessment = $_.assessment
+            meaningCoverageRationale = [string]$_.meaningCoverageRationale
+            catalogMapping = $_.catalogMapping
+        }
+    })
+    $candidates.Add([ordered]@{
+        source = $primaryMember.source
+        assessment = $parentAssessment
+        reviewState = [string]$primaryMember.reviewState
+        recommendation = $displayRecommendation
+        catalogMapping = if ($null -ne $recommendation.targetHostedId) {
+            [ordered]@{
+                state = [string]$catalogRules[[string]$recommendation.targetHostedId].status
+                hostedRuleId = [string]$recommendation.targetHostedId
             }
         }
-        $candidates.Add($displayCandidate)
-    }
+        else {
+            [ordered]@{
+                state = 'unmapped'
+                hostedRuleId = $null
+            }
+        }
+        members = $displayMembers
+    })
 }
 
 $catalogProjection = @($catalog.rules | ForEach-Object {

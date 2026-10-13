@@ -127,6 +127,22 @@ foreach ($relativePath in @($adjudicationContract.behaviorFiles | Sort-Object -C
     [IO.File]::WriteAllBytes($destinationPath, $snapshot.Bytes)
     $behaviorAuthority.Add([ordered]@{ path = [string]$relativePath; contentSha256 = $snapshot.Sha256 })
 }
+foreach ($relativePath in @($adjudicationContract.presentationFiles | Sort-Object -CaseSensitive)) {
+    $sourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot ([string]$relativePath)))
+    if (-not $sourcePath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Rule Issue adjudication presentation path escapes the repository root: $relativePath"
+    }
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "Rule Issue adjudication presentation file was not found: $relativePath"
+    }
+    $snapshot = Get-FileSnapshot -Path $sourcePath
+    $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot ([string]$relativePath)))
+    $destinationDirectory = Split-Path -Parent $destinationPath
+    if (-not (Test-Path -LiteralPath $destinationDirectory -PathType Container)) {
+        $null = New-Item -ItemType Directory -Path $destinationDirectory -Force
+    }
+    [IO.File]::WriteAllBytes($destinationPath, $snapshot.Bytes)
+}
 
 $evaluatorSourcePath = if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) { $defaultEvaluatorScriptPath } else { [IO.Path]::GetFullPath($EvaluatorScriptPath) }
 if (-not (Test-Path -LiteralPath $evaluatorSourcePath -PathType Leaf)) {
@@ -177,14 +193,11 @@ Write-HierarchicalReconciliationRunManifest -Path $manifestPath -SchemaPath $req
 
 $succeeded = $false
 try {
-    if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'rule-issue-adjudication/hierarchy' -Detail ("{0} semantic components" -f $shards.Count) -NameWidth 42)
-    }
     $resultValidator = {
         param($Component, $Draft)
         Test-RuleIssueAdjudicationDraft -Component $Component -Draft $Draft
     }
-    $stageResult = Invoke-ReconciliationStageSet -Stage adjudication -Shards $shards -RunDirectory $runDirectory -CachePath $runCachePath -CacheSchemaPath $requiredPaths.CacheSchemaPath -ResultSchemaPath $requiredPaths.DraftSchemaPath -PromptPath $requiredPaths.PromptPath -CatalogPath $requiredPaths.CatalogPath -ProtectedRulesPath $requiredPaths.ProtectedRulesPath -ContractPath $stageContractPath -EvaluatorScriptPath $runEvaluatorPath -ResultValidator $resultValidator -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds 1000 -MaxParallelShards $MaxParallelShards -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes
+    $stageResult = Invoke-ReconciliationStageSet -Stage adjudication -Shards $shards -RunDirectory $runDirectory -CachePath $runCachePath -CacheSchemaPath $requiredPaths.CacheSchemaPath -ResultSchemaPath $requiredPaths.DraftSchemaPath -PromptPath $requiredPaths.PromptPath -CatalogPath $requiredPaths.CatalogPath -ProtectedRulesPath $requiredPaths.ProtectedRulesPath -ContractPath $stageContractPath -EvaluatorScriptPath $runEvaluatorPath -ResultValidator $resultValidator -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds 1000 -MaxParallelShards $MaxParallelShards -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes -InputLabel 'Rule Issue Groups' -InputCount $orderedComponents.Count -ShowProgress:(-not $Quiet)
     $draftsByComponentId = @{}
     foreach ($stageEntry in @($stageResult.results)) {
         $draft = $stageEntry.result
@@ -207,9 +220,6 @@ try {
     Write-HierarchicalReconciliationRunManifest -Path $manifestPath -SchemaPath $requiredPaths.RunSchemaPath -RunId $runId -CreatedAt $runCreatedAt -Authority $authority -StageResults @($stageResult.results) | Out-Null
     Copy-HierarchicalFileAtomically -SourcePath $runCachePath -DestinationPath $persistentCachePath
     $succeeded = $true
-    if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name 'rule-issue-adjudication/hierarchy' -Detail ("{0} cached | {1} evaluated" -f $stageResult.cachedCount, $stageResult.evaluatedCount) -NameWidth 42)
-    }
 }
 catch {
     $failureMessage = [string]$_.Exception.Message
