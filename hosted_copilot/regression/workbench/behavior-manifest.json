@@ -300,6 +300,11 @@
       "journey": "playwright/journeys/portable-review-state.journey.cjs"
     },
     {
+      "id": "WB-UX-RELATIONSHIP-001",
+      "title": "Edited rule relationships require explicit resolution and confirmed rollback",
+      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+    },
+    {
       "id": "WB-UX-SCROLLBAR-001",
       "title": "Scrollbars hide while idle and reveal on interaction",
       "journey": "playwright/journeys/scrollbar-visibility.journey.cjs"

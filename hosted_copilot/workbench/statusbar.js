@@ -63,7 +63,8 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     alignment: "right",
     valueId: "status-mapped",
     value: "0",
-    icon: "link",
+    icon: "link-multiple-16-filled",
+    iconFamily: "fluent",
     tooltip: "Mapped Hosted rules",
     ariaLabel: "Show mapped Hosted rules",
     navigation: "mapped"
@@ -73,7 +74,8 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     alignment: "right",
     valueId: "status-unmapped",
     value: "0",
-    icon: "debug-disconnect-compact",
+    icon: "link-dismiss-16-filled",
+    iconFamily: "fluent",
     tooltip: "Not mapped",
     ariaLabel: "Show not mapped candidates",
     navigation: "unmapped"
@@ -93,7 +95,8 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     alignment: "right",
     valueId: "status-headroom",
     value: "0",
-    icon: "graph",
+    icon: "gauge-16-regular",
+    iconFamily: "fluent",
     tooltip: "Hosted guidance headroom",
     ariaLabel: "Show Hosted guidance headroom",
     navigation: "capacity"
@@ -112,12 +115,15 @@ const STATUS_BAR_ENTRIES = Object.freeze([
   }
 ]);
 
-function createStatusBarIcon(name) {
+function createStatusBarIcon(name, family = "codicon") {
+  if (!["codicon", "fluent"].includes(family)) throw new Error(`Unsupported status bar icon family: ${family}`);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.classList.add("codicon");
+  svg.classList.add(family === "fluent" ? "fluent-icon" : "codicon");
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", `icons/codicons/sprite.svg#codicon-${name}`);
+  use.setAttribute("href", family === "fluent"
+    ? `icons/fluent/sprite.svg#fluent-${name}`
+    : `icons/codicons/sprite.svg#codicon-${name}`);
   svg.appendChild(use);
   return svg;
 }
@@ -150,7 +156,7 @@ class WorkbenchStatusBarService {
       if (entry.navigation) node.dataset.statusNavigation = entry.navigation;
       if (entry.truncationOwner) node.dataset.truncationOwner = "";
       node.hidden = Boolean(entry.hidden);
-      node.appendChild(createStatusBarIcon(entry.icon));
+      node.appendChild(createStatusBarIcon(entry.icon, entry.iconFamily));
       const value = document.createElement("span");
       value.id = entry.valueId;
       value.textContent = entry.value;
