@@ -11,10 +11,38 @@ function Test-RuleIssueAdjudicationDraft {
     if ([string]$Draft.componentId -cne [string]$Component.componentId) {
         throw 'Adjudication changed the component ID'
     }
-    $inputRelationshipIds = @($Component.relationships.id | Sort-Object -CaseSensitive)
-    $decisionIds = @($Draft.relationshipDecisions.relationshipId | Sort-Object -CaseSensitive)
-    if (@(Compare-Object $inputRelationshipIds $decisionIds -SyncWindow 0).Count -ne 0 -or @($decisionIds | Sort-Object -Unique).Count -ne $decisionIds.Count) {
+    $inputRelationshipIds = @($Component.relationships | ForEach-Object { [string]$_.id })
+    $decisionIds = @($Draft.relationshipDecisions | ForEach-Object { [string]$_.relationshipId })
+    if ($inputRelationshipIds.Count -ne $decisionIds.Count -or @($decisionIds | Where-Object { $_ -cnotin $inputRelationshipIds }).Count -gt 0 -or @($decisionIds | Sort-Object -Unique).Count -ne $decisionIds.Count) {
         throw 'Adjudication must decide every input relationship exactly once'
+    }
+    $isSavedEdit = $null -ne $Component.PSObject.Properties['editContext']
+    $editProposals = @{}
+    if ($isSavedEdit) {
+        $context = $Component.editContext
+        $baselineHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([string]$context.baselineText))).ToLowerInvariant()
+        if ($baselineHash -cne [string]$context.baselineSha256) { throw 'Saved-edit baseline hash is invalid' }
+        foreach ($proposal in @($context.proposals)) {
+            $key = [string]$proposal.candidateKey
+            if ($editProposals.ContainsKey($key)) { throw 'Saved-edit proposal identity is duplicated' }
+            $inputOperations = @($Component.operations | Where-Object { [string]$_.candidateKey -ceq $key })
+            if ($inputOperations.Count -ne 1 -or [string]$inputOperations[0].proposedText -cne [string]$proposal.proposedText) { throw 'Saved-edit proposal does not match its candidate operation' }
+            $editProposals[$key] = $proposal
+        }
+        if ($editProposals.Count -ne @($Component.operations).Count -or -not $editProposals.ContainsKey([string]$context.candidateKey)) { throw 'Saved-edit proposals must account for every candidate operation' }
+        $edited = $editProposals[[string]$context.candidateKey]
+        if ([string]$edited.baselineText -cne [string]$context.baselineText) { throw 'Saved-edit baseline disagrees with its candidate baseline' }
+        if ($null -ne $context.appendText -and [string]$edited.proposedText -cne ([string]$context.baselineText + [string]$context.appendText)) { throw 'Saved-edit addition does not reconstruct the proposal' }
+        if ($null -eq $Draft.PSObject.Properties['scopeReview'] -or $null -eq $Draft.PSObject.Properties['evaluationContextSha256'] -or [string]$Draft.evaluationContextSha256 -cne [string]$context.evaluationContextSha256) { throw 'Saved-edit adjudication has missing or stale evaluation context' }
+        if (-not ([string]$context.baselineText).Contains([string]$Draft.scopeReview.baselineQuote, [StringComparison]::Ordinal)) { throw 'Baseline quotation is not an exact span of the supplied edit baseline' }
+        if (-not ([string]$edited.proposedText).Contains([string]$Draft.scopeReview.proposalQuote, [StringComparison]::Ordinal)) { throw 'Proposal quotation is not an exact span of the saved proposal' }
+        $editedRuleId = [string]@($Component.operations | Where-Object { [string]$_.candidateKey -ceq [string]$context.candidateKey })[0].ruleId
+        $ownerId = $Draft.scopeReview.ownerRuleId
+        if ([string]$Draft.scopeReview.disposition -ceq 'route-to-existing-rule') {
+            $owners = @($Component.rules | Where-Object { [string]$_.id -ceq [string]$ownerId -and [string]$_.status -in @('active', 'protected') })
+            if ($owners.Count -ne 1 -or [string]$ownerId -ceq $editedRuleId) { throw 'Saved-edit scope owner must identify a distinct supplied existing rule' }
+        }
+        elseif ($null -ne $ownerId -and -not ([string]$Draft.scopeReview.disposition -ceq 'within-scope' -and [string]$ownerId -ceq $editedRuleId)) { throw 'Saved-edit scope disposition cannot assign a foreign owner' }
     }
     $knownRuleIds = [Collections.Generic.HashSet[string]]::new([string[]]@($Component.rules.id), [StringComparer]::Ordinal)
     $knownOperationKeys = [Collections.Generic.HashSet[string]]::new([string[]]@($Component.operations.candidateKey), [StringComparer]::Ordinal)
@@ -25,6 +53,13 @@ function Test-RuleIssueAdjudicationDraft {
     $decisionById = @{}
     foreach ($decision in @($Draft.relationshipDecisions)) {
         $decisionById[[string]$decision.relationshipId] = $decision
+        if ($isSavedEdit) {
+            $relationship = $relationshipById[[string]$decision.relationshipId]
+            foreach ($pair in @(@{ id = [string]$relationship.sourceRuleId; field = 'sourceQuote' }, @{ id = [string]$relationship.relatedRuleId; field = 'relatedQuote' })) {
+                $rule = @($Component.rules | Where-Object { [string]$_.id -ceq $pair.id })[0]
+                if ($null -eq $decision.PSObject.Properties[$pair.field] -or [string]::IsNullOrWhiteSpace([string]$decision.($pair.field)) -or -not ([string]$rule.text).Contains([string]$decision.($pair.field), [StringComparison]::Ordinal)) { throw 'Saved-edit relationship quotation is not an exact span of its supplied rule' }
+            }
+        }
     }
     $usedRelationshipIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($issue in @($Draft.issues)) {
@@ -103,6 +138,15 @@ function Test-RuleIssueAdjudicationDraft {
             if ([string]$operation.action -notin $allowedActions) {
                 throw "Adjudication action $($operation.action) is invalid for $($operation.ruleId) with status $($operationRule.status)"
             }
+            if ($isSavedEdit) {
+                $proposal = $editProposals[$candidateKey]
+                if ([string]$operation.action -ceq 'retire') { throw 'Saved edits cannot introduce whole-rule retirement or consolidation' }
+                if ($null -eq $operation.PSObject.Properties['textSource'] -or [string]$operation.textSource -notin @('baseline', 'proposal')) { throw 'Saved-edit operation is missing text provenance' }
+                $expectedText = if ([string]$operation.textSource -ceq 'baseline') { [string]$proposal.baselineText } else { [string]$proposal.proposedText }
+                if ([string]$operation.proposedText -cne $expectedText) { throw 'Saved-edit operation must preserve the complete supplied baseline or proposal' }
+                if ((@($operation.retireHostedRuleIds | Sort-Object -CaseSensitive) -join "`0") -cne (@($proposal.retireHostedRuleIds | Sort-Object -CaseSensitive) -join "`0")) { throw 'Saved-edit operation cannot change the supplied retirement set' }
+                if ([string]$candidateKey -ceq [string]$Component.editContext.candidateKey -and [string]$Draft.scopeReview.disposition -in @('route-to-existing-rule', 'suggest-new-rule') -and $null -ne $Component.editContext.appendText -and [string]$operation.proposedText -cne [string]$proposal.baselineText) { throw 'Out-of-scope additions must preserve the complete edit baseline' }
+            }
             foreach ($retireRuleId in @($operation.retireHostedRuleIds)) {
                 $retireRule = @($Component.rules | Where-Object { [string]$_.id -ceq [string]$retireRuleId })[0]
                 if ($null -eq $retireRule -or [string]$retireRule.status -cne 'active') {
@@ -178,9 +222,56 @@ function Test-RuleIssueAdjudicationDraft {
         }
     }
     $materialDecisionIds = @($Draft.relationshipDecisions | Where-Object { [string]$_.disposition -ceq 'issue' } | ForEach-Object { [string]$_.relationshipId } | Sort-Object -CaseSensitive)
-    if (@(Compare-Object $materialDecisionIds @($usedRelationshipIds | Sort-Object -CaseSensitive) -SyncWindow 0).Count -ne 0) {
+    if ($materialDecisionIds.Count -ne $usedRelationshipIds.Count -or @($materialDecisionIds | Where-Object { -not $usedRelationshipIds.Contains($_) }).Count -gt 0) {
         throw 'Every material relationship must appear in exactly one adjudicated issue'
     }
 }
 
-Export-ModuleMember -Function 'Test-RuleIssueAdjudicationDraft'
+function ConvertTo-WorkbenchRuleIssues {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object]$Component,
+        [Parameter(Mandatory = $true)][object]$Draft
+    )
+
+    Test-RuleIssueAdjudicationDraft -Component $Component -Draft $Draft
+    $rules = @{}
+    foreach ($rule in @($Component.rules)) { $rules[[string]$rule.id] = $rule }
+    $relationships = @{}
+    foreach ($relationship in @($Component.relationships)) { $relationships[[string]$relationship.id] = $relationship }
+    $decisions = @{}
+    foreach ($decision in @($Draft.relationshipDecisions)) { $decisions[[string]$decision.relationshipId] = $decision }
+    $kinds = @{ equivalent = 'duplicate'; 'partial-overlap' = 'overlap'; 'assessment-extends-hosted' = 'overlap'; 'assessment-narrows-hosted' = 'overlap'; conflicts = 'contradiction' }
+    $labels = @{ 'protected-integrity' = 'Protected Integrity'; 'protected-conflict' = 'Protected Conflict'; 'protected-coverage' = 'Protected Coverage'; contradiction = 'Contradiction'; duplicate = 'Duplicate'; overlap = 'Overlap' }
+    foreach ($issue in @($Draft.issues)) {
+        $protectedIds = @($issue.ruleIds | Where-Object { [string]$rules[[string]$_].status -ceq 'protected' } | Sort-Object -CaseSensitive)
+        $identity = @($issue.relationshipIds | Sort-Object -CaseSensitive)[0]
+        $id = if ($protectedIds.Count -gt 0) { 'protected:' + ($protectedIds -join '+') + ':' + $identity } else { 'relationship:' + [string]$issue.anchorRuleId + ':' + $identity }
+        $dispositions = @{}
+        foreach ($entry in @($issue.ruleDispositions)) { $dispositions[[string]$entry.ruleId] = [string]$entry.disposition }
+        $finalRules = @($issue.ruleIds | ForEach-Object {
+            $rule = $rules[[string]$_]
+            [ordered]@{ id = [string]$rule.id; status = [string]$rule.status; disposition = $dispositions[[string]$rule.id]; text = [string]$rule.text; candidateKeys = @($rule.candidateKeys) }
+        })
+        $finalRelationships = @($issue.relationshipIds | ForEach-Object {
+            $relationship = $relationships[[string]$_]
+            $decision = $decisions[[string]$_]
+            [ordered]@{ sourceRuleId = [string]$relationship.sourceRuleId; relatedRuleId = [string]$relationship.relatedRuleId; relationship = [string]$decision.relationship; kind = $kinds[[string]$decision.relationship]; rationale = [string]$decision.rationale; candidateKey = [string]$relationship.candidateKey }
+        } | Sort-Object -Property sourceRuleId, relatedRuleId, relationship, candidateKey)
+        $operations = @($issue.recommendedMaintainerAction.operations | ForEach-Object {
+            $operation = $_
+            [ordered]@{ candidateKey = [string]$operation.candidateKey; ruleId = [string]$operation.ruleId; action = [string]$operation.action; proposedText = [string]$operation.proposedText; retireHostedRuleIds = @($operation.retireHostedRuleIds | Where-Object { [string]$_ -cne [string]$operation.ruleId } | Sort-Object -CaseSensitive -Unique) }
+        } | Sort-Object -Property candidateKey)
+        $candidateKeys = @($finalRules.candidateKeys + $finalRelationships.candidateKey + @($operations | ForEach-Object { $_.candidateKey }) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -CaseSensitive -Unique)
+        [ordered]@{
+            id = $id; classification = [string]$issue.classification; label = $labels[[string]$issue.classification]
+            title = [string]$issue.title; bannerTitle = [string]$issue.bannerTitle; bannerMessage = [string]$issue.bannerMessage
+            blocking = [bool]$issue.blocking; ruleIds = @($issue.ruleIds); protectedRuleIds = $protectedIds
+            candidateKeys = $candidateKeys; rules = $finalRules; relationships = $finalRelationships
+            assessmentSummary = [string]$issue.assessmentSummary; wording = $issue.wording
+            recommendedMaintainerAction = [ordered]@{ summary = [string]$issue.recommendedMaintainerAction.summary; operations = $operations }
+        }
+    }
+}
+
+Export-ModuleMember -Function 'Test-RuleIssueAdjudicationDraft', 'ConvertTo-WorkbenchRuleIssues'

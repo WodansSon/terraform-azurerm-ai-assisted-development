@@ -47,6 +47,9 @@ Specifies the Copilot evaluator executable.
 .PARAMETER RelationshipEvaluatorScriptPath
 Specifies an optional evaluator adapter used for manual relationship checks.
 
+.PARAMETER AdjudicationEvaluatorScriptPath
+Specifies an optional evaluator adapter used for saved-rule group adjudication.
+
 .PARAMETER Rebuild
 Collects current sources and rebuilds the staged Workbench artifacts while reusing compatible cache entries.
 
@@ -153,6 +156,10 @@ param(
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
+    [string]$AdjudicationEvaluatorScriptPath,
+
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [switch]$Rebuild,
 
     [Parameter(Mandatory, ParameterSetName = 'Force')]
@@ -192,7 +199,7 @@ if ($Help -or $Detailed) {
     $helpParameterGroups = [ordered]@{
         'Workflow Options' = @('Rebuild', 'Force', 'StageOnly', 'NoLaunch')
         'Server And Output' = @('Port', 'OwnerProcessId', 'OutputFormat')
-        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath')
+        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath', 'AdjudicationEvaluatorScriptPath')
         'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'ManualRelationshipCacheDirectory', 'AssessmentResumeDirectory')
         'Authorization' = @('SkipGitHubAuthorization')
     }
@@ -226,6 +233,8 @@ $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-Sour
 $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $ruleIssuesExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $manualRelationshipPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
+$savedRuleEvaluationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'
+Import-Module (Join-Path $PSScriptRoot 'modules/workbench/SavedRuleEvaluation.psm1')
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
@@ -288,6 +297,12 @@ $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes($shutdownConfig)
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
+$savedAuthorityParameters = @{
+    RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath; RuleIssuesPath = $stagedRuleIssuesPath
+    EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $AssessmentReasoningEffort
+    RelationshipEvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
+    AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
+}
 $assessmentResult = $null
 $ruleIssuesResult = $null
 $script:workbenchPhase = 'INITIALIZATION'
@@ -686,7 +701,7 @@ function Read-HttpRequestBody {
     param(
         [Parameter(Mandatory = $true)][IO.StreamReader]$Reader,
         [Parameter(Mandatory = $true)][hashtable]$Headers,
-        [ValidateRange(1, 1048576)][int]$MaximumBytes = 131072
+        [ValidateRange(1, 16777216)][int]$MaximumBytes = 16777216
     )
 
     $contentLengthValue = [string]$Headers['Content-Length']
@@ -774,6 +789,9 @@ try {
                 continue
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
+                $runtimeConfig = $shutdownConfig | ConvertFrom-Json
+                $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters)
+                $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
             }
@@ -804,7 +822,7 @@ try {
                         throw 'Request envelope has an unexpected property set'
                     }
                     $requestBytes = [Convert]::FromBase64String([string]$requestEnvelope.payloadBase64)
-                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 65536) {
+                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 8388608) {
                         throw 'Decoded request payload length is invalid'
                     }
                     $null = [Text.UTF8Encoding]::new($false, $true).GetString($requestBytes)
@@ -817,11 +835,14 @@ try {
                         EvaluatorCommand = $EvaluatorCommand
                         Model = $Model
                         ReasoningEffort = $AssessmentReasoningEffort
+                        DisplayPath = $stagedDisplayPath
+                        RuleIssuesPath = $stagedRuleIssuesPath
+                        AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
                     }
                     if ($null -ne $resolvedRelationshipEvaluatorScriptPath) {
                         $relationshipParameters.EvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
                     }
-                    $relationshipOutput = @(& pwsh -NoProfile -File $manualRelationshipPath @relationshipParameters 2>&1)
+                    $relationshipOutput = @(& pwsh -NoProfile -File $savedRuleEvaluationPath @relationshipParameters 2>&1)
                     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
                         throw "Scoped relationship evaluator failed: $(($relationshipOutput | Out-String).Trim())"
                     }

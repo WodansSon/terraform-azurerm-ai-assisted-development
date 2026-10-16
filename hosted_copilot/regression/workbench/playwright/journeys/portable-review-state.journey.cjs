@@ -5,8 +5,7 @@ const behaviorIds = [
   "WB-UX-DRAFT-001",
   "WB-UX-DRAFT-002",
   "WB-UX-SESSION-001",
-  "WB-UX-APPROVAL-001",
-  "WB-UX-RELATIONSHIP-001"
+  "WB-UX-APPROVAL-001"
 ];
 
 async function readDownload(download) {
@@ -84,34 +83,11 @@ async function run({ page, baseUrl, assert, playback }) {
         checkRequiredBeforeSave: requiresManualRelationshipCheck(candidate, textarea.value)
       };
     });
-    await page.evaluate(() => {
-      const originalFetch = window.fetch;
-      const candidate = getActiveCandidate();
-      const relatedRules = state.bundle.catalog.rules.filter((rule) => rule.status === "active" && rule.id !== getEffectiveHostedRuleId(candidate)).slice(0, 2);
-      if (relatedRules.length !== 2) throw new Error("Relationship save fixture requires two active Hosted rules");
-      globalThis.__RELATIONSHIP_SAVE_FETCH__ = originalFetch;
-      window.fetch = async (url, options) => {
-        if (!String(url).endsWith("/reconcile-rule")) return originalFetch(url, options);
-        const decode = (value) => new TextDecoder().decode(Uint8Array.from(atob(value), (character) => character.charCodeAt(0)));
-        const request = JSON.parse(decode(JSON.parse(options.body).payloadBase64));
-        const proposedText = decode(request.ruleTextBase64);
-        const relationships = relatedRules.map((rule) => ({
-          hostedRuleId: rule.id,
-          relationship: "partial-overlap",
-          rationale: `The edited wording overlaps the explicit ${rule.id} requirement.`,
-          suggestedConsolidatedText: `${proposedText} Preserve the complete ${rule.id} requirement.`
-        }));
-        return new Response(JSON.stringify({ schemaVersion: 1, ruleTextSha256: "9".repeat(64), relationships }), { status: 200, headers: { "Content-Type": "application/json" } });
-      };
-    });
     await proposedSave.scrollIntoViewIfNeeded();
     proposedTextSaveSetup.originalScrollTop = await page.locator("#assessment-panel .assessment-content").evaluate((element) => element.scrollTop);
     await proposedSave.click();
     await page.waitForFunction((candidateKey) => ["current", "failed"].includes(state.session.manualRelationshipChecks[candidateKey]?.status), proposedTextSaveSetup.candidateKey, { timeout: 30000 });
-    await page.evaluate(() => {
-      window.fetch = globalThis.__RELATIONSHIP_SAVE_FETCH__;
-      delete globalThis.__RELATIONSHIP_SAVE_FETCH__;
-    });
+    await page.waitForFunction(() => activeRelationshipChecks.size === 0);
     const relationshipOutcome = await page.evaluate((candidateKey) => ({
       status: state.session.manualRelationshipChecks[candidateKey]?.status,
       toast: document.querySelector("#toast-message")?.textContent || ""
@@ -152,182 +128,7 @@ async function run({ page, baseUrl, assert, playback }) {
     }, proposedTextSaveSetup);
     assert(proposedTextSaveResult.enabledWhenDirty && proposedTextSaveResult.disabledAfterSave, "Proposed Hosted Rule save dirty state is incorrect");
     assert(proposedTextSaveResult.checkRequiredBeforeSave && proposedTextSaveResult.relationshipStatus === "current" && proposedTextSaveResult.checkCurrentAfterSave, "Proposed Hosted Rule save did not complete an exact-text relationship check");
-    assert(proposedTextSaveResult.relationshipDiagnostics.relationshipCount === 2 && proposedTextSaveResult.reviewCount === 2, `Save-time relationship checking did not reveal both inline reviews: ${JSON.stringify(proposedTextSaveResult)}`);
-    assert(proposedTextSaveResult.ruleIssuesUnchanged, "Save-time relationship checking mutated the read-only Rule Issues artifact");
-
-    await playback.show(page, "Candidate relationship review · consolidate, cancel, and confirmed rollback");
-    const relationshipSetup = await page.evaluate(async () => {
-      const candidate = getActiveCandidate();
-      const decision = getDecision(candidate);
-      const relatedRule = state.bundle.catalog.rules.find((rule) => rule.status === "active" && rule.id !== getEffectiveHostedRuleId(candidate));
-      if (!relatedRule) throw new Error("Relationship lifecycle fixture requires another active Hosted rule");
-      const relationship = {
-        hostedRuleId: relatedRule.id,
-        relationship: "assessment-extends-hosted",
-        rationale: `The edited wording overlaps the explicit ${relatedRule.id} requirement.`,
-        suggestedConsolidatedText: `${decision.proposedText} Preserve the complete ${relatedRule.id} requirement.`
-      };
-      state.session.manualRelationshipChecks[candidate.key] = {
-        status: "current",
-        proposedText: decision.proposedText,
-        ruleTextSha256: "a".repeat(64),
-        checkedAt: toUtcTimestamp(),
-        relationships: [relationship],
-        resolutions: {}
-      };
-      state.session.updatedAt = toUtcTimestamp();
-      await persistSession();
-      renderAssessment();
-      return {
-        candidateKey: candidate.key,
-        sourceText: decision.proposedText,
-        relatedRuleId: relatedRule.id,
-        resolvedText: relationship.suggestedConsolidatedText,
-        ruleIssuesSnapshot: JSON.stringify(state.ruleIssues)
-      };
-    });
-    assert(await page.locator("#assessment-panel .manual-relationship-review").isVisible(), "Positive manual relationship did not render an inline review");
-    assert((await page.locator("#assessment-panel .relationship-check-status").textContent()).trim() === "1 related rule", "Manual relationship status did not use related-rule terminology");
-    assert(await page.locator('#assessment-panel [data-manual-relationship-mode="consolidate-retire"]').isChecked(), "Consolidate & Retire was not the default when evaluator-owned merged wording exists");
-    const relationshipVisuals = await page.evaluate(() => {
-      const review = document.querySelector("#assessment-panel .manual-relationship-review");
-      const information = review.querySelector(".information-panel");
-      return {
-        editedLabel: review.querySelector(".manual-relationship-edited-rule .manual-relationship-card-label")?.textContent.trim(),
-        informationFill: information ? getComputedStyle(information).backgroundColor : null,
-        informationRail: information ? getComputedStyle(information).borderLeftColor : null,
-        infoIcon: information?.querySelector("use")?.getAttribute("href") || null,
-        resolutionIcon: review.querySelector("[data-manual-relationship-resolve] use")?.getAttribute("href") || null
-      };
-    });
-    assert(relationshipVisuals.editedLabel === "Edited Proposed Rule ·", `Edited relationship identity is incorrect: ${JSON.stringify(relationshipVisuals)}`);
-    assert(relationshipVisuals.resolutionIcon === "icons/fluent/sprite.svg#fluent-arrow-routing-20-regular", `Consolidation resolution did not use Arrow Routing: ${JSON.stringify(relationshipVisuals)}`);
-
-    await page.evaluate(() => {
-      const originalFetch = window.fetch;
-      const candidate = getActiveCandidate();
-      const current = state.session.manualRelationshipChecks[candidate.key];
-      globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__ = structuredClone(current.relationships[0]);
-      globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__ = originalFetch;
-      window.fetch = async (url, options) => {
-        if (!String(url).endsWith("/reconcile-rule")) return originalFetch(url, options);
-        const decode = (value) => new TextDecoder().decode(Uint8Array.from(atob(value), (character) => character.charCodeAt(0)));
-        const envelope = JSON.parse(options.body);
-        const request = JSON.parse(decode(envelope.payloadBase64));
-        const relationship = structuredClone(globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__);
-        relationship.suggestedConsolidatedText = decode(request.ruleTextBase64);
-        return new Response(JSON.stringify({ schemaVersion: 1, ruleTextSha256: "b".repeat(64), relationships: [relationship] }), { status: 200, headers: { "Content-Type": "application/json" } });
-      };
-    });
-    await page.locator("#assessment-panel [data-manual-relationship-resolve]").click();
-    await page.waitForFunction((setup) => {
-      const candidate = state.assessedCandidates.find((item) => item.key === setup.candidateKey);
-      const decision = candidate ? getDecision(candidate) : null;
-      const check = candidate && decision ? getCurrentManualRelationshipCheck(candidate, decision.proposedText) : null;
-      return decision?.proposedText === setup.resolvedText
-        && decision.retireHostedRuleIds.includes(setup.relatedRuleId)
-        && isManualRelationshipCheckResolved(check);
-    }, relationshipSetup);
-    await page.evaluate(() => {
-      window.fetch = globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__;
-      delete globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__;
-      delete globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__;
-    });
-    const resolvedRelationship = await page.evaluate((setup) => {
-      const candidate = state.assessedCandidates.find((item) => item.key === setup.candidateKey);
-      const decision = getDecision(candidate);
-      const check = getCurrentManualRelationshipCheck(candidate, decision.proposedText);
-      return {
-        proposedText: decision.proposedText,
-        action: decision.action,
-        rationale: decision.rationale,
-        retirementStaged: decision.retireHostedRuleIds.includes(setup.relatedRuleId),
-        resolved: isManualRelationshipCheckResolved(check),
-        requiredAction: getResolvedManualRelationshipRequiredAction(candidate),
-        ruleIssuesUnchanged: JSON.stringify(state.ruleIssues) === setup.ruleIssuesSnapshot
-      };
-    }, relationshipSetup);
-    assert(resolvedRelationship.proposedText === relationshipSetup.resolvedText && resolvedRelationship.retirementStaged && resolvedRelationship.resolved, `Consolidate & Retire did not commit one resolved decision: ${JSON.stringify(resolvedRelationship)}`);
-    assert(resolvedRelationship.rationale.includes(relationshipSetup.relatedRuleId) && resolvedRelationship.ruleIssuesUnchanged, "Relationship resolution did not generate rationale or mutated published Rule Issues");
-
-    const incompatibleAction = await page.locator("#assessment-panel [data-rule-action]").evaluateAll((controls, requiredAction) => controls.find((control) => control.dataset.ruleAction !== requiredAction)?.dataset.ruleAction, resolvedRelationship.requiredAction);
-    await page.locator(`#assessment-panel [data-rule-action="${incompatibleAction}"]`).click();
-    const rollbackDialog = page.locator("#assessment-panel [data-rule-action-resolution-dialog]");
-    assert(await rollbackDialog.isVisible(), "Incompatible Rule Action did not open rollback confirmation");
-    assert(await rollbackDialog.locator("[data-rule-action-resolution-cancel]:not(.titlebar-icon)").evaluate((element) => element === document.activeElement), "Rollback confirmation did not focus Cancel");
-    const rollbackTitle = (await rollbackDialog.locator("#rule-action-resolution-dialog-title").textContent()).trim();
-    assert(rollbackTitle === "Change Rule Action?", `Rollback confirmation title is incorrect: ${JSON.stringify(rollbackTitle)}`);
-    await rollbackDialog.locator("[data-rule-action-resolution-cancel]:not(.titlebar-icon)").click();
-    const afterCancel = await page.evaluate((setup) => {
-      const candidate = state.assessedCandidates.find((item) => item.key === setup.candidateKey);
-      const decision = getDecision(candidate);
-      return { action: decision.action, retirementStaged: decision.retireHostedRuleIds.includes(setup.relatedRuleId), resolved: isManualRelationshipCheckResolved(getCurrentManualRelationshipCheck(candidate, decision.proposedText)) };
-    }, relationshipSetup);
-    assert(afterCancel.action === resolvedRelationship.requiredAction && afterCancel.retirementStaged && afterCancel.resolved, `Cancel mutated the resolved decision: ${JSON.stringify(afterCancel)}`);
-
-    await page.locator(`#assessment-panel [data-rule-action="${incompatibleAction}"]`).click();
-    await page.locator("#assessment-panel [data-rule-action-resolution-confirm]").click();
-    await page.evaluate(() => persistencePromise);
-    const afterRollback = await page.evaluate((setup) => {
-      const candidate = state.assessedCandidates.find((item) => item.key === setup.candidateKey);
-      const decision = getDecision(candidate);
-      const check = getCurrentManualRelationshipCheck(candidate, decision.proposedText);
-      return {
-        action: decision.action,
-        proposedText: decision.proposedText,
-        rationale: decision.rationale,
-        retirementStaged: decision.retireHostedRuleIds.includes(setup.relatedRuleId),
-        resolved: isManualRelationshipCheckResolved(check),
-        relationshipCount: check?.relationships.length || 0,
-        reviewVisible: Boolean(document.querySelector("#assessment-panel .manual-relationship-review"))
-      };
-    }, relationshipSetup);
-    assert(afterRollback.action === incompatibleAction && afterRollback.proposedText === relationshipSetup.sourceText && !afterRollback.rationale && !afterRollback.retirementStaged, `Confirmed rollback did not restore the pre-resolution decision: ${JSON.stringify(afterRollback)}`);
-    assert(!afterRollback.resolved && afterRollback.relationshipCount === 1 && afterRollback.reviewVisible, `Confirmed rollback did not reopen the relationship review: ${JSON.stringify(afterRollback)}`);
-
-    await page.locator('#assessment-panel [data-manual-relationship-mode="keep-active"]').check();
-    assert(await page.locator("#assessment-panel [data-manual-relationship-resolve] use").getAttribute("href") === "icons/fluent/sprite.svg#fluent-arrow-split-20-regular", "Keep Both did not switch the resolution command to Arrow Split");
-    await page.evaluate(() => {
-      const candidate = getActiveCandidate();
-      const decision = getDecision(candidate);
-      const current = getCurrentManualRelationshipCheck(candidate, decision.proposedText);
-      globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__ = structuredClone(current.relationships[0]);
-      const originalFetch = window.fetch;
-      globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__ = originalFetch;
-      window.fetch = async (url, options) => {
-        if (!String(url).endsWith("/reconcile-rule")) return originalFetch(url, options);
-        const decode = (value) => new TextDecoder().decode(Uint8Array.from(atob(value), (character) => character.charCodeAt(0)));
-        const envelope = JSON.parse(options.body);
-        const request = JSON.parse(decode(envelope.payloadBase64));
-        const relationship = structuredClone(globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__);
-        relationship.suggestedConsolidatedText = decode(request.ruleTextBase64);
-        return new Response(JSON.stringify({ schemaVersion: 1, ruleTextSha256: "c".repeat(64), relationships: [relationship] }), { status: 200, headers: { "Content-Type": "application/json" } });
-      };
-    });
-    await page.locator("#assessment-panel [data-manual-relationship-resolve]").click();
-    await page.evaluate(() => persistencePromise);
-    await page.evaluate(() => {
-      window.fetch = globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__;
-      delete globalThis.__RELATIONSHIP_LIFECYCLE_FETCH__;
-      delete globalThis.__RELATIONSHIP_LIFECYCLE_RELATIONSHIP__;
-    });
-    const keptRelationship = await page.evaluate((setup) => {
-      const candidate = state.assessedCandidates.find((item) => item.key === setup.candidateKey);
-      const decision = getDecision(candidate);
-      const check = getCurrentManualRelationshipCheck(candidate, decision.proposedText);
-      const resolution = Object.values(check.resolutions)[0];
-      return {
-        action: decision.action,
-        proposedText: decision.proposedText,
-        rationale: decision.rationale,
-        retirementCount: decision.retireHostedRuleIds.length,
-        resolved: isManualRelationshipCheckResolved(check),
-        requiredAction: getResolvedManualRelationshipRequiredAction(candidate),
-        mode: resolution?.mode
-      };
-    }, relationshipSetup);
-    assert(keptRelationship.proposedText === relationshipSetup.sourceText && keptRelationship.retirementCount === 0 && keptRelationship.resolved && keptRelationship.mode === "keep-active", `Keep Both did not preserve wording without retirement: ${JSON.stringify(keptRelationship)}`);
-    assert(keptRelationship.action === keptRelationship.requiredAction && keptRelationship.rationale.includes(relationshipSetup.relatedRuleId), `Keep Both did not apply the required action and generated rationale: ${JSON.stringify(keptRelationship)}`);
+    assert(proposedTextSaveResult.relationshipDiagnostics.relationshipCount === 0 && proposedTextSaveResult.reviewCount === 0, "The group adjudicator did not reject the fixture checker's provisional relationship");
 
     await page.locator('[data-workspace-tab="rule-issues"]').click();
     await playback.show(page, "Rule Issues · adjudicated display records remain presentation-only");

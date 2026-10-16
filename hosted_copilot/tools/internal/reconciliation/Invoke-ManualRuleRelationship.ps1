@@ -14,6 +14,8 @@ param(
 
     [string]$EvaluatorScriptPath,
 
+    [string]$ComparedRulesPath,
+
     [string]$Model = 'gpt-5.4',
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
@@ -130,6 +132,13 @@ $knownRules = @(
     @($catalog.rules | Where-Object { [string]$_.status -ceq 'active' -and $catalogLocations[[string]$_.id] -ceq [string]$request.category })
     @($protectedRules.rules | Where-Object { [string]$_.surfaceId -ceq [string]$request.category })
 ) | Where-Object { [string]$_.id -cne [string]$request.ruleId }
+if (-not [string]::IsNullOrWhiteSpace($ComparedRulesPath)) {
+    $knownRules = @(Get-Content -LiteralPath $ComparedRulesPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String)
+    $knownIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($rule in $knownRules) {
+        if ([string]::IsNullOrWhiteSpace([string]$rule.text) -or [string]$rule.status -notin @('active', 'protected', 'proposed') -or [string]$rule.id -ceq [string]$request.ruleId -or -not $knownIds.Add([string]$rule.id)) { throw 'Compared rules contain an invalid or duplicate rule' }
+    }
+}
 $payload = [ordered]@{
     schemaVersion = 1
     candidateKey = [string]$request.candidateKey
@@ -142,7 +151,7 @@ $payload = [ordered]@{
         [ordered]@{
             id = [string]$_.id
             text = [string]$_.text
-            status = if ([string]$_.status -ceq 'active') { 'active' } else { 'protected' }
+            status = [string]$_.status
         }
     })
 }
@@ -168,11 +177,22 @@ $cacheIdentity = [ordered]@{
 }
 $cacheKey = Get-Sha256 -Content ($cacheIdentity | ConvertTo-Json -Compress)
 $cachePath = Join-Path $resolvedCacheDirectory "$cacheKey.json"
+function Assert-ManualRelationshipResult {
+    param([object]$Result)
+    if ([string]$Result.ruleTextSha256 -cne [string]$payload.ruleTextSha256) { throw 'Manual relationship evaluator changed the rule text hash' }
+    $knownRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($rule in $knownRules) { $null = $knownRuleIds.Add([string]$rule.id) }
+    $seenRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($relationship in @($Result.relationships)) {
+        if (-not $knownRuleIds.Contains([string]$relationship.hostedRuleId) -or -not $seenRuleIds.Add([string]$relationship.hostedRuleId)) { throw 'Manual relationship evaluator referenced an unknown or duplicate Hosted rule' }
+    }
+}
 if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
     $cacheEntry = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json
     if ([string]$cacheEntry.cacheKey -ceq $cacheKey -and ($cacheEntry.identity | ConvertTo-Json -Compress) -ceq ($cacheIdentity | ConvertTo-Json -Compress)) {
         $cachedResultJson = $cacheEntry.result | ConvertTo-Json -Depth 20
         if ($cachedResultJson | Test-Json -SchemaFile $schemaPath -ErrorAction Stop) {
+            Assert-ManualRelationshipResult -Result $cacheEntry.result
             Write-JsonAtomically -Path $resolvedOutputPath -Value $cacheEntry.result
             [ordered]@{ status = 'passed'; cache = 'hit'; cacheKey = $cacheKey; outputPath = $resolvedOutputPath } | ConvertTo-Json -Compress
             exit 0
@@ -225,18 +245,7 @@ try {
         throw 'Manual relationship evaluator result does not satisfy its schema'
     }
     $result = $resultJson | ConvertFrom-Json
-    if ([string]$result.ruleTextSha256 -cne [string]$payload.ruleTextSha256) {
-        throw 'Manual relationship evaluator changed the rule text hash'
-    }
-    $knownRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($rule in $knownRules) { $null = $knownRuleIds.Add([string]$rule.id) }
-    $seenRuleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($relationship in @($result.relationships)) {
-        $hostedRuleId = [string]$relationship.hostedRuleId
-        if (-not $knownRuleIds.Contains($hostedRuleId) -or -not $seenRuleIds.Add($hostedRuleId)) {
-            throw "Manual relationship evaluator referenced an unknown or duplicate Hosted rule: $hostedRuleId"
-        }
-    }
+    Assert-ManualRelationshipResult -Result $result
     Write-JsonAtomically -Path $resolvedOutputPath -Value $result
     Write-JsonAtomically -Path $cachePath -Value ([ordered]@{
         schemaVersion = 1

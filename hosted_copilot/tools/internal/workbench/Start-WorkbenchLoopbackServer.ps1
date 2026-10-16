@@ -11,6 +11,7 @@ param(
     [string]$Model = 'gpt-5.4',
     [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
     [string]$RelationshipEvaluatorScriptPath,
+    [string]$AdjudicationEvaluatorScriptPath,
     [ValidateRange(1, 2147483647)][int]$OwnerProcessId,
     [switch]$NoLaunch
 )
@@ -19,6 +20,16 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
+$savedRuleEvaluationPath = Join-Path $PSScriptRoot '../reconciliation/Invoke-SavedRuleEvaluation.ps1'
+$savedAuthorityParameters = @{
+    RepositoryRoot = $RepositoryRoot
+    DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
+    RuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
+    EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $ReasoningEffort
+    RelationshipEvaluatorScriptPath = $RelationshipEvaluatorScriptPath
+    AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
+}
 $url = "http://127.0.0.1:$Port/"
 $stagedConfigPath = Join-Path $resolvedSiteDirectory 'shutdown-config.js'
 if (-not (Test-Path -LiteralPath $stagedConfigPath -PathType Leaf)) {
@@ -81,7 +92,7 @@ function Read-HttpRequestBody {
     param(
         [Parameter(Mandatory = $true)][IO.StreamReader]$Reader,
         [Parameter(Mandatory = $true)][hashtable]$Headers,
-        [ValidateRange(1, 1048576)][int]$MaximumBytes = 131072
+        [ValidateRange(1, 16777216)][int]$MaximumBytes = 16777216
     )
 
     $contentLengthValue = [string]$Headers['Content-Length']
@@ -157,6 +168,8 @@ try {
                 continue
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
+                $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters) -Force
+                $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
             }
@@ -186,7 +199,7 @@ try {
                         throw 'Request envelope has an unexpected property set'
                     }
                     $requestBytes = [Convert]::FromBase64String([string]$requestEnvelope.payloadBase64)
-                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 65536) {
+                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 8388608) {
                         throw 'Decoded request payload length is invalid'
                     }
                     $null = [Text.UTF8Encoding]::new($false, $true).GetString($requestBytes)
@@ -199,11 +212,14 @@ try {
                         EvaluatorCommand = $EvaluatorCommand
                         Model = $Model
                         ReasoningEffort = $ReasoningEffort
+                        DisplayPath = $savedAuthorityParameters.DisplayPath
+                        RuleIssuesPath = $savedAuthorityParameters.RuleIssuesPath
+                        AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
                     }
                     if (-not [string]::IsNullOrWhiteSpace($RelationshipEvaluatorScriptPath)) {
                         $relationshipParameters.EvaluatorScriptPath = $RelationshipEvaluatorScriptPath
                     }
-                    $relationshipOutput = @(& pwsh -NoProfile -File $ManualRelationshipPath @relationshipParameters 2>&1)
+                    $relationshipOutput = @(& pwsh -NoProfile -File $savedRuleEvaluationPath @relationshipParameters 2>&1)
                     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
                         throw "Scoped relationship evaluator failed: $(($relationshipOutput | Out-String).Trim())"
                     }

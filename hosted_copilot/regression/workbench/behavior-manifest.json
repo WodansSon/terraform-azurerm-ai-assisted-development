@@ -301,8 +301,23 @@
     },
     {
       "id": "WB-UX-RELATIONSHIP-001",
-      "title": "Edited rule relationships require explicit resolution and confirmed rollback",
-      "journey": "playwright/journeys/portable-review-state.journey.cjs"
+      "title": "Saved edits share adjudicator-owned grouped results without browser consolidation",
+      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
+    },
+    {
+      "id": "WB-UX-RELATIONSHIP-002",
+      "title": "Reusable waiting panels preserve escaped accessible text, equal-quarter colors, a 3.5-second perimeter chase, one-screen-pixel alignment, reduced motion, and results and retry",
+      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
+    },
+    {
+      "id": "WB-UX-RELATIONSHIP-003",
+      "title": "Relationship reviews match saved wording and require source-bound validation after restoration",
+      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
+    },
+    {
+      "id": "WB-UX-RELATIONSHIP-004",
+      "title": "Late and incorrect-hash responses cannot become current saved-edit validation",
+      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
     },
     {
       "id": "WB-UX-SCROLLBAR-001",

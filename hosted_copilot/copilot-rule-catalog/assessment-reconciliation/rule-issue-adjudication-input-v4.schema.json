@@ -27,7 +27,7 @@
     },
     "rules": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 1,
       "uniqueItems": true,
       "items": {
         "type": "object",
@@ -45,7 +45,7 @@
     },
     "relationships": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "uniqueItems": true,
       "items": {
         "type": "object",
@@ -58,6 +58,33 @@
           "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts"] },
           "rationale": { "type": "string", "minLength": 1 },
           "candidateKey": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "editContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateKey", "baselineText", "baselineSha256", "appendText", "evaluationContextSha256", "proposals"],
+      "properties": {
+        "candidateKey": { "type": "string", "minLength": 1 },
+        "baselineText": { "type": "string", "minLength": 1 },
+        "baselineSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "appendText": { "type": ["string", "null"] },
+        "evaluationContextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "proposals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["candidateKey", "baselineText", "proposedText", "retireHostedRuleIds"],
+            "properties": {
+              "candidateKey": { "type": "string", "minLength": 1 },
+              "baselineText": { "type": "string", "minLength": 1 },
+              "proposedText": { "type": "string", "minLength": 1 },
+              "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
         }
       }
     },
@@ -76,5 +103,11 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "not": { "required": ["editContext"] } },
+      "then": { "properties": { "rules": { "minItems": 2 }, "relationships": { "minItems": 1 } } }
+    }
+  ]
 }

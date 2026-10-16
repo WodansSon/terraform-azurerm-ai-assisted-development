@@ -10,9 +10,22 @@
     "schemaVersion": { "const": 1 },
     "kind": { "const": "hosted-rule-issue-adjudication-draft" },
     "componentId": { "type": "string", "minLength": 1 },
+    "evaluationContextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "scopeReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "ownerRuleId", "baselineQuote", "proposalQuote", "rationale"],
+      "properties": {
+        "disposition": { "enum": ["within-scope", "route-to-existing-rule", "suggest-new-rule", "uncertain"] },
+        "ownerRuleId": { "type": ["string", "null"] },
+        "baselineQuote": { "type": "string", "minLength": 1 },
+        "proposalQuote": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
     "relationshipDecisions": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "uniqueItems": true,
       "items": {
         "type": "object",
@@ -22,7 +35,9 @@
           "relationshipId": { "type": "string", "minLength": 1 },
           "disposition": { "enum": ["issue", "independent"] },
           "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "none"] },
-          "rationale": { "type": "string", "minLength": 1 }
+          "rationale": { "type": "string", "minLength": 1 },
+          "sourceQuote": { "type": "string", "minLength": 1 },
+          "relatedQuote": { "type": "string", "minLength": 1 }
         },
         "allOf": [
           {
@@ -107,6 +122,7 @@
                     "ruleId": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" },
                     "action": { "enum": ["add", "update", "retire", "restore", "exclude", "defer"] },
                     "proposedText": { "type": "string", "minLength": 1 },
+                    "textSource": { "enum": ["baseline", "proposal"] },
                     "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$" } }
                   }
                 }
@@ -116,5 +132,12 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["scopeReview"] },
+      "then": { "required": ["evaluationContextSha256"] },
+      "else": { "properties": { "relationshipDecisions": { "minItems": 1 } } }
+    }
+  ]
 }

@@ -29,6 +29,7 @@ $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpe
 $validationOutputPath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
 Import-Module -Name $helpersPath -Force
 Import-Module -Name $validationOutputPath -Force
+Import-Module -Name (Join-Path $PSScriptRoot '../../modules/reconciliation/RuleIssueAdjudication.psm1') -Force
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $resolvedDisplayPath = [IO.Path]::GetFullPath($DisplayPath)
@@ -335,81 +336,10 @@ $issueIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal
 foreach ($draft in @($adjudicationSet.components)) {
     $componentInput = $componentInputs[[string]$draft.componentId]
     if ($null -eq $componentInput) { throw "Adjudication returned an unknown component: $($draft.componentId)" }
-    $ruleById = @{}
-    foreach ($rule in @($componentInput.rules)) { $ruleById[[string]$rule.id] = $rule }
-    $relationshipById = @{}
-    foreach ($relationship in @($componentInput.relationships)) { $relationshipById[[string]$relationship.id] = $relationship }
-    $decisionById = @{}
-    foreach ($decision in @($draft.relationshipDecisions)) { $decisionById[[string]$decision.relationshipId] = $decision }
-    foreach ($adjudicatedIssue in @($draft.issues)) {
-        $issueRuleIds = @($adjudicatedIssue.ruleIds)
-        $issueProtectedRuleIds = @($issueRuleIds | Where-Object { [string]$ruleById[$_].status -ceq 'protected' } | Sort-Object -CaseSensitive)
-        $relationshipIdentity = @($adjudicatedIssue.relationshipIds | Sort-Object -CaseSensitive)[0]
-        $issueId = if ($issueProtectedRuleIds.Count -gt 0) { 'protected:' + ($issueProtectedRuleIds -join '+') + ':' + $relationshipIdentity } else { 'relationship:' + [string]$adjudicatedIssue.anchorRuleId + ':' + $relationshipIdentity }
-        if (-not $issueIds.Add($issueId)) { throw "Adjudication produced duplicate issue ID: $issueId" }
-        $dispositionByRuleId = @{}
-        foreach ($entry in @($adjudicatedIssue.ruleDispositions)) { $dispositionByRuleId[[string]$entry.ruleId] = [string]$entry.disposition }
-        $finalRelationships = @($adjudicatedIssue.relationshipIds | ForEach-Object {
-            $relationship = $relationshipById[[string]$_]
-            $decision = $decisionById[[string]$_]
-            [ordered]@{
-                sourceRuleId = [string]$relationship.sourceRuleId
-                relatedRuleId = [string]$relationship.relatedRuleId
-                relationship = [string]$decision.relationship
-                kind = [string]$relationshipKinds[[string]$decision.relationship]
-                rationale = [string]$decision.rationale
-                candidateKey = [string]$relationship.candidateKey
-            }
-        } | Sort-Object -Property sourceRuleId, relatedRuleId, relationship, candidateKey)
-        $selectedOperations = @($adjudicatedIssue.recommendedMaintainerAction.operations | ForEach-Object {
-            $operation = $_
-            [ordered]@{
-                candidateKey = [string]$operation.candidateKey
-                ruleId = [string]$operation.ruleId
-                action = [string]$operation.action
-                proposedText = [string]$operation.proposedText
-                retireHostedRuleIds = @($operation.retireHostedRuleIds | Where-Object { [string]$_ -cne [string]$operation.ruleId } | Sort-Object -CaseSensitive -Unique)
-            }
-        } | Sort-Object -Property candidateKey)
-        $finalRules = @($issueRuleIds | ForEach-Object {
-            $rule = $ruleById[[string]$_]
-            [ordered]@{
-                id = [string]$rule.id
-                status = [string]$rule.status
-                disposition = [string]$dispositionByRuleId[[string]$rule.id]
-                text = [string]$rule.text
-                candidateKeys = @($rule.candidateKeys)
-            }
-        })
-        $candidateKeys = @($finalRules.candidateKeys + $finalRelationships.candidateKey + $selectedOperations.candidateKey | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -CaseSensitive -Unique)
-        $label = switch ([string]$adjudicatedIssue.classification) {
-            'protected-integrity' { 'Protected Integrity' }
-            'protected-conflict' { 'Protected Conflict' }
-            'protected-coverage' { 'Protected Coverage' }
-            'contradiction' { 'Contradiction' }
-            'duplicate' { 'Duplicate' }
-            'overlap' { 'Overlap' }
-        }
-        $issues.Add([ordered]@{
-            id = $issueId
-            classification = [string]$adjudicatedIssue.classification
-            label = $label
-            title = [string]$adjudicatedIssue.title
-            bannerTitle = [string]$adjudicatedIssue.bannerTitle
-            bannerMessage = [string]$adjudicatedIssue.bannerMessage
-            blocking = [bool]$adjudicatedIssue.blocking
-            ruleIds = $issueRuleIds
-            protectedRuleIds = $issueProtectedRuleIds
-            candidateKeys = $candidateKeys
-            rules = $finalRules
-            relationships = $finalRelationships
-            assessmentSummary = [string]$adjudicatedIssue.assessmentSummary
-            wording = $adjudicatedIssue.wording
-            recommendedMaintainerAction = [ordered]@{
-                summary = [string]$adjudicatedIssue.recommendedMaintainerAction.summary
-                operations = $selectedOperations
-            }
-        })
+    $componentObject = ($componentInput | ConvertTo-Json -Depth 100) | ConvertFrom-Json -DateKind String
+    foreach ($issue in @(ConvertTo-WorkbenchRuleIssues -Component $componentObject -Draft $draft)) {
+        if (-not $issueIds.Add([string]$issue.id)) { throw "Adjudication produced duplicate issue ID: $($issue.id)" }
+        $issues.Add($issue)
     }
 }
 

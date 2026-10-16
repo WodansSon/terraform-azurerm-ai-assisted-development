@@ -122,6 +122,14 @@ const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const activeRelationshipChecks = new Set();
 const activeRuleIssueRecommendations = new Set();
+const shimmerHeadingAnimations = new Set();
+let shimmerHeadingStyleSheet;
+const waitingPanels = new Map();
+let waitingPanelStyleSheet;
+let waitingPanelResizeObserver;
+let waitingPanelMutationObserver;
+let waitingPanelSequence = 0;
+let waitingPanelGeometryFrame = 0;
 let pendingResolvedRuleActionChange = null;
 const workbenchTooltip = {
   anchorX: 0,
@@ -132,6 +140,149 @@ const workbenchTooltip = {
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
+}
+
+function renderShimmerHeading(text) {
+  const characters = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].map((item) => item.segment);
+  const steps = characters.length + 7;
+  const animationName = `shimmer-heading-${steps}`;
+  if (!shimmerHeadingStyleSheet) {
+    shimmerHeadingStyleSheet = new CSSStyleSheet();
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, shimmerHeadingStyleSheet];
+  }
+  if (!shimmerHeadingAnimations.has(steps)) {
+    // Length-dependent timing keeps one seven-character band across the complete label.
+    const stops = [[0, "soft"], [1, "bright"], [2, "peak"], [5, "bright"], [6, "soft"], [7, "base"], [steps, "base"]];
+    const keyframes = stops.map(([step, color]) => `${100 * step / steps}% { color: var(--shimmer-${color}-color); }`).join(" ");
+    shimmerHeadingStyleSheet.insertRule(`@keyframes ${animationName} { ${keyframes} }`);
+    const selector = `.shimmer-heading[data-shimmer-steps="${steps}"]`;
+    shimmerHeadingStyleSheet.insertRule(`${selector} { --shimmer-animation: ${animationName}; --shimmer-cycle-steps: ${steps}; }`);
+    characters.forEach((character, index) => {
+      shimmerHeadingStyleSheet.insertRule(`${selector} .shimmer-character:nth-child(${index + 1}) { --shimmer-index: ${index}; }`);
+    });
+    shimmerHeadingAnimations.add(steps);
+  }
+  const visual = characters.map((character) => `<span class="shimmer-character">${escapeHtml(character)}</span>`).join("");
+  return `<strong class="shimmer-heading" data-shimmer-steps="${steps}"><span class="sr-only">${escapeHtml(text)}</span><span class="shimmer-characters" aria-hidden="true">${visual}</span></strong>`;
+}
+
+function renderWaitingPanel({ title, body }) {
+  if (typeof title !== "string" || !title.trim() || typeof body !== "string" || !body.trim()) {
+    throw new Error("Waiting panels require non-empty title and body text");
+  }
+  if (!waitingPanelStyleSheet) {
+    waitingPanelStyleSheet = new CSSStyleSheet();
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, waitingPanelStyleSheet];
+    waitingPanelResizeObserver = new ResizeObserver(scheduleWaitingPanelGeometry);
+    waitingPanelMutationObserver = new MutationObserver(syncWaitingPanels);
+    waitingPanelMutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    window.addEventListener("resize", scheduleWaitingPanelGeometry, { passive: true });
+    window.addEventListener("scroll", scheduleWaitingPanelGeometry, { passive: true, capture: true });
+  }
+  return `<div class="waiting-panel" role="status" aria-live="polite" aria-atomic="true">
+    <div class="waiting-panel-heading"><span class="waiting-panel-spinner" aria-hidden="true"></span>${renderShimmerHeading(title)}</div>
+    <p class="waiting-panel-body">${escapeHtml(body)}</p>
+    <span class="waiting-panel-frame waiting-panel-glow" aria-hidden="true"></span>
+    <span class="waiting-panel-frame waiting-panel-border" aria-hidden="true"></span>
+  </div>`;
+}
+
+function syncWaitingPanels() {
+  for (const [panel, record] of waitingPanels) {
+    if (panel.isConnected) continue;
+    waitingPanelResizeObserver.unobserve(panel);
+    waitingPanelStyleSheet.deleteRule([...waitingPanelStyleSheet.cssRules].indexOf(record.rule));
+    panel.removeAttribute("data-waiting-panel");
+    panel.removeAttribute("data-waiting-panel-ready");
+    waitingPanels.delete(panel);
+  }
+  for (const panel of document.querySelectorAll(".waiting-panel")) {
+    if (waitingPanels.has(panel)) continue;
+    const frame = panel.querySelector(".waiting-panel-border");
+    if (!frame) throw new Error("Waiting panel is missing its border frame");
+    panel.dataset.waitingPanel = String(++waitingPanelSequence);
+    const index = waitingPanelStyleSheet.insertRule(`.waiting-panel[data-waiting-panel="${waitingPanelSequence}"] {}`, waitingPanelStyleSheet.cssRules.length);
+    waitingPanels.set(panel, { rule: waitingPanelStyleSheet.cssRules[index], frame, signature: "", paletteSize: "" });
+    waitingPanelResizeObserver.observe(panel);
+  }
+  if (!waitingPanels.size) {
+    cancelAnimationFrame(waitingPanelGeometryFrame);
+    waitingPanelGeometryFrame = 0;
+    return;
+  }
+  scheduleWaitingPanelGeometry();
+}
+
+function scheduleWaitingPanelGeometry() {
+  if (!waitingPanels.size || waitingPanelGeometryFrame) return;
+  waitingPanelGeometryFrame = requestAnimationFrame(() => {
+    waitingPanelGeometryFrame = 0;
+    for (const [panel, record] of waitingPanels) updateWaitingPanelGeometry(panel, record);
+  });
+}
+
+function updateWaitingPanelGeometry(panel, record) {
+  const rect = panel.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    record.signature = "";
+    return;
+  }
+  const scale = window.devicePixelRatio;
+  const signature = [rect.left, rect.top, rect.right, rect.bottom, scale].join(",");
+  if (record.signature === signature) return;
+  const snap = (value) => Math.round(value * scale) / scale;
+  const left = snap(rect.left);
+  const top = snap(rect.top);
+  const width = snap(rect.right) - left;
+  const height = snap(rect.bottom) - top;
+  const computed = getComputedStyle(panel);
+  const style = record.rule.style;
+  style.setProperty("--waiting-panel-pixel", `${1 / scale}px`);
+  style.setProperty("--waiting-panel-left", `${left - rect.left - parseFloat(computed.borderLeftWidth)}px`);
+  style.setProperty("--waiting-panel-top", `${top - rect.top - parseFloat(computed.borderTopWidth)}px`);
+  style.setProperty("--waiting-panel-width", `${width}px`);
+  style.setProperty("--waiting-panel-height", `${height}px`);
+  style.setProperty("--waiting-panel-length", `${2 * (width + height)}px`);
+  style.setProperty("--waiting-panel-band", `${Math.max(8, 2 * parseFloat(computed.borderTopLeftRadius))}px`);
+  style.setProperty("--waiting-panel-translate-x", "0px");
+  style.setProperty("--waiting-panel-translate-y", "0px");
+  // Correct layout-unit rounding without scaling the one-device-pixel stroke.
+  const frame = record.frame.getBoundingClientRect();
+  style.setProperty("--waiting-panel-translate-x", `${left - frame.left}px`);
+  style.setProperty("--waiting-panel-translate-y", `${top - frame.top}px`);
+  const paletteSize = `${width},${height}`;
+  if (record.paletteSize !== paletteSize) {
+    style.setProperty("--waiting-panel-palette", buildWaitingPanelPalette(width, height));
+    record.paletteSize = paletteSize;
+  }
+  panel.setAttribute("data-waiting-panel-ready", "");
+  record.signature = signature;
+}
+
+function buildWaitingPanelPalette(width, height) {
+  const perimeter = 2 * (width + height);
+  const anchors = [[-0.125, "blue"], [0.125, "green"], [0.375, "purple"], [0.625, "green"], [0.875, "blue"], [1.125, "green"]];
+  const fractions = new Set(Array.from({ length: 129 }, (_, index) => index / 128));
+  for (const corner of [width / 2, width / 2 + height, 1.5 * width + height, 1.5 * width + 2 * height]) fractions.add(corner / perimeter);
+  const stops = [...fractions].sort((a, b) => a - b).map((fraction) => {
+    let distance = fraction * perimeter;
+    let x;
+    let y;
+    if (distance <= width / 2) [x, y] = [width / 2 + distance, 0];
+    else if ((distance -= width / 2) <= height) [x, y] = [width, distance];
+    else if ((distance -= height) <= width) [x, y] = [width - distance, height];
+    else if ((distance -= width) <= height) [x, y] = [0, height - distance];
+    else [x, y] = [distance - height, 0];
+    const angle = fraction === 0 ? 0 : fraction === 1 ? 360 : (Math.atan2(x - width / 2, height / 2 - y) * 180 / Math.PI + 360) % 360;
+    let index = 0;
+    while (fraction > anchors[index + 1][0]) index += 1;
+    const [start, startColor] = anchors[index];
+    const [end, endColor] = anchors[index + 1];
+    const mix = (fraction - start) / (end - start);
+    const color = `color-mix(in srgb, var(--waiting-panel-${startColor}) ${(100 * (1 - mix)).toFixed(6)}%, var(--waiting-panel-${endColor}))`;
+    return `${color} ${angle.toFixed(7)}deg`;
+  });
+  return `conic-gradient(from 0deg in srgb, ${stops.join(", ")})`;
 }
 
 function octicon(name) {
@@ -717,6 +868,10 @@ async function loadBundle() {
             ? formatHostedCategory(assessment.hostedCategory)
             : formatContractCategory(candidate.sourcePath)
     }));
+    await loadSavedRuleRuntimeConfig();
+    for (const evaluation of state.session.savedRuleEvaluations) {
+      validateRuleIssueBundle(evaluation.ruleIssues);
+    }
           repairNoOpPlanMembership();
           repairOverridePlanMembership();
     state.excludedCandidateCount = assessedCandidates.filter(({ assessment }) => !assessment.hostedApplicable).length;
@@ -1088,7 +1243,63 @@ function isRuleIssueRecommendationStaged(issue) {
 }
 
 function getOpenRuleIssues() {
+  refreshSavedRuleIssues();
   return state.ruleIssues.filter((issue) => !isRuleIssueRecommendationStaged(issue));
+}
+
+function getSavedRuleProposals(overrides = new Map()) {
+  return state.assessedCandidates.map((candidate) => {
+    const decision = overrides.get(candidate.key) || getDecision(candidate);
+    return {
+      candidateKey: candidate.key,
+      sourceHash: candidate.hash,
+      action: decision.action,
+      inPlan: Boolean(decision.inPlan),
+      proposedText: decision.proposedText,
+      retireHostedRuleIds: [...decision.retireHostedRuleIds].sort()
+    };
+  }).sort((left, right) => left.candidateKey < right.candidateKey ? -1 : left.candidateKey > right.candidateKey ? 1 : 0);
+}
+
+function isSavedEvaluationCurrent(evaluation, proposals = getSavedRuleProposals()) {
+  if (evaluation?.schemaVersion !== 2 || evaluation.authoritySha256 !== globalThis.__HOSTED_RULE_WORKBENCH__?.savedRuleAuthoritySha256) return false;
+  const current = new Map(proposals.map((proposal) => [proposal.candidateKey, proposal]));
+  return Array.isArray(evaluation.coveredProposals) && evaluation.coveredProposals.length > 0
+    && evaluation.coveredProposals.every((proposal) => JSON.stringify(proposal) === JSON.stringify(current.get(proposal.candidateKey)));
+}
+
+function refreshSavedRuleIssues() {
+  if (!state.session || !state.ruleIssueBundle) return;
+  const proposals = getSavedRuleProposals();
+  let issues = [...state.ruleIssueBundle.issues];
+  for (const evaluation of state.session.savedRuleEvaluations) {
+    const affected = new Set(evaluation.affectedRuleIds);
+    issues = issues.filter((issue) => !issue.ruleIds.some((id) => affected.has(id)));
+    if (isSavedEvaluationCurrent(evaluation, proposals)) issues.push(...evaluation.ruleIssues.issues);
+  }
+  const staleKeys = new Set(state.assessedCandidates.filter((candidate) => {
+    const check = state.session.manualRelationshipChecks[candidate.key];
+    return activeRelationshipChecks.has(candidate.key)
+      || (hasMaintainerEditedRuleText(candidate) && (!check?.evaluation || !isSavedEvaluationCurrent(check.evaluation, proposals)));
+  }).map((candidate) => candidate.key));
+  const active = getActiveCandidate();
+  const editorText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
+  if (active && editorText !== undefined && editorText !== getDecision(active).proposedText) staleKeys.add(active.key);
+  state.ruleIssues = issues.filter((issue) => !issue.candidateKeys.some((key) => staleKeys.has(key)));
+}
+
+function recordSavedRuleEvaluation(candidate, proposedText, evaluation) {
+  const affected = new Set(evaluation.affectedRuleIds);
+  state.session.savedRuleEvaluations = state.session.savedRuleEvaluations
+    .filter((previous) => !previous.affectedRuleIds.some((id) => affected.has(id)));
+  state.session.savedRuleEvaluations.push(evaluation);
+  state.session.manualRelationshipChecks[candidate.key] = {
+    status: "current", proposedText, checkedAt: toUtcTimestamp(),
+    ruleTextSha256: evaluation.ruleTextSha256,
+    relationships: evaluation.ruleIssues.issues.flatMap((issue) => issue.relationships),
+    evaluation
+  };
+  refreshSavedRuleIssues();
 }
 
 function renderRuleIssuePlanAction(issue) {
@@ -1131,9 +1342,15 @@ async function stageRuleIssueRecommendation(issue) {
   activeRuleIssueRecommendations.add(issue.id);
   renderRuleIssues();
   try {
-    for (const { candidate, operation } of candidateOperations) {
-      if (!await reconcileRuleTextRelationships(candidate, operation.proposedText, { notify: false })) return;
-    }
+    const overrides = new Map(candidateOperations.map(({ candidate, operation }) => [candidate.key, {
+      ...getDecision(candidate), action: operation.action, proposedText: operation.proposedText,
+      retireHostedRuleIds: getRuleIssueAncillaryRetirements(operation), inPlan: true
+    }]));
+    const first = candidateOperations[0];
+    const evaluation = await reconcileRuleTextRelationships(first.candidate, first.operation.proposedText, {
+      notify: false, commit: false, proposals: getSavedRuleProposals(overrides)
+    });
+    if (!evaluation) return;
     const updatedAt = toUtcTimestamp();
     const rationale = issue.recommendedMaintainerAction.summary.slice(0, DECISION_RATIONALE_MAX_LENGTH);
     const visibleIssues = getFilteredRuleIssues();
@@ -1152,6 +1369,7 @@ async function stageRuleIssueRecommendation(issue) {
         updatedAt
       };
     });
+    recordSavedRuleEvaluation(first.candidate, first.operation.proposedText, evaluation);
     if (isRuleIssueRecommendationStaged(issue)) {
       rememberResolvedRuleIssue(issue, resolvedIndex);
       const remainingIssues = getFilteredRuleIssues();
@@ -1166,6 +1384,7 @@ async function stageRuleIssueRecommendation(issue) {
     renderBulkActions();
     renderDecisionOutputs();
     renderRuleIssues();
+    renderAssessment();
     showToast(`${formatCountLabel(operations.length, "Resolution")} added to the promotion plan.`);
   }
   finally {
@@ -1207,15 +1426,11 @@ function renderRuleIssueWording(wording, ruleIds) {
   return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><h3>${escapeHtml(wording.label)}</h3><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
 }
 
-function renderRuleIssueDetail(issue) {
-  if (!issue) {
-    elements["rule-issues-detail"].innerHTML = renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
-    return;
-  }
+function renderRuleIssueContent(issue) {
   const visibleRules = getVisibleRuleIssueRules(issue);
   const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
     <div class="rule-issue-banner ${escapeHtml(issue.classification)}">${icon(issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${escapeHtml(formatRuleIssueTitle(issue.bannerTitle))}</strong><p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
-  elements["rule-issues-detail"].innerHTML = `
+  return `
     ${banner}
     <div class="rule-issue-comparison">${visibleRules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
     <span class="section-label rule-issue-assessment-label">Assessment:</span>
@@ -1224,6 +1439,12 @@ function renderRuleIssueDetail(issue) {
     <span class="section-label rule-issue-recommendation-label">Recommended Maintainer Action:</span>
     <section class="rule-issue-recommendation"><p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>${renderRuleIssuePlanAction(issue)}</section>
   `;
+}
+
+function renderRuleIssueDetail(issue) {
+  elements["rule-issues-detail"].innerHTML = issue
+    ? renderRuleIssueContent(issue)
+    : renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
   scheduleTruncationTooltips();
 }
 
@@ -1245,6 +1466,11 @@ function formatRuleIssueTitle(value) {
 
 function renderRuleIssues() {
   if (!elements["rule-issues-list"]) return;
+  refreshSavedRuleIssues();
+  const scopeReviews = state.assessedCandidates.map((candidate) => {
+    const check = getCurrentManualRelationshipCheck(candidate);
+    return check ? renderSavedScopeReview(check.evaluation) : "";
+  }).join("");
   const requestedFilter = state.ruleIssueFilter;
   renderRuleIssueFilters();
   if (state.ruleIssueFilter !== requestedFilter) {
@@ -1258,11 +1484,11 @@ function renderRuleIssues() {
     state.activeRuleIssueKey = rememberedIssue?.id || issues[fallbackIndex]?.id || null;
   }
   if (!issues.length) {
-    elements["rule-issues-list"].innerHTML = renderPreviewEmptyState("pass-compact", "No Rule Issues", "No rule relationships match the current filter and search.");
+    elements["rule-issues-list"].innerHTML = scopeReviews + renderPreviewEmptyState("pass-compact", "No Rule Issues", "No rule relationships match the current filter and search.");
     renderRuleIssueDetail(null);
     return;
   }
-  elements["rule-issues-list"].innerHTML = issues.map((issue) => `
+  elements["rule-issues-list"].innerHTML = scopeReviews + issues.map((issue) => `
     <button class="rule-issue-row clickable ${issue.id === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.id)}" aria-pressed="${issue.id === state.activeRuleIssueKey}">
       <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="ui-badge status-capsule rule-issue-kind ${escapeHtml(issue.classification)} status-badge ${issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "excluded" : "warning"} type-compact">${escapeHtml(issue.label)}</span></span>
       <span class="rule-issue-ids">${renderRuleIssueIds(getVisibleRuleIssueRules(issue).map((rule) => rule.id))}</span>
@@ -1298,6 +1524,7 @@ function createSession(id, display) {
     approverName: "",
     decisions: {},
     manualRelationshipChecks: {},
+    savedRuleEvaluations: [],
     applicabilityOverrides: {},
     bulkOperations: []
   };
@@ -1306,7 +1533,7 @@ function createSession(id, display) {
 function migrateSession(session, candidates, display) {
   if (!session) return null;
   if (session.id !== "current" || session.schemaVersion !== SESSION_SCHEMA_VERSION || !sourceFilesEqual(session.sourceFiles, display.sourceFiles)) return null;
-  return { ...session, manualRelationshipChecks: session.manualRelationshipChecks || {} };
+  return { ...session, manualRelationshipChecks: session.manualRelationshipChecks || {}, savedRuleEvaluations: session.savedRuleEvaluations || [] };
 }
 
 function createPlanMembership(source = "none", bulkOperationId = null) {
@@ -1471,27 +1698,25 @@ function hasMaintainerEditedRuleText(candidate, proposedText = getDecision(candi
 
 function getManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
   const check = state.session.manualRelationshipChecks?.[candidate.key];
-  return check && check.proposedText === proposedText ? check : null;
+  if (!check || check.proposedText !== proposedText) return null;
+  if (check.status === "current" && !isSavedEvaluationCurrent(check.evaluation)) return null;
+  return check;
 }
 
 function getCurrentManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
-  if (!hasMaintainerEditedRuleText(candidate, proposedText)) return null;
   const check = getManualRelationshipCheck(candidate, proposedText);
   return check?.status === "current" ? check : null;
 }
 
 function isManualRelationshipCheckResolved(check) {
-  if (!check?.relationships?.length) return true;
-  return check.relationships.every((relationship) => {
-    const resolution = check.resolutions?.[relationship.hostedRuleId];
-    return resolution?.status === "resolved" && resolution.resolvedText === check.proposedText;
-  });
+  return check?.evaluation?.scopeReview.disposition === "within-scope"
+    && !getOpenRuleIssues().some((issue) => issue.candidateKeys.includes(check.evaluation.candidateKey));
 }
 
 function requiresManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
-  if (!hasMaintainerEditedRuleText(candidate, proposedText)) return false;
+  if (!hasMaintainerEditedRuleText(candidate, proposedText) && !state.session.manualRelationshipChecks?.[candidate.key]) return false;
   const check = getCurrentManualRelationshipCheck(candidate, proposedText);
-  return !check || (check.relationships.length > 0 && !isManualRelationshipCheckResolved(check));
+  return activeRelationshipChecks.has(candidate.key) || !check || !isManualRelationshipCheckResolved(check);
 }
 
 function encodeBase64Utf8(value) {
@@ -1502,9 +1727,9 @@ function encodeBase64Utf8(value) {
 }
 
 function renderManualRelationshipStatus(candidate, proposedText) {
-  if (!hasMaintainerEditedRuleText(candidate, proposedText)) return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral">Reconciled</span>';
   const check = getManualRelationshipCheck(candidate, proposedText);
   if (activeRelationshipChecks.has(candidate.key) || check?.status === "pending") return '<span class="ui-badge status-capsule relationship-check-status status-badge warning">Checking relationships</span>';
+  if (!hasMaintainerEditedRuleText(candidate, proposedText) && !state.session.manualRelationshipChecks?.[candidate.key]) return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral">Reconciled</span>';
   if (check?.status === "current" && isManualRelationshipCheckResolved(check)) return '<span class="ui-badge status-capsule relationship-check-status status-badge success">Relationships resolved</span>';
   if (check?.status === "current") return `<span class="ui-badge status-capsule relationship-check-status status-badge ${check.relationships.length ? "warning" : "success"}">${check.relationships.length ? formatCountLabel(check.relationships.length, "related rule") : "Relationships current"}</span>`;
   if (check?.status === "failed") return '<span class="ui-badge status-capsule relationship-check-status status-badge excluded">Relationship check failed</span>';
@@ -1591,8 +1816,17 @@ function renderManualRelationshipResolution(candidate, relationship, check) {
 
 function renderManualRelationshipReviews(candidate, proposedText) {
   const check = getCurrentManualRelationshipCheck(candidate, proposedText);
-  if (!check?.relationships.length) return "";
-  return `<div class="manual-relationship-reviews"><div class="proposed-rule-heading rule-issue-assessment-label"><span class="section-label">Rule Relationship Review:</span><span class="ui-badge status-capsule status-badge ${isManualRelationshipCheckResolved(check) ? "success" : "warning"}">${isManualRelationshipCheckResolved(check) ? "Resolved" : "Resolution Required"}</span></div>${check.relationships.map((relationship) => renderManualRelationshipResolution(candidate, relationship, check)).join("")}</div>`;
+  if (!check) return "";
+  const issues = getOpenRuleIssues().filter((issue) => issue.candidateKeys.includes(candidate.key));
+  const scope = renderSavedScopeReview(check.evaluation);
+  if (!issues.length && !scope) return "";
+  return `<div class="manual-relationship-reviews">${scope}${issues.map(renderRuleIssueContent).join("")}</div>`;
+}
+
+function renderSavedScopeReview(evaluation) {
+  if (evaluation.scopeReview.disposition === "within-scope") return "";
+  const review = evaluation.scopeReview;
+  return `<div class="information-panel manual-relationship-information" data-saved-rule-scope="${escapeHtml(evaluation.candidateKey)}">${fluentIcon("info-20-regular")}<div><strong>Saved Edit Scope Review${review.ownerRuleId ? ` · ${escapeHtml(review.ownerRuleId)}` : ""}</strong><p>${escapeHtml(review.rationale)}</p></div></div>`;
 }
 
 function buildManualRelationshipRationale(candidate, relationship, mode) {
@@ -1716,39 +1950,97 @@ function syncProposedRuleControls(candidate) {
   const decision = getDecision(candidate);
   const dirty = textarea.value !== decision.proposedText;
   const check = getManualRelationshipCheck(candidate, textarea.value);
-  const retryable = !dirty && hasMaintainerEditedRuleText(candidate, textarea.value) && check?.status === "failed";
-  save.disabled = activeRelationshipChecks.has(candidate.key) || (!dirty && !retryable);
+  const checking = activeRelationshipChecks.has(candidate.key);
+  const section = textarea.closest(".section-block");
+  const progress = section.querySelector("[data-manual-relationship-progress]");
+  const retryable = !dirty && (check?.status === "failed" || (!check && requiresManualRelationshipCheck(candidate, textarea.value)));
+  save.disabled = checking || (!dirty && !retryable);
   save.setAttribute("aria-label", retryable ? "Retry proposed Hosted rule relationship check" : "Save proposed Hosted rule");
   setWorkbenchTooltip(save, save.getAttribute("aria-label"));
+  if (progress) progress.hidden = !checking;
   if (status) status.outerHTML = renderManualRelationshipStatus(candidate, textarea.value);
+  const reviews = section.querySelector(".manual-relationship-reviews");
+  const reviewsHtml = dirty ? "" : renderManualRelationshipReviews(candidate, textarea.value);
+  if (reviews) reviews.outerHTML = reviewsHtml;
+  else if (reviewsHtml) section.insertAdjacentHTML("beforeend", reviewsHtml);
 }
 
-async function reconcileRuleTextRelationships(candidate, proposedText, { notify = true } = {}) {
+async function loadSavedRuleRuntimeConfig() {
+  const response = await fetch("/runtime-config", { cache: "no-store" });
+  if (!response.ok) throw new Error(`Workbench runtime configuration failed with ${response.status}`);
+  const config = await response.json();
+  if (!/^[0-9a-f]{64}$/.test(config?.operationToken || "") || !/^[0-9a-f]{64}$/.test(config?.savedRuleAuthoritySha256 || "")) throw new Error("Saved-rule runtime configuration is invalid");
+  globalThis.__HOSTED_RULE_WORKBENCH__ = config;
+  return config;
+}
+
+async function validateSavedRuleEvaluation(result, request, proposals, proposedText, candidate) {
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (result?.schemaVersion !== 2 || result.candidateKey !== candidate.key || result.requestId !== request.requestId
+    || result.ruleTextSha256 !== hash || result.authoritySha256 !== request.authoritySha256
+    || !/^[0-9a-f]{64}$/.test(result.evaluationContextSha256 || "")
+    || !Array.isArray(result.affectedRuleIds) || !result.affectedRuleIds.includes(candidate.catalogMapping.hostedRuleId || candidate.recommendation.hostedId)
+    || !Array.isArray(result.coveredProposals) || !result.coveredProposals.some((proposal) => proposal.candidateKey === candidate.key)) {
+    throw new Error("Saved-rule evaluation returned a stale or invalid result");
+  }
+  const expected = new Map(proposals.map((proposal) => [proposal.candidateKey, proposal]));
+  if (new Set(result.coveredProposals.map((proposal) => proposal.candidateKey)).size !== result.coveredProposals.length
+    || result.coveredProposals.some((proposal) => JSON.stringify(proposal) !== JSON.stringify(expected.get(proposal.candidateKey)))) throw new Error("Saved-rule evaluation changed its proposal context");
+  const scope = result.scopeReview;
+  if (!["within-scope", "route-to-existing-rule", "suggest-new-rule", "uncertain"].includes(scope?.disposition)
+    || typeof scope.rationale !== "string" || !scope.rationale.trim()
+    || !scope.baselineQuote || !candidate.recommendation.ruleText.includes(scope.baselineQuote)
+    || !scope.proposalQuote || !proposedText.includes(scope.proposalQuote)) throw new Error("Saved-rule evaluation returned an invalid scope review");
+  validateRuleIssueBundle(result.ruleIssues);
+  if (!sourceFilesEqual(result.ruleIssues.sourceFiles, state.bundle.sourceFiles)) throw new Error("Saved-rule evaluation used a different source snapshot");
+  for (const issue of result.ruleIssues.issues) {
+    if (!issue.ruleIds.every((id) => result.affectedRuleIds.includes(id))) throw new Error("Saved-rule issue escaped its evaluated component");
+    for (const operation of getRuleIssueOperations(issue)) {
+      const owner = state.assessedCandidates.find((item) => item.key === operation.candidateKey);
+      const proposal = expected.get(operation.candidateKey);
+      if (!owner || !proposal || ![owner.recommendation.ruleText, proposal.proposedText].includes(operation.proposedText)
+        || operation.action === "retire"
+        || JSON.stringify(getRuleIssueAncillaryRetirements(operation)) !== JSON.stringify(proposal.retireHostedRuleIds)) throw new Error("Saved-rule recommendation changed wording or retirement authority");
+    }
+  }
+}
+
+async function reconcileRuleTextRelationships(candidate, proposedText, { notify = true, commit = true, proposals = getSavedRuleProposals() } = {}) {
+  if (activeRelationshipChecks.has(candidate.key)) {
+    showToast("This rule already has a relationship check in progress.", true);
+    return false;
+  }
+  const before = JSON.stringify(getSavedRuleProposals());
+  const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  const editorCandidateKey = getActiveCandidate()?.key;
+  const editorText = editor?.value;
   const existing = getManualRelationshipCheck(candidate, proposedText);
-  if (!hasMaintainerEditedRuleText(candidate, proposedText) || existing?.status === "current") return true;
   activeRelationshipChecks.add(candidate.key);
-  state.session.manualRelationshipChecks[candidate.key] = {
+  if (commit) state.session.manualRelationshipChecks[candidate.key] = {
     status: "pending",
     proposedText,
     checkedAt: toUtcTimestamp(),
     relationships: []
   };
-  state.session.updatedAt = toUtcTimestamp();
-  await persistSession();
-  syncProposedRuleControls(candidate);
-  setSaveIndicator("Checking relationships...");
   try {
-    const configResponse = await fetch("/runtime-config", { cache: "no-store" });
-    if (!configResponse.ok) throw new Error(`Workbench runtime configuration failed with ${configResponse.status}`);
-    const runtimeConfig = await configResponse.json();
-    if (!/^[0-9a-f]{64}$/.test(runtimeConfig?.operationToken || "")) throw new Error("Workbench runtime configuration is invalid");
-    globalThis.__HOSTED_RULE_WORKBENCH__ = runtimeConfig;
+    state.session.updatedAt = toUtcTimestamp();
+    await persistSession();
+    syncProposedRuleControls(candidate);
+    setSaveIndicator("Checking relationships...");
+    const runtimeConfig = await loadSavedRuleRuntimeConfig();
+    if (commit && existing?.status === "current" && isSavedEvaluationCurrent(existing.evaluation, proposals)) {
+      state.session.manualRelationshipChecks[candidate.key] = existing;
+      return existing.evaluation;
+    }
     const request = {
+      schemaVersion: 2,
+      requestId: crypto.randomUUID(),
+      authoritySha256: runtimeConfig.savedRuleAuthoritySha256,
       candidateKey: candidate.key,
-      ruleId: candidate.assessment.proposedHostedRuleId,
       ruleTextBase64: encodeBase64Utf8(proposedText),
-      category: candidate.recommendation.category,
-      placement: candidate.recommendation.placement
+      sourceFiles: state.bundle.sourceFiles,
+      proposals: proposals.map(({ proposedText: text, ...proposal }) => ({ ...proposal, proposedTextBase64: encodeBase64Utf8(text) })),
+      priorRelationships: state.session.savedRuleEvaluations.flatMap((evaluation) => evaluation.ruleIssues.issues.flatMap((issue) => issue.relationships.map(({ kind, ...relationship }) => relationship)))
     };
     const response = await fetch("/reconcile-rule", {
       method: "POST",
@@ -1760,16 +2052,11 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
     });
     if (!response.ok) throw new Error(`Relationship check failed with ${response.status}`);
     const result = await response.json();
-    if (result.schemaVersion !== 1 || !Array.isArray(result.relationships) || !/^[0-9a-f]{64}$/.test(result.ruleTextSha256 || "")) {
-      throw new Error("Relationship check returned an invalid result");
-    }
-    state.session.manualRelationshipChecks[candidate.key] = {
-      status: "current",
-      proposedText,
-      ruleTextSha256: result.ruleTextSha256,
-      checkedAt: toUtcTimestamp(),
-      relationships: result.relationships
-    };
+    await validateSavedRuleEvaluation(result, request, proposals, proposedText, candidate);
+    if (before !== JSON.stringify(getSavedRuleProposals())
+      || (getActiveCandidate()?.key === editorCandidateKey && elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value !== editorText)) throw new Error("The draft changed while relationships were checked. Save the current wording to check again.");
+    if (!commit) return result;
+    recordSavedRuleEvaluation(candidate, proposedText, result);
     state.session.updatedAt = toUtcTimestamp();
     await persistSession();
     const assessmentContent = elements["assessment-panel"].querySelector(".assessment-content");
@@ -1779,11 +2066,11 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
     if (refreshedAssessmentContent) refreshedAssessmentContent.scrollTop = assessmentScrollTop;
     renderRuleIssues();
     renderDecisionOutputs();
-    if (notify) showToast(result.relationships.length ? `${formatCountLabel(result.relationships.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
-    return true;
+    if (notify) showToast(result.scopeReview.disposition !== "within-scope" ? "Proposed Hosted rule saved; review its scope guidance." : result.ruleIssues.issues.length ? `${formatCountLabel(result.ruleIssues.issues.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
+    return result;
   }
   catch (error) {
-    state.session.manualRelationshipChecks[candidate.key] = {
+    if (commit) state.session.manualRelationshipChecks[candidate.key] = {
       status: "failed",
       proposedText,
       checkedAt: toUtcTimestamp(),
@@ -1796,7 +2083,10 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
   }
   finally {
     activeRelationshipChecks.delete(candidate.key);
+    refreshSavedRuleIssues();
     syncProposedRuleControls(candidate);
+    renderRuleIssues();
+    renderDecisionOutputs();
   }
 }
 
@@ -3249,6 +3539,12 @@ function renderAssessment() {
           <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" disabled>${icon("save")}</button>
         </div>
         <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
+        <div class="manual-relationship-progress" data-manual-relationship-progress ${activeRelationshipChecks.has(candidate.key) ? "" : "hidden"}>
+          ${renderWaitingPanel({
+            title: "Checking rule relationships...",
+            body: "Comparing the edited wording with active Hosted rules. This can take a few minutes."
+          })}
+        </div>
         ${renderManualRelationshipReviews(candidate, decision.proposedText)}
       </div>
 
@@ -3444,6 +3740,8 @@ function handleAssessmentInput(event) {
     event.target.value = value;
     if (event.target.dataset.decisionField === "proposedText") {
       syncProposedRuleControls(candidate);
+      renderRuleIssues();
+      renderDecisionOutputs();
     }
     if (event.target.dataset.decisionField === "rationale") {
       const counter = elements["assessment-panel"].querySelector(".rationale-limit");
@@ -3541,6 +3839,10 @@ async function handleAssessmentClick(event) {
     if (candidate) await resolveManualRelationship(candidate, relationshipResolve.dataset.manualRelationshipResolve);
     return;
   }
+  if (event.target.closest("[data-rule-issue-plan], [data-dismiss-rule-issue-banner]")) {
+    await handleRuleIssueDetailClick(event);
+    return;
+  }
   const scoringLegendTrigger = event.target.closest("[data-scoring-legend-open]");
   if (scoringLegendTrigger) {
     const dialog = elements["assessment-panel"].querySelector("[data-scoring-legend-dialog]");
@@ -3572,6 +3874,7 @@ async function handleAssessmentClick(event) {
       });
       await persistencePromise;
     }
+    syncProposedRuleControls(candidate);
     await reconcileRuleTextRelationships(candidate, proposedText);
     return;
   }
@@ -4662,7 +4965,11 @@ function getPreviewReadiness() {
     return !getAssessment(candidate, decision) || !decision.rationale.trim();
   }).length;
   const missingRationale = missingRationaleCount > 0;
-  const missingRelationshipCheckCount = planCandidates.filter((candidate) => requiresManualRelationshipCheck(candidate)).length;
+  const activeCandidate = getActiveCandidate();
+  const editorText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
+  const unsavedRuleText = activeCandidate && editorText !== undefined && editorText !== getDecision(activeCandidate).proposedText;
+  const missingRelationshipCheckCount = state.assessedCandidates.filter((candidate) => requiresManualRelationshipCheck(candidate)).length
+    + (unsavedRuleText ? 1 : 0) + activeRelationshipChecks.size;
   const approvedMutations = planCandidates.flatMap(buildApprovedMutations);
   const mutationRuleIds = approvedMutations.map((mutation) => mutation.rule.id);
   const mutationCount = approvedMutations.length;
@@ -5039,6 +5346,8 @@ function deserializeDraft(draft, candidates) {
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
     approverName: draft.approverName,
+    manualRelationshipChecks: {},
+    savedRuleEvaluations: [],
     decisions: Object.fromEntries(Object.entries(draft.decisions || {}).map(([key, decision]) => [key, {
       action: decision.action,
       inPlan: decision.selected,
@@ -5096,7 +5405,13 @@ function handleApproverInput(event) {
   refreshPresentation();
 }
 
-function approveAndExport() {
+async function approveAndExport() {
+  try {
+    await loadSavedRuleRuntimeConfig();
+  } catch (error) {
+    showToast(error.message, true);
+    return;
+  }
   const readiness = getPreviewReadiness();
   if (!readiness.ready) {
     showToast("Complete the approval requirements before exporting.", true);

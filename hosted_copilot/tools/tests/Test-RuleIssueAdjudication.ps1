@@ -72,6 +72,72 @@ function New-ComponentInput {
 }
 
 try {
+    Write-TestProgress -Name 'registered-evaluator-boundaries' -Detail 'Checking injection boundaries across the registered prompt set'
+    $authority = Get-Content -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-v4.json') -Raw | ConvertFrom-Json
+    $registeredPrompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/assessment-reconciliation-prompts/*.md' })
+    $boundariesValid = $registeredPrompts.Count -eq 2
+    foreach ($relativePath in $registeredPrompts) {
+        $content = Get-Content -LiteralPath (Join-Path $repositoryRoot $relativePath) -Raw
+        $boundary = ($content -split '(?m)^## Boundaries\s*$', 2)[-1]
+        foreach ($required in @('source', 'assessment', 'catalog', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
+            if ($content -notmatch '(?m)^## Boundaries\s*$' -or -not $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)) { $boundariesValid = $false }
+        }
+    }
+    Add-TestResult -Name 'registered-evaluator-boundaries' -Passed $boundariesValid -Detail 'Both registered saved-edit evaluators reject quoted-data instruction and authority changes.'
+
+    Write-TestProgress -Name 'saved-edit-zero-edge-adjudication' -Detail 'Adjudicating scope even when the checker has no relationships'
+    $baseline = 'Examples must remain copy-pasteable, valid HCL, and functional. Resource examples must declare their dependencies.'
+    $saved = New-ComponentInput -Id '003' -ContentSha256 $hash
+    $saved.componentId = 'saved:fixture'
+    $saved.rules = @($saved.rules[1])
+    $saved.rules[0].text = $baseline + ' Additional maintainer wording.'
+    $saved.relationships = @()
+    $saved.operations[0].action = 'add'
+    $saved.operations[0].proposedText = $saved.rules[0].text
+    $saved.editContext = [ordered]@{
+        candidateKey = $saved.operations[0].candidateKey; baselineText = $baseline
+        baselineSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($baseline))).ToLowerInvariant()
+        appendText = ' Additional maintainer wording.'; evaluationContextSha256 = 'd' * 64
+        proposals = @([ordered]@{ candidateKey = $saved.operations[0].candidateKey; baselineText = $baseline; proposedText = $saved.rules[0].text; retireHostedRuleIds = @() })
+    }
+    $savedPath = Join-Path $root 'saved-zero.json'
+    [IO.File]::WriteAllText($savedPath, ($saved | ConvertTo-Json -Depth 100))
+    $savedParameters = @{ ComponentPaths = @($savedPath); OutputPath = (Join-Path $root 'saved-zero-result.json'); CacheDirectory = (Join-Path $root 'saved-cache'); EvaluatorScriptPath = $fixturePath; OutputFormat = 'Json'; Quiet = $true }
+    $null = & $runnerPath @savedParameters
+    $zero = Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-zero-edge-adjudication' -Passed ($zero.components[0].scopeReview.disposition -ceq 'within-scope' -and @($zero.components[0].relationshipDecisions).Count -eq 0 -and @($zero.components[0].issues).Count -eq 0) -Detail 'An explicit edit context permits a one-rule zero-edge scope decision.'
+    $ordinary = ($saved | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    $ordinary.PSObject.Properties.Remove('editContext')
+    Add-TestResult -Name 'ordinary-component-keeps-required-edges' -Passed (-not (($ordinary | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile $inputSchemaPath -ErrorAction SilentlyContinue)) -Detail 'The zero-edge exception does not weaken ordinary rebuild components.'
+
+    Write-TestProgress -Name 'saved-edit-extractive-recommendation' -Detail 'Checking full-baseline recommendation and literal evidence provenance'
+    $saved.rules += [ordered]@{ id = 'IMPL-OTHER-003'; status = 'active'; title = 'Independent fixture rule'; text = 'A distinct fixture obligation remains active.'; contentSha256 = $hash; candidateKeys = @() }
+    $saved.relationships = @([ordered]@{ id = 'saved-edge'; sourceRuleId = 'IMPL-TEST-003'; relatedRuleId = 'IMPL-OTHER-003'; relationship = 'partial-overlap'; rationale = 'Provisional fixture relationship.'; candidateKey = $saved.operations[0].candidateKey })
+    $saved.rules[0].text = $baseline + ' Grouped review is required.'
+    $saved.operations[0].proposedText = $saved.rules[0].text
+    $saved.editContext.appendText = ' Grouped review is required.'
+    $saved.editContext.proposals[0].proposedText = $saved.rules[0].text
+    [IO.File]::WriteAllText($savedPath, ($saved | ConvertTo-Json -Depth 100))
+    $savedParameters.OutputPath = Join-Path $root 'saved-grouped-result.json'
+    $null = & $runnerPath @savedParameters
+    $grouped = Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    $validDraft = $grouped.components[0]
+    Add-TestResult -Name 'saved-edit-extractive-recommendation' -Passed ($validDraft.issues[0].recommendedMaintainerAction.operations[0].proposedText -ceq $baseline -and $validDraft.issues[0].recommendedMaintainerAction.operations[0].textSource -ceq 'baseline') -Detail 'The recommendation preserves the complete reconciled baseline rather than its shorter historical summary.'
+    $componentObject = ($saved | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    foreach ($case in @('stale-context', 'invented-quote', 'truncated-baseline', 'invented-obligation', 'silent-retirement')) {
+        $invalid = ($validDraft | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+        switch ($case) {
+            'stale-context' { $invalid.evaluationContextSha256 = 'e' * 64 }
+            'invented-quote' { $invalid.scopeReview.baselineQuote = 'An invented baseline quotation.' }
+            'truncated-baseline' { $invalid.issues[0].recommendedMaintainerAction.operations[0].proposedText = 'Examples must be functional.' }
+            'invented-obligation' { $invalid.issues[0].recommendedMaintainerAction.operations[0].proposedText += ' Every example must declare seventeen input variables.' }
+            'silent-retirement' { $invalid.issues[0].recommendedMaintainerAction.operations[0].retireHostedRuleIds = @('IMPL-OTHER-003') }
+        }
+        $rejected = $false
+        try { Test-RuleIssueAdjudicationDraft -Component $componentObject -Draft $invalid } catch { $rejected = $true }
+        Add-TestResult -Name "saved-edit-rejects-$case" -Passed $rejected -Detail "Deterministic validation rejects $case."
+    }
+
     $componentPaths = [Collections.Generic.List[string]]::new()
     foreach ($definition in @(@{ Id = '001'; Independent = $false }, @{ Id = '002'; Independent = $true })) {
         $path = Join-Path $root "$($definition.Id).json"

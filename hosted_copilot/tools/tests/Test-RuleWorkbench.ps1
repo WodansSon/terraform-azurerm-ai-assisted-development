@@ -43,6 +43,7 @@ $workbenchGitHubContextPath = Join-Path $PSScriptRoot '../modules/workbench/Work
 $loopbackServerPath = Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'
 $manualRelationshipPath = Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $manualRelationshipEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/manual-relationship-evaluator.ps1'
+$adjudicationEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/rule-issue-adjudication-evaluator.ps1'
 $workbenchRegressionRoot = Join-Path $PSScriptRoot '../../regression/workbench'
 $behaviorManifestPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.json'
 $behaviorManifestSchemaPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.schema.json'
@@ -75,6 +76,7 @@ $mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
 $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
 $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
+    'saved-rule-evaluation',
     'fixture-display-valid',
     'assessment-factor-range',
     'local-icon-family-sprites',
@@ -1607,6 +1609,59 @@ try {
             throw 'Workbench browser behavior manifest is invalid'
         }
     }
+    if (Test-ShouldRun -Name 'saved-rule-evaluation') {
+        Start-TestResult -Name 'saved-rule-evaluation' -RunningDetail 'Running the source-owned checker, grouped adjudicator, and deterministic saved-edit validation'
+        Import-Module (Join-Path $toolsRoot 'modules/workbench/SavedRuleEvaluation.psm1')
+        $savedRunner = Join-Path $toolsRoot 'internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'
+        $authorityParameters = @{
+            RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; RuleIssuesPath = $ruleIssuesPath
+            RelationshipEvaluatorScriptPath = $manualRelationshipEvaluatorPath
+            AdjudicationEvaluatorScriptPath = $adjudicationEvaluatorPath
+        }
+        $editedCandidate = @($display.candidates | Where-Object { $_.recommendation.hostedId -ceq 'REVIEW-REPO-001' })[0]
+        $editedKey = "$($editedCandidate.source.lane):$($editedCandidate.source.id):$($editedCandidate.assessment.id)"
+        $proposals = @($display.candidates | ForEach-Object {
+            [ordered]@{
+                candidateKey = "$($_.source.lane):$($_.source.id):$($_.assessment.id)"
+                sourceHash = [string]$_.source.contentSha256; action = 'no-change'; inPlan = $false
+                proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$_.recommendation.ruleText))
+                retireHostedRuleIds = @()
+            }
+        })
+        $request = [ordered]@{
+            schemaVersion = 2; requestId = [Guid]::NewGuid().ToString('D')
+            authoritySha256 = Get-SavedRuleAuthoritySha256 @authorityParameters
+            candidateKey = $editedKey
+            ruleTextBase64 = ''; sourceFiles = @($display.sourceFiles); proposals = $proposals; priorRelationships = @()
+        }
+        $savedRequestPath = Join-Path $tempRoot 'saved-request.json'
+        $savedParameters = @{
+            RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; RuleIssuesPath = $ruleIssuesPath
+            RequestPath = $savedRequestPath; CacheDirectory = (Join-Path $tempRoot 'saved-rule-cache')
+            EvaluatorScriptPath = $manualRelationshipEvaluatorPath; AdjudicationEvaluatorScriptPath = $adjudicationEvaluatorPath
+        }
+        $savedResults = @()
+        foreach ($suffix in @(' Additional maintainer wording.', ' Grouped review is required.', ' Scope routing is required.')) {
+            $text = [string]$editedCandidate.recommendation.ruleText + $suffix
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))
+            $request.ruleTextBase64 = $encoded
+            @($request.proposals | Where-Object { $_.candidateKey -ceq $editedKey })[0].proposedTextBase64 = $encoded
+            [IO.File]::WriteAllText($savedRequestPath, ($request | ConvertTo-Json -Depth 100))
+            $savedParameters.OutputPath = Join-Path $tempRoot ("saved-result-$($savedResults.Count).json")
+            $null = & $savedRunner @savedParameters
+            $savedResults += Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+        }
+        $stale = ($request | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+        $stale.sourceFiles[0].contentSha256 = 'e' * 64
+        [IO.File]::WriteAllText($savedRequestPath, ($stale | ConvertTo-Json -Depth 100))
+        $staleRejected = $false
+        try { $null = & $savedRunner @savedParameters } catch { $staleRejected = $_.Exception.Message -like '*source snapshot*' }
+        $savedPassed = @($savedResults[0].ruleIssues.issues).Count -eq 0 -and
+            @($savedResults[1].ruleIssues.issues).Count -gt 0 -and
+            [string]$savedResults[1].ruleIssues.issues[0].recommendedMaintainerAction.operations[0].proposedText -ceq [string]$editedCandidate.recommendation.ruleText -and
+            [string]$savedResults[2].scopeReview.disposition -ceq 'route-to-existing-rule' -and $staleRejected
+        Add-TestResult -Name 'saved-rule-evaluation' -Passed $savedPassed -Detail 'The real two-stage pipeline rejects provisional noise, projects grouped baseline-preserving issues, returns scope routing, and rejects stale browser sources.'
+    }
     if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in $serverTestNames) {
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
@@ -1630,9 +1685,9 @@ try {
     } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText((Join-Path $shutdownSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
     $serverJob = Start-Job -ScriptBlock {
-        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory)
-        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -NoLaunch
-    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache')
+        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory, $AdjudicationEvaluatorScriptPath)
+        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -AdjudicationEvaluatorScriptPath $AdjudicationEvaluatorScriptPath -NoLaunch
+    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache'), $adjudicationEvaluatorPath
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
