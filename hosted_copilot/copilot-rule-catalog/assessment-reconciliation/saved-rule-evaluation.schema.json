@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hosted Saved Rule Evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "candidateKey", "requestId", "ruleTextSha256", "authoritySha256", "evaluationContextSha256", "scopeReview", "affectedRuleIds", "coveredProposals", "ruleIssues"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "candidateKey": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1 },
+    "ruleTextSha256": { "$ref": "#/$defs/sha256" },
+    "authoritySha256": { "$ref": "#/$defs/sha256" },
+    "evaluationContextSha256": { "$ref": "#/$defs/sha256" },
+    "scopeReview": { "type": "object" },
+    "affectedRuleIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "coveredProposals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateKey", "sourceHash", "action", "inPlan", "proposedText", "retireHostedRuleIds"],
+        "properties": {
+          "candidateKey": { "type": "string", "minLength": 1 },
+          "sourceHash": { "$ref": "#/$defs/sha256" },
+          "action": { "enum": ["add", "update", "no-change", "retire", "restore", "exclude", "defer"] },
+          "inPlan": { "type": "boolean" },
+          "proposedText": { "type": "string", "minLength": 1 },
+          "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "ruleIssues": { "type": "object" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

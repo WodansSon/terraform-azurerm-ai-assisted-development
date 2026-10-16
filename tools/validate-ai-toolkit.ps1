@@ -29,11 +29,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 $changelogTaxonomyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-taxonomy.ps1'
 $changelogConsistencyScriptPath = Join-Path $PSScriptRoot 'validate-changelog-consistency.ps1'
 $architectureLayoutScriptPath = Join-Path $PSScriptRoot 'validate-architecture-layout.ps1'
 $copiedMarkdownLinksScriptPath = Join-Path $PSScriptRoot 'validate-copied-markdown-links.ps1'
 $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
+$interactiveRuleCatalogScriptPath = Join-Path $PSScriptRoot 'Test-InteractiveRuleCatalog.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
 $npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
@@ -41,13 +45,56 @@ $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run
 $runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
 $projectReadyTestScriptPath = Join-Path $PSScriptRoot 'Test-PRReady.ps1'
+$validationOutputTestScriptPath = Join-Path $PSScriptRoot 'Test-ValidationOutput.ps1'
 
 $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
 $npmCommand = Get-Command $npmCommandName -ErrorAction SilentlyContinue
 $markdownlintRelativePath = if ($IsWindows) { 'npm-validation/node_modules/.bin/markdownlint-cli2.cmd' } else { 'npm-validation/node_modules/.bin/markdownlint-cli2' }
 $markdownlintCommandPath = Join-Path $PSScriptRoot $markdownlintRelativePath
+$npmLockPath = Join-Path $PSScriptRoot 'npm-validation/package-lock.json'
+$npmInstalledLockPath = Join-Path $PSScriptRoot 'npm-validation/node_modules/.package-lock.json'
 
 $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
+
+function Test-NpmPackageGraphCurrent {
+    param(
+        [Parameter(Mandatory = $true)][string]$LockPath,
+        [Parameter(Mandatory = $true)][string]$InstalledLockPath
+    )
+
+    if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf) -or -not (Test-Path -LiteralPath $InstalledLockPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $lock = Get-Content -LiteralPath $LockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $installedLock = Get-Content -LiteralPath $InstalledLockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        if ($lock['lockfileVersion'] -ne $installedLock['lockfileVersion'] -or $null -eq $lock['packages'] -or $null -eq $installedLock['packages']) {
+            return $false
+        }
+
+        foreach ($packagePath in @($installedLock['packages'].Keys)) {
+            if (-not $lock['packages'].ContainsKey($packagePath)) {
+                return $false
+            }
+        }
+        foreach ($packagePath in @($lock['packages'].Keys | Where-Object { $_ -ne '' })) {
+            if (-not $installedLock['packages'].ContainsKey($packagePath)) {
+                if (-not [bool]$lock['packages'][$packagePath]['optional']) {
+                    return $false
+                }
+                continue
+            }
+            if ([string]$lock['packages'][$packagePath]['version'] -cne [string]$installedLock['packages'][$packagePath]['version']) {
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
 
 function Invoke-ValidationStep {
     param(
@@ -59,6 +106,10 @@ function Invoke-ValidationStep {
 
         [string]$Detail,
 
+        [string]$RunningDetail = 'IN PROGRESS',
+
+        [string]$SuccessDetail,
+
         [switch]$Skipped,
 
         [switch]$RelayStatusOutput
@@ -66,7 +117,7 @@ function Invoke-ValidationStep {
 
     if ($Skipped) {
         if ($OutputFormat -eq 'Text') {
-            Write-Host (Format-StatusLine -Status 'skipped' -Name $Name -Detail 'SKIPPED')
+            Write-Host (Format-ValidationStatusLine -Status 'skipped' -Name $Name -Detail 'SKIPPED')
         }
 
         return [pscustomobject]@{
@@ -81,7 +132,7 @@ function Invoke-ValidationStep {
     }
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-StatusLine -Status 'running' -Name $Name -Detail 'IN PROGRESS')
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail)
     }
 
     $started = Get-Date
@@ -91,8 +142,8 @@ function Invoke-ValidationStep {
     try {
         $global:LASTEXITCODE = 0
         $outputLines = @(& $Command 2>&1 | ForEach-Object {
-            if ($RelayStatusOutput -and $OutputFormat -eq 'Text' -and ([string]$_) -match '^\[(RUNNING|PASSED|FAILED|SKIPPED)\]') {
-                Write-Host ("  {0}" -f $_)
+            if ($RelayStatusOutput -and $OutputFormat -eq 'Text' -and ([string]$_) -match '^\s*\[(RUNNING|PASSED|FAILED|SKIPPED)\]') {
+                Write-Host (Add-ValidationIndent -Line ([string]$_))
             }
 
             Write-Output $_
@@ -109,7 +160,9 @@ function Invoke-ValidationStep {
     $status = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-StatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+        $durationDetail = Format-ValidationDuration -DurationSeconds $durationSeconds
+        $statusDetail = if ($status -eq 'passed' -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { $durationDetail }
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail)
     }
 
     return [pscustomobject]@{
@@ -138,37 +191,6 @@ function Get-TextMatchValue {
     }
 
     return $match.Groups[1].Value
-}
-
-function Write-TextSectionHeader {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Title
-    )
-
-    $separator = '-' * 51
-
-    Write-Output ''
-    Write-Output $separator
-    Write-Output $Title.ToUpperInvariant()
-    Write-Output $separator
-}
-
-function Format-StatusLine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Status,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Detail
-    )
-
-    $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
-
-    return ("{0,-11}{1,-30}: {2}" -f $statusLabel, $Name, $Detail)
 }
 
 function Invoke-GitCommand {
@@ -431,7 +453,7 @@ function Get-ChangedRegressionCases {
 Push-Location $repoRoot
 try {
     if ($OutputFormat -eq 'Text') {
-        Write-TextSectionHeader -Title 'AI toolkit validation'
+        Write-ValidationSectionHeader -Title 'AI toolkit validation'
     }
 
     $steps = @()
@@ -440,7 +462,7 @@ try {
         '-NoProfile',
         '-File',
         $npmSecurityScriptPath,
-        '-AdditionalLockPath',
+        '-LockPath',
         'tools/npm-validation/package-lock.json'
     )
     if ($FixNpmAudit) {
@@ -450,18 +472,26 @@ try {
         $npmSecurityArguments += '-AllowBreakingFix'
     }
 
-    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit every tracked npm integrity lock and reject vulnerabilities of any severity before dependency installation.' -Command {
+    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit the Interactive Toolkit npm integrity lock and reject vulnerabilities of any severity before dependency verification.' -Command {
         & pwsh @npmSecurityArguments
     }
     $steps += $npmSecurityStep
 
-    $npmInstallStep = Invoke-ValidationStep -Name 'npm-install' -Detail 'Install only the audited, integrity-locked npm validation graph without lifecycle scripts.' -Skipped:(-not $npmSecurityStep.success) -Command {
+    $npmPackagesStep = Invoke-ValidationStep -Name 'npm-packages' -Detail 'Verify that installed npm validation packages exactly match the audited integrity lock without running lifecycle scripts.' -RunningDetail 'VERIFYING AUDITED LOCKFILE' -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Skipped:(-not $npmSecurityStep.success) -Command {
         if ($null -eq $npmCommand) {
             throw 'npm was not found on PATH'
         }
-        & $npmCommand.Source ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund
+        if (-not (Test-NpmPackageGraphCurrent -LockPath $npmLockPath -InstalledLockPath $npmInstalledLockPath)) {
+            & $npmCommand.Source ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) {
+                return
+            }
+            if (-not (Test-NpmPackageGraphCurrent -LockPath $npmLockPath -InstalledLockPath $npmInstalledLockPath)) {
+                throw 'installed npm package graph does not match the audited lockfile after npm ci'
+            }
+        }
     }
-    $steps += $npmInstallStep
+    $steps += $npmPackagesStep
 
     $steps += Invoke-ValidationStep -Name 'changelog' -Detail 'Confirm the current branch has an explicit changelog decision: either CHANGELOG.md is updated or a maintainer explicitly marks the branch as changelog-not-required.' -Skipped:$SkipChangelog -Command {
         if ($null -eq $gitCommand) {
@@ -508,8 +538,16 @@ try {
         & pwsh -NoProfile -File $contractsScriptPath
     }
 
+    $steps += Invoke-ValidationStep -Name 'interactive-rule-catalog' -Detail 'Validate repo-only rule provenance, lifecycle history, runtime contract hashes, and installer exclusion.' -Command {
+        & pwsh -NoProfile -File $interactiveRuleCatalogScriptPath
+    }
+
     $steps += Invoke-ValidationStep -Name 'project-ready-utility' -Detail 'Run deterministic argument, help, output, and error regression tests for the AzureRM project readiness utility.' -Command {
         & pwsh -NoProfile -File $projectReadyTestScriptPath
+    }
+
+    $steps += Invoke-ValidationStep -Name 'validation-output' -Detail 'Verify the shared repository-maintenance presentation contract for section headers, summaries, status lines, tables, and output endings.' -Command {
+        & pwsh -NoProfile -File $validationOutputTestScriptPath -ProductScope Interactive
     }
 
     $steps += Invoke-ValidationStep -Name 'changed-regression-cases' -Detail 'Confirm branch-local regression case changes are runnable with adjudicated example results, not merely schema-valid.' -Command {
@@ -547,7 +585,7 @@ try {
         }
     }
 
-    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmInstallStep.success) -Command {
+    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmPackagesStep.success) -Command {
         if (-not (Test-Path -LiteralPath $markdownlintCommandPath -PathType Leaf)) {
             throw "markdownlint was not installed from the repository lockfile: $markdownlintCommandPath"
         }
@@ -657,51 +695,53 @@ try {
         $summary | ConvertTo-Json -Depth 10
     }
     else {
-        Write-TextSectionHeader -Title 'AI toolkit validation summary'
-        Write-Output "  Overall Status   : $($summary.overallStatus.ToUpperInvariant())"
-        Write-Output "  Repository Root  : $repoRoot"
+        Write-ValidationSectionHeader -Title 'AI toolkit validation summary'
+        Write-ValidationSummary -Fields ([ordered]@{
+            'Overall Status' = $summary.overallStatus.ToUpperInvariant()
+            'Repository Root' = $repoRoot
+        })
 
-        Write-TextSectionHeader -Title 'Validation steps'
-        Write-Output ("  {0,-32} {1,-10} {2,10}" -f 'STEP', 'STATUS', 'DURATION')
-        Write-Output ("  {0,-32} {1,-10} {2,10}" -f ('-' * 32), ('-' * 10), ('-' * 10))
-        foreach ($step in $steps) {
-            Write-Output ("  {0,-32} {1,-10} {2,10}" -f $step.name, $step.status.ToUpperInvariant(), ("{0}s" -f $step.durationSeconds))
-        }
+        Write-ValidationSectionHeader -Title 'Validation steps'
+        Write-ValidationStatusTable -Rows @($steps) -NameHeader 'STEP'
 
-        Write-TextSectionHeader -Title 'Highlights'
+        Write-ValidationSectionHeader -Title 'Highlights'
+        $highlightFields = [ordered]@{}
         if ($null -ne $summary.highlights.changelogStatus) {
-            Write-Output "  Changelog Status         : $($summary.highlights.changelogStatus.ToUpperInvariant())"
+            $highlightFields['Changelog Status'] = $summary.highlights.changelogStatus.ToUpperInvariant()
         }
         $changelogTaxonomyStep = @($steps | Where-Object { $_.name -eq 'changelog-taxonomy' })[0]
         if ($null -ne $changelogTaxonomyStep) {
-            Write-Output "  Changelog Taxonomy       : $($changelogTaxonomyStep.status.ToUpperInvariant())"
+            $highlightFields['Changelog Taxonomy'] = $changelogTaxonomyStep.status.ToUpperInvariant()
         }
         if ($null -ne $summary.highlights.changelogConsistencyStatus) {
-            Write-Output "  Changelog Consistency    : $($summary.highlights.changelogConsistencyStatus.ToUpperInvariant())"
+            $highlightFields['Changelog Consistency'] = $summary.highlights.changelogConsistencyStatus.ToUpperInvariant()
         }
         if ($null -ne $summary.highlights.changedRegressionCasesStatus) {
-            Write-Output "  Changed Regression Cases : $($summary.highlights.changedRegressionCasesStatus.ToUpperInvariant())"
+            $highlightFields['Changed Regression Cases'] = $summary.highlights.changedRegressionCasesStatus.ToUpperInvariant()
         }
         if ($null -ne $summary.highlights.regressionCasesSelected) {
-            Write-Output "  Regression Cases Selected : $($summary.highlights.regressionCasesSelected)"
+            $highlightFields['Regression Cases Selected'] = $summary.highlights.regressionCasesSelected
         }
         if ($null -ne $summary.highlights.regressionCasesScored) {
-            Write-Output "  Regression Cases Scored   : $($summary.highlights.regressionCasesScored)"
+            $highlightFields['Regression Cases Scored'] = $summary.highlights.regressionCasesScored
         }
         if ($null -ne $summary.highlights.upstreamChangedSources) {
-            Write-Output "  Upstream Changed Sources  : $($summary.highlights.upstreamChangedSources)"
+            $highlightFields['Upstream Changed Sources'] = $summary.highlights.upstreamChangedSources
         }
         if ($null -ne $summary.highlights.upstreamCatalogIssues) {
-            Write-Output "  Upstream Catalog Issues   : $($summary.highlights.upstreamCatalogIssues)"
+            $highlightFields['Upstream Catalog Issues'] = $summary.highlights.upstreamCatalogIssues
         }
         if ($null -ne $summary.highlights.upstreamRuleIssues) {
-            Write-Output "  Upstream Rule Issues      : $($summary.highlights.upstreamRuleIssues)"
+            $highlightFields['Upstream Rule Issues'] = $summary.highlights.upstreamRuleIssues
+        }
+        if ($highlightFields.Count -gt 0) {
+            Write-ValidationSummary -Fields $highlightFields
         }
 
         if (-not $overallSuccess) {
-            Write-TextSectionHeader -Title 'Failures'
+            Write-ValidationSectionHeader -Title 'Failures'
             foreach ($failedStep in @($steps | Where-Object { -not $_.success })) {
-                Write-Output ("  {0}" -f (Format-StatusLine -Status 'failed' -Name $failedStep.name -Detail ("exit code {0}" -f $failedStep.exitCode)))
+                Write-Output ("  {0}" -f (Format-ValidationStatusLine -Status 'failed' -Name $failedStep.name -Detail ("exit code {0}" -f $failedStep.exitCode)))
                 if (-not [string]::IsNullOrWhiteSpace($failedStep.detail)) {
                     Write-Output "    $($failedStep.detail)"
                 }
@@ -711,7 +751,7 @@ try {
             }
         }
 
-        Write-Output ''
+        Complete-ValidationTextOutput
     }
 
     if (-not $overallSuccess) {
