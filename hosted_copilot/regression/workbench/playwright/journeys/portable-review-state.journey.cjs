@@ -252,7 +252,7 @@ async function run({ page, baseUrl, assert, playback }) {
     await importBytes(page, draftBytes, "draft.json");
     await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Draft import did not restore the selected action");
-    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === proposedId, "Draft import did not preserve the generated Hosted ID");
+    assert(await page.locator('#assessment-panel .rule-actions > .section-label .rule-reference').innerText() === proposedId, "Draft import did not preserve the generated Hosted ID");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Draft import did not restore the rationale");
     assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Draft import did not restore action-derived plan membership");
 
@@ -286,7 +286,7 @@ async function run({ page, baseUrl, assert, playback }) {
     await openWorkbench(page, baseUrl);
     await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Migrated decision action did not survive reload");
-    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === proposedId, "Generated Hosted ID did not survive reload");
+    assert(await page.locator('#assessment-panel .rule-actions > .section-label .rule-reference').innerText() === proposedId, "Generated Hosted ID did not survive reload");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Migrated rationale did not survive reload");
     assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Migrated action-derived plan membership did not survive reload");
 

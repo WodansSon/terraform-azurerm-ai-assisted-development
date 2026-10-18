@@ -120,7 +120,10 @@ let previewSelectedFilePath = "";
 let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
-const activeRelationshipChecks = new Set();
+const activeRelationshipChecks = new Map();
+const dismissedManualRelationshipFailures = new WeakSet();
+const expandedEvidencePanels = new Set();
+const sourceRuleDisclosureStates = new Map();
 const activeRuleIssueRecommendations = new Set();
 const shimmerHeadingAnimations = new Set();
 let shimmerHeadingStyleSheet;
@@ -166,7 +169,7 @@ function renderShimmerHeading(text) {
   return `<strong class="shimmer-heading" data-shimmer-steps="${steps}"><span class="sr-only">${escapeHtml(text)}</span><span class="shimmer-characters" aria-hidden="true">${visual}</span></strong>`;
 }
 
-function renderWaitingPanel({ title, body }) {
+function renderWaitingPanel({ title, body, elapsed = null, action = "" }) {
   if (typeof title !== "string" || !title.trim() || typeof body !== "string" || !body.trim()) {
     throw new Error("Waiting panels require non-empty title and body text");
   }
@@ -181,7 +184,7 @@ function renderWaitingPanel({ title, body }) {
   }
   return `<div class="waiting-panel" role="status" aria-live="polite" aria-atomic="true">
     <div class="waiting-panel-heading"><span class="waiting-panel-spinner" aria-hidden="true"></span>${renderShimmerHeading(title)}</div>
-    <p class="waiting-panel-body">${escapeHtml(body)}</p>
+    <div class="waiting-panel-body"><span class="waiting-panel-copy">${escapeHtml(body)}${elapsed === null ? "" : ` <span class="waiting-panel-elapsed" role="timer" aria-live="off">${escapeHtml(elapsed)}</span>`}</span>${action}</div>
     <span class="waiting-panel-frame waiting-panel-glow" aria-hidden="true"></span>
     <span class="waiting-panel-frame waiting-panel-border" aria-hidden="true"></span>
   </div>`;
@@ -440,6 +443,13 @@ function fluentIcon(name, className = "") {
   return `<svg class="fluent-icon ${escapeHtml(className)}" aria-hidden="true"><use href="icons/fluent/sprite.svg#fluent-${name}"></use></svg>`;
 }
 
+function renderInformationPanel(content, { iconMarkup = fluentIcon("info-20-regular"), className = "", dataAttributes = {} } = {}) {
+  const attributes = Object.entries(dataAttributes)
+    .map(([name, value]) => ` data-${name}="${escapeHtml(value)}"`)
+    .join("");
+  return `<div class="information-panel${className ? ` ${escapeHtml(className)}` : ""}"${attributes}>${iconMarkup}${content}</div>`;
+}
+
 function renderPreviewEmptyState(iconName, title, message, className = "") {
   return `<div class="empty-state compact preview-empty-state ${escapeHtml(className)}">${icon(iconName)}<h3>${escapeHtml(title)}</h3><p>${escapeHtml(message)}</p></div>`;
 }
@@ -511,7 +521,7 @@ function bindEvents() {
     elements["draft-menu"].removeAttribute("open");
   });
   elements["search-input"].addEventListener("input", (event) => updateFilter(event.target.value));
-  document.querySelector(".status-right").addEventListener("click", handleStatusNavigation);
+  document.querySelector(".ide-statusbar").addEventListener("click", handleStatusNavigation);
   elements["rule-issues-filters"].addEventListener("click", (event) => {
     const filter = event.target.closest("[data-rule-issue-filter]")?.dataset.ruleIssueFilter;
     if (!filter) return;
@@ -597,6 +607,12 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
+  for (const panel of [elements["assessment-panel"], elements["assessment-results-detail"]]) {
+    panel.addEventListener("click", handleEvidenceDisclosureClick);
+    panel.addEventListener("toggle", (event) => {
+      if (event.target.matches("details[data-source-rule-key]")) sourceRuleDisclosureStates.set(event.target.dataset.sourceRuleKey, event.target.open);
+    }, true);
+  }
   [elements["assessment-panel"], elements["assessment-results-detail"]].forEach((panel) => {
     panel.addEventListener("click", handleDetailBackToTopClick);
     panel.addEventListener("scroll", handleDetailContentScroll, true);
@@ -610,12 +626,12 @@ function bindEvents() {
     }
     const detail = event.target.closest("[data-plan-detail]");
     if (detail) {
-      openPlanCandidate(detail.dataset.planDetail, "rationale");
+      openPlanCandidate(detail.dataset.planDetail, "attention");
       return;
     }
     const action = event.target.closest("[data-plan-action]");
     if (action) {
-      openPlanCandidate(action.dataset.planAction, "action");
+      openPlanCandidate(action.dataset.planAction, "attention");
       return;
     }
     if (event.target.closest("button, input, a, label")) return;
@@ -828,7 +844,7 @@ async function waitForCandidateDecorationPaint() {
 }
 
 async function loadBundle() {
-  setSaveIndicator("Loading display");
+  setSaveIndicator("Loading display", { kind: "standard", icon: "ellipsis" });
   try {
     await preloadIconSprites();
     const [displayResponse, ruleIssuesResponse] = await Promise.all([
@@ -852,7 +868,7 @@ async function loadBundle() {
     const existing = await readSession(sessionId);
     state.session = migrateSession(existing, discoveredCandidates, display) || createSession(sessionId, display);
     autofillApproverName();
-    const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getAssessment(candidate, getDecision(candidate)) }));
+    const assessedCandidates = discoveredCandidates.map((candidate) => ({ candidate, assessment: getBaselineAssessment(candidate, getDecision(candidate)) }));
     const evaluatedCount = assessedCandidates.filter(({ assessment }) => assessment).length;
     if (evaluatedCount !== discoveredCandidates.length) {
       throw new Error(`AI assessment bundle is incomplete: ${evaluatedCount} of ${discoveredCandidates.length} candidates are evaluated.`);
@@ -871,6 +887,12 @@ async function loadBundle() {
     await loadSavedRuleRuntimeConfig();
     for (const evaluation of state.session.savedRuleEvaluations) {
       validateRuleIssueBundle(evaluation.ruleIssues);
+      if (evaluation.schemaVersion === 4) {
+        const candidate = state.assessedCandidates.find((item) => item.key === evaluation.candidateKey);
+        const proposal = evaluation.coveredProposals?.find((item) => item.candidateKey === evaluation.candidateKey);
+        if (!candidate || !proposal) throw new Error("Stored saved-rule assessment has invalid ownership");
+        await validateSavedRuleEvaluation(evaluation, evaluation, evaluation.coveredProposals, proposal.proposedText, candidate);
+      }
     }
           repairNoOpPlanMembership();
           repairOverridePlanMembership();
@@ -997,7 +1019,7 @@ function normalizeDisplayCandidates(display) {
       summary: candidate.assessment.sourceMeaning,
       assessmentConfidence: candidate.assessment.confidence,
       sourceContentSha256: source.contentSha256,
-      currentHostedCoverage: candidate.assessment.existingCoverage.rationale,
+      relatedHostedCoverage: normalizedRecommendation.relatedHostedCoverage,
       recommendation: normalizedRecommendation?.action || (reviewState === "excluded" ? "exclude" : "defer"),
       proposedHostedRuleId,
       targetHostedRuleId,
@@ -1090,7 +1112,54 @@ function prepareRuleIssueRestore(candidateKeys) {
 function formatRuleIssueSummary(issues) {
   const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, issues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
   const protectedCount = counts.protected;
-  return `${formatCountLabel(issues.length, "rule issue")}: ${formatCountLabel(protectedCount, "protected")}, ${formatCountLabel(counts.contradiction, "contradiction")}, ${formatCountLabel(counts.duplicate, "duplicate")}, ${formatCountLabel(counts.overlap, "overlap")}`;
+  return `Rule Issues: ${protectedCount} Protected, ${formatCountLabel(counts.contradiction, "Contradiction")}, ${formatCountLabel(counts.duplicate, "Duplicate")}, ${formatCountLabel(counts.overlap, "Overlap")}`;
+}
+
+function getValidationProblems() {
+  if (!state.session) return [];
+  const problems = new Map();
+  const proposals = getSavedRuleProposals();
+  for (const candidate of state.assessedCandidates) {
+    const validation = getManualRelationshipValidation(candidate);
+    const check = validation.check;
+    if (validation.status === "failed" || (validation.status === "pending" && check.errorMessage)) {
+      problems.set(`error:${candidate.key}`, { kind: "error", candidateKey: candidate.key });
+    } else if (["required", "stale", "pending"].includes(validation.status)) {
+      problems.set(`required:${candidate.key}`, { kind: "warning", candidateKey: candidate.key });
+    }
+  }
+  for (const evaluation of state.session.savedRuleEvaluations) {
+    if (evaluation.evaluationMode === "unchanged") continue;
+    if (!isSavedEvaluationCurrent(evaluation, proposals)) continue;
+    if (hasSavedRuleWordingConcern(evaluation)) {
+      problems.set(`scope:${evaluation.candidateKey}`, { kind: "warning", candidateKey: evaluation.candidateKey });
+    }
+    for (const issue of evaluation.ruleIssues.issues) {
+      if (isRuleIssueRecommendationStaged(issue)) continue;
+      for (const relationship of issue.relationships) {
+        const key = JSON.stringify([relationship.sourceRuleId, relationship.relatedRuleId].sort());
+        problems.set(`relationship:${key}`, { kind: "warning", candidateKey: relationship.candidateKey });
+      }
+    }
+  }
+  return [...problems.values()];
+}
+
+function renderValidationIssues() {
+  const problems = getValidationProblems();
+  const errors = problems.filter((problem) => problem.kind === "error").length;
+  const warnings = problems.filter((problem) => problem.kind === "warning").length;
+  const tooltip = errors || warnings
+    ? `Validation Issues: ${formatCountLabel(errors, "Error")}, ${formatCountLabel(warnings, "Warning")}`
+    : "No Problems";
+  workbenchStatusBar.update("validationIssues", {
+    tooltip,
+    ariaLabel: tooltip === "No Problems" ? "Validation Issues: No Problems" : tooltip,
+    segments: {
+      errors: { text: formatNumber(errors), kind: errors ? "error" : "standard" },
+      warnings: { text: formatNumber(warnings), kind: warnings ? "warning" : "standard" }
+    }
+  });
 }
 
 function getRuleIssueTabPages(tabs, availableWidth) {
@@ -1261,9 +1330,34 @@ function getSavedRuleProposals(overrides = new Map()) {
   }).sort((left, right) => left.candidateKey < right.candidateKey ? -1 : left.candidateKey > right.candidateKey ? 1 : 0);
 }
 
+function isUnchangedHostedRuleProposal(candidate, proposedText, proposal = getDecision(candidate)) {
+  return getCatalogStatus(candidate).key === "mapped" && !hasHostedTextChange(candidate, proposedText)
+    && proposal?.action === "no-change" && !proposal.inPlan;
+}
+
+function getSavedAssessmentProposals(evaluation) {
+  return evaluation.coveredProposals.filter((proposal) => {
+    const owner = state.assessedCandidates.find((candidate) => candidate.key === proposal.candidateKey);
+    return proposal.candidateKey === evaluation.candidateKey || (owner && hasMaintainerEditedRuleText(owner, proposal.proposedText));
+  });
+}
+
 function isSavedEvaluationCurrent(evaluation, proposals = getSavedRuleProposals()) {
-  if (evaluation?.schemaVersion !== 2 || evaluation.authoritySha256 !== globalThis.__HOSTED_RULE_WORKBENCH__?.savedRuleAuthoritySha256) return false;
+  const unchanged = evaluation?.evaluationMode === "unchanged";
+  if (evaluation?.schemaVersion !== 4 || evaluation.authoritySha256 !== globalThis.__HOSTED_RULE_WORKBENCH__?.savedRuleAuthoritySha256
+    || !["acceptable", "needs-review"].includes(evaluation.scopeReview?.wordingStatus)
+    || (evaluation.evaluationMode !== undefined && !unchanged)
+    || !Array.isArray(evaluation.coveredProposals) || !Array.isArray(evaluation.assessments)
+    || (unchanged ? evaluation.assessments.length !== 0 : evaluation.assessments.length !== getSavedAssessmentProposals(evaluation).length)
+    || new Set(evaluation.assessments.map((assessment) => assessment.candidateKey)).size !== evaluation.assessments.length
+    || evaluation.assessments.some((assessment) => !getSavedAssessmentProposals(evaluation).some((proposal) => proposal.candidateKey === assessment.candidateKey))) return false;
   const current = new Map(proposals.map((proposal) => [proposal.candidateKey, proposal]));
+  if (unchanged) {
+    const candidate = state.assessedCandidates.find((item) => item.key === evaluation.candidateKey);
+    const proposal = current.get(evaluation.candidateKey);
+    if (!candidate || evaluation.coveredProposals?.length !== 1 || evaluation.coveredProposals[0].candidateKey !== candidate.key
+      || !isUnchangedHostedRuleProposal(candidate, proposal?.proposedText, proposal)) return false;
+  }
   return Array.isArray(evaluation.coveredProposals) && evaluation.coveredProposals.length > 0
     && evaluation.coveredProposals.every((proposal) => JSON.stringify(proposal) === JSON.stringify(current.get(proposal.candidateKey)));
 }
@@ -1273,6 +1367,7 @@ function refreshSavedRuleIssues() {
   const proposals = getSavedRuleProposals();
   let issues = [...state.ruleIssueBundle.issues];
   for (const evaluation of state.session.savedRuleEvaluations) {
+    if (evaluation.evaluationMode === "unchanged") continue;
     const affected = new Set(evaluation.affectedRuleIds);
     issues = issues.filter((issue) => !issue.ruleIds.some((id) => affected.has(id)));
     if (isSavedEvaluationCurrent(evaluation, proposals)) issues.push(...evaluation.ruleIssues.issues);
@@ -1280,7 +1375,8 @@ function refreshSavedRuleIssues() {
   const staleKeys = new Set(state.assessedCandidates.filter((candidate) => {
     const check = state.session.manualRelationshipChecks[candidate.key];
     return activeRelationshipChecks.has(candidate.key)
-      || (hasMaintainerEditedRuleText(candidate) && (!check?.evaluation || !isSavedEvaluationCurrent(check.evaluation, proposals)));
+      || ((hasMaintainerEditedRuleText(candidate) || hasMaintainerSelectedRetirements(candidate))
+        && (!check?.evaluation || !isSavedEvaluationCurrent(check.evaluation, proposals)));
   }).map((candidate) => candidate.key));
   const active = getActiveCandidate();
   const editorText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
@@ -1288,18 +1384,19 @@ function refreshSavedRuleIssues() {
   state.ruleIssues = issues.filter((issue) => !issue.candidateKeys.some((key) => staleKeys.has(key)));
 }
 
-function recordSavedRuleEvaluation(candidate, proposedText, evaluation) {
+function recordSavedRuleEvaluation(candidate, proposedText, evaluation, session = state.session) {
   const affected = new Set(evaluation.affectedRuleIds);
-  state.session.savedRuleEvaluations = state.session.savedRuleEvaluations
-    .filter((previous) => !previous.affectedRuleIds.some((id) => affected.has(id)));
-  state.session.savedRuleEvaluations.push(evaluation);
-  state.session.manualRelationshipChecks[candidate.key] = {
+  session.savedRuleEvaluations = session.savedRuleEvaluations
+    .filter((previous) => evaluation.evaluationMode === "unchanged"
+      ? previous.candidateKey !== candidate.key : !previous.affectedRuleIds.some((id) => affected.has(id)));
+  session.savedRuleEvaluations.push(evaluation);
+  session.manualRelationshipChecks[candidate.key] = {
     status: "current", proposedText, checkedAt: toUtcTimestamp(),
     ruleTextSha256: evaluation.ruleTextSha256,
     relationships: evaluation.ruleIssues.issues.flatMap((issue) => issue.relationships),
     evaluation
   };
-  refreshSavedRuleIssues();
+  if (session === state.session) refreshSavedRuleIssues();
 }
 
 function renderRuleIssuePlanAction(issue) {
@@ -1342,23 +1439,51 @@ async function stageRuleIssueRecommendation(issue) {
   activeRuleIssueRecommendations.add(issue.id);
   renderRuleIssues();
   try {
+    const editorIsSaved = () => {
+      const active = getActiveCandidate();
+      const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+      return !editor || !active || editor.value === getDecision(active).proposedText;
+    };
+    if (!editorIsSaved()) throw new Error("Save the current wording before applying recommended actions.");
+    const before = JSON.stringify(state.session);
+    const authority = globalThis.__HOSTED_RULE_WORKBENCH__.savedRuleAuthoritySha256;
+    const assertCurrent = () => {
+      if (JSON.stringify(state.session) !== before || !editorIsSaved()
+        || getValidatedCodeOwnerIdentity()?.login !== identity.login
+        || globalThis.__HOSTED_RULE_WORKBENCH__.savedRuleAuthoritySha256 !== authority) {
+        throw new Error("The draft or validation authority changed. Review and apply the recommendation again.");
+      }
+    };
     const overrides = new Map(candidateOperations.map(({ candidate, operation }) => [candidate.key, {
       ...getDecision(candidate), action: operation.action, proposedText: operation.proposedText,
       retireHostedRuleIds: getRuleIssueAncillaryRetirements(operation), inPlan: true
     }]));
-    const first = candidateOperations[0];
-    const evaluation = await reconcileRuleTextRelationships(first.candidate, first.operation.proposedText, {
-      notify: false, commit: false, proposals: getSavedRuleProposals(overrides)
-    });
-    if (!evaluation) return;
+    const proposals = getSavedRuleProposals(overrides);
+    const evaluations = [];
+    for (const { candidate, operation } of candidateOperations) {
+      assertCurrent();
+      const evaluation = await reconcileRuleTextRelationships(candidate, operation.proposedText, {
+        notify: false, commit: false, proposals
+      });
+      if (!evaluation) return;
+      assertCurrent();
+      if (hasSavedRuleWordingConcern(evaluation) || evaluation.ruleIssues.issues.length
+        || evaluation.assessments.some((assessment) => !assessment.hostedApplicable
+          && !getApplicabilityOverride(state.assessedCandidates.find((candidate) => candidate.key === assessment.candidateKey)))
+        || !getRuleIssueAncillaryRetirements(operation).every((id) => evaluation.affectedRuleIds.includes(id))) {
+        throw new Error("The complete recommended change needs review. No recommended actions were applied.");
+      }
+      evaluations.push(evaluation);
+    }
     const updatedAt = toUtcTimestamp();
     const rationale = issue.recommendedMaintainerAction.summary.slice(0, DECISION_RATIONALE_MAX_LENGTH);
     const visibleIssues = getFilteredRuleIssues();
     const resolvedIndex = Math.max(0, visibleIssues.findIndex((item) => item.id === issue.id));
+    const nextSession = structuredClone(state.session);
     candidateOperations.forEach(({ candidate, operation }) => {
       const { assessment, ...decision } = getDecision(candidate);
-      removeCandidateFromBulkOperations(candidate.key);
-      state.session.decisions[candidate.key] = {
+      removeCandidateFromBulkOperations(candidate.key, nextSession);
+      nextSession.decisions[candidate.key] = {
         ...decision,
         action: operation.action,
         rationale,
@@ -1369,7 +1494,19 @@ async function stageRuleIssueRecommendation(issue) {
         updatedAt
       };
     });
-    recordSavedRuleEvaluation(first.candidate, first.operation.proposedText, evaluation);
+    candidateOperations.forEach(({ candidate, operation }, index) => {
+      recordSavedRuleEvaluation(candidate, operation.proposedText, evaluations[index], nextSession);
+    });
+    nextSession.updatedAt = updatedAt;
+    assertCurrent();
+    await persistSession(nextSession, assertCurrent);
+    try { assertCurrent(); }
+    catch (error) {
+      await persistSession();
+      throw error;
+    }
+    state.session = nextSession;
+    refreshSavedRuleIssues();
     if (isRuleIssueRecommendationStaged(issue)) {
       rememberResolvedRuleIssue(issue, resolvedIndex);
       const remainingIssues = getFilteredRuleIssues();
@@ -1378,14 +1515,15 @@ async function stageRuleIssueRecommendation(issue) {
       state.activeRuleIssueKey = nextIssue?.id || null;
       if (nextIssue) rememberRuleIssueSelection(nextIssue.id, state.ruleIssueFilter, nextIndex);
     }
-    state.session.updatedAt = updatedAt;
-    await persistSession();
     syncCandidateTreeRows();
     renderBulkActions();
     renderDecisionOutputs();
     renderRuleIssues();
     renderAssessment();
     showToast(`${formatCountLabel(operations.length, "Resolution")} added to the promotion plan.`);
+  }
+  catch (error) {
+    showToast(`Recommended actions were not applied: ${error.message}`, true);
   }
   finally {
     activeRuleIssueRecommendations.delete(issue.id);
@@ -1616,7 +1754,8 @@ function repairOverridePlanMembership() {
 function repairNoOpPlanMembership() {
   state.assessedCandidates.forEach((candidate) => {
     const savedDecision = state.session.decisions[candidate.key];
-    if (!savedDecision?.inPlan || savedDecision.action !== "no-change" || !isCurrentMappedNoChangeNoOp(candidate)) return;
+    if (!savedDecision?.inPlan || savedDecision.action !== "no-change" || savedDecision.retireHostedRuleIds.length
+      || !isCurrentMappedNoChangeNoOp(candidate)) return;
     removeCandidateFromBulkOperations(candidate.key);
     state.session.decisions[candidate.key] = { ...savedDecision, ...createPlanMembership() };
   });
@@ -1669,10 +1808,9 @@ function getDecision(candidate) {
   if (!saved || saved.sourceHash !== candidate.hash) return defaultDecision(candidate);
   const defaults = defaultDecision(candidate);
   const proposedText = String(saved.proposedText ?? defaults.proposedText);
-  const resolvedRetirementIds = Object.values(state.session.manualRelationshipChecks?.[candidate.key]?.resolutions || {})
-    .filter((resolution) => resolution?.status === "resolved" && resolution.mode === "consolidate-retire")
-    .map((resolution) => resolution.hostedRuleId);
-  const availableRetirementIds = new Set([...candidate.recommendation.retireHostedRuleIds, ...resolvedRetirementIds]);
+  const ownRuleId = candidate.catalogMapping.hostedRuleId || candidate.recommendation.hostedId;
+  const availableRetirementIds = new Set(state.bundle.catalog.rules
+    .filter((rule) => rule.status === "active" && rule.id !== ownRuleId).map((rule) => rule.id));
   const retireHostedRuleIds = saved.retireHostedRuleIds.filter((ruleId) => availableRetirementIds.has(ruleId));
   const allowedActions = getAllowedActions(candidate, proposedText);
   if (!allowedActions.includes(saved.action) || !isValidPlanMembership(saved, candidate.key)) return defaultDecision(candidate);
@@ -1696,11 +1834,22 @@ function hasMaintainerEditedRuleText(candidate, proposedText = getDecision(candi
   return String(proposedText || "").replace(/\r\n/g, "\n") !== String(candidate.recommendation.ruleText || "").replace(/\r\n/g, "\n");
 }
 
-function getManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
+function hasMaintainerSelectedRetirements(candidate) {
+  return getDecision(candidate).retireHostedRuleIds.some((id) => !candidate.recommendation.retireHostedRuleIds.includes(id));
+}
+
+function getManualRelationshipValidation(candidate, proposedText = getDecision(candidate).proposedText) {
+  if (isUnchangedHostedRuleProposal(candidate, proposedText)) return { status: "unchanged", check: null };
   const check = state.session.manualRelationshipChecks?.[candidate.key];
-  if (!check || check.proposedText !== proposedText) return null;
-  if (check.status === "current" && !isSavedEvaluationCurrent(check.evaluation)) return null;
-  return check;
+  if (!check || check.proposedText !== proposedText) {
+    return { status: hasMaintainerEditedRuleText(candidate, proposedText) || hasMaintainerSelectedRetirements(candidate) || check ? "required" : "reconciled", check: null };
+  }
+  if (check.status === "current" && !isSavedEvaluationCurrent(check.evaluation)) return { status: "stale", check: null };
+  return { status: check.status, check };
+}
+
+function getManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
+  return getManualRelationshipValidation(candidate, proposedText).check;
 }
 
 function getCurrentManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
@@ -1708,15 +1857,42 @@ function getCurrentManualRelationshipCheck(candidate, proposedText = getDecision
   return check?.status === "current" ? check : null;
 }
 
+function hasSavedRuleWordingConcern(evaluation) {
+  return evaluation.scopeReview.disposition !== "within-scope" || evaluation.scopeReview.wordingStatus !== "acceptable";
+}
+
 function isManualRelationshipCheckResolved(check) {
-  return check?.evaluation?.scopeReview.disposition === "within-scope"
+  return Boolean(check?.evaluation) && !hasSavedRuleWordingConcern(check.evaluation)
     && !getOpenRuleIssues().some((issue) => issue.candidateKeys.includes(check.evaluation.candidateKey));
 }
 
 function requiresManualRelationshipCheck(candidate, proposedText = getDecision(candidate).proposedText) {
-  if (!hasMaintainerEditedRuleText(candidate, proposedText) && !state.session.manualRelationshipChecks?.[candidate.key]) return false;
+  if (isUnchangedHostedRuleProposal(candidate, proposedText)) return false;
+  if (!hasMaintainerEditedRuleText(candidate, proposedText) && !hasMaintainerSelectedRetirements(candidate)
+    && !state.session.manualRelationshipChecks?.[candidate.key]) return false;
   const check = getCurrentManualRelationshipCheck(candidate, proposedText);
   return activeRelationshipChecks.has(candidate.key) || !check || !isManualRelationshipCheckResolved(check);
+}
+
+function getRuleValidationAttention(candidate, proposedText = getDecision(candidate).proposedText) {
+  if (!requiresManualRelationshipCheck(candidate, proposedText)) return null;
+  const { status, check } = getManualRelationshipValidation(candidate, proposedText);
+  const target = "[data-proposed-text-save]";
+  if (activeRelationshipChecks.has(candidate.key) || status === "pending") {
+    return { reason: "pending", label: "Checking relationships", actionLabel: "Checking", actionIcon: "search", target: "[data-manual-relationship-progress]", check };
+  }
+  if (status === "current" && hasSavedRuleWordingConcern(check.evaluation)) {
+    return { reason: "wording", label: "Wording needs review", actionLabel: "Review wording", target: "[data-saved-rule-scope]", check };
+  }
+  if (status === "current") {
+    return { reason: "relationships", label: "Relationships need review", actionLabel: "Review relationships", target: ".manual-relationship-reviews", check };
+  }
+  if (status === "failed") {
+    return { reason: "failed", label: "Relationship check failed", actionLabel: "Retry check", target, check };
+  }
+  return status === "stale"
+    ? { reason: "stale", label: "Revalidation required", actionLabel: "Recheck wording", target, check }
+    : { reason: "required", label: "Relationship check required", actionLabel: "Check wording", target, check };
 }
 
 function encodeBase64Utf8(value) {
@@ -1727,13 +1903,25 @@ function encodeBase64Utf8(value) {
 }
 
 function renderManualRelationshipStatus(candidate, proposedText) {
+  const validation = getManualRelationshipValidation(candidate, proposedText);
+  const attention = getRuleValidationAttention(candidate, proposedText);
+  if (attention) {
+    const kind = attention.reason === "failed" ? "excluded" : "warning";
+    return `<span class="ui-badge status-capsule relationship-check-status status-badge ${kind}">${escapeHtml(attention.label)}</span>`;
+  }
+  if (validation.status === "unchanged") return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral" data-workbench-tooltip="Current and proposed wording are identical; the original AI assessment is retained.">Unchanged</span>';
+  if (validation.status === "reconciled") return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral">Reconciled</span>';
+  return '<span class="ui-badge status-capsule relationship-check-status status-badge success">Relationships resolved</span>';
+}
+
+function renderManualRelationshipFailure(candidate, proposedText) {
   const check = getManualRelationshipCheck(candidate, proposedText);
-  if (activeRelationshipChecks.has(candidate.key) || check?.status === "pending") return '<span class="ui-badge status-capsule relationship-check-status status-badge warning">Checking relationships</span>';
-  if (!hasMaintainerEditedRuleText(candidate, proposedText) && !state.session.manualRelationshipChecks?.[candidate.key]) return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral">Reconciled</span>';
-  if (check?.status === "current" && isManualRelationshipCheckResolved(check)) return '<span class="ui-badge status-capsule relationship-check-status status-badge success">Relationships resolved</span>';
-  if (check?.status === "current") return `<span class="ui-badge status-capsule relationship-check-status status-badge ${check.relationships.length ? "warning" : "success"}">${check.relationships.length ? formatCountLabel(check.relationships.length, "related rule") : "Relationships current"}</span>`;
-  if (check?.status === "failed") return '<span class="ui-badge status-capsule relationship-check-status status-badge excluded">Relationship check failed</span>';
-  return '<span class="ui-badge status-capsule relationship-check-status status-badge warning">Relationship check required</span>';
+  if (activeRelationshipChecks.has(candidate.key) || check?.status !== "failed" || dismissedManualRelationshipFailures.has(check)) return "";
+  return `<div class="error-banner" data-manual-relationship-failure role="alert" aria-atomic="true">
+    <svg class="codicon error-banner-icon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-error"></use></svg>
+    <div class="error-banner-message"><strong>Relationship check failed.</strong> <span>${escapeHtml(check.errorMessage || "The relationship check could not be completed.")}</span></div>
+    <button class="error-banner-dismiss clickable" type="button" data-dismiss-manual-relationship-failure aria-label="Dismiss relationship check error" data-workbench-tooltip="Dismiss error">${icon("close")}</button></div>
+  `;
 }
 
 function formatManualRelationship(value) {
@@ -1808,7 +1996,7 @@ function renderManualRelationshipResolution(candidate, relationship, check) {
           </fieldset>
         </div>
       </section>
-      ${hasConsolidatedText ? `<section class="rule-issue-suggestion manual-relationship-resolved-rule" ${mode === "keep-active" ? "hidden" : ""}><h3>Resolved Rule · Combined Wording</h3><p>${escapeHtml(relationship.suggestedConsolidatedText)}</p></section>` : `<div class="information-panel manual-relationship-information">${fluentIcon("info-20-regular")}<p>Consolidation is unavailable because the relationship evaluator did not provide complete merged wording. Keep both rules active or revise the Proposed Hosted Rule and check relationships again.</p></div>`}
+      ${hasConsolidatedText ? `<section class="rule-issue-suggestion manual-relationship-resolved-rule" ${mode === "keep-active" ? "hidden" : ""}><h3>Resolved Rule · Combined Wording</h3><p>${escapeHtml(relationship.suggestedConsolidatedText)}</p></section>` : renderInformationPanel("<p>Consolidation is unavailable because the relationship evaluator did not provide complete merged wording. Keep both rules active or revise the Proposed Hosted Rule and check relationships again.</p>", { className: "manual-relationship-information" })}
       <div class="rule-recommendation-actions manual-relationship-mark-actions"><button class="button review clickable" type="button" data-manual-relationship-resolve="${escapeHtml(relationship.hostedRuleId)}" ${resolved ? "disabled" : ""}>${fluentIcon(resolutionIcon)}<span class="button-label">${resolved ? "Resolved" : "Mark as Resolved"}</span></button></div>
     </section>
   `;
@@ -1818,15 +2006,21 @@ function renderManualRelationshipReviews(candidate, proposedText) {
   const check = getCurrentManualRelationshipCheck(candidate, proposedText);
   if (!check) return "";
   const issues = getOpenRuleIssues().filter((issue) => issue.candidateKeys.includes(candidate.key));
-  const scope = renderSavedScopeReview(check.evaluation);
-  if (!issues.length && !scope) return "";
-  return `<div class="manual-relationship-reviews">${scope}${issues.map(renderRuleIssueContent).join("")}</div>`;
+  if (!issues.length) return "";
+  return `<div class="manual-relationship-reviews">${issues.map(renderRuleIssueContent).join("")}</div>`;
 }
 
 function renderSavedScopeReview(evaluation) {
-  if (evaluation.scopeReview.disposition === "within-scope") return "";
+  if (!hasSavedRuleWordingConcern(evaluation)) return "";
   const review = evaluation.scopeReview;
-  return `<div class="information-panel manual-relationship-information" data-saved-rule-scope="${escapeHtml(evaluation.candidateKey)}">${fluentIcon("info-20-regular")}<div><strong>Saved Edit Scope Review${review.ownerRuleId ? ` · ${escapeHtml(review.ownerRuleId)}` : ""}</strong><p>${escapeHtml(review.rationale)}</p></div></div>`;
+  const rationales = [];
+  if (review.wordingStatus === "needs-review") rationales.push(review.wordingRationale);
+  if (review.disposition !== "within-scope") rationales.push(review.rationale);
+  return renderInformationPanel(`<div><strong>Wording needs review${review.ownerRuleId ? ` · ${escapeHtml(review.ownerRuleId)}` : ""}</strong>${rationales.map((rationale) => `<p>${escapeHtml(rationale)}</p>`).join("")}</div>`, {
+    iconMarkup: icon("chat-sparkle-error"),
+    className: "assessment-explanation warning",
+    dataAttributes: { "assessment-explanation": "", "saved-rule-scope": evaluation.candidateKey }
+  });
 }
 
 function buildManualRelationshipRationale(candidate, relationship, mode) {
@@ -1942,7 +2136,25 @@ function renderRuleActionResolutionDialog(candidate) {
   return `<dialog class="scoring-legend-dialog rule-action-resolution-dialog" data-rule-action-resolution-dialog aria-labelledby="rule-action-resolution-dialog-title"><div class="scoring-legend-dialog-heading"><div class="scoring-legend-dialog-title">${fluentIcon("warning-20-regular")}<h2 id="rule-action-resolution-dialog-title">Change Rule Action?</h2></div><button class="titlebar-icon clickable" type="button" data-rule-action-resolution-cancel aria-label="Close confirmation" data-workbench-tooltip="Close">${icon("close")}</button></div><div class="scoring-legend-dialog-content scroll-surface"><p>Changing <strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong> from <strong>${escapeHtml(formatRecommendation(getDecision(candidate).action))}</strong> to <strong>${escapeHtml(formatRecommendation(requestedAction))}</strong> will undo its resolved relationship with <strong>${escapeHtml(relatedLabel)}</strong>.</p><div class="information-panel rule-action-resolution-information"><div class="rule-action-resolution-information-heading">Information</div><div class="rule-action-resolution-information-body">${renderRuleActionResolutionInformationIcon()}<p>This will remove linked retirements, clear generated consolidated wording and rationale, and reopen the rule relationship review.</p></div></div><div class="rule-recommendation-actions rule-action-resolution-dialog-actions"><button class="button clickable" type="button" data-rule-action-resolution-cancel>Cancel</button><button class="button destructive clickable" type="button" data-rule-action-resolution-confirm>${fluentIcon("arrow-undo-20-filled")}<span class="button-label">Undo Resolution &amp; Change Action</span></button></div></div></dialog>`;
 }
 
+function getRelationshipCheckElapsed(candidate) {
+  const check = activeRelationshipChecks.get(candidate.key);
+  const seconds = check ? Math.floor((performance.now() - check.startedAt) / 1000) : 0;
+  return `[Elapsed: ${[Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+    .map((value) => String(value).padStart(2, "0")).join(":")}]`;
+}
+
+function syncRelationshipCheckProgress(candidate) {
+  if (getActiveCandidate()?.key !== candidate.key) return;
+  const progress = elements["assessment-panel"].querySelector("[data-manual-relationship-progress]");
+  if (!progress) return;
+  const check = activeRelationshipChecks.get(candidate.key);
+  progress.hidden = !check;
+  progress.querySelector(".waiting-panel-elapsed").textContent = getRelationshipCheckElapsed(candidate);
+  progress.querySelector("[data-cancel-relationship-check]").disabled = !check?.controller || check.controller.signal.aborted;
+}
+
 function syncProposedRuleControls(candidate) {
+  if (getActiveCandidate()?.key !== candidate.key) return;
   const textarea = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
   const save = elements["assessment-panel"].querySelector("[data-proposed-text-save]");
   const status = elements["assessment-panel"].querySelector(".relationship-check-status");
@@ -1955,18 +2167,24 @@ function syncProposedRuleControls(candidate) {
   const progress = section.querySelector("[data-manual-relationship-progress]");
   const retryable = !dirty && (check?.status === "failed" || (!check && requiresManualRelationshipCheck(candidate, textarea.value)));
   save.disabled = checking || (!dirty && !retryable);
-  save.setAttribute("aria-label", retryable ? "Retry proposed Hosted rule relationship check" : "Save proposed Hosted rule");
+  save.setAttribute("aria-label", check?.status === "failed" && !dirty ? "Retry proposed Hosted rule relationship check"
+    : retryable ? "Check saved Hosted rule relationships" : "Save proposed Hosted rule");
   setWorkbenchTooltip(save, save.getAttribute("aria-label"));
-  if (progress) progress.hidden = !checking;
+  syncRelationshipCheckProgress(candidate);
+  const failure = section.querySelector("[data-manual-relationship-failure]");
+  const failureHtml = renderManualRelationshipFailure(candidate, textarea.value);
+  if (failure) failure.outerHTML = failureHtml;
+  else if (failureHtml) progress.insertAdjacentHTML("afterend", failureHtml);
   if (status) status.outerHTML = renderManualRelationshipStatus(candidate, textarea.value);
+  syncProposedRuleAssessment(candidate, getAssessment(candidate), textarea.value);
   const reviews = section.querySelector(".manual-relationship-reviews");
   const reviewsHtml = dirty ? "" : renderManualRelationshipReviews(candidate, textarea.value);
   if (reviews) reviews.outerHTML = reviewsHtml;
   else if (reviewsHtml) section.insertAdjacentHTML("beforeend", reviewsHtml);
 }
 
-async function loadSavedRuleRuntimeConfig() {
-  const response = await fetch("/runtime-config", { cache: "no-store" });
+async function loadSavedRuleRuntimeConfig(signal) {
+  const response = await fetch("/runtime-config", { cache: "no-store", signal });
   if (!response.ok) throw new Error(`Workbench runtime configuration failed with ${response.status}`);
   const config = await response.json();
   if (!/^[0-9a-f]{64}$/.test(config?.operationToken || "") || !/^[0-9a-f]{64}$/.test(config?.savedRuleAuthoritySha256 || "")) throw new Error("Saved-rule runtime configuration is invalid");
@@ -1976,7 +2194,7 @@ async function loadSavedRuleRuntimeConfig() {
 
 async function validateSavedRuleEvaluation(result, request, proposals, proposedText, candidate) {
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
-  if (result?.schemaVersion !== 2 || result.candidateKey !== candidate.key || result.requestId !== request.requestId
+  if (result?.schemaVersion !== 4 || result.candidateKey !== candidate.key || result.requestId !== request.requestId
     || result.ruleTextSha256 !== hash || result.authoritySha256 !== request.authoritySha256
     || !/^[0-9a-f]{64}$/.test(result.evaluationContextSha256 || "")
     || !Array.isArray(result.affectedRuleIds) || !result.affectedRuleIds.includes(candidate.catalogMapping.hostedRuleId || candidate.recommendation.hostedId)
@@ -1984,25 +2202,79 @@ async function validateSavedRuleEvaluation(result, request, proposals, proposedT
     throw new Error("Saved-rule evaluation returned a stale or invalid result");
   }
   const expected = new Map(proposals.map((proposal) => [proposal.candidateKey, proposal]));
-  if (new Set(result.coveredProposals.map((proposal) => proposal.candidateKey)).size !== result.coveredProposals.length
+  if (expected.get(candidate.key)?.proposedText !== proposedText
+    || new Set(result.coveredProposals.map((proposal) => proposal.candidateKey)).size !== result.coveredProposals.length
     || result.coveredProposals.some((proposal) => JSON.stringify(proposal) !== JSON.stringify(expected.get(proposal.candidateKey)))) throw new Error("Saved-rule evaluation changed its proposal context");
   const scope = result.scopeReview;
   if (!["within-scope", "route-to-existing-rule", "suggest-new-rule", "uncertain"].includes(scope?.disposition)
     || typeof scope.rationale !== "string" || !scope.rationale.trim()
+    || !["acceptable", "needs-review"].includes(scope.wordingStatus)
+    || typeof scope.wordingRationale !== "string" || !scope.wordingRationale.trim()
     || !scope.baselineQuote || !candidate.recommendation.ruleText.includes(scope.baselineQuote)
     || !scope.proposalQuote || !proposedText.includes(scope.proposalQuote)) throw new Error("Saved-rule evaluation returned an invalid scope review");
   validateRuleIssueBundle(result.ruleIssues);
   if (!sourceFilesEqual(result.ruleIssues.sourceFiles, state.bundle.sourceFiles)) throw new Error("Saved-rule evaluation used a different source snapshot");
+  if (result.evaluationMode !== undefined) {
+    if (result.evaluationMode !== "unchanged" || !isUnchangedHostedRuleProposal(candidate, proposedText, expected.get(candidate.key))
+      || result.coveredProposals.length !== 1 || result.affectedRuleIds.length !== 1
+      || !Array.isArray(result.assessments) || result.assessments.length !== 0
+      || hasSavedRuleWordingConcern(result) || scope.ownerRuleId !== null
+      || JSON.stringify(result.ruleIssues) !== JSON.stringify(state.ruleIssueBundle)) {
+      throw new Error("Unchanged saved-rule validation changed its baseline evidence or proposal context");
+    }
+    return;
+  }
+  const assessmentProposals = getSavedAssessmentProposals(result);
+  if (!Array.isArray(result.assessments) || result.assessments.length !== assessmentProposals.length
+    || result.assessments.some((assessment) => !assessmentProposals.some((proposal) => proposal.candidateKey === assessment.candidateKey))
+    || new Set(result.assessments.map((assessment) => assessment.candidateKey)).size !== result.assessments.length) throw new Error("Saved-rule evaluation did not reassess every proposal");
+  const catalogRules = [...state.bundle.catalog.rules, ...state.bundle.catalog.protectedRules];
+  for (const assessment of result.assessments) {
+    const proposal = result.coveredProposals.find((item) => item.candidateKey === assessment.candidateKey);
+    const owner = state.assessedCandidates.find((item) => item.key === assessment.candidateKey);
+    const fields = ["candidateKey", "ruleTextSha256", "summary", "impactDescription", "hostedApplicable", "applicabilityRationale", "selectionFactors", "selectionRationale", "existingCoverage", "relatedHostedCoverage", "recommendation"];
+    if (!owner || !proposal || proposal.sourceHash !== owner.hash
+      || Object.keys(assessment).sort().join() !== fields.sort().join()
+      || ["summary", "impactDescription", "applicabilityRationale", "selectionRationale"].some((field) => typeof assessment[field] !== "string" || !assessment[field].trim())
+      || typeof assessment.hostedApplicable !== "boolean"
+      || !assessment.selectionFactors || Object.keys(assessment.selectionFactors).sort().join() !== FACTORS.map(([name]) => name).sort().join()
+      || FACTORS.some(([name]) => !Number.isInteger(assessment.selectionFactors[name]) || assessment.selectionFactors[name] < 0 || assessment.selectionFactors[name] > 5)
+      || !Number.isInteger(assessment.existingCoverage?.score) || assessment.existingCoverage.score !== assessment.selectionFactors.redundancy
+      || typeof assessment.existingCoverage.rationale !== "string" || !assessment.existingCoverage.rationale.trim()
+      || !Array.isArray(assessment.relatedHostedCoverage)
+      || new Set(assessment.relatedHostedCoverage.map((coverage) => coverage.hostedRuleId)).size !== assessment.relatedHostedCoverage.length) throw new Error("Saved-rule evaluation returned an invalid assessment");
+    const textHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposal.proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const status = getCatalogStatus(owner).key;
+    const allowed = status === "mapped" ? ["update", "no-change", "retire", "defer"] : status === "retired" ? ["restore", "no-change", "defer"] : ["add", "exclude", "defer"];
+    if (assessment.ruleTextSha256 !== textHash || !allowed.includes(assessment.recommendation)
+      || assessment.relatedHostedCoverage.some((coverage) => !catalogRules.some((rule) => rule.id === coverage.hostedRuleId && rule.status !== "retired")
+        || !["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"].includes(coverage.relationship)
+        || typeof coverage.rationale !== "string" || !coverage.rationale.trim())) throw new Error("Saved-rule assessment changed text or coverage ownership");
+  }
   for (const issue of result.ruleIssues.issues) {
     if (!issue.ruleIds.every((id) => result.affectedRuleIds.includes(id))) throw new Error("Saved-rule issue escaped its evaluated component");
     for (const operation of getRuleIssueOperations(issue)) {
       const owner = state.assessedCandidates.find((item) => item.key === operation.candidateKey);
       const proposal = expected.get(operation.candidateKey);
-      if (!owner || !proposal || ![owner.recommendation.ruleText, proposal.proposedText].includes(operation.proposedText)
-        || operation.action === "retire"
-        || JSON.stringify(getRuleIssueAncillaryRetirements(operation)) !== JSON.stringify(proposal.retireHostedRuleIds)) throw new Error("Saved-rule recommendation changed wording or retirement authority");
+      const extractive = owner && proposal && [owner.recommendation.ruleText, proposal.proposedText].includes(operation.proposedText)
+        && JSON.stringify(getRuleIssueAncillaryRetirements(operation)) === JSON.stringify(proposal.retireHostedRuleIds);
+      const suggestion = owner?.key === candidate.key && proposal && hasMaintainerEditedRuleText(owner, proposal.proposedText)
+        && issue.wording.status === "selected" && issue.wording.sourceRuleId === operation.ruleId
+        && issue.wording.text === operation.proposedText
+        && (!proposal.proposedText.startsWith(owner.recommendation.ruleText) || operation.proposedText.startsWith(owner.recommendation.ruleText));
+      const allowed = owner && (getCatalogStatus(owner).key === "mapped" ? ["update", "defer"]
+        : getCatalogStatus(owner).key === "retired" ? ["restore", "defer"] : ["add", "exclude", "defer"]);
+      if (!owner || !proposal || operation.ruleId !== (owner.catalogMapping.hostedRuleId || owner.recommendation.hostedId)
+        || !allowed.includes(operation.action) || (!extractive && (!suggestion || !["add", "update", "restore"].includes(operation.action)))
+        || new Set(operation.retireHostedRuleIds).size !== operation.retireHostedRuleIds.length
+        || operation.retireHostedRuleIds.some((id) => id === operation.ruleId || !issue.rules.some((rule) => rule.id === id && rule.status === "active" && rule.disposition === "retire")
+          || !state.bundle.catalog.rules.some((rule) => rule.id === id && rule.status === "active"))) throw new Error("Saved-rule recommendation changed wording or retirement authority");
     }
   }
+}
+
+function cancelRuleRelationshipCheck(candidateKey) {
+  activeRelationshipChecks.get(candidateKey)?.controller?.abort();
 }
 
 async function reconcileRuleTextRelationships(candidate, proposedText, { notify = true, commit = true, proposals = getSavedRuleProposals() } = {}) {
@@ -2015,21 +2287,32 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
   const editorCandidateKey = getActiveCandidate()?.key;
   const editorText = editor?.value;
   const existing = getManualRelationshipCheck(candidate, proposedText);
-  activeRelationshipChecks.add(candidate.key);
+  const previousCheck = state.session.manualRelationshipChecks[candidate.key];
+  const previousError = previousCheck?.errorMessage;
+  const controller = new AbortController();
+  const activeCheck = { controller, startedAt: performance.now() };
+  activeRelationshipChecks.set(candidate.key, activeCheck);
+  const elapsedTimer = setInterval(() => syncRelationshipCheckProgress(candidate), 1000);
   if (commit) state.session.manualRelationshipChecks[candidate.key] = {
     status: "pending",
     proposedText,
     checkedAt: toUtcTimestamp(),
-    relationships: []
+    relationships: [],
+    ...(previousError ? { errorMessage: previousError } : {})
   };
   try {
-    state.session.updatedAt = toUtcTimestamp();
-    await persistSession();
+    if (commit) {
+      state.session.updatedAt = toUtcTimestamp();
+      await persistSession();
+    }
     syncProposedRuleControls(candidate);
-    setSaveIndicator("Checking relationships...");
-    const runtimeConfig = await loadSavedRuleRuntimeConfig();
+    renderValidationIssues();
+    const runtimeConfig = await loadSavedRuleRuntimeConfig(controller.signal);
+    controller.signal.throwIfAborted();
     if (commit && existing?.status === "current" && isSavedEvaluationCurrent(existing.evaluation, proposals)) {
       state.session.manualRelationshipChecks[candidate.key] = existing;
+      await persistSession();
+      controller.signal.throwIfAborted();
       return existing.evaluation;
     }
     const request = {
@@ -2040,53 +2323,86 @@ async function reconcileRuleTextRelationships(candidate, proposedText, { notify 
       ruleTextBase64: encodeBase64Utf8(proposedText),
       sourceFiles: state.bundle.sourceFiles,
       proposals: proposals.map(({ proposedText: text, ...proposal }) => ({ ...proposal, proposedTextBase64: encodeBase64Utf8(text) })),
-      priorRelationships: state.session.savedRuleEvaluations.flatMap((evaluation) => evaluation.ruleIssues.issues.flatMap((issue) => issue.relationships.map(({ kind, ...relationship }) => relationship)))
+      priorRelationships: state.session.savedRuleEvaluations.filter((evaluation) => evaluation.evaluationMode !== "unchanged")
+        .flatMap((evaluation) => evaluation.ruleIssues.issues.flatMap((issue) => issue.relationships.map(({ kind, ...relationship }) => relationship)))
     };
     const response = await fetch("/reconcile-rule", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "X-Workbench-Operation-Token": runtimeConfig.operationToken
       },
       body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) })
     });
-    if (!response.ok) throw new Error(`Relationship check failed with ${response.status}`);
+    if (!response.ok) {
+      if (response.headers.get("content-type")?.includes("application/json")) {
+        const failure = await response.json();
+        if (typeof failure?.error === "string" && failure.error.trim()) throw new Error(failure.error.trim());
+      }
+      throw new Error(`Relationship check failed with HTTP ${response.status}. No evaluator diagnostic was returned.`);
+    }
     const result = await response.json();
+    controller.signal.throwIfAborted();
     await validateSavedRuleEvaluation(result, request, proposals, proposedText, candidate);
+    controller.signal.throwIfAborted();
     if (before !== JSON.stringify(getSavedRuleProposals())
       || (getActiveCandidate()?.key === editorCandidateKey && elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value !== editorText)) throw new Error("The draft changed while relationships were checked. Save the current wording to check again.");
     if (!commit) return result;
+    activeCheck.controller = null;
+    syncRelationshipCheckProgress(candidate);
     recordSavedRuleEvaluation(candidate, proposedText, result);
     state.session.updatedAt = toUtcTimestamp();
     await persistSession();
+    if (activeRelationshipChecks.get(candidate.key) !== activeCheck) return false;
     const assessmentContent = elements["assessment-panel"].querySelector(".assessment-content");
     const assessmentScrollTop = assessmentContent?.scrollTop || 0;
     renderAssessment();
     const refreshedAssessmentContent = elements["assessment-panel"].querySelector(".assessment-content");
     if (refreshedAssessmentContent) refreshedAssessmentContent.scrollTop = assessmentScrollTop;
     renderRuleIssues();
+    renderAssessmentResults();
     renderDecisionOutputs();
-    if (notify) showToast(result.scopeReview.disposition !== "within-scope" ? "Proposed Hosted rule saved; review its scope guidance." : result.ruleIssues.issues.length ? `${formatCountLabel(result.ruleIssues.issues.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
+    if (notify) showToast(result.evaluationMode === "unchanged" ? "Rule wording is unchanged; the original assessment was retained without evaluation." : hasSavedRuleWordingConcern(result) ? "Proposed Hosted rule saved; review its wording guidance." : result.ruleIssues.issues.length ? `${formatCountLabel(result.ruleIssues.issues.length, "Rule issue")} found.` : "Proposed Hosted rule saved; no relationship issues found.");
     return result;
   }
   catch (error) {
-    if (commit) state.session.manualRelationshipChecks[candidate.key] = {
-      status: "failed",
-      proposedText,
-      checkedAt: toUtcTimestamp(),
-      relationships: []
-    };
-    state.session.updatedAt = toUtcTimestamp();
-    await persistSession();
-    showToast(error.message, true);
+    if (activeRelationshipChecks.get(candidate.key) !== activeCheck) return false;
+    const cancelled = controller.signal.aborted;
+    const message = cancelled ? "Relationship check cancelled. Saved wording was kept; cancelled work does not validate it."
+      : error instanceof SyntaxError ? "Relationship check returned an invalid response. Retry to validate the saved wording." : error.message;
+    if (commit) {
+      if (cancelled) {
+        if (previousCheck && previousCheck.status !== "pending") state.session.manualRelationshipChecks[candidate.key] = previousCheck;
+        else delete state.session.manualRelationshipChecks[candidate.key];
+      } else {
+        state.session.manualRelationshipChecks[candidate.key] = {
+          status: "failed",
+          proposedText,
+          checkedAt: toUtcTimestamp(),
+          errorMessage: message,
+          relationships: []
+        };
+      }
+    }
+    if (commit) {
+      state.session.updatedAt = toUtcTimestamp();
+      await persistSession();
+    }
+    if (activeRelationshipChecks.get(candidate.key) === activeCheck) showToast(message, !cancelled);
     return false;
   }
   finally {
-    activeRelationshipChecks.delete(candidate.key);
-    refreshSavedRuleIssues();
-    syncProposedRuleControls(candidate);
-    renderRuleIssues();
-    renderDecisionOutputs();
+    clearInterval(elapsedTimer);
+    if (activeRelationshipChecks.get(candidate.key) === activeCheck) {
+      activeRelationshipChecks.delete(candidate.key);
+      refreshSavedRuleIssues();
+      syncProposedRuleControls(candidate);
+      if (getActiveCandidate()?.key === candidate.key) syncAssessmentEvaluation(candidate);
+      renderRuleIssues();
+      renderAssessmentResults();
+      renderDecisionOutputs();
+    }
   }
 }
 
@@ -2133,21 +2449,20 @@ function renderDetailHeaderActions(statuses) {
   `;
 }
 
-function renderMappedHostedRules(catalogStatus, includePlacements = false) {
+function renderCurrentHostedRules(catalogStatus) {
   if (!catalogStatus.rules.length) return "";
-  const mappedRules = catalogStatus.rules.map((rule) => {
-    const placements = rule.placements?.length
-      ? rule.placements.map((placement) => `${placement.surfaceId} / ${placement.sectionHeading}`).join("; ")
-      : "Placement unavailable in source bundle";
-    return `<div class="overlap-item subcontext-container"><div><strong class="rule-reference">${escapeHtml(rule.id)}</strong><span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></div><p>${escapeHtml(rule.text)}</p>${includePlacements ? `<small>${escapeHtml(placements)}</small>` : ""}</div>`;
+  return catalogStatus.rules.map((rule) => {
+    return `<div class="current-hosted-rule">
+      <div class="current-hosted-rule-heading"><span class="section-label">Current Hosted Rule: <strong class="rule-reference">${escapeHtml(rule.id)}</strong></span><span class="current-hosted-rule-statuses"><span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span></span></div>
+      <pre class="evidence-box scroll-surface">${escapeHtml(rule.text)}</pre></div>`;
   }).join("");
-  return `<div class="section-block"><span class="section-label">Mapped Hosted Rules:</span><div class="overlap-list">${mappedRules}</div></div>`;
 }
 
 function getAllowedActions(candidate, proposedText = defaultDecision(candidate).proposedText) {
   const catalogStatus = getCatalogStatus(candidate).key;
   if (catalogStatus === "mapped") {
-    const actions = isCurrentMappedNoChangeNoOp(candidate) ? [] : ["no-change"];
+    const hasRetirements = state.session.decisions[candidate.key]?.retireHostedRuleIds?.length > 0;
+    const actions = isCurrentMappedNoChangeNoOp(candidate) && !hasRetirements ? [] : ["no-change"];
     if (hasHostedTextChange(candidate, proposedText)) actions.push("update");
     return [...actions, "retire", "defer"];
   }
@@ -2189,7 +2504,7 @@ function isPromotionAction(action) {
   return ["add", "update", "retire", "restore"].includes(action);
 }
 
-function getAssessment(candidate, decision) {
+function getBaselineAssessment(candidate, decision) {
   const assessment = decision.assessment || candidate.assessment;
   if (assessment?.status !== "evaluated" || !assessment.selectionRationale?.trim() || !assessment.summary?.trim()) return null;
   const factors = assessment.selectionFactors;
@@ -2202,6 +2517,27 @@ function getAssessment(candidate, decision) {
     && Boolean(assessment.hostedCategory)
     && assessment.sourceContentSha256 === candidate.hash;
   return valid ? { ...assessment, factors, rationale: assessment.selectionRationale } : null;
+}
+
+function getAssessment(candidate, decision = getDecision(candidate)) {
+  const baseline = getBaselineAssessment(candidate, decision);
+  if (!baseline) return null;
+  const editor = elements["assessment-panel"].querySelector("[data-proposed-candidate-key]");
+  if (editor?.dataset.proposedCandidateKey === candidate.key && editor.value !== decision.proposedText) return null;
+  if (isUnchangedHostedRuleProposal(candidate, decision.proposedText, decision)) return baseline;
+  if (activeRelationshipChecks.has(candidate.key) || ["pending", "failed"].includes(state.session.manualRelationshipChecks[candidate.key]?.status)) return null;
+  const evaluations = state.session.savedRuleEvaluations.filter((evaluation) => evaluation.assessments?.some((assessment) => assessment.candidateKey === candidate.key));
+  const evaluation = evaluations.find((item) => isSavedEvaluationCurrent(item)
+    && !["pending", "failed"].includes(state.session.manualRelationshipChecks[item.candidateKey]?.status));
+  const refreshed = evaluation?.assessments.find((assessment) => assessment.candidateKey === candidate.key);
+  if (evaluation?.evaluationMode === "unchanged") return baseline;
+  if (refreshed) return {
+    ...baseline, ...refreshed, factors: refreshed.selectionFactors, rationale: refreshed.selectionRationale,
+    proposedText: decision.proposedText,
+    guardedTokenDelta: estimateGuardedTokens(decision.proposedText) - (getCatalogStatus(candidate).key === "mapped" ? estimateGuardedTokens(getCurrentHostedText(candidate)) : 0)
+  };
+  if (hasMaintainerEditedRuleText(candidate, decision.proposedText) || state.session.manualRelationshipChecks[candidate.key] || evaluations.length) return null;
+  return baseline;
 }
 
 function updateDecision(candidate, changes) {
@@ -2225,8 +2561,8 @@ function removePlanMembership(candidate) {
   saveDecision(candidate, { ...maintainerDecision, ...createPlanMembership() });
 }
 
-function removeCandidateFromBulkOperations(candidateKey) {
-  state.session.bulkOperations = state.session.bulkOperations
+function removeCandidateFromBulkOperations(candidateKey, session = state.session) {
+  session.bulkOperations = session.bulkOperations
     .map((operation) => ({ ...operation, candidateKeys: operation.candidateKeys.filter((key) => key !== candidateKey) }))
     .filter((operation) => operation.candidateKeys.length > 0);
 }
@@ -2246,6 +2582,14 @@ function restoreBulkOperationMembership(candidateKey, operationSnapshot) {
   });
 }
 
+function clearCandidateDecision(candidateKey) {
+  cancelRuleRelationshipCheck(candidateKey);
+  activeRelationshipChecks.delete(candidateKey);
+  delete state.session.decisions[candidateKey];
+  delete state.session.manualRelationshipChecks[candidateKey];
+  state.session.savedRuleEvaluations = state.session.savedRuleEvaluations.filter((evaluation) => evaluation.candidateKey !== candidateKey);
+}
+
 function saveDecision(candidate, decision) {
   if (decision) {
     const { assessment, ...maintainerDecision } = decision;
@@ -2255,7 +2599,7 @@ function saveDecision(candidate, decision) {
       updatedAt: toUtcTimestamp()
     };
   } else {
-    delete state.session.decisions[candidate.key];
+    clearCandidateDecision(candidate.key);
   }
   state.session.updatedAt = toUtcTimestamp();
   persistSession();
@@ -2281,7 +2625,7 @@ async function updateOverrideLifecycle(candidate, override, decision) {
       updatedAt: toUtcTimestamp()
     };
   } else {
-    delete state.session.decisions[candidate.key];
+    clearCandidateDecision(candidate.key);
   }
   clearCandidateSelection(candidate);
   state.session.updatedAt = toUtcTimestamp();
@@ -2310,7 +2654,6 @@ function renderDecisionOutputs() {
   renderCapacity();
   renderPreview();
   renderCounts();
-  setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
   refreshPresentation();
 }
 
@@ -2339,9 +2682,8 @@ function getActionTokenDelta(candidate, action, decision = getDecision(candidate
   if (!isPromotionAction(action)) return 0;
   if (action === "retire") return -estimateGuardedTokens(getCurrentHostedText(candidate));
   const assessment = getAssessment(candidate, decision);
-  if (!assessment) return 0;
-  if (assessment.guardedTokenDelta !== 0) return assessment.guardedTokenDelta;
-  const proposedTokens = estimateGuardedTokens(decision.proposedText || assessment.proposedText || candidate.text);
+  if (assessment && assessment.guardedTokenDelta !== 0) return assessment.guardedTokenDelta;
+  const proposedTokens = estimateGuardedTokens(decision.proposedText || candidate.text);
   if (action === "update") return proposedTokens - estimateGuardedTokens(getCurrentHostedText(candidate));
   return proposedTokens;
 }
@@ -2381,7 +2723,6 @@ function renderAll(shouldRenderAssessment = true) {
   renderCapacity();
   renderPreview();
   renderCounts();
-  setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
   refreshPresentation();
 }
 
@@ -2421,10 +2762,11 @@ function renderMetrics() {
   workbenchStatusBar.update("ruleIssues", {
     text: formatNumber(issueCount),
     tooltip: issueSummary,
-    ariaLabel: `Open ${issueSummary}`,
+    ariaLabel: `Open ${formatCountLabel(issueCount, "Rule Issue")}. ${issueSummary}`,
     hidden: false,
     kind: issueCount > 0 ? "warning" : "standard"
   });
+  renderValidationIssues();
 }
 
 function getFilteredCandidates() {
@@ -2505,7 +2847,7 @@ function getBulkActionCandidates(recommendationScope) {
     const decision = getDecision(candidate);
     const assessment = getAssessment(candidate, decision);
     return !decision.inPlan
-      && recommendations.includes(assessment.recommendation)
+      && assessment && recommendations.includes(assessment.recommendation)
       && getAllowedActions(candidate, decision.proposedText).includes(assessment.recommendation);
   });
 }
@@ -2583,6 +2925,13 @@ function applyBulkSelection(recommendationScope) {
   }
   const candidates = getBulkActionCandidates(recommendationScope);
   if (!candidates.length) return;
+  const selections = candidates.map((candidate) => {
+    const decision = getDecision(candidate);
+    const assessment = getAssessment(candidate, decision);
+    if (!assessment) throw new Error("A current complete assessment is required before accepting bulk recommendations");
+    delete decision.assessment;
+    return { candidate, decision, recommendation: assessment.recommendation };
+  });
   const operation = {
     id: crypto.randomUUID(),
     createdAt: toUtcTimestamp(),
@@ -2590,12 +2939,11 @@ function applyBulkSelection(recommendationScope) {
     candidateKeys: candidates.map((candidate) => candidate.key)
   };
   state.session.bulkOperations.push(operation);
-  candidates.forEach((candidate) => {
-    const { assessment, ...decision } = getDecision(candidate);
+  selections.forEach(({ candidate, decision, recommendation }) => {
     state.session.decisions[candidate.key] = {
       ...decision,
-      action: assessment.recommendation,
-      rationale: getBulkDecisionRationale(candidate, assessment.recommendation),
+      action: recommendation,
+      rationale: getBulkDecisionRationale(candidate, recommendation),
       ...createPlanMembership("bulk", operation.id),
       sourceHash: candidate.hash,
       updatedAt: operation.createdAt
@@ -2619,7 +2967,7 @@ function undoBulkOperation(operationId) {
   operation.candidateKeys.forEach((key) => {
     const decision = state.session.decisions[key];
     if (decision?.planMembershipSource !== "bulk" || decision.bulkOperationId !== operation.id) return;
-    delete state.session.decisions[key];
+    clearCandidateDecision(key);
     removed += 1;
   });
   state.session.bulkOperations = state.session.bulkOperations.filter((item) => item.id !== operation.id);
@@ -2653,7 +3001,7 @@ async function undoPlan(scope) {
   prepareRuleIssueRestore(candidates.map((candidate) => candidate.key));
   candidates.forEach((candidate) => {
     removeCandidateFromBulkOperations(candidate.key);
-    delete state.session.decisions[candidate.key];
+    clearCandidateDecision(candidate.key);
     delete state.session.applicabilityOverrides[candidate.key];
     clearCandidateSelection(candidate);
   });
@@ -2667,7 +3015,12 @@ async function undoPlan(scope) {
 }
 
 function getCandidateDecoration(candidate) {
-  if (!getDecision(candidate).inPlan) return null;
+  const selected = getDecision(candidate).inPlan;
+  const validation = getRuleValidationAttention(candidate);
+  if (!selected && !validation) return null;
+  if (validation) {
+    return { status: "needs-input", description: `${selected ? "Selected, " : ""}${validation.label}` };
+  }
   const ready = getPlanReadiness(candidate).ready;
   return {
     status: ready ? "ready" : "needs-input",
@@ -2677,13 +3030,17 @@ function getCandidateDecoration(candidate) {
 
 function getCandidateAggregateDecoration(candidates) {
   const selected = candidates.filter((candidate) => getDecision(candidate).inPlan);
-  if (!selected.length) return null;
+  const unselectedWarnings = candidates.filter((candidate) => !getDecision(candidate).inPlan && getRuleValidationAttention(candidate)).length;
+  if (!selected.length && !unselectedWarnings) return null;
   const needsInput = selected.filter((candidate) => !getPlanReadiness(candidate).ready).length;
   return {
-    status: needsInput ? "needs-input" : "ready",
-    description: needsInput
-      ? `${formatNumber(selected.length)} selected, ${formatNumber(needsInput)} ${needsInput === 1 ? "needs" : "need"} input`
-      : `${formatNumber(selected.length)} selected, all ready for promotion`
+    status: needsInput || unselectedWarnings ? "needs-input" : "ready",
+    description: [
+      selected.length ? needsInput
+        ? `${formatNumber(selected.length)} selected, ${formatNumber(needsInput)} ${needsInput === 1 ? "needs" : "need"} input`
+        : `${formatNumber(selected.length)} selected, all ready for promotion` : "",
+      unselectedWarnings ? `${formatCountLabel(unselectedWarnings, "unselected candidate")} ${unselectedWarnings === 1 ? "needs" : "need"} validation` : ""
+    ].filter(Boolean).join("; ")
   };
 }
 
@@ -2983,9 +3340,9 @@ function sortCandidates(candidates, sort) {
     if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "state") return candidate.state;
     if (sort.field === "catalog") return getCatalogStatus(candidate).label;
-    if (sort.field === "impact") return calculateImpact(assessment.factors);
-    if (sort.field === "cost") return getCandidateTokenValue(candidate, assessment);
-    return formatRecommendation(assessment.recommendation);
+    if (sort.field === "impact") return assessment ? calculateImpact(assessment.factors) : Number.NEGATIVE_INFINITY;
+    if (sort.field === "cost") return assessment ? getCandidateTokenValue(candidate, assessment) : Number.NEGATIVE_INFINITY;
+    return assessment ? formatRecommendation(assessment.recommendation) : "Reassessment required";
   };
   return [...candidates].sort((left, right) => {
     const leftValue = value(left);
@@ -3174,7 +3531,7 @@ function sortAssessmentCandidates(candidates, sort) {
     if (sort.field === "candidate") return `${getEffectiveHostedRuleId(candidate)} ${candidate.title}`;
     if (sort.field === "state") return candidate.state;
     if (sort.field === "category") return formatHostedCategory(candidate.assessment.hostedCategory);
-    if (sort.field === "recommendation") return formatRecommendation(candidate.assessment.recommendation);
+    if (sort.field === "recommendation") return formatRecommendation(getAssessment(candidate)?.recommendation || "Reassessment required");
     return getApplicabilityOverride(candidate) ? "contested" : "none";
   };
   return [...candidates].sort((left, right) => {
@@ -3185,7 +3542,7 @@ function sortAssessmentCandidates(candidates, sort) {
 }
 
 function renderAssessmentResultRow(candidate) {
-  const assessment = candidate.assessment;
+  const assessment = getAssessment(candidate);
   const override = getApplicabilityOverride(candidate);
   const overrideStatus = override
     ? `<button class="ui-badge status-capsule status-badge warning assessment-override-pill clickable" type="button" data-assessment-override-detail="${escapeHtml(candidate.key)}" aria-label="Open Maintainer Override for ${escapeHtml(getEffectiveHostedRuleId(candidate))}">Contested</button>`
@@ -3193,7 +3550,7 @@ function renderAssessmentResultRow(candidate) {
   return `
     <div class="assessment-result-row clickable ${candidate.key === state.assessmentActiveKey ? "active" : ""}" role="button" tabindex="0" data-assessment-key="${escapeHtml(candidate.key)}" ${candidate.key === state.assessmentActiveKey ? 'aria-current="true"' : ""}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong><small>${escapeHtml(candidate.title)}</small></span>
-      <span class="assessment-result-summary"><span class="ui-badge status-capsule candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span><span class="ui-badge status-capsule recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span><span class="assessment-override-cell">${overrideStatus}</span></span>
+      <span class="assessment-result-summary"><span class="ui-badge status-capsule candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span>${renderAssessmentRecommendation(assessment, false)}<span class="assessment-override-cell">${overrideStatus}</span></span>
     </div>
   `;
 }
@@ -3204,8 +3561,10 @@ function renderAssessmentResultDetail() {
     elements["assessment-results-detail"].innerHTML = `<div class="empty-state">${icon("checklist")}<h2>Select an Assessment Result</h2><p>The source rule, applicability decision, AI rationale, and Hosted coverage will appear here.</p></div>`;
     return;
   }
-  const assessment = candidate.assessment;
-  const eligible = assessment.hostedApplicable;
+  const assessment = getAssessment(candidate);
+  const decision = getDecision(candidate);
+  const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
+  const eligible = candidate.assessment.hostedApplicable;
   const override = getApplicabilityOverride(candidate);
   const included = Boolean(override && state.candidates.some((item) => item.key === candidate.key));
   const catalogStatus = getCatalogStatus(candidate);
@@ -3224,12 +3583,15 @@ function renderAssessmentResultDetail() {
       `)}
     </div>
     <div class="assessment-content scroll-surface">
-      <div class="section-block"><span class="section-label">Source Rule:</span><pre class="evidence-box scroll-surface">${escapeHtml(candidate.text)}</pre>${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}</div>
-      ${renderMappedHostedRules(catalogStatus)}
-      <div class="section-block"><span class="section-label">Applicability Decision:</span><div class="ai-evaluation-summary subcontext-container"><div class="ai-evaluation-heading"><strong>${eligible ? "Eligible for candidate catalog" : "Excluded from candidate catalog"}</strong><span class="ui-badge status-capsule recommendation-badge ${escapeHtml(assessment.recommendation)}">Recommend ${escapeHtml(formatRecommendation(assessment.recommendation))}</span></div><p>${escapeHtml(assessment.applicabilityRationale)}</p></div></div>
-      <div class="section-block"><span class="section-label">AI Evaluation:</span><h3>${escapeHtml(assessment.summary)}</h3><p class="coverage-summary">${escapeHtml(assessment.impactDescription)}</p>${renderPriorityAssessment(assessment)}</div>
-      <div class="section-block"><span class="section-label">Related Hosted Coverage:</span><p class="coverage-summary evidence-summary-box subcontext-container">${escapeHtml(assessment.currentHostedCoverage)}</p></div>
-      <div class="section-block"><span class="section-label">Proposed Hosted Rule:</span><div class="overlap-item subcontext-container"><div><strong class="rule-reference">${escapeHtml(assessment.proposedHostedRuleId)}</strong><span class="ui-badge status-capsule status-badge neutral">Generated</span></div><p>${escapeHtml(assessment.proposedText)}</p></div></div>
+      ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, `${renderContributingRules(candidate)}${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}`, "results")}
+      ${renderRelatedHostedCoverage(candidate, assessment, "results")}
+      <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
+      <div class="section-block"><span class="section-label">Applicability Decision:</span><p class="coverage-summary">${assessment ? "" : "<strong>Original assessment:</strong> "}${escapeHtml(evidence.applicabilityRationale)}</p></div>
+      <div class="section-block hosted-rule-comparison">${renderCurrentHostedRules(catalogStatus)}
+        <div class="proposed-rule-heading"><span class="section-label">Proposed Hosted Rule:</span>${renderProposedRuleRecommendation(candidate, assessment)}</div>
+        ${renderAssessmentExplanation(candidate, assessment)}
+        <pre class="evidence-box scroll-surface">${escapeHtml(decision.proposedText)}</pre>
+      </div>
       ${renderApplicabilityOverride(candidate)}
     </div>
   `;
@@ -3238,6 +3600,12 @@ function renderAssessmentResultDetail() {
 function renderApplicabilityOverride(candidate) {
   const override = getApplicabilityOverride(candidate);
   const identity = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity;
+  const readOnlyBanner = renderInformationPanel(`<p>${override
+    ? "The AI assessment is read-only. This provisional maintainer correction does not erase the original result."
+    : "The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result."}</p>`, {
+    iconMarkup: icon("lock"),
+    className: "section-guidance"
+  });
   if (override) {
     const editing = state.assessmentOverrideEditingKey === candidate.key;
     const fieldId = `saved-override-rationale-${candidate.key}`;
@@ -3247,6 +3615,7 @@ function renderApplicabilityOverride(candidate) {
     return `
       <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
         <span class="section-label">Maintainer Override:</span>
+        ${readOnlyBanner}
         <div class="override-record subcontext-container">
           <div class="override-rationale">
             <span class="rationale-heading"><label class="control-subtitle" for="${escapeHtml(fieldId)}">Override Rationale:</label><span class="override-record-actions">${actions}</span></span>
@@ -3255,7 +3624,6 @@ function renderApplicabilityOverride(candidate) {
           </div>
           <small class="override-record-audit">Last saved by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
         </div>
-        <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. This provisional maintainer correction does not erase the original result.</span></div>
       </div>
     `;
   }
@@ -3264,6 +3632,7 @@ function renderApplicabilityOverride(candidate) {
   return `
     <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
       <span class="section-label">Maintainer Override:</span>
+      ${readOnlyBanner}
       <div class="override-summary subcontext-container">
         <div><strong>Disagree with this exclusion?</strong><p>Contest the AI applicability decision and record a separate provisional maintainer correction.</p>${reason ? `<small>${escapeHtml(reason)}</small>` : ""}</div>
         <button class="button warning-action clickable" type="button" data-override-open ${canOverride ? "" : "disabled"}>${icon("chat-sparkle-error")}Contest Assessment</button>
@@ -3274,7 +3643,6 @@ function renderApplicabilityOverride(candidate) {
         <label class="override-rationale"><span class="rationale-heading"><span class="control-subtitle">Override Rationale:</span><span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span></span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
       </div>
-      <div class="read-only-boundary">${icon("lock")}<span>The AI assessment is read-only. A maintainer override records a separate correction without erasing the original result.</span></div>
     </div>
   `;
 }
@@ -3382,7 +3750,7 @@ function renderCandidateTreeRow(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
   const displayId = getEffectiveHostedRuleId(candidate);
-  const impact = calculateImpact(assessment.factors);
+  const impact = assessment ? calculateImpact(assessment.factors) : "—";
   const catalogStatus = getCatalogStatus(candidate);
   const inPlan = decision.inPlan;
   const planSelectable = canSelectCandidateForPlan(candidate, decision);
@@ -3397,7 +3765,7 @@ function renderCandidateTreeRow(candidate) {
     <div class="candidate-tree-row clickable ${candidate.key === state.activeKey ? "active" : ""} ${inPlan ? "in-plan" : ""} ${decoration ? `candidate-decoration-${decoration.status}` : ""}" role="button" tabindex="0" data-candidate-key="${escapeHtml(candidate.key)}" ${candidate.key === state.activeKey ? 'aria-current="true"' : ""}>
       <input class="${planSelectable ? "" : "candidate-plan-unavailable"}" type="checkbox" data-decision-key="${escapeHtml(candidate.key)}" aria-label="${escapeHtml(planAriaLabel)}" data-workbench-tooltip="${escapeHtml(planTooltip)}" ${inPlan ? "checked" : ""} ${planSelectable ? "" : 'disabled aria-hidden="true" tabindex="-1"'}>
       <span class="candidate-tree-copy"><strong>${escapeHtml(displayId)}</strong><small>${escapeHtml(candidate.title)}</small>${renderCandidateDecoration(decoration, "candidate-decoration-icon")}</span>
-      <span class="candidate-tree-summary"><span class="ui-badge status-capsule candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span><span class="ui-badge status-capsule catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${formatCandidateTokenValue(candidate, assessment)}</span><span class="ui-badge status-capsule recommendation-badge ${escapeHtml(assessment.recommendation)}">${escapeHtml(formatRecommendation(assessment.recommendation))}</span></span>
+      <span class="candidate-tree-summary"><span class="ui-badge status-capsule candidate-lifecycle ${escapeHtml(candidate.state)}">${escapeHtml(formatCandidateLifecycle(candidate.state))}</span><span class="ui-badge status-capsule catalog-status ${catalogStatus.key}">${escapeHtml(catalogStatus.label)}</span><span class="tree-impact">${impact}</span><span class="tree-cost">${assessment ? formatCandidateTokenValue(candidate, assessment) : "—"}</span>${renderAssessmentRecommendation(assessment, false)}</span>
     </div>
   `;
 }
@@ -3431,16 +3799,88 @@ function renderProtectedRuleDetails(rule) {
   scheduleTruncationTooltips();
 }
 
+function renderEvidenceDisclosure(candidate, kind, title, count, content, view = "details") {
+  const key = `${view}:${candidate.key}:${kind}`;
+  const id = `evidence-${encodeURIComponent(key)}`;
+  const expanded = expandedEvidencePanels.has(key);
+  const action = `${expanded ? "Collapse" : "Expand"} ${title === "Source Rules" ? "source rules" : "related Hosted coverage"}`;
+  return `<section class="section-block evidence-disclosure" data-evidence-disclosure="${escapeHtml(key)}" data-evidence-kind="${escapeHtml(kind)}">
+    <div class="evidence-disclosure-heading"><span class="section-label evidence-disclosure-label">${escapeHtml(title)}${count === null ? "" : `<span class="ui-badge count-badge type-compact">${formatNumber(count)}</span>`}</span>
+      <button class="titlebar-icon clickable evidence-disclosure-toggle" type="button" data-evidence-toggle="${escapeHtml(key)}" data-evidence-title="${escapeHtml(title)}" aria-controls="${escapeHtml(id)}" aria-expanded="${expanded}" aria-label="${action}" data-workbench-tooltip="${action}">${icon(expanded ? "chevron-up" : "chevron-down")}</button>
+    </div><div id="${escapeHtml(id)}" class="evidence-disclosure-body" ${expanded ? "" : "hidden"}>${content}</div></section>`;
+}
+
+function handleEvidenceDisclosureClick(event) {
+  const summary = event.target.closest(".contributing-rule > summary");
+  if (summary) {
+    const details = summary.parentElement;
+    sourceRuleDisclosureStates.set(details.dataset.sourceRuleKey, !details.open);
+    return;
+  }
+  const button = event.target.closest("[data-evidence-toggle]");
+  if (!button) return;
+  const key = button.dataset.evidenceToggle;
+  const expanded = button.getAttribute("aria-expanded") !== "true";
+  if (expanded) expandedEvidencePanels.add(key);
+  else expandedEvidencePanels.delete(key);
+  button.setAttribute("aria-expanded", String(expanded));
+  const title = button.dataset.evidenceTitle === "Source Rules" ? "source rules" : "related Hosted coverage";
+  const action = `${expanded ? "Collapse" : "Expand"} ${title}`;
+  button.setAttribute("aria-label", action);
+  setWorkbenchTooltip(button, action);
+  button.innerHTML = icon(expanded ? "chevron-up" : "chevron-down");
+  document.getElementById(button.getAttribute("aria-controls")).hidden = !expanded;
+}
+
+function renderRelatedHostedCoverage(candidate, assessment, view = "details") {
+  const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
+  const coverage = evidence.relatedHostedCoverage;
+  const coverageRationale = evidence.existingCoverage?.rationale ?? evidence.currentHostedCoverage;
+  const content = `${assessment ? "" : '<p class="coverage-summary"><strong>Original assessment coverage:</strong> Edited wording has not yet been reassessed.</p>'}<p class="coverage-summary">${escapeHtml(coverageRationale)}</p>${coverage.length ? `<div class="related-hosted-coverage">${coverage.map((item) => `<p><strong class="rule-reference">${escapeHtml(item.hostedRuleId)}</strong> ${escapeHtml(item.rationale)}</p>`).join("")}</div>` : ""}`;
+  return renderEvidenceDisclosure(candidate, "coverage", "Related Hosted Coverage", coverage.length, content, view);
+}
+
+function renderAssessmentRecommendation(assessment, prefix = true) {
+  return assessment
+    ? `<span class="ui-badge status-capsule recommendation-badge ${escapeHtml(assessment.recommendation)}">${prefix ? "Recommend " : ""}${escapeHtml(formatRecommendation(assessment.recommendation))}</span>`
+    : '<span class="ui-badge status-capsule status-badge warning">Reassessment required</span>';
+}
+
+function renderProposedRuleRecommendation(candidate, assessment, proposedText = getDecision(candidate).proposedText) {
+  const blocked = Boolean(getRuleValidationAttention(candidate, proposedText));
+  return `<span data-assessment-recommendation${blocked ? " hidden" : ""}>${blocked ? "" : renderAssessmentRecommendation(assessment)}</span>`;
+}
+
+function renderAssessmentExplanation(candidate, assessment, proposedText = getDecision(candidate).proposedText) {
+  const attention = getRuleValidationAttention(candidate, proposedText);
+  if (attention?.reason === "wording") return renderSavedScopeReview(attention.check.evaluation);
+  const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
+  return renderInformationPanel(`<p><strong>Assessment rationale:</strong> ${escapeHtml(evidence.rationale)}</p>`, {
+    className: "assessment-explanation",
+    dataAttributes: { "assessment-explanation": "" }
+  });
+}
+
+function syncProposedRuleAssessment(candidate, assessment, proposedText) {
+  const panel = elements["assessment-panel"];
+  const recommendation = panel.querySelector("[data-assessment-recommendation]");
+  if (recommendation) recommendation.outerHTML = renderProposedRuleRecommendation(candidate, assessment, proposedText);
+  const explanation = panel.querySelector("[data-assessment-explanation]");
+  if (explanation) explanation.outerHTML = renderAssessmentExplanation(candidate, assessment, proposedText);
+}
+
 function renderContributingRules(candidate) {
   return `
     <div class="contributing-rules">
-      ${candidate.members.map((member) => {
+      ${candidate.members.map((member, index) => {
         const mappedRuleId = member.catalogMapping.hostedRuleId;
+        const key = `${candidate.key}:${index}`;
+        const open = sourceRuleDisclosureStates.get(key) ?? candidate.members.length === 1;
         return `
-          <details class="contributing-rule" ${candidate.members.length === 1 ? "open" : ""}>
+          <details class="contributing-rule" data-source-rule-key="${escapeHtml(key)}" ${open ? "open" : ""}>
             <summary>
-              <span class="contributing-rule-identity"><strong>${escapeHtml(member.source.id)}</strong><small>${escapeHtml(member.assessment.title)}</small></span>
-              <span class="contributing-rule-badges"><span class="ui-badge status-capsule status-badge neutral">${escapeHtml(member.sourceLabel)}</span>${mappedRuleId ? `<span class="ui-badge status-capsule catalog-status mapped">${escapeHtml(mappedRuleId)}</span>` : ""}${icon("chevron-down")}</span>
+              <span class="contributing-rule-identity"><strong class="rule-reference">${escapeHtml(member.source.id)}</strong><small>${escapeHtml(member.assessment.title)}</small></span>
+              <span class="contributing-rule-badges"><span class="ui-badge status-capsule status-badge neutral">${escapeHtml(member.sourceLabel)}</span>${mappedRuleId && mappedRuleId !== member.source.id ? `<span class="ui-badge status-capsule catalog-status mapped">${escapeHtml(mappedRuleId)}</span>` : ""}${icon("chevron-down")}</span>
             </summary>
             <div class="contributing-rule-content">
               <div class="source-line"><span>${escapeHtml(member.source.location)}</span><span>${escapeHtml(member.source.contentSha256.slice(0, 12))}</span></div>
@@ -3469,13 +3909,10 @@ function renderAssessment() {
   }
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
-  if (!assessment) {
+  if (!getBaselineAssessment(candidate, decision)) {
     elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>AI Assessment Unavailable</h2><p>This candidate is not ready for maintainer review and should not appear in the evaluated candidate tree.</p></div>`;
     return;
   }
-  const impact = assessment ? calculateImpact(assessment.factors) : null;
-  const draftCost = getDecisionTokenDelta(candidate, decision);
-  const projectedHeadroom = getAssessmentProjectedHeadroom(candidate, decision.action, decision);
   const catalogStatus = getCatalogStatus(candidate);
   const allowedActions = getAllowedActions(candidate, decision.proposedText);
   const unchangedMappedRule = catalogStatus.key === "mapped" && !hasHostedTextChange(candidate, decision.proposedText);
@@ -3493,7 +3930,7 @@ function renderAssessment() {
           <span>${escapeHtml(displayId)}</span>
         </div>
         <h2 class="detail-rule-title">${escapeHtml(candidate.title)}</h2>
-        <div class="source-line"><span>${escapeHtml(formatCountLabel(candidate.members.length, "contributing rule"))}</span><span>${escapeHtml(formatHostedCategory(candidate.assessment.hostedCategory))}</span><span>${escapeHtml(candidate.recommendation.placement)}</span></div>
+        <div class="source-line"><span>${escapeHtml(formatCountLabel(candidate.members.length, "source rule"))}</span><span>${escapeHtml(formatHostedCategory(candidate.assessment.hostedCategory))}</span><span>${escapeHtml(candidate.recommendation.placement)}</span></div>
       </div>
       ${renderDetailHeaderActions(`
         <span class="ui-badge status-capsule candidate-state ${escapeHtml(candidate.state)}">${escapeHtml(capitalize(candidate.state))}</span>
@@ -3503,58 +3940,36 @@ function renderAssessment() {
     </div>
 
     <div class="assessment-content scroll-surface">
-      <div class="section-block">
-        <span class="section-label">Contributing Rules (${formatNumber(candidate.members.length)}):</span>
-        ${renderContributingRules(candidate)}
-      </div>
+      ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, renderContributingRules(candidate))}
+      ${renderRelatedHostedCoverage(candidate, assessment)}
+      <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
 
-      ${renderMappedHostedRules(catalogStatus, true)}
-
-      <div class="section-block">
-        <span class="section-label">AI Evaluation:</span>
-        <div class="ai-evaluation-summary subcontext-container">
-          <div class="ai-evaluation-heading">
-            <strong>${escapeHtml(assessment.summary)}</strong>
-            <span class="ui-badge status-capsule recommendation-badge ${escapeHtml(assessment.recommendation)}">Recommend ${escapeHtml(formatRecommendation(assessment.recommendation))}</span>
-          </div>
-          <p>${escapeHtml(assessment.impactDescription || assessment.rationale)}</p>
-        </div>
-        <div class="score-strip">
-          <div class="score-item impact"><span>Priority score</span><strong>${impact}</strong></div>
-          <div class="score-item cost"><span>Token cost</span><strong>${draftCost === 0 ? "0" : formatSignedNumber(draftCost)}</strong></div>
-          <div class="score-item efficiency"><span>Headroom after</span><strong>${formatNumber(projectedHeadroom)}</strong></div>
-        </div>
-        ${renderPriorityAssessment(assessment)}
-      </div>
-
-      <div class="section-block">
-        <span class="section-label">Related Hosted Coverage:</span>
-        <p class="coverage-summary evidence-summary-box subcontext-container">${escapeHtml(assessment.currentHostedCoverage)}</p>
-      </div>
-
-      <div class="section-block">
+      <div class="section-block hosted-rule-comparison">
+        ${renderCurrentHostedRules(catalogStatus)}
         <div class="proposed-rule-heading">
           <span class="section-label">Proposed Hosted Rule:</span>
+          ${renderProposedRuleRecommendation(candidate, assessment)}
           ${renderManualRelationshipStatus(candidate, decision.proposedText)}
           <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" disabled>${icon("save")}</button>
         </div>
-        <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
+        ${renderAssessmentExplanation(candidate, assessment)}
+        <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" data-proposed-candidate-key="${escapeHtml(candidate.key)}" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
         <div class="manual-relationship-progress" data-manual-relationship-progress ${activeRelationshipChecks.has(candidate.key) ? "" : "hidden"}>
           ${renderWaitingPanel({
             title: "Checking rule relationships...",
-            body: "Comparing the edited wording with active Hosted rules. This can take a few minutes."
+            body: "Comparing the edited wording with active Hosted rules. This can take a few minutes.",
+            elapsed: getRelationshipCheckElapsed(candidate),
+            action: '<button class="button primary waiting-panel-cancel clickable" type="button" data-cancel-relationship-check>Cancel</button>'
           })}
         </div>
+        ${renderManualRelationshipFailure(candidate, decision.proposedText)}
         ${renderManualRelationshipReviews(candidate, decision.proposedText)}
       </div>
 
       <div class="section-block rule-actions">
-        <span class="section-label">Rule Actions:</span>
-        <div class="rule-actions-content subcontext-container">
-          <div class="assessment-title rule-action-header">
-            <div class="source-line detail-identity"><span>RULE:</span><span>${escapeHtml(candidate.assessment.proposedHostedRuleId)}</span></div>
-          </div>
-          <p class="section-help">${unchangedMappedRule ? "Current and proposed Hosted rule text are identical, so Update is unavailable." : "Choose one action. Hosted catalog status determines which actions are available."}</p>
+        <span class="section-label">Rule Actions: <strong class="rule-reference">${escapeHtml(displayId)}</strong></span>
+        ${renderInformationPanel(`<p>${unchangedMappedRule ? "Current and proposed Hosted rule text are identical, so Update is unavailable." : "Choose one action. Hosted catalog status determines which actions are available."}</p>`, { className: "rule-actions-guidance section-guidance" })}
+        <div class="rule-actions-content">
           <span class="control-subtitle">Rule Action:</span>
           <div class="control-group action-plan-group">
             <fieldset class="action-options">
@@ -3569,6 +3984,7 @@ function renderAssessment() {
           </div>
           <div class="control-group implementation-model-control-group">
             <span class="control-subtitle" id="implementation-models-label">Rule Applies to Resource Type(s):</span>
+            ${renderInformationPanel("<p>Resource types apply only to implementation rules.</p>")}
             <div class="action-plan-group">
               <fieldset class="action-options implementation-model-options" aria-labelledby="implementation-models-label">
                 <legend class="sr-only">Rule applies to resource types</legend>
@@ -3598,23 +4014,30 @@ function renderAssessment() {
           </div>` : ""}
           <div class="field-stack control-group rationale-control-group">
             <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" disabled>${icon("save")}</button></div>
-            <label><textarea class="scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${rationaleDisabled ? rationalePlaceholder : "Record why this action is appropriate."}" ${rationaleDisabled ? "disabled" : ""}>${escapeHtml(rationaleDisabled ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${rationaleDisabled ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
+            <label><textarea class="evidence-box scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${rationaleDisabled ? rationalePlaceholder : "Record why this action is appropriate."}" ${rationaleDisabled ? "disabled" : ""}>${escapeHtml(rationaleDisabled ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${rationaleDisabled ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
           </div>
         </div>
       </div>
     </div>
     ${renderRuleActionResolutionDialog(candidate)}
   `;
+  syncProposedRuleControls(candidate);
 }
 
-function renderPriorityAssessment(assessment) {
-  const factors = assessment.selectionFactors || assessment.factors;
+function renderAssessmentEvidence(candidate, assessment, decision) {
+  const evidence = assessment || getBaselineAssessment(candidate, decision);
+  const factors = evidence.selectionFactors || evidence.factors;
+  const cost = getDecisionTokenDelta(candidate, decision);
   return `
+    <div data-assessment-origin="${assessment ? "current" : "original"}">
     <div class="assessment-details-heading">
-      <div>
-        <div class="assessment-details-title-row"><strong class="section-label">Assessment Details:</strong><button class="titlebar-icon clickable scoring-legend-trigger" type="button" data-scoring-legend-open aria-label="Show scoring legend" data-workbench-tooltip="Show scoring legend">${icon("question")}</button></div>
-        <p>AI-adjudicated evidence. Maintainers can review these values but cannot edit them.</p>
-      </div>
+      <div class="assessment-details-title-row"><strong class="section-label">Assessment Details:</strong><button class="titlebar-icon clickable scoring-legend-trigger" type="button" data-scoring-legend-open aria-label="Show scoring legend" data-workbench-tooltip="Show scoring legend">${icon("question")}</button></div>
+    </div>
+    ${renderInformationPanel(`<p ${assessment ? "" : "data-assessment-history"}><strong>Assessment:</strong> ${assessment ? "Priority and factor scores are AI-adjudicated evidence. Maintainers can review these values but cannot edit them." : `Edited wording has not yet been reassessed. Priority and factor scores describe the original proposal, whose recommendation was ${escapeHtml(formatRecommendation(evidence.recommendation))}; they do not validate the edited wording.`} Token Cost and Token Headroom reflect the current draft.</p>`, { className: "assessment-context section-guidance" })}
+    <div class="score-strip">
+      <div class="score-item impact"><span class="control-subtitle">Priority Score:</span><strong>${calculateImpact(factors)}</strong></div>
+      <div class="score-item cost"><span class="control-subtitle">Token Cost:</span><strong>${cost === 0 ? "0" : formatSignedNumber(cost)}</strong></div>
+      <div class="score-item efficiency"><span class="control-subtitle">Token Headroom:</span><strong>${formatNumber(getAssessmentProjectedHeadroom(candidate, decision.action, decision))}</strong></div>
     </div>
     <dialog class="scoring-legend-dialog" data-scoring-legend-dialog aria-labelledby="scoring-legend-dialog-title">
       <div class="scoring-legend-dialog-heading"><div class="scoring-legend-dialog-title">${icon("json")}<h2 id="scoring-legend-dialog-title">Scoring Legend</h2></div><button class="titlebar-icon clickable" type="button" data-scoring-legend-close aria-label="Close scoring legend" data-workbench-tooltip="Close scoring legend">${icon("close")}</button></div>
@@ -3641,8 +4064,7 @@ function renderPriorityAssessment(assessment) {
         </div>
       </section>
     </div>
-    <span class="section-label adjudication-label">AI Adjudication Rationale:</span>
-    <div class="assessment-rationale adjudication-text-box subcontext-container"><p>${escapeHtml(assessment.rationale)}</p></div>
+    </div>
   `;
 }
 
@@ -3696,6 +4118,7 @@ function handleAssessmentInput(event) {
       syncAssessmentActionControls(candidate, action);
       syncImplementationModelControls(candidate, action);
       syncAssessmentRationaleControls(action, candidate);
+      syncProposedRuleControls(candidate);
       event.target.focus({ preventScroll: true });
       return;
     }
@@ -3739,6 +4162,7 @@ function handleAssessmentInput(event) {
       : event.target.value;
     event.target.value = value;
     if (event.target.dataset.decisionField === "proposedText") {
+      syncAssessmentEvaluation(candidate);
       syncProposedRuleControls(candidate);
       renderRuleIssues();
       renderDecisionOutputs();
@@ -3857,6 +4281,25 @@ async function handleAssessmentClick(event) {
     scoringLegendClose.closest("dialog")?.close();
     return;
   }
+  const failureDismiss = event.target.closest("[data-dismiss-manual-relationship-failure]");
+  if (failureDismiss) {
+    const candidate = getActiveCandidate();
+    if (!candidate) return;
+    const check = getManualRelationshipCheck(candidate);
+    if (check?.status !== "failed") return;
+    dismissedManualRelationshipFailures.add(check);
+    failureDismiss.closest("[data-manual-relationship-failure]").remove();
+    elements["assessment-panel"].querySelector("[data-proposed-text-save]")?.focus();
+    return;
+  }
+  if (event.target.closest("[data-cancel-relationship-check]")) {
+    const candidate = getActiveCandidate();
+    if (candidate) {
+      cancelRuleRelationshipCheck(candidate.key);
+      syncRelationshipCheckProgress(candidate);
+    }
+    return;
+  }
   if (event.target.closest("[data-proposed-text-save]")) {
     const candidate = getActiveCandidate();
     if (!candidate) return;
@@ -3911,9 +4354,12 @@ async function handleAssessmentClick(event) {
     proposedHostedRuleId: candidate.assessment.proposedHostedRuleId,
     ...createPlanMembership(isPromotionAction(action) || retireHostedRuleIds.length ? "manual" : "none")
   });
+  const submittedDecision = state.session.decisions[candidate.key];
   const returnToPlan = state.rationaleReturnView === "plan";
   await persistencePromise;
+  if (state.session.decisions[candidate.key] !== submittedDecision) return;
   await reconcileRuleTextRelationships(candidate, proposedText);
+  if (state.session.decisions[candidate.key] !== submittedDecision) return;
   renderAssessment();
   showToast("Decision saved");
   if (returnToPlan) {
@@ -3923,16 +4369,19 @@ async function handleAssessmentClick(event) {
 }
 
 function refreshAssessmentScores(candidate, action = getDecision(candidate).action) {
-  const decision = getDecision(candidate);
+  syncAssessmentEvaluation(candidate, { ...getDecision(candidate), action });
+}
+
+function syncAssessmentEvaluation(candidate, decision = getDecision(candidate)) {
   const assessment = getAssessment(candidate, decision);
-  const impact = calculateImpact(assessment.factors);
-  const cost = getActionTokenDelta(candidate, action, decision);
-  const scoreValues = elements["assessment-panel"].querySelectorAll(".score-item strong");
-  if (scoreValues.length === 3) {
-    scoreValues[0].textContent = impact;
-    scoreValues[1].textContent = cost === 0 ? "0" : formatSignedNumber(cost);
-    scoreValues[2].textContent = formatNumber(getAssessmentProjectedHeadroom(candidate, action, decision));
-  }
+  const panel = elements["assessment-panel"];
+  const editor = panel.querySelector("[data-proposed-candidate-key]");
+  const displayDecision = editor?.dataset.proposedCandidateKey === candidate.key ? { ...decision, proposedText: editor.value } : decision;
+  const evidence = panel.querySelector("[data-assessment-evidence]");
+  if (evidence) evidence.innerHTML = renderAssessmentEvidence(candidate, assessment, displayDecision);
+  const coverage = panel.querySelector('[data-evidence-kind="coverage"]');
+  if (coverage) coverage.outerHTML = renderRelatedHostedCoverage(candidate, assessment);
+  syncProposedRuleAssessment(candidate, assessment, displayDecision.proposedText);
 }
 
 function renderPlan() {
@@ -3972,9 +4421,11 @@ function renderPlan() {
     const cost = getPlanTokenDisplay(candidate);
     const readiness = getPlanReadiness(candidate);
     const displayId = getEffectiveHostedRuleId(candidate);
-    const readinessLabel = readiness.relationshipCheckRequired ? "Reconcile" : readiness.label;
-    const detailLabel = readiness.relationshipCheckRequired ? `Reconcile edited rule relationships for ${displayId}` : `Complete required fields for ${displayId}`;
-    const detailTooltip = readiness.relationshipCheckRequired ? "Reconcile edited rule relationships" : "Open candidate and complete required fields";
+    const readinessLabel = readiness.attention?.actionLabel || readiness.label;
+    const readinessIcon = readiness.attention?.actionIcon || "edit";
+    const detailLabel = `${readiness.attention?.reason === "pending" ? "Checking rule relationships" : readinessLabel} for ${displayId}`;
+    const detailTooltip = `Open candidate: ${readiness.attention?.reason === "pending" ? "Checking rule relationships" : readiness.label}`;
+    const undoLabel = activeRelationshipChecks.has(candidate.key) ? "Cancel validation and undo this candidate" : "Undo this candidate";
     return `
       <tr class="plan-candidate-row clickable" tabindex="0" data-plan-row="${escapeHtml(candidate.key)}" aria-label="Open ${escapeHtml(displayId)} candidate">
         <td class="plan-candidate"><span class="candidate-link">${escapeHtml(displayId)}</span><br><span class="plan-candidate-title">${escapeHtml(candidate.title)}</span></td>
@@ -3983,8 +4434,8 @@ function renderPlan() {
         <td class="plan-action"><span class="ui-badge status-capsule recommendation-badge ${escapeHtml(isPromotionAction(decision.action) ? decision.action : decision.retireHostedRuleIds.length ? "retire" : decision.action)}">${escapeHtml(formatPlanAction(decision))}</span></td>
         <td class="mono">${impact}</td>
         <td class="mono">${cost}</td>
-        <td>${readiness.ready ? `<span class="ui-badge status-capsule status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="ui-badge status-capsule status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="ui-badge status-capsule status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="${escapeHtml(detailLabel)}" data-workbench-tooltip="${escapeHtml(detailTooltip)}">${icon("edit")}<span>${readinessLabel}</span></button>`}</td>
-        <td class="plan-actions"><span class="plan-action-controls"><button class="titlebar-icon clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="Undo this candidate" data-workbench-tooltip="Undo this candidate">${icon("discard")}</button></span></td>
+        <td>${readiness.ready ? `<span class="ui-badge status-capsule status-badge success">${readiness.label}</span>` : readiness.actionRequired ? `<button class="ui-badge status-capsule status-badge warning plan-detail-link clickable" type="button" data-plan-action="${escapeHtml(candidate.key)}" aria-label="Choose a rule action for ${escapeHtml(displayId)}" data-workbench-tooltip="Open candidate and choose a rule action">${icon("edit")}<span>${readiness.label}</span></button>` : `<button class="ui-badge status-capsule status-badge warning plan-detail-link clickable" type="button" data-plan-detail="${escapeHtml(candidate.key)}" aria-label="${escapeHtml(detailLabel)}" data-workbench-tooltip="${escapeHtml(detailTooltip)}">${icon(readinessIcon)}<span>${readinessLabel}</span></button>`}</td>
+        <td class="plan-actions"><span class="plan-action-controls"><button class="titlebar-icon clickable" type="button" data-plan-undo="${escapeHtml(candidate.key)}" aria-label="${escapeHtml(undoLabel)}" data-workbench-tooltip="${escapeHtml(undoLabel)}">${icon("discard")}</button></span></td>
       </tr>
     `;
   }).join("");
@@ -4045,12 +4496,19 @@ function getPlanReadiness(candidate) {
   const rationaleRequired = isActionableDecision(decision) && !decision.rationale.trim();
   const resourceTypeRequired = canEditImplementationModels(candidate, decision.action) && decision.implementationModels.length === 0;
   const relationshipCheckRequired = requiresManualRelationshipCheck(candidate, decision.proposedText);
+  const attention = actionRequired ? { reason: "action", label: "Needs action", target: ".action-options input:checked, .action-options input" }
+    : resourceTypeRequired ? { reason: "resource-type", label: "Needs resource type", target: "[data-implementation-model]" }
+    : rationaleRequired ? { reason: "rationale", label: "Needs rationale", target: '[data-decision-field="rationale"]' }
+    : getRuleValidationAttention(candidate)
+      || (!assessment ? { reason: "assessment", label: "Needs AI assessment", target: "[data-assessment-evidence]" } : null);
   return {
     actionRequired,
+    rationaleRequired,
     resourceTypeRequired,
     relationshipCheckRequired,
+    attention,
     ready: Boolean(assessment) && !actionRequired && !rationaleRequired && !resourceTypeRequired && !relationshipCheckRequired,
-    label: actionRequired ? "Needs action" : resourceTypeRequired ? "Needs resource type" : rationaleRequired ? "Needs rationale" : relationshipCheckRequired ? "Needs relationship check" : assessment ? "Ready" : "Needs AI assessment"
+    label: attention?.label || "Ready"
   };
 }
 
@@ -4082,17 +4540,9 @@ function openPlanCandidate(key, focusTarget = null) {
     revealCandidateInTree(key);
     const row = elements["candidate-list"].querySelector(`[data-candidate-key="${CSS.escape(key)}"]`);
     requestAnimationFrame(() => {
-      if (focusTarget === "action") {
-        const actions = elements["assessment-panel"].querySelector(".action-options");
-        const control = actions?.querySelector("input:checked") || actions?.querySelector("input");
-        scrollCandidateDetailTargetIntoView(actions);
-        control?.focus({ preventScroll: true });
-        return;
-      }
-      if (focusTarget === "rationale") {
-        const field = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
-        scrollCandidateDetailTargetIntoView(field);
-        field?.focus({ preventScroll: true });
+      if (focusTarget === "attention") {
+        const candidate = getActiveCandidate();
+        focusCandidateAttention(getPlanReadiness(candidate).attention);
         return;
       }
       if (!row) return;
@@ -4100,6 +4550,25 @@ function openPlanCandidate(key, focusTarget = null) {
       row.focus({ preventScroll: true });
     });
   });
+}
+
+function focusCandidateAttention(attention) {
+  if (!attention) {
+    showToast("This candidate no longer needs attention.");
+    return;
+  }
+  const target = elements["assessment-panel"].querySelector(attention.target);
+  if (!target) {
+    showToast(`The review control for ${attention.label.toLowerCase()} is unavailable.`, true);
+    return;
+  }
+  if (!target.matches("button, input, textarea, select, [tabindex]")) {
+    target.tabIndex = -1;
+    target.setAttribute("role", "region");
+    target.setAttribute("aria-label", attention.label);
+  }
+  scrollCandidateDetailTargetIntoView(target);
+  target.focus({ preventScroll: true });
 }
 
 function handlePlanRowKeyboardNavigation(event) {
@@ -4117,7 +4586,7 @@ function getPlanTokenDelta(candidate) {
 function getActionAffectedSurfaces(candidate, action, decision = getDecision(candidate)) {
   const assessment = getAssessment(candidate, decision);
   const surfaces = [];
-  if (["add", "update", "restore"].includes(action)) surfaces.push(...(assessment?.affectedSurfaces || []));
+  if (["add", "update", "restore"].includes(action)) surfaces.push(...(assessment?.affectedSurfaces || candidate.assessment.affectedSurfaces));
   if (action === "retire") {
     surfaces.push(...getCatalogStatus(candidate).rules.flatMap((rule) => (rule.placements || []).map((placement) => placement.surfaceId)));
   }
@@ -4243,7 +4712,9 @@ function renderPreview() {
   previewFilesByScope = buildPreviewFiles(planCandidates);
   elements["preview-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.proposed, "No Proposed Changes", "Add an available rule action to review its line-level diff.");
   elements["preview-payload-diff"].innerHTML = renderPreviewFiles(previewFilesByScope.payload, "No Payload Changes", "Add or update a Promotion Plan item to review its selection payload changes.");
-  elements["preview-json"].innerHTML = renderPreviewFiles(previewFilesByScope.raw, "No Resulting Catalog", "Add, update, or retire a Promotion Plan item to review the resulting catalog mutations.");
+  elements["preview-json"].innerHTML = planCandidates.some((candidate) => !getAssessment(candidate))
+    ? renderPreviewEmptyState("warning", "Reassessment Required", "The proposed wording and draft selections remain available. Save edited rules to refresh their assessments before generating the resulting catalog.", "warning-state")
+    : renderPreviewFiles(previewFilesByScope.raw, "No Resulting Catalog", "Add, update, or retire a Promotion Plan item to review the resulting catalog mutations.");
   elements["preview-protected"].innerHTML = previewFilesByScope.protected.map(renderPreviewFile).join("");
   elements["preview-protected-section"].hidden = previewFilesByScope.protected.length === 0;
   elements["preview-review-popover"].hidden = true;
@@ -4252,12 +4723,20 @@ function renderPreview() {
 }
 
 function buildPreviewFiles(candidates) {
-  const proposed = candidates.flatMap((candidate) => buildApprovedMutations(candidate).map((mutation) => {
-    const existingRule = state.bundle.catalog.rules.find((rule) => rule.id === mutation.rule.id);
-    const before = mutation.action === "add" ? [] : splitDiffLines(existingRule?.text || "");
-    const after = mutation.action === "retire" ? [] : splitDiffLines(mutation.rule.text);
-    return createPreviewFile(`rules/${mutation.rule.id}.md`, candidate.title, before, after, false, candidate.sourceId, "proposed");
-  }));
+  const proposed = candidates.flatMap((candidate) => {
+    const decision = getDecision(candidate);
+    const id = getEffectiveHostedRuleId(candidate);
+    const files = isPromotionAction(decision.action) ? [createPreviewFile(
+      `rules/${id}.md`, candidate.title,
+      decision.action === "add" ? [] : splitDiffLines(getCurrentHostedText(candidate)),
+      decision.action === "retire" ? [] : splitDiffLines(decision.proposedText),
+      false, candidate.sourceId, "proposed"
+    )] : [];
+    for (const rule of getAncillaryRetirementRules(decision)) files.push(createPreviewFile(
+      `rules/${rule.id}.md`, candidate.title, splitDiffLines(rule.text), [], false, candidate.sourceId, "proposed"
+    ));
+    return files;
+  });
   const payload = candidates.map((candidate) => {
     const current = getDecision(candidate);
     const baseline = defaultDecision(candidate);
@@ -4287,12 +4766,10 @@ function buildPreviewFiles(candidates) {
     const changedAfter = Object.fromEntries(changedKeys.map((key) => [key, after[key]]));
     return createPreviewFile(`selection/${getEffectiveHostedRuleId(candidate)}.json`, candidate.title, JSON.stringify(changedBefore, null, 2).split("\n"), JSON.stringify(changedAfter, null, 2).split("\n"), false, "", "payload");
   }).filter(Boolean);
-  const proposedPayload = buildApprovedRules();
-  const currentPayload = {
-    ...structuredClone(proposedPayload),
-    mutations: []
-  };
-  const raw = proposedPayload.mutations.length
+  const requiresAssessment = candidates.some((candidate) => !getAssessment(candidate));
+  const proposedPayload = requiresAssessment ? null : buildApprovedRules();
+  const currentPayload = proposedPayload ? { ...structuredClone(proposedPayload), mutations: [] } : null;
+  const raw = proposedPayload?.mutations.length
     ? [createPreviewFile("approval/approved-rules.json", "Approved catalog mutations", JSON.stringify(currentPayload, null, 2).split("\n"), JSON.stringify(proposedPayload, null, 2).split("\n"), true, "", "raw")]
     : [];
   const protectedFiles = state.bundle.catalog.protectedRuleFiles.map((file) => {
@@ -4315,6 +4792,7 @@ function copyCatalogRule(rule) {
 function buildApprovedMutation(candidate) {
   const decision = getDecision(candidate);
   const assessment = getAssessment(candidate, decision);
+  if (!assessment) throw new Error("A current complete assessment is required before building approved rule mutations");
   const recommendation = candidate.recommendation;
   const existingRule = getCatalogStatus(candidate).rules[0] || null;
   const placement = { surfaceId: recommendation.category, sectionHeading: recommendation.placement };
@@ -4960,19 +5438,19 @@ function getPreviewReadiness() {
     const decision = getDecision(candidate);
     return canEditImplementationModels(candidate, decision.action) && decision.implementationModels.length === 0;
   }).length;
-  const missingRationaleCount = planCandidates.filter((candidate) => {
-    const decision = getDecision(candidate);
-    return !getAssessment(candidate, decision) || !decision.rationale.trim();
-  }).length;
+  const missingAssessmentCount = planCandidates.filter((candidate) => !getAssessment(candidate)).length;
+  const missingRationaleCount = planCandidates.filter((candidate) => !getDecision(candidate).rationale.trim()).length;
   const missingRationale = missingRationaleCount > 0;
   const activeCandidate = getActiveCandidate();
   const editorText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
   const unsavedRuleText = activeCandidate && editorText !== undefined && editorText !== getDecision(activeCandidate).proposedText;
   const missingRelationshipCheckCount = state.assessedCandidates.filter((candidate) => requiresManualRelationshipCheck(candidate)).length
     + (unsavedRuleText ? 1 : 0) + activeRelationshipChecks.size;
-  const approvedMutations = planCandidates.flatMap(buildApprovedMutations);
-  const mutationRuleIds = approvedMutations.map((mutation) => mutation.rule.id);
-  const mutationCount = approvedMutations.length;
+  const mutationRuleIds = planCandidates.flatMap((candidate) => {
+    const decision = getDecision(candidate);
+    return [...(isPromotionAction(decision.action) ? [getEffectiveHostedRuleId(candidate)] : []), ...getAncillaryRetirementRules(decision).map((rule) => rule.id)];
+  });
+  const mutationCount = mutationRuleIds.length;
   const conflictingMutationCount = mutationRuleIds.length - new Set(mutationRuleIds).size;
   const approverName = String(state.session.approverName || "").trim();
   let status = "ready";
@@ -4980,6 +5458,7 @@ function getPreviewReadiness() {
   else if (planCandidates.length === 0) status = "no actions";
   else if (missingActionCount) status = "needs action";
   else if (missingResourceTypeCount) status = "needs resource type";
+  else if (missingAssessmentCount) status = "needs assessment";
   else if (missingRationale) status = "needs rationale";
   else if (missingRelationshipCheckCount) status = "needs relationship check";
   else if (mutationCount === 0) status = "no catalog mutations";
@@ -4991,12 +5470,13 @@ function getPreviewReadiness() {
     approverName,
     missingActionCount,
     missingResourceTypeCount,
+    missingAssessmentCount,
     missingRationaleCount,
     missingRelationshipCheckCount,
     mutationCount,
     conflictingMutationCount,
     status,
-    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
+    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && missingAssessmentCount === 0 && !missingRationale && missingRelationshipCheckCount === 0 && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
   };
 }
 
@@ -5006,6 +5486,7 @@ function renderApprovalRequirements(readiness) {
     ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
     ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
     ["Resource types", readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingResourceTypeCount === 0],
+    ["AI assessments", readiness.missingAssessmentCount ? `${readiness.missingAssessmentCount} required` : "Current", readiness.planCandidates.length > 0 && readiness.missingAssessmentCount === 0],
     ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
     ["Relationship checks", readiness.missingRelationshipCheckCount ? `${readiness.missingRelationshipCheckCount} required` : "Current", readiness.planCandidates.length > 0 && readiness.missingRelationshipCheckCount === 0],
     ["Catalog mutations", readiness.mutationCount ? formatCountLabel(readiness.mutationCount, "mutation") : "None", readiness.mutationCount > 0],
@@ -5092,7 +5573,11 @@ function syncCandidateTreeRows() {
     if (candidateId) candidateId.textContent = getEffectiveHostedRuleId(candidate);
     const assessment = candidate && getAssessment(candidate, getDecision(candidate));
     const token = row.querySelector(".tree-cost");
-    if (assessment && token) token.textContent = formatCandidateTokenValue(candidate, assessment);
+    if (token) token.textContent = assessment ? formatCandidateTokenValue(candidate, assessment) : "—";
+    const impact = row.querySelector(".tree-impact");
+    if (impact) impact.textContent = assessment ? calculateImpact(assessment.factors) : "—";
+    const recommendation = row.querySelector(".recommendation-badge, .candidate-tree-summary > .status-badge.warning");
+    if (recommendation) recommendation.outerHTML = renderAssessmentRecommendation(assessment, false);
   });
   syncCandidateTreeAggregates();
 }
@@ -5189,6 +5674,17 @@ function handleStatusNavigation(event) {
   if (destination === "issues") {
     switchView("catalog");
     setWorkspaceTab("rule-issues");
+    return;
+  }
+  if (destination === "validation-issues") {
+    const problems = getValidationProblems();
+    const problem = problems.find((item) => item.kind === "error") || problems[0];
+    if (!problem) return;
+    switchView("catalog");
+    setWorkspaceTab("candidate-sources");
+    selectCandidate(problem.candidateKey);
+    showCandidatePane("details");
+    focusCandidateAttention(getRuleValidationAttention(getActiveCandidate()));
     return;
   }
   if (destination === "plan" || destination === "capacity") {
@@ -5339,6 +5835,16 @@ function buildDraftExport() {
 function deserializeDraft(draft, candidates) {
   if (draft?.schemaVersion !== WORKBENCH_DRAFT_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft") return null;
   const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+  const activeRuleIds = new Set(state.bundle.catalog.rules.filter((rule) => rule.status === "active").map((rule) => rule.id));
+  for (const [key, decision] of Object.entries(draft.decisions || {})) {
+    const candidate = candidatesByKey.get(key);
+    if (!candidate) continue;
+    const ownRuleId = candidate.catalogMapping.hostedRuleId || candidate.recommendation.hostedId;
+    if (new Set(decision.retireHostedRuleIds).size !== decision.retireHostedRuleIds.length
+      || decision.retireHostedRuleIds.some((id) => id === ownRuleId || !activeRuleIds.has(id))) {
+      throw new Error("The imported draft contains an unknown, protected, duplicate, or self retirement.");
+    }
+  }
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     id: "current",
@@ -5401,7 +5907,6 @@ function handleApproverInput(event) {
   state.session.updatedAt = toUtcTimestamp();
   persistSession();
   renderPreview();
-  setSaveIndicator(`Saved ${formatTime(state.session.updatedAt)}`);
   refreshPresentation();
 }
 
@@ -5474,6 +5979,8 @@ async function importDraft(event) {
     state.session.decisions = draft.decisions || {};
     state.session.applicabilityOverrides = draft.applicabilityOverrides || {};
     state.session.bulkOperations = draft.bulkOperations;
+    state.session.manualRelationshipChecks = draft.manualRelationshipChecks;
+    state.session.savedRuleEvaluations = draft.savedRuleEvaluations;
     refreshEffectiveCandidates();
     state.session.updatedAt = toUtcTimestamp();
     await persistSession();
@@ -5517,30 +6024,37 @@ async function readSession(id) {
   });
 }
 
-async function persistSession() {
-  if (!state.session) return;
-  const snapshot = normalizeSessionTimestamps(state.session);
-  persistencePromise = persistencePromise.then(async () => {
+function persistSession(session = state.session, beforeWrite) {
+  if (!session) return Promise.resolve();
+  const snapshot = normalizeSessionTimestamps(session);
+  const writeSnapshot = async () => {
     const database = await openDatabase();
+    beforeWrite?.();
     await new Promise((resolve, reject) => {
-      const request = database.transaction("sessions", "readwrite").objectStore("sessions").put(snapshot);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      const transaction = database.transaction("sessions", "readwrite");
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error("The draft save was aborted"));
+      transaction.objectStore("sessions").put(snapshot);
     });
     setSaveIndicator(`Saved ${formatTime(snapshot.updatedAt)}`);
+  };
+  persistencePromise = persistencePromise.then(writeSnapshot, writeSnapshot);
+  persistencePromise.catch((error) => {
+    setSaveIndicator("Save failed", { kind: "error", icon: "error", tooltip: `Draft Save Failed: ${error.message}` });
+    showToast(`Draft could not be saved: ${error.message}`, true);
   });
   return persistencePromise;
 }
 
-function setSaveIndicator(text) {
-  workbenchStatusBar.update("save", { text });
+function setSaveIndicator(text, { kind = "success", icon = "check-compact", tooltip = "Draft Autosave State" } = {}) {
+  workbenchStatusBar.update("save", { text, kind, icon, tooltip });
 }
 
 function renderFatalError(error) {
   elements.workspace.classList.remove("icon-paint-pending");
   elements["candidate-list"].innerHTML = "";
   elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench Could Not Load</h2><p>${escapeHtml(error.message)}</p></div>`;
-  setSaveIndicator("Bundle unavailable");
+  setSaveIndicator("Bundle unavailable", { kind: "error", icon: "error", tooltip: "Bundle Unavailable" });
   showToast(error.message, true);
 }
 

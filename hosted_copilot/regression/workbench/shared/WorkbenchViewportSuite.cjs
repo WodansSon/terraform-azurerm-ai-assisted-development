@@ -588,7 +588,7 @@ async function assertStatusTooltip(page, width) {
   const fromRight = await enterFrom("right");
   const fromLeft = await enterFrom("left");
   assert(fromRight.visible && fromLeft.visible, `${width}px status tooltip: tooltip is not visible`);
-  assert(fromRight.text === "Hosted guidance headroom" && fromLeft.text === fromRight.text, `${width}px status tooltip: tooltip text is incorrect`);
+  assert(fromRight.text === "Hosted Guidance Headroom" && fromLeft.text === fromRight.text, `${width}px status tooltip: tooltip text is incorrect`);
   assert(fromRight.left >= 0 && fromRight.right <= width && fromRight.top >= 0, `${width}px status tooltip: tooltip leaves the rendered canvas`);
   assert(fromRight.bottom < fromRight.statusTop, `${width}px status tooltip: tooltip is not above the status bar`);
   assert(Math.abs(fromRight.left - fromRight.expectedLeft) < 0.1 && Math.abs(fromLeft.left - fromLeft.expectedLeft) < 0.1, `${width}px status tooltip: pointer-centered placement is incorrect`);

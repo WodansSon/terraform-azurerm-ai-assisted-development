@@ -10,6 +10,35 @@
     "schemaVersion": { "const": 1 },
     "kind": { "const": "hosted-rule-issue-adjudication-input" },
     "componentId": { "type": "string", "minLength": 1 },
+    "evaluationPhase": { "enum": ["scope", "assessment", "relationships", "issues"] },
+    "evaluationContextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "scopeReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "ownerRuleId", "baselineQuote", "proposalQuote", "rationale", "wordingStatus", "wordingRationale"],
+      "properties": {
+        "disposition": { "enum": ["within-scope", "route-to-existing-rule", "suggest-new-rule", "uncertain"] },
+        "ownerRuleId": { "type": ["string", "null"] },
+        "baselineQuote": { "type": "string", "minLength": 1 },
+        "proposalQuote": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "wordingStatus": { "enum": ["acceptable", "needs-review"] },
+        "wordingRationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "memberScopeReviews": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateKey", "scopeReview"],
+        "properties": {
+          "candidateKey": { "type": "string", "minLength": 1 },
+          "scopeReview": { "$ref": "#/properties/scopeReview" }
+        }
+      }
+    },
     "sourceFiles": {
       "type": "array",
       "minItems": 1,
@@ -67,21 +96,59 @@
       "required": ["candidateKey", "baselineText", "baselineSha256", "appendText", "evaluationContextSha256", "proposals"],
       "properties": {
         "candidateKey": { "type": "string", "minLength": 1 },
+        "intendedCandidateKey": { "type": "string", "minLength": 1 },
         "baselineText": { "type": "string", "minLength": 1 },
         "baselineSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "appendText": { "type": ["string", "null"] },
         "evaluationContextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "assessmentContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["catalogRules", "sources"],
+          "properties": {
+            "catalogRules": { "type": "array", "items": { "$ref": "#/properties/rules/items" } },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["candidateKey", "category", "sourceRules"],
+                "properties": {
+                  "candidateKey": { "type": "string", "minLength": 1 },
+                  "category": { "enum": ["repository", "implementation", "testing", "documentation", "review-skill"] },
+                  "sourceRules": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "text", "meaning"],
+                      "properties": {
+                        "id": { "type": "string", "minLength": 1 },
+                        "text": { "type": "string", "minLength": 1 },
+                        "meaning": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "proposals": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["candidateKey", "baselineText", "proposedText", "retireHostedRuleIds"],
+            "required": ["candidateKey", "inPlan", "baselineText", "proposedText", "ruleTextSha256", "retireHostedRuleIds"],
             "properties": {
               "candidateKey": { "type": "string", "minLength": 1 },
+              "inPlan": { "type": "boolean" },
               "baselineText": { "type": "string", "minLength": 1 },
               "proposedText": { "type": "string", "minLength": 1 },
+              "ruleTextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
             }
           }
@@ -105,6 +172,23 @@
     }
   },
   "allOf": [
+    {
+      "if": { "properties": { "evaluationPhase": { "const": "relationships" } }, "required": ["evaluationPhase"] },
+      "then": { "required": ["evaluationContextSha256"], "not": { "required": ["editContext"] } },
+      "else": {
+        "if": { "properties": { "evaluationPhase": { "enum": ["scope", "issues"] } }, "required": ["evaluationPhase"] },
+        "then": {
+          "required": ["editContext"],
+          "if": { "properties": { "evaluationPhase": { "const": "issues" } } },
+          "then": { "required": ["scopeReview", "memberScopeReviews"] }
+        },
+        "else": {
+          "properties": { "editContext": { "required": ["assessmentContext"] } },
+          "if": { "required": ["evaluationPhase"] },
+          "then": { "required": ["editContext"] }
+        }
+      }
+    },
     {
       "if": { "not": { "required": ["editContext"] } },
       "then": { "properties": { "rules": { "minItems": 2 }, "relationships": { "minItems": 1 } } }

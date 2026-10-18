@@ -41,24 +41,6 @@ function Get-Sha256 {
     return Get-Sha256 -Bytes ([Text.Encoding]::UTF8.GetBytes([string]$Content))
 }
 
-function Get-EvaluatorJson {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
-
-    $trimmed = $Content.Trim()
-    if ($trimmed.StartsWith('```json', [StringComparison]::OrdinalIgnoreCase) -and $trimmed.EndsWith('```', [StringComparison]::Ordinal)) {
-        $trimmed = $trimmed.Substring(7, $trimmed.Length - 10).Trim()
-    }
-    elseif ($trimmed.StartsWith('```', [StringComparison]::Ordinal) -and $trimmed.EndsWith('```', [StringComparison]::Ordinal)) {
-        $trimmed = $trimmed.Substring(3, $trimmed.Length - 6).Trim()
-    }
-    $start = $trimmed.IndexOf('{')
-    $end = $trimmed.LastIndexOf('}')
-    if ($start -lt 0 -or $end -lt $start) {
-        throw 'Evaluator response does not contain a JSON object'
-    }
-    return $trimmed.Substring($start, $end - $start + 1)
-}
-
 function Write-JsonAtomically {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -171,6 +153,7 @@ $cacheIdentity = [ordered]@{
     protectedRulesSha256 = Get-Sha256 -Path $protectedRulesPath
     schemaSha256 = Get-Sha256 -Path $schemaPath
     promptSha256 = Get-Sha256 -Path $promptPath
+    nativeEvaluatorSha256 = Get-Sha256 -Path (Join-Path $PSScriptRoot 'Invoke-CopilotReconciliationStage.ps1')
     evaluator = $evaluatorIdentity
     model = $Model
     reasoningEffort = $ReasoningEffort
@@ -218,26 +201,15 @@ try {
         }
     }
     else {
-        $command = Get-Command $EvaluatorCommand -ErrorAction Stop
-        $attemptPrompt = 'Read manual-rule-relationship-input.json, manual-rule-relationship.schema.json, and ManualRuleRelationship-v4.md in the current directory. Write only the requested JSON object in your final response.'
-        $output = @(& $command.Source -C $runDirectory -p $attemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $Model --effort $ReasoningEffort --available-tools=view --output-format json 2>&1)
+        $nativeParameters = @{
+            Stage = 'manual-relationship'; InputPath = $payloadPath; SchemaPath = $runSchemaPath
+            PromptPath = $runPromptPath; OutputPath = $responsePath; EvaluatorCommand = $EvaluatorCommand
+            Model = $Model; ReasoningEffort = $ReasoningEffort
+        }
+        $output = @(& pwsh -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Invoke-CopilotReconciliationStage.ps1') @nativeParameters 2>&1)
         if ($LASTEXITCODE -ne 0) {
-            throw "Manual relationship evaluator exited with code $LASTEXITCODE"
+            throw "Manual relationship evaluator failed: $(($output | Out-String).Trim())"
         }
-        $assistantMessages = @($output | ForEach-Object {
-            $line = ([string]$_).Trim()
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                try { $event = $line | ConvertFrom-Json } catch { throw 'Manual relationship evaluator returned a non-JSONL event' }
-                if ($event.type -eq 'assistant.message' -and -not [string]::IsNullOrWhiteSpace([string]$event.data.content)) { $event.data }
-            }
-        })
-        if ($assistantMessages.Count -eq 0) {
-            throw 'Manual relationship evaluator did not return an assistant message'
-        }
-        if ([string]$assistantMessages[-1].model -cne $Model) {
-            throw "Manual relationship evaluator used model $($assistantMessages[-1].model) instead of $Model"
-        }
-        [IO.File]::WriteAllText($responsePath, ((Get-EvaluatorJson -Content ([string]$assistantMessages[-1].content)) + "`n"), [Text.UTF8Encoding]::new($false))
     }
 
     $resultJson = Get-Content -LiteralPath $responsePath -Raw

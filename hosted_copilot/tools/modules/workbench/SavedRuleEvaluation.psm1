@@ -43,4 +43,174 @@ function Get-SavedRuleAuthoritySha256 {
     })
 }
 
-Export-ModuleMember -Function Get-SavedRuleAuthoritySha256
+function Invoke-SavedRuleEvaluationProcess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [Parameter(Mandatory = $true)][Collections.IDictionary]$Parameters,
+        [Net.Sockets.Socket]$ClientSocket
+    )
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new('pwsh')
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-File', $ScriptPath)) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+    foreach ($key in $Parameters.Keys) {
+        if ($key -in @('EvaluatorScriptPath', 'AdjudicationEvaluatorScriptPath') -and [string]::IsNullOrWhiteSpace([string]$Parameters[$key])) { continue }
+        $startInfo.ArgumentList.Add("-$key")
+        $startInfo.ArgumentList.Add([string]$Parameters[$key])
+    }
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $started = $false
+    try {
+        if ($null -ne $ClientSocket -and $ClientSocket.Poll(0, [Net.Sockets.SelectMode]::SelectRead) -and $ClientSocket.Available -eq 0) {
+            throw [OperationCanceledException]::new('Scoped relationship check cancelled before its worker started')
+        }
+        $started = $process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        do {
+            $completed = $process.WaitForExit(100)
+            if ($null -ne $ClientSocket) {
+                try {
+                    $disconnected = $ClientSocket.Poll(0, [Net.Sockets.SelectMode]::SelectRead) -and $ClientSocket.Available -eq 0
+                }
+                catch [Net.Sockets.SocketException] {
+                    $disconnected = $true
+                }
+                if ($disconnected) {
+                    throw [OperationCanceledException]::new('Scoped relationship check cancelled because its client disconnected')
+                }
+            }
+        } while (-not $completed)
+        $output = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult()) -split '\r?\n'
+        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $Parameters.OutputPath -PathType Leaf)) {
+            throw (Get-EvaluatorFailureMessage -EvaluatorName 'Scoped relationship evaluator' -ExitCode $process.ExitCode -Output $output)
+        }
+    }
+    finally {
+        if ($started -and -not $process.HasExited) {
+            try { $process.Kill($true) }
+            catch [InvalidOperationException] { if (-not $process.HasExited) { throw } }
+            $process.WaitForExit()
+        }
+        $process.Dispose()
+    }
+}
+
+function Start-SavedRuleEvaluationRequest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Management.Automation.Runspaces.RunspacePool]$RunspacePool,
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [Parameter(Mandatory = $true)][Collections.IDictionary]$Parameters,
+        [Parameter(Mandatory = $true)][Net.Sockets.TcpClient]$Client
+    )
+
+    $worker = [Management.Automation.PowerShell]::Create()
+    try {
+        $worker.RunspacePool = $RunspacePool
+        $null = $worker.AddScript({
+            param($ModulePath, $ScriptPath, $Parameters, $ClientSocket)
+            Set-StrictMode -Version Latest
+            $ErrorActionPreference = 'Stop'
+            Import-Module $ModulePath
+            Invoke-SavedRuleEvaluationProcess -ScriptPath $ScriptPath -Parameters $Parameters -ClientSocket $ClientSocket
+        }).AddArgument($MyInvocation.MyCommand.Module.Path).AddArgument($ScriptPath).AddArgument($Parameters).AddArgument($Client.Client)
+        return [pscustomobject]@{
+            Worker = $worker
+            Completion = $worker.BeginInvoke()
+            Client = $Client
+            RequestPath = $Parameters.RequestPath
+            OutputPath = $Parameters.OutputPath
+        }
+    }
+    catch {
+        $worker.Dispose()
+        throw
+    }
+}
+
+function Remove-SavedRuleEvaluationRequest {
+    param([Parameter(Mandatory = $true)][object]$Request)
+
+    $Request.Worker.Dispose()
+    $Request.Client.Dispose()
+    foreach ($path in @($Request.RequestPath, $Request.OutputPath)) {
+        if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
+    }
+}
+
+function Receive-SavedRuleEvaluationRequests {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][Collections.Generic.List[object]]$Requests,
+        [Parameter(Mandatory = $true)][scriptblock]$WriteResponse
+    )
+
+    for ($index = $Requests.Count - 1; $index -ge 0; $index--) {
+        $request = $Requests[$index]
+        if (-not $request.Completion.IsCompleted) { continue }
+        try {
+            $response = $null
+            try {
+                $null = $request.Worker.EndInvoke($request.Completion)
+                $response = @{
+                    StatusCode = 200
+                    StatusText = 'OK'
+                    Body = [IO.File]::ReadAllBytes($request.OutputPath)
+                }
+            }
+            catch {
+                $exception = $_.Exception.GetBaseException()
+                if ($exception -is [OperationCanceledException]) {
+                    Write-Verbose $exception.Message
+                }
+                else {
+                    Write-Warning "Scoped relationship check failed: $($exception.Message)"
+                    $failureBody = [ordered]@{ error = [string]$exception.Message } | ConvertTo-Json -Compress
+                    $response = @{
+                        StatusCode = 500
+                        StatusText = 'Internal Server Error'
+                        Body = [Text.Encoding]::UTF8.GetBytes($failureBody)
+                    }
+                }
+            }
+            if ($null -ne $response) {
+                try {
+                    & $WriteResponse -Stream $request.Client.GetStream() @response -ContentType 'application/json; charset=utf-8' -IncludeBody $true
+                }
+                catch [IO.IOException] {
+                    Write-Verbose "Scoped relationship response connection closed: $($_.Exception.Message)"
+                }
+                catch [Net.Sockets.SocketException] {
+                    Write-Verbose "Scoped relationship response connection closed: $($_.Exception.Message)"
+                }
+            }
+        }
+        finally {
+            Remove-SavedRuleEvaluationRequest -Request $request
+            $Requests.RemoveAt($index)
+        }
+    }
+}
+
+function Stop-SavedRuleEvaluationRequests {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][Collections.Generic.List[object]]$Requests)
+
+    foreach ($request in $Requests) {
+        try { $request.Worker.Stop() }
+        finally { Remove-SavedRuleEvaluationRequest -Request $request }
+    }
+    $Requests.Clear()
+}
+
+Export-ModuleMember -Function Get-SavedRuleAuthoritySha256, Invoke-SavedRuleEvaluationProcess, Start-SavedRuleEvaluationRequest, Receive-SavedRuleEvaluationRequests, Stop-SavedRuleEvaluationRequests

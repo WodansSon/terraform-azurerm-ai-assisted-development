@@ -65,6 +65,7 @@ $requiredPaths = [ordered]@{
     ProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
     CacheSchemaPath = [IO.Path]::GetFullPath($CacheSchemaPath)
     RunSchemaPath = [IO.Path]::GetFullPath($RunSchemaPath)
+    SavedAssessmentSchemaPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/saved-rule-assessment.schema.json'))
 }
 foreach ($requiredPath in $requiredPaths.Values) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -88,6 +89,7 @@ foreach ($componentPath in $resolvedComponentPaths) {
         throw "Rule Issue adjudication input does not satisfy its schema: $componentPath"
     }
     $component = $componentJson | ConvertFrom-Json -DateKind String
+    if ($null -ne $component.PSObject.Properties['evaluationPhase']) { throw 'Partial adjudication phases are internal and cannot replace a complete component input' }
     if (-not $componentIds.Add([string]$component.componentId)) {
         throw "Rule Issue adjudication contains duplicate component ID: $($component.componentId)"
     }
@@ -155,7 +157,11 @@ $catalogSnapshot = Get-FileSnapshot -Path $requiredPaths.CatalogPath
 $protectedRulesSnapshot = Get-FileSnapshot -Path $requiredPaths.ProtectedRulesPath
 $contractSnapshot = Get-FileSnapshot -Path $requiredPaths.AdjudicationContractPath
 $stageContractPath = Join-Path $runDirectory 'rule-issue-adjudication-authority.json'
-Write-HierarchicalJsonAtomically -Path $stageContractPath -Value ([ordered]@{ contractContentSha256 = $contractSnapshot.Sha256; behaviorFiles = $behaviorAuthority.ToArray() })
+Write-HierarchicalJsonAtomically -Path $stageContractPath -Value ([ordered]@{
+    contractContentSha256 = $contractSnapshot.Sha256
+    behaviorFiles = $behaviorAuthority.ToArray()
+    savedRuleAssessmentSchema = Get-Content -LiteralPath $requiredPaths.SavedAssessmentSchemaPath -Raw | ConvertFrom-Json -Depth 100
+})
 $contractAuthoritySnapshot = Get-FileSnapshot -Path $stageContractPath
 $authority = [ordered]@{
     inputSetSha256 = Get-JsonSnapshotSha256 -Value $orderedComponents
@@ -197,10 +203,40 @@ try {
         param($Component, $Draft)
         Test-RuleIssueAdjudicationDraft -Component $Component -Draft $Draft
     }
-    $stageResult = Invoke-ReconciliationStageSet -Stage adjudication -Shards $shards -RunDirectory $runDirectory -CachePath $runCachePath -CacheSchemaPath $requiredPaths.CacheSchemaPath -ResultSchemaPath $requiredPaths.DraftSchemaPath -PromptPath $requiredPaths.PromptPath -CatalogPath $requiredPaths.CatalogPath -ProtectedRulesPath $requiredPaths.ProtectedRulesPath -ContractPath $stageContractPath -EvaluatorScriptPath $runEvaluatorPath -ResultValidator $resultValidator -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds 1000 -MaxParallelShards $MaxParallelShards -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes -InputLabel 'Rule Issue Groups' -InputCount $orderedComponents.Count -ShowProgress:(-not $Quiet)
+    $stageParameters = @{
+        RunDirectory = $runDirectory; CachePath = $runCachePath; PersistentCachePath = $persistentCachePath; ReadPersistentCache = $true; CacheSchemaPath = $requiredPaths.CacheSchemaPath
+        ResultSchemaPath = $requiredPaths.DraftSchemaPath; PromptPath = $requiredPaths.PromptPath
+        CatalogPath = $requiredPaths.CatalogPath; ProtectedRulesPath = $requiredPaths.ProtectedRulesPath; ContractPath = $stageContractPath
+        EvaluatorScriptPath = $runEvaluatorPath; ResultValidator = $resultValidator; EvaluatorCommand = $EvaluatorCommand
+        Model = $Model; ReasoningEffort = $ReasoningEffort; MaxRetries = $MaxRetries; RetryDelayMilliseconds = 1000
+        MaxParallelShards = $MaxParallelShards; EvaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes
+        InputLabel = 'Rule Issue Groups'; InputCount = $orderedComponents.Count; ShowProgress = (-not $Quiet)
+    }
+    $artifactBytes = $catalogSnapshot.Bytes.Length + $protectedRulesSnapshot.Bytes.Length + (Get-Item -LiteralPath $stageContractPath).Length + (Get-Item -LiteralPath $requiredPaths.PromptPath).Length + (Get-Item -LiteralPath $requiredPaths.DraftSchemaPath).Length
+    $boundedDrafts = @{}
+    $ordinaryShards = @()
+    $stageEntries = [Collections.Generic.List[object]]::new()
+    $stageResult = [pscustomobject]@{ results = @(); cachedCount = 0; evaluatedCount = 0 }
+    foreach ($shard in $shards) {
+        if ($null -ne $shard.payload.PSObject.Properties['editContext']) {
+            $bounded = Invoke-BoundedSavedRuleAdjudication -Component $shard.payload -StageParameters $stageParameters -InputSchemaPath $requiredPaths.InputSchemaPath -ArtifactBytes $artifactBytes
+            $boundedDrafts[[string]$shard.payload.componentId] = $bounded.draft
+            $stageEntries.AddRange([object[]]@($bounded.results))
+            $stageResult.cachedCount += $bounded.cachedCount
+            $stageResult.evaluatedCount += $bounded.evaluatedCount
+        }
+        else { $ordinaryShards += $shard }
+    }
+    if ($ordinaryShards.Count -gt 0) {
+        $ordinaryRun = Invoke-ReconciliationStageSet @stageParameters -Stage adjudication -Shards $ordinaryShards
+        $stageEntries.AddRange([object[]]@($ordinaryRun.results))
+        $stageResult.cachedCount += $ordinaryRun.cachedCount
+        $stageResult.evaluatedCount += $ordinaryRun.evaluatedCount
+    }
+    $stageResult.results = $stageEntries.ToArray()
     $draftsByComponentId = @{}
-    foreach ($stageEntry in @($stageResult.results)) {
-        $draft = $stageEntry.result
+    $completedDrafts = @($ordinaryShards | ForEach-Object { $key = $_.shardKey; @($stageResult.results | Where-Object shardKey -CEQ $key)[0].result }) + @($boundedDrafts.Values)
+    foreach ($draft in $completedDrafts) {
         $componentId = [string]$draft.componentId
         if ($draftsByComponentId.ContainsKey($componentId)) {
             throw "Hierarchical Rule Issue adjudication produced duplicate component ID: $componentId"
@@ -218,7 +254,6 @@ try {
     }
     Write-HierarchicalJsonAtomically -Path $resolvedOutputPath -Value $resultSet
     Write-HierarchicalReconciliationRunManifest -Path $manifestPath -SchemaPath $requiredPaths.RunSchemaPath -RunId $runId -CreatedAt $runCreatedAt -Authority $authority -StageResults @($stageResult.results) | Out-Null
-    Copy-HierarchicalFileAtomically -SourcePath $runCachePath -DestinationPath $persistentCachePath
     $succeeded = $true
 }
 catch {

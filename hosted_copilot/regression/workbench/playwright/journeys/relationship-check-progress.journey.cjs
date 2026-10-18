@@ -1,7 +1,7 @@
 const { openWorkbench } = require("../helpers/workbench.cjs");
-const { createSavedRuleEvaluation } = require("../helpers/saved-rule-evaluation.cjs");
+const { readSavedRuleRequest, createSavedRuleEvaluation } = require("../helpers/saved-rule-evaluation.cjs");
 
-const behaviorIds = ["WB-UX-RELATIONSHIP-001", "WB-UX-RELATIONSHIP-002", "WB-UX-RELATIONSHIP-003", "WB-UX-RELATIONSHIP-004"];
+const behaviorIds = ["WB-UX-RELATIONSHIP-001", "WB-UX-RELATIONSHIP-002", "WB-UX-RELATIONSHIP-003", "WB-UX-RELATIONSHIP-004", "WB-UX-RELATIONSHIP-005", "WB-UX-RELATIONSHIP-006"];
 
 async function verifyWaitingPanels(page, assert, setZoom) {
   const initialRatio = await page.evaluate(() => devicePixelRatio);
@@ -92,9 +92,22 @@ async function verifyWaitingPanels(page, assert, setZoom) {
           try {
             for (const phase of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.125, 1.5]) {
               animation.currentTime = phase * duration;
-              const positions = getComputedStyle(frame, "::before").maskPosition.split(",").map((position) => position.trim().split(/\s+/).map(parseFloat));
+              const beforeStyle = getComputedStyle(frame, "::before");
+              const dimensions = [parseFloat(beforeStyle.width), parseFloat(beforeStyle.height)];
+              const sizes = beforeStyle.maskSize.split(",").map((size) => size.trim().split(/\s+/).map(parseFloat));
+              const positions = beforeStyle.maskPosition.split(",").map((position, index) => {
+                const values = position.trim().match(/calc\([^)]+\)|\S+/g);
+                return values.map((value, axis) => {
+                  const available = dimensions[axis] - sizes[index][axis];
+                  if (/^-?[\d.]+px$/.test(value)) return parseFloat(value);
+                  if (/^-?[\d.]+%$/.test(value)) return parseFloat(value) * available / 100;
+                  const match = value.match(/^calc\((-?[\d.]+)% ([+-]) ([\d.]+)px\)$/);
+                  if (!match) throw new Error(`Unexpected waiting mask position: ${value}`);
+                  return Number(match[1]) * available / 100 + (match[2] === "-" ? -1 : 1) * Number(match[3]);
+                });
+              });
               const distance = (phase % 1) * length;
-              const expected = [[distance, 0], [width - band, distance - width], [-height - distance, height - band], [0, -distance]];
+              const expected = [[distance, 0], [dimensions[0] - band, distance - width], [-height - distance, dimensions[1] - band], [0, -distance]];
               const active = Array.from({ length: 512 }, (_, index) => {
                 const point = (index + 0.5) * length / 512;
                 if (point < width) return opacity(0, modulo(point - positions[0][0])) > 0.0001;
@@ -149,6 +162,53 @@ async function verifyWaitingPanels(page, assert, setZoom) {
         assert(panel.duration === 3500 && panel.phases.every(Boolean) && panel.maskLayers === 4 && panel.repeat === "repeat-x, repeat-y, repeat-x, repeat-y", `Waiting chase does not follow one continuous perimeter phase at ${scale}x scale: ${JSON.stringify(panel)}`);
         assert(panel.colors.every(Boolean) && panel.sharedPalette && panel.noInlineStyles, `Waiting colors do not cover equal perimeter quarters under the production content policy at ${scale}x scale: ${JSON.stringify(panel)}`);
       }
+      const paintedPanel = page.locator(".waiting-panel-test-fixture .waiting-panel").first();
+      const paintedEdges = [];
+      try {
+        for (let edge = 0; edge < 4; edge++) {
+          const bounds = await paintedPanel.evaluate((panel, edge) => {
+            const style = getComputedStyle(panel);
+            const width = parseFloat(style.getPropertyValue("--waiting-panel-width"));
+            const height = parseFloat(style.getPropertyValue("--waiting-panel-height"));
+            const points = [width / 2, width + height / 2, 1.5 * width + height, 2 * width + 1.5 * height];
+            const animation = panel.getAnimations().find((item) => item.animationName === "waiting-panel-chase");
+            animation.pause();
+            animation.currentTime = ((points[edge] / (2 * (width + height)) - 0.1 + 1) % 1) * 3500;
+            const frame = panel.querySelector(".waiting-panel-border").getBoundingClientRect();
+            return { left: frame.left, top: frame.top, right: frame.right, bottom: frame.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight };
+          }, edge);
+          const image = await page.screenshot();
+          paintedEdges.push(await page.evaluate(async ({ base64, edge, bounds }) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${base64}`;
+            await image.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const context = canvas.getContext("2d");
+            context.drawImage(image, 0, 0);
+            const pixels = context.getImageData(0, 0, image.width, image.height).data;
+            const scaleX = image.width / bounds.viewportWidth, scaleY = image.height / bounds.viewportHeight;
+            const leftEdge = Math.round(bounds.left * scaleX), rightEdge = Math.round(bounds.right * scaleX);
+            const topEdge = Math.round(bounds.top * scaleY), bottomEdge = Math.round(bounds.bottom * scaleY);
+            const regions = [[leftEdge + 10, topEdge - 1, rightEdge - 10, topEdge + 2],
+              [rightEdge - 2, topEdge + 10, rightEdge + 1, bottomEdge - 10],
+              [leftEdge + 10, bottomEdge - 2, rightEdge - 10, bottomEdge + 1],
+              [leftEdge - 1, topEdge + 10, leftEdge + 2, bottomEdge - 10]];
+            const [left, top, right, bottom] = regions[edge];
+            let chroma = 0;
+            for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+              const offset = (y * image.width + x) * 4;
+              const rgb = pixels.slice(offset, offset + 3);
+              chroma = Math.max(chroma, Math.max(...rgb) - Math.min(...rgb));
+            }
+            return chroma;
+          }, { base64: image.toString("base64"), edge, bounds }));
+        }
+      } finally {
+        await paintedPanel.evaluate((panel) => panel.getAnimations().find((item) => item.animationName === "waiting-panel-chase").play());
+      }
+      assert(paintedEdges.every((chroma) => chroma > 40), `The colored chase does not paint every actual border at ${scale}x zoom: ${JSON.stringify(paintedEdges)}`);
     }
     await page.evaluate(() => {
       const fixture = globalThis.__waitingPanelFixture;
@@ -194,10 +254,16 @@ async function run({ page, baseUrl, assert, playback }) {
   const originalText = await editor.inputValue();
   const setup = await page.evaluate(() => {
     const candidate = getActiveCandidate();
+    updateDecision(candidate, {
+      action: getAllowedActions(candidate).includes("update") ? "update" : "add",
+      rationale: "Validate the edited wording before promotion.",
+      ...createPlanMembership("manual")
+    });
+    renderAll();
     const relatedRule = state.bundle.catalog.rules.find((rule) => rule.status === "active" && rule.id !== getEffectiveHostedRuleId(candidate));
     if (!relatedRule) throw new Error("Relationship progress fixture requires an active related Hosted rule");
     return {
-      candidate, relatedRule, candidateKey: candidate.key, originalAction: getDecision(candidate).action,
+      candidate, relatedRule, comparisonCandidates: state.assessedCandidates, candidateKey: candidate.key, originalAction: getDecision(candidate).action,
       relatedCandidateKeys: state.assessedCandidates.filter((item) => (item.catalogMapping.hostedRuleId || item.recommendation.hostedId) === relatedRule.id).map((item) => item.key)
     };
   });
@@ -237,6 +303,65 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(await statusPanel.getAttribute("role") === "status" && await statusPanel.getAttribute("aria-live") === "polite" && await statusPanel.getAttribute("aria-atomic") === "true", "Relationship progress does not expose a polite atomic live status");
   assert(await progress.locator(".waiting-panel-spinner").getAttribute("aria-hidden") === "true" && await progress.locator(".waiting-panel-border").getAttribute("aria-hidden") === "true" && await progress.locator(".waiting-panel-glow").getAttribute("aria-hidden") === "true", "Decorative relationship animations are exposed to assistive technology");
   assert((await progress.textContent()).includes("Checking rule relationships..."), "Relationship progress does not describe the active work");
+  const elapsed = progress.locator(".waiting-panel-elapsed");
+  assert(/^\[Elapsed: \d{2}:\d{2}:\d{2}\]$/.test(await elapsed.textContent()), "Elapsed time does not use HH:MM:SS");
+  assert(await elapsed.getAttribute("role") === "timer" && await elapsed.getAttribute("aria-live") === "off", "Elapsed time repeatedly announces live status");
+  const firstElapsed = await elapsed.textContent();
+  await page.waitForFunction((previous) => document.querySelector(".manual-relationship-progress .waiting-panel-elapsed").textContent !== previous, firstElapsed);
+  const viewport = page.viewportSize();
+  await page.locator("#promotion-plan-stage").click();
+  const pendingPill = page.locator(`[data-plan-detail="${setup.candidateKey}"]`);
+  assert(await pendingPill.locator(":scope > span").textContent() === "Checking"
+    && (await pendingPill.getAttribute("aria-label")).includes("Checking rule relationships")
+    && (await pendingPill.getAttribute("data-workbench-tooltip")).includes("Checking rule relationships"),
+  "Pending Plan readiness does not retain compact text and full accessible validation context");
+  assert(await pendingPill.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-search",
+    "Pending Plan readiness does not use the search icon");
+  for (const width of [1920, 1180, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const geometry = await pendingPill.evaluate((button) => {
+      const cell = button.closest("td"), controls = cell.nextElementSibling;
+      const b = button.getBoundingClientRect(), c = cell.getBoundingClientRect(), next = controls.getBoundingClientRect();
+      const icons = [button.querySelector("svg"), controls.querySelector("svg")];
+      return {
+        contained: b.left >= c.left && b.right <= next.left && b.bottom <= c.bottom,
+        iconsVisible: icons.every((svg) => {
+          const bounds = svg.getBBox(), rect = svg.getBoundingClientRect();
+          return bounds.width > 0 && bounds.height > 0 && rect.width > 0 && rect.height > 0;
+        })
+      };
+    });
+    assert(geometry.contained && geometry.iconsVisible, `Pending Plan controls are invisible or overlap at ${width}px: ${JSON.stringify(geometry)}`);
+  }
+  await page.setViewportSize(viewport);
+  await pendingPill.click();
+  await progress.waitFor({ state: "visible" });
+  await page.waitForFunction(() => document.activeElement?.hasAttribute("data-manual-relationship-progress"));
+  assert(relationshipRequestCount === 1 && await page.evaluate(() => activeRelationshipChecks.size === 1),
+    "Plan progress navigation restarted or duplicated validation");
+  for (const width of [1180, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await statusPanel.evaluate((panel) => {
+      const button = panel.querySelector("[data-cancel-relationship-check]");
+      const body = panel.querySelector(".waiting-panel-body");
+      const timer = panel.querySelector(".waiting-panel-elapsed");
+      const p = panel.getBoundingClientRect(), b = button.getBoundingClientRect();
+      const style = getComputedStyle(panel), buttonStyle = getComputedStyle(button);
+      return {
+        transparent: style.backgroundColor === "rgba(0, 0, 0, 0)" && style.backgroundImage === "none",
+        compact: Math.abs(b.height - 28) < 1 && parseFloat(buttonStyle.paddingLeft) === 14 && parseFloat(buttonStyle.paddingRight) === 14,
+        blue: buttonStyle.backgroundColor === "rgb(31, 98, 132)",
+        timerWithText: timer.parentElement.classList.contains("waiting-panel-copy"),
+        fits: b.right <= p.right && b.bottom <= p.bottom && body.scrollWidth <= body.clientWidth + 1
+          && document.documentElement.scrollWidth === document.documentElement.clientWidth,
+        noInlineStyles: !panel.hasAttribute("style") && !panel.querySelector("[style]")
+      };
+    });
+    assert(Object.values(layout).every(Boolean), `Waiting control differs from the approved layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
+  await page.setViewportSize(viewport);
+  await progress.locator("[data-cancel-relationship-check]").hover();
+  assert(await progress.locator("[data-cancel-relationship-check]").evaluate((button) => getComputedStyle(button).backgroundColor === "rgb(41, 122, 160)"), "Cancel does not use the shared blue hover highlight");
   const motion = await progress.evaluate((element) => ({
     spinner: getComputedStyle(element.querySelector(".waiting-panel-spinner")).animationName,
     border: getComputedStyle(element.querySelector(".waiting-panel")).animationName,
@@ -340,7 +465,9 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(scenario.palette.base === "140,140,140" && scenario.palette.soft === "178,178,178" && scenario.palette.bright === "216,216,216" && scenario.palette.peak === "255,255,255", `The character chase does not use the accepted muted-gray palette: ${JSON.stringify(scenario.palette)}`);
   }
 
+  const elapsedStart = await page.evaluate(() => activeRelationshipChecks.get(getActiveCandidate().key).startedAt);
   await page.evaluate(() => renderAssessment());
+  assert(await page.evaluate((startedAt) => activeRelationshipChecks.get(getActiveCandidate().key).startedAt === startedAt, elapsedStart), "Details rerender restarted the elapsed clock");
   assert(await progress.isVisible() && await progress.count() === 1, "Details rerender lost or duplicated the running relationship progress");
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reducedMotion = await progress.evaluate((element) => ({
@@ -412,7 +539,7 @@ async function run({ page, baseUrl, assert, playback }) {
   const failure = await waitForCompletion();
   assert(failure.status === "failed" && !failure.active, "Failed relationship check left the job running");
   assert(await page.locator(".manual-relationship-reviews").count() === 0, "Failed relationship check restored stale resolution controls");
-  assert(await page.getByText("Relationship check failed with 503", { exact: true }).isVisible(), "Failed relationship check did not expose its error");
+  assert(await page.locator("[data-manual-relationship-failure] .error-banner-message > span").textContent() === "Synthetic relationship evaluator failure", "Failed relationship check did not expose the evaluator diagnostic in its persistent inline error");
   assert(await page.getByRole("button", { name: "Retry proposed Hosted rule relationship check", exact: true }).isEnabled(), "Failed relationship check lost its retry control");
 
   const retryRoute = await beginCheck();
@@ -437,6 +564,202 @@ async function run({ page, baseUrl, assert, playback }) {
   await mismatchRoute.fulfill({ json: mismatch });
   const rejected = await waitForCompletion();
   assert(rejected.status === "failed", "An incorrect text hash was accepted as current adjudication");
+
+  const evaluationCount = await page.evaluate(() => state.session.savedRuleEvaluations.length);
+  const cancelledText = `${originalText} Cancelled check wording.`;
+  await editor.fill(cancelledText);
+  const cancelledRoute = await beginCheck();
+  await page.evaluate(() => { globalThis.__cancelledCheck = activeRelationshipChecks.get(getActiveCandidate().key); });
+  await progress.locator("[data-cancel-relationship-check]").click();
+  await waitForCompletion();
+  assert(await page.evaluate(() => globalThis.__cancelledCheck.controller.signal.aborted), "Cancel did not abort the active transport");
+  await cancelledRoute.fulfill({ json: result(cancelledRoute) });
+  const cancelled = await page.evaluate(() => {
+    const candidate = getActiveCandidate();
+    const check = getManualRelationshipCheck(candidate);
+    delete globalThis.__cancelledCheck;
+    return { text: getDecision(candidate).proposedText, required: requiresManualRelationshipCheck(candidate),
+      failed: check?.status === "failed", count: state.session.savedRuleEvaluations.length };
+  });
+  assert(cancelled.text === cancelledText && cancelled.required && !cancelled.failed && cancelled.count === evaluationCount,
+    `Cancellation lost wording, accepted a late result, or manufactured an evaluation failure: ${JSON.stringify(cancelled)}`);
+  assert(await save.isEnabled() && await progress.isHidden(), "Cancellation did not clear progress and leave rechecking available");
+  await openWorkbench(page, baseUrl);
+  await page.evaluate((key) => { selectCandidate(key); showCandidatePane("details"); }, setup.candidateKey);
+  assert(await editor.inputValue() === cancelledText && await save.isEnabled() && await progress.isHidden(), "Cancelled wording or retry state was not preserved after reload");
+
+  const codeOwnerIdentity = await page.evaluate(() => getValidatedCodeOwnerIdentity());
+  assert(Boolean(codeOwnerIdentity), "Bulk Undo validation requires the normal authenticated maintainer fixture");
+  await page.route("**/runtime-config", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), maintainerIdentity: codeOwnerIdentity } });
+  });
+  const warningCandidate = await page.evaluate(({ candidateKey, relatedRuleId }) => {
+    const candidate = state.assessedCandidates.find((item) => !getDecision(item).inPlan
+      && item.catalogMapping.state === "active"
+      && ![getEffectiveHostedRuleId(state.candidates.find((item) => item.key === candidateKey)), relatedRuleId].includes(getEffectiveHostedRuleId(item)));
+    if (!candidate) throw new Error("Undo validation fixtures require a separate mapped candidate");
+    updateDecision(candidate, {
+      action: "update",
+      proposedText: `${candidate.recommendation.ruleText} Separate wording needing review.`
+    });
+    selectCandidate(candidate.key);
+    showCandidatePane("details");
+    return candidate;
+  }, { candidateKey: setup.candidateKey, relatedRuleId: setup.relatedRule.id });
+  const warningText = `${warningCandidate.recommendation.ruleText} Separate wording needing review.`;
+  await editor.fill(warningText);
+  const warningRoute = await beginCheck();
+  await warningRoute.fulfill({ json: createSavedRuleEvaluation(warningRoute, {
+    candidate: warningCandidate,
+    comparisonCandidates: setup.comparisonCandidates,
+    scopeReview: {
+      disposition: "uncertain", ownerRuleId: null,
+      baselineQuote: warningCandidate.recommendation.ruleText, proposalQuote: warningText,
+      rationale: "Review the scope of this separate candidate.",
+      wordingStatus: "acceptable", wordingRationale: "The separate wording expresses an enforceable obligation."
+    }
+  }) });
+  await page.waitForFunction((key) => !activeRelationshipChecks.has(key), warningCandidate.key);
+  const warningState = await page.evaluate((key) => ({
+    status: state.session.manualRelationshipChecks[key]?.status,
+    error: state.session.manualRelationshipChecks[key]?.errorMessage,
+    attention: getRuleValidationAttention(state.candidates.find((item) => item.key === key))?.reason
+  }), warningCandidate.key);
+  assert(warningState.status === "current" && warningState.attention === "wording",
+    `Separate warning fixture did not complete real validation: ${JSON.stringify(warningState)}`);
+  const warningSnapshot = await page.evaluate((key) => JSON.stringify({
+    decision: state.session.decisions[key],
+    check: state.session.manualRelationshipChecks[key]
+  }), warningCandidate.key);
+
+  for (const undo of ["row", "manual", "bulk", "all", "bulk-operation"]) {
+    await page.evaluate(async ({ key, originalAction, text, undo }) => {
+      const candidate = state.candidates.find((item) => item.key === key);
+      const bulk = ["bulk", "bulk-operation"].includes(undo);
+      const operationId = bulk ? crypto.randomUUID() : null;
+      if (bulk) state.session.bulkOperations.push({
+        id: operationId, createdAt: toUtcTimestamp(), action: originalAction, candidateKeys: [key]
+      });
+      saveDecision(candidate, {
+        ...getDecision(candidate), action: originalAction,
+        proposedText: text, rationale: "Validate this saved draft before promotion.",
+        ...createPlanMembership(bulk ? "bulk" : "manual", operationId)
+      });
+      await persistencePromise;
+      switchView("catalog");
+      setWorkspaceTab("candidate-sources");
+      selectCandidate(key);
+      showCandidatePane("details");
+    }, { key: setup.candidateKey, originalAction: setup.originalAction, text: `${originalText} Undo ${undo} check.`, undo });
+    const undoRoute = await beginCheck();
+    await page.evaluate((key) => { globalThis.__undoCheck = activeRelationshipChecks.get(key); }, setup.candidateKey);
+    try {
+      if (undo === "row") {
+        await page.evaluate((requestId) => {
+          const original = validateSavedRuleEvaluation;
+          globalThis.__undoValidationRace = { original, waiting: false, finished: false };
+          validateSavedRuleEvaluation = async (...args) => {
+            await original(...args);
+            if (args[1].requestId !== requestId) return;
+            globalThis.__undoValidationRace.waiting = true;
+            await new Promise((resolve) => { globalThis.__undoValidationRace.release = resolve; });
+            globalThis.__undoValidationRace.finished = true;
+          };
+        }, readSavedRuleRequest(undoRoute).requestId);
+        await undoRoute.fulfill({ json: result(undoRoute) });
+        await page.waitForFunction(() => globalThis.__undoValidationRace.waiting);
+      }
+      await page.locator("#promotion-plan-stage").click();
+      const undoButton = page.locator(`[data-plan-undo="${setup.candidateKey}"]`);
+      assert(await undoButton.isEnabled()
+        && await undoButton.getAttribute("aria-label") === "Cancel validation and undo this candidate"
+        && await undoButton.getAttribute("data-workbench-tooltip") === "Cancel validation and undo this candidate"
+        && await undoButton.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-discard",
+      `${undo}: running validation changed or disabled the Undo action`);
+      if (undo === "row") await undoButton.click();
+      else if (undo === "bulk-operation") await page.evaluate(() => undoBulkOperation(getLatestBulkOperation().id));
+      else {
+        await page.locator("#plan-undo-trigger").click();
+        await page.locator(`[data-plan-undo-scope="${undo}"]`).click();
+      }
+      await page.evaluate(() => persistencePromise);
+      await page.waitForFunction((key) => !state.session.decisions[key] && !activeRelationshipChecks.has(key), setup.candidateKey);
+      const reset = await page.evaluate(({ key, warningKey }) => {
+        const candidate = state.candidates.find((item) => item.key === key);
+        const warning = state.candidates.find((item) => item.key === warningKey);
+        return {
+          aborted: globalThis.__undoCheck.controller.signal.aborted,
+          originalText: getDecision(candidate).proposedText,
+          metadataCleared: !state.session.manualRelationshipChecks[key]
+            && !state.session.savedRuleEvaluations.some((evaluation) => evaluation.candidateKey === key),
+          warning: JSON.stringify({ decision: state.session.decisions[warningKey], check: state.session.manualRelationshipChecks[warningKey] }),
+          warningVisible: getCandidateDecoration(warning)?.status === "needs-input"
+            && getValidationProblems().some((problem) => problem.candidateKey === warningKey)
+            && getRuleValidationAttention(warning)?.reason === "wording"
+        };
+      }, { key: setup.candidateKey, warningKey: warningCandidate.key });
+      assert(reset.aborted && reset.originalText === originalText && reset.metadataCleared,
+        `${undo}: Undo did not cancel and completely reset its own saved draft: ${JSON.stringify(reset)}`);
+      assert(reset.warning === warningSnapshot && reset.warningVisible,
+        `${undo}: Undo cleared another candidate's saved warning or decoration: ${JSON.stringify({ metadataPreserved: reset.warning === warningSnapshot, warningVisible: reset.warningVisible })}`);
+      assert(await page.locator(`[data-plan-row="${setup.candidateKey}"]`).count() === 0, `${undo}: Undo retained its Plan row`);
+
+      if (undo === "row") {
+        await page.evaluate(({ key, proposedText, action }) => {
+          updateDecision(state.candidates.find((item) => item.key === key), { action, proposedText });
+          switchView("catalog");
+          setWorkspaceTab("candidate-sources");
+          selectCandidate(key);
+          showCandidatePane("details");
+        }, { key: setup.candidateKey, proposedText: `${originalText} Replacement check after Undo.`, action: setup.originalAction });
+        await editor.fill(`${originalText} Replacement check after Undo.`);
+        const replacementRoute = await beginCheck();
+        await page.evaluate((key) => {
+          globalThis.__replacementCheck = activeRelationshipChecks.get(key);
+          validateSavedRuleEvaluation = globalThis.__undoValidationRace.original;
+          globalThis.__undoValidationRace.release();
+        }, setup.candidateKey);
+        await page.waitForFunction(() => globalThis.__undoValidationRace.finished);
+        const replacement = await page.evaluate((key) => ({
+          stillActive: activeRelationshipChecks.get(key) === globalThis.__replacementCheck,
+          notAborted: !globalThis.__replacementCheck.controller.signal.aborted,
+          stillPending: state.session.manualRelationshipChecks[key]?.status === "pending",
+          noDiscardedResult: !state.session.savedRuleEvaluations.some((evaluation) => evaluation.candidateKey === key)
+        }), setup.candidateKey);
+        assert(Object.values(replacement).every(Boolean), `Discarded validation overwrote or removed its replacement: ${JSON.stringify(replacement)}`);
+        assert(await progress.isVisible() && await save.isDisabled(), "Discarded validation hid replacement progress or enabled a duplicate request");
+        await replacementRoute.fulfill({ json: result(replacementRoute) });
+        const completed = await waitForCompletion();
+        assert(completed.status === "current" && !completed.active, "A replacement validation could not complete after Undo");
+        await page.locator("#promotion-plan-stage").click();
+        assert(await page.locator(`[data-plan-undo="${setup.candidateKey}"]`).count() === 0, "Replacement validation silently re-added the reset candidate to the Plan");
+        await page.evaluate(async (key) => { await resetCandidate(state.candidates.find((item) => item.key === key)); }, setup.candidateKey);
+      } else {
+        await undoRoute.fulfill({ json: result(undoRoute) });
+      }
+      await page.evaluate(() => persistencePromise);
+      assert(await page.evaluate((key) => !state.session.decisions[key]
+        && !state.session.manualRelationshipChecks[key]
+        && !state.session.savedRuleEvaluations.some((evaluation) => evaluation.candidateKey === key), setup.candidateKey),
+      `${undo}: a late cancellation or result restored discarded draft state`);
+    } finally {
+      await page.evaluate(() => {
+        if (globalThis.__undoValidationRace) {
+          validateSavedRuleEvaluation = globalThis.__undoValidationRace.original;
+          globalThis.__undoValidationRace.release?.();
+          delete globalThis.__undoValidationRace;
+        }
+        delete globalThis.__undoCheck;
+        delete globalThis.__replacementCheck;
+      });
+    }
+  }
+  await openWorkbench(page, baseUrl);
+  assert(await page.evaluate(({ key, warningKey, warningSnapshot }) => !state.session.decisions[key]
+    && !state.session.manualRelationshipChecks[key]
+    && JSON.stringify({ decision: state.session.decisions[warningKey], check: state.session.manualRelationshipChecks[warningKey] }) === warningSnapshot,
+  { key: setup.candidateKey, warningKey: warningCandidate.key, warningSnapshot }), "Reload restored an undone draft or lost another candidate's warning");
 }
 
 module.exports = { name: "relationship check progress", behaviorIds, viewport: { width: 1180, height: 900 }, run };

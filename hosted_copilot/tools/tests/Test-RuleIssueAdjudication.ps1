@@ -21,6 +21,26 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-issue-adjudication-te
 $null = New-Item -ItemType Directory -Path $root -Force
 $hash = 'a' * 64
 
+function Set-SavedFixtureProposal {
+    param([object]$Component, [string]$CandidateKey, [string]$Text)
+
+    $proposal = @($Component.editContext.proposals | Where-Object candidateKey -CEQ $CandidateKey)[0]
+    $operation = @($Component.operations | Where-Object candidateKey -CEQ $CandidateKey)[0]
+    $rule = @($Component.rules | Where-Object id -CEQ $operation.ruleId)[0]
+    $proposal.proposedText = $Text
+    $proposal.ruleTextSha256 = Get-Sha256 -Content $Text
+    $operation.proposedText = $Text
+    $rule.text = $Text
+    $rule.contentSha256 = $proposal.ruleTextSha256
+    $Component.componentId = 'saved:' + $rule.id
+    $Component.editContext.candidateKey = $CandidateKey
+    $Component.editContext.baselineText = $proposal.baselineText
+    $Component.editContext.baselineSha256 = Get-Sha256 -Content ([string]$proposal.baselineText)
+    $Component.editContext.appendText = if ($Text.StartsWith([string]$proposal.baselineText, [StringComparison]::Ordinal)) { $Text.Substring(([string]$proposal.baselineText).Length) } else { $null }
+    $Component.editContext.evaluationContextSha256 = '0' * 64
+    $Component.editContext.evaluationContextSha256 = Get-JsonSnapshotSha256 -Value $Component -Depth 100
+}
+
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Hosted Rule Issue adjudication'
 }
@@ -98,7 +118,11 @@ try {
         candidateKey = $saved.operations[0].candidateKey; baselineText = $baseline
         baselineSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($baseline))).ToLowerInvariant()
         appendText = ' Additional maintainer wording.'; evaluationContextSha256 = 'd' * 64
-        proposals = @([ordered]@{ candidateKey = $saved.operations[0].candidateKey; baselineText = $baseline; proposedText = $saved.rules[0].text; retireHostedRuleIds = @() })
+        assessmentContext = [ordered]@{
+            catalogRules = @()
+            sources = @([ordered]@{ candidateKey = $saved.operations[0].candidateKey; category = 'implementation'; sourceRules = @([ordered]@{ id = 'SOURCE-003'; text = $baseline; meaning = $baseline }) })
+        }
+        proposals = @([ordered]@{ candidateKey = $saved.operations[0].candidateKey; inPlan = $false; baselineText = $baseline; proposedText = $saved.rules[0].text; ruleTextSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([string]$saved.rules[0].text))).ToLowerInvariant(); retireHostedRuleIds = @() })
     }
     $savedPath = Join-Path $root 'saved-zero.json'
     [IO.File]::WriteAllText($savedPath, ($saved | ConvertTo-Json -Depth 100))
@@ -117,14 +141,16 @@ try {
     $saved.operations[0].proposedText = $saved.rules[0].text
     $saved.editContext.appendText = ' Grouped review is required.'
     $saved.editContext.proposals[0].proposedText = $saved.rules[0].text
+    $saved.editContext.proposals[0].ruleTextSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([string]$saved.rules[0].text))).ToLowerInvariant()
     [IO.File]::WriteAllText($savedPath, ($saved | ConvertTo-Json -Depth 100))
     $savedParameters.OutputPath = Join-Path $root 'saved-grouped-result.json'
     $null = & $runnerPath @savedParameters
     $grouped = Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
     $validDraft = $grouped.components[0]
     Add-TestResult -Name 'saved-edit-extractive-recommendation' -Passed ($validDraft.issues[0].recommendedMaintainerAction.operations[0].proposedText -ceq $baseline -and $validDraft.issues[0].recommendedMaintainerAction.operations[0].textSource -ceq 'baseline') -Detail 'The recommendation preserves the complete reconciled baseline rather than its shorter historical summary.'
+    Add-TestResult -Name 'saved-edit-complete-reassessment' -Passed (@($validDraft.assessments).Count -eq 1 -and $validDraft.assessments[0].ruleTextSha256 -ceq $saved.editContext.proposals[0].ruleTextSha256 -and $validDraft.assessments[0].selectionFactors.severity -eq 5 -and $validDraft.assessments[0].selectionFactors.redundancy -eq $validDraft.assessments[0].existingCoverage.score) -Detail 'The result includes independently refreshed scoring, rationale, recommendation, applicability, and coverage bound to the complete saved wording.'
     $componentObject = ($saved | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
-    foreach ($case in @('stale-context', 'invented-quote', 'truncated-baseline', 'invented-obligation', 'silent-retirement')) {
+    foreach ($case in @('stale-context', 'invented-quote', 'truncated-baseline', 'invented-obligation', 'silent-retirement', 'missing-assessment', 'stale-assessment', 'duplicate-assessment', 'foreign-assessment', 'invalid-score', 'coverage-score-mismatch', 'foreign-coverage', 'invalid-recommendation')) {
         $invalid = ($validDraft | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
         switch ($case) {
             'stale-context' { $invalid.evaluationContextSha256 = 'e' * 64 }
@@ -132,10 +158,234 @@ try {
             'truncated-baseline' { $invalid.issues[0].recommendedMaintainerAction.operations[0].proposedText = 'Examples must be functional.' }
             'invented-obligation' { $invalid.issues[0].recommendedMaintainerAction.operations[0].proposedText += ' Every example must declare seventeen input variables.' }
             'silent-retirement' { $invalid.issues[0].recommendedMaintainerAction.operations[0].retireHostedRuleIds = @('IMPL-OTHER-003') }
+            'missing-assessment' { $invalid.assessments = @() }
+            'stale-assessment' { $invalid.assessments[0].ruleTextSha256 = 'e' * 64 }
+            'duplicate-assessment' { $invalid.assessments = @($invalid.assessments[0], $invalid.assessments[0]) }
+            'foreign-assessment' { $invalid.assessments[0].candidateKey = 'fixture:foreign:A1' }
+            'invalid-score' { $invalid.assessments[0].selectionFactors.severity = 6 }
+            'coverage-score-mismatch' { $invalid.assessments[0].existingCoverage.score = 4 }
+            'foreign-coverage' { $invalid.assessments[0].relatedHostedCoverage = @([pscustomobject]@{ hostedRuleId = 'UNKNOWN-RULE-001'; relationship = 'related'; rationale = 'Synthetic foreign reference.' }) }
+            'invalid-recommendation' { $invalid.assessments[0].recommendation = 'retire' }
         }
         $rejected = $false
         try { Test-RuleIssueAdjudicationDraft -Component $componentObject -Draft $invalid } catch { $rejected = $true }
         Add-TestResult -Name "saved-edit-rejects-$case" -Passed $rejected -Detail "Deterministic validation rejects $case."
+    }
+
+    Write-TestProgress -Name 'saved-edit-multiple-assessments' -Detail 'Binding independent assessment results to every supplied proposal'
+    $multiple = ($saved | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    $siblingKey = 'maintainer:SOURCE-004:A1'
+    $siblingBaseline = 'Preserve a separately sourced sibling obligation.'
+    $siblingProposal = $siblingBaseline + ' Additional sibling wording.'
+    $siblingHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($siblingProposal))).ToLowerInvariant()
+    $multiple.rules += [pscustomobject]@{ id = 'IMPL-TEST-004'; status = 'proposed'; title = 'Sibling proposal'; text = $siblingBaseline; contentSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($siblingBaseline))).ToLowerInvariant(); candidateKeys = @($siblingKey) }
+    $multiple.operations += [pscustomobject]@{ candidateKey = $siblingKey; ruleId = 'IMPL-TEST-004'; action = 'add'; proposedText = $siblingProposal; retireHostedRuleIds = @() }
+    $multiple.relationships += [pscustomobject]@{ id = 'saved-sibling-edge'; sourceRuleId = 'IMPL-TEST-003'; relatedRuleId = 'IMPL-TEST-004'; relationship = 'partial-overlap'; rationale = 'The fixture includes a separate connected sibling proposal.'; candidateKey = $multiple.editContext.candidateKey }
+    $multiple.editContext.proposals += [pscustomobject]@{ candidateKey = $siblingKey; inPlan = $false; baselineText = $siblingBaseline; proposedText = $siblingProposal; ruleTextSha256 = $siblingHash; retireHostedRuleIds = @() }
+    $multiple.editContext.assessmentContext.sources += [pscustomobject]@{ candidateKey = $siblingKey; category = 'implementation'; sourceRules = @([pscustomobject]@{ id = 'SOURCE-004'; text = $siblingBaseline; meaning = $siblingBaseline }) }
+    $multiplePath = Join-Path $root 'saved-multiple.json'
+    [IO.File]::WriteAllText($multiplePath, ($multiple | ConvertTo-Json -Depth 100))
+    $multipleParameters = @{ ComponentPaths = @($multiplePath); OutputPath = (Join-Path $root 'saved-multiple-result.json'); CacheDirectory = (Join-Path $root 'saved-multiple-cache'); EvaluatorScriptPath = $fixturePath; OutputFormat = 'Json'; Quiet = $true }
+    $null = & $runnerPath @multipleParameters
+    $multipleResult = Get-Content -LiteralPath $multipleParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    $multipleDraft = $multipleResult.components[0]
+    $siblingAssessment = @($multipleDraft.assessments | Where-Object candidateKey -CEQ $siblingKey)
+    Add-TestResult -Name 'saved-edit-multiple-assessments' -Passed (@($multipleDraft.assessments).Count -eq 2 -and $siblingAssessment.Count -eq 1 -and $siblingAssessment[0].ruleTextSha256 -ceq $siblingHash -and $multipleDraft.assessments[0].ruleTextSha256 -cne $siblingHash) -Detail 'Every proposal receives its own complete assessment bound to its exact proposed text, even when a sibling working rule still contains its baseline.'
+    foreach ($case in @('missing-sibling-assessment', 'swapped-proposal-assessments')) {
+        $invalid = ($multipleDraft | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+        if ($case -ceq 'missing-sibling-assessment') {
+            $invalid.assessments = @($invalid.assessments | Where-Object candidateKey -CNE $siblingKey)
+        } else {
+            $firstHash = $invalid.assessments[0].ruleTextSha256
+            $invalid.assessments[0].ruleTextSha256 = $invalid.assessments[1].ruleTextSha256
+            $invalid.assessments[1].ruleTextSha256 = $firstHash
+        }
+        $rejected = $false
+        try { Test-RuleIssueAdjudicationDraft -Component $multiple -Draft $invalid } catch { $rejected = $true }
+        Add-TestResult -Name "saved-edit-rejects-$case" -Passed $rejected -Detail "Deterministic validation rejects $case without accepting a partially reassessed proposal set."
+    }
+
+    Write-TestProgress -Name 'saved-edit-byte-bounded-stages' -Detail 'Evaluating more than 2.8 MB with exact per-request budgets and cross-batch issue grouping'
+    $large = ($multiple | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    $large.componentId = 'saved:large-bounded-fixture'
+    $large.relationships = @()
+    $large.rules = @($large.rules | Where-Object { $_.id -ceq 'IMPL-TEST-003' })
+    $large.operations = @($large.operations | Where-Object candidateKey -CEQ $large.editContext.candidateKey)
+    $large.editContext.proposals = @($large.editContext.proposals | Where-Object candidateKey -CEQ $large.editContext.candidateKey)
+    $large.editContext.assessmentContext.sources = @($large.editContext.assessmentContext.sources | Where-Object candidateKey -CEQ $large.editContext.candidateKey)
+    $catalogText = 'Preserve the independent existing Hosted fixture obligation.'
+    $large.editContext.assessmentContext.catalogRules = @([pscustomobject]@{
+        id = 'IMPL-CATALOG-001'; status = 'active'; title = 'Existing Hosted fixture'; text = $catalogText
+        contentSha256 = Get-Sha256 -Content $catalogText; candidateKeys = @()
+    })
+    $large.rules += $large.editContext.assessmentContext.catalogRules
+    $largeText = $baseline + ' Additional maintainer wording.'
+    $large.rules[0].text = $largeText
+    $large.rules[0].contentSha256 = Get-Sha256 -Content $largeText
+    $large.operations[0].proposedText = $largeText
+    $large.editContext.proposals[0].proposedText = $largeText
+    $large.editContext.proposals[0].ruleTextSha256 = Get-Sha256 -Content $largeText
+    $large.editContext.appendText = ' Additional maintainer wording.'
+    $largeSource = 'Synthetic original source evidence. ' * 1200
+    $large.editContext.assessmentContext.sources[0].sourceRules[0].text = $largeSource
+    for ($index = 1; $index -le 71; $index++) {
+        $id = 'IMPL-SCALE-{0:D3}' -f $index
+        $key = "maintainer:SCALE-${index}:A1"
+        $text = if ($index -in @(1, 71)) { "Preserve the shared fixture obligation. Grouped review is required. Member $index." } else { "Preserve independent fixture obligation $index." }
+        $textHash = Get-Sha256 -Content $text
+        $large.rules += [pscustomobject]@{ id = $id; status = 'proposed'; title = "Scale fixture $index"; text = $text; contentSha256 = $textHash; candidateKeys = @($key) }
+        $large.operations += [pscustomobject]@{ candidateKey = $key; ruleId = $id; action = 'add'; proposedText = $text; retireHostedRuleIds = @() }
+        $large.editContext.proposals += [pscustomobject]@{ candidateKey = $key; inPlan = $false; baselineText = "$text Original baseline wording."; proposedText = $text; ruleTextSha256 = $textHash; retireHostedRuleIds = @() }
+        $large.editContext.assessmentContext.sources += [pscustomobject]@{ candidateKey = $key; category = 'implementation'; sourceRules = @([pscustomobject]@{ id = "SCALE-$index"; text = $largeSource; meaning = $text }) }
+        $large.sourceFiles += [pscustomobject]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = "SCALE-$index"; contentSha256 = Get-Sha256 -Content $largeSource }
+        $large.relationships += [pscustomobject]@{ id = "scale-edge-$index"; sourceRuleId = 'IMPL-TEST-003'; relatedRuleId = $id; relationship = 'partial-overlap'; rationale = ('Provisional fixture evidence. ' * 700); candidateKey = $large.editContext.candidateKey }
+    }
+    $activeFixture = @($large.rules | Where-Object id -CEQ 'IMPL-SCALE-035')[0]
+    $activeFixture.status = 'active'
+    @($large.operations | Where-Object ruleId -CEQ $activeFixture.id)[0].action = 'update'
+    $large.editContext.assessmentContext.catalogRules += ($activeFixture | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100)
+    Write-TestProgress -Name 'saved-edit-cold-single-target' -Detail 'Keeping 71 untouched comparisons out of fresh assessment on a cold cache'
+    $cold = $large | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100 -DateKind String
+    foreach ($proposal in @($cold.editContext.proposals | Where-Object candidateKey -CNE $cold.editContext.candidateKey)) {
+        $proposal.baselineText = $proposal.proposedText
+    }
+    $cold.editContext.assessmentContext.sources = @($cold.editContext.assessmentContext.sources | Where-Object candidateKey -CEQ $cold.editContext.candidateKey)
+    $cold.relationships = @($cold.relationships | Where-Object id -CIN @('scale-edge-35', 'scale-edge-36'))
+    foreach ($edge in $cold.relationships) { $edge.rationale = 'A complete unchanged rule is supplied as comparison context.' }
+    $coldPath = Join-Path $root 'cold-single-target.json'
+    $coldMetricsPath = Join-Path $root 'cold-single-target.jsonl'
+    [IO.File]::WriteAllText($coldPath, ($cold | ConvertTo-Json -Depth 100))
+    $coldParameters = @{
+        ComponentPaths = @($coldPath); OutputPath = (Join-Path $root 'cold-single-target-result.json')
+        CacheDirectory = (Join-Path $root 'cold-single-target-cache'); EvaluatorScriptPath = $fixturePath
+        EvaluatorCommand = "fixture-log:$coldMetricsPath"; OutputFormat = 'Json'; Quiet = $true; MaxRetries = 0
+    }
+    $null = & $runnerPath @coldParameters
+    $coldMetrics = @(Get-Content -LiteralPath $coldMetricsPath | ForEach-Object { $_ | ConvertFrom-Json })
+    $coldResult = Get-Content -LiteralPath $coldParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-cold-single-target' -Passed ($coldMetrics.Count -eq 1 -and $coldMetrics[0].phase -ceq 'complete' -and @($coldMetrics[0].candidates).Count -eq 1 -and $coldMetrics[0].candidates[0] -ceq $cold.editContext.candidateKey -and $coldMetrics[0].reservedBytes -le 393216 -and @($coldResult.components[0].assessments).Count -eq 1 -and @($coldResult.components[0].relationshipDecisions).Count -eq 2 -and @($cold.editContext.proposals).Count -eq 72) -Detail 'One cold bounded call completes scope, the changed-rule assessment, and every affected relationship without scoring 71 unchanged comparison proposals.'
+    $invalidCold = $coldResult.components[0] | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+    $comparisonAssessment = $invalidCold.assessments[0] | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $comparisonAssessment.candidateKey = $cold.editContext.proposals[1].candidateKey
+    $comparisonAssessment.ruleTextSha256 = $cold.editContext.proposals[1].ruleTextSha256
+    $invalidCold.assessments += $comparisonAssessment
+    $comparisonRejected = $false
+    try { Test-RuleIssueAdjudicationDraft -Component $cold -Draft $invalidCold } catch { $comparisonRejected = $true }
+    Add-TestResult -Name 'saved-edit-rejects-fresh-unchanged-assessment' -Passed $comparisonRejected -Detail 'Unchanged comparison evidence cannot be relabelled as a fresh assessment.'
+    Write-TestProgress -Name 'saved-edit-native-inline-context' -Detail 'Exercising production CLI stdin, exact evidence, JSONL, and stderr boundaries without an AI call'
+    $nativeMetricsPath = Join-Path $root 'native-inline-metrics.jsonl'
+    $previousNativeMetricsPath = [Environment]::GetEnvironmentVariable('HOSTED_TEST_COPILOT_METRICS')
+    try {
+        [Environment]::SetEnvironmentVariable('HOSTED_TEST_COPILOT_METRICS', $nativeMetricsPath)
+        $nativeCommand = Join-Path $PSScriptRoot 'fixtures/copilot-inline-evaluator.ps1'
+        $nativeManualPath = Join-Path $root 'native-manual-request.json'
+        [IO.File]::WriteAllText($nativeManualPath, ([ordered]@{
+            candidateKey = $cold.editContext.candidateKey; category = 'implementation'; placement = 'Fixture'
+            ruleId = 'IMPL-TEST-003'; ruleTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($largeText))
+        } | ConvertTo-Json))
+        $null = & (Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-ManualRuleRelationship.ps1') `
+            -RequestPath $nativeManualPath -OutputPath (Join-Path $root 'native-manual-result.json') `
+            -RepositoryRoot $repositoryRoot -CacheDirectory (Join-Path $root 'native-manual-cache') -EvaluatorCommand $nativeCommand
+        $nativeParameters = @{} + $coldParameters
+        $null = $nativeParameters.Remove('EvaluatorScriptPath')
+        $nativeParameters.EvaluatorCommand = $nativeCommand
+        $nativeParameters.CacheDirectory = Join-Path $root 'native-adjudication-cache'
+        $nativeParameters.OutputPath = Join-Path $root 'native-adjudication-result.json'
+        $null = & $runnerPath @nativeParameters
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('HOSTED_TEST_COPILOT_METRICS', $previousNativeMetricsPath)
+    }
+    $nativeMetrics = @(Get-Content -LiteralPath $nativeMetricsPath | ForEach-Object { $_ | ConvertFrom-Json })
+    $nativeResult = Get-Content -LiteralPath $nativeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-native-inline-context' -Passed ($nativeMetrics.Count -eq 2 -and $nativeMetrics[0].manual -and -not $nativeMetrics[1].manual -and $nativeMetrics[0].fileCount -eq 2 -and $nativeMetrics[1].fileCount -eq 5 -and $nativeMetrics[1].bytes -le 393216 -and @($nativeMetrics[1].candidates).Count -eq 1 -and @($nativeMetrics | Where-Object { $_.model -cne 'gpt-5.4' -or $_.effort -cne 'high' }).Count -eq 0 -and @($nativeResult.components[0].assessments).Count -eq 1) -Detail 'Discovery and adjudication use full validated inline evidence with the unchanged model and effort; stdout JSONL is isolated from legitimate stderr diagnostics.'
+    $largePath = Join-Path $root 'large-component.json'
+    [IO.File]::WriteAllText($largePath, ($large | ConvertTo-Json -Depth 100))
+    $metricsPath = Join-Path $root 'large-metrics.jsonl'
+    $largeParameters = @{
+        ComponentPaths = @($largePath); OutputPath = (Join-Path $root 'large-result.json')
+        CacheDirectory = (Join-Path $root 'large-cache'); EvaluatorScriptPath = $fixturePath
+        EvaluatorCommand = "fixture-log:$metricsPath"; OutputFormat = 'Json'; Quiet = $true; MaxParallelShards = 1; MaxRetries = 0
+    }
+    $largeRun = & $runnerPath @largeParameters | ConvertFrom-Json
+    $largeResult = Get-Content -LiteralPath $largeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    $metrics = @(Get-Content -LiteralPath $metricsPath | ForEach-Object { $_ | ConvertFrom-Json })
+    $assessmentMetrics = @($metrics | Where-Object phase -CEQ assessment)
+    $relationshipMetrics = @($metrics | Where-Object phase -CEQ relationships)
+    $coveredKeys = @($assessmentMetrics | ForEach-Object candidates)
+    Add-TestResult -Name 'saved-edit-byte-bounded-stages' -Passed ((Get-Item -LiteralPath $largePath).Length -gt 2800000 -and $assessmentMetrics.Count -gt 1 -and $relationshipMetrics.Count -gt 1 -and @($metrics | Where-Object reservedBytes -GT 393216).Count -eq 0) -Detail 'A multi-megabyte saved-edit component uses multiple assessment and relationship requests; every actual serialized evaluator request, artifacts, and retry reserve fit the unchanged 393216-byte budget.'
+    Add-TestResult -Name 'saved-edit-source-and-proposal-completeness' -Passed ($coveredKeys.Count -eq 72 -and @($coveredKeys | Sort-Object -CaseSensitive -Unique).Count -eq 72 -and ($assessmentMetrics.sourceCharacters | Measure-Object -Sum).Sum -eq ($largeSource.Length * 72) -and @($largeResult.components[0].assessments).Count -eq 72 -and @($largeResult.components[0].relationshipDecisions).Count -eq 71) -Detail 'Every complete source text and exact proposal is assessed once; merged results cover every proposal and provisional relationship.'
+    $largeIssues = @($largeResult.components[0].issues)
+    Add-TestResult -Name 'saved-edit-cross-batch-grouping' -Passed ($largeIssues.Count -eq 1 -and @($largeIssues[0].relationshipIds).Count -eq 2 -and 'scale-edge-1' -cin $largeIssues[0].relationshipIds -and 'scale-edge-71' -cin $largeIssues[0].relationshipIds) -Detail 'Material relationships from separated routing batches produce one coherent three-rule issue, not two pairwise issues.'
+    $largeParameters.OutputPath = Join-Path $root 'large-cached-result.json'
+    $largeCached = & $runnerPath @largeParameters | ConvertFrom-Json
+    Add-TestResult -Name 'saved-edit-bounded-cache' -Passed ([int]$largeCached.evaluatedComponentCount -eq 0 -and [int]$largeCached.cachedComponentCount -eq [int]$largeRun.evaluatedComponentCount -and @(Get-Content -LiteralPath $metricsPath).Count -eq $metrics.Count) -Detail 'All bounded phase results reuse the existing authority-bound shard cache without another evaluator invocation.'
+    Write-TestProgress -Name 'saved-edit-incremental-cache' -Detail 'Changing active and proposed wording without reevaluating unchanged assessments or pair decisions'
+    $incremental = ($large | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    $incrementalKey = 'maintainer:SCALE-35:A1'
+    $incrementalText = @($incremental.editContext.proposals | Where-Object candidateKey -CEQ $incrementalKey)[0].proposedText + (' Additional exact saved wording.' * 300)
+    Set-SavedFixtureProposal -Component $incremental -CandidateKey $incrementalKey -Text $incrementalText
+    [IO.File]::WriteAllText($largePath, ($incremental | ConvertTo-Json -Depth 100))
+    $largeParameters.OutputPath = Join-Path $root 'large-active-edit-result.json'
+    $beforeCalls = @(Get-Content -LiteralPath $metricsPath).Count
+    $activeEditRun = & $runnerPath @largeParameters | ConvertFrom-Json
+    $activeEdit = Get-Content -LiteralPath $largeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    $editMetrics = @(Get-Content -LiteralPath $metricsPath | Select-Object -Skip $beforeCalls | ForEach-Object { $_ | ConvertFrom-Json })
+    $assessedKeys = @($editMetrics | Where-Object phase -CEQ assessment | ForEach-Object candidates)
+    $comparedIds = @($editMetrics | Where-Object phase -CEQ relationships | ForEach-Object relationships)
+    Add-TestResult -Name 'saved-edit-active-wording-reuses-unaffected-items' -Passed ($assessedKeys.Count -eq 1 -and $assessedKeys[0] -ceq $incrementalKey -and $comparedIds.Count -eq 1 -and $comparedIds[0] -ceq 'scale-edge-35' -and @($editMetrics | Where-Object phase -CEQ issues).Count -eq 0 -and [int]$activeEditRun.cachedComponentCount -gt 100) -Detail 'An active rule edit reevaluates only its assessment and affected pair, not other assessments against the unmodified catalog; dependent scope checks run, while an unchanged issue group is reused.'
+    Add-TestResult -Name 'saved-edit-incremental-complete-current-binding' -Passed (@($activeEdit.components[0].assessments).Count -eq 72 -and @($activeEdit.components[0].relationshipDecisions).Count -eq 71 -and $activeEdit.components[0].evaluationContextSha256 -ceq $incremental.editContext.evaluationContextSha256 -and @($activeEdit.components[0].assessments | Where-Object candidateKey -CEQ $incrementalKey)[0].ruleTextSha256 -ceq (Get-Sha256 -Content $incrementalText)) -Detail 'Reused and fresh semantic results compose into a complete result bound to the current whole draft and exact changed wording.'
+    $proposedKey = 'maintainer:SCALE-36:A1'
+    $proposedText = @($incremental.editContext.proposals | Where-Object candidateKey -CEQ $proposedKey)[0].proposedText + ' Changed proposed wording.'
+    Set-SavedFixtureProposal -Component $incremental -CandidateKey $proposedKey -Text $proposedText
+    [IO.File]::WriteAllText($largePath, ($incremental | ConvertTo-Json -Depth 100))
+    $largeParameters.OutputPath = Join-Path $root 'large-proposed-edit-result.json'
+    $beforeCalls = @(Get-Content -LiteralPath $metricsPath).Count
+    $null = & $runnerPath @largeParameters
+    $editMetrics = @(Get-Content -LiteralPath $metricsPath | Select-Object -Skip $beforeCalls | ForEach-Object { $_ | ConvertFrom-Json })
+    Add-TestResult -Name 'saved-edit-only-dirty-items-reach-evaluator' -Passed ($editMetrics.Count -eq 3 -and @($editMetrics | Where-Object phase -CEQ assessment | ForEach-Object candidates).Count -eq 1 -and @($editMetrics | Where-Object phase -CEQ assessment)[0].candidates[0] -ceq $proposedKey -and @($editMetrics | Where-Object phase -CEQ relationships)[0].relationships[0] -ceq 'scale-edge-36' -and @($editMetrics | Where-Object phase -CEQ scope)[0].scopeCandidate -ceq $proposedKey) -Detail 'Switching the edited candidate reevaluates exactly one scope, one assessment, and one affected pair; unchanged members of old batches and unrelated connected issues never reach the evaluator.'
+    $materialKey = 'maintainer:SCALE-71:A1'
+    $materialText = @($incremental.editContext.proposals | Where-Object candidateKey -CEQ $materialKey)[0].proposedText + ' Changed grouped wording.'
+    Set-SavedFixtureProposal -Component $incremental -CandidateKey $materialKey -Text $materialText
+    [IO.File]::WriteAllText($largePath, ($incremental | ConvertTo-Json -Depth 100))
+    $largeParameters.OutputPath = Join-Path $root 'large-material-edit-result.json'
+    $beforeCalls = @(Get-Content -LiteralPath $metricsPath).Count
+    $null = & $runnerPath @largeParameters
+    $editMetrics = @(Get-Content -LiteralPath $metricsPath | Select-Object -Skip $beforeCalls | ForEach-Object { $_ | ConvertFrom-Json })
+    $materialResult = Get-Content -LiteralPath $largeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-dirty-group-reuses-unchanged-routing' -Passed ($editMetrics.Count -eq 4 -and @($editMetrics | Where-Object phase -CEQ issues).Count -eq 1 -and @($editMetrics | Where-Object phase -CEQ relationships | ForEach-Object relationships).Count -eq 1 -and @($editMetrics | Where-Object phase -CEQ relationships)[0].relationships[0] -ceq 'scale-edge-71' -and @($materialResult.components[0].issues[0].relationshipIds).Count -eq 2) -Detail 'Changing a material member refreshes only its scope, assessment, pair, and affected connected issue, while preserving the cached decision for the other edge in that group.'
+    $rebound = ($large | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+    $rebound.editContext.evaluationContextSha256 = 'f' * 64
+    [IO.File]::WriteAllText($largePath, ($rebound | ConvertTo-Json -Depth 100))
+    $largeParameters.OutputPath = Join-Path $root 'large-rebound-result.json'
+    $beforeCalls = @(Get-Content -LiteralPath $metricsPath).Count
+    $reboundRun = & $runnerPath @largeParameters | ConvertFrom-Json
+    $reboundResult = Get-Content -LiteralPath $largeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-global-binding-does-not-flush-semantic-cache' -Passed ([int]$reboundRun.evaluatedComponentCount -eq 0 -and @(Get-Content -LiteralPath $metricsPath).Count -eq $beforeCalls -and $reboundResult.components[0].evaluationContextSha256 -ceq $rebound.editContext.evaluationContextSha256) -Detail 'Restoring exact prior semantic inputs under a different complete-draft binding reuses all validated results while publishing only the current binding.'
+    [IO.File]::WriteAllText($largePath, ($large | ConvertTo-Json -Depth 100))
+    $largeParameters.CacheDirectory = Join-Path $root 'large-failure-cache'
+    $largeParameters.OutputPath = Join-Path $root 'large-failed-result.json'
+    [IO.File]::WriteAllText($metricsPath + '.fail-phase', 'issues')
+    $retainedRun = $null
+    $failedAtomically = $false
+    try { $null = & $runnerPath @largeParameters } catch {
+        $failedAtomically = $_.Exception.Message -like '*Synthetic issues evaluator failure*' -and -not (Test-Path -LiteralPath $largeParameters.OutputPath)
+        if ($_.Exception.Message -match 'Run artifacts were retained at ([^\r\n]+)$') { $retainedRun = $Matches[1] }
+    }
+    Add-TestResult -Name 'saved-edit-bounded-failure-is-atomic' -Passed ($failedAtomically -and $null -ne $retainedRun) -Detail 'A failed final synthesis publishes no partial result and retains completed bounded work for resume.'
+    Remove-Item -LiteralPath ($metricsPath + '.fail-phase') -Force
+    $largeParameters.OutputPath = Join-Path $root 'large-automatic-retry-result.json'
+    $beforeCalls = @(Get-Content -LiteralPath $metricsPath).Count
+    $automaticRetry = & $runnerPath @largeParameters | ConvertFrom-Json
+    $retryMetrics = @(Get-Content -LiteralPath $metricsPath | Select-Object -Skip $beforeCalls | ForEach-Object { $_ | ConvertFrom-Json })
+    Add-TestResult -Name 'saved-edit-failed-check-retries-only-unfinished-work' -Passed ([int]$automaticRetry.evaluatedComponentCount -eq 1 -and [int]$automaticRetry.cachedComponentCount -gt 100 -and $retryMetrics.Count -eq 1 -and $retryMetrics[0].phase -ceq 'issues') -Detail 'An ordinary retry without a resume parameter reuses individually persisted successful work after a failed final stage and evaluates only the unfinished issue group.'
+    if ($null -ne $retainedRun) {
+        $largeParameters.ResumeRunDirectory = $retainedRun
+        try {
+            $resumed = & $runnerPath @largeParameters | ConvertFrom-Json
+            Add-TestResult -Name 'saved-edit-bounded-resume' -Passed ([int]$resumed.evaluatedComponentCount -eq 0 -and [int]$resumed.cachedComponentCount -gt 1) -Detail 'Explicit resume validates the complete original authority and merges the retained run with current matching persistent results, including the group completed by an ordinary retry.'
+        }
+        finally { Remove-Item -LiteralPath $retainedRun -Recurse -Force }
     }
 
     $componentPaths = [Collections.Generic.List[string]]::new()

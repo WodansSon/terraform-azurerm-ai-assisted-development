@@ -176,7 +176,7 @@ async function run({ page, baseUrl, assert, playback }) {
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Rule Action selection did not remain synchronized in Details");
-    assert(await page.locator('#assessment-panel .rule-action-header .detail-identity span:last-child').innerText() === selectedHostedId, "Generated Hosted rule ID was not retained");
+    assert(await page.locator('#assessment-panel .rule-actions > .section-label .rule-reference').innerText() === selectedHostedId, "Generated Hosted rule ID was not retained");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === decisionRationale, "Decision rationale was not retained");
     const savedImplementationModels = await page.evaluate(() => getDecision(getActiveCandidate()).implementationModels);
     assert(savedImplementationModels.join(",") === "legacy,typed,framework", `Maintainer resource-type selections were not retained in the saved decision: ${JSON.stringify(savedImplementationModels)}`);

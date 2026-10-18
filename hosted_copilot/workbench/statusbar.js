@@ -11,9 +11,22 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "status-target",
     value: "Resolving target",
     icon: "git-branch-compact",
-    tooltip: "Promotion target",
+    tooltip: "Promotion Target",
     classes: ["target-chip"],
     truncationOwner: true
+  },
+  {
+    key: "validationIssues",
+    alignment: "left",
+    id: "validation-issues-status",
+    tooltip: "No Problems",
+    ariaLabel: "Validation Issues: No Problems",
+    navigation: "validation-issues",
+    classes: ["validation-issues-status"],
+    segments: [
+      { key: "errors", valueId: "validation-error-count", value: "0", icon: "error" },
+      { key: "warnings", valueId: "validation-warning-count", value: "0", icon: "warning-compact" }
+    ]
   },
   {
     key: "save",
@@ -22,7 +35,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "save-indicator",
     value: "Draft not loaded",
     icon: "check-compact",
-    tooltip: "Draft autosave state",
+    tooltip: "Draft Autosave State",
     classes: ["save-indicator"]
   },
   {
@@ -31,8 +44,8 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     id: "rule-issues-status",
     valueId: "rule-issues-status-count",
     value: "0",
-    icon: "warning-compact",
-    tooltip: "Rule issues",
+    icon: "collection-issues-compact",
+    tooltip: "Rule Issues",
     ariaLabel: "Open rule issues",
     navigation: "issues",
     classes: ["rule-issues-status"],
@@ -44,7 +57,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "catalog-count",
     value: "0",
     icon: "collection",
-    tooltip: "Eligible candidates",
+    tooltip: "Eligible Candidates",
     ariaLabel: "Show eligible candidates",
     navigation: "eligible"
   },
@@ -54,7 +67,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "status-excluded",
     value: "0",
     icon: "circle-slash-compact",
-    tooltip: "Excluded assessments",
+    tooltip: "Excluded Assessments",
     ariaLabel: "Show excluded assessments",
     navigation: "excluded"
   },
@@ -65,7 +78,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     value: "0",
     icon: "link-multiple-16-filled",
     iconFamily: "fluent",
-    tooltip: "Mapped Hosted rules",
+    tooltip: "Mapped Hosted Rules",
     ariaLabel: "Show mapped Hosted rules",
     navigation: "mapped"
   },
@@ -76,7 +89,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     value: "0",
     icon: "link-dismiss-16-filled",
     iconFamily: "fluent",
-    tooltip: "Not mapped",
+    tooltip: "Not Mapped",
     ariaLabel: "Show not mapped candidates",
     navigation: "unmapped"
   },
@@ -86,7 +99,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "plan-count",
     value: "0",
     icon: "new-session",
-    tooltip: "Promotion plan items",
+    tooltip: "Promotion Plan Items",
     ariaLabel: "Open Promotion Plan",
     navigation: "plan"
   },
@@ -97,7 +110,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     value: "0",
     icon: "gauge-16-regular",
     iconFamily: "fluent",
-    tooltip: "Hosted guidance headroom",
+    tooltip: "Hosted Guidance Headroom",
     ariaLabel: "Show Hosted guidance headroom",
     navigation: "capacity"
   },
@@ -107,7 +120,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "preview-status",
     value: "Draft",
     icon: "shield-compact",
-    tooltip: "Promotion approval status",
+    tooltip: "Promotion Approval Status",
     ariaLabel: "Open Promotion Preview",
     navigation: "preview",
     classes: ["promotion-approval-status"],
@@ -156,22 +169,41 @@ class WorkbenchStatusBarService {
       if (entry.navigation) node.dataset.statusNavigation = entry.navigation;
       if (entry.truncationOwner) node.dataset.truncationOwner = "";
       node.hidden = Boolean(entry.hidden);
-      node.appendChild(createStatusBarIcon(entry.icon, entry.iconFamily));
-      const value = document.createElement("span");
-      value.id = entry.valueId;
-      value.textContent = entry.value;
-      node.appendChild(value);
+      if (entry.segments) {
+        for (const segment of entry.segments) {
+          const container = document.createElement("span");
+          container.classList.add("status-item-segment");
+          container.setAttribute("aria-hidden", "true");
+          this.renderValue(container, segment);
+          node.appendChild(container);
+        }
+      } else this.renderValue(node, entry);
       containers[entry.alignment].appendChild(node);
       this.nodes.set(entry.key, node);
       this.update(entry.key, { kind: entry.kind || "standard" });
     }
   }
 
+  renderValue(node, definition) {
+    node.appendChild(createStatusBarIcon(definition.icon, definition.iconFamily));
+    const value = document.createElement("span");
+    value.id = definition.valueId;
+    value.textContent = definition.value;
+    node.appendChild(value);
+  }
+
   update(key, update) {
     const node = this.nodes.get(key);
     if (!node) throw new Error(`Unknown Workbench status bar entry: ${key}`);
     const definition = this.entries.find((entry) => entry.key === key);
-    if (Object.hasOwn(update, "text")) node.querySelector(`#${definition.valueId}`).textContent = String(update.text);
+    this.updateValue(node, definition, update);
+    if (update.segments) {
+      for (const [segmentKey, segmentUpdate] of Object.entries(update.segments)) {
+        const segment = definition.segments?.find((item) => item.key === segmentKey);
+        if (!segment) throw new Error(`Unknown Workbench status bar segment: ${key}.${segmentKey}`);
+        this.updateValue(node.querySelector(`#${segment.valueId}`).parentElement, segment, segmentUpdate);
+      }
+    }
     if (Object.hasOwn(update, "tooltip")) {
       if (update.tooltip) node.dataset.workbenchTooltip = String(update.tooltip);
       else delete node.dataset.workbenchTooltip;
@@ -181,12 +213,22 @@ class WorkbenchStatusBarService {
       else node.removeAttribute("aria-label");
     }
     if (Object.hasOwn(update, "hidden")) node.hidden = Boolean(update.hidden);
+    return node;
+  }
+
+  updateValue(node, definition, update) {
+    if (Object.hasOwn(update, "text")) {
+      if (!definition.valueId) throw new Error("A grouped status bar entry requires segment updates");
+      node.querySelector(`#${definition.valueId}`).textContent = String(update.text);
+    }
+    if (Object.hasOwn(update, "icon")) {
+      node.querySelector(":scope > svg").replaceWith(createStatusBarIcon(update.icon, definition.iconFamily));
+    }
     if (Object.hasOwn(update, "kind")) {
       if (!STATUS_BAR_ENTRY_KINDS.includes(update.kind)) throw new Error(`Unsupported Workbench status bar entry kind: ${update.kind}`);
       for (const kind of STATUS_BAR_ENTRY_KINDS) node.classList.remove(`${kind}-kind`);
       if (update.kind !== "standard") node.classList.add(`${update.kind}-kind`);
     }
-    return node;
   }
 
   getEntry(key) {

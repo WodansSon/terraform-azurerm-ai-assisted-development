@@ -2,7 +2,8 @@ async function openWorkbench(page, baseUrl) {
   page.setDefaultTimeout(10000);
   page.setDefaultNavigationTimeout(10000);
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => Number(document.querySelector("#catalog-count")?.textContent) > 0
+  await page.waitForFunction(() => (Number(document.querySelector("#catalog-count")?.textContent) > 0
+      && !document.querySelector("#workspace")?.classList.contains("icon-paint-pending"))
     || document.querySelector("#assessment-panel .empty-state h2")?.textContent?.trim() === "Workbench Could Not Load");
   const loadState = await page.evaluate(() => ({
     catalogCount: Number(document.querySelector("#catalog-count")?.textContent) || 0,

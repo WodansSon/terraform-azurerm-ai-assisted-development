@@ -66,23 +66,25 @@ function Split-ReconciliationPayloads {
         [Parameter(Mandatory = $true)][ValidateRange(1, [int]::MaxValue)][int]$MaxBytes,
         [Parameter(Mandatory = $true)][string]$CollectionName,
         [Parameter(Mandatory = $true)][string]$Stage,
-        [Parameter(Mandatory = $true)][scriptblock]$GetItemKey
+        [Parameter(Mandatory = $true)][scriptblock]$GetItemKey,
+        [scriptblock]$NewPayload,
+        [scriptblock]$MeasurePayload
     )
 
     $shards = [Collections.Generic.List[object]]::new()
     $current = [Collections.Generic.List[object]]::new()
     foreach ($item in $Items) {
         $candidateItems = @($current.ToArray()) + @($item)
-        $candidatePayload = [ordered]@{ $CollectionName = $candidateItems }
-        $candidateBytes = (ConvertTo-JsonSnapshotBytes -Value $candidatePayload).Length
+        $candidatePayload = if ($null -ne $NewPayload) { & $NewPayload $candidateItems } else { [ordered]@{ $CollectionName = $candidateItems } }
+        $candidateBytes = if ($null -ne $MeasurePayload) { & $MeasurePayload $candidatePayload } else { (ConvertTo-JsonSnapshotBytes -Value $candidatePayload).Length }
         if ($candidateBytes -gt $MaxBytes -and $current.Count -gt 0) {
-            $payload = [ordered]@{ $CollectionName = @($current.ToArray()) }
-            $bytes = (ConvertTo-JsonSnapshotBytes -Value $payload).Length
+            $payload = if ($null -ne $NewPayload) { & $NewPayload @($current.ToArray()) } else { [ordered]@{ $CollectionName = @($current.ToArray()) } }
+            $bytes = if ($null -ne $MeasurePayload) { & $MeasurePayload $payload } else { (ConvertTo-JsonSnapshotBytes -Value $payload).Length }
             $shards.Add([pscustomobject][ordered]@{ shardKey = "${Stage}:$(Get-JsonSnapshotSha256 -Value $payload)"; byteCount = $bytes; payload = $payload })
             $current.Clear()
             $candidateItems = @($item)
-            $candidatePayload = [ordered]@{ $CollectionName = $candidateItems }
-            $candidateBytes = (ConvertTo-JsonSnapshotBytes -Value $candidatePayload).Length
+            $candidatePayload = if ($null -ne $NewPayload) { & $NewPayload $candidateItems } else { [ordered]@{ $CollectionName = $candidateItems } }
+            $candidateBytes = if ($null -ne $MeasurePayload) { & $MeasurePayload $candidatePayload } else { (ConvertTo-JsonSnapshotBytes -Value $candidatePayload).Length }
         }
         if ($candidateBytes -gt $MaxBytes) {
             $itemKey = & $GetItemKey $item
@@ -91,8 +93,8 @@ function Split-ReconciliationPayloads {
         $current.Add($item)
     }
     if ($current.Count -gt 0) {
-        $payload = [ordered]@{ $CollectionName = @($current.ToArray()) }
-        $bytes = (ConvertTo-JsonSnapshotBytes -Value $payload).Length
+        $payload = if ($null -ne $NewPayload) { & $NewPayload @($current.ToArray()) } else { [ordered]@{ $CollectionName = @($current.ToArray()) } }
+        $bytes = if ($null -ne $MeasurePayload) { & $MeasurePayload $payload } else { (ConvertTo-JsonSnapshotBytes -Value $payload).Length }
         $shards.Add([pscustomobject][ordered]@{ shardKey = "${Stage}:$(Get-JsonSnapshotSha256 -Value $payload)"; byteCount = $bytes; payload = $payload })
     }
     return $shards.ToArray()
@@ -483,6 +485,7 @@ function New-RehydratedSynthesisBatches {
 }
 
 Export-ModuleMember -Function @(
+    'Split-ReconciliationPayloads',
     'New-HierarchicalSemanticLedger',
     'New-ByteBoundRoutingShards',
     'Merge-LocalRoutingSuggestions',

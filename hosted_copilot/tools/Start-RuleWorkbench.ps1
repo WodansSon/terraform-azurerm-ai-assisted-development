@@ -723,7 +723,10 @@ function Read-HttpRequestBody {
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
 $allowedHosts = @("127.0.0.1:$Port", "localhost:$Port")
+$evaluationPool = [RunspaceFactory]::CreateRunspacePool(1, 1)
+$evaluationRequests = [Collections.Generic.List[object]]::new()
 try {
+    $evaluationPool.Open()
     $listener.Start()
     if (-not $NoLaunch) {
         Start-Process $url
@@ -743,11 +746,13 @@ try {
 
     $shutdownRequested = $false
     while (-not $shutdownRequested) {
+        Receive-SavedRuleEvaluationRequests -Requests $evaluationRequests -WriteResponse ${function:Write-HttpResponse}
         if ($OwnerProcessId -and -not (Get-Process -Id $OwnerProcessId -ErrorAction SilentlyContinue)) {
             break
         }
         $acceptTask = $listener.AcceptTcpClientAsync()
         while (-not $acceptTask.Wait(250)) {
+            Receive-SavedRuleEvaluationRequests -Requests $evaluationRequests -WriteResponse ${function:Write-HttpResponse}
             if ($OwnerProcessId -and -not (Get-Process -Id $OwnerProcessId -ErrorAction SilentlyContinue)) {
                 $shutdownRequested = $true
                 break
@@ -758,6 +763,7 @@ try {
         }
         $client = $acceptTask.GetAwaiter().GetResult()
         $stream = $null
+        $deferredResponse = $false
         try {
             $stream = $client.GetStream()
             $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $false, 1024, $true)
@@ -842,19 +848,22 @@ try {
                     if ($null -ne $resolvedRelationshipEvaluatorScriptPath) {
                         $relationshipParameters.EvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
                     }
-                    $relationshipOutput = @(& pwsh -NoProfile -File $savedRuleEvaluationPath @relationshipParameters 2>&1)
-                    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
-                        throw "Scoped relationship evaluator failed: $(($relationshipOutput | Out-String).Trim())"
-                    }
-                    $responseBody = [IO.File]::ReadAllBytes($outputPath)
-                    Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $responseBody -IncludeBody $true
+                    $evaluationRequest = Start-SavedRuleEvaluationRequest -RunspacePool $evaluationPool -ScriptPath $savedRuleEvaluationPath -Parameters $relationshipParameters -Client $client
+                    $evaluationRequests.Add($evaluationRequest)
+                    $deferredResponse = $true
+                }
+                catch [OperationCanceledException] {
+                    Write-Verbose $_.Exception.Message
                 }
                 catch {
                     Write-Warning "Scoped relationship check failed: $($_.Exception.Message)"
-                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"error":"Scoped relationship check failed"}')) -IncludeBody $true
+                    $failureBody = [ordered]@{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
+                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
                 }
                 finally {
-                    Remove-Item -LiteralPath $requestPath, $outputPath -Force -ErrorAction SilentlyContinue
+                    if (-not $deferredResponse) {
+                        Remove-Item -LiteralPath $requestPath, $outputPath -Force -ErrorAction SilentlyContinue
+                    }
                 }
                 continue
             }
@@ -895,10 +904,15 @@ try {
             }
         }
         finally {
-            $client.Dispose()
+            if (-not $deferredResponse) { $client.Dispose() }
         }
     }
 }
 finally {
     $listener.Stop()
+    try { Stop-SavedRuleEvaluationRequests -Requests $evaluationRequests }
+    finally {
+        $evaluationPool.Close()
+        $evaluationPool.Dispose()
+    }
 }

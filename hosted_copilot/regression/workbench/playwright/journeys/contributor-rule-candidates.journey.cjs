@@ -68,7 +68,7 @@ async function run({ page, baseUrl, assert, playback }) {
     renderAssessmentResults();
     const row = document.querySelector(`[data-assessment-key="${CSS.escape(probe.key)}"]`);
     const detail = document.querySelector("#assessment-results-detail");
-    const proposal = [...detail.querySelectorAll(".section-block")].find((section) => section.querySelector(":scope > .section-label")?.textContent === "Proposed Hosted Rule:");
+    const proposal = detail.querySelector(".hosted-rule-comparison");
     const actionButtons = [...detail.querySelectorAll(".override-inline-actions > button")];
     const factorClasses = [...detail.querySelectorAll(".factor-line.penalty")].map((line) => line.className);
     const result = {
@@ -76,8 +76,8 @@ async function run({ page, baseUrl, assert, playback }) {
       actionLabels: actionButtons.map((button) => button.getAttribute("aria-label")),
       breadcrumbId: detail.querySelector(".detail-identity > span:last-child")?.textContent,
       factorClasses,
-      proposalId: proposal?.querySelector(".overlap-item strong")?.textContent,
-      proposalText: proposal?.querySelector(".overlap-item p")?.textContent,
+      proposalLabel: proposal?.querySelector(".proposed-rule-heading .section-label")?.textContent,
+      proposalText: proposal?.querySelector(":scope > pre.evidence-box")?.textContent,
       rowId: row?.querySelector(".candidate-tree-copy strong")?.textContent
     };
     state.assessedCandidates.pop();
@@ -90,7 +90,7 @@ async function run({ page, baseUrl, assert, playback }) {
     return result;
   });
   assert(excludedProposal.rowId === "REVIEW-EVID-099" && excludedProposal.breadcrumbId === "REVIEW-EVID-099", "excluded assessment does not use its generated Hosted identity in the tree and Details breadcrumb");
-  assert(excludedProposal.proposalId === "REVIEW-EVID-099" && excludedProposal.proposalText?.startsWith("Keep the complete generated Hosted proposal"), "excluded assessment does not display its complete generated Hosted proposal");
+  assert(excludedProposal.proposalLabel === "Proposed Hosted Rule:" && excludedProposal.proposalText?.startsWith("Keep the complete generated Hosted proposal"), "excluded assessment does not display its complete generated Hosted proposal");
   assert(excludedProposal.actionLabels.join("|") === "Apply Override|Cancel Override" && excludedProposal.actionIcons[0]?.endsWith("#codicon-git-stash-apply") && excludedProposal.actionIcons[1]?.endsWith("#codicon-close"), "override rationale actions do not use the accepted icon order");
   assert(excludedProposal.factorClasses.some((value) => value.includes("risk-high")) && excludedProposal.factorClasses.some((value) => value.includes("risk-moderate")), "excluded assessment factors do not retain high and moderate semantic risk classes");
 
@@ -107,15 +107,15 @@ async function run({ page, baseUrl, assert, playback }) {
   }, structure.addCandidate);
 
   const generatedId = "REVIEW-REPO-001";
-  const identityReadout = page.locator("#assessment-panel .rule-action-header .detail-identity");
-  assert((await identityReadout.innerText()).replace(/\s+/g, " ") === `RULE: ${generatedId}`, "Add candidate does not show its generated Hosted identity in the embedded Rule Actions header");
+  const identityReadout = page.locator("#assessment-panel .rule-actions > .section-label");
+  assert((await identityReadout.innerText()).replace(/\s+/g, " ") === `RULE ACTIONS: ${generatedId}`, "Add candidate does not show its generated Hosted identity in the Rule Actions heading");
   assert(await page.locator('#assessment-panel [data-decision-field="proposedHostedRuleId"]').count() === 0, "Details still exposes a maintainer-editable Hosted rule ID control");
 
   const propagated = await page.evaluate(({ candidateKey, generatedId }) => {
     const candidate = state.candidates.find((item) => item.key === candidateKey);
     const treeId = document.querySelector(`[data-candidate-key="${CSS.escape(candidateKey)}"] .candidate-tree-copy strong`)?.textContent;
     const detailId = document.querySelector("#assessment-panel > .assessment-title .detail-identity span:last-child")?.textContent;
-    const readoutId = document.querySelector("#assessment-panel .rule-action-header .detail-identity span:last-child")?.textContent;
+    const readoutId = document.querySelector("#assessment-panel .rule-actions > .section-label .rule-reference")?.textContent;
     switchView("plan");
     const planId = document.querySelector(`[data-plan-row="${CSS.escape(candidateKey)}"] .candidate-link`)?.textContent;
     switchView("preview");
@@ -139,7 +139,7 @@ async function run({ page, baseUrl, assert, playback }) {
     selectCandidate(candidateKey);
     showCandidatePane("details");
   }, structure.updateCandidate);
-  const mappedIdentityReadout = page.locator("#assessment-panel .rule-action-header .detail-identity span:last-child");
+  const mappedIdentityReadout = page.locator("#assessment-panel .rule-actions > .section-label .rule-reference");
   const mappedModelControls = page.locator('#assessment-panel [data-implementation-model]');
   assert(await mappedModelControls.count() === 3 && await mappedModelControls.nth(0).isChecked() && await mappedModelControls.nth(1).isChecked() && await mappedModelControls.nth(2).isChecked(), "Mapped implementation candidate did not inherit catalog resource types");
   assert(await mappedModelControls.nth(0).isDisabled(), "Mapped resource types are editable before Update is selected");

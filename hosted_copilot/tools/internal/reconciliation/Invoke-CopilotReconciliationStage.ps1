@@ -1,10 +1,10 @@
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory = $true)][ValidateSet('routing', 'consolidation', 'synthesis', 'adjudication')][string]$Stage,
+	[Parameter(Mandatory = $true)][ValidateSet('routing', 'consolidation', 'synthesis', 'adjudication', 'manual-relationship')][string]$Stage,
 	[Parameter(Mandatory = $true)][string]$InputPath,
-	[Parameter(Mandatory = $true)][string]$CatalogPath,
-	[Parameter(Mandatory = $true)][string]$ProtectedRulesPath,
-	[Parameter(Mandatory = $true)][string]$ContractPath,
+	[string]$CatalogPath,
+	[string]$ProtectedRulesPath,
+	[string]$ContractPath,
 	[Parameter(Mandatory = $true)][string]$SchemaPath,
 	[Parameter(Mandatory = $true)][string]$PromptPath,
 	[Parameter(Mandatory = $true)][string]$OutputPath,
@@ -35,7 +35,10 @@ function Get-StageEvaluatorJson {
 }
 
 $resolvedInputs = @{}
-foreach ($pathName in @('InputPath', 'CatalogPath', 'ProtectedRulesPath', 'ContractPath', 'SchemaPath', 'PromptPath')) {
+$pathNames = @('InputPath', 'SchemaPath', 'PromptPath')
+if ($Stage -cne 'manual-relationship') { $pathNames += @('CatalogPath', 'ProtectedRulesPath', 'ContractPath') }
+foreach ($pathName in $pathNames) {
+	if ([string]::IsNullOrWhiteSpace([string](Get-Variable -Name $pathName -ValueOnly))) { throw "Copilot $Stage requires $pathName" }
 	$resolvedPath = [IO.Path]::GetFullPath([string](Get-Variable -Name $pathName -ValueOnly))
 	if (-not (Test-Path -LiteralPath $resolvedPath -PathType Leaf)) {
 		throw "Copilot reconciliation stage input was not found: $resolvedPath"
@@ -49,6 +52,16 @@ if ($null -eq $command) {
 }
 
 $prompt = "Read stage-input.json, instruction-catalog.json, protected-rules.json, stage-contract.json, stage-result.schema.json, and stage-prompt.md in the current directory. Evaluate the complete bounded $Stage shard and return only the JSON object required by stage-result.schema.json."
+$inputData = Get-Content -LiteralPath $resolvedInputs.InputPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+$inline = $Stage -ceq 'manual-relationship' -or ($Stage -ceq 'adjudication' -and $null -ne $inputData.payload.PSObject.Properties['editContext'])
+if ($inline) {
+	$files = [ordered]@{}
+	foreach ($pathName in @($pathNames | Where-Object { $_ -cne 'PromptPath' })) {
+		$path = $resolvedInputs[$pathName]
+		$files[[IO.Path]::GetFileName($path)] = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+	}
+	$prompt = "All required files are supplied in full below. Evaluate their contents without tool calls.`n`n" + (Get-Content -LiteralPath $resolvedInputs.PromptPath -Raw) + "`n`n## Supplied Files`n" + ($files | ConvertTo-Json -Depth 100 -Compress)
+}
 $processInfo = [Diagnostics.ProcessStartInfo]::new()
 $commandPrefixArguments = @()
 if ($command.CommandType -eq [Management.Automation.CommandTypes]::ExternalScript) {
@@ -62,11 +75,12 @@ $processInfo.WorkingDirectory = $workingDirectory
 $processInfo.UseShellExecute = $false
 $processInfo.RedirectStandardOutput = $true
 $processInfo.RedirectStandardError = $true
+$processInfo.RedirectStandardInput = $inline
 $processInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
 $processInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
-foreach ($argument in @($commandPrefixArguments) + @(
-	'-C', $workingDirectory,
-	'-p', $prompt,
+if ($inline) { $processInfo.StandardInputEncoding = [Text.UTF8Encoding]::new($false) }
+$promptArguments = @(if (-not $inline) { '-p'; $prompt })
+foreach ($argument in @($commandPrefixArguments) + @('-C', $workingDirectory) + $promptArguments + @(
 	'--no-color',
 	'--stream', 'off',
 	'--no-custom-instructions',
@@ -90,6 +104,10 @@ try {
 	}
 	$stdoutTask = $process.StandardOutput.ReadToEndAsync()
 	$stderrTask = $process.StandardError.ReadToEndAsync()
+	if ($inline) {
+		$process.StandardInput.Write($prompt)
+		$process.StandardInput.Close()
+	}
 	$process.WaitForExit()
 	$stdout = $stdoutTask.GetAwaiter().GetResult()
 	$stderr = $stderrTask.GetAwaiter().GetResult()

@@ -7,6 +7,24 @@ Import-Module (Join-Path $PSScriptRoot 'ReconciliationStagePresentation.psm1')
 $reconciliationRetryCorrectionReserveBytes = 16384
 $reconciliationRetryDiagnosticMaxCharacters = 3072
 
+function Get-ReconciliationStageInput {
+    param([string]$Stage, [object]$Shard)
+
+    return [ordered]@{
+        schemaVersion = 1
+        kind = 'hosted-hierarchical-reconciliation-stage-input'
+        stage = $Stage
+        shardKey = $Shard.shardKey
+        payload = $Shard.payload
+    }
+}
+
+function Get-ReconciliationReservedPayloadBytes {
+    param([object]$StageInput, [long]$ArtifactBytes)
+
+    return (ConvertTo-JsonSnapshotBytes -Value $StageInput -Depth 100).Length + $ArtifactBytes + $reconciliationRetryCorrectionReserveBytes
+}
+
 function Set-ReconciliationRetryCorrection {
     param(
         [Parameter(Mandatory = $true)][string]$PromptPath,
@@ -59,6 +77,7 @@ function Invoke-ReconciliationStageSet {
         [Parameter(Mandatory = $true)][string]$RunDirectory,
         [Parameter(Mandatory = $true)][string]$CachePath,
         [string]$PersistentCachePath,
+        [switch]$ReadPersistentCache,
         [Parameter(Mandatory = $true)][string]$CacheSchemaPath,
         [Parameter(Mandatory = $true)][string]$ResultSchemaPath,
         [Parameter(Mandatory = $true)][string]$PromptPath,
@@ -68,6 +87,7 @@ function Invoke-ReconciliationStageSet {
         [string]$ContractAuthorityPath,
         [Parameter(Mandatory = $true)][string]$EvaluatorScriptPath,
         [scriptblock]$ResultValidator,
+        [scriptblock]$BatchExecutor,
         [string]$EvaluatorCommand = 'copilot',
         [Parameter(Mandatory = $true)][string]$Model,
         [Parameter(Mandatory = $true)][ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
@@ -106,6 +126,9 @@ function Invoke-ReconciliationStageSet {
     $evaluatorIdentity = 'script:' + $evaluatorSnapshot.Sha256 + ';command:' + $EvaluatorCommand
     $resolvedPersistentCachePath = if ([string]::IsNullOrWhiteSpace($PersistentCachePath)) { $null } else { [IO.Path]::GetFullPath($PersistentCachePath) }
     $cache = Read-HierarchicalReconciliationCache -Path $CachePath -SchemaPath $resolvedPaths.CacheSchemaPath
+    $persistentCache = if ($ReadPersistentCache -and $null -ne $resolvedPersistentCachePath -and $resolvedPersistentCachePath -cne [IO.Path]::GetFullPath($CachePath)) {
+        Read-HierarchicalReconciliationCache -Path $resolvedPersistentCachePath -SchemaPath $resolvedPaths.CacheSchemaPath
+    } else { $null }
     $stageDirectory = Join-Path ([IO.Path]::GetFullPath($RunDirectory)) "stages/$Stage"
     $null = New-Item -ItemType Directory -Path $stageDirectory -Force
 
@@ -121,13 +144,7 @@ function Invoke-ReconciliationStageSet {
         if ($workByShardKey.ContainsKey($shardKey)) {
             throw "Reconciliation stage `$Stage` received duplicate shard key `$shardKey`."
         }
-        $stageInput = [ordered]@{
-            schemaVersion = 1
-            kind = 'hosted-hierarchical-reconciliation-stage-input'
-            stage = $Stage
-            shardKey = $shardKey
-            payload = $shard.payload
-        }
+        $stageInput = Get-ReconciliationStageInput -Stage $Stage -Shard $shard
         $identity = New-ReconciliationStageCacheIdentity -Stage $Stage -ShardKey $shardKey -PayloadSha256 (Get-JsonSnapshotSha256 -Value $stageInput) -CatalogContentSha256 $catalogSnapshot.Sha256 -ProtectedRulesContentSha256 $protectedRulesSnapshot.Sha256 -ContractContentSha256 $contractAuthoritySnapshot.Sha256 -PromptContentSha256 $promptSnapshot.Sha256 -SchemaContentSha256 $resultSchemaSnapshot.Sha256 -Evaluator $evaluatorIdentity -Model $Model -ReasoningEffort $ReasoningEffort
         $shardDirectory = Join-Path $stageDirectory $shardKey.Substring($shardKey.IndexOf(':') + 1)
         $null = New-Item -ItemType Directory -Path $shardDirectory -Force
@@ -144,13 +161,17 @@ function Invoke-ReconciliationStageSet {
         [IO.File]::WriteAllBytes($contractArtifactPath, $contractArtifactSnapshot.Bytes)
         [IO.File]::WriteAllBytes($schemaArtifactPath, $resultSchemaSnapshot.Bytes)
         [IO.File]::WriteAllBytes($promptArtifactPath, $promptSnapshot.Bytes)
-        $payloadBytes = (Get-Item -LiteralPath $inputPath).Length + $catalogSnapshot.Bytes.Length + $protectedRulesSnapshot.Bytes.Length + $contractArtifactSnapshot.Bytes.Length + $promptSnapshot.Bytes.Length + $resultSchemaSnapshot.Bytes.Length
-        $reservedPayloadBytes = $payloadBytes + $reconciliationRetryCorrectionReserveBytes
+        $artifactBytes = $catalogSnapshot.Bytes.Length + $protectedRulesSnapshot.Bytes.Length + $contractArtifactSnapshot.Bytes.Length + $promptSnapshot.Bytes.Length + $resultSchemaSnapshot.Bytes.Length
+        $reservedPayloadBytes = Get-ReconciliationReservedPayloadBytes -StageInput $stageInput -ArtifactBytes $artifactBytes
+        $payloadBytes = $reservedPayloadBytes - $reconciliationRetryCorrectionReserveBytes
         if ($reservedPayloadBytes -gt $EvaluatorPayloadBudgetBytes) {
-            throw "Reconciliation stage `$Stage` shard `$shardKey` requires $reservedPayloadBytes bytes and exceeds the evaluator payload budget of $EvaluatorPayloadBudgetBytes bytes including retry-correction capacity."
+            throw ('Reconciliation stage `{0}` shard `{1}` requires {2} bytes and exceeds the evaluator payload budget of {3} bytes including retry-correction capacity.' -f $Stage, $shardKey, $reservedPayloadBytes, $EvaluatorPayloadBudgetBytes)
         }
         $cachedValidationError = ''
         $cachedResult = Get-HierarchicalCachedResult -Cache $cache -StageIdentity $identity -ResultSchemaPath $resolvedPaths.ResultSchemaPath
+        if ($null -eq $cachedResult -and $null -ne $persistentCache) {
+            $cachedResult = Get-HierarchicalCachedResult -Cache $persistentCache -StageIdentity $identity -ResultSchemaPath $resolvedPaths.ResultSchemaPath
+        }
         if ($null -ne $cachedResult -and $null -ne $ResultValidator) {
             try {
                 & $ResultValidator $shard.payload $cachedResult
@@ -192,12 +213,41 @@ function Invoke-ReconciliationStageSet {
         $work = $workByShardKey[$shardKey]
         if ($null -ne $work.CachedResult) {
             Write-HierarchicalJsonAtomically -Path $work.OutputPath -Value $work.CachedResult
+            if ([string]$work.Identity.cacheKey -cnotin @($cache.entries | ForEach-Object cacheKey)) {
+                $cache = Set-HierarchicalCachedResult -Path $CachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $work.CachedResult
+            }
+            if ($null -ne $persistentCache -and [string]$work.Identity.cacheKey -cnotin @($persistentCache.entries | ForEach-Object cacheKey)) {
+                $persistentCache = Set-HierarchicalCachedResult -Path $resolvedPersistentCachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $work.CachedResult
+            }
             $resultsByShardKey[$shardKey] = [pscustomobject][ordered]@{ stage = $Stage; shardKey = $shardKey; cacheKey = [string]$work.Identity.cacheKey; reused = $true; result = $work.CachedResult; directory = $work.Directory }
             $cachedCount++
         }
     }
 
     $pending = @($orderedShardKeys | Where-Object { -not $resultsByShardKey.ContainsKey($_) } | ForEach-Object { $workByShardKey[$_] })
+    if ($null -ne $BatchExecutor -and $pending.Count -gt 0) {
+        $projected = @(& $BatchExecutor @($pending | ForEach-Object { [pscustomobject]@{ shardKey = $_.ShardKey; payload = $_.Payload } }))
+        $projectedKeys = @($projected | ForEach-Object shardKey)
+        $pendingKeys = @($pending | ForEach-Object ShardKey)
+        if ($projected.Count -ne $pending.Count -or @($projectedKeys | Sort-Object -CaseSensitive -Unique).Count -ne $pending.Count -or @($projectedKeys | Where-Object { $_ -cnotin $pendingKeys }).Count -gt 0) {
+            throw 'Batched evaluation must return every uncached semantic item exactly once'
+        }
+        foreach ($item in $projected) {
+            $work = $workByShardKey[[string]$item.shardKey]
+            Test-HierarchicalJsonSchema -Json ($item.result | ConvertTo-Json -Depth 100) -SchemaPath $resolvedPaths.ResultSchemaPath -Label 'Projected semantic item result'
+            if ($null -ne $ResultValidator) { & $ResultValidator $work.Payload $item.result }
+        }
+        foreach ($item in $projected) {
+            $work = $workByShardKey[[string]$item.shardKey]
+            Write-HierarchicalJsonAtomically -Path $work.OutputPath -Value $item.result
+            $null = Set-HierarchicalCachedResult -Path $CachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $item.result
+            if ($null -ne $resolvedPersistentCachePath -and $resolvedPersistentCachePath -cne [IO.Path]::GetFullPath($CachePath)) {
+                $null = Set-HierarchicalCachedResult -Path $resolvedPersistentCachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $item.result
+            }
+            $resultsByShardKey[$work.ShardKey] = [pscustomobject][ordered]@{ stage = $Stage; shardKey = $work.ShardKey; cacheKey = [string]$work.Identity.cacheKey; reused = $false; result = $item.result; directory = $work.Directory }
+        }
+        $pending = @()
+    }
     $stagePresentation = Get-ReconciliationStagePresentation -Stage $Stage
     $bootstrapBytesPerSecondPerWorker = [int]$stagePresentation.bootstrapBytesPerSecondPerWorker
     if ($ShowProgress) {
@@ -254,7 +304,7 @@ function Invoke-ReconciliationStageSet {
                     Model = $using:workerModel
                     ReasoningEffort = $using:workerReasoningEffort
                 }
-                $output = @(& pwsh -NoProfile -File $using:workerEvaluatorScriptPath @parameters 2>&1)
+                $output = @(& pwsh -NoProfile -NonInteractive -File $using:workerEvaluatorScriptPath @parameters 2>&1)
                 if ($LASTEXITCODE -ne 0) {
                     throw "Evaluator script exited with code $LASTEXITCODE`: $(($output | Out-String).Trim())"
                 }
@@ -350,4 +400,4 @@ function Invoke-ReconciliationStageSet {
     }
 }
 
-Export-ModuleMember -Function 'Invoke-ReconciliationStageSet'
+Export-ModuleMember -Function 'Invoke-ReconciliationStageSet', 'Get-ReconciliationStageInput', 'Get-ReconciliationReservedPayloadBytes'

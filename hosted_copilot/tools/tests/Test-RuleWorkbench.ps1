@@ -77,12 +77,17 @@ $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation
 $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
     'saved-rule-evaluation',
+    'saved-rule-wording-review',
+    'saved-rule-consolidation',
+    'relationship-check-cancellation',
+    'relationship-check-responsiveness',
     'fixture-display-valid',
     'assessment-factor-range',
     'local-icon-family-sprites',
     'portable-icon-generation',
     'browser-state-contract',
     'tooltip-sentence-case',
+    'statusbar-tooltip-title-case',
     'browser-behavior-manifest',
     'browser-timestamp-normalization',
     'repository-identity-presentation',
@@ -113,6 +118,7 @@ $staticTestNames = @(
     'bulk-plan-membership',
     'undo-updates-capacity-projection',
     'semantic-color-contract',
+    'error-banner-style-contract',
     'clickable-cursor-affordance',
     'button-component-contract',
     'promotion-plan-attention-filter',
@@ -781,6 +787,16 @@ try {
         assessments = @($maintainerAssessment)
     })
     $display = New-WorkbenchDisplayFixture -Fixture $fixture
+    foreach ($candidate in @($display.candidates | Where-Object { $_.catalogMapping.state -ceq 'active' })) {
+        $mappedId = [string]$candidate.catalogMapping.hostedRuleId
+        if ($mappedId -cnotin @($candidate.recommendation.relatedHostedCoverage | ForEach-Object { [string]$_.hostedRuleId })) {
+            $candidate.recommendation.relatedHostedCoverage += @([ordered]@{
+                hostedRuleId = $mappedId
+                relationship = 'equivalent'
+                rationale = 'The mapped Hosted rule covers its own reconciled baseline.'
+            })
+        }
+    }
     $display.catalog.contentSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     $display.catalog.protectedRulesContentSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     $displayJson = $display | ConvertTo-Json -Depth 30
@@ -889,7 +905,15 @@ try {
     $chatSparkleErrorContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-chat-sparkle-error"' -and $iconGeneratorContent -match "'chat-sparkle-error'"
     $discardAllContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'discard-all.svg') -PathType Leaf) -and ([regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count -eq $codiconSourceCount) -and $generatedSpriteContent -match 'id="codicon-discard-all"' -and $attributionContent -match '`discard-all\.svg` is a local derivative of `discard\.svg`' -and $iconGeneratorContent -match "'discard-all'"
     $diffModifiedContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'diff-modified.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-diff-modified"' -and $appContent -match 'codicon-diff-modified'
-    $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid
+    $collectionIssuesContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'collection-issues-compact.svg') -PathType Leaf) -and
+        $generatedSpriteContent -match '<symbol id="codicon-collection-issues-compact" viewBox="0 0 16 16">' -and
+        $iconGeneratorContent -match "'collection-issues-compact'" -and
+        $attributionContent -match '`collection-issues-compact\.svg` is a local derivative of `collection\.svg`' -and
+        $statusbarContent -match 'key: "ruleIssues",[^}]*icon: "collection-issues-compact"' -and
+        $statusbarContent -notmatch 'key: "ruleIssues",[^}]*iconFamily: "fluent"' -and
+        $statusbarContent -match 'key: "eligible",[^}]*icon: "collection"' -and
+        $statusbarContent -match 'key: "warnings",[^}]*icon: "warning-compact"'
+    $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid -and $collectionIssuesContractValid
     $octiconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0 -and $octiconSourceCount -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
     $fluentIconContractValid = $fluentIconSourceCount -eq 750 -and $fluentIconSymbolNames.Count -eq 9 -and $fluentIconPairGroups.Count -eq 375 -and $fluentIconCoreMatch.Success -and $fluentIconCoreNames.Count -eq 142 -and @(Compare-Object $fluentIconRuntimeNames $fluentIconSymbolNames).Count -eq 0 -and @($fluentIconPairGroups | Where-Object { $_.Count -ne 2 }).Count -eq 0 -and @($fluentIconCoreNames | Where-Object { $_ -notin $fluentIconSourceNames }).Count -eq 0 -and @($fluentIconRuntimeNames | Where-Object { $_ -notin $fluentIconSourceNames }).Count -eq 0 -and @($fluentIconConsumerNames | Where-Object { $_ -notin $fluentIconRuntimeNames }).Count -eq 0
     foreach ($fluentIconFamily in @('checkmark-circle', 'dismiss-circle', 'error-circle', 'important', 'info', 'question-circle', 'warning', 'shield-checkmark', 'shield-dismiss', 'shield-error', 'shield-question', 'shield-task', 'document-add', 'document-bullet-list', 'document-checkmark', 'document-dismiss', 'document-edit', 'document-error', 'document-lock', 'document-search', 'document-sync', 'document-text', 'approvals-app', 'arrow-sync-circle', 'book-information', 'bot-sparkle', 'brain-circuit', 'certificate', 'clipboard-checkmark', 'clipboard-task-list-ltr', 'data-usage', 'gauge', 'history', 'lightbulb', 'person-feedback', 'target-arrow', 'arrow-routing', 'arrow-routing-rectangle-multiple', 'arrow-split', 'flow', 'flowchart', 'link-multiple', 'connected', 'group-list', 'shape-intersect', 'merge', 'stack', 'stack-arrow-forward', 'gavel', 'gavel-prohibited', 'scales', 'checkbox-checked-sync', 'flag-checkered', 'ribbon', 'ribbon-off', 'person-edit', 'archive', 'archive-arrow-back', 'arrow-undo', 'arrow-redo', 'arrow-sync-checkmark', 'arrow-sync-dismiss', 're-order', 'document-copy', 'document-arrow-right', 'clipboard-search', 'clipboard-text-ltr', 'text-quote', 'database-search', 'task-list-square-sparkle', 'wand')) {
@@ -940,16 +964,19 @@ try {
         Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
 
-    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match '<script src="statusbar\.js" defer></script>[\s\S]*<script src="app\.js" defer></script>' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"[\s\S]*class="status-cluster status-left"></div>[\s\S]*class="status-cluster status-right"></div>' -and $indexContent -notmatch 'id="status-target"|id="status-mapped"|id="status-headroom"|id="metrics-band"|Refresh candidates' -and $statusbarContent -match 'const STATUS_BAR_ENTRIES = Object\.freeze' -and $statusbarContent -match 'class WorkbenchStatusBarService' -and $statusbarContent -match 'key: "promotionApproval"[\s\S]*tooltip: "Promotion approval status"[\s\S]*kind: "warning"' -and $statusbarContent -match 'const workbenchStatusBar = new WorkbenchStatusBarService' -and $appContent -match 'workbenchStatusBar\.render\(\)' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'async function preloadIconSprites\(\)' -and $appContent -match 'await preloadIconSprites\(\)' -and $appContent -match 'workbenchStatusBar\.update\("target"' -and $appContent -match 'workbenchStatusBar\.update\("mapped"' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML' -and $launcherContent -match "'statusbar\.js'"
+    $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match '<script src="statusbar\.js" defer></script>[\s\S]*<script src="app\.js" defer></script>' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"[\s\S]*class="status-cluster status-left"></div>[\s\S]*class="status-cluster status-right"></div>' -and $indexContent -notmatch 'id="status-target"|id="status-mapped"|id="status-headroom"|id="metrics-band"|Refresh candidates' -and $statusbarContent -match 'const STATUS_BAR_ENTRIES = Object\.freeze' -and $statusbarContent -match 'class WorkbenchStatusBarService' -and $statusbarContent -match 'key: "promotionApproval"[\s\S]*tooltip: "Promotion Approval Status"[\s\S]*kind: "warning"' -and $statusbarContent -match 'const workbenchStatusBar = new WorkbenchStatusBarService' -and $appContent -match 'workbenchStatusBar\.render\(\)' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'async function preloadIconSprites\(\)' -and $appContent -match 'await preloadIconSprites\(\)' -and $appContent -match 'workbenchStatusBar\.update\("target"' -and $appContent -match 'workbenchStatusBar\.update\("mapped"' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML' -and $launcherContent -match "'statusbar\.js'"
     $shutdownPresentationValid = $appContent -match '<div class="shutdown-brand-lockup">\s*<svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="' -and $appContent -match '<p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $appContent -match '<h1>Workbench Closed</h1>' -and $appContent -notmatch '<span class="brand-mark" aria-hidden="true">HR</span>'
     $shutdownPresentationValid = $shutdownPresentationValid -and $stylesContent -match '\.shutdown-state\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center' -and $stylesContent -match '\.shutdown-brand-lockup\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center' -and $stylesContent -match '\.shutdown-brand-icon\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*color:\s*#ffff00;[^}]*fill:\s*currentColor' -and $stylesContent -match '\.shutdown-state \.shutdown-product-name\s*\{[^}]*font-size:\s*20px !important;[^}]*font-weight:\s*600 !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.shutdown-state > h1\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important'
     $browserContractValid = $browserContractValid -and $shutdownPresentationValid
     Add-TestResult -Name 'browser-state-contract' -Passed $browserContractValid -Detail 'The IDE shell keeps draft portability in a compact title-bar menu, places shutdown at the far right, and renders the validated fork promotion target plus operational state directly into the status bar.'
 
-    $tooltipLiterals = foreach ($content in @($indexContent, $appContent, $statusbarContent)) {
+    $savedStatusTooltipLiterals = @([regex]::Matches($appContent, 'setSaveIndicator\([^\r\n]*\btooltip:\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+    $statusbarTooltipLiterals = @([regex]::Matches($statusbarContent, 'tooltip:\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) + $savedStatusTooltipLiterals
+    $tooltipLiterals = foreach ($content in @($indexContent, $appContent)) {
         foreach ($pattern in @('data-workbench-tooltip="([^"$<{]+)"', 'setWorkbenchTooltip\([^,]+,\s*"([^"$<{]+)"\)', 'tooltip:\s*"([^"$<{]+)"')) {
             foreach ($match in [regex]::Matches($content, $pattern)) {
-                $match.Groups[1].Value.Trim()
+                $label = $match.Groups[1].Value.Trim()
+                if ($label -notin $savedStatusTooltipLiterals) { $label }
             }
         }
     }
@@ -969,7 +996,19 @@ try {
             "$tooltipLiteral ($($unexpectedCapitalization -join ', '))"
         }
     })
-    Add-TestResult -Name 'tooltip-sentence-case' -Passed ($tooltipCaseViolations.Count -eq 0) -Detail $(if ($tooltipCaseViolations.Count -eq 0) { 'Authored Workbench tooltips use sentence case while preserving product names and acronyms.' } else { "Unexpected tooltip capitalization: $($tooltipCaseViolations -join '; ')" })
+    Add-TestResult -Name 'tooltip-sentence-case' -Passed ($tooltipCaseViolations.Count -eq 0) -Detail $(if ($tooltipCaseViolations.Count -eq 0) { 'Authored non-status Workbench tooltips use sentence case while preserving product names and acronyms.' } else { "Unexpected tooltip capitalization: $($tooltipCaseViolations -join '; ')" })
+
+    $statusbarTooltipCaseViolations = @(foreach ($label in $statusbarTooltipLiterals) {
+        if (@([regex]::Matches($label, '[A-Za-z][A-Za-z''-]*') | Where-Object { $_.Value[0] -cmatch '[a-z]' }).Count -gt 0) {
+            $label
+        }
+    })
+    $statusbarTooltipCaseValid = $statusbarTooltipCaseViolations.Count -eq 0 -and
+        $statusbarContent -cmatch 'key: "validationIssues"[\s\S]*?tooltip: "No Problems"[\s\S]*?key: "save"' -and
+        $appContent -cmatch 'return `Rule Issues:' -and
+        $appContent -cmatch '`Validation Issues:.*"Error".*"Warning"' -and
+        $appContent -notmatch 'setSaveIndicator\("Checking relationships'
+    Add-TestResult -Name 'statusbar-tooltip-title-case' -Passed $statusbarTooltipCaseValid -Detail $(if ($statusbarTooltipCaseValid) { 'Status-bar descriptions use Title Case, keep saved-edit Validation Issues separate from Rule Issues, and leave active validation to its local panel.' } else { "Status-bar tooltip contract failed. Unexpected casing: $($statusbarTooltipCaseViolations -join '; ')" })
 
     $timestampNormalizationValid = $appContent -match 'function toUtcTimestamp\(value = new Date\(\)\)' -and
         $appContent -match 'return date\.toISOString\(\)\.replace\(/Z\$/, "0000Z"\)' -and
@@ -1138,7 +1177,7 @@ try {
 
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.plan-table \.candidate-link\s*\{[^}]*font-size:\s*var\(--font-size-ui\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-ui\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
     $componentConsistencyValid = $stylesContent -match '#candidate-panel > \.panel-heading\s*\{[^}]*padding-block:\s*8px' -and $stylesContent -match 'html\.theme-hosted-dark :is\(\.status-badge, \.candidate-state, \.candidate-lifecycle, \.decision-badge, \.recommendation-badge, \.catalog-status\)\s*\{[^}]*font-size:\s*var\(--font-size-compact\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-compact\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy strong, \.plan-table \.candidate-link\)\s*\{[^}]*color:\s*var\(--accent-bright\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match 'html\.theme-hosted-dark body :is\(\.candidate-tree-copy small, \.plan-candidate-title\)\s*\{[^}]*color:\s*var\(--ink\) !important;[^}]*font-size:\s*var\(--font-size-default\) !important;[^}]*font-weight:\s*400 !important;[^}]*line-height:\s*var\(--line-height-default\) !important' -and $stylesContent -match '\.diff-file-heading\s*\{[^}]*color:\s*#e6edf3;[^}]*border-bottom:\s*1px solid var\(--line\)'
-    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 4) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 3) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
+    $componentConsistencyValid = $componentConsistencyValid -and ([regex]::Matches($appContent, 'class="source-line detail-identity"').Count -eq 3) -and ([regex]::Matches($appContent, 'class="detail-rule-title"').Count -eq 3) -and $stylesContent -match '\.assessment-title > div\s*\{[^}]*min-width:\s*0' -and $stylesContent -match '\.detail-identity\s*\{[^}]*color:\s*var\(--accent-bright\);[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.section-label\s*\{[^}]*text-transform:\s*uppercase'
     Add-TestResult -Name 'component-typography-consistency' -Passed $componentConsistencyValid -Detail 'Candidate Sources, Assessment Results, and Promotion Plan share one 14/20 blue-ID and neutral-title hierarchy; semantic pills remain semibold inside compact surfaces, and Preview section labels retain one heading treatment.'
 
     $scrollbarThemeValid = $stylesContent -match '@property --workbench-scrollbar-thumb' -and $stylesContent -match '\.scroll-surface\s*\{[^}]*scrollbar-color:\s*var\(--workbench-scrollbar-thumb\) var\(--scrollbar-track\);[^}]*transition:\s*--workbench-scrollbar-thumb 360ms ease-out' -and $stylesContent -match '\.scroll-surface:is\(:hover, :focus-within\)\s*\{[^}]*transition-duration:\s*180ms' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*0' -and $stylesContent -match '\.scroll-surface::\-webkit-scrollbar-button' -and $stylesContent -match '--scrollbar-track: transparent' -and $indexContent -match 'candidate-list scroll-surface type-ui'
@@ -1172,20 +1211,38 @@ try {
     $containedViewsValid = $stylesContent -match '@media \(min-width: 901px\)' -and $stylesContent -match 'html,\s*body\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden' -and $stylesContent -match '\.app-shell\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*overflow:\s*hidden' -and $stylesContent -match '\.workspace\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden' -and $stylesContent -match '#catalog-view\.view\.active\s*\{[^}]*grid-template-rows:\s*auto auto auto minmax\(0, 1fr\)' -and $stylesContent -match '#candidate-sources-panel \.candidate-list,[\s\S]*?#assessment-results-panel \.candidate-list\s*\{[^}]*max-height:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match ':is\(#candidate-sources-panel \.assessment-panel, #assessment-results-detail\) > \.assessment-content\s*\{[^}]*overflow-y:\s*auto' -and $stylesContent -match '#preview-view\.view\.active\s*\{[^}]*grid-template-rows:\s*auto 60px minmax\(0, 1fr\)' -and $stylesContent -match '#plan-view \.plan-table-wrap,[\s\S]*?#preview-view \.preview-code\s*\{[^}]*overflow:\s*auto' -and $stylesContent -match '#plan-view \.plan-table th\s*\{[^}]*position:\s*sticky'
     Add-TestResult -Name 'contained-view-scrolling' -Passed $containedViewsValid -Detail 'Desktop stages keep navigation, headers, tabs, Draft Summary, and Plan Projection static while their owned tree, form, table, and review surfaces scroll independently.'
 
-    $impactFactorsValid = $appContent -match 'AI Evaluation:' -and $appContent -match 'Assessment Details:' -and $appContent -match 'AI-adjudicated evidence' -and $appContent -match 'Recommend ' -and $appContent -match '<span>Token cost</span>' -and $appContent -notmatch 'Guarded token cost' -and $appContent -match 'Rule Value:' -and $appContent -match 'Review Risk:' -and $appContent -match 'Harm caused when this defect is missed' -and $appContent -match 'Chance of producing unsupported findings' -and $appContent -notmatch '<input type="range"' -and $appContent -notmatch 'data-decision-field="selectionRationale"' -and $stylesContent -match '\.factor-group\.value' -and $stylesContent -match '\.factor-group\.penalty' -and $stylesContent -match '\.factor-meter'
+    $impactFactorsValid = $appContent -notmatch 'AI Evaluation:|AI Adjudication Rationale:' -and $appContent -match 'Assessment Details:' -and $appContent -match 'AI-adjudicated evidence' -and $appContent -match 'Recommend ' -and $appContent -match '<span>Token cost</span>' -and $appContent -notmatch 'Guarded token cost' -and $appContent -match 'Rule Value:' -and $appContent -match 'Review Risk:' -and $appContent -match 'Harm caused when this defect is missed' -and $appContent -match 'Chance of producing unsupported findings' -and $appContent -notmatch '<input type="range"' -and $appContent -notmatch 'data-decision-field="selectionRationale"' -and $stylesContent -match '\.factor-group\.value' -and $stylesContent -match '\.factor-group\.penalty' -and $stylesContent -match '\.factor-meter'
     Add-TestResult -Name 'impact-factor-guidance' -Passed $impactFactorsValid -Detail 'Pre-evaluated AI impact, cost, recommendation, factor evidence, and rationale are visible and read-only.'
 
     $detailLayoutValid = $stylesContent -match '#catalog-view\s*\{[^}]*max-width:\s*none' -and $stylesContent -match '#candidate-sources-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '#candidate-sources-panel \.assessment-panel\s*\{[^}]*min-width:\s*0' -and $indexContent -match 'class="candidate-pane-switch" role="tablist" aria-label="Candidate workspace"' -and $indexContent -match 'data-candidate-pane="candidates"' -and $indexContent -match 'data-candidate-pane="details" disabled' -and $appContent -match 'function showCandidatePane\(pane\)' -and $appContent -match 'elements\["candidate-panel"\]\.hidden = detailsActive' -and $appContent -match 'elements\["assessment-panel"\]\.hidden = !detailsActive' -and $stylesContent -match '\.candidate-pane-tab\.active'
-    $sharedPresentationValid = $stylesContent -match 'html\.theme-hosted-dark body,\s*html\.theme-hosted-dark body \*\s*\{[^}]*font-family:\s*"Segoe UI", Tahoma, sans-serif !important' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.subcontext-container\s*\{[^}]*padding:\s*12px;[^}]*background:\s*var\(--blue-soft\);[^}]*border-left:\s*3px solid var\(--blue\)' -and $stylesContent -match '\.subcontext-container > p,\s*p\.subcontext-container\s*\{[^}]*color:\s*#c6d4ff;[^}]*font-size:\s*0\.8rem' -and $appContent -match 'overlap-item subcontext-container' -and $appContent -match 'ai-evaluation-summary subcontext-container' -and $appContent -match 'adjudication-text-box subcontext-container' -and $appContent -match 'evidence-summary-box subcontext-container'
-    $actionControlsValid = $appContent -match 'DECISION_RATIONALE_MAX_LENGTH = 500' -and $appContent -match 'rule-actions-content subcontext-container' -and $appContent -match 'class="assessment-title rule-action-header"[\s\S]*?<span>RULE:</span><span>\$\{escapeHtml\(candidate\.assessment\.proposedHostedRuleId\)\}</span>' -and $appContent -match '<span class="control-subtitle">Rule Action:</span>\s*<div class="control-group action-plan-group">[\s\S]*?<fieldset class="action-options">' -and $appContent -notmatch 'data-plan-toggle|class="plan-toggle'
+    $sharedPresentationValid = $stylesContent -match 'html\.theme-hosted-dark body,\s*html\.theme-hosted-dark body \*\s*\{[^}]*font-family:\s*var\(--font-family-ui\) !important' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.subcontext-container\s*\{[^}]*padding:\s*12px;[^}]*background:\s*var\(--blue-soft\);[^}]*border-left:\s*3px solid var\(--blue\)' -and $stylesContent -match '\.subcontext-container > p,\s*p\.subcontext-container\s*\{[^}]*color:\s*#c6d4ff;[^}]*font-size:\s*0\.8rem' -and $appContent -match 'className: "assessment-explanation"' -and $appContent -match 'class="current-hosted-rule"' -and $appContent -match 'class="evidence-box scroll-surface"'
+    $actionControlsValid = $appContent -match 'DECISION_RATIONALE_MAX_LENGTH = 500' -and $appContent -match 'class="rule-actions-content"' -and $appContent -notmatch 'rule-actions-content subcontext-container|rule-action-header' -and $appContent -match 'Rule Actions: <strong class="rule-reference">\$\{escapeHtml\(displayId\)\}</strong>' -and $appContent -match '<span class="control-subtitle">Rule Action:</span>\s*<div class="control-group action-plan-group">[\s\S]*?<fieldset class="action-options">' -and $appContent -notmatch 'data-plan-toggle|class="plan-toggle'
     $actionControlsValid = $actionControlsValid -and $appContent -match '<div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save"[^>]*data-rationale-save[^>]*aria-label=' -and $appContent -match '<label><textarea[^>]*maxlength="\$\{DECISION_RATIONALE_MAX_LENGTH\}"[^>]*aria-labelledby="decision-rationale-label"[^>]*aria-describedby="decision-rationale-limit"'
     $actionControlsValid = $actionControlsValid -and $appContent -match 'rationale-limit.*DECISION_RATIONALE_MAX_LENGTH' -and $appContent -match 'decision\.rationale\.length > DECISION_RATIONALE_MAX_LENGTH' -and $stylesContent -match '\.field-stack textarea\s*\{[^}]*height:\s*84px;[^}]*max-height:\s*84px;[^}]*resize:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match '\.rationale-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*flex-end' -and $stylesContent -match '\.rationale-heading \.rationale-save svg\s*\{[^}]*transform:\s*translateY\(2px\)' -and $stylesContent -match '\.rationale-heading \.rationale-save:disabled\s*\{[^}]*cursor:\s*default !important' -and $stylesContent -notmatch '\.rationale-actions' -and $stylesContent -match '\.assessment-title-statuses\s*\{[^}]*width:\s*270px;[^}]*flex:\s*0 0 270px;[^}]*justify-content:\s*flex-end'
-    $assessmentLegendValid = $appContent -notmatch 'impact / 100 tokens' -and $appContent -match '<span class="control-subtitle scoring-legend-title">Scoring Legend:</span>\s*<div class="scoring-legend subcontext-container">' -and $appContent -match 'Score Scale:</span><span>Scores run from 0 \(none\) through 5 \(very high\)' -and $appContent -match 'Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely' -and $appContent -match 'direction-badge positive">Adds to Impact' -and $appContent -match 'direction-badge negative">Reduces Impact' -and $appContent -match 'risk-\$\{value <= 2 \? "low" : value === 3 \? "moderate" : "high"\}' -and $stylesContent -match '\.factor-line\.penalty\.risk-low \.factor-value\s*\{[^}]*color:\s*var\(--success\)' -and $stylesContent -match '\.scoring-legend-item\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)'
+    $assessmentLegendValid = $appContent -notmatch 'impact / 100 tokens' -and $appContent -match 'data-scoring-legend-open' -and $appContent -match '<dialog class="scoring-legend-dialog"' -and $appContent -match 'Score Scale:</span><span>Scores run from 0 \(none\) through 5 \(very high\)' -and $appContent -match 'Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely' -and $appContent -match 'direction-badge positive">Adds to Impact' -and $appContent -match 'direction-badge negative">Reduces Impact' -and $appContent -match 'risk-\$\{value <= 2 \? "low" : value === 3 \? "moderate" : "high"\}' -and $stylesContent -match '\.factor-line\.penalty\.risk-low \.factor-value\s*\{[^}]*color:\s*var\(--success\)' -and $stylesContent -match '\.scoring-legend-item\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)'
     $detailPresentationValid = $detailLayoutValid -and $sharedPresentationValid -and $actionControlsValid -and $assessmentLegendValid -and $appContent -match 'candidate-state \$\{escapeHtml\(candidate\.state\)\}">\$\{escapeHtml\(capitalize\(candidate\.state\)\)\}' -and $appContent -match 'return value === "no-change" \? "No Change"' -and $stylesContent -match '\.decision-badge\.no-change,[\s\S]*\.recommendation-badge\.no-change\s*\{[^}]*border-color:\s*rgba\(142, 160, 208, 0\.72\)'
     $detailLayoutValid = $stylesContent -match '#catalog-view\s*\{[^}]*max-width:\s*none' -and $stylesContent -match '#candidate-sources-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '\.candidate-pane-switch\s*\{[^}]*height:\s*34px;[^}]*background:\s*var\(--paper\);[^}]*border-bottom:\s*1px solid var\(--line\)' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*height:\s*34px;[^}]*background:\s*var\(--surface\);[^}]*border-radius:\s*0;[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\.active\s*\{[^}]*background:\s*var\(--paper\);[^}]*box-shadow:\s*inset 0 -1px var\(--accent\)' -and $indexContent -match 'data-candidate-pane="details"' -and $indexContent -notmatch 'data-candidate-pane="details" disabled' -and $appContent -match 'function showCandidatePane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "candidates"' -and $appContent -match 'if \(!candidate\) \{[\s\S]*?<h2>Select a Candidate</h2>'
     $detailPresentationValid = $detailLayoutValid -and $sharedPresentationValid -and $actionControlsValid -and $assessmentLegendValid -and $appContent -match 'candidate-state \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'return value === "no-change" \? "No Change"'
     $detailPresentationValid = $detailPresentationValid -and $appContent -match 'if \(!candidate\) \{[\s\S]*?icon\("tasklist"\)[\s\S]*?<h2>Select a Candidate</h2>[\s\S]*?refreshPresentation\(\);\s*return;' -and $stylesContent -match '--info-foreground:\s*#3a94bc' -and $stylesContent -match '--warning-foreground:\s*#e5ba7d' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.empty-state\.warning-state svg\s*\{[^}]*color:\s*var\(--warning-foreground\)' -and $stylesContent -match 'html\.theme-hosted-dark body \.empty-state > :is\(h2, h3\)\s*\{[^}]*font-size:\s*18px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*24px !important'
-    $detailPresentationValid = $detailPresentationValid -and $appContent -match 'function renderCatalogStatusBadge\(catalogStatus\)' -and $appContent -match 'function renderMappedHostedRules\(catalogStatus, includePlacements = false\)' -and $appContent -match 'if \(!catalogStatus\.rules\.length\) return ""' -and ([regex]::Matches($appContent, 'renderCatalogStatusBadge\(catalogStatus\)').Count -eq 3) -and ([regex]::Matches($appContent, 'renderMappedHostedRules\(catalogStatus').Count -eq 3) -and $appContent -match 'Mapped Hosted Rules:' -and $appContent -match 'label: "Retired"' -and $appContent -notmatch 'Retired Mapping|Hosted Catalog Status:|No authoritative mapping|No Hosted rule is mapped to this source candidate'
+    $detailPresentationValid = $detailPresentationValid -and $appContent -match 'function renderCatalogStatusBadge\(catalogStatus\)' -and $appContent -match 'function renderCurrentHostedRules\(catalogStatus, assessment\)' -and $appContent -match 'if \(!catalogStatus\.rules\.length\) return ""' -and ([regex]::Matches($appContent, 'renderCatalogStatusBadge\(catalogStatus\)').Count -eq 3) -and ([regex]::Matches($appContent, 'renderCurrentHostedRules\(catalogStatus').Count -eq 3) -and $appContent -match 'Current Hosted Rule:' -and $appContent -match 'label: "Retired"' -and $appContent -notmatch 'Mapped Hosted Rules:|Contributing Rules \(|Retired Mapping|Hosted Catalog Status:|No authoritative mapping|No Hosted rule is mapped to this source candidate'
+    $detailPresentationValid = $detailPresentationValid -and
+        $appContent -match 'function renderEvidenceDisclosure\(' -and $appContent -match 'aria-controls="\$\{escapeHtml\(id\)\}" aria-expanded="\$\{expanded\}"' -and
+        $appContent -match 'function renderRelatedHostedCoverage\(' -and $appContent -match 'item\.hostedRuleId' -and $appContent -match 'item\.rationale' -and
+        $appContent -match 'renderAssessmentExplanation\(candidate, assessment\)' -and
+        $appContent -match 'function renderInformationPanel\(content, \{ iconMarkup = fluentIcon\("info-20-regular"\)' -and
+        $appContent -match 'className: "assessment-context section-guidance"' -and
+        $appContent -match 'className: "rule-actions-guidance section-guidance"' -and
+        $appContent -match 'iconMarkup: icon\("lock"\)' -and
+        $appContent -notmatch 'read-only-boundary' -and
+        $stylesContent -notmatch '\.read-only-boundary' -and
+        $stylesContent -match '\.information-panel \.fluent-icon,\s*\.information-panel > \.codicon\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px;[^}]*color:\s*var\(--information-icon\)' -and
+        $stylesContent -match '\.section-guidance\s*\{[^}]*margin:\s*0 0 12px' -and
+        $appContent -match 'Resource types apply only to implementation rules\.' -and
+        $appContent -match 'class="evidence-box scroll-surface" data-decision-field="rationale"' -and
+        $stylesContent -match '\.field-stack textarea:not\(\.evidence-box\)' -and
+        $stylesContent -match '\.evidence-disclosure-label\s*\{[^}]*align-items:\s*baseline;[^}]*gap:\s*8px' -and
+        $stylesContent -match '\.evidence-disclosure-label > \.count-badge\s*\{[^}]*min-height:\s*18px;[^}]*height:\s*18px;[^}]*padding:\s*0 6px' -and
+        $stylesContent -match '\.current-hosted-rule\s*\{[^}]*padding-bottom:\s*12px'
     $detailPresentationValid = $detailPresentationValid -and
         $appContent -notmatch 'wording\.presentation === "member"' -and
         $appContent -match 'renderRuleReferences\(issue\.bannerMessage, issue\.ruleIds, "rule-issue-banner-reference"\)' -and
@@ -1267,10 +1324,6 @@ try {
         $appContent -match 'if \(!rationale\)[\s\S]*?saveDecision\(candidate, null\)' -and
         $appContent -match 'SESSION_SCHEMA_VERSION = 4' -and
         $appContent -match '\$schema: "workbench-draft-v4\.schema\.json"'
-    $ruleActionsValid = $ruleActionsValid -and
-        $appContent -match 'class="assessment-title rule-action-header"[\s\S]*?<span>RULE:</span><span>\$\{escapeHtml\(candidate\.assessment\.proposedHostedRuleId\)\}</span>' -and
-        $appContent -notmatch 'proposed-hosted-rule-id|data-decision-field="proposedHostedRuleId"' -and
-        $stylesContent -match '\.rule-actions-content > \.rule-action-header\s*\{[^}]*width:\s*calc\(100% \+ 24px\);[^}]*margin:\s*-12px -12px 0;[^}]*padding:\s*12px 16px 14px;[^}]*background:\s*var\(--context-header\);'
     $ruleActionsValid = $appContent -match 'function getCatalogStatus' -and
         $appContent -match 'function getAllowedActions' -and
         $appContent -match 'data-decision-field="proposedText"' -and
@@ -1280,8 +1333,10 @@ try {
         $appContent -match 'createPlanMembership\(isPromotionAction\(action\) \|\| retireHostedRuleIds\.length \? "manual" : "none"\)' -and
         $appContent -match 'SESSION_SCHEMA_VERSION = 7' -and
         $appContent -match 'WORKBENCH_DRAFT_SCHEMA_VERSION = 4' -and
+        $appContent -match 'Rule Actions: <strong class="rule-reference">\$\{escapeHtml\(displayId\)\}</strong>' -and
+        $appContent -notmatch 'proposed-hosted-rule-id|rule-action-header|rule-actions-content subcontext-container' -and
         $appContent -notmatch 'recommendedRetirementRuleIds|relatedHostedRules|isPromotionOwner|data-decision-field="proposedHostedRuleId"'
-    Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Catalog-owned mapping controls lifecycle actions and immutable identity; Rule Actions shows the generated ID in a flush embedded header, and related coverage cannot infer ownership.'
+    Add-TestResult -Name 'catalog-status-rule-actions' -Passed $ruleActionsValid -Detail 'Catalog-owned mapping controls lifecycle actions and immutable identity; Rule Actions uses one generated-ID heading and unboxed controls, and related coverage cannot infer ownership.'
 
     $bulkActionsValid = $indexContent -match 'class="bulk-actions" id="bulk-actions"' -and $indexContent -match 'data-bulk-scope="add"' -and $indexContent -match 'data-bulk-scope="update"' -and $indexContent -match 'data-bulk-scope="actionable"' -and $indexContent -match 'data-bulk-undo' -and $appContent -match 'bulkOperations:\s*\[\]' -and $appContent -match 'function createPlanMembership\(' -and $appContent -match 'function isValidPlanMembership\(' -and $appContent -match 'function getBulkActionCandidates\(' -and $appContent -match 'return !decision\.inPlan' -and $appContent -match 'function applyBulkSelection\(' -and $appContent -match 'createPlanMembership\("bulk", operation\.id\)' -and $appContent -match 'function undoBulkOperation\(' -and $appContent -match 'decision\?\.planMembershipSource !== "bulk" \|\| decision\.bulkOperationId !== operation\.id' -and $appContent -match 'promotesManualMembership' -and $appContent -match 'removeCandidateFromBulkOperations\(candidate\.key\)' -and $appContent -match 'source:\s*decision\.planMembershipSource' -and $appContent -match 'bulkOperations:\s*state\.session\.bulkOperations' -and $appContent -match 'draft\.bulkOperations' -and $stylesContent -match '\.bulk-actions-menu\s*\{' -and $stylesContent -match '\.plan-membership-badge\s*\{'
     $bulkActionsValid = $bulkActionsValid -and $appContent -match 'addEventListener\("mouseleave", handleBulkActionsMouseLeave\)' -and $appContent -match 'function renderBulkSelectionOutputs\(\) \{\s*syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*renderAssessment\(\);\s*renderDecisionOutputs\(\);\s*\}' -and ([regex]::Matches($appContent, 'renderBulkSelectionOutputs\(\)').Count -eq 3) -and $appContent -match 'function saveDecision\(candidate, decision\)[\s\S]*?syncCandidateTreeRows\(\);\s*renderBulkActions\(\);\s*syncAssessmentPlanToggle\(candidate\);' -and $appContent -notmatch 'renderAllPreservingCandidateDisclosures' -and $appContent -match 'data-source-type="overrides"' -and $appContent -match 'data-source-type="\$\{escapeHtml\(sourceType\)\}"'
@@ -1313,6 +1368,17 @@ try {
         $stylesContent -match '\.candidate-parent-decoration-icon\s*\{[^}]*margin-left:\s*auto' -and
         $stylesContent -match '\.candidate-tree-copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 16px'
     Add-TestResult -Name 'semantic-color-contract' -Passed $semanticColorsValid -Detail 'Lifecycle, recommendation, catalog mapping, selected action, plan membership, and Undo states use readable semantic colors and visible borders.'
+
+    $errorBannerStyleValid = $stylesContent -match '\.error-banner\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\) 24px;[^}]*min-height:\s*36px' -and
+        $stylesContent -match '\.error-banner\s*\{[^}]*color:\s*var\(--error-foreground\);[^}]*background:\s*var\(--error-background\);[^}]*border:\s*1px solid var\(--error-border\)' -and
+        $stylesContent -match '\.error-banner\s*\{[^}]*font-size:\s*var\(--font-size-default\);[^}]*line-height:\s*var\(--line-height-default\)' -and
+        $stylesContent -match '\.error-banner\[hidden\]\s*\{[^}]*display:\s*none' -and
+        $stylesContent -match '\.error-banner > \.error-banner-icon\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px;[^}]*color:\s*inherit;[^}]*fill:\s*currentColor' -and
+        $stylesContent -match '\.error-banner-message\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere' -and
+        $stylesContent -match '\.error-banner-dismiss\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*color:\s*inherit;[^}]*background:\s*transparent;[^}]*border:\s*0' -and
+        $stylesContent -match '\.error-banner-dismiss:hover\s*\{[^}]*background:\s*var\(--accent-soft\)' -and
+        $stylesContent -match '\.error-banner-dismiss :is\(\.codicon, \.fluent-icon\)\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px'
+    Add-TestResult -Name 'error-banner-style-contract' -Passed $errorBannerStyleValid -Detail 'Reusable error banners use a compact icon/message/dismiss layout, shared pink error tokens, wrapping text, hidden-state support, and the existing dismiss hover treatment.'
 
     $clickableAffordanceValid = $stylesContent -match '\.clickable\s*\{\s*cursor:\s*pointer !important' -and
         $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
@@ -1386,7 +1452,10 @@ try {
         $appContent -match 'async function stageRuleIssueRecommendation\(issue\)' -and
         $appContent -match 'activeRuleIssueRecommendations\.add\(issue\.id\)' -and
         $appContent -match 'for \(const \{ candidate, operation \} of candidateOperations\)' -and
-        $appContent -match 'if \(!await reconcileRuleTextRelationships\(candidate, operation\.proposedText, \{ notify: false \}\)\) return' -and
+        $appContent -match 'notify: false, commit: false, proposals' -and
+        $appContent -match 'evaluations\.push\(evaluation\)' -and
+        $appContent -match 'const nextSession = structuredClone\(state\.session\)' -and
+        $appContent -match 'await persistSession\(nextSession, assertCurrent\)' -and
         $appContent -match 'const label = checking \? "Checking Relationships"' -and
         $appContent -match 'activeRuleIssueRecommendations\.delete\(issue\.id\)'
     Add-TestResult -Name 'rule-issue-recommendation-staging' -Passed $ruleIssueRecommendationStagingValid -Detail 'Rule Issue recommendations disable their action while every changed proposed text is reconciled and commit decisions only after all exact-text checks succeed.'
@@ -1579,7 +1648,8 @@ try {
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses the staged display, Rebuild reuses exact semantic caches, and Rebuild with Force bypasses cache reads while preserving atomic publication.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
-        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store" \}\)' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'"
+        $serverEntryPointContents = @($launcherContent, (Get-Content -LiteralPath $loopbackServerPath -Raw))
+        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store", signal \}\)' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and (@($serverEntryPointContents | Where-Object { -not $_.Contains('-ClientSocket $client.Client') -or -not $_.Contains('catch [OperationCanceledException]') }).Count -eq 0)
         Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, serves server-owned runtime authority, and exposes only token-authenticated shutdown and scoped relationship operations.'
     }
 
@@ -1608,6 +1678,287 @@ try {
         if (-not $behaviorManifestValid) {
             throw 'Workbench browser behavior manifest is invalid'
         }
+    }
+    if (Test-ShouldRun -Name 'relationship-check-cancellation') {
+        Start-TestResult -Name 'relationship-check-cancellation'
+        Import-Module (Join-Path $toolsRoot 'modules/workbench/SavedRuleEvaluation.psm1')
+        $markerPath = Join-Path $tempRoot 'cancellation-worker.json'
+        $cancelledOutputPath = Join-Path $tempRoot 'cancelled-output.json'
+        $cancellationListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        $cancellationListener.Start()
+        $cancellationPort = ([Net.IPEndPoint]$cancellationListener.LocalEndpoint).Port
+        $disconnectJob = Start-Job -ScriptBlock {
+            param($Port, $MarkerPath)
+            $peer = [Net.Sockets.TcpClient]::new()
+            try {
+                $peer.Connect('127.0.0.1', $Port)
+                $deadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+                while (-not (Test-Path -LiteralPath $MarkerPath)) {
+                    if ([DateTimeOffset]::UtcNow -gt $deadline) { throw 'Cancellation fixture did not start' }
+                    Start-Sleep -Milliseconds 50
+                }
+            }
+            finally { $peer.Dispose() }
+        } -ArgumentList $cancellationPort, $markerPath
+        $cancellationClient = $null
+        try {
+            $accept = $cancellationListener.AcceptTcpClientAsync()
+            if (-not $accept.Wait(15000)) { throw 'Cancellation fixture did not connect' }
+            $cancellationClient = $accept.GetAwaiter().GetResult()
+            $cancelled = $false
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            try {
+                Invoke-SavedRuleEvaluationProcess -ScriptPath (Join-Path $PSScriptRoot 'fixtures/cancellable-workbench-worker.ps1') -Parameters @{
+                    MarkerPath = $markerPath; OutputPath = $cancelledOutputPath
+                } -ClientSocket $cancellationClient.Client
+            }
+            catch [OperationCanceledException] { $cancelled = $true }
+            $workerIds = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+            $deadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+            do {
+                $remaining = @(Get-Process -Id $workerIds.worker, $workerIds.child -ErrorAction SilentlyContinue)
+                if ($remaining.Count) { Start-Sleep -Milliseconds 50 }
+            } while ($remaining.Count -and [DateTimeOffset]::UtcNow -lt $deadline)
+            $cancellationPassed = $cancelled -and $timer.Elapsed.TotalSeconds -lt 15 -and $remaining.Count -eq 0 -and
+                -not (Test-Path -LiteralPath $cancelledOutputPath)
+            Add-TestResult -Name 'relationship-check-cancellation' -Passed $cancellationPassed -Detail 'Disconnecting the request cancels the native worker and its child process promptly, without publishing a result.'
+        }
+        finally {
+            if ($null -ne $cancellationClient) { $cancellationClient.Dispose() }
+            $cancellationListener.Stop()
+            if ($disconnectJob.State -eq 'Running') { Stop-Job -Job $disconnectJob }
+            Remove-Job -Job $disconnectJob -Force
+            if (Test-Path -LiteralPath $markerPath) {
+                $workerIds = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+                foreach ($workerId in @($workerIds.worker, $workerIds.child)) {
+                    $worker = Get-Process -Id $workerId -ErrorAction SilentlyContinue
+                    if ($null -ne $worker) { $worker.Kill($true); $worker.WaitForExit(); $worker.Dispose() }
+                }
+            }
+        }
+    }
+    if (Test-ShouldRun -Name 'relationship-check-responsiveness') {
+        Start-TestResult -Name 'relationship-check-responsiveness' -RunningDetail 'Checking assets, authorization, evaluator serialization, cancellation, and shutdown during real HTTP validation'
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-WorkbenchServerResponsiveness.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'responsive-server')
+        Add-TestResult -Name 'relationship-check-responsiveness' -Passed ($LASTEXITCODE -eq 0) -Detail 'Production and internal launchers serve GET/HEAD during held, production-shaped saved-rule requests while preserving serialized evaluators, validated responses, error reporting, disconnect cancellation, and shutdown cleanup.'
+    }
+    if (Test-ShouldRun -Name 'saved-rule-wording-review') {
+        Start-TestResult -Name 'saved-rule-wording-review' -RunningDetail 'Checking independent wording acceptance, strict output, phase preservation, and registered prompt boundaries'
+        Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
+        Import-Module (Join-Path $toolsRoot 'modules/reconciliation/RuleIssueAdjudication.psm1')
+        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation'
+        $baseline = 'Examples must use the documented arguments.'
+        $text = $baseline + ' An unrelated non-rule sentence.'
+        $key = 'maintainer:SOURCE-001:A1'
+        $hash = 'a' * 64
+        $component = [ordered]@{
+            '$schema' = 'rule-issue-adjudication-input-v4.schema.json'; schemaVersion = 1; kind = 'hosted-rule-issue-adjudication-input'
+            componentId = 'saved:WORDING-TEST-001'; evaluationPhase = 'scope'
+            sourceFiles = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'SOURCE-001'; contentSha256 = $hash })
+            rules = @([ordered]@{ id = 'WORDING-TEST-001'; status = 'proposed'; title = 'Wording fixture'; text = $text; contentSha256 = Get-Sha256 -Content $text; candidateKeys = @($key) })
+            relationships = @()
+            operations = @([ordered]@{ candidateKey = $key; ruleId = 'WORDING-TEST-001'; action = 'add'; proposedText = $text; retireHostedRuleIds = @() })
+            editContext = [ordered]@{
+                candidateKey = $key; baselineText = $baseline; baselineSha256 = Get-Sha256 -Content $baseline
+                appendText = $text.Substring($baseline.Length); evaluationContextSha256 = $hash
+                proposals = @([ordered]@{ candidateKey = $key; inPlan = $false; baselineText = $baseline; proposedText = $text; ruleTextSha256 = Get-Sha256 -Content $text; retireHostedRuleIds = @() })
+            }
+        } | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        $draft = [ordered]@{
+            '$schema' = 'rule-issue-adjudication-draft-v4.schema.json'; schemaVersion = 1; kind = 'hosted-rule-issue-adjudication-draft'
+            componentId = $component.componentId; evaluationPhase = 'scope'; evaluationContextSha256 = $hash
+            scopeReview = [ordered]@{
+                disposition = 'within-scope'; ownerRuleId = $null; baselineQuote = $baseline; proposalQuote = $text
+                rationale = 'The addition creates no distinct enforceable obligation.'
+                wordingStatus = 'needs-review'; wordingRationale = 'Remove the unrelated non-rule sentence before acceptance.'
+            }
+            relationshipDecisions = @(); issues = @()
+        } | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        $inputSchema = Join-Path $schemaRoot 'rule-issue-adjudication-input-v4.schema.json'
+        $draftSchema = Join-Path $schemaRoot 'rule-issue-adjudication-draft-v4.schema.json'
+        $wordingContractPassed = ($component | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile $inputSchema -ErrorAction Stop
+        foreach ($status in @('acceptable', 'needs-review')) {
+            $draft.scopeReview.wordingStatus = $status
+            $wordingContractPassed = $wordingContractPassed -and (($draft | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile $draftSchema -ErrorAction Stop)
+            Test-RuleIssueAdjudicationDraft -Component $component -Draft $draft
+        }
+        $rejections = 0
+        foreach ($case in @('missing-status', 'invalid-status', 'missing-rationale', 'empty-rationale', 'blank-rationale')) {
+            $invalid = $draft | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+            switch ($case) {
+                'missing-status' { $invalid.scopeReview.PSObject.Properties.Remove('wordingStatus') }
+                'invalid-status' { $invalid.scopeReview.wordingStatus = 'unspecified' }
+                'missing-rationale' { $invalid.scopeReview.PSObject.Properties.Remove('wordingRationale') }
+                'empty-rationale' { $invalid.scopeReview.wordingRationale = '' }
+                'blank-rationale' { $invalid.scopeReview.wordingRationale = ' ' }
+            }
+            try { Test-RuleIssueAdjudicationDraft -Component $component -Draft $invalid }
+            catch {
+                if ($_.Exception.Message -notlike '*explicit wording status and rationale*') { throw }
+                $rejections++
+            }
+        }
+        $component.evaluationPhase = 'issues'
+        $component | Add-Member -NotePropertyName scopeReview -NotePropertyValue ($draft.scopeReview | ConvertTo-Json | ConvertFrom-Json)
+        $component | Add-Member -NotePropertyName memberScopeReviews -NotePropertyValue @([pscustomobject]@{ candidateKey = $key; scopeReview = $component.scopeReview })
+        $draft.evaluationPhase = 'issues'
+        $wordingContractPassed = $wordingContractPassed -and (($component | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile $inputSchema -ErrorAction Stop)
+        Test-RuleIssueAdjudicationDraft -Component $component -Draft $draft
+        foreach ($field in @('wordingStatus', 'wordingRationale')) {
+            $invalid = $draft | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+            if ($field -ceq 'wordingStatus') { $invalid.scopeReview.wordingStatus = 'acceptable' }
+            else { $invalid.scopeReview.wordingRationale = 'A different decision.' }
+            try { Test-RuleIssueAdjudicationDraft -Component $component -Draft $invalid }
+            catch {
+                if ($_.Exception.Message -notlike '*changed the validated scope review*') { throw }
+                $rejections++
+            }
+        }
+        $authority = Get-Content -LiteralPath (Join-Path $schemaRoot 'rule-issue-adjudication-v4.json') -Raw | ConvertFrom-Json
+        $prompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/assessment-reconciliation-prompts/*.md' })
+        $wordingContractPassed = $wordingContractPassed -and $prompts.Count -eq 2
+        foreach ($relativePath in $prompts) {
+            $content = Get-Content -LiteralPath (Join-Path $repositoryRoot $relativePath) -Raw
+            $boundary = ($content -split '(?m)^## Boundaries\s*$', 2)[-1]
+            foreach ($required in @('source', 'assessment', 'catalog', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
+                $wordingContractPassed = $wordingContractPassed -and $content -match '(?m)^## Boundaries\s*$' -and $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)
+            }
+        }
+        $prompt = Get-Content -LiteralPath (Join-Path $toolsRoot 'assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md') -Raw
+        $wordingContractPassed = $wordingContractPassed -and $prompt.Contains('scopeReview.wordingStatus', [StringComparison]::Ordinal) -and
+            $prompt.Contains('wordingRationale', [StringComparison]::Ordinal) -and $rejections -eq 7
+        Add-TestResult -Name 'saved-rule-wording-review' -Passed $wordingContractPassed -Detail 'Within-scope wording may independently need correction; missing or invalid decisions and issue-phase rewrites are rejected. All registered evaluator prompts retain quoted-data injection boundaries.'
+    }
+    if (Test-ShouldRun -Name 'saved-rule-consolidation') {
+        Start-TestResult -Name 'saved-rule-consolidation' -RunningDetail 'Checking intended target ownership, complete preservation, retirement boundaries, and extractive provenance'
+        Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
+        Import-Module (Join-Path $toolsRoot 'modules/reconciliation/RuleIssueAdjudication.psm1')
+        $baseline = 'Examples must remain functional and self-contained.'
+        $proposal = $baseline + ' Secrets shoud use variables.'
+        $peerText = 'Examples must not hard-code secrets; use input variables for secret values.'
+        $merged = $baseline + ' Examples must not hard-code secrets; use input variables for secret values.'
+        $target = 'maintainer:z-target:Z1'
+        $peer = 'maintainer:a-peer:A1'
+        $targetId = 'MERGE-TARGET-001'
+        $peerId = 'MERGE-PEER-001'
+        $hash = 'a' * 64
+        $scope = [ordered]@{
+            disposition = 'within-scope'; ownerRuleId = $null; baselineQuote = $peerText; proposalQuote = $peerText
+            rationale = 'The unchanged comparison retains its original scope.'
+            wordingStatus = 'acceptable'; wordingRationale = 'The comparison expresses a complete obligation.'
+        }
+        $component = [ordered]@{
+            '$schema' = 'rule-issue-adjudication-input-v4.schema.json'; schemaVersion = 1; kind = 'hosted-rule-issue-adjudication-input'
+            componentId = 'saved:consolidation'; evaluationPhase = 'issues'
+            sourceFiles = @([ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'SOURCE-001'; contentSha256 = $hash })
+            rules = @(
+                [ordered]@{ id = $targetId; status = 'active'; title = 'Target'; text = $baseline; contentSha256 = Get-Sha256 -Content $baseline; candidateKeys = @($target) }
+                [ordered]@{ id = $peerId; status = 'active'; title = 'Comparison'; text = $peerText; contentSha256 = Get-Sha256 -Content $peerText; candidateKeys = @($peer) }
+            )
+            relationships = @([ordered]@{ id = 'edge:merge'; sourceRuleId = $targetId; relatedRuleId = $peerId; relationship = 'partial-overlap'; rationale = 'The proposed addition overlaps the comparison.'; candidateKey = $target })
+            operations = @(
+                [ordered]@{ candidateKey = $target; ruleId = $targetId; action = 'update'; proposedText = $proposal; retireHostedRuleIds = @() }
+                [ordered]@{ candidateKey = $peer; ruleId = $peerId; action = 'no-change'; proposedText = $peerText; retireHostedRuleIds = @() }
+            )
+            editContext = [ordered]@{
+                candidateKey = $peer; intendedCandidateKey = $target
+                baselineText = $peerText; baselineSha256 = Get-Sha256 -Content $peerText
+                appendText = ''; evaluationContextSha256 = $hash
+                proposals = @(
+                    [ordered]@{ candidateKey = $target; inPlan = $false; baselineText = $baseline; proposedText = $proposal; ruleTextSha256 = Get-Sha256 -Content $proposal; retireHostedRuleIds = @() }
+                    [ordered]@{ candidateKey = $peer; inPlan = $false; baselineText = $peerText; proposedText = $peerText; ruleTextSha256 = Get-Sha256 -Content $peerText; retireHostedRuleIds = @() }
+                )
+            }
+            scopeReview = $scope
+            memberScopeReviews = @(
+                [ordered]@{ candidateKey = $peer; scopeReview = $scope }
+                [ordered]@{ candidateKey = $target; scopeReview = [ordered]@{
+                    disposition = 'within-scope'; ownerRuleId = $null; baselineQuote = $baseline; proposalQuote = $proposal
+                    rationale = 'The proposed combination keeps the intended target.'
+                    wordingStatus = 'needs-review'; wordingRationale = 'Correct the spelling and preserve the stronger secret-handling requirement.'
+                } }
+            )
+        } | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        $component = & (Get-Module RuleIssueAdjudication) {
+            param($inputComponent)
+            New-SavedRuleAdjudicationPhaseInput -Component $inputComponent -Phase issues -Items @($inputComponent.relationships) -ScopeReview @($inputComponent.memberScopeReviews)
+        } $component
+        $draft = [ordered]@{
+            '$schema' = 'rule-issue-adjudication-draft-v4.schema.json'; schemaVersion = 1; kind = 'hosted-rule-issue-adjudication-draft'
+            componentId = $component.componentId; evaluationPhase = 'issues'; evaluationContextSha256 = $component.editContext.evaluationContextSha256
+            scopeReview = $scope
+            relationshipDecisions = @([ordered]@{
+                relationshipId = 'edge:merge'; disposition = 'issue'; relationship = 'partial-overlap'
+                rationale = 'The complete combined rule covers the existing requirement.'
+                sourceQuote = $baseline; relatedQuote = $peerText
+            })
+            issues = @([ordered]@{
+                classification = 'overlap'; anchorRuleId = $targetId; ruleIds = @($targetId, $peerId); relationshipIds = @('edge:merge')
+                title = 'Combine the complete compatible obligations'; bannerTitle = 'Review the Complete Consolidation'
+                bannerMessage = 'Accept corrected wording and the covered retirement together.'
+                blocking = $false; assessmentSummary = 'The intended target retains its complete baseline and the comparison obligation.'
+                ruleDispositions = @([ordered]@{ ruleId = $targetId; disposition = 'replace' }, [ordered]@{ ruleId = $peerId; disposition = 'retire' })
+                wording = [ordered]@{ status = 'selected'; label = 'Suggested Consolidated Wording'; presentation = 'section'; text = $merged; sourceRuleId = $targetId }
+                recommendedMaintainerAction = [ordered]@{
+                    summary = 'Correct the intended combined rule and retire the fully covered comparison.'
+                    operations = @([ordered]@{
+                        candidateKey = $target; ruleId = $targetId; action = 'update'; textSource = 'suggestion'
+                        proposedText = $merged; retireHostedRuleIds = @($peerId)
+                        preservation = @(
+                            [ordered]@{ ruleId = $targetId; sourceText = $proposal; mergedQuote = $merged; rationale = 'Retains the complete functional and self-contained baseline and corrects the intended secret-handling addition without weakening it.' }
+                            [ordered]@{ ruleId = $peerId; sourceText = $peerText; mergedQuote = $peerText; rationale = 'Retains the prohibition on hard-coded secrets and the mandatory input-variable replacement.' }
+                        )
+                    })
+                }
+            })
+        } | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation'
+        if (-not (($component | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot 'rule-issue-adjudication-input-v4.schema.json') -ErrorAction Stop) -or
+            -not (($draft | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot 'rule-issue-adjudication-draft-v4.schema.json') -ErrorAction Stop)) { throw 'Consolidation fixtures must satisfy the production schemas' }
+        Test-RuleIssueAdjudicationDraft -Component $component -Draft $draft
+        $cases = @('missing-intent', 'foreign-intent', 'missing-preservation', 'missing-target', 'missing-peer', 'duplicate-preservation', 'truncated-source', 'invented-quote', 'blank-rationale', 'truncated-baseline', 'self-retirement', 'unknown-retirement', 'protected-retirement', 'unpaired-retirement', 'non-member-retirement', 'duplicate-retirement', 'extractive-invention', 'unchanged-target')
+        $rejections = 0
+        foreach ($case in $cases) {
+            $inputCopy = $component | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+            $draftCopy = $draft | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+            $operation = $draftCopy.issues[0].recommendedMaintainerAction.operations[0]
+            switch ($case) {
+                'missing-intent' { $inputCopy.editContext.PSObject.Properties.Remove('intendedCandidateKey') }
+                'foreign-intent' { $inputCopy.editContext.intendedCandidateKey = $peer }
+                'missing-preservation' { $operation.PSObject.Properties.Remove('preservation') }
+                'missing-target' { $operation.preservation = @($operation.preservation[1]) }
+                'missing-peer' { $operation.preservation = @($operation.preservation[0]) }
+                'duplicate-preservation' { $operation.preservation = @($operation.preservation[0], $operation.preservation[0]) }
+                'truncated-source' { $operation.preservation[0].sourceText = $baseline }
+                'invented-quote' { $operation.preservation[1].mergedQuote = 'This wording is absent.' }
+                'blank-rationale' { $operation.preservation[1].rationale = ' ' }
+                'truncated-baseline' { $operation.proposedText = $peerText; $draftCopy.issues[0].wording.text = $peerText }
+                'self-retirement' { $operation.retireHostedRuleIds = @($targetId) }
+                'unknown-retirement' { $operation.retireHostedRuleIds = @('FOREIGN-RULE-001') }
+                'protected-retirement' { $inputCopy.rules[1].status = 'protected' }
+                'unpaired-retirement' { $draftCopy.issues[0].ruleDispositions[1].disposition = 'keep' }
+                'non-member-retirement' {
+                    $inputCopy.rules += [pscustomobject]@{
+                        id = 'FOREIGN-RULE-001'; status = 'active'; title = 'Foreign comparison'
+                        text = $peerText; contentSha256 = Get-Sha256 -Content $peerText; candidateKeys = @()
+                    }
+                    $operation.retireHostedRuleIds = @('FOREIGN-RULE-001')
+                    $operation.preservation[1].ruleId = 'FOREIGN-RULE-001'
+                }
+                'duplicate-retirement' { $operation.retireHostedRuleIds = @($peerId, $peerId) }
+                'extractive-invention' { $operation.textSource = 'proposal' }
+                'unchanged-target' {
+                    @($inputCopy.editContext.proposals | Where-Object candidateKey -CEQ $target)[0].baselineText = $proposal
+                    $inputCopy.memberScopeReviews[1].scopeReview.baselineQuote = $proposal
+                }
+            }
+            try { Test-RuleIssueAdjudicationDraft -Component $inputCopy -Draft $draftCopy }
+            catch {
+                if ($_.Exception.Message -notmatch 'saved-edit|consolidation|adjudication can retire|appended consolidation') { throw }
+                $rejections++
+            }
+        }
+        Add-TestResult -Name 'saved-rule-consolidation' -Passed ($rejections -eq $cases.Count) -Detail "Corrected existing-target consolidation passed with a different lexical routing anchor; $rejections invalid ownership, preservation, retirement, and provenance cases were rejected."
     }
     if (Test-ShouldRun -Name 'saved-rule-evaluation') {
         Start-TestResult -Name 'saved-rule-evaluation' -RunningDetail 'Running the source-owned checker, grouped adjudicator, and deterministic saved-edit validation'
@@ -1640,8 +1991,89 @@ try {
             RequestPath = $savedRequestPath; CacheDirectory = (Join-Path $tempRoot 'saved-rule-cache')
             EvaluatorScriptPath = $manualRelationshipEvaluatorPath; AdjudicationEvaluatorScriptPath = $adjudicationEvaluatorPath
         }
+        [IO.File]::WriteAllText($savedRequestPath, '{"invalid":"synthetic launcher regression"}')
+        $productionParameters = @{} + $savedParameters
+        $productionParameters.EvaluatorScriptPath = ''
+        $productionParameters.AdjudicationEvaluatorScriptPath = ''
+        $productionParameters.OutputPath = Join-Path $tempRoot 'saved-native-invalid-result.json'
+        $nativeDiagnostic = ''
+        $nativeTimer = [Diagnostics.Stopwatch]::StartNew()
+        try { Invoke-SavedRuleEvaluationProcess -ScriptPath $savedRunner -Parameters $productionParameters }
+        catch { $nativeDiagnostic = [string]$_.Exception.Message }
+        $nativeLaunchPassed = $nativeTimer.Elapsed.TotalSeconds -lt 10 -and $nativeDiagnostic -like '*Saved-rule request has an unexpected property set*' -and -not (Test-Path -LiteralPath $productionParameters.OutputPath)
+        $null = $productionParameters.Remove('DisplayPath')
+        $missingParameterDiagnostic = ''
+        try { Invoke-SavedRuleEvaluationProcess -ScriptPath $savedRunner -Parameters $productionParameters }
+        catch { $missingParameterDiagnostic = [string]$_.Exception.Message }
+        $nativeLaunchPassed = $nativeLaunchPassed -and $missingParameterDiagnostic -like '*missing mandatory parameters*DisplayPath*'
+        $unchangedCandidate = @($display.candidates | Where-Object { $_.catalogMapping.state -ceq 'active' } | Select-Object -First 1)[0]
+        $unchangedKey = "$($unchangedCandidate.source.lane):$($unchangedCandidate.source.id):$($unchangedCandidate.assessment.id)"
+        $unchangedId = [string]$unchangedCandidate.catalogMapping.hostedRuleId
+        $unchangedText = [string]@($display.catalog.rules | Where-Object { $_.id -ceq $unchangedId })[0].text
+        $unchangedParameters = @{} + $savedParameters
+        $null = $unchangedParameters.Remove('EvaluatorScriptPath')
+        $null = $unchangedParameters.Remove('AdjudicationEvaluatorScriptPath')
+        $unchangedParameters.EvaluatorCommand = 'hosted-no-op-evaluator-must-not-run'
+        $unchangedParameters.CacheDirectory = Join-Path $tempRoot 'saved-no-op-cold-cache'
+        $unchangedParameters.OutputPath = Join-Path $tempRoot 'saved-no-op-result.json'
+        $unchangedAuthorityParameters = @{} + $authorityParameters
+        $unchangedAuthorityParameters.RelationshipEvaluatorScriptPath = ''
+        $unchangedAuthorityParameters.AdjudicationEvaluatorScriptPath = ''
+        $unchangedAuthorityParameters.EvaluatorCommand = $unchangedParameters.EvaluatorCommand
+        $unchangedRequest = ($request | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+        $unchangedRequest.candidateKey = $unchangedKey
+        $unchangedRequest.authoritySha256 = Get-SavedRuleAuthoritySha256 @unchangedAuthorityParameters
+        $unchangedRequest.ruleTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($unchangedText))
+        @($unchangedRequest.proposals | Where-Object { $_.candidateKey -ceq $unchangedKey })[0].proposedTextBase64 = $unchangedRequest.ruleTextBase64
+        [IO.File]::WriteAllText($savedRequestPath, ($unchangedRequest | ConvertTo-Json -Depth 100))
+        $null = Invoke-SavedRuleEvaluationProcess -ScriptPath $savedRunner -Parameters $unchangedParameters
+        $unchangedResult = Get-Content -LiteralPath $unchangedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+        $baselineIssues = Get-Content -LiteralPath $ruleIssuesPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+        $noOpPassed = $unchangedResult.schemaVersion -eq 4 -and $unchangedResult.scopeReview.wordingStatus -ceq 'acceptable' -and
+            $unchangedResult.evaluationMode -ceq 'unchanged' -and @($unchangedResult.assessments).Count -eq 0 -and
+            @($unchangedResult.coveredProposals).Count -eq 1 -and $unchangedResult.coveredProposals[0].candidateKey -ceq $unchangedKey -and
+            ($unchangedResult.ruleIssues | ConvertTo-Json -Depth 100 -Compress) -ceq ($baselineIssues | ConvertTo-Json -Depth 100 -Compress) -and
+            -not (Test-Path -LiteralPath $unchangedParameters.CacheDirectory)
+        $otherProposal = @($unchangedRequest.proposals | Where-Object {
+            $key = $_.candidateKey
+            $owner = @($display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq $key })[0]
+            $id = if ($null -ne $owner.catalogMapping.hostedRuleId) { $owner.catalogMapping.hostedRuleId } else { $owner.recommendation.hostedId }
+            $id -cne $unchangedId
+        } | Select-Object -First 1)[0]
+        $otherText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($otherProposal.proposedTextBase64))
+        $otherProposal.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($otherText + ' Another candidate has genuinely changed.'))
+        [IO.File]::WriteAllText($savedRequestPath, ($unchangedRequest | ConvertTo-Json -Depth 100))
+        $unchangedParameters.OutputPath = Join-Path $tempRoot 'saved-no-op-other-edit-result.json'
+        $null = Invoke-SavedRuleEvaluationProcess -ScriptPath $savedRunner -Parameters $unchangedParameters
+        $otherEditResult = Get-Content -LiteralPath $unchangedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+        $noOpPassed = $noOpPassed -and $otherEditResult.evaluationMode -ceq 'unchanged' -and
+            @($otherEditResult.assessments).Count -eq 0 -and -not (Test-Path -LiteralPath $unchangedParameters.CacheDirectory)
+        $noOpRejections = 0
+        foreach ($invalidCase in @('authority', 'source', 'snapshot', 'ownership')) {
+            $invalidNoOp = ($unchangedRequest | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+            switch ($invalidCase) {
+                'authority' { $invalidNoOp.authoritySha256 = 'e' * 64; $expectedDiagnostic = '*authority changed*' }
+                'source' { $invalidNoOp.sourceFiles[0].contentSha256 = 'e' * 64; $expectedDiagnostic = '*source snapshot*' }
+                'snapshot' { $invalidNoOp.proposals = @($invalidNoOp.proposals | Where-Object candidateKey -CEQ $unchangedKey); $expectedDiagnostic = '*complete current proposal snapshot*' }
+                'ownership' {
+                    $invalidNoOp.priorRelationships = @([ordered]@{
+                        candidateKey = $unchangedKey; sourceRuleId = $unchangedId; relatedRuleId = $unchangedId
+                        relationship = 'partial-overlap'; rationale = 'Synthetic invalid no-op ownership.'
+                    })
+                    $expectedDiagnostic = '*provisional relationship has invalid ownership*'
+                }
+            }
+            [IO.File]::WriteAllText($savedRequestPath, ($invalidNoOp | ConvertTo-Json -Depth 100))
+            $unchangedParameters.OutputPath = Join-Path $tempRoot "saved-no-op-invalid-$invalidCase.json"
+            try { $null = & $savedRunner @unchangedParameters }
+            catch {
+                if ($_.Exception.Message -notlike $expectedDiagnostic) { throw }
+                if (-not (Test-Path -LiteralPath $unchangedParameters.OutputPath)) { $noOpRejections++ }
+            }
+        }
+        $noOpPassed = $noOpPassed -and $noOpRejections -eq 4
         $savedResults = @()
-        foreach ($suffix in @(' Additional maintainer wording.', ' Grouped review is required.', ' Scope routing is required.')) {
+        foreach ($suffix in @(' Additional maintainer wording.', ' Grouped review is required.', ' Scope routing is required.', ' Wording review fixture.')) {
             $text = [string]$editedCandidate.recommendation.ruleText + $suffix
             $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))
             $request.ruleTextBase64 = $encoded
@@ -1651,16 +2083,114 @@ try {
             $null = & $savedRunner @savedParameters
             $savedResults += Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
         }
+        $retirementRequest = ($request | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+        $retirementProposal = @($retirementRequest.proposals | Where-Object candidateKey -CEQ $editedKey)[0]
+        $retirementProposal.inPlan = $true
+        $retirementProposal.action = 'add'
+        $retirementProposal.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(
+            [string]$editedCandidate.recommendation.ruleText + ' The maintainer explicitly requests this combined requirement.'))
+        $retirementRequest.ruleTextBase64 = $retirementProposal.proposedTextBase64
+        $retirementProposal.retireHostedRuleIds = @('IMPL-PATCH-001')
+        [IO.File]::WriteAllText($savedRequestPath, ($retirementRequest | ConvertTo-Json -Depth 100))
+        $savedParameters.OutputPath = Join-Path $tempRoot 'saved-explicit-retirement.json'
+        $null = & $savedRunner @savedParameters
+        $retirementResult = Get-Content -LiteralPath $savedParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+        $retirementPassed = 'IMPL-PATCH-001' -cin @($retirementResult.affectedRuleIds) -and
+            @($retirementResult.ruleIssues.issues).Count -eq 0 -and
+            @($retirementResult.coveredProposals | Where-Object candidateKey -CEQ $editedKey)[0].retireHostedRuleIds[0] -ceq 'IMPL-PATCH-001'
+        $advisoryDisplay = $display | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        @($advisoryDisplay.candidates | Where-Object { $_.recommendation.hostedId -ceq 'REVIEW-REPO-001' })[0].recommendation.retireHostedRuleIds = @('IMPL-PATCH-001')
+        $advisoryDisplayPath = Join-Path $tempRoot 'saved-advisory-retirement-display.json'
+        [IO.File]::WriteAllText($advisoryDisplayPath, ($advisoryDisplay | ConvertTo-Json -Depth 100))
+        $advisoryParameters = @{} + $savedParameters
+        $advisoryParameters.DisplayPath = $advisoryDisplayPath
+        $advisoryParameters.OutputPath = Join-Path $tempRoot 'saved-advisory-retirement.json'
+        $advisoryAuthority = @{} + $authorityParameters
+        $advisoryAuthority.DisplayPath = $advisoryDisplayPath
+        $advisoryRequest = $retirementRequest | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+        @($advisoryRequest.proposals | Where-Object candidateKey -CEQ $editedKey)[0].inPlan = $false
+        $advisoryRequest.authoritySha256 = Get-SavedRuleAuthoritySha256 @advisoryAuthority
+        [IO.File]::WriteAllText($savedRequestPath, ($advisoryRequest | ConvertTo-Json -Depth 100))
+        $null = & $savedRunner @advisoryParameters
+        $advisoryResult = Get-Content -LiteralPath $advisoryParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+        $retirementPassed = $retirementPassed -and -not @($advisoryResult.coveredProposals | Where-Object candidateKey -CEQ $editedKey)[0].inPlan
+        $retirementRejections = 0
+        foreach ($case in @('unknown', 'protected', 'self', 'duplicate', 'not-in-plan', 'conflicting-mutation')) {
+            $invalid = ($retirementRequest | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+            $root = @($invalid.proposals | Where-Object candidateKey -CEQ $editedKey)[0]
+            switch ($case) {
+                'unknown' { $root.retireHostedRuleIds = @('MISSING-RULE-001') }
+                'protected' { $root.retireHostedRuleIds = @([string]$display.catalog.protectedRules[0].id) }
+                'self' { $root.retireHostedRuleIds = @([string]$editedCandidate.recommendation.hostedId) }
+                'duplicate' { $root.retireHostedRuleIds = @('IMPL-PATCH-001', 'IMPL-PATCH-001') }
+                'not-in-plan' { $root.inPlan = $false }
+                'conflicting-mutation' {
+                    $peerCandidate = @($display.candidates | Where-Object { $_.catalogMapping.hostedRuleId -ceq 'IMPL-PATCH-001' })[0]
+                    $peerKey = "$($peerCandidate.source.lane):$($peerCandidate.source.id):$($peerCandidate.assessment.id)"
+                    $peerProposal = @($invalid.proposals | Where-Object candidateKey -CEQ $peerKey)[0]
+                    $peerProposal.inPlan = $true
+                    $peerProposal.action = 'update'
+                }
+            }
+            [IO.File]::WriteAllText($savedRequestPath, ($invalid | ConvertTo-Json -Depth 100))
+            $savedParameters.OutputPath = Join-Path $tempRoot "saved-invalid-retirement-$case.json"
+            try { $null = & $savedRunner @savedParameters }
+            catch {
+                if ($_.Exception.Message -notmatch 'retirements require|duplicate retirements|conflicting planned mutation') { throw }
+                if (-not (Test-Path -LiteralPath $savedParameters.OutputPath)) { $retirementRejections++ }
+            }
+        }
+        $retirementPassed = $retirementPassed -and $retirementRejections -eq 6
         $stale = ($request | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
         $stale.sourceFiles[0].contentSha256 = 'e' * 64
         [IO.File]::WriteAllText($savedRequestPath, ($stale | ConvertTo-Json -Depth 100))
         $staleRejected = $false
         try { $null = & $savedRunner @savedParameters } catch { $staleRejected = $_.Exception.Message -like '*source snapshot*' }
-        $savedPassed = @($savedResults[0].ruleIssues.issues).Count -eq 0 -and
+        $editedId = if ($null -ne $editedCandidate.catalogMapping.hostedRuleId) { [string]$editedCandidate.catalogMapping.hostedRuleId } else { [string]$editedCandidate.recommendation.hostedId }
+        $invalidOwnershipCases = @(
+            @{ candidateKey = 'fixture:unknown:unknown'; sourceRuleId = $editedId; relatedRuleId = 'IMPL-PATCH-001' },
+            @{ candidateKey = $editedKey; sourceRuleId = 'IMPL-PATCH-001'; relatedRuleId = $editedId },
+            @{ candidateKey = $editedKey; sourceRuleId = $editedId; relatedRuleId = 'MISSING-RULE-001' },
+            @{ candidateKey = $editedKey; sourceRuleId = $editedId; relatedRuleId = $editedId }
+        )
+        $ownershipRejections = 0
+        foreach ($invalidEdge in $invalidOwnershipCases) {
+            $invalidRequest = ($request | ConvertTo-Json -Depth 100) | ConvertFrom-Json -Depth 100
+            $invalidRequest.priorRelationships = @([ordered]@{
+                candidateKey = $invalidEdge.candidateKey; sourceRuleId = $invalidEdge.sourceRuleId
+                relatedRuleId = $invalidEdge.relatedRuleId; relationship = 'partial-overlap'
+                rationale = 'Synthetic invalid ownership regression.'
+            })
+            [IO.File]::WriteAllText($savedRequestPath, ($invalidRequest | ConvertTo-Json -Depth 100))
+            $savedParameters.OutputPath = Join-Path $tempRoot ("saved-invalid-$ownershipRejections.json")
+            $rejected = $false
+            try { $null = & $savedRunner @savedParameters }
+            catch {
+                if ($_.Exception.Message -notlike '*provisional relationship has invalid ownership*') { throw }
+                $rejected = $true
+            }
+            if ($rejected -and -not (Test-Path -LiteralPath $savedParameters.OutputPath)) { $ownershipRejections++ }
+        }
+        $selfCoverageCount = @($display.candidates | Where-Object {
+            $id = if ($null -ne $_.catalogMapping.hostedRuleId) { [string]$_.catalogMapping.hostedRuleId } else { [string]$_.recommendation.hostedId }
+            $id -cin @($_.recommendation.relatedHostedCoverage | ForEach-Object { [string]$_.hostedRuleId })
+        }).Count
+        $groupedOperations = @($savedResults[1].ruleIssues.issues[0].recommendedMaintainerAction.operations)
+        $baselineRecommendationsValid = $groupedOperations.Count -gt 0 -and @($groupedOperations | Where-Object {
+            $operation = $_
+            $owner = @($display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq [string]$operation.candidateKey })
+            $owner.Count -ne 1 -or [string]$operation.proposedText -cne [string]$owner[0].recommendation.ruleText
+        }).Count -eq 0
+        $savedPassed = $retirementPassed -and @($savedResults[0].ruleIssues.issues).Count -eq 0 -and
+            @($savedResults | Where-Object { $_.schemaVersion -ne 4 -or @($_.assessments).Count -ne 1 -or $_.assessments[0].candidateKey -cne $editedKey -or $_.assessments[0].selectionFactors.severity -ne 5 -or $_.assessments[0].selectionRationale -cne 'The refreshed assessment evaluates the complete saved wording and its current source evidence.' }).Count -eq 0 -and
             @($savedResults[1].ruleIssues.issues).Count -gt 0 -and
-            [string]$savedResults[1].ruleIssues.issues[0].recommendedMaintainerAction.operations[0].proposedText -ceq [string]$editedCandidate.recommendation.ruleText -and
-            [string]$savedResults[2].scopeReview.disposition -ceq 'route-to-existing-rule' -and $staleRejected
-        Add-TestResult -Name 'saved-rule-evaluation' -Passed $savedPassed -Detail 'The real two-stage pipeline rejects provisional noise, projects grouped baseline-preserving issues, returns scope routing, and rejects stale browser sources.'
+            $baselineRecommendationsValid -and $editedId -cin @($savedResults[1].ruleIssues.issues[0].ruleIds) -and
+            [string]$savedResults[2].scopeReview.disposition -ceq 'route-to-existing-rule' -and $staleRejected -and
+            $savedResults[3].scopeReview.disposition -ceq 'within-scope' -and $savedResults[3].scopeReview.wordingStatus -ceq 'needs-review' -and
+            $savedResults[3].scopeReview.wordingRationale -ceq 'The unrelated fixture sentence must be removed before accepting the wording.' -and
+            @($savedResults[3].ruleIssues.issues).Count -eq 0 -and
+            $selfCoverageCount -gt 0 -and $ownershipRejections -eq $invalidOwnershipCases.Count -and $nativeLaunchPassed -and $noOpPassed
+        Add-TestResult -Name 'saved-rule-evaluation' -Passed $savedPassed -Detail 'Cold no-op requests retain baseline evidence without evaluation; genuine edits retain scope, wording, grouped adjudication, and native launch coverage. Explicit valid retirements are evaluated, baseline advisory retirements remain loadable without Plan membership, and six invalid or conflicting retirement requests are rejected alongside invalid authority, source, snapshot, and ownership.'
     }
     if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in $serverTestNames) {
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
