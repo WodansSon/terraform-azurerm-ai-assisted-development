@@ -14,7 +14,8 @@ async function verifyDetailLayout(panel, assert, context) {
     const info = evidence?.querySelector(".information-panel.assessment-context");
     const strip = evidence?.querySelector(".score-strip");
     const factors = evidence?.querySelector(".factor-groups");
-    const ordered = [sources, coverage, heading, info, strip, factors, node.querySelector(".proposed-rule-heading")];
+    const ordered = [sources, ...(audit ? [coverage] : []), heading, info, strip, factors, node.querySelector(".proposed-rule-heading")];
+    const previousEvidence = audit ? coverage : sources;
     const cards = [...(strip?.querySelectorAll(".score-item") || [])];
     const borderColor = getComputedStyle(node.querySelector(".factor-group")).borderTopColor;
     const actions = node.querySelector(".rule-actions");
@@ -33,11 +34,12 @@ async function verifyDetailLayout(panel, assert, context) {
     const editorProperties = ["backgroundColor", "borderTopColor", "borderTopWidth", "borderRadius", "padding", "font", "minHeight", "resize"];
     return {
       order: ordered.every((item, index) => item && (!index || (ordered[index - 1].compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING))),
-      boundary: coverage.nextElementSibling === evidence
-        && getComputedStyle(coverage).borderBottomStyle === "solid"
-        && getComputedStyle(coverage).paddingBottom === "15px"
+      boundary: previousEvidence.nextElementSibling === evidence
+        && getComputedStyle(previousEvidence).borderBottomStyle === "solid"
+        && getComputedStyle(previousEvidence).paddingBottom === "15px"
         && getComputedStyle(evidence).paddingTop === "15px"
-        && Math.abs(heading.getBoundingClientRect().top - coverage.getBoundingClientRect().bottom - 15) < 1,
+        && Math.abs(heading.getBoundingClientRect().top - previousEvidence.getBoundingClientRect().bottom - 15) < 1,
+      assistance: audit ? !node.querySelector("[data-rule-assistance]") : !coverage && Boolean(node.querySelector("[data-rule-assistance]")),
       info: heading.nextElementSibling === info && info.nextElementSibling === strip
         && !info.querySelector("button")
         && info.querySelector("p > strong")?.textContent === "Assessment:"
@@ -114,8 +116,10 @@ async function verifyOriginalAssessment(panel, assert, context) {
           && node.querySelector(".score-item.impact span").textContent === "Priority Score:"
           && node.querySelector(".score-item.impact strong").textContent === String(calculateImpact(baseline.factors))),
       rationale: node.querySelector("[data-assessment-explanation]").textContent.trim() === `Assessment rationale: ${baseline.rationale}`,
-      coverage: node.querySelector(".coverage-summary strong")?.textContent === "Original assessment coverage:"
-        && baseline.relatedHostedCoverage.every((item) => node.querySelector(".related-hosted-coverage")?.textContent.includes(item.rationale)),
+      coverage: node.id === "assessment-results-detail"
+        ? node.querySelector(".coverage-summary strong")?.textContent === "Original assessment coverage:"
+          && baseline.relatedHostedCoverage.every((item) => node.querySelector(".related-hosted-coverage")?.textContent.includes(item.rationale))
+        : !node.querySelector('[data-evidence-kind="coverage"]') && Array.isArray(baseline.relatedHostedCoverage),
       noCurrentRecommendation: !node.querySelector(".current-hosted-rule-statuses .recommendation-badge"),
       notCurrent: !getAssessment(candidate),
       notReady: !getPlanReadiness(candidate).ready
@@ -268,26 +272,22 @@ async function run({ page, baseUrl, assert }) {
   const panel = page.locator("#assessment-panel");
   await verifyDetailLayout(panel, assert, "Candidate Details");
   const sources = panel.locator('[data-evidence-title="Source Rules"]');
-  const coverage = panel.locator('[data-evidence-title="Related Hosted Coverage"]');
-  assert(await sources.getAttribute("aria-expanded") === "false" && await coverage.getAttribute("aria-expanded") === "false",
-    "Source Rules and Related Hosted Coverage must start independently collapsed");
+  assert(await sources.getAttribute("aria-expanded") === "false" && !await panel.locator('[data-evidence-kind="coverage"]').count(),
+    "Source Rules must start collapsed and Candidate Details must not display inferred coverage");
   await panel.locator(".evidence-disclosure-label").first().click();
   assert(await sources.getAttribute("aria-expanded") === "false", "The static Source Rules title toggles its panel");
   await sources.focus();
   await page.keyboard.press("Enter");
-  assert(await sources.getAttribute("aria-expanded") === "true" && await coverage.getAttribute("aria-expanded") === "false",
-    "Enter did not expand only Source Rules");
+  assert(await sources.getAttribute("aria-expanded") === "true", "Enter did not expand Source Rules");
   await page.keyboard.press("Space");
   assert(await sources.getAttribute("aria-expanded") === "false", "Space did not collapse Source Rules");
   await sources.click();
-  await coverage.click();
   const presentation = await page.evaluate(() => {
     const panel = document.querySelector("#assessment-panel");
     const candidate = getActiveCandidate();
     const sourcePanel = panel.querySelector("[data-evidence-title='Source Rules']").closest("section");
-    const coveragePanel = panel.querySelector("[data-evidence-title='Related Hosted Coverage']").closest("section");
     const nodes = [
-      sourcePanel, coveragePanel, panel.querySelector(".assessment-details-heading"), panel.querySelector(".score-strip"),
+      sourcePanel, panel.querySelector(".assessment-details-heading"), panel.querySelector(".score-strip"), panel.querySelector("[data-rule-assistance]"),
       panel.querySelector(".current-hosted-rule"), panel.querySelector(".proposed-rule-heading"),
       panel.querySelector("[data-assessment-explanation]"), panel.querySelector("[data-proposed-candidate-key]"),
       panel.querySelector(".rule-actions > .section-label")
@@ -295,8 +295,7 @@ async function run({ page, baseUrl, assert }) {
     return {
       order: nodes.every((node, index) => node && (!index || (nodes[index - 1].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING))),
       staticTitles: [...panel.querySelectorAll(".evidence-disclosure-label")].every((node) => node.tagName === "SPAN" && !node.hasAttribute("tabindex") && !node.hasAttribute("role")),
-      counts: sourcePanel.querySelector(".count-badge").textContent === String(candidate.members.length)
-        && coveragePanel.querySelector(".count-badge").textContent === String(candidate.assessment.relatedHostedCoverage.length),
+      counts: sourcePanel.querySelector(".count-badge").textContent === String(candidate.members.length),
       geometry: [...panel.querySelectorAll(".evidence-disclosure")].every((section) => {
         const badge = section.querySelector(".count-badge");
         const label = section.querySelector(".evidence-disclosure-label");
@@ -323,9 +322,7 @@ async function run({ page, baseUrl, assert }) {
         node.textContent.includes(candidate.members[index].sourceLabel)
         && (candidate.members[index].source.id !== candidate.members[index].catalogMapping.hostedRuleId
           || !node.querySelector(".catalog-status.mapped"))),
-      realCoverage: [...coveragePanel.querySelectorAll(".related-hosted-coverage p")].every((node, index) =>
-        node.textContent.includes(candidate.assessment.relatedHostedCoverage[index].hostedRuleId)
-        && node.textContent.includes(candidate.assessment.relatedHostedCoverage[index].rationale)),
+      sourcePurpose: sourcePanel.textContent.includes("These references are evidence, not additional Hosted rules selected for the Promotion Plan."),
       oneExplanation: panel.querySelectorAll("[data-assessment-explanation]").length === 1
         && !panel.querySelector("[data-assessment-explanation] button, .ai-evaluation-summary, .adjudication-text-box"),
       comparison: panel.querySelector(".current-hosted-rule-statuses").firstElementChild.textContent.trim() === "Active"
@@ -342,7 +339,7 @@ async function run({ page, baseUrl, assert }) {
   await panel.locator(".contributing-rule summary").first().click();
   const sourceWasOpen = await panel.locator(".contributing-rule").first().evaluate((node) => node.open);
   await page.evaluate(() => renderAssessment());
-  assert(await sources.getAttribute("aria-expanded") === "true" && await coverage.getAttribute("aria-expanded") === "true"
+  assert(await sources.getAttribute("aria-expanded") === "true"
     && await panel.locator(".contributing-rule").first().evaluate((node) => node.open) === sourceWasOpen,
   "Ordinary rerender discarded independent evidence or source disclosure state");
 
@@ -393,7 +390,7 @@ async function run({ page, baseUrl, assert }) {
       explanation: document.querySelector("[data-assessment-explanation]").textContent.trim(),
       recommendation: document.querySelector(".proposed-rule-heading [data-assessment-recommendation]").textContent,
       recommendationColor: getComputedStyle(document.querySelector(".proposed-rule-heading .recommendation-badge")).color,
-      coverage: document.querySelector(".related-hosted-coverage").textContent,
+      coverage: assessment.relatedHostedCoverage.map((item) => item.rationale).join("\n"),
       approval: mutation.rule.selectionRationale === assessment.rationale
         && JSON.stringify(mutation.rule.selectionFactors) === JSON.stringify({ scoringStatus: "scored", ...assessment.factors }),
       persistence: stored.savedRuleEvaluations[0].assessments[0].selectionRationale === assessment.rationale,

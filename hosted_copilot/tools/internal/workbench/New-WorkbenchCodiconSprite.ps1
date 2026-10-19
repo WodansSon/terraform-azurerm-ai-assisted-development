@@ -34,6 +34,20 @@ $iconNames = @(
     'collection',
     'collection-issues-compact',
     'collection-small',
+    'copilot',
+    'copilot-blocked',
+    'copilot-compact',
+    'copilot-dot',
+    'copilot-dot-compact',
+    'copilot-error',
+    'copilot-in-progress',
+    'copilot-large',
+    'copilot-not-connected',
+    'copilot-snooze',
+    'copilot-success',
+    'copilot-unavailable',
+    'copilot-warning',
+    'copilot-warning-large',
     'copy',
     'debug-disconnect',
     'debug-disconnect-compact',
@@ -103,7 +117,7 @@ $symbols = foreach ($iconName in $iconNames) {
     }
     $svg = (Get-Content -LiteralPath $sourcePath -Raw).Trim()
     $match = [regex]::Match($svg, '^<svg[^>]*viewBox="(?<viewBox>[^"]+)"[^>]*>(?<content>[\s\S]*)</svg>$')
-    if (-not $match.Success -or $match.Groups['viewBox'].Value -notin @('0 0 10 10', '0 0 12 12', '0 0 16 16')) {
+    if (-not $match.Success -or $match.Groups['viewBox'].Value -notin @('0 0 10 10', '0 0 12 12', '0 0 16 16', '0 0 50 50')) {
         throw "Codicon '$iconName' does not use a supported SVG viewBox."
     }
     $viewBox = $match.Groups['viewBox'].Value

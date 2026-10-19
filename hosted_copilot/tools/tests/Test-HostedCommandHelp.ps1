@@ -168,6 +168,33 @@ try {
         $helpWithPortExitCode -ne 0 -and
         ($helpWithPortOutput | Out-String) -match 'Parameter set cannot be resolved'
     Add-TestResult -Name 'workbench-argument-contract' -Passed $workbenchArgumentContractValid -Detail 'Workbench dependencies fail actionably and native parameter sets reject mutually exclusive help, force, and resume shapes.'
+
+    Write-TestProgress -Name 'workbench-model-profiles' -Detail 'Checking independent saved-rule defaults and unchanged normal assessment profiles'
+    $profileCases = @(
+        @{ Path = $workbenchLauncherPath; Expected = @{ Model = 'gpt-5.4'; AssessmentReasoningEffort = 'high'; SavedRuleEvaluationModel = 'gpt-6-luna'; SavedRuleEvaluationReasoningEffort = 'medium' } },
+        @{ Path = (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'); Expected = @{ Model = 'gpt-6-luna'; ReasoningEffort = 'medium' } },
+        @{ Path = (Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'); Expected = @{ Model = 'gpt-6-luna'; ReasoningEffort = 'medium' } }
+    )
+    foreach ($relativePath in @(
+        'assessment/Invoke-SourceAssessment.ps1',
+        'assessment/New-SourceAssessmentBaseline.ps1',
+        'reconciliation/Invoke-AssessmentReconciliation.ps1',
+        'reconciliation/Export-WorkbenchRuleIssues.ps1',
+        'reconciliation/Invoke-ManualRuleRelationship.ps1',
+        'reconciliation/Invoke-RuleIssueAdjudication.ps1'
+    )) {
+        $profileCases += @{ Path = (Join-Path $PSScriptRoot "../internal/$relativePath"); Expected = @{ Model = 'gpt-5.4'; ReasoningEffort = 'high' } }
+    }
+    $profilesValid = $true
+    foreach ($profileCase in $profileCases) {
+        $parameters = (Get-Command -Name $profileCase.Path -CommandType ExternalScript).ScriptBlock.Ast.ParamBlock.Parameters
+        foreach ($name in $profileCase.Expected.Keys) {
+            $parameter = @($parameters | Where-Object { $_.Name.VariablePath.UserPath -ceq $name })
+            $profilesValid = $profilesValid -and $parameter.Count -eq 1 -and
+                $parameter[0].DefaultValue.SafeGetValue() -ceq $profileCase.Expected[$name]
+        }
+    }
+    Add-TestResult -Name 'workbench-model-profiles' -Passed $profilesValid -Detail 'Saved-rule entry points default to GPT-6 Luna/medium; the launcher and all normal assessment, reconciliation, and adjudication entry points retain GPT-5.4/high.'
 }
 catch {
     $issues.Add([string]$_.Exception.Message)

@@ -72,7 +72,7 @@ function New-WorkbenchIconPreview {
         @"
   <g transform="translate($x $y)">
     <rect width="160" height="88" rx="6" fill="#161b22" stroke="#30363d"/>
-    <svg x="64" y="12" width="32" height="32" fill="#f0f6fc"><use href="#$SymbolPrefix-$iconName"/></svg>
+    <svg x="64" y="12" width="32" height="32" fill="#f0f6fc" color="#f0f6fc"><use href="#$SymbolPrefix-$iconName"/></svg>
 $labelMarkup
   </g>
 "@

@@ -10,8 +10,8 @@ function Get-SavedRuleAuthoritySha256 {
         [Parameter(Mandatory = $true)][string]$DisplayPath,
         [Parameter(Mandatory = $true)][string]$RuleIssuesPath,
         [string]$EvaluatorCommand = 'copilot',
-        [string]$Model = 'gpt-5.4',
-        [string]$ReasoningEffort = 'high',
+        [string]$Model = 'gpt-6-luna',
+        [string]$ReasoningEffort = 'medium',
         [string]$RelationshipEvaluatorScriptPath,
         [string]$AdjudicationEvaluatorScriptPath
     )
@@ -48,7 +48,8 @@ function Invoke-SavedRuleEvaluationProcess {
     param(
         [Parameter(Mandatory = $true)][string]$ScriptPath,
         [Parameter(Mandatory = $true)][Collections.IDictionary]$Parameters,
-        [Net.Sockets.Socket]$ClientSocket
+        [Net.Sockets.Socket]$ClientSocket,
+        [string]$OperationName = 'Scoped relationship check'
     )
 
     $startInfo = [Diagnostics.ProcessStartInfo]::new('pwsh')
@@ -71,7 +72,7 @@ function Invoke-SavedRuleEvaluationProcess {
     $started = $false
     try {
         if ($null -ne $ClientSocket -and $ClientSocket.Poll(0, [Net.Sockets.SelectMode]::SelectRead) -and $ClientSocket.Available -eq 0) {
-            throw [OperationCanceledException]::new('Scoped relationship check cancelled before its worker started')
+            throw [OperationCanceledException]::new("$OperationName cancelled before its worker started")
         }
         $started = $process.Start()
         $stdout = $process.StandardOutput.ReadToEndAsync()
@@ -86,13 +87,13 @@ function Invoke-SavedRuleEvaluationProcess {
                     $disconnected = $true
                 }
                 if ($disconnected) {
-                    throw [OperationCanceledException]::new('Scoped relationship check cancelled because its client disconnected')
+                    throw [OperationCanceledException]::new("$OperationName cancelled because its client disconnected")
                 }
             }
         } while (-not $completed)
         $output = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult()) -split '\r?\n'
         if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $Parameters.OutputPath -PathType Leaf)) {
-            throw (Get-EvaluatorFailureMessage -EvaluatorName 'Scoped relationship evaluator' -ExitCode $process.ExitCode -Output $output)
+            throw (Get-EvaluatorFailureMessage -EvaluatorName $OperationName -ExitCode $process.ExitCode -Output $output)
         }
     }
     finally {
@@ -111,25 +112,29 @@ function Start-SavedRuleEvaluationRequest {
         [Parameter(Mandatory = $true)][Management.Automation.Runspaces.RunspacePool]$RunspacePool,
         [Parameter(Mandatory = $true)][string]$ScriptPath,
         [Parameter(Mandatory = $true)][Collections.IDictionary]$Parameters,
-        [Parameter(Mandatory = $true)][Net.Sockets.TcpClient]$Client
+        [Parameter(Mandatory = $true)][Net.Sockets.TcpClient]$Client,
+        [string]$OperationName = 'Scoped relationship check',
+        [string]$CleanupDirectory
     )
 
     $worker = [Management.Automation.PowerShell]::Create()
     try {
         $worker.RunspacePool = $RunspacePool
         $null = $worker.AddScript({
-            param($ModulePath, $ScriptPath, $Parameters, $ClientSocket)
+            param($ModulePath, $ScriptPath, $Parameters, $ClientSocket, $OperationName)
             Set-StrictMode -Version Latest
             $ErrorActionPreference = 'Stop'
             Import-Module $ModulePath
-            Invoke-SavedRuleEvaluationProcess -ScriptPath $ScriptPath -Parameters $Parameters -ClientSocket $ClientSocket
-        }).AddArgument($MyInvocation.MyCommand.Module.Path).AddArgument($ScriptPath).AddArgument($Parameters).AddArgument($Client.Client)
+            Invoke-SavedRuleEvaluationProcess -ScriptPath $ScriptPath -Parameters $Parameters -ClientSocket $ClientSocket -OperationName $OperationName
+        }).AddArgument($MyInvocation.MyCommand.Module.Path).AddArgument($ScriptPath).AddArgument($Parameters).AddArgument($Client.Client).AddArgument($OperationName)
         return [pscustomobject]@{
             Worker = $worker
             Completion = $worker.BeginInvoke()
             Client = $Client
             RequestPath = $Parameters.RequestPath
             OutputPath = $Parameters.OutputPath
+            OperationName = $OperationName
+            CleanupDirectory = $CleanupDirectory
         }
     }
     catch {
@@ -145,6 +150,9 @@ function Remove-SavedRuleEvaluationRequest {
     $Request.Client.Dispose()
     foreach ($path in @($Request.RequestPath, $Request.OutputPath)) {
         if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
+    }
+    if ($Request.CleanupDirectory -and [IO.Directory]::Exists($Request.CleanupDirectory)) {
+        Remove-Item -LiteralPath $Request.CleanupDirectory -Recurse -Force
     }
 }
 
@@ -174,7 +182,7 @@ function Receive-SavedRuleEvaluationRequests {
                     Write-Verbose $exception.Message
                 }
                 else {
-                    Write-Warning "Scoped relationship check failed: $($exception.Message)"
+                    Write-Warning "$($request.OperationName) failed: $($exception.Message)"
                     $failureBody = [ordered]@{ error = [string]$exception.Message } | ConvertTo-Json -Compress
                     $response = @{
                         StatusCode = 500

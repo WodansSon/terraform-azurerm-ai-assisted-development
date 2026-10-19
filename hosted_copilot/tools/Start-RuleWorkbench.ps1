@@ -35,6 +35,12 @@ Specifies the Copilot model requested for source assessment and reconciliation.
 .PARAMETER AssessmentReasoningEffort
 Specifies the reasoning effort requested for source assessment and reconciliation.
 
+.PARAMETER SavedRuleEvaluationModel
+Specifies the Copilot model requested only for saved-rule discovery, adjudication, and reassessment. Defaults to gpt-6-luna independently of Model.
+
+.PARAMETER SavedRuleEvaluationReasoningEffort
+Specifies the reasoning effort requested only for saved-rule evaluation. Defaults to medium independently of AssessmentReasoningEffort.
+
 .PARAMETER MaxRetries
 Specifies how many times a failed evaluator batch may be retried.
 
@@ -138,6 +144,15 @@ param(
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
+    [string]$SavedRuleEvaluationModel = 'gpt-6-luna',
+
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
+    [ValidateSet('low', 'medium', 'high', 'xhigh')]
+    [string]$SavedRuleEvaluationReasoningEffort = 'medium',
+
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
 
@@ -199,7 +214,7 @@ if ($Help -or $Detailed) {
     $helpParameterGroups = [ordered]@{
         'Workflow Options' = @('Rebuild', 'Force', 'StageOnly', 'NoLaunch')
         'Server And Output' = @('Port', 'OwnerProcessId', 'OutputFormat')
-        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath', 'AdjudicationEvaluatorScriptPath')
+        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'SavedRuleEvaluationModel', 'SavedRuleEvaluationReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath', 'AdjudicationEvaluatorScriptPath')
         'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'ManualRelationshipCacheDirectory', 'AssessmentResumeDirectory')
         'Authorization' = @('SkipGitHubAuthorization')
     }
@@ -235,6 +250,7 @@ $ruleIssuesExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Expor
 $manualRelationshipPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
 $savedRuleEvaluationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'
 Import-Module (Join-Path $PSScriptRoot 'modules/workbench/SavedRuleEvaluation.psm1')
+Import-Module (Join-Path $PSScriptRoot 'modules/workbench/RuleAssistance.psm1')
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
@@ -271,7 +287,7 @@ if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
 
-$ownedAssetNames = @('index.html', 'app.js', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')
+$ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
@@ -299,9 +315,13 @@ $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
 $savedAuthorityParameters = @{
     RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath; RuleIssuesPath = $stagedRuleIssuesPath
-    EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $AssessmentReasoningEffort
+    EvaluatorCommand = $EvaluatorCommand; Model = $SavedRuleEvaluationModel; ReasoningEffort = $SavedRuleEvaluationReasoningEffort
     RelationshipEvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
     AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
+}
+$assistanceParameters = @{
+    RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath
+    EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $AssessmentReasoningEffort
 }
 $assessmentResult = $null
 $ruleIssuesResult = $null
@@ -624,6 +644,7 @@ $result = [ordered]@{
     allowedMethods = @('GET', 'HEAD', 'POST')
     shutdownEndpoint = 'POST /shutdown'
     relationshipEndpoint = 'POST /reconcile-rule'
+    assistanceEndpoint = 'POST /assist-rule'
     serving = -not $StageOnly
 }
 $workbenchSummaryFields = [ordered]@{
@@ -797,6 +818,7 @@ try {
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig = $shutdownConfig | ConvertFrom-Json
                 $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters)
+                $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters)
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
@@ -810,6 +832,24 @@ try {
                 $shutdownBody = [Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownBody -IncludeBody $true
                 $shutdownRequested = $true
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/assist-rule') {
+                if (-not (Test-ShutdownToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $operationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders -MaximumBytes 1048576
+                    $evaluationRequests.Add((Start-RuleAssistanceRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $assistanceParameters))
+                    $deferredResponse = $true
+                }
+                catch {
+                    Write-Warning "Rule assistance could not start: $($_.Exception.Message)"
+                    $failureBody = @{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
+                    Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
+                }
                 continue
             }
 
@@ -839,8 +879,8 @@ try {
                         RepositoryRoot = $repositoryRoot
                         CacheDirectory = $resolvedManualRelationshipCacheDirectory
                         EvaluatorCommand = $EvaluatorCommand
-                        Model = $Model
-                        ReasoningEffort = $AssessmentReasoningEffort
+                        Model = $SavedRuleEvaluationModel
+                        ReasoningEffort = $SavedRuleEvaluationReasoningEffort
                         DisplayPath = $stagedDisplayPath
                         RuleIssuesPath = $stagedRuleIssuesPath
                         AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath

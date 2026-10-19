@@ -5,6 +5,11 @@
   "targetHarness": "playwright",
   "behaviors": [
     {
+      "id": "WB-UX-ASSISTANCE-001",
+      "title": "Rule-scoped transient assistance preserves accepted chat geometry, catalog context, explicit proposal review, cancellation, and conversation reset",
+      "journey": "playwright/journeys/rule-assistance.journey.cjs"
+    },
+    {
       "id": "WB-UX-CONSOLIDATION-001",
       "title": "Maintainer-directed corrected wording and retirements remain advisory until complete projected validation and atomic explicit acceptance",
       "journey": "playwright/journeys/maintainer-consolidation.journey.cjs"

@@ -17,6 +17,8 @@ const PREVIEW_TREE_DEFAULT_WIDTH = 380;
 const PREVIEW_TREE_MIN_WIDTH = 296;
 const PREVIEW_TREE_MAX_WIDTH = 520;
 const PREVIEW_TREE_KEYBOARD_STEP = 16;
+const ASSISTANCE_RESPONSE_MIN_HEIGHT = 160;
+const ASSISTANCE_RESPONSE_KEYBOARD_STEP = 16;
 const PREVIEW_VIRTUALIZATION_BUFFER_VIEWPORTS = 2;
 const PREVIEW_SCOPE_LABELS = {
   proposed: "Proposed changes",
@@ -121,6 +123,10 @@ let previewTreeResizePointerId = null;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const activeRelationshipChecks = new Map();
+let ruleAssistance = null;
+let ruleAssistanceWaitingPhrases;
+let ruleAssistanceResponseHeight = 320;
+let ruleAssistanceResponseResize = null;
 const dismissedManualRelationshipFailures = new WeakSet();
 const expandedEvidencePanels = new Set();
 const sourceRuleDisclosureStates = new Map();
@@ -143,6 +149,11 @@ const workbenchTooltip = {
 function icon(name) {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
+}
+
+function llmIcon(name) {
+  if (!/^[a-z0-9]+$/.test(name)) throw new Error(`Invalid LLM icon name: ${name}`);
+  return `<svg class="llm-icon" aria-hidden="true"><use href="icons/llms/sprite.svg#llm-${name}"></use></svg>`;
 }
 
 function renderShimmerHeading(text) {
@@ -607,6 +618,17 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
+  elements["assessment-panel"].addEventListener("pointerdown", handleRuleAssistanceResizeStart);
+  elements["assessment-panel"].addEventListener("pointermove", handleRuleAssistanceResizeMove);
+  elements["assessment-panel"].addEventListener("pointerup", handleRuleAssistanceResizeEnd);
+  elements["assessment-panel"].addEventListener("pointercancel", handleRuleAssistanceResizeEnd);
+  elements["assessment-panel"].addEventListener("lostpointercapture", handleRuleAssistanceResizeEnd);
+  elements["assessment-panel"].addEventListener("keydown", handleRuleAssistanceResizeKeyboard);
+  elements["assessment-panel"].addEventListener("keydown", (event) => {
+    if (!event.target.matches(".assist-goal") || event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.repeat) return;
+    event.preventDefault();
+    if (!ruleAssistance?.active) void sendRuleAssistance();
+  });
   for (const panel of [elements["assessment-panel"], elements["assessment-results-detail"]]) {
     panel.addEventListener("click", handleEvidenceDisclosureClick);
     panel.addEventListener("toggle", (event) => {
@@ -672,6 +694,7 @@ function bindEvents() {
     candidateHierarchicalView?.refreshLayout();
     assessmentHierarchicalView?.refreshLayout();
     setPreviewTreeWidth(Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow")));
+    setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
     schedulePreviewBodyVirtualizerRefresh();
   });
 }
@@ -821,7 +844,8 @@ async function preloadIconSprites() {
   const sprites = [
     ["icons/codicons/sprite.svg", "codicon-diff-modified"],
     ["icons/octicons/sprite.svg", "octicon-shield-check-16"],
-    ["icons/fluent/sprite.svg", "fluent-info-20-regular"]
+    ["icons/fluent/sprite.svg", "fluent-info-20-regular"],
+    ["icons/llms/sprite.svg", "llm-openai"]
   ];
   const responses = await Promise.all(sprites.map(([path]) => fetch(path)));
   const failed = responses.find((response) => !response.ok);
@@ -847,15 +871,18 @@ async function loadBundle() {
   setSaveIndicator("Loading display", { kind: "standard", icon: "ellipsis" });
   try {
     await preloadIconSprites();
-    const [displayResponse, ruleIssuesResponse] = await Promise.all([
+    const [displayResponse, ruleIssuesResponse, waitingPhrasesResponse] = await Promise.all([
       fetch("workbench-display.json", { cache: "no-store" }),
-      fetch("workbench-rule-issues.json", { cache: "no-store" })
+      fetch("workbench-rule-issues.json", { cache: "no-store" }),
+      fetch("assistance-waiting-phrases.json", { cache: "no-store" })
     ]);
     if (!displayResponse.ok) throw new Error(`Display request failed with ${displayResponse.status}`);
     if (!ruleIssuesResponse.ok) throw new Error(`Rule Issues request failed with ${ruleIssuesResponse.status}`);
-    const [display, ruleIssueBundle] = await Promise.all([displayResponse.json(), ruleIssuesResponse.json()]);
+    if (!waitingPhrasesResponse.ok) throw new Error(`Assistance waiting phrases request failed with ${waitingPhrasesResponse.status}`);
+    const [display, ruleIssueBundle, waitingPhrases] = await Promise.all([displayResponse.json(), ruleIssuesResponse.json(), waitingPhrasesResponse.json()]);
     validateDisplay(display);
     validateRuleIssueBundle(ruleIssueBundle);
+    ruleAssistanceWaitingPhrases = validateRuleAssistanceWaitingPhrases(waitingPhrases);
     if (!sourceFilesEqual(display.sourceFiles, ruleIssueBundle.sourceFiles)) {
       throw new Error("The Workbench display and Rule Issues source files do not match.");
     }
@@ -3871,6 +3898,7 @@ function syncProposedRuleAssessment(candidate, assessment, proposedText) {
 
 function renderContributingRules(candidate) {
   return `
+    ${renderInformationPanel("<p>These are the source requirements used to form the original Hosted proposal. Expand a rule to inspect its original wording and contribution. These references are evidence, not additional Hosted rules selected for the Promotion Plan.</p>", { className: "section-guidance" })}
     <div class="contributing-rules">
       ${candidate.members.map((member, index) => {
         const mappedRuleId = member.catalogMapping.hostedRuleId;
@@ -3895,7 +3923,263 @@ function renderContributingRules(candidate) {
   `;
 }
 
+function validateRuleAssistanceWaitingPhrases(phrases) {
+  if (!Array.isArray(phrases) || !phrases.length
+    || phrases.some((phrase) => typeof phrase !== "string" || !phrase.trim() || phrase !== phrase.trim() || /[\r\n]/.test(phrase))
+    || new Set(phrases).size !== phrases.length) {
+    throw new Error("Assistance waiting phrases must be a non-empty array of unique, trimmed, single-line strings.");
+  }
+  return phrases;
+}
+
+function setRuleAssistanceResponseHeight(value) {
+  const maximum = Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, document.documentElement.clientHeight);
+  ruleAssistanceResponseHeight = Math.round(Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, Math.min(maximum, value)));
+  const handle = elements["assessment-panel"].querySelector("[data-assist-response-resizer]");
+  if (!handle) return;
+  handle.parentElement.style.setProperty("--assist-chat-response-height", `${ruleAssistanceResponseHeight}px`);
+  handle.setAttribute("aria-valuemax", String(maximum));
+  handle.setAttribute("aria-valuenow", String(ruleAssistanceResponseHeight));
+  handle.setAttribute("aria-valuetext", `Conversation height ${ruleAssistanceResponseHeight} pixels`);
+}
+
+function finishRuleAssistanceResize() {
+  const resize = ruleAssistanceResponseResize;
+  if (!resize) return;
+  ruleAssistanceResponseResize = null;
+  resize.handle.parentElement.classList.remove("assist-chat-response-resizing");
+  if (resize.handle.hasPointerCapture(resize.pointerId)) resize.handle.releasePointerCapture(resize.pointerId);
+}
+
+function handleRuleAssistanceResizeStart(event) {
+  const handle = event.target.closest("[data-assist-response-resizer]");
+  if (!handle || event.button !== 0 || ruleAssistanceResponseResize) return;
+  ruleAssistanceResponseResize = {
+    handle, pointerId: event.pointerId, startY: event.clientY,
+    startHeight: handle.parentElement.getBoundingClientRect().height
+  };
+  handle.setPointerCapture(event.pointerId);
+  handle.parentElement.classList.add("assist-chat-response-resizing");
+  event.preventDefault();
+}
+
+function handleRuleAssistanceResizeMove(event) {
+  const resize = ruleAssistanceResponseResize;
+  if (!resize || event.pointerId !== resize.pointerId) return;
+  setRuleAssistanceResponseHeight(resize.startHeight + event.clientY - resize.startY);
+}
+
+function handleRuleAssistanceResizeEnd(event) {
+  if (event.pointerId === ruleAssistanceResponseResize?.pointerId) finishRuleAssistanceResize();
+}
+
+function handleRuleAssistanceResizeKeyboard(event) {
+  if (!event.target.matches("[data-assist-response-resizer]") || !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  setRuleAssistanceResponseHeight(event.key === "Home"
+    ? ASSISTANCE_RESPONSE_MIN_HEIGHT
+    : event.key === "End"
+      ? document.documentElement.clientHeight
+      : ruleAssistanceResponseHeight + (event.key === "ArrowUp" ? -ASSISTANCE_RESPONSE_KEYBOARD_STEP : ASSISTANCE_RESPONSE_KEYBOARD_STEP));
+}
+
+function setRuleAssistanceCandidate(candidate) {
+  if (ruleAssistance?.candidateKey === candidate?.key) return;
+  ruleAssistance?.active?.controller.abort();
+  ruleAssistance = candidate ? { candidateKey: candidate.key, input: "", turns: [], active: null, followOutput: true, scrollTop: 0 } : null;
+}
+
+function getAssistanceEditorText() {
+  return elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
+}
+
+function renderAssistanceSendIcon(running) {
+  return running
+    ? '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7" y="7" width="6" height="6" rx=".5" fill="currentColor"/></svg>'
+    : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4m-5 5 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+function renderRuleAssistance(candidate) {
+  const chat = ruleAssistance;
+  const profile = globalThis.__HOSTED_RULE_WORKBENCH__?.ruleAssistance;
+  const running = Boolean(chat.active);
+  const ready = Boolean(chat.input.trim() && profile?.model);
+  const model = profile?.model === "gpt-5.4" ? "GPT-5.4" : profile?.model || "Unavailable";
+  const messages = chat.turns.map((turn, index) => `
+    <div class="assist-chat-user-message">${escapeHtml(turn.question)}</div>
+    ${turn.answer ? `<div class="assist-chat-ai-message">
+      <div class="assist-chat-message-author">Completed in ${escapeHtml(turn.duration)}</div>
+      <div class="assist-chat-message-text">${escapeHtml(turn.answer.message)}</div>
+      <p class="assist-chat-scope">Context: ${formatCountLabel(turn.answer.catalogRuleIds.length, "active or protected Hosted rule")}. Catalog snapshot only; other draft and Plan changes are not included.</p>
+      ${turn.answer.suggestedWording ? `<details class="assist-chat-suggestion">
+        <summary class="clickable">Review suggested wording<span class="assist-chat-suggestion-chevron" aria-hidden="true">${icon("chevron-down")}${icon("chevron-up")}</span></summary>
+        ${renderInformationPanel("<p>Only fills the editor. Review and Save through the existing validation flow.</p>", { className: "assist-chat-suggestion-guidance" })}
+        <pre class="evidence-box scroll-surface">${escapeHtml(turn.answer.suggestedWording)}</pre>
+        <button class="button clickable" type="button" data-assist-use="${index}" ${running ? "disabled" : ""}>Use wording in editor</button>
+      </details>` : ""}
+    </div>` : ""}
+    ${turn.status ? `<div class="assist-chat-operation-message" role="status">${chat.active?.turn === turn ? renderShimmerHeading(turn.status) : escapeHtml(turn.status)}</div>` : ""}
+  `).join("");
+  const waiting = running ? renderWaitingPanel({ title: chat.active.turn.status, body: "Preparing rule assistance." })
+    .replace('class="waiting-panel"', 'class="waiting-panel assist-chat-animation-layer" aria-hidden="true"') : "";
+  return `<section class="section-block rule-assistance" data-rule-assistance>
+    <div class="assist-header"><span class="section-label">AI Assistance:</span></div>
+    ${renderInformationPanel(`<p>${profile?.model ? "<strong>Advice only:</strong> Conversation clears when switching rules or reloading; clearing conversation history does not change the draft." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { className: "section-guidance" })}
+    <div class="assist-chat-reply-window">
+      <div class="assist-chat-conversation-toolbar">
+        <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">${escapeHtml(getEffectiveHostedRuleId(candidate))}</em></span>
+        <button class="titlebar-icon clickable assist-chat-clear-conversation" type="button" data-assist-clear aria-label="Clear conversation" data-workbench-tooltip="Clear conversation" ${running || !chat.turns.length ? "disabled" : ""}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 9h12M4 13h5M12 12l4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="assist-chat-response scroll-surface" id="rule-assistance-conversation" role="region" aria-label="AI assistance conversation">${messages}</div>
+      <div class="assist-chat-response-resizer" data-assist-response-resizer tabindex="0" role="separator" aria-orientation="horizontal" aria-label="Resize AI assistance conversation" aria-controls="rule-assistance-conversation" aria-valuemin="${ASSISTANCE_RESPONSE_MIN_HEIGHT}" aria-valuemax="${Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, document.documentElement.clientHeight)}" aria-valuenow="${ruleAssistanceResponseHeight}" aria-valuetext="Conversation height ${ruleAssistanceResponseHeight} pixels" title="Drag to resize conversation; Arrow Up or Arrow Down also adjusts the height"></div>
+    </div>
+    <div class="assist-chat-composer ${running ? "assist-chat-running" : ""}">
+      ${waiting}
+      <span class="assist-chat-context" title="Current Hosted rule context">
+        <button class="assist-chat-add-context" type="button" disabled aria-label="Additional context is not available"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v15M2.5 10h15" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><ellipse cx="10" cy="10" rx="3.25" ry="7.5"/><path d="M2.5 10h15M4 5.5h12M4 14.5h12"/></svg>
+        <em class="assist-chat-context-label">${escapeHtml(getEffectiveHostedRuleId(candidate))}</em>
+      </span>
+      <textarea class="assist-goal scroll-surface" maxlength="8000" aria-label="Message AI about this rule" placeholder="Chat with Copilot to describe what you want to accomplish with this rule..." ${running ? "readonly" : ""}>${escapeHtml(chat.input)}</textarea>
+      <div class="assist-chat-toolbar"><span class="assist-chat-profile">${llmIcon("openai")}${escapeHtml(model)}${profile?.reasoningEffort ? ` · ${escapeHtml(capitalize(profile.reasoningEffort))}` : ""}</span>
+      <button class="assist-chat-send ${!running && ready ? "assist-chat-send-ready clickable" : ""}" type="button" data-assist-send aria-label="${running ? "Cancel operation" : "Send request"}" ${!running && !ready ? "disabled" : ""}>${renderAssistanceSendIcon(running)}</button></div>
+    </div>
+  </section>`;
+}
+
+function syncRuleAssistance() {
+  const root = elements["assessment-panel"].querySelector("[data-rule-assistance]");
+  const candidate = getActiveCandidate();
+  if (!root || !ruleAssistance || candidate?.key !== ruleAssistance.candidateKey) return;
+  finishRuleAssistanceResize();
+  const transcript = root.querySelector(".assist-chat-response");
+  const focus = root.contains(document.activeElement);
+  const resizerFocused = document.activeElement?.matches("[data-assist-response-resizer]");
+  const position = [root.querySelector(".assist-goal").selectionStart, root.querySelector(".assist-goal").selectionEnd];
+  const scrollTop = transcript.scrollTop;
+  root.outerHTML = renderRuleAssistance(candidate);
+  const updated = elements["assessment-panel"].querySelector("[data-rule-assistance]");
+  setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
+  const response = updated.querySelector(".assist-chat-response");
+  response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : scrollTop;
+  if (focus) {
+    const input = updated.querySelector(resizerFocused ? "[data-assist-response-resizer]" : ".assist-goal");
+    input.focus({ preventScroll: true });
+    if (!resizerFocused) input.setSelectionRange(...position);
+  }
+  refreshPresentation();
+}
+
+async function sendRuleAssistance() {
+  const chat = ruleAssistance;
+  const candidate = getActiveCandidate();
+  if (!chat || chat.active || candidate?.key !== chat.candidateKey || !chat.input.trim()) return;
+  const proposedText = getAssistanceEditorText();
+  const controller = new AbortController();
+  const turn = { question: chat.input.trim(), answer: null, proposedText, status: ruleAssistanceWaitingPhrases[Math.floor(Math.random() * ruleAssistanceWaitingPhrases.length)] };
+  const active = { controller, turn };
+  chat.active = active;
+  chat.turns.push(turn);
+  const startedAt = performance.now();
+  syncRuleAssistance();
+  try {
+    const config = await loadSavedRuleRuntimeConfig(controller.signal);
+    controller.signal.throwIfAborted();
+    const profile = config.ruleAssistance;
+    if (!profile?.model || !/^[0-9a-f]{64}$/.test(profile.authoritySha256 || "")) throw new Error("Rule assistance runtime configuration is unavailable.");
+    if (profile.catalogSha256 !== state.bundle.catalog.contentSha256 || profile.protectedRulesSha256 !== state.bundle.catalog.protectedRulesContentSha256) {
+      throw new Error("The Hosted catalog changed. Reload the Workbench before asking again.");
+    }
+    const messages = chat.turns.filter((item) => item.answer).flatMap((item) => [
+      { role: "user", content: item.question },
+      { role: "assistant", content: item.answer.message + (item.answer.suggestedWording ? `\n\nSuggested wording:\n${item.answer.suggestedWording}` : "") }
+    ]);
+    messages.push({ role: "user", content: turn.question });
+    const request = {
+      schemaVersion: 1, requestId: crypto.randomUUID(), authoritySha256: profile.authoritySha256,
+      candidateKey: candidate.key, sourceHash: candidate.hash, proposedText, messages
+    };
+    const response = await fetch("/assist-rule", {
+      method: "POST", signal: controller.signal,
+      headers: { "Content-Type": "application/json", "X-Workbench-Operation-Token": config.operationToken },
+      body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) })
+    });
+    if (!response.ok) {
+      const failure = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
+      throw new Error(failure?.error || `Rule assistance failed with HTTP ${response.status}. No reply was accepted.`);
+    }
+    const answer = await response.json();
+    controller.signal.throwIfAborted();
+    if (ruleAssistance !== chat || chat.active !== active) return;
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const expectedIds = [...state.bundle.catalog.rules.filter((rule) => rule.status === "active"), ...state.bundle.catalog.protectedRules].map((rule) => rule.id).sort();
+    if (answer?.schemaVersion !== 1 || answer.requestId !== request.requestId || answer.candidateKey !== candidate.key
+      || answer.authoritySha256 !== request.authoritySha256 || answer.proposedTextSha256 !== hash
+      || answer.catalogSha256 !== profile.catalogSha256 || answer.protectedRulesSha256 !== profile.protectedRulesSha256
+      || answer.model !== profile.model || answer.reasoningEffort !== profile.reasoningEffort
+      || !Array.isArray(answer.catalogRuleIds) || JSON.stringify([...answer.catalogRuleIds].sort()) !== JSON.stringify(expectedIds)
+      || typeof answer.message !== "string" || !answer.message.trim() || answer.message.length > 20000
+      || (answer.suggestedWording !== null && (typeof answer.suggestedWording !== "string" || !answer.suggestedWording.trim() || answer.suggestedWording.length > 20000))) {
+      throw new Error("Rule assistance returned a stale or invalid reply.");
+    }
+    controller.signal.throwIfAborted();
+    if (ruleAssistance !== chat || chat.active !== active) return;
+    turn.answer = answer;
+    turn.duration = formatElapsedTime(performance.now() - startedAt);
+    turn.status = "";
+    chat.input = "";
+  } catch (error) {
+    if (controller.signal.aborted) turn.status = "Operation canceled.";
+    else turn.status = `Rule assistance failed: ${error.message}`;
+  } finally {
+    if (ruleAssistance === chat && chat.active === active) {
+      chat.active = null;
+      syncRuleAssistance();
+    }
+  }
+}
+
+function formatElapsedTime(milliseconds) {
+  const seconds = Math.max(1, Math.round(milliseconds / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+async function handleRuleAssistanceClick(event) {
+  const chat = ruleAssistance;
+  if (!chat) return;
+  if (event.target.closest("[data-assist-clear]") && !chat.active) {
+    chat.turns = [];
+    chat.followOutput = true;
+    syncRuleAssistance();
+  } else if (event.target.closest("[data-assist-send]")) {
+    if (chat.active) {
+      chat.active.controller.abort();
+      chat.active.turn.status = "Operation canceled.";
+      chat.active = null;
+      syncRuleAssistance();
+    } else await sendRuleAssistance();
+  } else if (event.target.closest("[data-assist-use]")) {
+    const turn = chat.turns[Number(event.target.closest("[data-assist-use]").dataset.assistUse)];
+    if (!turn?.answer?.suggestedWording || chat.active) return;
+    try {
+      const config = await loadSavedRuleRuntimeConfig();
+      if (ruleAssistance !== chat || chat.active || !chat.turns.includes(turn)
+        || config.ruleAssistance?.authoritySha256 !== turn.answer.authoritySha256 || getAssistanceEditorText() !== turn.proposedText) {
+        throw new Error("The rule or assistance context changed. Ask for an updated suggestion before using this wording.");
+      }
+      const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+      editor.value = turn.answer.suggestedWording;
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      editor.scrollIntoView({ block: "nearest" });
+      editor.focus({ preventScroll: true });
+      showToast("Suggested wording is in the editor. Review and Save to validate it.");
+    } catch (error) { showToast(error.message); }
+  }
+}
+
 function renderAssessment() {
+  finishRuleAssistanceResize();
+  setRuleAssistanceCandidate(getActiveCandidate());
   const protectedRule = getActiveProtectedRule();
   if (protectedRule) {
     renderProtectedRuleDetails(protectedRule);
@@ -3941,9 +4225,9 @@ function renderAssessment() {
 
     <div class="assessment-content scroll-surface">
       ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, renderContributingRules(candidate))}
-      ${renderRelatedHostedCoverage(candidate, assessment)}
       <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
 
+      ${renderRuleAssistance(candidate)}
       <div class="section-block hosted-rule-comparison">
         ${renderCurrentHostedRules(catalogStatus)}
         <div class="proposed-rule-heading">
@@ -4022,6 +4306,9 @@ function renderAssessment() {
     ${renderRuleActionResolutionDialog(candidate)}
   `;
   syncProposedRuleControls(candidate);
+  setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
+  const transcript = elements["assessment-panel"].querySelector(".assist-chat-response");
+  transcript.scrollTop = ruleAssistance.followOutput ? transcript.scrollHeight : ruleAssistance.scrollTop;
 }
 
 function renderAssessmentEvidence(candidate, assessment, decision) {
@@ -4090,6 +4377,15 @@ function undoDecision(candidate) {
 }
 
 function handleAssessmentInput(event) {
+  if (event.target.matches(".assist-goal") && ruleAssistance) {
+    ruleAssistance.input = event.target.value;
+    const button = event.target.closest("[data-rule-assistance]").querySelector("[data-assist-send]");
+    const ready = Boolean(event.target.value.trim() && globalThis.__HOSTED_RULE_WORKBENCH__?.ruleAssistance?.model && !ruleAssistance.active);
+    button.disabled = !ruleAssistance.active && !ready;
+    button.classList.toggle("assist-chat-send-ready", ready);
+    button.classList.toggle("clickable", ready);
+    return;
+  }
   const candidate = getActiveCandidate();
   if (!candidate) return;
   if (event.target.dataset.ruleAction) {
@@ -4184,6 +4480,11 @@ function handleDetailBackToTopClick(event) {
 
 function handleDetailContentScroll(event) {
   const content = event.target;
+  if (content instanceof Element && content.matches(".assist-chat-response") && ruleAssistance) {
+    ruleAssistance.scrollTop = content.scrollTop;
+    ruleAssistance.followOutput = content.scrollHeight - content.clientHeight - content.scrollTop <= 4;
+    return;
+  }
   if (!(content instanceof Element) || !content.matches(".assessment-content")) return;
   const button = content.parentElement?.querySelector(":scope > .assessment-title [data-detail-back-to-top]");
   if (button) button.disabled = content.scrollTop <= 1;
@@ -4245,6 +4546,10 @@ function syncAssessmentRationaleControls(action, candidate = getActiveCandidate(
 }
 
 async function handleAssessmentClick(event) {
+  if (event.target.closest("[data-rule-assistance]")) {
+    await handleRuleAssistanceClick(event);
+    return;
+  }
   const resolutionCancel = event.target.closest("[data-rule-action-resolution-cancel]");
   if (resolutionCancel) {
     resolutionCancel.closest("dialog")?.close();
@@ -6054,6 +6359,7 @@ function renderFatalError(error) {
   elements.workspace.classList.remove("icon-paint-pending");
   elements["candidate-list"].innerHTML = "";
   elements["assessment-panel"].innerHTML = `<div class="empty-state"><h2>Workbench Could Not Load</h2><p>${escapeHtml(error.message)}</p></div>`;
+  showCandidatePane("details");
   setSaveIndicator("Bundle unavailable", { kind: "error", icon: "error", tooltip: "Bundle Unavailable" });
   showToast(error.message, true);
 }

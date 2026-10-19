@@ -8,8 +8,10 @@ param(
     [Parameter(Mandatory = $true)][string]$ManualRelationshipPath,
     [Parameter(Mandatory = $true)][string]$ManualRelationshipCacheDirectory,
     [string]$EvaluatorCommand = 'copilot',
-    [string]$Model = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
+    [string]$Model = 'gpt-6-luna',
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'medium',
+    [string]$AssistanceModel = 'gpt-5.4',
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$AssistanceReasoningEffort = 'high',
     [string]$RelationshipEvaluatorScriptPath,
     [string]$AdjudicationEvaluatorScriptPath,
     [ValidateRange(1, 2147483647)][int]$OwnerProcessId,
@@ -21,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 $savedRuleEvaluationPath = Join-Path $PSScriptRoot '../reconciliation/Invoke-SavedRuleEvaluation.ps1'
 $savedAuthorityParameters = @{
@@ -30,6 +33,10 @@ $savedAuthorityParameters = @{
     EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $ReasoningEffort
     RelationshipEvaluatorScriptPath = $RelationshipEvaluatorScriptPath
     AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
+}
+$assistanceParameters = @{
+    RepositoryRoot = $RepositoryRoot; DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
+    EvaluatorCommand = $EvaluatorCommand; Model = $AssistanceModel; ReasoningEffort = $AssistanceReasoningEffort
 }
 $url = "http://127.0.0.1:$Port/"
 $stagedConfigPath = Join-Path $resolvedSiteDirectory 'shutdown-config.js'
@@ -176,6 +183,7 @@ try {
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters) -Force
+                $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters) -Force
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
@@ -188,6 +196,24 @@ try {
                 }
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')) -IncludeBody $true
                 $shutdownRequested = $true
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/assist-rule') {
+                if (-not (Test-RequestToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $OperationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders -MaximumBytes 1048576
+                    $evaluationRequests.Add((Start-RuleAssistanceRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $assistanceParameters))
+                    $deferredResponse = $true
+                }
+                catch {
+                    Write-Warning "Rule assistance could not start: $($_.Exception.Message)"
+                    $failureBody = @{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
+                    Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
+                }
                 continue
             }
 

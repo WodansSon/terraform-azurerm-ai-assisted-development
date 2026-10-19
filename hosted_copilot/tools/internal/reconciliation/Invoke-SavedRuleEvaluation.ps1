@@ -9,8 +9,8 @@ param(
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
     [string]$AdjudicationEvaluatorScriptPath,
-    [string]$Model = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high'
+    [string]$Model = 'gpt-6-luna',
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'medium'
 )
 
 Set-StrictMode -Version Latest

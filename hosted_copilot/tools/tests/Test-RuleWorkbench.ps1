@@ -32,9 +32,11 @@ $iconRoot = Join-Path $workbenchRoot 'icons'
 $codiconRoot = Join-Path $iconRoot 'codicons'
 $octiconRoot = Join-Path $iconRoot 'octicons'
 $fluentIconRoot = Join-Path $iconRoot 'fluent'
+$llmIconRoot = Join-Path $iconRoot 'llms'
 $iconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchCodiconSprite.ps1'
 $octiconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchOcticonSprite.ps1'
 $fluentIconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchFluentIconSprite.ps1'
+$llmIconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchLlmIconSprite.ps1'
 $iconPreviewPath = Join-Path $PSScriptRoot '../internal/workbench/WorkbenchIconPreview.ps1'
 $iconPreviewRendererPath = Join-Path $PSScriptRoot '../Render-WorkbenchIconPreview.cjs'
 $launcherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'
@@ -76,6 +78,7 @@ $mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
 $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
 $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
+    'rule-assistance',
     'saved-rule-evaluation',
     'saved-rule-wording-review',
     'saved-rule-consolidation',
@@ -134,6 +137,7 @@ $staticTestNames = @(
     'no-op-update-suppression',
     'mobile-unsupported-contract',
     'incremental-assessment-launch',
+    'assistance-waiting-phrase-staging',
     'internal-stage-status-boundary',
     'loopback-read-only-server',
     'repository-staging-rejected'
@@ -862,9 +866,12 @@ try {
     $octiconAttributionContent = Get-Content -LiteralPath (Join-Path $octiconRoot 'ATTRIBUTION.md') -Raw
     $fluentIconSpriteContent = Get-Content -LiteralPath (Join-Path $fluentIconRoot 'sprite.svg') -Raw
     $fluentIconAttributionContent = Get-Content -LiteralPath (Join-Path $fluentIconRoot 'ATTRIBUTION.md') -Raw
+    $llmIconSpriteContent = Get-Content -LiteralPath (Join-Path $llmIconRoot 'sprite.svg') -Raw
+    $llmIconAttributionContent = Get-Content -LiteralPath (Join-Path $llmIconRoot 'ATTRIBUTION.md') -Raw
     $iconGeneratorContent = Get-Content -LiteralPath $iconGeneratorPath -Raw
     $octiconGeneratorContent = Get-Content -LiteralPath $octiconGeneratorPath -Raw
     $fluentIconGeneratorContent = Get-Content -LiteralPath $fluentIconGeneratorPath -Raw
+    $llmIconGeneratorContent = Get-Content -LiteralPath $llmIconGeneratorPath -Raw
     $iconPreviewContent = Get-Content -LiteralPath $iconPreviewPath -Raw
     $iconPreviewRendererContent = Get-Content -LiteralPath $iconPreviewRendererPath -Raw
     $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
@@ -891,6 +898,19 @@ try {
         'warning-20-regular'
     ) | Sort-Object
     $codiconContractValid = $codiconSourceCount -eq [regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count
+    $copilotIconNames = @(
+        'copilot', 'copilot-blocked', 'copilot-compact', 'copilot-dot', 'copilot-dot-compact',
+        'copilot-error', 'copilot-in-progress', 'copilot-large', 'copilot-not-connected',
+        'copilot-snooze', 'copilot-success', 'copilot-unavailable', 'copilot-warning', 'copilot-warning-large'
+    )
+    foreach ($copilotIconName in $copilotIconNames) {
+        $copilotSource = [xml](Get-Content -LiteralPath (Join-Path $codiconRoot "$copilotIconName.svg") -Raw)
+        $expectedViewBox = if ($copilotIconName.EndsWith('-compact')) { '0 0 12 12' } elseif ($copilotIconName.EndsWith('-large')) { '0 0 50 50' } else { '0 0 16 16' }
+        $codiconContractValid = $codiconContractValid -and
+            $copilotSource.svg.viewBox -ceq $expectedViewBox -and
+            $generatedSpriteContent.Contains("<symbol id=`"codicon-$copilotIconName`" viewBox=`"$expectedViewBox`">") -and
+            $iconGeneratorContent.Contains("'$copilotIconName'")
+    }
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-git-branch-conflicts"' -and $spriteContent -match 'id="codicon-git-pull-request-error"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-check-compact"' -and $spriteContent -match 'id="codicon-circle-slash-compact"' -and $spriteContent -match 'id="codicon-debug-disconnect-compact"' -and $spriteContent -match 'id="codicon-checklist-compact"' -and $spriteContent -match 'id="codicon-shield-compact"' -and $spriteContent -match 'id="codicon-warning-compact"' -and $spriteContent -match 'id="codicon-chevron-right-compact"' -and $spriteContent -match 'id="codicon-chevron-down-compact"' -and $spriteContent -match 'id="codicon-fold-up"' -and $spriteContent -match 'id="codicon-diff-modified"' -and $spriteContent -match 'id="codicon-arrow-circle-down"' -and $spriteContent -match 'id="codicon-arrow-circle-left"' -and $spriteContent -match 'id="codicon-arrow-circle-right"' -and $spriteContent -match 'id="codicon-arrow-circle-up"' -and $spriteContent -match 'id="codicon-arrow-circle-up-sparkle"' -and $spriteContent -match 'id="codicon-close"' -and $spriteContent -match 'id="codicon-close-small"' -and $spriteContent -match 'id="codicon-close-compact"' -and $spriteContent -match 'id="codicon-pass"' -and $spriteContent -match 'id="codicon-pass-compact"' -and $spriteContent -match 'id="codicon-git-stash-apply"' -and $spriteContent -match 'id="codicon-kebab-vertical"' -and $spriteContent -match 'id="codicon-layers"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-folder-opened"' -and $spriteContent -match 'id="codicon-folder-opened-compact"' -and $spriteContent -match 'id="codicon-folder-library"' -and $spriteContent -match 'id="codicon-folder-compact"' -and $spriteContent -match 'id="codicon-folder-active"' -and $spriteContent -match 'id="codicon-file-symlink-directory"' -and $spriteContent -match 'id="codicon-remote"' -and $spriteContent -match 'id="codicon-remote-compact"' -and $spriteContent -match 'id="codicon-workspace-untrusted"' -and $spriteContent -match 'id="codicon-workspace-unknown"'
@@ -914,7 +934,8 @@ try {
         $statusbarContent -match 'key: "eligible",[^}]*icon: "collection"' -and
         $statusbarContent -match 'key: "warnings",[^}]*icon: "warning-compact"'
     $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid -and $collectionIssuesContractValid
-    $octiconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0 -and $octiconSourceCount -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
+    $standaloneIconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0
+    $octiconContractValid = $standaloneIconContractValid -and $octiconSourceCount -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match 'id="octicon-code-review-16"' -and $octiconSpriteContent -match 'id="octicon-file-diff-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-fill-16"' -and $octiconSpriteContent -match 'id="octicon-file-directory-open-fill-16"' -and $octiconSpriteContent -match 'id="octicon-filter-16"' -and $octiconSpriteContent -match 'id="octicon-people-16"' -and $octiconSpriteContent -match 'id="octicon-shield-lock-16"' -and $octiconSpriteContent -match 'id="octicon-square-16"' -and $octiconSpriteContent -match 'id="octicon-diff-added-16"' -and $octiconSpriteContent -match 'id="octicon-diff-removed-16"' -and $octiconSpriteContent -match 'id="octicon-fold-16"' -and $octiconSpriteContent -match 'id="octicon-fold-up-16"' -and $octiconSpriteContent -match 'id="octicon-fold-down-16"' -and $octiconSpriteContent -match 'id="octicon-unfold-16"' -and $octiconSpriteContent -match 'id="octicon-comment-ai-16"' -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/octicons' -and $octiconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
     $fluentIconContractValid = $fluentIconSourceCount -eq 750 -and $fluentIconSymbolNames.Count -eq 9 -and $fluentIconPairGroups.Count -eq 375 -and $fluentIconCoreMatch.Success -and $fluentIconCoreNames.Count -eq 142 -and @(Compare-Object $fluentIconRuntimeNames $fluentIconSymbolNames).Count -eq 0 -and @($fluentIconPairGroups | Where-Object { $_.Count -ne 2 }).Count -eq 0 -and @($fluentIconCoreNames | Where-Object { $_ -notin $fluentIconSourceNames }).Count -eq 0 -and @($fluentIconRuntimeNames | Where-Object { $_ -notin $fluentIconSourceNames }).Count -eq 0 -and @($fluentIconConsumerNames | Where-Object { $_ -notin $fluentIconRuntimeNames }).Count -eq 0
     foreach ($fluentIconFamily in @('checkmark-circle', 'dismiss-circle', 'error-circle', 'important', 'info', 'question-circle', 'warning', 'shield-checkmark', 'shield-dismiss', 'shield-error', 'shield-question', 'shield-task', 'document-add', 'document-bullet-list', 'document-checkmark', 'document-dismiss', 'document-edit', 'document-error', 'document-lock', 'document-search', 'document-sync', 'document-text', 'approvals-app', 'arrow-sync-circle', 'book-information', 'bot-sparkle', 'brain-circuit', 'certificate', 'clipboard-checkmark', 'clipboard-task-list-ltr', 'data-usage', 'gauge', 'history', 'lightbulb', 'person-feedback', 'target-arrow', 'arrow-routing', 'arrow-routing-rectangle-multiple', 'arrow-split', 'flow', 'flowchart', 'link-multiple', 'connected', 'group-list', 'shape-intersect', 'merge', 'stack', 'stack-arrow-forward', 'gavel', 'gavel-prohibited', 'scales', 'checkbox-checked-sync', 'flag-checkered', 'ribbon', 'ribbon-off', 'person-edit', 'archive', 'archive-arrow-back', 'arrow-undo', 'arrow-redo', 'arrow-sync-checkmark', 'arrow-sync-dismiss', 're-order', 'document-copy', 'document-arrow-right', 'clipboard-search', 'clipboard-text-ltr', 'text-quote', 'database-search', 'task-list-square-sparkle', 'wand')) {
         $fluentIconContractValid = $fluentIconContractValid -and "$fluentIconFamily-20-regular" -in $fluentIconSourceNames -and "$fluentIconFamily-20-filled" -in $fluentIconSourceNames
@@ -922,8 +943,47 @@ try {
     $fluentIconContractValid = $fluentIconContractValid -and $fluentIconSpriteContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconAttributionContent -match 'Microsoft Fluent UI System Icons' -and $fluentIconAttributionContent -match 'regular and filled variants' -and $fluentIconAttributionContent -match 'MIT License' -and $fluentIconAttributionContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/fluent' -and $fluentIconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $fluentIconGeneratorContent -match 'New-WorkbenchIconPreview' -and $fluentIconGeneratorContent -match 'SymbolMarkup' -and $fluentIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'const CORE_FLUENT_ICON_NAMES = new Set' -and $appContent -match 'function fluentIcon\(name' -and $appContent -match 'icons/fluent/sprite\.svg#fluent-\$\{name\}' -and $appContent -match 'icons/fluent/sprite\.svg", "fluent-info-20-regular' -and $statusbarContent -match 'icon: "link-multiple-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "link-dismiss-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "gauge-16-regular"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icons/fluent/sprite\.svg#fluent-\$\{name\}' -and $stylesContent -match '\.fluent-icon\s*\{'
     $fluentIconContractValid = $fluentIconContractValid -and $appContent -match 'function renderRuleActionResolutionInformationIcon\(' -and $appContent -match 'class="rule-action-resolution-information-heading">Information<' -and $appContent -match 'class="rule-action-resolution-information-body">' -and $appContent -match 'fluentIcon\("warning-20-regular"\)' -and $appContent -match 'fluentIcon\("arrow-undo-20-filled"\)' -and $stylesContent -match '\.rule-action-resolution-dialog \.scoring-legend-dialog-heading\s*\{[^}]*var\(--gold-soft\)[^}]*var\(--warning-action-border\)' -and $stylesContent -match '--rule-action-information-background-start:\s*#244f69' -and $stylesContent -match '--rule-action-information-background-end:\s*#1b3d53' -and $stylesContent -match '--rule-action-information-frame:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-foreground:\s*#e7f5ff' -and $stylesContent -match '--rule-action-information-heading-start:\s*#062f6d' -and $stylesContent -match '--rule-action-information-heading-middle:\s*#2f73bc' -and $stylesContent -match '--rule-action-information-heading-end:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-divider-highlight:\s*#e7efff' -and $stylesContent -match '--rule-action-information-icon-background:\s*#3f91c2' -and $stylesContent -match '--rule-action-information-icon-foreground:\s*#ffffff' -and $stylesContent -match '\.rule-action-resolution-information\s*\{[^}]*linear-gradient\(var\(--rule-action-information-background-start\), var\(--rule-action-information-background-end\)\)[^}]*var\(--rule-action-information-frame\)[^}]*border-radius:\s*0 0 8px 8px' -and $stylesContent -match '\.rule-action-resolution-information-heading\s*\{[^}]*100% 1px no-repeat,[^}]*32%[^}]*68%' -and $stylesContent -match '\.rule-action-resolution-information-body\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\)[^}]*gap:\s*10px'
     $iconPreviewsValid = $iconGeneratorContent -match 'New-WorkbenchIconPreview' -and $octiconGeneratorContent -match 'New-WorkbenchIconPreview' -and $fluentIconGeneratorContent -match 'New-WorkbenchIconPreview' -and $iconPreviewContent -match 'fill="#f0f6fc"' -and $iconPreviewContent -match 'Render-WorkbenchIconPreview\.cjs' -and $iconPreviewContent -match 'Get-Command node' -and $iconPreviewContent -notmatch 'Start-Process|Microsoft Edge|msedge' -and $iconPreviewRendererContent -match 'require\("puppeteer"\)' -and $iconPreviewRendererContent -match 'headless:\s*true' -and (Test-PngFile -Path (Join-Path $codiconRoot 'preview.png')) -and (Test-PngFile -Path (Join-Path $octiconRoot 'preview.png')) -and (Test-PngFile -Path (Join-Path $fluentIconRoot 'preview.png'))
-    $iconFamiliesValid = $codiconContractValid -and $octiconContractValid -and $fluentIconContractValid -and $iconPreviewsValid
-    Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'The Workbench separately owns pinned, attributed, offline Codicon, Octicon, and Fluent icon source families, generated sprites, and visible PNG inventory sheets, stages all families recursively, and has no runtime icon-network dependency.'
+    $llmIconSources = @(Get-ChildItem -LiteralPath $llmIconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') } | Sort-Object Name)
+    $llmIconSourceNames = @($llmIconSources | ForEach-Object BaseName)
+    $llmIconDocument = [xml]$llmIconSpriteContent
+    $llmIconSymbols = @($llmIconDocument.svg.symbol)
+    $llmIconSymbolNames = @($llmIconSymbols | ForEach-Object { $_.GetAttribute('id') -replace '^llm-', '' } | Sort-Object)
+    $llmIconContractValid = $llmIconSourceNames.Count -eq 340 -and $llmIconSymbols.Count -eq 340 -and
+        @(Compare-Object $llmIconSourceNames $llmIconSymbolNames -CaseSensitive).Count -eq 0 -and
+        @($llmIconSourceNames | Where-Object { $_ -cnotmatch '^[a-z0-9]+$' }).Count -eq 0 -and
+        $llmIconSpriteContent -match '8a1b2821bb768c484fe8da20c5e1838b6bf551a9' -and
+        $llmIconAttributionContent -match 'Lobe Icons' -and $llmIconAttributionContent -match 'MIT License' -and
+        $llmIconAttributionContent -match '8a1b2821bb768c484fe8da20c5e1838b6bf551a9' -and
+        (Get-Content -LiteralPath (Join-Path $llmIconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and
+        $llmIconGeneratorContent -match 'New-WorkbenchIconPreview' -and
+        $iconPreviewContent -match 'color="#f0f6fc"' -and
+        $llmIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and
+        $appContent -match 'function llmIcon\(name\)' -and $appContent -match 'llmIcon\("openai"\)' -and
+        $appContent -match 'icons/llms/sprite\.svg#llm-\$\{name\}' -and
+        $appContent -match 'icons/llms/sprite\.svg", "llm-openai"' -and
+        $appContent -notmatch 'icons/openai\.svg|assist-gpt-icon' -and
+        $stylesContent -match '\.llm-icon\s*\{[^}]*width:\s*12px;[^}]*height:\s*12px;[^}]*fill:\s*currentColor;[^}]*stroke:\s*none' -and
+        (Test-PngFile -Path (Join-Path $llmIconRoot 'preview.png'))
+    foreach ($source in $llmIconSources) {
+        $sourceDocument = [xml](Get-Content -LiteralPath $source.FullName -Raw)
+        $symbol = $llmIconSymbols | Where-Object { $_.GetAttribute('id') -ceq "llm-$($source.BaseName)" }
+        $llmIconContractValid = $llmIconContractValid -and $sourceDocument.DocumentElement.InnerXml -ceq $symbol.InnerXml
+        foreach ($attributeName in @('viewBox', 'fill', 'fill-rule')) {
+            $llmIconContractValid = $llmIconContractValid -and
+                $sourceDocument.DocumentElement.GetAttribute($attributeName) -ceq $symbol.GetAttribute($attributeName)
+        }
+        $expectedFilter = if ($sourceDocument.DocumentElement.GetAttribute('style').Contains('filter:grayscale(100%)')) { 'grayscale(100%)' } else { '' }
+        $llmIconContractValid = $llmIconContractValid -and $symbol.GetAttribute('filter') -ceq $expectedFilter
+    }
+    $llmIconIds = @($llmIconDocument.SelectNodes('//*[@id]') | ForEach-Object { $_.GetAttribute('id') })
+    $llmIconContractValid = $llmIconContractValid -and @($llmIconIds | Sort-Object -Unique).Count -eq $llmIconIds.Count
+    foreach ($attribute in $llmIconDocument.SelectNodes('//@*')) {
+        foreach ($reference in [regex]::Matches($attribute.Value, 'url\(#(?<id>[^)]+)\)')) {
+            $llmIconContractValid = $llmIconContractValid -and $llmIconIds -ccontains $reference.Groups['id'].Value
+        }
+    }
+    $iconFamiliesValid = $codiconContractValid -and $octiconContractValid -and $fluentIconContractValid -and $llmIconContractValid -and $iconPreviewsValid
+    Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'The Workbench separately owns pinned, attributed, offline Codicon, Octicon, Fluent, and standard LLM icon families, sprites, and PNG inventories; the icon root has no loose files, and all LLM geometry, presentation, and local fragment references are preserved.'
 
     if (Test-ShouldRun -Name 'portable-icon-generation') {
         Start-TestResult -Name 'portable-icon-generation'
@@ -931,10 +991,13 @@ try {
         $generatedCodiconRoot = Join-Path $iconGenerationRoot 'codicons'
         $generatedOcticonRoot = Join-Path $iconGenerationRoot 'octicons'
         $generatedFluentIconRoot = Join-Path $iconGenerationRoot 'fluent'
+        $generatedLlmIconRoot = Join-Path $iconGenerationRoot 'llms'
         New-Item -ItemType Directory -Path $iconGenerationRoot -Force | Out-Null
         Copy-Item -LiteralPath $codiconRoot -Destination $generatedCodiconRoot -Recurse
         Copy-Item -LiteralPath $octiconRoot -Destination $generatedOcticonRoot -Recurse
         Copy-Item -LiteralPath $fluentIconRoot -Destination $generatedFluentIconRoot -Recurse
+        Copy-Item -LiteralPath $llmIconRoot -Destination $generatedLlmIconRoot -Recurse
+        Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg'), (Join-Path $generatedLlmIconRoot 'preview.png') -Force
         Remove-Item -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg'), (Join-Path $generatedCodiconRoot 'preview.png'), (Join-Path $generatedOcticonRoot 'sprite.svg'), (Join-Path $generatedOcticonRoot 'preview.png'), (Join-Path $generatedFluentIconRoot 'sprite.svg'), (Join-Path $generatedFluentIconRoot 'preview.png') -Force -ErrorAction SilentlyContinue
         $codiconGenerationOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconDirectory $generatedCodiconRoot 2>&1)
         $codiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
@@ -942,24 +1005,40 @@ try {
         $octiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
         $fluentIconGenerationOutput = @(& pwsh -NoProfile -File $fluentIconGeneratorPath -IconDirectory $generatedFluentIconRoot 2>&1)
         $fluentIconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        $llmIconGenerationOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
+        $llmIconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
         $generatedCodiconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -Raw } else { '' }
         $generatedOcticonSprite = if (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -Raw } else { '' }
         $generatedFluentIconSprite = if (Test-Path -LiteralPath (Join-Path $generatedFluentIconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedFluentIconRoot 'sprite.svg') -Raw } else { '' }
-        $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and $fluentIconGenerationExitCode -eq 0 -and
+        $generatedLlmIconSprite = if (Test-Path -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg') -Raw } else { '' }
+        $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and $fluentIconGenerationExitCode -eq 0 -and $llmIconGenerationExitCode -eq 0 -and
             [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq $codiconSourceCount -and
             [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq $octiconSourceCount -and
             [regex]::Matches($generatedFluentIconSprite, '<symbol id="fluent-').Count -eq $fluentIconRuntimeNames.Count -and
+            $generatedLlmIconSprite -ceq $llmIconSpriteContent -and
+            (Test-PngFile -Path (Join-Path $generatedLlmIconRoot 'preview.png')) -and
             (Test-PngFile -Path (Join-Path $generatedCodiconRoot 'preview.png')) -and
             (Test-PngFile -Path (Join-Path $generatedOcticonRoot 'preview.png')) -and
             (Test-PngFile -Path (Join-Path $generatedFluentIconRoot 'preview.png')) -and
             -not (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'preview.svg')) -and
             -not (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'preview.svg')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedFluentIconRoot 'preview.svg'))
+            -not (Test-Path -LiteralPath (Join-Path $generatedFluentIconRoot 'preview.svg')) -and
+            -not (Test-Path -LiteralPath (Join-Path $generatedLlmIconRoot 'preview.svg'))
+        Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'LICENSE.txt') -Force
+        $missingLlmLicenseOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
+        $missingLlmLicenseExitCode = $LASTEXITCODE
+        Copy-Item -LiteralPath (Join-Path $llmIconRoot 'LICENSE.txt') -Destination $generatedLlmIconRoot
+        Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'openai.svg') -Force
+        $missingLlmSourceOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
+        $missingLlmSourceExitCode = $LASTEXITCODE
+        $portableIconGenerationValid = $portableIconGenerationValid -and $missingLlmLicenseExitCode -ne 0 -and
+            ($missingLlmLicenseOutput -join "`n") -match 'LLM icon license is missing' -and $missingLlmSourceExitCode -ne 0 -and
+            ($missingLlmSourceOutput -join "`n") -match "LLM icon 'openai' is missing"
         $iconGenerationDetail = if ($portableIconGenerationValid) {
-            'Regenerated all three icon-family sprites and valid PNG inventories through locked headless Puppeteer in temporary directories.'
+            'Regenerated all four icon-family sprites and PNG inventories in temporary directories; LLM generation is deterministic and explicitly rejects missing licenses and required source glyphs.'
         }
         else {
-            "Codicon exit $codiconGenerationExitCode`: $(($codiconGenerationOutput | Out-String).Trim()); Octicon exit $octiconGenerationExitCode`: $(($octiconGenerationOutput | Out-String).Trim()); Fluent exit $fluentIconGenerationExitCode`: $(($fluentIconGenerationOutput | Out-String).Trim())"
+            "Codicon exit $codiconGenerationExitCode`: $(($codiconGenerationOutput | Out-String).Trim()); Octicon exit $octiconGenerationExitCode`: $(($octiconGenerationOutput | Out-String).Trim()); Fluent exit $fluentIconGenerationExitCode`: $(($fluentIconGenerationOutput | Out-String).Trim()); LLM exit $llmIconGenerationExitCode`: $(($llmIconGenerationOutput | Out-String).Trim()); Missing LLM license exit $missingLlmLicenseExitCode`: $($missingLlmLicenseOutput -join ' '); Missing LLM source exit $missingLlmSourceExitCode`: $($missingLlmSourceOutput -join ' ')"
         }
         Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
@@ -1646,6 +1725,11 @@ try {
         $incompleteExitCode -ne 0 -and
         ($incompleteOutput | Out-String) -match 'Run Start-RuleWorkbench\.ps1 -Rebuild to create one'
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses the staged display, Rebuild reuses exact semantic caches, and Rebuild with Force bypasses cache reads while preserving atomic publication.'
+    $waitingPhraseStagingValid = $reuseExitCode -eq 0 -and
+        [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
+        (Test-Path -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')) -and
+        (Get-FileHash -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $workbenchRoot 'assistance-waiting-phrases.json')).Hash
+    Add-TestResult -Name 'assistance-waiting-phrase-staging' -Passed $waitingPhraseStagingValid -Detail 'Ordinary source launch stages the exact waiting-phrase catalog while reusing the validated display without a semantic rebuild.'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverEntryPointContents = @($launcherContent, (Get-Content -LiteralPath $loopbackServerPath -Raw))
@@ -1960,6 +2044,12 @@ try {
         }
         Add-TestResult -Name 'saved-rule-consolidation' -Passed ($rejections -eq $cases.Count) -Detail "Corrected existing-target consolidation passed with a different lexical routing anchor; $rejections invalid ownership, preservation, retirement, and provenance cases were rejected."
     }
+    if (Test-ShouldRun -Name 'rule-assistance') {
+        Start-TestResult -Name 'rule-assistance' -RunningDetail 'Checking grounded assistance, strict CLI transport, input limits, and both HTTP lifecycle paths'
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-RuleAssistance.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'rule-assistance')
+        if ($LASTEXITCODE -ne 0) { throw 'Rule assistance regression failed' }
+        Add-TestResult -Name 'rule-assistance' -Passed $true -Detail 'Synthetic CLI and HTTP fixtures preserve complete catalog context, model isolation, strict output, bounded history, cancellation, responsiveness, and cleanup.'
+    }
     if (Test-ShouldRun -Name 'saved-rule-evaluation') {
         Start-TestResult -Name 'saved-rule-evaluation' -RunningDetail 'Running the source-owned checker, grouped adjudicator, and deterministic saved-edit validation'
         Import-Module (Join-Path $toolsRoot 'modules/workbench/SavedRuleEvaluation.psm1')
@@ -2199,7 +2289,7 @@ try {
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
     $null = New-Item -ItemType Directory -Path $shutdownSiteDirectory -Force
-    foreach ($assetName in @('index.html', 'app.js', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
+    foreach ($assetName in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
     }
     Copy-Item -LiteralPath (Join-Path $workbenchRoot 'icons') -Destination $shutdownSiteDirectory -Recurse

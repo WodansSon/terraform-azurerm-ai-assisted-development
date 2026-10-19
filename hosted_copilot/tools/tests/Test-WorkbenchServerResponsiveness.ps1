@@ -91,12 +91,14 @@ function Assert-FixtureWorkersStopped {
     if ($remaining.Count) { throw 'Request cleanup left its evaluator or descendant running' }
 }
 
-foreach ($profile in @('internal', 'production')) {
+foreach ($profile in @('internal', 'production', 'production-override')) {
+    $expectedModel = if ($profile -eq 'production-override') { 'fixture-saved-model' } else { 'gpt-6-luna' }
+    $expectedEffort = if ($profile -eq 'production-override') { 'low' } else { 'medium' }
     $profileDirectory = Join-Path $TemporaryDirectory $profile
     $siteDirectory = Join-Path $profileDirectory 'site'
     $controlDirectory = Join-Path $profileDirectory 'control'
     $null = New-Item -ItemType Directory -Path $siteDirectory, $controlDirectory -Force
-    foreach ($asset in @('index.html', 'app.js', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
+    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $asset) -Destination $siteDirectory -Recurse
     }
     Copy-Item -LiteralPath $DisplayPath -Destination (Join-Path $siteDirectory 'workbench-display.json')
@@ -112,11 +114,16 @@ foreach ($profile in @('internal', 'production')) {
         $env:HOSTED_WORKBENCH_TEST_CONTROL_DIRECTORY = $ControlDirectory
         $heldEvaluator = Join-Path $ToolsRoot 'tests\fixtures\held-relationship-evaluator.ps1'
         $adjudicator = Join-Path $ToolsRoot 'tests\fixtures\rule-issue-adjudication-evaluator.ps1'
-        if ($Profile -eq 'production') {
-            & pwsh -NoProfile -File (Join-Path $ToolsRoot 'Start-RuleWorkbench.ps1') -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -SkipGitHubAuthorization -RelationshipEvaluatorScriptPath $heldEvaluator -AdjudicationEvaluatorScriptPath $adjudicator -ManualRelationshipCacheDirectory (Join-Path $ProfileDirectory 'cache')
+        $evaluatorCommand = 'fixture-log:' + (Join-Path $ProfileDirectory 'adjudication-metrics.jsonl')
+        if ($Profile -in @('production', 'production-override')) {
+            $savedProfileArguments = @()
+            if ($Profile -eq 'production-override') {
+                $savedProfileArguments = @('-SavedRuleEvaluationModel', 'fixture-saved-model', '-SavedRuleEvaluationReasoningEffort', 'low')
+            }
+            & pwsh -NoProfile -File (Join-Path $ToolsRoot 'Start-RuleWorkbench.ps1') -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -SkipGitHubAuthorization -RelationshipEvaluatorScriptPath $heldEvaluator -AdjudicationEvaluatorScriptPath $adjudicator -ManualRelationshipCacheDirectory (Join-Path $ProfileDirectory 'cache') -EvaluatorCommand $evaluatorCommand -Model 'fixture-normal-model' -AssessmentReasoningEffort xhigh @savedProfileArguments
         }
         else {
-            & pwsh -NoProfile -File (Join-Path $ToolsRoot 'internal\workbench\Start-WorkbenchLoopbackServer.ps1') -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -ShutdownToken ('a' * 64) -OperationToken ('b' * 64) -RepositoryRoot $RepositoryRoot -ManualRelationshipPath (Join-Path $ToolsRoot 'internal\reconciliation\Invoke-ManualRuleRelationship.ps1') -ManualRelationshipCacheDirectory (Join-Path $ProfileDirectory 'cache') -RelationshipEvaluatorScriptPath $heldEvaluator -AdjudicationEvaluatorScriptPath $adjudicator
+            & pwsh -NoProfile -File (Join-Path $ToolsRoot 'internal\workbench\Start-WorkbenchLoopbackServer.ps1') -SiteDirectory $SiteDirectory -Port $Port -NoLaunch -ShutdownToken ('a' * 64) -OperationToken ('b' * 64) -RepositoryRoot $RepositoryRoot -ManualRelationshipPath (Join-Path $ToolsRoot 'internal\reconciliation\Invoke-ManualRuleRelationship.ps1') -ManualRelationshipCacheDirectory (Join-Path $ProfileDirectory 'cache') -RelationshipEvaluatorScriptPath $heldEvaluator -AdjudicationEvaluatorScriptPath $adjudicator -EvaluatorCommand $evaluatorCommand
         }
     } -ArgumentList $profile, $toolsRoot, $siteDirectory, $controlDirectory, $profileDirectory, $repositoryRoot, $port
     $http = [Net.Http.HttpClient]::new()
@@ -142,6 +149,9 @@ foreach ($profile in @('internal', 'production')) {
         $text = "$($candidate.recommendation.ruleText) Responsive $profile check."
         $pending = $http.SendAsync((New-FixtureRequest POST "$baseUrl/reconcile-rule" (New-FixturePayload $text $runtime.savedRuleAuthoritySha256) $runtime.operationToken))
         $worker = Wait-FixtureWorker $controlDirectory $text $pending
+        if ($worker.model -cne $expectedModel -or $worker.effort -cne $expectedEffort) {
+            throw "$profile did not use its independent saved-rule profile for discovery"
+        }
         foreach ($path in @('/icons/codicons/sprite.svg', '/styles.css', '/', '/runtime-config')) {
             $response = Receive-FixtureResponse ($http.GetAsync("$baseUrl$path"))
             if ($response.StatusCode -ne 200 -or $pending.IsCompleted) { throw "$profile did not serve $path while validation was running" }
@@ -167,7 +177,17 @@ foreach ($profile in @('internal', 'production')) {
             $response = Receive-FixtureResponse $task 20000
             $json = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             $schema = Join-Path $repositoryRoot 'hosted_copilot\copilot-rule-catalog\assessment-reconciliation\saved-rule-evaluation.schema.json'
-            if ($response.StatusCode -ne 200 -or -not ($json | Test-Json -SchemaFile $schema -ErrorAction Stop)) { throw "$profile did not publish a validated result" }
+            if ($response.StatusCode -ne 200) {
+                $failure = $json | ConvertFrom-Json
+                throw "$profile saved-rule evaluation failed with HTTP $([int]$response.StatusCode): $($failure.error)"
+            }
+            if (-not ($json | Test-Json -SchemaFile $schema -ErrorAction Stop)) { throw "$profile did not publish a validated result" }
+        }
+        $adjudicationMetrics = @(Get-Content -LiteralPath (Join-Path $profileDirectory 'adjudication-metrics.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+        if ($adjudicationMetrics.Count -ne 2 -or @($adjudicationMetrics | Where-Object {
+            $_.model -cne $expectedModel -or $_.effort -cne $expectedEffort
+        }).Count -ne 0) {
+            throw "$profile did not use its independent saved-rule profile for adjudication"
         }
         Assert-FixtureWorkersStopped $worker
         $invalid = Receive-FixtureResponse ($http.SendAsync((New-FixtureRequest POST "$baseUrl/reconcile-rule" (New-FixturePayload $text ('0' * 64)) $runtime.operationToken))) 10000
@@ -190,7 +210,7 @@ foreach ($profile in @('internal', 'production')) {
         Assert-FixtureWorkersStopped $shutdownWorker
         $null = Receive-Job -Job $serverJob -ErrorAction Stop
         if ($serverJob.State -ne 'Completed') { throw "$profile server did not finish cleanly" }
-        Write-Host "Passed $profile server: in-flight GET/HEAD, authorization, serialized checks, validated results, failures, disconnect cancellation, and shutdown cleanup."
+        Write-Host "Passed $profile server: saved-rule model/effort isolation, in-flight GET/HEAD, authorization, serialized checks, validated results, failures, disconnect cancellation, and shutdown cleanup."
     }
     finally {
         $http.Dispose()

@@ -24,6 +24,7 @@ if ($EvaluatorCommand.StartsWith('fixture-log:', [StringComparison]::Ordinal)) {
     $reservedBytes = (@($InputPath, $CatalogPath, $ProtectedRulesPath, $ContractPath, $SchemaPath, $PromptPath) | ForEach-Object { (Get-Item -LiteralPath $_).Length } | Measure-Object -Sum).Sum + 16384
     $metrics = [ordered]@{
         phase = $phase; reservedBytes = $reservedBytes
+        model = $Model; effort = $ReasoningEffort
         candidates = @(if ($phase -in @('assessment', 'complete')) { $request.editContext.assessmentContext.sources.candidateKey })
         relationships = @(if ($phase -in @('relationships', 'complete')) { $request.relationships.id })
         scopeCandidate = if ($phase -in @('scope', 'complete')) { [string]$request.editContext.candidateKey } else { $null }

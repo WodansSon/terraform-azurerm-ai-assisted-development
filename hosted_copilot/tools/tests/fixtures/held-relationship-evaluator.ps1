@@ -32,6 +32,8 @@ try {
     [IO.File]::WriteAllText("$markerPath.tmp", (@{
         worker = $PID
         child = if ($null -ne $child) { $child.Id } else { $null }
+        model = $Model
+        effort = $ReasoningEffort
     } | ConvertTo-Json -Compress))
     [IO.File]::Move("$markerPath.tmp", $markerPath, $true)
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
