@@ -71,8 +71,10 @@ async function verifyDetailLayout(panel, assert, context) {
           && !actionInfo.querySelector("button") && !actions.querySelector(".rule-action-header, .subcontext-container")
           && getComputedStyle(controls).padding === "0px" && getComputedStyle(controls).borderWidth === "0px"
           && getComputedStyle(controls).backgroundColor === "rgba(0, 0, 0, 0)"
-          && modelGroup.querySelector(".control-subtitle").nextElementSibling.classList.contains("information-panel")
-          && modelGroup.querySelector(".information-panel").textContent.trim() === "Resource types apply only to implementation rules.",
+          && (candidate.recommendation.category === "implementation"
+            ? Boolean(modelGroup && !modelGroup.querySelector(".information-panel")
+              && modelGroup.querySelector(".control-subtitle").nextElementSibling.classList.contains("action-plan-group"))
+            : modelGroup === null),
       editors: audit || (rationale.classList.contains("evidence-box") && rationale.maxLength === 500
         && editorProperties.every((property) => getComputedStyle(rationale)[property] === getComputedStyle(proposed)[property])),
       overrideBanner: !audit || Boolean(overrideBanner && overrideIcon

@@ -16,6 +16,7 @@
     "hosted_copilot/tools/internal/assessment/Invoke-SourceAssessment.ps1",
     "hosted_copilot/tools/internal/assessment/New-SourceAssessmentBaseline.ps1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/HostedCli.psm1",
     "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1"
   ],
   "presentationFiles": [

@@ -27,6 +27,7 @@
     "hosted_copilot/tools/internal/reconciliation/New-WorkbenchDisplay.ps1",
     "hosted_copilot/tools/modules/reconciliation/ReconciliationStageExecutor.psm1",
     "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/HostedCli.psm1",
     "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1"
   ],
   "presentationFiles": [

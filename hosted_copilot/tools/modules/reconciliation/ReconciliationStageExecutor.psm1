@@ -7,6 +7,49 @@ Import-Module (Join-Path $PSScriptRoot 'ReconciliationStagePresentation.psm1')
 $reconciliationRetryCorrectionReserveBytes = 16384
 $reconciliationRetryDiagnosticMaxCharacters = 3072
 
+function Read-ReconciliationResponseDiagnostic {
+    param([string]$Path, [string]$Stage)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try {
+        if ((Get-Item -LiteralPath $Path).Length -gt 8192) { throw 'Diagnostic exceeds its metadata bound' }
+        $source = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -DateKind String
+        if ($source.schemaVersion -ne 1 -or $source.kind -cne 'hosted-stage-response-diagnostic' -or $source.stage -cne $Stage -or
+            $source.phase -cnotin @('json-extraction', 'json-parse', 'schema-validation')) {
+            throw 'Unexpected response diagnostic metadata'
+        }
+        $diagnostic = [ordered]@{
+            phase = [string]$source.phase
+            assistantCharacterCount = [int]$source.assistantCharacterCount
+            extractedCharacterCount = [int]$source.extractedCharacterCount
+            markdownFence = [bool]$source.markdownFence
+        }
+        foreach ($name in @('assistantJson', 'extractedJson')) {
+            $shape = $source.$name
+            $diagnostic[$name] = if ($null -eq $shape) { $null } else {
+                [ordered]@{
+                    valid = [bool]$shape.valid
+                    valueKind = $(if ($null -ne $shape.valueKind) { [string][Text.Json.JsonValueKind]$shape.valueKind } else { $null })
+                    lineNumber = $(if ($null -ne $shape.lineNumber) { [long]$shape.lineNumber } else { $null })
+                    bytePositionInLine = $(if ($null -ne $shape.bytePositionInLine) { [long]$shape.bytePositionInLine } else { $null })
+                }
+            }
+        }
+        if ($null -ne $source.PSObject.Properties['schemaDiagnostic'] -and $null -ne $source.schemaDiagnostic) {
+            $schemaErrors = [Collections.Generic.List[object]]::new()
+            $keywords = @('type', 'required', 'additionalProperties', 'unevaluatedProperties', 'properties', 'propertyNames', 'patternProperties', 'const', 'enum', 'pattern', 'format', 'minLength', 'maxLength', 'minItems', 'maxItems', 'uniqueItems', 'items', 'prefixItems', 'contains', 'minContains', 'maxContains', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'minProperties', 'maxProperties', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas', '$ref', 'false')
+            foreach ($failure in @($source.schemaDiagnostic.errors | Select-Object -First 16)) {
+                if ([string]$failure.keyword -cin $keywords -and ([string]$failure.schemaPath).StartsWith('#', [StringComparison]::Ordinal) -and ([string]$failure.schemaPath).Length -le 256) {
+                    $schemaErrors.Add([ordered]@{ keyword = [string]$failure.keyword; schemaPath = [string]$failure.schemaPath })
+                }
+            }
+            $diagnostic.schemaDiagnostic = [ordered]@{ available = [bool]$source.schemaDiagnostic.available; errors = @($schemaErrors.ToArray()); truncated = [bool]$source.schemaDiagnostic.truncated }
+        }
+        return $diagnostic
+    }
+    catch { return [ordered]@{ phase = 'diagnostic-read'; readable = $false } }
+}
+
 function Get-ReconciliationStageInput {
     param([string]$Stage, [object]$Shard)
 
@@ -260,6 +303,7 @@ function Invoke-ReconciliationStageSet {
         Write-ReconciliationStagePlan -DisplayName ([string]$stagePresentation.displayName) -InputLabel $InputLabel -InputCount $InputCount -BatchCount $orderedShardKeys.Count -CachedCount $cachedCount -PendingCount $pending.Count -WorkerCount $effectiveWorkerCount -PendingPayloadBytes $pendingPayloadBytes -EstimatedMilliseconds $initialEstimate
     }
     $errorsByShardKey = @{}
+    $failureAttemptsByShardKey = @{}
     $stageStopwatch = [Diagnostics.Stopwatch]::StartNew()
     $stageWork = @($pending)
     $completedShardKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -324,6 +368,7 @@ function Invoke-ReconciliationStageSet {
             $workerResult = $workerEvent
             $shardKey = [string]$workerResult.ShardKey
             $work = $workByShardKey[$shardKey]
+            $failurePhase = 'evaluator'
             try {
                 if (-not [bool]$workerResult.Succeeded) {
                     throw [string]$workerResult.Error
@@ -331,6 +376,7 @@ function Invoke-ReconciliationStageSet {
                 if (-not (Test-Path -LiteralPath $work.OutputPath -PathType Leaf)) {
                     throw ('Evaluator did not write a {0} result for shard `{1}`.' -f $Stage, $shardKey)
                 }
+                $failurePhase = 'schema-validation'
                 $resultJson = Get-Content -LiteralPath $work.OutputPath -Raw
                 Test-HierarchicalJsonSchema -Json $resultJson -SchemaPath $resolvedPaths.ResultSchemaPath -Label ('{0} result for shard `{1}`' -f $Stage, $shardKey)
                 $result = $resultJson | ConvertFrom-Json -DateKind String
@@ -340,8 +386,10 @@ function Invoke-ReconciliationStageSet {
                     throw ('{0} result shard key `{1}` does not match `{2}`.' -f $Stage, $resultShardKey, $shardKey)
                 }
                 if ($null -ne $ResultValidator) {
+                    $failurePhase = 'semantic-validation'
                     & $ResultValidator $work.Payload $result
                 }
+                $failurePhase = 'cache-publication'
                 $null = Set-HierarchicalCachedResult -Path $CachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $result
                 if ($null -ne $resolvedPersistentCachePath -and $resolvedPersistentCachePath -cne [IO.Path]::GetFullPath($CachePath)) {
                     $null = Set-HierarchicalCachedResult -Path $resolvedPersistentCachePath -SchemaPath $resolvedPaths.CacheSchemaPath -ResultSchemaPath $resolvedPaths.ResultSchemaPath -StageIdentity $work.Identity -Result $result
@@ -362,10 +410,48 @@ function Invoke-ReconciliationStageSet {
             }
             catch {
                 $errorMessage = [string]$_.Exception.Message
+                $validationDiagnostic = $null
+                $exceptionDiagnostic = $_.Exception.GetBaseException().Data['StageDiagnostic']
+                if ($null -ne $exceptionDiagnostic -and $exceptionDiagnostic.kind -ceq 'preservation-ownership' -and
+                    $exceptionDiagnostic.reason -cin @('unknown-owner', 'duplicate-owner')) {
+                    $validationDiagnostic = [ordered]@{
+                        kind = 'preservation-ownership'
+                        reason = [string]$exceptionDiagnostic.reason
+                        entryIndex = [int]$exceptionDiagnostic.entryIndex
+                        expectedOwnerCount = [int]$exceptionDiagnostic.expectedOwnerCount
+                    }
+                }
+                elseif ($null -ne $exceptionDiagnostic -and $exceptionDiagnostic.kind -ceq 'preservation-evidence') {
+                    $checks = @($exceptionDiagnostic.failedChecks | Where-Object { $_ -cin @('source-text-mismatch', 'missing-merged-quote', 'nonliteral-merged-quote', 'missing-rationale') } | Sort-Object -CaseSensitive -Unique)
+                    if ($checks.Count -gt 0) {
+                        $validationDiagnostic = [ordered]@{ kind = 'preservation-evidence'; entryIndex = [int]$exceptionDiagnostic.entryIndex; failedChecks = $checks }
+                    }
+                }
+                $responseDiagnosticPath = "$($work.OutputPath).diagnostic.json"
+                $responseDiagnostic = Read-ReconciliationResponseDiagnostic -Path $responseDiagnosticPath -Stage $Stage
+                if ($null -ne $responseDiagnostic -and $responseDiagnostic.phase -cne 'diagnostic-read') {
+                    $failurePhase = [string]$responseDiagnostic.phase
+                }
+                if (-not $failureAttemptsByShardKey.ContainsKey($shardKey)) {
+                    $failureAttemptsByShardKey[$shardKey] = [Collections.Generic.List[string]]::new()
+                }
+                $failureAttemptsByShardKey[$shardKey].Add("attempt $attempt [$failurePhase]")
                 $errorsByShardKey[$shardKey] = $errorMessage
                 $attemptDirectory = Join-Path $work.Directory ('attempts/attempt-{0:D3}' -f $attempt)
                 $null = New-Item -ItemType Directory -Path $attemptDirectory -Force
-                Write-HierarchicalJsonAtomically -Path (Join-Path $attemptDirectory 'failure.json') -Value ([ordered]@{ schemaVersion = 1; kind = 'hosted-hierarchical-reconciliation-stage-failure'; stage = $Stage; shardKey = $shardKey; attempt = $attempt; error = $errorMessage; output = @($workerResult.Output) })
+                Write-HierarchicalJsonAtomically -Path (Join-Path $attemptDirectory 'failure.json') -Value ([ordered]@{
+                    schemaVersion = 1
+                    kind = 'hosted-hierarchical-reconciliation-stage-failure'
+                    stage = $Stage
+                    shardKey = $shardKey
+                    attempt = $attempt
+                    phase = $failurePhase
+                    error = $errorMessage
+                    output = @($workerResult.Output)
+                    responseDiagnostic = $responseDiagnostic
+                    validationDiagnostic = $validationDiagnostic
+                })
+                Remove-Item -LiteralPath $responseDiagnosticPath -Force -ErrorAction SilentlyContinue
                 Remove-Item -LiteralPath $work.OutputPath -Force -ErrorAction SilentlyContinue
                 if ($attempt -le $MaxRetries) {
                     Set-ReconciliationRetryCorrection -PromptPath $work.PromptPath -BasePromptBytes $promptSnapshot.Bytes -ContextPath $work.RetryContextPath -Stage $Stage -ShardKey $shardKey -FailedAttempt $attempt -ErrorMessage $errorMessage
@@ -386,7 +472,10 @@ function Invoke-ReconciliationStageSet {
         $pending = @($retry.ToArray())
     }
     if ($pending.Count -gt 0) {
-        $failureDetails = @($pending | Sort-Object -Property ShardKey -CaseSensitive | ForEach-Object { "$($_.ShardKey): $($errorsByShardKey[[string]$_.ShardKey])" })
+        $failureDetails = @($pending | Sort-Object -Property ShardKey -CaseSensitive | ForEach-Object {
+            $history = $failureAttemptsByShardKey[[string]$_.ShardKey] -join ', '
+            "$($_.ShardKey): $($errorsByShardKey[[string]$_.ShardKey]) (attempt history: $history)"
+        })
         throw ('Reconciliation stage `{0}` failed after {1} attempts: {2}' -f $Stage, ($MaxRetries + 1), ($failureDetails -join '; '))
     }
 
@@ -400,4 +489,4 @@ function Invoke-ReconciliationStageSet {
     }
 }
 
-Export-ModuleMember -Function 'Invoke-ReconciliationStageSet', 'Get-ReconciliationStageInput', 'Get-ReconciliationReservedPayloadBytes'
+Export-ModuleMember -Function 'Invoke-ReconciliationStageSet', 'Get-ReconciliationStageInput', 'Get-ReconciliationReservedPayloadBytes', 'Read-ReconciliationResponseDiagnostic'

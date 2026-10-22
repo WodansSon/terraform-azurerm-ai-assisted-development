@@ -19,8 +19,8 @@ $ErrorActionPreference = 'Stop'
 $stageInput = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json -DateKind String
 $request = $stageInput.payload
 $phase = if ($null -ne $request.PSObject.Properties['evaluationPhase']) { [string]$request.evaluationPhase } else { 'complete' }
-if ($EvaluatorCommand.StartsWith('fixture-log:', [StringComparison]::Ordinal)) {
-    $metricsPath = $EvaluatorCommand.Substring('fixture-log:'.Length)
+$metricsPath = if ($EvaluatorCommand.StartsWith('fixture-log:', [StringComparison]::Ordinal)) { $EvaluatorCommand.Substring('fixture-log:'.Length) } else { [Environment]::GetEnvironmentVariable('HOSTED_WORKBENCH_TEST_ADJUDICATION_METRICS') }
+if (-not [string]::IsNullOrWhiteSpace($metricsPath)) {
     $reservedBytes = (@($InputPath, $CatalogPath, $ProtectedRulesPath, $ContractPath, $SchemaPath, $PromptPath) | ForEach-Object { (Get-Item -LiteralPath $_).Length } | Measure-Object -Sum).Sum + 16384
     $metrics = [ordered]@{
         phase = $phase; reservedBytes = $reservedBytes

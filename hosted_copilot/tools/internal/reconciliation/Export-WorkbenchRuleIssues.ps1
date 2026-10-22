@@ -13,8 +13,8 @@ param(
     [string]$ResumeRunDirectory,
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
-    [string]$Model = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
+    [ValidateNotNullOrEmpty()][string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
     [ValidateRange(0, 3)][int]$MaxRetries = 1,
     [ValidateRange(1, 8)][int]$MaxParallelShards = 3,
     [object]$GeneratedAt = [DateTime]::UtcNow,
@@ -30,6 +30,10 @@ $validationOutputPath = Join-Path $PSScriptRoot '../../../../tools/ValidationOut
 Import-Module -Name $helpersPath -Force
 Import-Module -Name $validationOutputPath -Force
 Import-Module -Name (Join-Path $PSScriptRoot '../../modules/reconciliation/RuleIssueAdjudication.psm1') -Force
+
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $resolvedDisplayPath = [IO.Path]::GetFullPath($DisplayPath)

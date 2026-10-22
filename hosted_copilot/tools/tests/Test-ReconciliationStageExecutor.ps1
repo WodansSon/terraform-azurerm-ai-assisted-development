@@ -411,6 +411,101 @@ $result = [ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-routing-resul
             $adapterPowerShellCommandValid = Get-Content -LiteralPath $adapterOutputPath -Raw | Test-Json -SchemaFile $routingSchemaPath -ErrorAction Stop
         }
         Add-TestResult -Name 'copilot-stage-powershell-command' -Passed $adapterPowerShellCommandValid -Detail 'The production adapter hosts ExternalScript evaluator commands in the current PowerShell executable.'
+
+        Write-TestProgress -Name 'copilot-stage-secret-safe-diagnostics' -Detail 'Checking response failure categories without retaining response values'
+        $diagnosticCases = @(
+            @{ Phase = 'json-extraction'; Content = 'SYNTHETIC_SENSITIVE_VALUE' },
+            @{ Phase = 'json-parse'; Content = '{"synthetic":"SYNTHETIC_SENSITIVE_VALUE",}' },
+            @{ Phase = 'schema-validation'; Content = '{"synthetic":"SYNTHETIC_SENSITIVE_VALUE"}' }
+        )
+        foreach ($case in $diagnosticCases) {
+            $event = [ordered]@{ type = 'assistant.message'; data = [ordered]@{ model = 'fixture-model'; content = $case.Content } } | ConvertTo-Json -Compress
+            $fixtureScript = "[Console]::Out.WriteLine('$($event.Replace("'", "''"))')"
+            [IO.File]::WriteAllText($adapterEvaluatorPath, ($fixtureScript + "`n"), [Text.UTF8Encoding]::new($false))
+            Remove-Item -LiteralPath $adapterOutputPath -Force -ErrorAction SilentlyContinue
+            $failureMessage = ''
+            try {
+                & $copilotAdapterPath -Stage routing -InputPath $adapterInputPath -CatalogPath $adapterCatalogPath -ProtectedRulesPath $adapterProtectedPath -ContractPath $adapterContractPath -SchemaPath $adapterSchemaPath -PromptPath $adapterPromptPath -OutputPath $adapterOutputPath -EvaluatorCommand $adapterEvaluatorPath -Model fixture-model -ReasoningEffort high
+            }
+            catch { $failureMessage = [string]$_.Exception.Message }
+            $diagnosticPath = "$adapterOutputPath.diagnostic.json"
+            $passed = -not [string]::IsNullOrWhiteSpace($failureMessage) -and (Test-Path -LiteralPath $diagnosticPath -PathType Leaf)
+            if ($passed) {
+                $diagnosticJson = Get-Content -LiteralPath $diagnosticPath -Raw
+                $diagnostic = $diagnosticJson | ConvertFrom-Json -DateKind String
+                $passed = $diagnostic.phase -ceq $case.Phase -and $diagnostic.assistantCharacterCount -eq $case.Content.Length -and
+                    -not $diagnosticJson.Contains('SYNTHETIC_SENSITIVE_VALUE') -and -not $failureMessage.Contains('SYNTHETIC_SENSITIVE_VALUE') -and
+                    -not (Test-Path -LiteralPath $adapterOutputPath -PathType Leaf)
+                if ($case.Phase -ceq 'json-parse') {
+                    $passed = $passed -and -not $diagnostic.extractedJson.valid -and $null -ne $diagnostic.extractedJson.lineNumber -and $null -ne $diagnostic.extractedJson.bytePositionInLine
+                }
+                elseif ($case.Phase -ceq 'schema-validation') {
+                    $retained = Read-ReconciliationResponseDiagnostic -Path $diagnosticPath -Stage routing
+                    $passed = $passed -and $diagnostic.schemaDiagnostic.available -and $retained.schemaDiagnostic.available -and
+                        'required' -cin @($retained.schemaDiagnostic.errors | ForEach-Object keyword) -and
+                        @($retained.schemaDiagnostic.errors | Where-Object { -not $_.schemaPath.StartsWith('#') }).Count -eq 0 -and
+                        -not ($retained | ConvertTo-Json -Depth 12).Contains('SYNTHETIC_SENSITIVE_VALUE')
+                }
+            }
+            Add-TestResult -Name "copilot-stage-diagnostic-$($case.Phase)" -Passed $passed -Detail 'Rejected response values are omitted while the failure phase, lengths, and parser coordinates remain available.'
+        }
+
+        Write-TestProgress -Name 'hierarchical-stage-semantic-diagnostics' -Detail 'Retaining semantic rejection followed by malformed JSON as distinct attempts'
+        $retryEvaluator = @'
+$inputObject = Get-Content -LiteralPath (Join-Path $PWD 'stage-input.json') -Raw | ConvertFrom-Json
+$content = if (Test-Path -LiteralPath (Join-Path $PWD 'stage-retry-context.json')) {
+    '{"synthetic":"SYNTHETIC_SENSITIVE_VALUE",}'
+} else {
+    [ordered]@{ schemaVersion = 1; kind = 'hosted-assessment-routing-result'; shardKey = [string]$inputObject.shardKey; groups = @() } | ConvertTo-Json -Compress
+}
+[ordered]@{ type = 'assistant.message'; data = [ordered]@{ model = 'fixture-model'; content = $content } } | ConvertTo-Json -Compress
+'@
+        [IO.File]::WriteAllText($adapterEvaluatorPath, ($retryEvaluator + "`n"), [Text.UTF8Encoding]::new($false))
+        $semanticParameters = @{} + $stageParameters
+        $semanticParameters.Shards = @($shards[0])
+        $semanticParameters.CachePath = Join-Path $tempRoot 'semantic-diagnostic-cache.json'
+        $semanticParameters.RunDirectory = Join-Path $tempRoot 'semantic-diagnostic-run'
+        $semanticParameters.MaxRetries = 1
+        $semanticParameters.EvaluatorScriptPath = $copilotAdapterPath
+        $semanticParameters.EvaluatorCommand = $adapterEvaluatorPath
+        $semanticParameters.ResultValidator = {
+            $exception = [InvalidOperationException]::new('Synthetic ownership rejection')
+            $exception.Data['StageDiagnostic'] = [ordered]@{ kind = 'preservation-ownership'; reason = 'unknown-owner'; entryIndex = 1; expectedOwnerCount = 2 }
+            throw $exception
+        }
+        $semanticError = ''
+        try { $null = Invoke-ReconciliationStageSet @semanticParameters }
+        catch { $semanticError = [string]$_.Exception.Message }
+        $attemptRoot = Join-Path $semanticParameters.RunDirectory "stages/routing/$firstShardHash/attempts"
+        $semanticFailures = @(Get-ChildItem -LiteralPath $attemptRoot -Filter 'failure.json' -File -Recurse | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -DateKind String } | Sort-Object attempt)
+        $semanticPassed = $semanticFailures.Count -eq 2 -and
+            $semanticFailures[0].phase -ceq 'semantic-validation' -and $semanticFailures[0].validationDiagnostic.reason -ceq 'unknown-owner' -and
+            $semanticFailures[0].validationDiagnostic.entryIndex -eq 1 -and $semanticFailures[1].phase -ceq 'json-parse' -and
+            -not $semanticFailures[1].responseDiagnostic.extractedJson.valid -and
+            -not ($semanticFailures | ConvertTo-Json -Depth 12).Contains('SYNTHETIC_SENSITIVE_VALUE') -and
+            $semanticError.Contains('attempt 1 [semantic-validation]') -and $semanticError.Contains('attempt 2 [json-parse]')
+        Add-TestResult -Name 'hierarchical-stage-semantic-diagnostics' -Passed $semanticPassed -Detail 'Semantic ownership and malformed-response failures retain separate safe evidence and both appear in the final attempt history.'
+
+        Write-TestProgress -Name 'hierarchical-stage-preservation-diagnostics' -Detail 'Retaining each safe preservation condition without retaining exception payloads'
+        foreach ($check in @('source-text-mismatch', 'missing-merged-quote', 'nonliteral-merged-quote', 'missing-rationale')) {
+            $evidenceParameters = @{} + $stageParameters
+            $evidenceParameters.Shards = @($shards[0])
+            $evidenceParameters.CachePath = Join-Path $tempRoot "evidence-$check-cache.json"
+            $evidenceParameters.RunDirectory = Join-Path $tempRoot "evidence-$check-run"
+            $evidenceParameters.ResultValidator = {
+                $exception = [InvalidOperationException]::new('Synthetic preservation rejection')
+                $exception.Data['StageDiagnostic'] = [ordered]@{ kind = 'preservation-evidence'; entryIndex = 0; failedChecks = @($check); omittedValue = 'SYNTHETIC_SENSITIVE_VALUE' }
+                throw $exception
+            }.GetNewClosure()
+            try { $null = Invoke-ReconciliationStageSet @evidenceParameters } catch { }
+            $failurePath = Join-Path $evidenceParameters.RunDirectory "stages/routing/$firstShardHash/attempts/attempt-001/failure.json"
+            $failureJson = Get-Content -LiteralPath $failurePath -Raw
+            $failure = $failureJson | ConvertFrom-Json -DateKind String
+            Add-TestResult -Name "hierarchical-stage-preservation-$check" -Passed ($failure.phase -ceq 'semantic-validation' -and
+                $failure.validationDiagnostic.kind -ceq 'preservation-evidence' -and $failure.validationDiagnostic.entryIndex -eq 0 -and
+                @($failure.validationDiagnostic.failedChecks).Count -eq 1 -and $failure.validationDiagnostic.failedChecks[0] -ceq $check -and
+                -not $failureJson.Contains('SYNTHETIC_SENSITIVE_VALUE')) -Detail 'Only the failed-condition code and entry index survive into the diagnostic record.'
+        }
     }
     finally {
         Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

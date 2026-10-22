@@ -264,21 +264,39 @@ function Test-RuleIssueAdjudicationDraft {
                     if ($null -eq $operation.PSObject.Properties['preservation']) { throw 'A saved-edit suggestion requires complete obligation preservation evidence' }
                     $requiredPreservationIds = @([string]$operation.ruleId) + @($operation.retireHostedRuleIds)
                     $preservedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+                    $preservationIndex = 0
                     foreach ($preservation in @($operation.preservation)) {
                         $id = [string]$preservation.ruleId
-                        if ($id -cnotin $requiredPreservationIds -or -not $preservedIds.Add($id)) { throw 'Consolidation preservation has unknown or duplicate ownership' }
+                        $knownOwner = $id -cin $requiredPreservationIds
+                        if (-not $knownOwner -or -not $preservedIds.Add($id)) {
+                            $reason = if ($knownOwner) { 'duplicate-owner' } else { 'unknown-owner' }
+                            $exception = [InvalidOperationException]::new("Consolidation preservation has unknown or duplicate ownership: $reason at entry $preservationIndex")
+                            $exception.Data['StageDiagnostic'] = [ordered]@{
+                                kind = 'preservation-ownership'
+                                reason = $reason
+                                entryIndex = $preservationIndex
+                                expectedOwnerCount = $requiredPreservationIds.Count
+                            }
+                            throw $exception
+                        }
                         $sourceRules = @($Component.rules | Where-Object id -CEQ $id)
                         if ($sourceRules.Count -ne 1) { throw 'Consolidation preservation requires one known source rule' }
                         $sourceProposals = @($Component.editContext.proposals | Where-Object { $_.candidateKey -cin @($sourceRules[0].candidateKeys) })
                         $sourceTexts = @($sourceProposals | ForEach-Object proposedText | Sort-Object -CaseSensitive -Unique)
                         if ($sourceTexts.Count -gt 1) { throw 'Consolidation cannot discard divergent proposals for one retired rule' }
                         $sourceText = if ($sourceTexts.Count -eq 1) { [string]$sourceTexts[0] } else { [string]$sourceRules[0].text }
-                        if ([string]$preservation.sourceText -cne $sourceText -or
-                            [string]::IsNullOrWhiteSpace([string]$preservation.mergedQuote) -or
-                            -not ([string]$operation.proposedText).Contains([string]$preservation.mergedQuote, [StringComparison]::Ordinal) -or
-                            [string]::IsNullOrWhiteSpace([string]$preservation.rationale)) {
-                            throw 'Consolidation preservation must bind complete source text to literal merged wording and its meaning'
+                        $failedChecks = @(
+                            if ([string]$preservation.sourceText -cne $sourceText) { 'source-text-mismatch' }
+                            if ([string]::IsNullOrWhiteSpace([string]$preservation.mergedQuote)) { 'missing-merged-quote' }
+                            elseif (-not ([string]$operation.proposedText).Contains([string]$preservation.mergedQuote, [StringComparison]::Ordinal)) { 'nonliteral-merged-quote' }
+                            if ([string]::IsNullOrWhiteSpace([string]$preservation.rationale)) { 'missing-rationale' }
+                        )
+                        if ($failedChecks.Count -gt 0) {
+                            $exception = [InvalidOperationException]::new("Consolidation preservation must bind complete source text to literal merged wording and its meaning: $($failedChecks -join ', ') at entry $preservationIndex")
+                            $exception.Data['StageDiagnostic'] = [ordered]@{ kind = 'preservation-evidence'; entryIndex = $preservationIndex; failedChecks = $failedChecks }
+                            throw $exception
                         }
+                        $preservationIndex++
                     }
                     if ($preservedIds.Count -ne $requiredPreservationIds.Count) { throw 'Consolidation must account for the edited proposal and every proposed retirement' }
                 }

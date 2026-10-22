@@ -277,12 +277,17 @@ async function run({ page, baseUrl, assert, playback }) {
     if (related.length !== 2) throw new Error("Validation status requires two active related Hosted rules");
     const keys = (rule) => state.assessedCandidates.filter((item) => (item.catalogMapping.hostedRuleId || item.recommendation.hostedId) === rule.id).map((item) => item.key);
     return {
-      candidate, comparisonCandidates: state.assessedCandidates, relatedRule: related[0], relatedCandidateKeys: keys(related[0]),
+      candidate, ruleId: getEffectiveHostedRuleId(candidate), comparisonCandidates: state.assessedCandidates, relatedRule: related[0], relatedCandidateKeys: keys(related[0]),
       additionalRelatedRules: [{ rule: related[1], candidateKeys: keys(related[1]) }],
       baselineIssues: getOpenRuleIssues().length
     };
   });
   const originalText = await editor.inputValue();
+  assert(await page.evaluate(() => {
+    const header = document.querySelector(".proposed-rule-heading");
+    return Boolean(header.querySelector(":scope > .proposed-rule-statuses"))
+      && [...header.querySelectorAll(".ui-badge")].every(badge => badge.closest(".proposed-rule-statuses")?.parentElement === header);
+  }), "Proposal recommendation and validation badges were not rendered in their shared right-aligned group");
   assert(setup.baselineIssues > 0, "The validation fixture must contain independent catalog Rule Issues");
   await expectCounts(page, assert, 0, 0);
   await verifyStatusLayout(page, assert);
@@ -398,6 +403,7 @@ async function run({ page, baseUrl, assert, playback }) {
     const comparison = node.querySelector(".hosted-rule-comparison");
     const heading = comparison.querySelector(".proposed-rule-heading");
     const warning = comparison.querySelector("[data-saved-rule-scope]");
+    const compact = node.id === "assessment-panel";
     const surface = comparison.querySelector("[data-proposed-candidate-key]") || comparison.querySelector(":scope > pre.evidence-box");
     const check = getCurrentManualRelationshipCheck(candidate);
     return {
@@ -407,8 +413,10 @@ async function run({ page, baseUrl, assert, playback }) {
       oneWarning: comparison.querySelectorAll(".information-panel.warning").length === 1
         && comparison.querySelectorAll("[data-assessment-explanation]").length === 1
         && !comparison.querySelector(".manual-relationship-reviews"),
-      order: heading.nextElementSibling === warning && Boolean(warning.compareDocumentPosition(surface) & Node.DOCUMENT_POSITION_FOLLOWING),
-      explanation: warning.querySelector("strong").textContent === "Wording needs review"
+      order: compact
+        ? Boolean(warning.closest("[data-maintainer-resolution]")) && Boolean(surface.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING)
+        : heading.nextElementSibling === warning && Boolean(warning.compareDocumentPosition(surface) & Node.DOCUMENT_POSITION_FOLLOWING),
+      explanation: (compact ? !warning.querySelector("strong") : warning.querySelector("strong")?.textContent === "Wording needs review")
         && warning.querySelector("p").textContent === (check.evaluation.scopeReview.wordingStatus === "needs-review"
           ? check.evaluation.scopeReview.wordingRationale : check.evaluation.scopeReview.rationale),
       appearance: getComputedStyle(warning).backgroundColor === "rgb(53, 42, 5)"
@@ -687,14 +695,44 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(await failurePanel.count() === 0 && await page.evaluate(() => !state.session.manualRelationshipChecks[getActiveCandidate().key]),
     "No Change retained discarded validation metadata or its inline failure");
 
+  await failCheck(`${originalText} Original restoration fixture.`);
+  const requestsBeforeRestoring = requestCount;
+  await editor.fill(originalText);
+  await page.evaluate(() => persistencePromise);
+  assert(await page.evaluate(() => {
+    const candidate = getActiveCandidate();
+    return !requiresManualRelationshipCheck(candidate) && Boolean(getAssessment(candidate))
+      && !getCandidateDecoration(candidate) && !state.session.manualRelationshipChecks[candidate.key];
+  }) && requestCount === requestsBeforeRestoring, "Returning to the original proposal retained stale validation or requested inference");
+  assert(await page.locator('[data-proposed-text-reset]').isDisabled(), "Original proposal still offered Reset");
+
   await failCheck(`${originalText} Explicit discard fixture.`);
-  await page.evaluate(async () => resetCandidate(getActiveCandidate()));
+  const reset = page.locator('[data-proposed-text-reset]');
+  const beforeReset = await page.evaluate(() => JSON.stringify(state.session));
+  const resetDialog = page.locator('[data-rule-reset-dialog]');
+  for (const dismissal of ['cancel', 'close', 'escape']) {
+    await reset.click();
+    await resetDialog.waitFor({ state: 'visible' });
+    assert(await resetDialog.locator('strong.rule-reference').textContent() === setup.ruleId,
+      'Reset confirmation lost its shared blue rule reference');
+    if (dismissal === 'escape') await page.keyboard.press('Escape');
+    else await resetDialog.locator(dismissal === 'cancel' ? '.button[data-rule-reset-cancel]' : '.titlebar-icon[data-rule-reset-cancel]').click();
+    await resetDialog.waitFor({ state: 'detached' });
+    assert(await page.evaluate(() => JSON.stringify(state.session)) === beforeReset, 'Dismissing Reset changed the draft');
+  }
+  await reset.click();
+  assert(await resetDialog.locator('.button.primary[data-rule-reset-cancel]').count() === 1
+    && await resetDialog.locator('.button.review[data-rule-reset-confirm]').count() === 1, 'Reset confirmation did not reuse the approved shared button styles');
+  await resetDialog.locator('[data-rule-reset-confirm]').click();
+  await page.evaluate(() => persistencePromise);
   await expectCounts(page, assert, 0, 0);
   const discarded = await page.evaluate(async (key) => {
     const stored = await readSession(state.session.id);
     return !stored.manualRelationshipChecks[key] && !stored.savedRuleEvaluations.some((evaluation) => evaluation.candidateKey === key);
   }, setup.candidate.key);
   assert(discarded, "Explicit discard retained persisted validation problems");
+  assert(await page.evaluate(key => getActiveCandidate()?.key === key && state.candidatePane === 'details', setup.candidate.key)
+    && await editor.inputValue() === originalText && await reset.isDisabled(), 'Reset lost the selected Details view or original proposal');
   await verifySaveFailure(page, assert);
 }
 

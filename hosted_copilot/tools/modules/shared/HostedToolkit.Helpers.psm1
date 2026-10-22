@@ -1,6 +1,53 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Resolve-HostedLlmProfile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('normal', 'savedRuleEvaluation')][string]$Profile,
+        [string]$Model,
+        [string]$ReasoningEffort,
+        [string]$ConfigurationPath = (Join-Path $PSScriptRoot '../../llm.json')
+    )
+
+    if (-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) {
+        throw "Hosted LLM configuration was not found: $ConfigurationPath"
+    }
+    try {
+        if ((Get-Item -LiteralPath $ConfigurationPath).Length -gt 16384) { throw 'Configuration exceeds its size bound' }
+        $configuration = Get-Content -LiteralPath $ConfigurationPath -Raw | ConvertFrom-Json -DateKind String -ErrorAction Stop
+    }
+    catch { throw 'Hosted LLM configuration must contain a bounded valid JSON object' }
+
+    $profiles = @('normal', 'savedRuleEvaluation')
+    if ($null -eq $configuration -or (@($configuration.PSObject.Properties.Name | Sort-Object -CaseSensitive) -join "`0") -cne ($profiles -join "`0")) {
+        throw 'Hosted LLM configuration must define exactly the normal and savedRuleEvaluation profiles'
+    }
+    $efforts = @('low', 'medium', 'high', 'xhigh')
+    foreach ($name in $profiles) {
+        $settings = $configuration.$name
+        if ($null -eq $settings -or (@($settings.PSObject.Properties.Name | Sort-Object -CaseSensitive) -join "`0") -cne "model`0reasoningEffort") {
+            throw "Hosted LLM profile $name must define exactly model and reasoningEffort"
+        }
+        if ($settings.model -isnot [string] -or [string]::IsNullOrWhiteSpace($settings.model) -or $settings.model.Trim() -cne $settings.model -or $settings.model -match '[\x00-\x1f\x7f]') {
+            throw "Hosted LLM profile $name requires a nonempty model identifier without surrounding whitespace or control characters"
+        }
+        if ($settings.reasoningEffort -isnot [string] -or $settings.reasoningEffort -cnotin $efforts) {
+            throw "Hosted LLM profile $name requires low, medium, high, or xhigh reasoning effort"
+        }
+    }
+    if (-not [string]::IsNullOrEmpty($Model) -and ([string]::IsNullOrWhiteSpace($Model) -or $Model.Trim() -cne $Model -or $Model -match '[\x00-\x1f\x7f]')) {
+        throw 'Hosted LLM model override must be a nonempty identifier without surrounding whitespace or control characters'
+    }
+    if (-not [string]::IsNullOrEmpty($ReasoningEffort) -and $ReasoningEffort -cnotin $efforts) {
+        throw 'Hosted LLM reasoning override must be low, medium, high, or xhigh'
+    }
+    return [pscustomobject][ordered]@{
+        model = $(if ([string]::IsNullOrEmpty($Model)) { $configuration.$Profile.model } else { $Model })
+        reasoningEffort = $(if ([string]::IsNullOrEmpty($ReasoningEffort)) { $configuration.$Profile.reasoningEffort } else { $ReasoningEffort })
+    }
+}
+
 function ConvertTo-UtcTimestamp {
     param([Parameter(Mandatory = $true)][object]$Value)
 
@@ -354,4 +401,4 @@ function Get-EstimatedRemainingMilliseconds {
     return [long][Math]::Ceiling($RemainingPayloadBytes / ($bytesPerMillisecondPerWorker * [Math]::Max(1, $MaxParallelBatches)))
 }
 
-Export-ModuleMember -Function ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, ConvertTo-JsonSnapshotBytes, Get-JsonSnapshotSha256, Write-JsonSnapshot, Invoke-WithExclusiveFileLock, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds
+Export-ModuleMember -Function Resolve-HostedLlmProfile, ConvertTo-UtcTimestamp, Get-Sha256, Get-FileSnapshot, ConvertTo-OrdinalMap, ConvertTo-JsonSnapshotBytes, Get-JsonSnapshotSha256, Write-JsonSnapshot, Invoke-WithExclusiveFileLock, Get-BehaviorManifestSha256, Format-ElapsedDuration, Format-ByteSize, Format-IndentedDiagnostic, Get-EvaluatorFailureMessage, Get-EstimatedRemainingMilliseconds

@@ -51,12 +51,17 @@ $iconNames = @(
     'copy',
     'debug-disconnect',
     'debug-disconnect-compact',
+    'debug-restart',
     'diff',
     'diff-modified',
     'discard',
     'discard-all',
     'download',
     'edit',
+    'edit-code',
+    'edit-compact',
+    'edit-session',
+    'edit-sparkle',
     'ellipsis',
     'error',
     'file-symlink-directory',
@@ -87,6 +92,7 @@ $iconNames = @(
     'open-preview',
     'pass',
     'pass-compact',
+    'play-circle',
     'question',
     'remote',
     'remote-compact',
@@ -96,7 +102,20 @@ $iconNames = @(
     'shield',
     'shield-compact',
     'sign-out',
+    'stop-circle',
     'tasklist',
+    'terminal',
+    'terminal-bash',
+    'terminal-cmd',
+    'terminal-compact',
+    'terminal-debian',
+    'terminal-git-bash',
+    'terminal-linux',
+    'terminal-powershell',
+    'terminal-secure',
+    'terminal-tmux',
+    'terminal-ubuntu',
+    'tools',
     'warning',
     'warning-compact',
     'workspace-unknown',
@@ -117,7 +136,7 @@ $symbols = foreach ($iconName in $iconNames) {
     }
     $svg = (Get-Content -LiteralPath $sourcePath -Raw).Trim()
     $match = [regex]::Match($svg, '^<svg[^>]*viewBox="(?<viewBox>[^"]+)"[^>]*>(?<content>[\s\S]*)</svg>$')
-    if (-not $match.Success -or $match.Groups['viewBox'].Value -notin @('0 0 10 10', '0 0 12 12', '0 0 16 16', '0 0 50 50')) {
+    if (-not $match.Success -or $match.Groups['viewBox'].Value -notin @('0 0 10 10', '0 0 12 12', '0 0 16 16', '0 0 24 24', '0 0 50 50')) {
         throw "Codicon '$iconName' does not use a supported SVG viewBox."
     }
     $viewBox = $match.Groups['viewBox'].Value

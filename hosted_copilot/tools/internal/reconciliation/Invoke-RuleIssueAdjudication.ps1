@@ -16,8 +16,8 @@ param(
     [string]$ResumeRunDirectory,
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
-    [string]$Model = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
+    [ValidateNotNullOrEmpty()][string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
     [ValidateRange(0, 3)][int]$MaxRetries = 1,
     [ValidateRange(1, 8)][int]$MaxParallelShards = 3,
     [ValidateRange(1, [int]::MaxValue)][int]$EvaluatorPayloadBudgetBytes = 393216,
@@ -39,6 +39,10 @@ Import-Module $validationOutputPath -Force
 Import-Module $stateModulePath -Force
 Import-Module $executorModulePath -Force
 Import-Module $adjudicationModulePath -Force
+
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 $stopwatch = [Diagnostics.Stopwatch]::StartNew()
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)

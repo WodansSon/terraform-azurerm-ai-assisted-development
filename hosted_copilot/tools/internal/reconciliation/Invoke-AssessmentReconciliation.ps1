@@ -13,8 +13,8 @@ param(
     [string]$EvaluatorScriptPath,
     [string]$ResumeRunDirectory,
     [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
-    [string]$Model = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'high',
+    [ValidateNotNullOrEmpty()][string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
     [ValidateRange(0, 3)][int]$MaxRetries = 1,
     [ValidateRange(0, 60000)][int]$RetryDelayMilliseconds = 1000,
     [ValidateRange(1, 8)][int]$MaxParallelBatches = 3,
@@ -31,6 +31,10 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1') -Force
+
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 function Copy-InputSnapshot {
     param(

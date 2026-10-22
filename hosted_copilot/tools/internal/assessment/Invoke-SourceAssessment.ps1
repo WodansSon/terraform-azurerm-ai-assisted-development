@@ -22,10 +22,10 @@ param(
 
     [string]$EvaluatorScriptPath,
 
-    [string]$Model = 'gpt-5.4',
+    [ValidateNotNullOrEmpty()][string]$Model,
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$ReasoningEffort = 'high',
+    [string]$ReasoningEffort,
 
     [ValidateRange(0, 3)]
     [int]$MaxRetries = 1,
@@ -60,6 +60,10 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../../modules/shared/Source
 Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersModulePath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersModulePath -Force
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1') -Force
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
 $presentationModulePath = Join-Path $PSScriptRoot '../../modules/assessment/SourceAssessmentPresentation.psm1'
@@ -491,6 +495,7 @@ $assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/c
 $null = Copy-RunInputFile -SourcePath $resolvedContractPath -DestinationPath $assessmentContractSnapshotPath
 $repositoryInputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($relativePath in @(
+    'hosted_copilot/tools/llm.json',
     'hosted_copilot/copilot-rule-catalog/rule-assessments/assessment-contract.schema.json',
     'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
     'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
@@ -801,12 +806,11 @@ if ($OutputFormat -eq 'Text' -or $ShowProgress) {
 }
 
 $evaluatorCommandPath = $null
+$evaluatorPrefixArguments = @()
 if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
-    $command = Get-Command $EvaluatorCommand -ErrorAction SilentlyContinue
-    if ($null -eq $command) {
-        throw "Evaluator command was not found: $EvaluatorCommand"
-    }
-    $evaluatorCommandPath = $command.Source
+    $launch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
+    $evaluatorCommandPath = $launch.fileName
+    $evaluatorPrefixArguments = @($launch.arguments)
 }
 
 $evaluatedBatchCount = 0
@@ -867,6 +871,7 @@ try {
         $retryBatches = [Collections.Generic.List[object]]::new()
         $workerEvaluatorScriptPath = $resolvedEvaluatorScriptPath
         $workerEvaluatorCommandPath = $evaluatorCommandPath
+        $workerEvaluatorPrefixArguments = $evaluatorPrefixArguments
         $workerModel = $Model
         $workerReasoningEffort = $ReasoningEffort
         $workerAttempt = $attempt
@@ -895,7 +900,8 @@ try {
                     }
                 }
                 else {
-                    $evaluatorOutput = @(& $using:workerEvaluatorCommandPath -C $batch.Directory -p $batch.AttemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
+                    $prefixArguments = $using:workerEvaluatorPrefixArguments
+                    $evaluatorOutput = @(& $using:workerEvaluatorCommandPath @prefixArguments -C $batch.Directory -p $batch.AttemptPrompt --no-color --stream off --no-custom-instructions --no-ask-user --disable-builtin-mcps --no-auto-update --disallow-temp-dir --model $using:workerModel --effort $using:workerReasoningEffort --available-tools=view --output-format json 2>&1)
                     $evaluatorExitCode = $LASTEXITCODE
                     if ($evaluatorExitCode -ne 0) {
                         $failureKind = 'copilot-exit'

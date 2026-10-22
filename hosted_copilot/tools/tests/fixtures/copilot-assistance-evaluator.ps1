@@ -1,6 +1,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ('--headless' -cin @($args)) {
+    & (Join-Path $PSScriptRoot 'copilot-metadata-evaluator.ps1') @args
+    return
+}
+
 $arguments = @($args)
 $modelIndex = [Array]::IndexOf($arguments, '--model')
 $effortIndex = [Array]::IndexOf($arguments, '--reasoning-effort')
@@ -40,11 +45,35 @@ if ($question -ceq 'hold') {
 if ($question -ceq 'cli-failure') { throw 'Synthetic CLI failure' }
 if ($question -ceq 'warning') { [Console]::Error.WriteLine('Synthetic legitimate warning; stdout remains JSONL.') }
 if ($question -ceq 'tool-event') { '{"type":"tool.execution_start","data":{}}' }
+if ($question -ceq 'no-answer') { '{"type":"session.error","data":{"message":"SYNTHETIC_SENSITIVE_VALUE"}}'; return }
 $answer = [ordered]@{ message = 'Synthetic catalog advice <img src=x onerror=alert(1)>.'; suggestedWording = 'Preserve the selected rule obligations and review the complete proposed wording.' }
 if ($question -ceq 'invalid-shape') { $answer.Remove('message') }
 $event = [ordered]@{ type = 'assistant.message'; data = [ordered]@{
     model = if ($question -ceq 'wrong-model') { 'unexpected-model' } else { $arguments[$modelIndex + 1] }
     content = $answer | ConvertTo-Json -Compress
-} } | ConvertTo-Json -Depth 100 -Compress
-$event
-if ($question -ceq 'multiple-answers') { $event }
+} }
+if ($question -cin @('multiple-messages', 'two-structured-messages')) {
+    $commentary = if ($question -ceq 'two-structured-messages') { '{"message":"Synthetic intermediate reply","suggestedWording":null}' } else { 'Synthetic commentary before the final response.' }
+    @{ type = 'assistant.message'; data = @{ model = $arguments[$modelIndex + 1]; content = $commentary } } | ConvertTo-Json -Depth 10 -Compress
+}
+if ($question -ceq 'empty-intermediate') {
+    @{ type = 'assistant.message'; data = @{ model = $arguments[$modelIndex + 1]; content = ''; reasoningText = 'Synthetic intermediate reasoning' } } | ConvertTo-Json -Depth 10 -Compress
+}
+if ($question -ceq 'empty-final') {
+    $event | ConvertTo-Json -Depth 100 -Compress
+    $event.data.content = ''
+}
+if ($question -ceq 'invalid-final') {
+    $event | ConvertTo-Json -Depth 100 -Compress
+    $event.data.content = 'Synthetic invalid final JSON'
+}
+if ($question -ceq 'nested-agent') { $event['agentId'] = 'synthetic-child-agent' }
+if ($question -ceq 'embedded-tool-request') { $event.data['toolRequests'] = @(@{ toolCallId = 'synthetic-call'; name = 'synthetic-tool'; arguments = @{} }) }
+if ($question -ceq 'null-tool-requests') { $event.data['toolRequests'] = $null }
+$serializedEvent = $event | ConvertTo-Json -Depth 100 -Compress
+$serializedEvent
+if ($question -cne 'missing-turn-end') { '{"type":"assistant.turn_end","data":{}}' }
+if ($question -ceq 'multiple-answers') { $serializedEvent; '{"type":"assistant.turn_end","data":{}}' }
+if ($question -cne 'missing-result') { '{"type":"result"}' }
+if ($question -ceq 'duplicate-result') { '{"type":"result"}' }
+if ($question -ceq 'trailing-message') { $serializedEvent }

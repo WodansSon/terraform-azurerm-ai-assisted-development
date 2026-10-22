@@ -30,16 +30,16 @@ Specifies the external directory that stores manual relationship-evaluation cach
 Specifies an exact-authority retained source-assessment run to resume during an ordinary rebuild.
 
 .PARAMETER Model
-Specifies the Copilot model requested for source assessment and reconciliation.
+Overrides the normal model profile in hosted_copilot/tools/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER AssessmentReasoningEffort
-Specifies the reasoning effort requested for source assessment and reconciliation.
+Overrides the normal reasoning-effort profile in hosted_copilot/tools/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER SavedRuleEvaluationModel
-Specifies the Copilot model requested only for saved-rule discovery, adjudication, and reassessment. Defaults to gpt-6-luna independently of Model.
+Overrides only the savedRuleEvaluation model profile in hosted_copilot/tools/llm.json for saved-rule discovery, adjudication, and reassessment.
 
 .PARAMETER SavedRuleEvaluationReasoningEffort
-Specifies the reasoning effort requested only for saved-rule evaluation. Defaults to medium independently of AssessmentReasoningEffort.
+Overrides only the savedRuleEvaluation reasoning-effort profile in hosted_copilot/tools/llm.json, independently of AssessmentReasoningEffort.
 
 .PARAMETER MaxRetries
 Specifies how many times a failed evaluator batch may be retried.
@@ -135,21 +135,21 @@ param(
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
-    [string]$Model = 'gpt-5.4',
+    [ValidateNotNullOrEmpty()][string]$Model,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$AssessmentReasoningEffort = 'high',
+    [string]$AssessmentReasoningEffort,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
-    [string]$SavedRuleEvaluationModel = 'gpt-6-luna',
+    [ValidateNotNullOrEmpty()][string]$SavedRuleEvaluationModel,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$SavedRuleEvaluationReasoningEffort = 'medium',
+    [string]$SavedRuleEvaluationReasoningEffort,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
@@ -230,9 +230,17 @@ $hostedToolkitHelpersModulePath = Join-Path $PSScriptRoot 'modules/shared/Hosted
 $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEvidenceValidation.psm1'
 $workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 Import-Module -Name $validationOutputModulePath -Force
-Import-Module -Name $hostedToolkitHelpersModulePath -Force
 Import-Module -Name $sourceEvidenceModulePath -Force
 Import-Module -Name $workbenchGitHubContextModulePath -Force
+Import-Module -Name $hostedToolkitHelpersModulePath -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedCli.psm1') -Force
+
+$normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $AssessmentReasoningEffort
+$Model = $normalProfile.model
+$AssessmentReasoningEffort = $normalProfile.reasoningEffort
+$savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $SavedRuleEvaluationModel -ReasoningEffort $SavedRuleEvaluationReasoningEffort
+$SavedRuleEvaluationModel = $savedProfile.model
+$SavedRuleEvaluationReasoningEffort = $savedProfile.reasoningEffort
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
@@ -283,11 +291,21 @@ foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatal
     }
 }
 
+if ($OutputFormat -eq 'Text') { Write-ValidationSectionHeader -Title 'LLM Availability' | Write-Host }
+$cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
+$cliAvailability = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile; savedRuleEvaluation = $savedProfile })
+$EvaluatorCommand = $cliLaunch.commandPath
+if ($OutputFormat -eq 'Text') {
+    foreach ($profile in $cliAvailability.profiles) {
+        Format-ValidationStatusLine -Status 'passed' -Name $profile.name -Detail "$($profile.model)/$($profile.reasoningEffort); CLI $($cliAvailability.version)" | Write-Host
+    }
+}
+
 if (-not (Test-Path -LiteralPath $resolvedSiteDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resolvedSiteDirectory -Force | Out-Null
 }
 
-$ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')
+$ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
@@ -327,6 +345,7 @@ $assessmentResult = $null
 $ruleIssuesResult = $null
 $script:workbenchPhase = 'INITIALIZATION'
 $workbenchStages = [Collections.Generic.List[object]]::new()
+$workbenchStages.Add([pscustomobject]@{ status = 'passed'; name = 'LLM AVAILABILITY' })
 
 function Complete-WorkbenchStage {
     param([Parameter(Mandatory = $true)][string]$Name)

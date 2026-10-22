@@ -10,12 +10,15 @@ function Get-SavedRuleAuthoritySha256 {
         [Parameter(Mandatory = $true)][string]$DisplayPath,
         [Parameter(Mandatory = $true)][string]$RuleIssuesPath,
         [string]$EvaluatorCommand = 'copilot',
-        [string]$Model = 'gpt-6-luna',
-        [string]$ReasoningEffort = 'medium',
+        [ValidateNotNullOrEmpty()][string]$Model,
+        [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
         [string]$RelationshipEvaluatorScriptPath,
         [string]$AdjudicationEvaluatorScriptPath
     )
 
+    $llmProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
+    $Model = $llmProfile.model
+    $ReasoningEffort = $llmProfile.reasoningEffort
     $contractPath = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-v4.json'
     $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
     $paths = @($contract.behaviorFiles) + @(
@@ -93,6 +96,28 @@ function Invoke-SavedRuleEvaluationProcess {
         } while (-not $completed)
         $output = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult()) -split '\r?\n'
         if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $Parameters.OutputPath -PathType Leaf)) {
+            if ($OperationName -ceq 'Rule assistance') {
+                $failures = @(
+                    foreach ($line in $output) {
+                        try {
+                            $value = $line | ConvertFrom-Json -Depth 10 -DateKind String
+                            $failure = $value.error
+                            if ((($failure.PSObject.Properties.Name | Sort-Object -CaseSensitive) -join ',') -cne 'code,diagnosticId,message') { continue }
+                            if ($failure.code -isnot [string] -or $failure.code -cnotmatch '^[a-z][a-z0-9-]{0,63}$' -or $failure.message -isnot [string] -or
+                                [string]::IsNullOrWhiteSpace($failure.message) -or $failure.message.Length -gt 2000 -or $failure.message -match '[\x00-\x08\x0b\x0c\x0e-\x1f]' -or
+                                ($null -ne $failure.diagnosticId -and ($failure.diagnosticId -isnot [string] -or $failure.diagnosticId -cnotmatch '^[a-f0-9]{32}$'))) { continue }
+                            $failure
+                        }
+                        catch { }
+                    }
+                )
+                $failure = if ($failures.Count -eq 1) { $failures[0] } else {
+                    [pscustomobject]@{ code = 'rule-assistance-failed'; message = 'Rule assistance could not complete. No changes were applied by this request.'; diagnosticId = $null }
+                }
+                $exception = [InvalidOperationException]::new($failure.message)
+                $exception.Data['RuleAssistanceError'] = $failure
+                throw $exception
+            }
             throw (Get-EvaluatorFailureMessage -EvaluatorName $OperationName -ExitCode $process.ExitCode -Output $output)
         }
     }
@@ -182,8 +207,16 @@ function Receive-SavedRuleEvaluationRequests {
                     Write-Verbose $exception.Message
                 }
                 else {
-                    Write-Warning "$($request.OperationName) failed: $($exception.Message)"
-                    $failureBody = [ordered]@{ error = [string]$exception.Message } | ConvertTo-Json -Compress
+                    if ($request.OperationName -ceq 'Rule assistance') {
+                        $failure = $exception.Data['RuleAssistanceError']
+                        if ($null -eq $failure) { $failure = [ordered]@{ code = 'rule-assistance-failed'; message = 'Rule assistance could not complete. No changes were applied by this request.'; diagnosticId = $null } }
+                        Write-Warning "Rule assistance failed: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"
+                        $failureBody = [ordered]@{ error = $failure } | ConvertTo-Json -Depth 5 -Compress
+                    }
+                    else {
+                        Write-Warning "$($request.OperationName) failed: $($exception.Message)"
+                        $failureBody = [ordered]@{ error = [string]$exception.Message } | ConvertTo-Json -Compress
+                    }
                     $response = @{
                         StatusCode = 500
                         StatusText = 'Internal Server Error'

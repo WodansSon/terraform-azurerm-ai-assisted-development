@@ -40,6 +40,7 @@ $llmIconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-Workb
 $iconPreviewPath = Join-Path $PSScriptRoot '../internal/workbench/WorkbenchIconPreview.ps1'
 $iconPreviewRendererPath = Join-Path $PSScriptRoot '../Render-WorkbenchIconPreview.cjs'
 $launcherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'
+$metadataEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/copilot-metadata-evaluator.ps1'
 $hostedGitHubHelpersPath = Join-Path $PSScriptRoot '../modules/shared/HostedGitHub.Helpers.psm1'
 $workbenchGitHubContextPath = Join-Path $PSScriptRoot '../modules/workbench/Workbench.GitHubContext.psm1'
 $loopbackServerPath = Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'
@@ -489,7 +490,8 @@ try {
         $failureAlreadyReported = $true
         throw 'npm audit failed before dependency installation'
     }
-    Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'
+    $dependencyRunningDetail = if ($auditPassed) { 'VERIFYING AUDITED LOCKFILE' } else { 'VERIFYING INSTALLED LOCKFILE GRAPH' }
+    Start-TestResult -Name 'npm-packages' -RunningDetail $dependencyRunningDetail
     $dependencyOutput = @()
     $dependencyExitCode = 0
     $packageGraphCurrent = Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath
@@ -911,6 +913,20 @@ try {
             $generatedSpriteContent.Contains("<symbol id=`"codicon-$copilotIconName`" viewBox=`"$expectedViewBox`">") -and
             $iconGeneratorContent.Contains("'$copilotIconName'")
     }
+    $contextIconNames = @(
+        'edit', 'edit-code', 'edit-compact', 'edit-session', 'edit-sparkle',
+        'terminal', 'terminal-bash', 'terminal-cmd', 'terminal-compact', 'terminal-debian',
+        'terminal-git-bash', 'terminal-linux', 'terminal-powershell', 'terminal-secure',
+        'terminal-tmux', 'terminal-ubuntu', 'tools'
+    )
+    foreach ($contextIconName in $contextIconNames) {
+        $contextIconSource = [xml](Get-Content -LiteralPath (Join-Path $codiconRoot "$contextIconName.svg") -Raw)
+        $expectedViewBox = if ($contextIconName.EndsWith('-compact')) { '0 0 12 12' } elseif ($contextIconName -ceq 'terminal') { '0 0 24 24' } else { '0 0 16 16' }
+        $codiconContractValid = $codiconContractValid -and
+            $contextIconSource.svg.viewBox -ceq $expectedViewBox -and
+            $generatedSpriteContent.Contains("<symbol id=`"codicon-$contextIconName`" viewBox=`"$expectedViewBox`">") -and
+            $iconGeneratorContent.Contains("'$contextIconName'")
+    }
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-git-branch-conflicts"' -and $spriteContent -match 'id="codicon-git-pull-request-error"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-check-compact"' -and $spriteContent -match 'id="codicon-circle-slash-compact"' -and $spriteContent -match 'id="codicon-debug-disconnect-compact"' -and $spriteContent -match 'id="codicon-checklist-compact"' -and $spriteContent -match 'id="codicon-shield-compact"' -and $spriteContent -match 'id="codicon-warning-compact"' -and $spriteContent -match 'id="codicon-chevron-right-compact"' -and $spriteContent -match 'id="codicon-chevron-down-compact"' -and $spriteContent -match 'id="codicon-fold-up"' -and $spriteContent -match 'id="codicon-diff-modified"' -and $spriteContent -match 'id="codicon-arrow-circle-down"' -and $spriteContent -match 'id="codicon-arrow-circle-left"' -and $spriteContent -match 'id="codicon-arrow-circle-right"' -and $spriteContent -match 'id="codicon-arrow-circle-up"' -and $spriteContent -match 'id="codicon-arrow-circle-up-sparkle"' -and $spriteContent -match 'id="codicon-close"' -and $spriteContent -match 'id="codicon-close-small"' -and $spriteContent -match 'id="codicon-close-compact"' -and $spriteContent -match 'id="codicon-pass"' -and $spriteContent -match 'id="codicon-pass-compact"' -and $spriteContent -match 'id="codicon-git-stash-apply"' -and $spriteContent -match 'id="codicon-kebab-vertical"' -and $spriteContent -match 'id="codicon-layers"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-folder-opened"' -and $spriteContent -match 'id="codicon-folder-opened-compact"' -and $spriteContent -match 'id="codicon-folder-library"' -and $spriteContent -match 'id="codicon-folder-compact"' -and $spriteContent -match 'id="codicon-folder-active"' -and $spriteContent -match 'id="codicon-file-symlink-directory"' -and $spriteContent -match 'id="codicon-remote"' -and $spriteContent -match 'id="codicon-remote-compact"' -and $spriteContent -match 'id="codicon-workspace-untrusted"' -and $spriteContent -match 'id="codicon-workspace-unknown"'
@@ -941,15 +957,18 @@ try {
         $fluentIconContractValid = $fluentIconContractValid -and "$fluentIconFamily-20-regular" -in $fluentIconSourceNames -and "$fluentIconFamily-20-filled" -in $fluentIconSourceNames
     }
     $fluentIconContractValid = $fluentIconContractValid -and $fluentIconSpriteContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconAttributionContent -match 'Microsoft Fluent UI System Icons' -and $fluentIconAttributionContent -match 'regular and filled variants' -and $fluentIconAttributionContent -match 'MIT License' -and $fluentIconAttributionContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconGeneratorContent -match '\.\./\.\./\.\./workbench/icons/fluent' -and $fluentIconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $fluentIconGeneratorContent -match 'New-WorkbenchIconPreview' -and $fluentIconGeneratorContent -match 'SymbolMarkup' -and $fluentIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'const CORE_FLUENT_ICON_NAMES = new Set' -and $appContent -match 'function fluentIcon\(name' -and $appContent -match 'icons/fluent/sprite\.svg#fluent-\$\{name\}' -and $appContent -match 'icons/fluent/sprite\.svg", "fluent-info-20-regular' -and $statusbarContent -match 'icon: "link-multiple-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "link-dismiss-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "gauge-16-regular"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icons/fluent/sprite\.svg#fluent-\$\{name\}' -and $stylesContent -match '\.fluent-icon\s*\{'
-    $fluentIconContractValid = $fluentIconContractValid -and $appContent -match 'function renderRuleActionResolutionInformationIcon\(' -and $appContent -match 'class="rule-action-resolution-information-heading">Information<' -and $appContent -match 'class="rule-action-resolution-information-body">' -and $appContent -match 'fluentIcon\("warning-20-regular"\)' -and $appContent -match 'fluentIcon\("arrow-undo-20-filled"\)' -and $stylesContent -match '\.rule-action-resolution-dialog \.scoring-legend-dialog-heading\s*\{[^}]*var\(--gold-soft\)[^}]*var\(--warning-action-border\)' -and $stylesContent -match '--rule-action-information-background-start:\s*#244f69' -and $stylesContent -match '--rule-action-information-background-end:\s*#1b3d53' -and $stylesContent -match '--rule-action-information-frame:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-foreground:\s*#e7f5ff' -and $stylesContent -match '--rule-action-information-heading-start:\s*#062f6d' -and $stylesContent -match '--rule-action-information-heading-middle:\s*#2f73bc' -and $stylesContent -match '--rule-action-information-heading-end:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-divider-highlight:\s*#e7efff' -and $stylesContent -match '--rule-action-information-icon-background:\s*#3f91c2' -and $stylesContent -match '--rule-action-information-icon-foreground:\s*#ffffff' -and $stylesContent -match '\.rule-action-resolution-information\s*\{[^}]*linear-gradient\(var\(--rule-action-information-background-start\), var\(--rule-action-information-background-end\)\)[^}]*var\(--rule-action-information-frame\)[^}]*border-radius:\s*0 0 8px 8px' -and $stylesContent -match '\.rule-action-resolution-information-heading\s*\{[^}]*100% 1px no-repeat,[^}]*32%[^}]*68%' -and $stylesContent -match '\.rule-action-resolution-information-body\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\)[^}]*gap:\s*10px'
+    $fluentIconContractValid = $fluentIconContractValid -and $appContent -match 'function renderRuleActionResolutionInformationIcon\(' -and $appContent -match 'class="rule-action-resolution-information-heading">Information<' -and $appContent -match 'class="rule-action-resolution-information-body">' -and $appContent -match 'fluentIcon\("warning-20-regular"\)' -and $appContent -match 'fluentIcon\("arrow-undo-20-filled"\)' -and $stylesContent -match '\.modal-dialog-warning \.modal-dialog-heading\s*\{[^}]*var\(--gold-soft\)[^}]*var\(--warning-action-border\)' -and $stylesContent -match '--rule-action-information-background-start:\s*#244f69' -and $stylesContent -match '--rule-action-information-background-end:\s*#1b3d53' -and $stylesContent -match '--rule-action-information-frame:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-foreground:\s*#e7f5ff' -and $stylesContent -match '--rule-action-information-heading-start:\s*#062f6d' -and $stylesContent -match '--rule-action-information-heading-middle:\s*#2f73bc' -and $stylesContent -match '--rule-action-information-heading-end:\s*#79bbe6' -and $stylesContent -match '--rule-action-information-divider-highlight:\s*#e7efff' -and $stylesContent -match '--rule-action-information-icon-background:\s*#3f91c2' -and $stylesContent -match '--rule-action-information-icon-foreground:\s*#ffffff' -and $stylesContent -match '\.rule-action-resolution-information\s*\{[^}]*linear-gradient\(var\(--rule-action-information-background-start\), var\(--rule-action-information-background-end\)\)[^}]*var\(--rule-action-information-frame\)[^}]*border-radius:\s*0 0 8px 8px' -and $stylesContent -match '\.rule-action-resolution-information-heading\s*\{[^}]*100% 1px no-repeat,[^}]*32%[^}]*68%' -and $stylesContent -match '\.rule-action-resolution-information-body\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\)[^}]*gap:\s*10px'
     $iconPreviewsValid = $iconGeneratorContent -match 'New-WorkbenchIconPreview' -and $octiconGeneratorContent -match 'New-WorkbenchIconPreview' -and $fluentIconGeneratorContent -match 'New-WorkbenchIconPreview' -and $iconPreviewContent -match 'fill="#f0f6fc"' -and $iconPreviewContent -match 'Render-WorkbenchIconPreview\.cjs' -and $iconPreviewContent -match 'Get-Command node' -and $iconPreviewContent -notmatch 'Start-Process|Microsoft Edge|msedge' -and $iconPreviewRendererContent -match 'require\("puppeteer"\)' -and $iconPreviewRendererContent -match 'headless:\s*true' -and (Test-PngFile -Path (Join-Path $codiconRoot 'preview.png')) -and (Test-PngFile -Path (Join-Path $octiconRoot 'preview.png')) -and (Test-PngFile -Path (Join-Path $fluentIconRoot 'preview.png'))
     $llmIconSources = @(Get-ChildItem -LiteralPath $llmIconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') } | Sort-Object Name)
     $llmIconSourceNames = @($llmIconSources | ForEach-Object BaseName)
     $llmIconDocument = [xml]$llmIconSpriteContent
     $llmIconSymbols = @($llmIconDocument.svg.symbol)
     $llmIconSymbolNames = @($llmIconSymbols | ForEach-Object { $_.GetAttribute('id') -replace '^llm-', '' } | Sort-Object)
-    $llmIconContractValid = $llmIconSourceNames.Count -eq 340 -and $llmIconSymbols.Count -eq 340 -and
-        @(Compare-Object $llmIconSourceNames $llmIconSymbolNames -CaseSensitive).Count -eq 0 -and
+    $llmBrandMap = Get-Content -LiteralPath (Join-Path $workbenchRoot 'llm-brands.json') -Raw | ConvertFrom-Json -NoEnumerate
+    $llmRuntimeIconNames = @($llmBrandMap.icon | Sort-Object -Unique -CaseSensitive)
+    $llmIconContractValid = $llmIconSourceNames.Count -eq 340 -and $llmIconSymbols.Count -eq $llmRuntimeIconNames.Count -and
+        @(Compare-Object $llmRuntimeIconNames $llmIconSymbolNames -CaseSensitive).Count -eq 0 -and
+        @($llmRuntimeIconNames | Where-Object { $_ -cnotin $llmIconSourceNames }).Count -eq 0 -and
         @($llmIconSourceNames | Where-Object { $_ -cnotmatch '^[a-z0-9]+$' }).Count -eq 0 -and
         $llmIconSpriteContent -match '8a1b2821bb768c484fe8da20c5e1838b6bf551a9' -and
         $llmIconAttributionContent -match 'Lobe Icons' -and $llmIconAttributionContent -match 'MIT License' -and
@@ -958,13 +977,17 @@ try {
         $llmIconGeneratorContent -match 'New-WorkbenchIconPreview' -and
         $iconPreviewContent -match 'color="#f0f6fc"' -and
         $llmIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and
-        $appContent -match 'function llmIcon\(name\)' -and $appContent -match 'llmIcon\("openai"\)' -and
+        $appContent -match 'function llmIcon\(name\)' -and $appContent -match 'function renderLlmModelIcon\(model\)' -and
+        $appContent.Contains('${renderLlmModelIcon(profile?.model)}') -and $appContent -match 'icon\("question"\)' -and
         $appContent -match 'icons/llms/sprite\.svg#llm-\$\{name\}' -and
-        $appContent -match 'icons/llms/sprite\.svg", "llm-openai"' -and
+        $appContent.Contains('new Set(llmBrandMap.map') -and $appContent -match 'codicon-question' -and
+        $spriteContent -match 'id="codicon-question"' -and
+        $llmIconGeneratorContent -match 'SymbolMarkup \$symbols' -and
         $appContent -notmatch 'icons/openai\.svg|assist-gpt-icon' -and
         $stylesContent -match '\.llm-icon\s*\{[^}]*width:\s*12px;[^}]*height:\s*12px;[^}]*fill:\s*currentColor;[^}]*stroke:\s*none' -and
         (Test-PngFile -Path (Join-Path $llmIconRoot 'preview.png'))
     foreach ($source in $llmIconSources) {
+        if ($source.BaseName -cnotin $llmRuntimeIconNames) { continue }
         $sourceDocument = [xml](Get-Content -LiteralPath $source.FullName -Raw)
         $symbol = $llmIconSymbols | Where-Object { $_.GetAttribute('id') -ceq "llm-$($source.BaseName)" }
         $llmIconContractValid = $llmIconContractValid -and $sourceDocument.DocumentElement.InnerXml -ceq $symbol.InnerXml
@@ -983,7 +1006,7 @@ try {
         }
     }
     $iconFamiliesValid = $codiconContractValid -and $octiconContractValid -and $fluentIconContractValid -and $llmIconContractValid -and $iconPreviewsValid
-    Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'The Workbench separately owns pinned, attributed, offline Codicon, Octicon, Fluent, and standard LLM icon families, sprites, and PNG inventories; the icon root has no loose files, and all LLM geometry, presentation, and local fragment references are preserved.'
+    Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail 'Pinned icon families remain separate; the LLM runtime sprite matches the branding map, its full 340-icon preview is retained, the unknown-brand symbol belongs to Codicons, and mapped artwork and fragment references are preserved.'
 
     if (Test-ShouldRun -Name 'portable-icon-generation') {
         Start-TestResult -Name 'portable-icon-generation'
@@ -1031,6 +1054,17 @@ try {
         Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'openai.svg') -Force
         $missingLlmSourceOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
         $missingLlmSourceExitCode = $LASTEXITCODE
+        Copy-Item -LiteralPath (Join-Path $llmIconRoot 'openai.svg') -Destination $generatedLlmIconRoot
+        foreach ($invalidMapping in @(
+            @(@{ prefix = 'gpt-'; icon = 'notvendored' }),
+            @(@{ prefix = 'gpt-'; icon = 'openai' }, @{ prefix = 'gpt-'; icon = 'claude' }),
+            @(@{ prefix = 'gpt-'; icon = 'openai' }, @{ prefix = 'gpt-6-'; icon = 'openai' })
+        )) {
+            $invalidMapPath = Join-Path $iconGenerationRoot 'invalid-llm-brands.json'
+            [IO.File]::WriteAllText($invalidMapPath, (ConvertTo-Json -InputObject $invalidMapping -Depth 4))
+            $invalidMapOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot -BrandMapPath $invalidMapPath 2>&1)
+            $portableIconGenerationValid = $portableIconGenerationValid -and $LASTEXITCODE -ne 0 -and ($invalidMapOutput -join "`n") -match 'branding map contains'
+        }
         $portableIconGenerationValid = $portableIconGenerationValid -and $missingLlmLicenseExitCode -ne 0 -and
             ($missingLlmLicenseOutput -join "`n") -match 'LLM icon license is missing' -and $missingLlmSourceExitCode -ne 0 -and
             ($missingLlmSourceOutput -join "`n") -match "LLM icon 'openai' is missing"
@@ -1117,6 +1151,8 @@ try {
         $appContent -match 'data-workbench-tooltip="\$\{escapeHtml\(provenanceLabel\)\}"' -and
         $appContent -match 'function showWorkbenchTooltip\(item, anchorX' -and
         $appContent -match 'function getWorkbenchTooltipOwner\(target\)' -and
+        $appContent -match 'function isWorkbenchTooltipDisabled\(owner\)' -and
+        $appContent -match 'owner && !isWorkbenchTooltipDisabled\(owner\)' -and
         $appContent -match 'WORKBENCH_TOOLTIP_DELAY_MS = 500' -and
         $appContent -match 'document\.addEventListener\("pointerdown", handleWorkbenchTooltipPointerDown\)' -and
         $appContent -match 'workbenchTooltip\.showTimer = window\.setTimeout' -and
@@ -1297,8 +1333,8 @@ try {
     $sharedPresentationValid = $stylesContent -match 'html\.theme-hosted-dark body,\s*html\.theme-hosted-dark body \*\s*\{[^}]*font-family:\s*var\(--font-family-ui\) !important' -and $stylesContent -match '\.empty-state svg\s*\{[^}]*color:\s*var\(--info-foreground\)' -and $stylesContent -match '\.subcontext-container\s*\{[^}]*padding:\s*12px;[^}]*background:\s*var\(--blue-soft\);[^}]*border-left:\s*3px solid var\(--blue\)' -and $stylesContent -match '\.subcontext-container > p,\s*p\.subcontext-container\s*\{[^}]*color:\s*#c6d4ff;[^}]*font-size:\s*0\.8rem' -and $appContent -match 'className: "assessment-explanation"' -and $appContent -match 'class="current-hosted-rule"' -and $appContent -match 'class="evidence-box scroll-surface"'
     $actionControlsValid = $appContent -match 'DECISION_RATIONALE_MAX_LENGTH = 500' -and $appContent -match 'class="rule-actions-content"' -and $appContent -notmatch 'rule-actions-content subcontext-container|rule-action-header' -and $appContent -match 'Rule Actions: <strong class="rule-reference">\$\{escapeHtml\(displayId\)\}</strong>' -and $appContent -match '<span class="control-subtitle">Rule Action:</span>\s*<div class="control-group action-plan-group">[\s\S]*?<fieldset class="action-options">' -and $appContent -notmatch 'data-plan-toggle|class="plan-toggle'
     $actionControlsValid = $actionControlsValid -and $appContent -match '<div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save"[^>]*data-rationale-save[^>]*aria-label=' -and $appContent -match '<label><textarea[^>]*maxlength="\$\{DECISION_RATIONALE_MAX_LENGTH\}"[^>]*aria-labelledby="decision-rationale-label"[^>]*aria-describedby="decision-rationale-limit"'
-    $actionControlsValid = $actionControlsValid -and $appContent -match 'rationale-limit.*DECISION_RATIONALE_MAX_LENGTH' -and $appContent -match 'decision\.rationale\.length > DECISION_RATIONALE_MAX_LENGTH' -and $stylesContent -match '\.field-stack textarea\s*\{[^}]*height:\s*84px;[^}]*max-height:\s*84px;[^}]*resize:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match '\.rationale-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*flex-end' -and $stylesContent -match '\.rationale-heading \.rationale-save svg\s*\{[^}]*transform:\s*translateY\(2px\)' -and $stylesContent -match '\.rationale-heading \.rationale-save:disabled\s*\{[^}]*cursor:\s*default !important' -and $stylesContent -notmatch '\.rationale-actions' -and $stylesContent -match '\.assessment-title-statuses\s*\{[^}]*width:\s*270px;[^}]*flex:\s*0 0 270px;[^}]*justify-content:\s*flex-end'
-    $assessmentLegendValid = $appContent -notmatch 'impact / 100 tokens' -and $appContent -match 'data-scoring-legend-open' -and $appContent -match '<dialog class="scoring-legend-dialog"' -and $appContent -match 'Score Scale:</span><span>Scores run from 0 \(none\) through 5 \(very high\)' -and $appContent -match 'Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely' -and $appContent -match 'direction-badge positive">Adds to Impact' -and $appContent -match 'direction-badge negative">Reduces Impact' -and $appContent -match 'risk-\$\{value <= 2 \? "low" : value === 3 \? "moderate" : "high"\}' -and $stylesContent -match '\.factor-line\.penalty\.risk-low \.factor-value\s*\{[^}]*color:\s*var\(--success\)' -and $stylesContent -match '\.scoring-legend-item\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)'
+    $actionControlsValid = $actionControlsValid -and $appContent -match 'rationale-limit.*DECISION_RATIONALE_MAX_LENGTH' -and $appContent -match 'decision\.rationale\.length > DECISION_RATIONALE_MAX_LENGTH' -and $stylesContent -match '\.field-stack textarea\s*\{[^}]*height:\s*84px;[^}]*max-height:\s*84px;[^}]*resize:\s*none;[^}]*overflow-y:\s*auto' -and $stylesContent -match '\.rationale-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*flex-end' -and $stylesContent -match '\.rationale-heading \.rationale-save svg\s*\{[^}]*transform:\s*translateY\(2px\)' -and $stylesContent.Contains('.titlebar-icon:is(:disabled, [aria-disabled="true"], .disabled)') -and $stylesContent -notmatch '\.rationale-actions' -and $stylesContent -match '\.assessment-title-statuses\s*\{[^}]*width:\s*270px;[^}]*flex:\s*0 0 270px;[^}]*justify-content:\s*flex-end'
+    $assessmentLegendValid = $appContent -notmatch 'impact / 100 tokens' -and $appContent -match 'data-scoring-legend-open' -and $appContent -match '<dialog class="modal-dialog"' -and $appContent -match 'Score Scale:</span><span>Scores run from 0 \(none\) through 5 \(very high\)' -and $appContent -match 'Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely' -and $appContent -match 'direction-badge positive">Adds to Impact' -and $appContent -match 'direction-badge negative">Reduces Impact' -and $appContent -match 'risk-\$\{value <= 2 \? "low" : value === 3 \? "moderate" : "high"\}' -and $stylesContent -match '\.factor-line\.penalty\.risk-low \.factor-value\s*\{[^}]*color:\s*var\(--success\)' -and $stylesContent -match '\.scoring-legend-item\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)'
     $detailPresentationValid = $detailLayoutValid -and $sharedPresentationValid -and $actionControlsValid -and $assessmentLegendValid -and $appContent -match 'candidate-state \$\{escapeHtml\(candidate\.state\)\}">\$\{escapeHtml\(capitalize\(candidate\.state\)\)\}' -and $appContent -match 'return value === "no-change" \? "No Change"' -and $stylesContent -match '\.decision-badge\.no-change,[\s\S]*\.recommendation-badge\.no-change\s*\{[^}]*border-color:\s*rgba\(142, 160, 208, 0\.72\)'
     $detailLayoutValid = $stylesContent -match '#catalog-view\s*\{[^}]*max-width:\s*none' -and $stylesContent -match '#candidate-sources-panel \.catalog-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)' -and $stylesContent -match '\.candidate-pane-switch\s*\{[^}]*height:\s*34px;[^}]*background:\s*var\(--paper\);[^}]*border-bottom:\s*1px solid var\(--line\)' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*height:\s*34px;[^}]*background:\s*var\(--surface\);[^}]*border-radius:\s*0;[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\.active\s*\{[^}]*background:\s*var\(--paper\);[^}]*box-shadow:\s*inset 0 -1px var\(--accent\)' -and $indexContent -match 'data-candidate-pane="details"' -and $indexContent -notmatch 'data-candidate-pane="details" disabled' -and $appContent -match 'function showCandidatePane\(pane\)' -and $appContent -match 'const activePane = pane === "details" \? "details" : "candidates"' -and $appContent -match 'if \(!candidate\) \{[\s\S]*?<h2>Select a Candidate</h2>'
     $detailPresentationValid = $detailLayoutValid -and $sharedPresentationValid -and $actionControlsValid -and $assessmentLegendValid -and $appContent -match 'candidate-state \$\{escapeHtml\(candidate\.state\)\}' -and $appContent -match 'return value === "no-change" \? "No Change"'
@@ -1633,7 +1669,7 @@ try {
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $reuseSiteDirectory 'workbench-display.json')
     Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $reuseSiteDirectory 'workbench-rule-issues.json')
     $reuseStopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $reuseOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $reuseOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $reuseExitCode = $LASTEXITCODE
     $reuseStopwatch.Stop()
     $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
@@ -1647,13 +1683,13 @@ try {
     $mismatchedRuleIssues = $ruleIssuesJson | ConvertFrom-Json
     $mismatchedRuleIssues.sourceFiles[0].contentSha256 = '0' * 64
     [IO.File]::WriteAllText((Join-Path $mismatchedSiteDirectory 'workbench-rule-issues.json'), (($mismatchedRuleIssues | ConvertTo-Json -Depth 30) + "`n"), [Text.UTF8Encoding]::new($false))
-    $mismatchOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $mismatchedSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $mismatchOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $mismatchedSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $mismatchExitCode = $LASTEXITCODE
 
     $incompleteSiteDirectory = Join-Path $tempRoot 'display-incomplete-site'
     $null = New-Item -ItemType Directory -Path $incompleteSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $incompleteSiteDirectory 'workbench-display.json')
-    $incompleteOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $incompleteSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $incompleteOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $incompleteSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $incompleteExitCode = $LASTEXITCODE
 
     $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and
@@ -2046,7 +2082,7 @@ try {
     }
     if (Test-ShouldRun -Name 'rule-assistance') {
         Start-TestResult -Name 'rule-assistance' -RunningDetail 'Checking grounded assistance, strict CLI transport, input limits, and both HTTP lifecycle paths'
-        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-RuleAssistance.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'rule-assistance')
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-RuleAssistance.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'rule-assistance') -Quiet:($OutputFormat -eq 'Json') -IndentLevel 1
         if ($LASTEXITCODE -ne 0) { throw 'Rule assistance regression failed' }
         Add-TestResult -Name 'rule-assistance' -Passed $true -Detail 'Synthetic CLI and HTTP fixtures preserve complete catalog context, model isolation, strict output, bounded history, cancellation, responsiveness, and cleanup.'
     }
@@ -2289,7 +2325,7 @@ try {
     $portProbe.Stop()
     $shutdownSiteDirectory = Join-Path $tempRoot 'shutdown-site'
     $null = New-Item -ItemType Directory -Path $shutdownSiteDirectory -Force
-    foreach ($assetName in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
+    foreach ($assetName in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
     }
     Copy-Item -LiteralPath (Join-Path $workbenchRoot 'icons') -Destination $shutdownSiteDirectory -Recurse
@@ -2305,9 +2341,9 @@ try {
     } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText((Join-Path $shutdownSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
     $serverJob = Start-Job -ScriptBlock {
-        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory, $AdjudicationEvaluatorScriptPath)
-        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -AdjudicationEvaluatorScriptPath $AdjudicationEvaluatorScriptPath -NoLaunch
-    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache'), $adjudicationEvaluatorPath
+        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory, $AdjudicationEvaluatorScriptPath, $MetadataEvaluatorPath)
+        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -AdjudicationEvaluatorScriptPath $AdjudicationEvaluatorScriptPath -EvaluatorCommand $MetadataEvaluatorPath -NoLaunch
+    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache'), $adjudicationEvaluatorPath, $metadataEvaluatorPath
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)

@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory)][string]$DisplayPath,
     [Parameter(Mandatory)][string]$RuleIssuesPath,
-    [Parameter(Mandatory)][string]$TemporaryDirectory
+    [Parameter(Mandatory)][string]$TemporaryDirectory,
+    [switch]$Quiet,
+    [int]$IndentLevel = 0
 )
 
 Set-StrictMode -Version Latest
@@ -10,6 +12,18 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $toolsRoot = Join-Path $repositoryRoot 'hosted_copilot/tools'
 Import-Module (Join-Path $toolsRoot 'modules/workbench/RuleAssistance.psm1')
+Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
+Import-Module (Join-Path $repositoryRoot 'tools/ValidationOutput.psm1')
+
+function Write-AssistanceTestResult {
+    param([string]$Name, [string]$Detail)
+
+    if (-not $Quiet) {
+        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name $Name -Detail $Detail -IndentLevel $IndentLevel)
+    }
+}
+
+$normalProfile = Resolve-HostedLlmProfile -Profile normal
 $fixtureCommand = Join-Path $PSScriptRoot 'fixtures/copilot-assistance-evaluator.ps1'
 $display = Get-Content -LiteralPath $DisplayPath -Raw | ConvertFrom-Json -Depth 100
 $candidate = $display.candidates[0]
@@ -44,6 +58,17 @@ function Invoke-AssistanceFixture {
     $output = @(& pwsh -NoProfile -File (Join-Path $toolsRoot 'internal/workbench/Invoke-RuleAssistance.ps1') @runtimeParameters -RequestPath $requestPath -OutputPath $outputPath 2>&1)
     if ($Reject) {
         if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $outputPath)) { throw 'Invalid assistance input or CLI output was accepted' }
+        $failure = ($output | Out-String).Trim() | ConvertFrom-Json -Depth 20
+        if ($failure.error.code -isnot [string] -or $failure.error.message -isnot [string] -or $failure.error.diagnosticId -cnotmatch '^[a-f0-9]{32}$' -or
+            $failure.error.message -match '\x1b|Line \||\.ps1:\d|SYNTHETIC_SENSITIVE_VALUE') { throw 'Assistance worker did not return safe structured error details' }
+        $diagnosticPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-assistance-diagnostics/$($failure.error.diagnosticId).json"
+        $record = Get-Content -LiteralPath $diagnosticPath -Raw
+        if ($record -match 'SYNTHETIC_SENSITIVE_VALUE|"prompt"|"content"|"stderr"|"stdout"') { throw 'Assistance diagnostics retained raw or sensitive content' }
+        if ($Payload.messages[-1].content -ceq 'no-answer') {
+            $details = $record | ConvertFrom-Json -Depth 20
+            if ($failure.error.code -cne 'cli-response-error' -or $details.answerCount -ne 0 -or $details.events.'session.error' -ne 1) { throw 'Failed-response diagnostics lost the actual CLI event counts' }
+        }
+        Remove-Item -LiteralPath $diagnosticPath
         return ($output | Out-String)
     }
     if ($LASTEXITCODE -ne 0) { throw ($output | Out-String) }
@@ -61,12 +86,16 @@ foreach ($prompt in $registeredPrompts) {
         if (-not $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)) { throw "Assistance prompt omitted boundary: $required" }
     }
 }
-Write-Host 'Passed assistance prompt registry and quoted-data boundaries.'
+Write-AssistanceTestResult -Name 'assistance-prompt-boundaries' -Detail 'Prompt registry and quoted-data boundaries'
 $reply = Invoke-AssistanceFixture (New-AssistancePayload 'warning')
 if ($reply.requestId -eq '' -or $reply.model -cne 'gpt-5.4' -or $reply.reasoningEffort -cne 'high' -or
     (@($reply.catalogRuleIds | Sort-Object -CaseSensitive) -join "`0") -cne (@($catalogIds | Sort-Object -CaseSensitive) -join "`0") -or
     $reply.message -notlike 'Synthetic catalog advice*' -or -not $reply.suggestedWording -or $reply.elapsedMilliseconds -lt 0) { throw 'Valid assistance result lost its context, profile, or proposal' }
-foreach ($question in @('wrong-model', 'invalid-shape', 'tool-event', 'multiple-answers', 'cli-failure')) {
+foreach ($question in @('multiple-messages', 'two-structured-messages', 'empty-intermediate', 'null-tool-requests')) {
+    $completed = Invoke-AssistanceFixture (New-AssistancePayload $question)
+    if ($completed.message -cne $reply.message -or $completed.suggestedWording -cne $reply.suggestedWording) { throw 'Completed assistance did not select its final response' }
+}
+foreach ($question in @('wrong-model', 'invalid-shape', 'tool-event', 'embedded-tool-request', 'nested-agent', 'no-answer', 'multiple-answers', 'missing-turn-end', 'missing-result', 'duplicate-result', 'trailing-message', 'invalid-final', 'empty-final', 'cli-failure')) {
     $null = Invoke-AssistanceFixture (New-AssistancePayload $question) -Reject
 }
 $null = Invoke-AssistanceFixture (New-AssistancePayload 'stale' ('0' * 64)) -Reject
@@ -84,7 +113,19 @@ $overBudget.messages = @(
 )
 $failure = Invoke-AssistanceFixture $overBudget -Reject
 if ($failure -notlike '*input budget*' -or $failure -notlike '*No catalog rules or conversation turns were dropped*') { throw 'Oversized conversations did not fail explicitly without truncation' }
-Write-Host 'Passed native CLI transport, full catalog grounding, stderr isolation, history, strict results, stale identity, and input-budget rejection.'
+Write-AssistanceTestResult -Name 'assistance-cli-contract' -Detail 'Catalog grounding, CLI transport, history, strict replies, identity and input limits'
+
+foreach ($known in @($true, $false)) {
+    $exception = if ($known) { New-RuleAssistanceException -Message 'Synthetic safe validation reason.' -Code 'synthetic-validation' }
+        else { [InvalidOperationException]::new('SYNTHETIC_SENSITIVE_VALUE') }
+    $record = [Management.Automation.ErrorRecord]::new($exception, 'fixture', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+    $diagnostic = [ordered]@{ schemaVersion = 1; diagnosticId = [Guid]::NewGuid().ToString('N'); phase = 'synthetic-test' }
+    $failure = ConvertTo-RuleAssistanceError -ErrorRecord $record -Diagnostic $diagnostic
+    $expected = if ($known) { 'Synthetic safe validation reason.' } else { 'Rule assistance could not complete. No changes were applied by this request.' }
+    if ($failure.message -cne $expected -or ($failure | ConvertTo-Json -Compress) -match 'SYNTHETIC_SENSITIVE_VALUE') { throw 'Error conversion replaced a known reason or exposed an unexpected exception' }
+    Remove-Item -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-assistance-diagnostics/$($failure.diagnosticId).json")
+}
+Write-AssistanceTestResult -Name 'assistance-error-details' -Detail 'Known reasons preserved; unexpected exception details excluded'
 
 function Send-AssistanceHttp {
     param([Net.Http.HttpClient]$Http, [string]$Url, [object]$Payload, [string]$Token, [Threading.CancellationToken]$Cancellation = [Threading.CancellationToken]::None)
@@ -119,7 +160,7 @@ function Assert-AssistanceStopped {
 foreach ($profile in @('internal', 'production')) {
     $site = Join-Path $TemporaryDirectory "$profile-site"
     $null = New-Item -ItemType Directory -Path $site
-    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
+    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
         Copy-Item -LiteralPath (Join-Path $repositoryRoot "hosted_copilot/workbench/$asset") -Destination $site -Recurse
     }
     Copy-Item -LiteralPath $DisplayPath -Destination (Join-Path $site 'workbench-display.json')
@@ -153,12 +194,17 @@ foreach ($profile in @('internal', 'production')) {
                 Start-Sleep -Milliseconds 100
             }
         }
-        if ($config.ruleAssistance.model -cne 'gpt-5.4' -or $config.ruleAssistance.reasoningEffort -cne 'high') { throw "$profile lost the normal assistance profile" }
+        if ($config.ruleAssistance.model -cne $normalProfile.model -or $config.ruleAssistance.reasoningEffort -cne $normalProfile.reasoningEffort) { throw "$profile lost the normal assistance profile" }
         $unauthorized = (Send-AssistanceHttp $http $url (New-AssistancePayload 'unauthorized') '').GetAwaiter().GetResult()
         if ([int]$unauthorized.StatusCode -ne 403) { throw "$profile assistance was not authenticated" }
         $payload = New-AssistancePayload 'warning' $config.ruleAssistance.authoritySha256
         $response = (Send-AssistanceHttp $http $url $payload $config.operationToken).GetAwaiter().GetResult()
         if ([int]$response.StatusCode -ne 200) { throw ($response.Content.ReadAsStringAsync().GetAwaiter().GetResult()) }
+        $response = (Send-AssistanceHttp $http $url (New-AssistancePayload 'no-answer' $config.ruleAssistance.authoritySha256) $config.operationToken).GetAwaiter().GetResult()
+        $failure = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -Depth 20
+        if ([int]$response.StatusCode -ne 500 -or $failure.error.code -cne 'cli-response-error' -or $failure.error.message -notlike '*failed or aborted*' -or
+            $failure.error.diagnosticId -cnotmatch '^[a-f0-9]{32}$') { throw "$profile did not preserve structured worker error details across the HTTP boundary" }
+        Remove-Item -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-assistance-diagnostics/$($failure.error.diagnosticId).json")
         $pending = Send-AssistanceHttp $http $url (New-AssistancePayload 'hold' $config.ruleAssistance.authoritySha256) $config.operationToken $cancel.Token
         $worker = Wait-AssistanceWorker
         $asset = $http.GetAsync("$url/styles.css")
@@ -175,7 +221,7 @@ foreach ($profile in @('internal', 'production')) {
         Assert-AssistanceStopped $worker
         Remove-Item -LiteralPath (Join-Path $control 'held.json')
         $null = Receive-Job $job -ErrorAction Stop
-        Write-Host "Passed $profile assistance HTTP: authorization, replies, responsive assets, real disconnect cancellation, shutdown, descendant cleanup, and temporary-data removal."
+        Write-AssistanceTestResult -Name "assistance-$profile-http" -Detail 'Authorization, replies, responsive assets, disconnect cancellation, shutdown and cleanup'
     } finally {
         if ($job.State -notin @('Completed', 'Failed', 'Stopped') -and $null -ne $config) {
             $shutdown = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$url/shutdown")

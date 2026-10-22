@@ -16,14 +16,21 @@ param(
 
     [string]$ComparedRulesPath,
 
-    [string]$Model = 'gpt-5.4',
+    [ValidateNotNullOrEmpty()][string]$Model,
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$ReasoningEffort = 'high'
+    [string]$ReasoningEffort
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
+Import-Module (Join-Path $PSScriptRoot '../../modules/reconciliation/ReconciliationStageExecutor.psm1')
+
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 function Get-Sha256 {
     param(
@@ -183,21 +190,24 @@ if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
     }
 }
 
-$runDirectory = Join-Path ([IO.Path]::GetTempPath()) "hosted-manual-rule-$([Guid]::NewGuid().ToString('N'))"
+$runId = [Guid]::NewGuid().ToString('N')
+$runDirectory = Join-Path ([IO.Path]::GetTempPath()) "hosted-manual-rule-$runId"
+$responsePath = Join-Path $runDirectory 'manual-rule-relationship-result.json'
+$failurePhase = 'setup'
 try {
     $null = New-Item -ItemType Directory -Path $runDirectory -Force
     $payloadPath = Join-Path $runDirectory 'manual-rule-relationship-input.json'
     $runSchemaPath = Join-Path $runDirectory 'manual-rule-relationship.schema.json'
     $runPromptPath = Join-Path $runDirectory 'ManualRuleRelationship-v4.md'
-    $responsePath = Join-Path $runDirectory 'manual-rule-relationship-result.json'
     Write-JsonAtomically -Path $payloadPath -Value $payload
     Copy-Item -LiteralPath $schemaPath -Destination $runSchemaPath
     Copy-Item -LiteralPath $promptPath -Destination $runPromptPath
 
+    $failurePhase = 'evaluator'
     if ($null -ne $resolvedEvaluatorScriptPath) {
         $output = @(& pwsh -NoProfile -File $resolvedEvaluatorScriptPath -PayloadPath $payloadPath -SchemaPath $runSchemaPath -PromptPath $runPromptPath -OutputPath $responsePath -Model $Model -ReasoningEffort $ReasoningEffort 2>&1)
         if ($LASTEXITCODE -ne 0) {
-            throw "Manual relationship evaluator script failed: $(($output | Out-String).Trim())"
+            throw 'Manual relationship evaluator script failed'
         }
     }
     else {
@@ -208,16 +218,19 @@ try {
         }
         $output = @(& pwsh -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Invoke-CopilotReconciliationStage.ps1') @nativeParameters 2>&1)
         if ($LASTEXITCODE -ne 0) {
-            throw "Manual relationship evaluator failed: $(($output | Out-String).Trim())"
+            throw 'Manual relationship evaluator failed'
         }
     }
 
+    $failurePhase = 'schema-validation'
     $resultJson = Get-Content -LiteralPath $responsePath -Raw
     if (-not ($resultJson | Test-Json -SchemaFile $runSchemaPath -ErrorAction Stop)) {
         throw 'Manual relationship evaluator result does not satisfy its schema'
     }
     $result = $resultJson | ConvertFrom-Json
+    $failurePhase = 'semantic-validation'
     Assert-ManualRelationshipResult -Result $result
+    $failurePhase = 'publication'
     Write-JsonAtomically -Path $resolvedOutputPath -Value $result
     Write-JsonAtomically -Path $cachePath -Value ([ordered]@{
         schemaVersion = 1
@@ -227,6 +240,28 @@ try {
         result = $result
     })
     [ordered]@{ status = 'passed'; cache = 'miss'; cacheKey = $cacheKey; outputPath = $resolvedOutputPath } | ConvertTo-Json -Compress
+}
+catch {
+    $responseDiagnostic = Read-ReconciliationResponseDiagnostic -Path "$responsePath.diagnostic.json" -Stage 'manual-relationship'
+    if ($null -ne $responseDiagnostic -and $responseDiagnostic.phase -cne 'diagnostic-read') {
+        $failurePhase = [string]$responseDiagnostic.phase
+    }
+    $knownErrors = @('Manual relationship evaluator script failed', 'Manual relationship evaluator failed', 'Manual relationship evaluator result does not satisfy its schema', 'Manual relationship evaluator changed the rule text hash', 'Manual relationship evaluator referenced an unknown or duplicate Hosted rule')
+    $message = if ([string]$_.Exception.Message -cin $knownErrors) { [string]$_.Exception.Message } else { "Manual relationship check failed during $failurePhase" }
+    $failureDirectory = Join-Path ([IO.Path]::GetTempPath()) "hosted-manual-rule-failure-$runId"
+    try {
+        Write-JsonAtomically -Path (Join-Path $failureDirectory 'failure.json') -Value ([ordered]@{
+            schemaVersion = 1
+            kind = 'hosted-manual-relationship-failure'
+            phase = $failurePhase
+            error = $message
+            responseDiagnostic = $responseDiagnostic
+        })
+    }
+    catch { throw "$message; diagnostic metadata could not be retained" }
+    $schemaErrors = if ($null -ne $responseDiagnostic -and $responseDiagnostic.Contains('schemaDiagnostic')) { @($responseDiagnostic.schemaDiagnostic.errors | ForEach-Object keyword | Sort-Object -CaseSensitive -Unique) -join ', ' } else { '' }
+    $detail = if ($schemaErrors) { "; failed schema keywords: $schemaErrors" } else { '' }
+    throw "$message (phase: $failurePhase)$detail. Diagnostic metadata retained at $failureDirectory"
 }
 finally {
     Remove-Item -LiteralPath $runDirectory -Recurse -Force -ErrorAction SilentlyContinue

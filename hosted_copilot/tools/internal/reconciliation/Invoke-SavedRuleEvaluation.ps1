@@ -9,8 +9,8 @@ param(
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
     [string]$AdjudicationEvaluatorScriptPath,
-    [string]$Model = 'gpt-6-luna',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'medium'
+    [ValidateNotNullOrEmpty()][string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort
 )
 
 Set-StrictMode -Version Latest
@@ -22,6 +22,10 @@ trap {
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/reconciliation/RuleIssueAdjudication.psm1')
+
+$llmProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 function Assert-Properties {
     param([object]$Value, [string[]]$Names)

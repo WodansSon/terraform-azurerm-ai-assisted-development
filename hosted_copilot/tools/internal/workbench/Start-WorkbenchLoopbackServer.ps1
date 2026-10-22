@@ -8,10 +8,10 @@ param(
     [Parameter(Mandatory = $true)][string]$ManualRelationshipPath,
     [Parameter(Mandatory = $true)][string]$ManualRelationshipCacheDirectory,
     [string]$EvaluatorCommand = 'copilot',
-    [string]$Model = 'gpt-6-luna',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort = 'medium',
-    [string]$AssistanceModel = 'gpt-5.4',
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$AssistanceReasoningEffort = 'high',
+    [ValidateNotNullOrEmpty()][string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
+    [ValidateNotNullOrEmpty()][string]$AssistanceModel,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$AssistanceReasoningEffort,
     [string]$RelationshipEvaluatorScriptPath,
     [string]$AdjudicationEvaluatorScriptPath,
     [ValidateRange(1, 2147483647)][int]$OwnerProcessId,
@@ -25,6 +25,16 @@ $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1')
+$savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $savedProfile.model
+$ReasoningEffort = $savedProfile.reasoningEffort
+$normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $AssistanceModel -ReasoningEffort $AssistanceReasoningEffort
+$AssistanceModel = $normalProfile.model
+$AssistanceReasoningEffort = $normalProfile.reasoningEffort
+$cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
+$null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile; savedRuleEvaluation = $savedProfile })
+$EvaluatorCommand = $cliLaunch.commandPath
 $savedRuleEvaluationPath = Join-Path $PSScriptRoot '../reconciliation/Invoke-SavedRuleEvaluation.ps1'
 $savedAuthorityParameters = @{
     RepositoryRoot = $RepositoryRoot
@@ -210,8 +220,11 @@ try {
                     $deferredResponse = $true
                 }
                 catch {
-                    Write-Warning "Rule assistance could not start: $($_.Exception.Message)"
-                    $failureBody = @{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
+                    $failure = ConvertTo-RuleAssistanceError -ErrorRecord $_ -Diagnostic ([ordered]@{
+                        schemaVersion = 1; diagnosticId = [Guid]::NewGuid().ToString('N'); recordedAt = [DateTimeOffset]::UtcNow.ToString('o'); phase = 'request-start'
+                    })
+                    Write-Warning "Rule assistance could not start: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"
+                    $failureBody = @{ error = $failure } | ConvertTo-Json -Depth 5 -Compress
                     Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
                 }
                 continue

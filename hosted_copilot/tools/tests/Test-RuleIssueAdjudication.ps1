@@ -9,6 +9,8 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $validationOutputPath = Join-Path $repositoryRoot 'tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputPath -Force
+Import-Module (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Force
+$normalProfile = Resolve-HostedLlmProfile -Profile normal
 $runnerPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
 $exporterPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $fixturePath = Join-Path $PSScriptRoot 'fixtures/rule-issue-adjudication-evaluator.ps1'
@@ -298,7 +300,47 @@ try {
     }
     $nativeMetrics = @(Get-Content -LiteralPath $nativeMetricsPath | ForEach-Object { $_ | ConvertFrom-Json })
     $nativeResult = Get-Content -LiteralPath $nativeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
-    Add-TestResult -Name 'saved-edit-native-inline-context' -Passed ($nativeMetrics.Count -eq 2 -and $nativeMetrics[0].manual -and -not $nativeMetrics[1].manual -and $nativeMetrics[0].fileCount -eq 2 -and $nativeMetrics[1].fileCount -eq 5 -and $nativeMetrics[1].bytes -le 393216 -and @($nativeMetrics[1].candidates).Count -eq 1 -and @($nativeMetrics | Where-Object { $_.model -cne 'gpt-5.4' -or $_.effort -cne 'high' }).Count -eq 0 -and @($nativeResult.components[0].assessments).Count -eq 1) -Detail 'Discovery and adjudication use full validated inline evidence with the unchanged model and effort; stdout JSONL is isolated from legitimate stderr diagnostics.'
+    Add-TestResult -Name 'saved-edit-native-inline-context' -Passed ($nativeMetrics.Count -eq 2 -and $nativeMetrics[0].manual -and -not $nativeMetrics[1].manual -and $nativeMetrics[0].fileCount -eq 2 -and $nativeMetrics[1].fileCount -eq 5 -and $nativeMetrics[1].bytes -le 393216 -and @($nativeMetrics[1].candidates).Count -eq 1 -and @($nativeMetrics | Where-Object { $_.model -cne $normalProfile.model -or $_.effort -cne $normalProfile.reasoningEffort }).Count -eq 0 -and @($nativeResult.components[0].assessments).Count -eq 1) -Detail 'Discovery and adjudication use full validated inline evidence with the resolved normal model and effort; stdout JSONL is isolated from legitimate stderr diagnostics.'
+    Write-TestProgress -Name 'manual-schema-failure-diagnostics' -Detail 'Retaining safe schema details after native discovery input cleanup'
+    $invalidManualCommand = Join-Path $root 'invalid-manual-cli.ps1'
+    $invalidManualScript = @'
+$null = [Console]::In.ReadToEnd()
+    $modelIndex = [Array]::IndexOf($args, '--model')
+    [ordered]@{ type = 'assistant.message'; data = [ordered]@{ model = [string]$args[$modelIndex + 1]; content = '{"synthetic":"SYNTHETIC_SENSITIVE_VALUE"}' } } | ConvertTo-Json -Compress
+'@
+    [IO.File]::WriteAllText($invalidManualCommand, $invalidManualScript)
+    $manualFailureMessage = ''
+    $manualFailureDirectory = ''
+    $manualDiagnosticPassed = $false
+    try {
+        try {
+            $null = & (Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-ManualRuleRelationship.ps1') `
+                -RequestPath $nativeManualPath -OutputPath (Join-Path $root 'invalid-manual-result.json') `
+                -RepositoryRoot $repositoryRoot -CacheDirectory (Join-Path $root 'invalid-manual-cache') -EvaluatorCommand $invalidManualCommand
+        }
+        catch { $manualFailureMessage = [string]$_.Exception.Message }
+        $marker = 'Diagnostic metadata retained at '
+        $offset = $manualFailureMessage.IndexOf($marker, [StringComparison]::Ordinal)
+        if ($offset -ge 0) {
+            $manualFailureDirectory = $manualFailureMessage.Substring($offset + $marker.Length)
+            $failureJson = Get-Content -LiteralPath (Join-Path $manualFailureDirectory 'failure.json') -Raw
+            $failure = $failureJson | ConvertFrom-Json -DateKind String
+            $runId = [IO.Path]::GetFileName($manualFailureDirectory).Substring('hosted-manual-rule-failure-'.Length)
+            $manualDiagnosticPassed = $failure.phase -ceq 'schema-validation' -and $failure.responseDiagnostic.schemaDiagnostic.available -and
+                'required' -cin @($failure.responseDiagnostic.schemaDiagnostic.errors | ForEach-Object keyword) -and
+                $manualFailureMessage.Contains('failed schema keywords:') -and -not $failureJson.Contains('SYNTHETIC_SENSITIVE_VALUE') -and
+                -not (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) "hosted-manual-rule-$runId")) -and
+                -not (Test-Path -LiteralPath (Join-Path $root 'invalid-manual-result.json')) -and
+                @(Get-ChildItem -LiteralPath $manualFailureDirectory -File).Count -eq 1
+        }
+    }
+    finally {
+        if (-not [string]::IsNullOrWhiteSpace($manualFailureDirectory) -and
+            [IO.Path]::GetFileName($manualFailureDirectory) -match '^hosted-manual-rule-failure-[0-9a-f]{32}$') {
+            Remove-Item -LiteralPath $manualFailureDirectory -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Add-TestResult -Name 'manual-schema-failure-diagnostics' -Passed $manualDiagnosticPassed -Detail 'Native manual discovery preserves schema keywords and schema-owned paths, deletes raw inputs, and never publishes or caches the invalid response.'
     $largePath = Join-Path $root 'large-component.json'
     [IO.File]::WriteAllText($largePath, ($large | ConvertTo-Json -Depth 100))
     $metricsPath = Join-Path $root 'large-metrics.jsonl'

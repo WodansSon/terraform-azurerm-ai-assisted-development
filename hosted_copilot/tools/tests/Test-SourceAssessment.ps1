@@ -15,6 +15,7 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../modules/shared/SourceEvi
 Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersModulePath = Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersModulePath -Force
+$normalProfile = Resolve-HostedLlmProfile -Profile normal
 $assessmentRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
 $builderPath = Join-Path $PSScriptRoot '../internal/assessment/New-SourceAssessmentBaseline.ps1'
 $runnerPath = Join-Path $PSScriptRoot '../internal/assessment/Invoke-SourceAssessment.ps1'
@@ -465,7 +466,7 @@ try {
     $baseline = $baselineJson | ConvertFrom-Json -DateKind String
     $evaluatedEntry = @($baseline.entries | Where-Object { $_.sourceRef.sourceDefinitionId -ceq 'maintainer-proposals' })[0]
     $evaluatedAssessment = @($evaluatedEntry.assessments)[0]
-    Add-TestResult -Name 'evaluated-confidence-build' -Passed ($validBuild.ExitCode -eq 0 -and $validResult.sourceCount -eq 3 -and $validResult.assessmentCount -eq 2 -and (Test-JsonInstance -Json $baselineJson -SchemaPath $baselineSchemaPath) -and [string]$baseline.generatedAt -ceq $expectedBuilderGeneratedAt -and [string]$evaluatedAssessment.assessmentProvenance.assessedAt -ceq $expectedBuilderGeneratedAt -and $evaluatedAssessment.assessmentProvenance.originSchemaVersion -eq 4 -and $evaluatedAssessment.assessmentProvenance.assessmentEvaluator.model -eq 'gpt-5.4') -Detail 'A minimal complete three-lane projection receives trusted evaluator provenance and canonical UTC timestamps and produces a valid external version 4 baseline.'
+    Add-TestResult -Name 'evaluated-confidence-build' -Passed ($validBuild.ExitCode -eq 0 -and $validResult.sourceCount -eq 3 -and $validResult.assessmentCount -eq 2 -and (Test-JsonInstance -Json $baselineJson -SchemaPath $baselineSchemaPath) -and [string]$baseline.generatedAt -ceq $expectedBuilderGeneratedAt -and [string]$evaluatedAssessment.assessmentProvenance.assessedAt -ceq $expectedBuilderGeneratedAt -and $evaluatedAssessment.assessmentProvenance.originSchemaVersion -eq 4 -and $evaluatedAssessment.assessmentProvenance.assessmentEvaluator.model -ceq $normalProfile.model) -Detail 'A minimal complete three-lane projection receives trusted evaluator provenance and canonical UTC timestamps and produces a valid external version 4 baseline.'
     Add-TestResult -Name 'generated-contract-hash-binding' -Passed ([string]$baseline.assessmentContractSha256 -ceq $actualContractHash) -Detail 'The generated baseline stores the automatically calculated hash of its exact assessment behavior contract.'
     Add-TestResult -Name 'baseline-reported-hash' -Passed ([string]$validResult.baselineSha256 -ceq (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToLowerInvariant()) -Detail 'The baseline result reports the hash of the exact bytes written to its immutable destination.'
     [string[]]$reversedInventoryPaths = @($inventoryPaths)

@@ -4,6 +4,24 @@ const behaviorIds = ["WB-UX-PROVENANCE-001", "WB-UX-PROVENANCE-002"];
 
 async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
+  const disabledControls = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    document.body.append(probe);
+    try {
+      return ["disabled", 'aria-disabled="true"', 'class="titlebar-icon disabled"'].map(attribute => {
+        probe.innerHTML = `<button ${attribute} data-workbench-tooltip="Unavailable action" aria-label="Unavailable action"><span>Action</span></button>`;
+        const button = probe.firstElementChild;
+        button.classList.add("titlebar-icon");
+        hideStatusTooltip();
+        showWorkbenchTooltip(button);
+        const style = getComputedStyle(button);
+        return getWorkbenchTooltipOwner(button) === null && getWorkbenchTooltipOwner(button.firstElementChild) === null
+          && !document.querySelector("#status-surface-tooltip").classList.contains("visible")
+          && style.cursor === "default" && style.opacity === "0.52" && Boolean(button.getAttribute("aria-label"));
+      });
+    } finally { probe.remove(); hideStatusTooltip(); }
+  });
+  assert(disabledControls.every(Boolean), "Shared disabled controls retained tooltips, active presentation, or lost accessible names");
   await playback.show(page, "Provenance tooltip · 768px viewport");
   const roots = await page.evaluate(() => {
     const revision = state.assessedCandidates.find((candidate) => candidate.sourceType === "upstream")?.revision;

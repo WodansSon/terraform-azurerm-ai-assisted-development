@@ -11,6 +11,10 @@ Copyright Microsoft Corporation. Licensed under the
 
 The selected inventory includes all 14 Copilot-family icons present at the pinned commit. Their native 12px, 16px, and 50px viewBoxes and source geometry are preserved in the generated sprite and icon preview.
 
+The pinned `debug-restart` glyph represents restoring the original assessed rule proposal in Candidate Details and its confirmation dialog.
+
+The inventory includes all 17 `edit`, `terminal`, and `tools` family glyphs at the pinned commit, including compact and terminal-platform variants. Compact variants retain native 12px viewBoxes, `terminal` retains its native 24px viewBox, and the remaining family members retain native 16px viewBoxes. Their source geometry is preserved without rescaling.
+
 `discard-all.svg` is a local derivative of `discard.svg`, rotated 45 degrees clockwise to represent the Workbench's Undo All action.
 
 `collection-issues-compact.svg` is a local derivative of `collection.svg`, retaining the 16px collection silhouette with a clear cutout around a Workbench-authored filled circular exclamation badge at the lower-right. It represents Rule Issues and is not an upstream Codicon.

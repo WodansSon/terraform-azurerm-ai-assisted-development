@@ -349,8 +349,10 @@ async function run({ page, baseUrl, assert, playback }) {
       const style = getComputedStyle(panel), buttonStyle = getComputedStyle(button);
       return {
         transparent: style.backgroundColor === "rgba(0, 0, 0, 0)" && style.backgroundImage === "none",
-        compact: Math.abs(b.height - 28) < 1 && parseFloat(buttonStyle.paddingLeft) === 14 && parseFloat(buttonStyle.paddingRight) === 14,
-        blue: buttonStyle.backgroundColor === "rgb(31, 98, 132)",
+        compact: Math.abs(b.height - 28) < 1 && Math.abs(b.width - 28) < 1 && parseFloat(buttonStyle.paddingLeft) === 0 && parseFloat(buttonStyle.paddingRight) === 0,
+        nativeIcon: button.classList.contains("titlebar-icon") && button.getAttribute("aria-label") === "Cancel relationship check"
+          && button.querySelector("use")?.getAttribute("href") === "icons/codicons/sprite.svg#codicon-stop-circle"
+          && button.querySelector("svg").getBoundingClientRect().width === 16 && button.querySelector("use").getBBox().width > 0,
         timerWithText: timer.parentElement.classList.contains("waiting-panel-copy"),
         fits: b.right <= p.right && b.bottom <= p.bottom && body.scrollWidth <= body.clientWidth + 1
           && document.documentElement.scrollWidth === document.documentElement.clientWidth,
@@ -361,7 +363,7 @@ async function run({ page, baseUrl, assert, playback }) {
   }
   await page.setViewportSize(viewport);
   await progress.locator("[data-cancel-relationship-check]").hover();
-  assert(await progress.locator("[data-cancel-relationship-check]").evaluate((button) => getComputedStyle(button).backgroundColor === "rgb(41, 122, 160)"), "Cancel does not use the shared blue hover highlight");
+  assert(await progress.locator("[data-cancel-relationship-check]").evaluate((button) => getComputedStyle(button).backgroundColor === "rgba(255, 255, 255, 0.06)"), "Stop control does not use the shared titlebar hover treatment");
   const motion = await progress.evaluate((element) => ({
     spinner: getComputedStyle(element.querySelector(".waiting-panel-spinner")).animationName,
     border: getComputedStyle(element.querySelector(".waiting-panel")).animationName,
@@ -488,10 +490,26 @@ async function run({ page, baseUrl, assert, playback }) {
     const candidate = getActiveCandidate();
     const issue = getOpenRuleIssues().find((item) => item.candidateKeys.includes(candidate.key));
     const expected = document.createElement("div");
-    if (issue) expected.innerHTML = renderRuleIssueContent(issue);
+    if (issue) expected.innerHTML = renderRuleIssueContent(issue, { candidateDetails: true });
     return Boolean(issue && elements["assessment-panel"].querySelector(".manual-relationship-reviews").innerHTML === expected.innerHTML);
   });
-  assert(sharedResult, "Details did not render the exact shared Rule Issues content");
+  assert(sharedResult, "Details did not use the shared compact relationship presentation");
+  assert(!await page.locator(".manual-relationship-reviews .rule-issue-assessment, .manual-relationship-reviews .rule-issue-suggestion").count()
+    && await page.locator(".manual-relationship-reviews .rule-issue-recommendation > .information-panel").count() === 1,
+    "Compact Details retained redundant assessment or suggested wording, or lost the shared recommendation panel");
+  const outerScroll = await page.locator(".app-shell").evaluate((node) => node.scrollTop);
+  await page.locator("[data-maintainer-resolution-jump]").focus();
+  await page.locator("[data-maintainer-resolution-jump]").press("Enter");
+  assert(await page.locator("#maintainer-resolution-heading").evaluate((node) => document.activeElement === node && node.tabIndex === -1
+    && getComputedStyle(node).outlineStyle === "none")
+    && await page.locator(".app-shell").evaluate((node) => node.scrollTop) === outerScroll,
+    "Status-pill keyboard navigation did not focus the resolution heading without scrolling the outer shell");
+  assert(await page.evaluate(() => {
+    const issue = getOpenRuleIssues().find((item) => item.candidateKeys.includes(getActiveCandidate().key));
+    const content = document.createElement("div");
+    content.innerHTML = renderRuleIssueContent(issue);
+    return Boolean(content.querySelector(".rule-issue-assessment") && content.querySelector(".rule-issue-suggestion"));
+  }), "The scoped Details presentation removed evidence from the global Rule Issues renderer");
   assert(await page.locator("[data-manual-relationship-mode], [data-manual-relationship-resolve]").count() === 0, "Save exposed independent consolidation or retirement controls");
   assert(success.action === setup.originalAction, "Relationship progress changed the staged rule action");
 

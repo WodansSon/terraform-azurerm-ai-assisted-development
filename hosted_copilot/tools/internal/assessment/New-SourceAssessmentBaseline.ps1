@@ -19,10 +19,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
-    [string]$Model = 'gpt-5.4',
+    [ValidateNotNullOrEmpty()][string]$Model,
 
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$ReasoningEffort = 'high',
+    [string]$ReasoningEffort,
 
     [ValidateRange(1024, 10485760)]
     [int]$EvaluatorPayloadBudgetBytes = 393216,
@@ -42,6 +42,10 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../../modules/shared/Source
 Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersPath -Force
+
+$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$Model = $llmProfile.model
+$ReasoningEffort = $llmProfile.reasoningEffort
 
 function Test-JsonFile {
     param(

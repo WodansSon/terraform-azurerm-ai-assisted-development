@@ -98,7 +98,7 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
     $siteDirectory = Join-Path $profileDirectory 'site'
     $controlDirectory = Join-Path $profileDirectory 'control'
     $null = New-Item -ItemType Directory -Path $siteDirectory, $controlDirectory -Force
-    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
+    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $asset) -Destination $siteDirectory -Recurse
     }
     Copy-Item -LiteralPath $DisplayPath -Destination (Join-Path $siteDirectory 'workbench-display.json')
@@ -114,7 +114,8 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
         $env:HOSTED_WORKBENCH_TEST_CONTROL_DIRECTORY = $ControlDirectory
         $heldEvaluator = Join-Path $ToolsRoot 'tests\fixtures\held-relationship-evaluator.ps1'
         $adjudicator = Join-Path $ToolsRoot 'tests\fixtures\rule-issue-adjudication-evaluator.ps1'
-        $evaluatorCommand = 'fixture-log:' + (Join-Path $ProfileDirectory 'adjudication-metrics.jsonl')
+        $env:HOSTED_WORKBENCH_TEST_ADJUDICATION_METRICS = Join-Path $ProfileDirectory 'adjudication-metrics.jsonl'
+        $evaluatorCommand = Join-Path $ToolsRoot 'tests/fixtures/copilot-metadata-evaluator.ps1'
         if ($Profile -in @('production', 'production-override')) {
             $savedProfileArguments = @()
             if ($Profile -eq 'production-override') {

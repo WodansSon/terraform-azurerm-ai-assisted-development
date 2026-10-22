@@ -1,5 +1,7 @@
 const { openWorkbench, getCssTokenColor } = require("../helpers/workbench.cjs");
 const expectedWaitingPhrases = require("../../../../workbench/assistance-waiting-phrases.json");
+const expectedBrandMap = require("../../../../workbench/llm-brands.json");
+const expectedNormalProfile = require("../../../../tools/llm.json").normal;
 
 const behaviorIds = ["WB-UX-ASSISTANCE-001"];
 
@@ -17,6 +19,81 @@ async function run({ page, baseUrl, assert }) {
     }
   }));
   assert(invalidCatalogs.every(Boolean), "Invalid waiting-phrase catalog entries were accepted");
+  assert(await page.evaluate(() => JSON.stringify(llmBrandMap)) === JSON.stringify(expectedBrandMap), "The presentation branding map did not load");
+  const branding = await page.evaluate(async () => {
+    const cases = [["gpt-example", "llm-openai"], ["claude-example", "llm-claude"], ["gemini-example", "llm-gemini"], ["grok-example", "llm-grok"], ["future-example", "codicon-question"]];
+    const probe = document.createElement("span");
+    probe.className = "assist-chat-profile sr-only";
+    document.body.append(probe);
+    try {
+      const results = [];
+      for (const [model, expected] of cases) {
+        probe.innerHTML = renderLlmModelIcon(model);
+        const glyph = probe.querySelector("svg");
+        const deadline = performance.now() + 5000;
+        do {
+          await new Promise(requestAnimationFrame);
+        } while (glyph.querySelector("use").getBBox().width === 0 && performance.now() < deadline);
+        results.push({ expected, reference: glyph.querySelector("use").getAttribute("href"), painted: glyph.querySelector("use").getBBox().width > 0, width: glyph.getBoundingClientRect().width, height: glyph.getBoundingClientRect().height });
+      }
+      return results;
+    } finally { probe.remove(); }
+  });
+  assert(branding.every(result => result.reference.endsWith(`#${result.expected}`) && result.painted && result.width === 12 && result.height === 12), `Mapped brands or the Codicons fallback failed: ${JSON.stringify(branding)}`);
+  const invalidBrandMaps = await page.evaluate(() => [null, {}, [], [{ prefix: "gpt-", icon: "../invalid" }], [{ prefix: "gpt-", icon: "openai" }, { prefix: "gpt-", icon: "claude" }], [{ prefix: "gpt-", icon: "openai" }, { prefix: "gpt-6-", icon: "openai" }]].map(value => {
+    try { validateLlmBrandMap(value); return false; } catch { return true; }
+  }));
+  assert(invalidBrandMaps.every(Boolean), "Invalid or ambiguous branding mappings were accepted");
+  const contextNotes = await page.evaluate(async () => {
+    const session = JSON.stringify(state.session);
+    const chat = JSON.stringify(ruleAssistance);
+    const message = "Context: <img src=x onerror=alert(1)> remains literal text. Catalog snapshot only; other draft and Plan changes are not included.";
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;left:-10000px;top:0;width:240px";
+    document.body.append(probe);
+    try {
+      const notes = [];
+      for (const iconName of [undefined, "terminal-compact", "edit-compact"]) {
+        probe.innerHTML = renderAssistanceContextNote(message, iconName);
+        const note = probe.querySelector(".assist-chat-scope");
+        const glyph = note.querySelector("svg");
+        const reference = glyph.querySelector("use");
+        const deadline = performance.now() + 5000;
+        do {
+          await new Promise(requestAnimationFrame);
+        } while (reference.getBBox().width === 0 && performance.now() < deadline);
+        const text = note.querySelector("span");
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const lines = [...range.getClientRects()];
+        const textLeft = text.getBoundingClientRect().left;
+        notes.push({
+          reference: reference.getAttribute("href"),
+          painted: reference.getBBox().width > 0,
+          iconFirst: note.firstElementChild === glyph && glyph.nextElementSibling === text,
+          decorative: glyph.getAttribute("aria-hidden") === "true",
+          escaped: text.textContent === message && !note.querySelector("img"),
+          color: getComputedStyle(note).color,
+          iconColor: getComputedStyle(glyph).color,
+          width: glyph.getBoundingClientRect().width,
+          height: glyph.getBoundingClientRect().height,
+          gap: textLeft - glyph.getBoundingClientRect().right,
+          wrapped: lines.length > 1 && lines.every(line => Math.abs(line.left - textLeft) < 1),
+          contained: note.scrollWidth <= note.clientWidth
+        });
+      }
+      let invalidIconRejected = false;
+      try { renderAssistanceContextNote(message, 'tools" onload="alert(1)'); } catch { invalidIconRejected = true; }
+      return { notes, invalidIconRejected, unchanged: JSON.stringify(state.session) === session && JSON.stringify(ruleAssistance) === chat };
+    } finally { probe.remove(); }
+  });
+  assert(contextNotes.notes.every((note, index) => note.reference === `icons/codicons/sprite.svg#codicon-${["tools", "terminal-compact", "edit-compact"][index]}`
+    && note.painted && note.iconFirst && note.decorative), "Context-note helper lost its default, override, painted, or decorative Codicon");
+  assert(contextNotes.notes.every(note => note.escaped) && contextNotes.invalidIconRejected && contextNotes.unchanged,
+    "Context-note helper accepted markup, accepted an unsafe icon name, or mutated chat or draft state");
+  assert(contextNotes.notes.every(note => note.color === "rgb(115, 115, 115)" && note.iconColor === note.color
+    && note.width === 14 && note.height === 14 && Math.abs(note.gap - 8) < 1 && note.wrapped && note.contained),
+    "Context notes lost their approved muted-gray inline layout, stable icon size, gap, or aligned wrapping");
   const setup = await page.evaluate(() => {
     const candidate = state.candidates.find((item) => getCatalogStatus(item).key === "mapped");
     selectCandidate(candidate.key);
@@ -28,13 +105,56 @@ async function run({ page, baseUrl, assert }) {
   const send = root.locator("[data-assist-send]");
   const clear = root.locator("[data-assist-clear]");
   const editor = page.locator('[data-decision-field="proposedText"]');
+  const editorSizing = await editor.evaluate((node) => {
+    const originalText = node.value;
+    const measure = () => ({
+      height: node.getBoundingClientRect().height,
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+      overflow: getComputedStyle(node).overflowY
+    });
+    const container = node.closest(".hosted-rule-comparison");
+    const originalWidth = container.style.width;
+    try {
+      node.value = "";
+      const empty = measure();
+      node.value = "Keep the existing rule.";
+      const short = measure();
+      node.value = "Preserve every required obligation, condition, and exception in the proposed Hosted rule. ".repeat(40);
+      const long = measure();
+      container.style.width = "280px";
+      const narrow = measure();
+      container.style.width = originalWidth;
+      const restoredWidth = measure();
+      node.value = "Keep the existing rule.";
+      return { empty, short, long, narrow, restoredWidth, shortened: measure() };
+    } finally {
+      node.value = originalText;
+      container.style.width = originalWidth;
+    }
+  });
+  assert(editorSizing.empty.height === 84 && editorSizing.short.height === 84,
+    `Empty and short proposed wording lost the 84px minimum: ${JSON.stringify(editorSizing)}`);
+  assert(editorSizing.long.height > 84 && editorSizing.long.scrollHeight <= editorSizing.long.clientHeight
+    && editorSizing.long.overflow === "hidden", `Long proposed wording did not fit without scrolling: ${JSON.stringify(editorSizing)}`);
+  assert(editorSizing.narrow.height > editorSizing.long.height && editorSizing.narrow.scrollHeight <= editorSizing.narrow.clientHeight,
+    `Proposed wording did not grow when its container narrowed: ${JSON.stringify(editorSizing)}`);
+  assert(editorSizing.restoredWidth.height === editorSizing.long.height && editorSizing.shortened.height === 84,
+    `Proposed wording did not shrink back to fit: ${JSON.stringify(editorSizing)}`);
+  assert(await page.evaluate(() => JSON.stringify(state.session)) === setup.session,
+    "Content sizing changed saved rule decisions");
   await root.scrollIntoViewIfNeeded();
+  assert(await root.locator("[data-assist-toggle]").getAttribute("aria-expanded") === "false"
+    && !await root.locator("[data-assist-body]").isVisible(), "Empty assistance did not start collapsed");
+  await root.locator("[data-assist-toggle]").click();
   assert(await clear.isDisabled() && await send.isDisabled(), "Empty chat offers Clear or Send");
-  assert(await root.locator(".assist-header").textContent() === "AI Assistance:", "Assistance heading changed");
+  assert(await root.locator(".assist-header > .section-label").textContent() === "AI Assistance:", "Assistance heading changed");
   assert(!await page.locator('#assessment-panel [data-evidence-kind="coverage"]').count(), "Candidate Details retained inferred coverage");
-  await page.waitForFunction(() => document.querySelector(".assist-chat-profile .llm-icon use")?.getBBox().width > 0
+  const expectedBrand = expectedBrandMap.find(entry => expectedNormalProfile.model.toLowerCase().startsWith(entry.prefix));
+  const expectedModelIconReference = expectedBrand ? `icons/llms/sprite.svg#llm-${expectedBrand.icon}` : "icons/codicons/sprite.svg#codicon-question";
+  await page.waitForFunction(() => document.querySelector(".assist-chat-profile svg use")?.getBBox().width > 0
     && document.querySelector(".assist-chat-identity .codicon use")?.getBBox().width > 0);
-  const modelIcon = await root.locator(".assist-chat-profile .llm-icon").evaluate((node) => ({
+  const modelIcon = await root.locator(".assist-chat-profile svg").evaluate((node) => ({
     reference: node.querySelector("use").getAttribute("href"),
     width: node.getBoundingClientRect().width,
     height: node.getBoundingClientRect().height,
@@ -42,12 +162,12 @@ async function run({ page, baseUrl, assert }) {
     profileColor: getComputedStyle(node.parentElement).color,
     decorative: node.getAttribute("aria-hidden") === "true"
   }));
-  assert(modelIcon.reference === "icons/llms/sprite.svg#llm-openai" && modelIcon.width === 12 && modelIcon.height === 12
+  assert(modelIcon.reference === expectedModelIconReference && modelIcon.width === 12 && modelIcon.height === 12
     && modelIcon.color === modelIcon.profileColor && modelIcon.decorative && !await root.locator(".assist-chat-profile img").count(),
-  `Model branding did not paint from the attributed LLM sprite: ${JSON.stringify(modelIcon)}`);
+  `Configured model branding did not paint from its local sprite: ${JSON.stringify(modelIcon)}`);
   const presentation = await root.evaluate((node) => {
     const heading = node.querySelector(".assist-header");
-    const guidance = heading.nextElementSibling;
+    const guidance = heading.nextElementSibling.querySelector(":scope > .information-panel");
     const paragraph = guidance.querySelector("p");
     const reference = document.querySelector(".assessment-context.information-panel");
     const sharedPanelStyle = getComputedStyle(reference);
@@ -63,9 +183,7 @@ async function run({ page, baseUrl, assert }) {
       guidanceFirst: guidance.matches(".information-panel.section-guidance")
         && guidance.nextElementSibling.matches(".assist-chat-reply-window"),
       guidanceText: paragraph.textContent,
-      emphasis: paragraph.querySelector("strong")?.textContent === "Advice only:"
-        && getComputedStyle(paragraph.querySelector("strong")).fontWeight === "600"
-        && getComputedStyle(paragraph).fontWeight === "400",
+      emphasis: !paragraph.querySelector("strong") && getComputedStyle(paragraph).fontWeight === "400",
       sharedPanel: ["backgroundColor", "borderColor", "borderLeftWidth", "padding", "borderRadius"].every((property) => guidanceStyle[property] === sharedPanelStyle[property])
         && guidanceStyle.marginBottom === "12px"
         && guidance.querySelector(".fluent-icon").getAttribute("aria-hidden") === "true",
@@ -92,8 +210,8 @@ async function run({ page, baseUrl, assert }) {
   });
   assert(presentation.guidanceFirst && presentation.sharedPanel && presentation.noFooter,
     `Assistance guidance did not use the shared information panel beneath its heading: ${JSON.stringify(presentation)}`);
-  assert(presentation.guidanceText === "Advice only: Conversation clears when switching rules or reloading; clearing conversation history does not change the draft."
-    && presentation.emphasis, "Assistance guidance lost its accepted wording or semibold label");
+  assert(presentation.guidanceText === "This response is AI-generated. Please review it for accuracy and relevance before use."
+    && presentation.emphasis, "Assistance guidance lost its approved wording or regular weight");
   assert(presentation.reference === "icons/codicons/sprite.svg#codicon-copilot" && presentation.glyphSize && presentation.decorative
     && presentation.identityPrefix === "Copilot ·" && presentation.muted, "Copilot identity lost its native glyph or muted prefix");
   assert(presentation.ruleId === setup.ruleId && presentation.ruleStyle && presentation.matchingChip && presentation.clearSeparate,
@@ -112,10 +230,16 @@ async function run({ page, baseUrl, assert }) {
         && getComputedStyle(node.querySelector(".assist-chat-context-label")).fontSize === "12px"
         && getComputedStyle(node.querySelector(".assist-chat-context-label")).fontStyle === "italic",
       placeholder: getComputedStyle(goal, "::placeholder").color === "rgb(115, 115, 115)",
-      profile: node.querySelector(".assist-chat-profile").textContent
+      profile: node.querySelector(".assist-chat-profile").textContent,
+      runtimeModel: globalThis.__HOSTED_RULE_WORKBENCH__.ruleAssistance.model,
+      runtimeEffort: globalThis.__HOSTED_RULE_WORKBENCH__.ruleAssistance.reasoningEffort
     };
   });
-  assert(geometry.sized && geometry.scrolling && geometry.metadata && geometry.placeholder && geometry.profile.includes("GPT-5.4"), `Accepted assistance layout or runtime readout changed: ${JSON.stringify(geometry)}`);
+  const expectedModelLabel = { "gpt-6.1-sol": "GPT-6.1 Sol", "gpt-5.4": "GPT-5.4" }[expectedNormalProfile.model] || expectedNormalProfile.model;
+  const expectedEffortLabel = expectedNormalProfile.reasoningEffort[0].toUpperCase() + expectedNormalProfile.reasoningEffort.slice(1);
+  assert(geometry.sized && geometry.scrolling && geometry.metadata && geometry.placeholder
+    && geometry.runtimeModel === expectedNormalProfile.model && geometry.runtimeEffort === expectedNormalProfile.reasoningEffort
+    && geometry.profile.trim() === `${expectedModelLabel} · ${expectedEffortLabel}`, `Accepted assistance layout or runtime readout changed: ${JSON.stringify(geometry)}`);
   const resizer = root.getByRole("separator", { name: "Resize AI assistance conversation" });
   assert(await resizer.getAttribute("aria-orientation") === "horizontal"
     && await resizer.getAttribute("aria-controls") === "rule-assistance-conversation"
@@ -212,14 +336,15 @@ async function run({ page, baseUrl, assert }) {
       };
     }, request);
     if (staleNext) { json.requestId = "stale"; staleNext = false; }
+    const response = failNext
+      ? { status: 500, json: { error: { code: "synthetic-failure", message: "Synthetic assistance failure.", diagnosticId: "d".repeat(32) } } }
+      : { json };
+    failNext = false;
     if (holdNext) {
       holdNext = false;
-      await new Promise((resolve) => { pending = async () => { await route.fulfill({ json }); resolve(); }; });
+      await new Promise((resolve) => { pending = async () => { await route.fulfill(response); resolve(); }; });
       pending = null;
-    } else if (failNext) {
-      failNext = false;
-      await route.fulfill({ status: 500, json: { error: "Synthetic assistance failure." } });
-    } else await route.fulfill({ json });
+    } else await route.fulfill(response);
   });
 
   await page.evaluate(() => { globalThis.__assistanceOriginalRandom = Math.random; Math.random = () => 0; });
@@ -228,14 +353,28 @@ async function run({ page, baseUrl, assert }) {
   await root.locator(".waiting-panel[data-waiting-panel-ready]").waitFor();
   assert(await clear.isDisabled() && await input.getAttribute("readonly") !== null
     && await send.getAttribute("aria-label") === "Cancel operation", "Running assistance lost cancellation or read-only controls");
-  const running = await root.evaluate((node) => ({
-    color: getComputedStyle(node.querySelector(".assist-chat-send")).color,
-    animation: getComputedStyle(node.querySelector(".waiting-panel")).animationName,
-    ring: Boolean(node.querySelector(".assist-chat-send circle")),
-    square: Boolean(node.querySelector(".assist-chat-send rect"))
-  }));
-  assert(running.color === "rgb(140, 140, 140)" && running.animation === "waiting-panel-chase" && running.ring && running.square,
-    "Running assistance did not use the native border or gray ring-and-square stop icon");
+  assert(await input.inputValue() === ""
+    && await root.locator(".assist-chat-user-message").last().textContent() === "Check this rule against the Hosted catalog.",
+    "Enter did not immediately move submitted text from the composer into the transcript");
+  await page.waitForFunction(() => document.querySelector(".assist-chat-send .codicon use")?.getBBox().width > 0);
+  const running = await root.evaluate((node) => {
+    const glyph = node.querySelector(".assist-chat-send .codicon");
+    const reference = glyph.querySelector("use");
+    const bounds = glyph.getBoundingClientRect();
+    return {
+      color: getComputedStyle(node.querySelector(".assist-chat-send")).color,
+      animation: getComputedStyle(node.querySelector(".waiting-panel")).animationName,
+      reference: reference.getAttribute("href"),
+      width: bounds.width,
+      height: bounds.height,
+      fill: getComputedStyle(glyph).fill,
+      glyphWidth: reference.getBBox().width
+    };
+  });
+  assert(running.color === "rgb(140, 140, 140)" && running.animation === "waiting-panel-chase"
+    && running.reference === "icons/codicons/sprite.svg#codicon-stop-circle"
+    && running.width === 16 && running.height === 16 && running.glyphWidth > 0 && running.fill === running.color,
+    `Running assistance did not use the native border or gray 16px Codicon stop symbol: ${JSON.stringify(running)}`);
   await waitForHeldReply();
   const waiting = root.locator(".assist-chat-operation-message .shimmer-heading");
   assert(await waiting.locator(".sr-only").textContent() === phrases[0], "The request did not select the first phrase at the lower random boundary");
@@ -273,6 +412,15 @@ async function run({ page, baseUrl, assert }) {
   });
   assert(replyLayout.shortBubble && replyLayout.fullReply, "Short user text did not shrink to fit at the right edge, or the AI reply lost full width");
   assert(replyLayout.spacing, "Completion time and Context did not retain their accepted 16-pixel gaps");
+  const contextNote = await root.locator(".assist-chat-scope").evaluate(node => ({
+    reference: node.querySelector("use").getAttribute("href"),
+    iconFirst: node.firstElementChild.matches("svg") && node.lastElementChild.matches("span"),
+    color: getComputedStyle(node).color,
+    expectedText: node.querySelector("span").textContent === `Context: ${ruleAssistance.turns[0].answer.catalogRuleIds.length} active or protected Hosted rules. Catalog snapshot only; other draft and Plan changes are not included.`
+  }));
+  assert(contextNote.reference === "icons/codicons/sprite.svg#codicon-tools" && contextNote.iconFirst
+    && contextNote.color === "rgb(115, 115, 115)" && contextNote.expectedText,
+    "Successful reply did not render its unchanged catalog scope through the shared muted icon-first note helper");
   const summary = root.locator(".assist-chat-suggestion summary");
   const visibleChevron = () => summary.locator(".assist-chat-suggestion-chevron .codicon:visible use").getAttribute("href");
   assert(await visibleChevron() === "icons/codicons/sprite.svg#codicon-chevron-down", "Collapsed suggestions did not show the shared down chevron");
@@ -284,7 +432,7 @@ async function run({ page, baseUrl, assert }) {
     const wording = node.querySelector("pre");
     const button = node.querySelector("[data-assist-use]");
     const chevron = summary.querySelector(".assist-chat-suggestion-chevron");
-    const shared = document.querySelector("[data-rule-assistance] > .information-panel");
+    const shared = document.querySelector("[data-assist-body] > .information-panel");
     return {
       guidance: guidance.matches(".information-panel.assist-chat-suggestion-guidance") && guidance.nextElementSibling === wording
         && guidance.textContent.trim() === "Only fills the editor. Review and Save through the existing validation flow."
@@ -311,6 +459,9 @@ async function run({ page, baseUrl, assert }) {
   holdNext = true;
   await send.click();
   await waitForHeldReply();
+  assert(await input.inputValue() === ""
+    && await root.locator(".assist-chat-user-message").last().textContent() === requests[1].messages.at(-1).content,
+    "Send did not immediately move submitted text from the composer into the transcript");
   assert(await waiting.locator(".sr-only").textContent() === phrases.at(-1), "A new request did not independently select the last phrase at the upper random boundary");
   await page.evaluate(() => { Math.random = globalThis.__assistanceOriginalRandom; delete globalThis.__assistanceOriginalRandom; });
   await pending();
@@ -344,13 +495,49 @@ async function run({ page, baseUrl, assert }) {
     && await editor.inputValue() === setup.text, "Clear did not preserve unsent input and draft");
   failNext = true;
   await send.click();
-  await root.getByText("Rule assistance failed: Synthetic assistance failure.", { exact: true }).waitFor();
+  await root.locator(".assist-chat-error").getByText("Synthetic assistance failure.", { exact: true }).waitFor();
   assert(await input.inputValue() === "Keep this unsent text." && requests[2].messages.length === 1, "Clearing did not reset model context or failure lost input");
   assert(!await root.locator(".assist-chat-operation-message .shimmer-heading").count(), "A genuine failure was rendered as an animated waiting phrase");
+  const errorPanel = root.locator(".assist-chat-error");
+  const errorFillsReply = await errorPanel.evaluate(node => {
+    const transcript = node.parentElement;
+    const style = getComputedStyle(transcript);
+    const availableWidth = transcript.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return Math.abs(node.getBoundingClientRect().width - availableWidth) <= 1;
+  });
+  assert(errorFillsReply, "Assistance error panel did not fill the reply area's available width");
+  assert(await errorPanel.locator(".assist-chat-error-title").textContent() === "Rule assistance failed"
+    && await errorPanel.locator(".assist-chat-error-reference").textContent() === `Diagnostic reference: ${"d".repeat(32)}`
+    && await errorPanel.evaluate(node => node.parentElement.id === "rule-assistance-conversation")
+    && !await root.locator(".error-banner").count(), "Assistance failure lost its dedicated inline notification or diagnostic reference");
+  const failedState = await page.evaluate(() => ({ session: JSON.stringify(state.session), input: ruleAssistance.input, turns: ruleAssistance.turns.length }));
+  const requestsBeforeDismiss = requests.length;
+  for (const selector of [".assist-chat-error-close", ".assist-chat-error-dismiss"]) {
+    await errorPanel.locator(selector).click();
+    assert(await errorPanel.count() === 0 && requests.length === requestsBeforeDismiss
+      && await page.evaluate(before => JSON.stringify(state.session) === before.session && ruleAssistance.input === before.input
+        && ruleAssistance.turns.length === before.turns && ruleAssistance.turns.at(-1).failed, failedState), "Dismissing assistance failure changed the draft, conversation or started inference");
+    await page.evaluate(() => { ruleAssistance.turns.at(-1).errorDismissed = false; syncRuleAssistance(); });
+  }
+  await editor.fill(setup.text + " Changed after failure.");
+  assert(await errorPanel.locator("[data-assist-error-retry]").isDisabled(), "Retry remained enabled for a different wording snapshot");
+  await editor.fill(setup.text);
+  assert(await errorPanel.locator("[data-assist-error-retry]").isEnabled(), "Restoring request wording did not re-enable Retry");
+  await input.fill("Preserve this different unsent input.");
+  holdNext = true;
+  await errorPanel.locator("[data-assist-error-retry]").click();
+  await waitForHeldReply();
+  assert(await input.inputValue() === "Preserve this different unsent input.", "Starting Retry cleared an unrelated unsent draft");
+  await pending();
+  await page.waitForFunction(() => !ruleAssistance.active && Boolean(ruleAssistance.turns.at(-1).answer));
+  assert(requests.length === requestsBeforeDismiss + 1 && requests.at(-1).messages.at(-1).content === "Keep this unsent text."
+    && await page.evaluate(count => ruleAssistance.turns.length === count, failedState.turns)
+    && await input.inputValue() === "Preserve this different unsent input.", "Explicit Retry duplicated the turn, retried another question or discarded unsent input");
+  await input.fill("Keep this unsent text.");
   await clear.click();
   staleNext = true;
   await send.click();
-  await root.getByText("Rule assistance failed: Rule assistance returned a stale or invalid reply.", { exact: true }).waitFor();
+  await root.locator(".assist-chat-error").getByText("Rule assistance returned a stale or invalid reply.", { exact: true }).waitFor();
 
   await clear.click();
   await send.click();
@@ -386,6 +573,165 @@ async function run({ page, baseUrl, assert }) {
   assert(!await root.locator(".assist-chat-ai-message").count() && await input.inputValue() === "Keep this unsent text.",
     "Cancellation accepted a late reply or discarded the request text");
   assert(!await root.locator(".assist-chat-operation-message .shimmer-heading").count(), "Cancellation retained animated waiting text");
+
+  const disclosure = root.locator("[data-assist-toggle]");
+  const headerCancel = root.locator("[data-assist-header-cancel]");
+  const headerError = root.locator("[data-assist-error]");
+  const navigationDialog = page.locator("[data-assist-navigation-dialog]");
+  const otherKey = await page.evaluate((key) => state.candidates.find((candidate) => candidate.key !== key).key, setup.key);
+  const savedBeforeNavigation = await page.evaluate(() => JSON.stringify(state.session));
+  const headerGeometry = () => disclosure.evaluate((node) => ({ left: node.getBoundingClientRect().left, width: node.getBoundingClientRect().width }));
+  const initialHeaderGeometry = await headerGeometry();
+  await disclosure.click();
+  assert(!await root.locator("[data-assist-body]").isVisible() && !await headerCancel.isVisible()
+    && !await headerError.isVisible(), "Collapsed idle assistance displayed stale summary controls");
+  await disclosure.click();
+  assert(await input.inputValue() === "Keep this unsent text." && await editor.inputValue() === setup.text,
+    "Disclosure toggling discarded unsent request or proposed rule text");
+
+  holdNext = true;
+  await send.click();
+  await waitForHeldReply();
+  await disclosure.click();
+  assert(await headerCancel.isVisible() && await root.locator(".assist-header-working").isVisible()
+    && !await root.locator("[data-assist-body]").isVisible(), "Running collapsed assistance lost working or cancellation controls");
+  const collapsedGeometry = await headerGeometry();
+  assert(collapsedGeometry.left === initialHeaderGeometry.left && collapsedGeometry.width === 24,
+    "Request activity shifted the assistance chevron");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert(await root.locator(".assist-header-working .waiting-panel-spinner").evaluate((node) => getComputedStyle(node).animationName) === "none",
+    "Collapsed activity spinner ignored reduced motion");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  assert(await root.locator(".assist-header-working .waiting-panel-spinner").evaluate((node) => getComputedStyle(node).animationName) === "waiting-panel-spin",
+    "Collapsed activity did not reuse the shared spinner animation");
+  await disclosure.click();
+  assert(!await headerCancel.isVisible() && !await root.locator(".assist-header-working").isVisible()
+    && await page.evaluate(() => Boolean(ruleAssistance.active)), "Expanding cancelled the request or retained duplicate header controls");
+  await disclosure.click();
+  await headerCancel.click();
+  assert(!await headerCancel.isVisible() && !await headerError.isVisible()
+    && !await root.locator(".assist-header-working").isVisible(), "Header cancellation retained activity or showed an error");
+  await pending();
+  await disclosure.click();
+  assert(!await root.locator(".assist-chat-ai-message").count(), "Header cancellation accepted a late reply");
+
+  failNext = true;
+  await send.click();
+  await page.waitForFunction(() => !ruleAssistance.active && ruleAssistance.turns.at(-1)?.failed);
+  await disclosure.click();
+  assert(await headerError.isVisible() && !await headerCancel.isVisible(), "Failure did not replace the cancel slot with an error summary");
+  assert(await headerError.evaluate((node) => getComputedStyle(node).color) === await getCssTokenColor(page, "--error-border"),
+    "The error summary did not retain the shared red error color");
+  await headerError.click();
+  assert(await root.locator("[data-assist-body]").isVisible() && !await headerError.isVisible(),
+    "Error summary did not open assistance or remained duplicated while expanded");
+  await disclosure.click();
+  assert(await headerError.isVisible(), "Disclosure cleared the current request error");
+  await disclosure.click();
+  await clear.click();
+  await disclosure.click();
+  assert(!await headerError.isVisible(), "Clearing conversation retained a stale error summary");
+  await disclosure.click();
+
+  async function startHeldRequest(question) {
+    await input.fill(question);
+    holdNext = true;
+    await send.click();
+    await waitForHeldReply();
+    assert(await input.inputValue() === "" && await root.locator(".assist-chat-user-message").last().textContent() === question,
+      "Held request retained submitted input or lost its transcript question");
+  }
+  async function requestSwitch() {
+    await page.evaluate((key) => selectCandidate(key), otherKey);
+    await navigationDialog.waitFor({ state: "visible" });
+  }
+  const currentKey = () => page.evaluate(() => getActiveCandidate().key);
+  const allowNavigation = navigationDialog.locator(".button[data-assist-navigation-allow]");
+  const cancelNavigation = navigationDialog.locator("[data-assist-navigation-cancel]");
+  await startHeldRequest("Retain this exact current request.");
+  await editor.fill(setup.text + " Unsaved editor text.");
+  await requestSwitch();
+  assert(await currentKey() === setup.key && await page.evaluate(() => Boolean(ruleAssistance.active)),
+    "Opening navigation confirmation silently switched rules or cancelled assistance");
+  assert(await navigationDialog.locator("h2").textContent() === "AI Request in Progress"
+    && await navigationDialog.locator("#assist-navigation-description").textContent()
+      === `An AI request for ${setup.ruleId} is still running. Switching rules will cancel the current AI rule request before completion.`
+    && await allowNavigation.textContent().then((text) => text.trim()) === "Allow Request to Complete"
+    && await cancelNavigation.textContent().then((text) => text.trim()) === "Cancel Request",
+    "Navigation confirmation lost approved title, body, or action labels");
+  assert(await navigationDialog.locator("strong").textContent() === setup.ruleId
+    && !await navigationDialog.textContent().then((text) => text.includes("Prototype preview"))
+    && await allowNavigation.evaluate((node) => node.classList.contains("primary"))
+    && await cancelNavigation.evaluate((node) => node.classList.contains("destructive")),
+    "Production confirmation lost shared button variants, safe rule emphasis, or retained a prototype notice");
+  await page.waitForFunction(() => Array.from(document.querySelectorAll("[data-assist-navigation-dialog] .button use")).every((node) => node.getBBox().width > 0));
+  assert(await navigationDialog.locator(".button use").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href")).join(","))
+    === "icons/codicons/sprite.svg#codicon-play-circle,icons/codicons/sprite.svg#codicon-stop-circle",
+    "Navigation confirmation did not use the shared native play and stop symbols");
+  await allowNavigation.click();
+  assert(await currentKey() === setup.key && await page.evaluate(() => Boolean(ruleAssistance.active))
+    && await editor.inputValue() === setup.text + " Unsaved editor text.", "Allow changed the rule, request, or unsaved wording");
+  await pending();
+  await page.waitForFunction(() => !ruleAssistance.active);
+  assert(await currentKey() === setup.key, "Completion after Allow replayed discarded navigation");
+  await editor.fill(setup.text);
+
+  for (const dismissal of ["escape", "close"]) {
+    await startHeldRequest("Continue after " + dismissal);
+    await requestSwitch();
+    if (dismissal === "escape") await page.keyboard.press("Escape");
+    else await navigationDialog.locator(".titlebar-icon[data-assist-navigation-allow]").click();
+    assert(!await navigationDialog.count() && await currentKey() === setup.key
+      && await page.evaluate(() => Boolean(ruleAssistance.active)), `${dismissal} cancelled the request or switched rules`);
+    await pending();
+    await page.waitForFunction(() => !ruleAssistance.active);
+    assert(await currentKey() === setup.key, `Completion after ${dismissal} replayed navigation`);
+  }
+
+  await startHeldRequest("Cancel only on explicit confirmation.");
+  await requestSwitch();
+  await cancelNavigation.click();
+  assert(await currentKey() === otherKey && !await navigationDialog.count()
+    && !await page.evaluate(() => Boolean(ruleAssistance.active)), "Explicit cancellation did not stop and switch once");
+  await pending();
+  assert(!await root.locator(".assist-chat-ai-message").count(), "A late cancelled answer attached to the new rule");
+  await page.evaluate((key) => selectCandidate(key), setup.key);
+  await startHeldRequest("Complete before confirmation.");
+  await requestSwitch();
+  const lateConfirmation = await cancelNavigation.elementHandle();
+  await pending();
+  await page.waitForFunction((key) => getActiveCandidate().key === key && !pendingRuleAssistanceNavigation, otherKey);
+  assert(!await navigationDialog.count() && !await root.locator(".assist-chat-ai-message").count(),
+    "Completion did not resume selection or leaked the old conversation into its destination");
+  await lateConfirmation.evaluate((node) => node.click());
+  assert(await currentKey() === otherKey, "Late confirmation repeated or reversed completed navigation");
+  await page.evaluate((key) => selectCandidate(key), setup.key);
+  await startHeldRequest("The first dismissed request.");
+  await requestSwitch();
+  await allowNavigation.click();
+  await send.click();
+  const oldReply = pending;
+  await oldReply();
+  await startHeldRequest("A separate current request.");
+  await requestSwitch();
+  await navigationDialog.locator(".titlebar-icon[data-assist-navigation-allow]").click();
+  assert(await page.evaluate(() => pendingRuleAssistanceNavigation === null && Boolean(ruleAssistance.active)),
+    "Dismissal did not detach navigation from the exact active request");
+  await send.click();
+  await pending();
+  assert(await page.evaluate((session) => JSON.stringify(state.session) === session, savedBeforeNavigation),
+    "Disclosure, confirmation, or request completion changed saved decisions");
+  const categories = await page.evaluate(() => Array.from(new Map(state.candidates.map((candidate) => [candidate.recommendation.category, candidate.key])).entries()));
+  for (const [category, key] of categories) {
+    await page.evaluate((key) => selectCandidate(key), key);
+    const applicable = page.locator(".implementation-model-control-group");
+    assert(await applicable.count() === (category === "implementation" ? 1 : 0)
+      && !await page.getByText("Resource types apply only to implementation rules.", { exact: true }).count(),
+      `Resource applicability leaked into ${category} or retained redundant guidance`);
+    if (category === "implementation") assert(await applicable.locator("input").evaluateAll((nodes) => nodes.map((node) => node.value).join(",")) === "legacy,typed,framework",
+      "Implementation applicability lost its existing three resource models");
+  }
+  await page.evaluate((key) => selectCandidate(key), setup.key);
   await page.evaluate((key) => {
     const other = state.candidates.find((candidate) => candidate.key !== key);
     selectCandidate(other.key);
@@ -393,6 +739,36 @@ async function run({ page, baseUrl, assert }) {
   }, setup.key);
   assert(await clear.isDisabled() && await input.inputValue() === "" && !await root.locator(".assist-chat-user-message").count(),
     "Switching rules retained conversation context");
+  const exactSubmittedInput = "  Restore this exact submitted draft.\n";
+  await input.fill(exactSubmittedInput);
+  failNext = true;
+  holdNext = true;
+  await send.click();
+  await waitForHeldReply();
+  assert(await input.inputValue() === "", "A pending failed request retained its submitted input");
+  await pending();
+  await page.waitForFunction(() => !ruleAssistance.active && ruleAssistance.turns.at(-1).failed);
+  assert(await input.inputValue() === exactSubmittedInput, "Failure did not restore the exact submitted draft, including whitespace");
+  holdNext = true;
+  await errorPanel.locator("[data-assist-error-retry]").click();
+  await waitForHeldReply();
+  assert(await input.inputValue() === "" && await root.locator(".assist-chat-user-message").count() === 1,
+    "Retry did not clear the restored submitted input or duplicated its transcript turn");
+  await pending();
+  await page.waitForFunction(() => !ruleAssistance.active && Boolean(ruleAssistance.turns.at(-1).answer));
+  assert(await input.inputValue() === "", "Successful Retry restored text that had already been submitted");
+  for (const outcome of ["success", "failure", "cancellation"]) {
+    const submitted = `Submitted before ${outcome}.`;
+    const newer = outcome === "success" ? submitted : `Newer draft during ${outcome}.`;
+    failNext = outcome === "failure";
+    await startHeldRequest(submitted);
+    await page.evaluate(value => { ruleAssistance.input = value; syncRuleAssistance(); }, newer);
+    if (outcome === "cancellation") await send.click();
+    await pending();
+    await page.waitForFunction(() => !ruleAssistance.active);
+    assert(await input.inputValue() === newer, `${outcome} overwrote newer composer input`);
+  }
+  await clear.click();
   await input.fill("Not persisted.");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.querySelector("#workspace")?.classList.contains("icon-paint-pending") === false);
