@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/workbench-draft-v4.schema.json",
+  "title": "Hosted Rule Workbench Draft Version 4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "sourceFiles", "createdAt", "updatedAt", "approverName", "decisions", "applicabilityOverrides", "bulkOperations"],
+  "properties": {
+    "$schema": { "const": "workbench-draft-v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "kind": { "const": "hosted-rule-workbench-draft" },
+    "sourceFiles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/sourceFile" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "approverName": { "type": "string", "maxLength": 120 },
+    "decisions": {
+      "type": "object",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/decision" }
+    },
+    "applicabilityOverrides": {
+      "type": "object",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/applicabilityOverride" }
+    },
+    "bulkOperations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bulkOperation" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDefinitionId", "sourceId", "contentSha256"],
+      "properties": {
+        "sourceDefinitionId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hostedId": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "selected", "selectionSource", "bulkOperationId", "rationale", "proposedHostedRuleId", "proposedText", "retireHostedRuleIds", "sourceContentSha256", "updatedAt"],
+      "properties": {
+        "action": { "enum": ["add", "update", "retire", "restore", "no-change", "defer", "exclude", null] },
+        "selected": { "type": "boolean" },
+        "selectionSource": { "enum": ["none", "manual", "bulk", "override"] },
+        "bulkOperationId": { "type": ["string", "null"] },
+        "rationale": { "type": "string", "maxLength": 500 },
+        "proposedHostedRuleId": { "oneOf": [{ "$ref": "#/$defs/hostedId" }, { "type": "null" }] },
+        "proposedText": { "type": "string" },
+        "retireHostedRuleIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/hostedId" }
+        },
+        "implementationModels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["legacy", "typed", "framework"] }
+        },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "selectionSource": { "const": "bulk" } }, "required": ["selectionSource"] },
+          "then": { "properties": { "bulkOperationId": { "type": "string", "minLength": 1 } } },
+          "else": { "properties": { "bulkOperationId": { "type": "null" } } }
+        }
+      ]
+    },
+    "applicabilityOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["originalHostedApplicable", "effectiveHostedApplicable", "state", "rationale", "recordedBy", "recordedAt", "sourceContentSha256"],
+      "properties": {
+        "originalHostedApplicable": { "const": false },
+        "effectiveHostedApplicable": { "const": true },
+        "state": { "const": "provisional" },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "recordedBy": { "type": "string", "minLength": 1 },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "bulkOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "action", "candidateKeys", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["add", "update", "actionable"] },
+        "candidateKeys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "assessment-contract.schema.json",
+  "schemaVersion": 1,
+  "contractId": "source-assessment-v4",
+  "behaviorFiles": [
+    "hosted_copilot/contracts/assessment/assessment-contract.schema.json",
+    "hosted_copilot/contracts/assessment/source-assessment-baseline-v4.schema.json",
+    "hosted_copilot/contracts/assessment/source-assessment-draft.schema.json",
+    "hosted_copilot/contracts/catalog/instruction-catalog.schema.json",
+    "hosted_copilot/contracts/parsers/parser-contract.schema.json",
+    "hosted_copilot/contracts/sources/source-definition-set.schema.json",
+    "hosted_copilot/contracts/sources/source-definition.schema.json",
+    "hosted_copilot/contracts/sources/source-inventory.schema.json",
+    "hosted_copilot/copilot-rule-catalog/source-definitions/source-definition-set.json",
+    "hosted_copilot/tools/internal/assessment/Invoke-SourceAssessment.ps1",
+    "hosted_copilot/tools/internal/assessment/New-SourceAssessmentBaseline.ps1",
+    "hosted_copilot/tools/modules/shared/HostedCli.psm1",
+    "hosted_copilot/tools/modules/shared/HostedToolkit.Helpers.psm1",
+    "hosted_copilot/tools/modules/shared/SourceEvidenceValidation.psm1",
+    "hosted_copilot/tools/prompts/assessment/AssessmentAttempt.md",
+    "hosted_copilot/tools/prompts/assessment/SourceAssessment-v4.md"
+  ],
+  "presentationFiles": [
+    "hosted_copilot/tools/modules/assessment/SourceAssessmentPresentation.psm1"
+  ]
+}

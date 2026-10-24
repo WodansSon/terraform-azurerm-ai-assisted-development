@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "packageIdentity": "terraform-azurerm-hosted-copilot",
+  "installedStatePath": ".github/hosted-copilot-installed-state.json",
+  "files": [
+    ".github/copilot-instructions.md",
+    ".github/instructions/azurerm-go.instructions.md",
+    ".github/instructions/azurerm-tests.instructions.md",
+    ".github/instructions/azurerm-docs.instructions.md",
+    ".github/skills/code-review/SKILL.md",
+    "docs/HOSTED_COPILOT_CODE_REVIEW.md"
+  ]
+}
